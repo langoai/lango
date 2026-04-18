@@ -48,7 +48,7 @@ Single binary. <100ms startup. <250MB memory. Just Go.
 - ⚡ **Background Execution** - Async task manager with concurrency control and completion notifications
 - 🔄 **Workflow Engine** - DAG-based YAML workflows with parallel step execution and state persistence
 - 🔗 **MCP Integration** - Connect to external MCP servers (stdio/HTTP/SSE), auto-discovery, health checks, multi-scope config
-- 🔒 **Secure** - Master Key envelope (MK/KEK hierarchy), AES-256-GCM encryption, brokered payload protection with redacted search projections, recovery mnemonic, key registry, secret management, output scanning, hardware keyring (Touch ID / TPM), Cloud KMS (AWS/GCP/Azure/PKCS#11)
+- 🔒 **Secure** - Master Key envelope (MK/KEK hierarchy), AES-256-GCM encryption, brokered payload protection for session transcripts, learnings, inquiries, and agent memory with redacted search projections, recovery mnemonic, key registry, secret management, output scanning, hardware keyring (Touch ID / TPM), Cloud KMS (AWS/GCP/Azure/PKCS#11)
 - 💾 **Persistent** - Ent ORM with SQLite session storage
 - 🌐 **Gateway** - WebSocket/HTTP server with real-time streaming
 - 🔑 **Auth** - OIDC authentication, OAuth login flow

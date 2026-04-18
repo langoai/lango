@@ -47,12 +47,21 @@ func WithTTL(d time.Duration) StoreOption {
 	}
 }
 
+// WithPayloadProtector enables broker-managed payload protection for session
+// message content and tool-call payloads.
+func WithPayloadProtector(protector security.PayloadProtector) StoreOption {
+	return func(s *EntStore) {
+		s.payloads = protector
+	}
+}
+
 // EntStore implements Store using entgo.io
 type EntStore struct {
 	client          *ent.Client
 	db              *sql.DB
 	mu              sync.RWMutex
 	passphrase      string
+	payloads        security.PayloadProtector
 	maxHistoryTurns int
 	ttl             time.Duration
 	endProcessor    SessionEndProcessor
@@ -138,6 +147,10 @@ func (s *EntStore) DB() *sql.DB {
 	return s.db
 }
 
+func (s *EntStore) SetPayloadProtector(protector security.PayloadProtector) {
+	s.payloads = protector
+}
+
 // Create creates a new session
 func (s *EntStore) Create(session *Session) error {
 	s.mu.Lock()
@@ -180,28 +193,11 @@ func (s *EntStore) Create(session *Session) error {
 
 	// Create messages if any
 	for _, msg := range session.History {
-		toolCalls := make([]entschema.ToolCall, len(msg.ToolCalls))
-		for i, tc := range msg.ToolCalls {
-			toolCalls[i] = entschema.ToolCall{
-				ID:               tc.ID,
-				Name:             tc.Name,
-				Input:            tc.Input,
-				Output:           tc.Output,
-				Thought:          tc.Thought,
-				ThoughtSignature: tc.ThoughtSignature,
-			}
+		msgBuilder, err := s.messageCreateBuilder(created, msg)
+		if err != nil {
+			return fmt.Errorf("prepare message: %w", err)
 		}
-
-		builder := s.client.Message.Create().
-			SetSession(created).
-			SetRole(string(msg.Role)).
-			SetContent(msg.Content).
-			SetTimestamp(msg.Timestamp).
-			SetToolCalls(toolCalls)
-		if msg.Author != "" {
-			builder.SetAuthor(msg.Author)
-		}
-		if _, err := builder.Save(ctx); err != nil {
+		if _, err := msgBuilder.Save(ctx); err != nil {
 			return fmt.Errorf("create message: %w", err)
 		}
 	}
@@ -236,7 +232,11 @@ func (s *EntStore) Get(key string) (*Session, error) {
 		return nil, fmt.Errorf("get session %q: %w", key, ErrSessionExpired)
 	}
 
-	return s.entToSession(entSession), nil
+	session, err := s.entToSession(entSession)
+	if err != nil {
+		return nil, fmt.Errorf("decode session %q: %w", key, err)
+	}
+	return session, nil
 }
 
 // Update updates an existing session
@@ -336,33 +336,15 @@ func (s *EntStore) AppendMessage(key string, msg Message) error {
 		return fmt.Errorf("append message to session %q: %w", key, err)
 	}
 
-	// Convert tool calls
-	toolCalls := make([]entschema.ToolCall, len(msg.ToolCalls))
-	for i, tc := range msg.ToolCalls {
-		toolCalls[i] = entschema.ToolCall{
-			ID:               tc.ID,
-			Name:             tc.Name,
-			Input:            tc.Input,
-			Output:           tc.Output,
-			Thought:          tc.Thought,
-			ThoughtSignature: tc.ThoughtSignature,
-		}
-	}
-
 	// Create message
 	timestamp := msg.Timestamp
 	if timestamp.IsZero() {
 		timestamp = time.Now()
 	}
-
-	msgBuilder := s.client.Message.Create().
-		SetSession(entSession).
-		SetRole(string(msg.Role)).
-		SetContent(msg.Content).
-		SetTimestamp(timestamp).
-		SetToolCalls(toolCalls)
-	if msg.Author != "" {
-		msgBuilder.SetAuthor(msg.Author)
+	msg.Timestamp = timestamp
+	msgBuilder, err := s.messageCreateBuilder(entSession, msg)
+	if err != nil {
+		return fmt.Errorf("prepare message: %w", err)
 	}
 	_, err = msgBuilder.Save(ctx)
 
@@ -457,12 +439,15 @@ func (s *EntStore) CompactMessages(key string, upToIndex int, summary string) er
 	}
 
 	// Insert summary message at the beginning (with early timestamp)
-	_, err = s.client.Message.Create().
-		SetSession(entSession).
-		SetRole("system").
-		SetContent("[Compacted Summary]\n" + summary).
-		SetTimestamp(time.Now().Add(-24 * time.Hour)). // ensure it sorts before recent messages
-		Save(ctx)
+	msgBuilder, err := s.messageCreateBuilder(entSession, Message{
+		Role:      "system",
+		Content:   "[Compacted Summary]\n" + summary,
+		Timestamp: time.Now().Add(-24 * time.Hour), // ensure it sorts before recent messages
+	})
+	if err != nil {
+		return fmt.Errorf("prepare summary message: %w", err)
+	}
+	_, err = msgBuilder.Save(ctx)
 	if err != nil {
 		return fmt.Errorf("create summary message: %w", err)
 	}
@@ -504,7 +489,7 @@ func (s *EntStore) Close() error {
 }
 
 // entToSession converts ent Session to domain Session
-func (s *EntStore) entToSession(e *ent.Session) *Session {
+func (s *EntStore) entToSession(e *ent.Session) (*Session, error) {
 	session := &Session{
 		Key:         e.Key,
 		AgentID:     e.AgentID,
@@ -518,28 +503,127 @@ func (s *EntStore) entToSession(e *ent.Session) *Session {
 	}
 
 	for _, m := range e.Edges.Messages {
-		toolCalls := make([]ToolCall, len(m.ToolCalls))
-		for i, tc := range m.ToolCalls {
-			toolCalls[i] = ToolCall{
-				ID:               tc.ID,
-				Name:             tc.Name,
-				Input:            tc.Input,
-				Output:           tc.Output,
-				Thought:          tc.Thought,
-				ThoughtSignature: tc.ThoughtSignature,
-			}
+		content, err := s.resolveMessageContent(m)
+		if err != nil {
+			return nil, err
+		}
+		toolCalls, err := s.resolveMessageToolCalls(m)
+		if err != nil {
+			return nil, err
 		}
 
 		session.History = append(session.History, Message{
 			Role:      types.MessageRole(m.Role),
-			Content:   m.Content,
+			Content:   content,
 			Timestamp: m.Timestamp,
 			ToolCalls: toolCalls,
 			Author:    m.Author,
 		})
 	}
 
-	return session
+	return session, nil
+}
+
+func (s *EntStore) messageCreateBuilder(sessionEntity *ent.Session, msg Message) (*ent.MessageCreate, error) {
+	projection, ciphertext, nonce, keyVersion, err := security.ProtectText(s.payloads, msg.Content, 512)
+	if err != nil {
+		return nil, err
+	}
+	toolCalls, toolCiphertext, toolNonce, toolKeyVersion, err := s.prepareToolCallPayload(msg.ToolCalls)
+	if err != nil {
+		return nil, err
+	}
+
+	builder := s.client.Message.Create().
+		SetSession(sessionEntity).
+		SetRole(string(msg.Role)).
+		SetContent(projection).
+		SetTimestamp(msg.Timestamp).
+		SetToolCalls(toolCalls)
+	if ciphertext != nil {
+		builder.SetContentCiphertext(ciphertext)
+		builder.SetContentNonce(nonce)
+		builder.SetContentKeyVersion(keyVersion)
+	}
+	if toolCiphertext != nil {
+		builder.SetToolCallsCiphertext(toolCiphertext)
+		builder.SetToolCallsNonce(toolNonce)
+		builder.SetToolCallsKeyVersion(toolKeyVersion)
+	}
+	if msg.Author != "" {
+		builder.SetAuthor(msg.Author)
+	}
+	return builder, nil
+}
+
+func (s *EntStore) prepareToolCallPayload(toolCalls []ToolCall) ([]entschema.ToolCall, []byte, []byte, int, error) {
+	projection := make([]entschema.ToolCall, len(toolCalls))
+	if len(toolCalls) == 0 {
+		return projection, nil, nil, 0, nil
+	}
+	for i, tc := range toolCalls {
+		projection[i] = entschema.ToolCall{
+			ID:               tc.ID,
+			Name:             tc.Name,
+			ThoughtSignature: tc.ThoughtSignature,
+		}
+	}
+	if s.payloads == nil {
+		for i, tc := range toolCalls {
+			projection[i].Input = tc.Input
+			projection[i].Output = tc.Output
+			projection[i].Thought = tc.Thought
+		}
+		return projection, nil, nil, 0, nil
+	}
+	ciphertext, nonce, keyVersion, err := security.ProtectJSONBundle(s.payloads, toolCalls)
+	if err != nil {
+		return nil, nil, nil, 0, err
+	}
+	return projection, ciphertext, nonce, keyVersion, nil
+}
+
+func (s *EntStore) resolveMessageContent(m *ent.Message) (string, error) {
+	if m == nil {
+		return "", nil
+	}
+	if s.payloads == nil || m.ContentCiphertext == nil || m.ContentNonce == nil || m.ContentKeyVersion == nil {
+		return m.Content, nil
+	}
+	plaintext, err := s.payloads.DecryptPayload(*m.ContentCiphertext, *m.ContentNonce, *m.ContentKeyVersion)
+	if err != nil {
+		return "", fmt.Errorf("decrypt message content: %w", err)
+	}
+	return string(plaintext), nil
+}
+
+func (s *EntStore) resolveMessageToolCalls(m *ent.Message) ([]ToolCall, error) {
+	if m == nil {
+		return nil, nil
+	}
+	if s.payloads == nil || m.ToolCallsCiphertext == nil || m.ToolCallsNonce == nil || m.ToolCallsKeyVersion == nil {
+		return convertSessionToolCalls(m.ToolCalls), nil
+	}
+	decrypted, err := security.UnprotectJSONBundle[[]ToolCall](s.payloads, *m.ToolCallsCiphertext, *m.ToolCallsNonce, *m.ToolCallsKeyVersion)
+	if err != nil {
+		return nil, fmt.Errorf("decrypt message tool calls: %w", err)
+	}
+	return decrypted, nil
+}
+
+func convertSessionToolCalls(in []entschema.ToolCall) []ToolCall {
+	out := make([]ToolCall, len(in))
+	for i, tc := range in {
+		out[i] = ToolCall{
+			ID:               tc.ID,
+			Name:             tc.Name,
+			Input:            tc.Input,
+			Output:           tc.Output,
+			Thought:          tc.Thought,
+			ThoughtSignature: tc.ThoughtSignature,
+		}
+	}
+	return out
 }
 
 // GetSalt retrieves the encryption salt by name.

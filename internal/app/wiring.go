@@ -25,6 +25,7 @@ import (
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/skill"
+	"github.com/langoai/lango/internal/storagebroker"
 	"github.com/langoai/lango/internal/supervisor"
 	"github.com/langoai/lango/internal/toolcatalog"
 	"github.com/langoai/lango/internal/toolchain"
@@ -103,6 +104,9 @@ func initSessionStore(cfg *config.Config, boot *bootstrap.Result) (session.Store
 	}
 	if cfg.Session.TTL > 0 {
 		storeOpts = append(storeOpts, session.WithTTL(cfg.Session.TTL))
+	}
+	if boot != nil && boot.Broker != nil {
+		storeOpts = append(storeOpts, session.WithPayloadProtector(storagebroker.NewPayloadProtector(boot.Broker)))
 	}
 
 	logger().Info("initializing session store...")

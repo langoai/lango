@@ -3,7 +3,6 @@ package librarian
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -19,6 +18,18 @@ type InquiryStore struct {
 	client   *ent.Client
 	logger   *zap.SugaredLogger
 	payloads security.PayloadProtector
+}
+
+type inquiryPayload struct {
+	Question string `json:"question"`
+	Context  string `json:"context,omitempty"`
+	Answer   string `json:"answer,omitempty"`
+}
+
+type inquiryProjection struct {
+	Question string
+	Context  string
+	Answer   string
 }
 
 // NewInquiryStore creates a new inquiry store.
@@ -83,7 +94,11 @@ func (s *InquiryStore) ListPendingInquiries(ctx context.Context, sessionKey stri
 
 	result := make([]Inquiry, 0, len(entries))
 	for _, e := range entries {
-		result = append(result, entToInquiry(e))
+		inq, err := s.entToInquiry(e)
+		if err != nil {
+			return nil, fmt.Errorf("decode inquiry %q: %w", e.ID, err)
+		}
+		result = append(result, inq)
 	}
 	return result, nil
 }
@@ -94,11 +109,22 @@ func (s *InquiryStore) ResolveInquiry(ctx context.Context, id uuid.UUID, answer,
 		SetStatus(inquiry.StatusResolved).
 		SetResolvedAt(time.Now())
 	if answer != "" {
-		projection, ciphertext, nonce, keyVersion, err := s.prepareProtectedText(answer)
+		payload, err := s.loadInquiryPayload(ctx, id)
+		if err != nil {
+			return fmt.Errorf("load inquiry payload: %w", err)
+		}
+		payload.Answer = answer
+		projection, ciphertext, nonce, keyVersion, err := s.prepareInquiryPayload(payload)
 		if err != nil {
 			return fmt.Errorf("prepare inquiry answer payload: %w", err)
 		}
-		builder.SetAnswer(projection)
+		builder.SetQuestion(projection.Question)
+		if projection.Context != "" {
+			builder.SetContext(projection.Context)
+		} else {
+			builder.ClearContext()
+		}
+		builder.SetAnswer(projection.Answer)
 		if ciphertext != nil {
 			builder.SetPayloadCiphertext(ciphertext)
 			builder.SetPayloadNonce(nonce)
@@ -142,7 +168,7 @@ func (s *InquiryStore) CountPendingBySession(ctx context.Context, sessionKey str
 }
 
 // entToInquiry converts an ent inquiry entity to the domain type.
-func entToInquiry(e *ent.Inquiry) Inquiry {
+func (s *InquiryStore) entToInquiry(e *ent.Inquiry) (Inquiry, error) {
 	inq := Inquiry{
 		ID:         e.ID,
 		SessionKey: e.SessionKey,
@@ -165,35 +191,62 @@ func entToInquiry(e *ent.Inquiry) Inquiry {
 	if e.SourceObservationID != nil {
 		inq.SourceObservationID = *e.SourceObservationID
 	}
-	return inq
+	if s.payloads == nil || e.PayloadCiphertext == nil || e.PayloadNonce == nil || e.PayloadKeyVersion == nil {
+		return inq, nil
+	}
+	payload, err := security.UnprotectJSONBundle[inquiryPayload](s.payloads, *e.PayloadCiphertext, *e.PayloadNonce, *e.PayloadKeyVersion)
+	if err != nil {
+		return Inquiry{}, fmt.Errorf("decrypt inquiry payload: %w", err)
+	}
+	inq.Question = payload.Question
+	inq.Context = payload.Context
+	inq.Answer = payload.Answer
+	return inq, nil
 }
 
 func (s *InquiryStore) prepareInquiryWrite(question, contextText string) (string, string, []byte, []byte, int, error) {
 	if s.payloads == nil {
 		return question, contextText, nil, nil, 0, nil
 	}
-	plaintext := question
-	if contextText != "" {
-		plaintext += "\n" + contextText
-	}
-	ciphertext, nonce, keyVersion, err := s.payloads.EncryptPayload([]byte(plaintext))
+	projection, ciphertext, nonce, keyVersion, err := s.prepareInquiryPayload(inquiryPayload{Question: question, Context: contextText})
 	if err != nil {
 		return "", "", nil, nil, 0, err
 	}
-	return redactInquiryProjection(question), redactInquiryProjection(contextText), ciphertext, nonce, keyVersion, nil
+	return projection.Question, projection.Context, ciphertext, nonce, keyVersion, nil
 }
 
-func (s *InquiryStore) prepareProtectedText(text string) (string, []byte, []byte, int, error) {
-	if s.payloads == nil || text == "" {
-		return text, nil, nil, 0, nil
+func (s *InquiryStore) prepareInquiryPayload(payload inquiryPayload) (inquiryProjection, []byte, []byte, int, error) {
+	projection := inquiryProjection{
+		Question: security.RedactedProjection(payload.Question, 512),
+		Context:  security.RedactedProjection(payload.Context, 512),
+		Answer:   security.RedactedProjection(payload.Answer, 512),
 	}
-	ciphertext, nonce, keyVersion, err := s.payloads.EncryptPayload([]byte(text))
+	if s.payloads == nil {
+		return projection, nil, nil, 0, nil
+	}
+	ciphertext, nonce, keyVersion, err := security.ProtectJSONBundle(s.payloads, payload)
 	if err != nil {
-		return "", nil, nil, 0, err
+		return inquiryProjection{}, nil, nil, 0, err
 	}
-	return redactInquiryProjection(text), ciphertext, nonce, keyVersion, nil
+	return projection, ciphertext, nonce, keyVersion, nil
 }
 
-func redactInquiryProjection(text string) string {
-	return strings.TrimSpace(text)
+func (s *InquiryStore) loadInquiryPayload(ctx context.Context, id uuid.UUID) (inquiryPayload, error) {
+	e, err := s.client.Inquiry.Get(ctx, id)
+	if err != nil {
+		return inquiryPayload{}, err
+	}
+	if s.payloads == nil || e.PayloadCiphertext == nil || e.PayloadNonce == nil || e.PayloadKeyVersion == nil {
+		payload := inquiryPayload{
+			Question: e.Question,
+		}
+		if e.Context != nil {
+			payload.Context = *e.Context
+		}
+		if e.Answer != nil {
+			payload.Answer = *e.Answer
+		}
+		return payload, nil
+	}
+	return security.UnprotectJSONBundle[inquiryPayload](s.payloads, *e.PayloadCiphertext, *e.PayloadNonce, *e.PayloadKeyVersion)
 }

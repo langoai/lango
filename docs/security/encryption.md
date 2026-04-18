@@ -266,6 +266,7 @@ The current runtime no longer supports SQLCipher page-level database encryption.
 1. The SQLite database is opened with the default pure-Go runtime driver.
 2. Sensitive payloads are encrypted and decrypted through the storage broker using keys derived from the Master Key envelope.
 3. Searchable fields store **redacted projections**, not raw plaintext secrets.
+4. Session messages, learning payloads, inquiries, and agent memory use ciphertext for original values and keep only redacted projections in plaintext search columns.
 
 Legacy compatibility:
 

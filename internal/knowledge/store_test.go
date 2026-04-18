@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
 	"github.com/langoai/lango/internal/ent/enttest"
@@ -182,6 +183,38 @@ func TestKnowledgePayloadProtection_RoundTripAndProjection(t *testing.T) {
 	if !strings.Contains(row.Content, "[email]") || !strings.Contains(row.Content, "[secret]") {
 		t.Fatalf("projection did not redact sensitive material: %q", row.Content)
 	}
+}
+
+func TestLearningPayloadProtection_RoundTripAndProjection(t *testing.T) {
+	store := newTestStore(t)
+	store.SetPayloadProtector(stubPayloadProtector{})
+	ctx := context.Background()
+
+	entry := LearningEntry{
+		Trigger:      "timeout",
+		ErrorPattern: "email alice@example.com",
+		Diagnosis:    "token SECRETSECRETSECRETSECRETSECRETSECRET",
+		Fix:          "rotate 123456789",
+		Category:     entlearning.CategoryTimeout,
+	}
+	require.NoError(t, store.SaveLearning(ctx, "session-1", entry))
+
+	got, err := store.GetLearning(ctx, store.client.Learning.Query().OnlyX(ctx).ID)
+	require.NoError(t, err)
+	require.Equal(t, entry.ErrorPattern, got.ErrorPattern)
+	require.Equal(t, entry.Diagnosis, got.Diagnosis)
+	require.Equal(t, entry.Fix, got.Fix)
+
+	results, err := store.SearchLearningsScored(ctx, "timeout", "", 10)
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	require.Equal(t, entry.ErrorPattern, results[0].Entry.ErrorPattern)
+
+	row := store.client.Learning.Query().OnlyX(ctx)
+	require.NotNil(t, row.PayloadCiphertext)
+	require.NotContains(t, row.ErrorPattern, "alice@example.com")
+	require.NotContains(t, row.Diagnosis, "SECRETSECRETSECRETSECRETSECRETSECRET")
+	require.NotContains(t, row.Fix, "123456789")
 }
 
 func TestGetKnowledge_NotFound(t *testing.T) {

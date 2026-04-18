@@ -129,7 +129,7 @@ func (s *EntStore) Get(agentName, key string) (*Entry, error) {
 		return nil, fmt.Errorf("get agent memory: %w", err)
 	}
 
-	return s.entToEntry(e), nil
+	return s.entToEntry(e)
 }
 
 func (s *EntStore) Search(agentName string, opts SearchOptions) ([]*Entry, error) {
@@ -176,7 +176,7 @@ func (s *EntStore) Search(agentName string, opts SearchOptions) ([]*Entry, error
 		return nil, fmt.Errorf("search agent memory: %w", err)
 	}
 
-	return s.entsToEntries(entries), nil
+	return s.entsToEntries(entries)
 }
 
 // SearchWithContext resolves entries with scope fallback:
@@ -251,10 +251,18 @@ func (s *EntStore) SearchWithContextOptions(agentName string, opts SearchOptions
 	// Combine: phase 1 first, then phase 2, then truncate to limit.
 	combined := make([]*Entry, 0, len(phase1)+len(phase2))
 	for _, e := range phase1 {
-		combined = append(combined, s.entToEntry(e))
+		entry, err := s.entToEntry(e)
+		if err != nil {
+			return nil, err
+		}
+		combined = append(combined, entry)
 	}
 	for _, e := range phase2 {
-		combined = append(combined, s.entToEntry(e))
+		entry, err := s.entToEntry(e)
+		if err != nil {
+			return nil, err
+		}
+		combined = append(combined, entry)
 	}
 
 	if len(combined) > limit {
@@ -350,18 +358,20 @@ func (s *EntStore) ListAll(agentName string) ([]*Entry, error) {
 		return nil, fmt.Errorf("list all agent memory: %w", err)
 	}
 
-	return s.entsToEntries(entries), nil
+	return s.entsToEntries(entries)
 }
 
 // ─── helpers ──────────────────────────────────────────────────────
 
 // entToEntry converts an Ent AgentMemory entity to a domain Entry.
-func (s *EntStore) entToEntry(e *ent.AgentMemory) *Entry {
+func (s *EntStore) entToEntry(e *ent.AgentMemory) (*Entry, error) {
 	content := e.Content
 	if s.payloads != nil && e.ContentCiphertext != nil && e.ContentNonce != nil && e.ContentKeyVersion != nil {
-		if plaintext, err := s.payloads.DecryptPayload(*e.ContentCiphertext, *e.ContentNonce, *e.ContentKeyVersion); err == nil {
-			content = string(plaintext)
+		plaintext, err := s.payloads.DecryptPayload(*e.ContentCiphertext, *e.ContentNonce, *e.ContentKeyVersion)
+		if err != nil {
+			return nil, fmt.Errorf("decrypt agent memory %q: %w", e.ID, err)
 		}
+		content = string(plaintext)
 	}
 	return &Entry{
 		ID:         e.ID.String(),
@@ -375,27 +385,31 @@ func (s *EntStore) entToEntry(e *ent.AgentMemory) *Entry {
 		Tags:       e.Tags,
 		CreatedAt:  e.CreatedAt,
 		UpdatedAt:  e.UpdatedAt,
-	}
+	}, nil
 }
 
 // entsToEntries converts a slice of Ent entities to domain entries.
-func (s *EntStore) entsToEntries(ents []*ent.AgentMemory) []*Entry {
+func (s *EntStore) entsToEntries(ents []*ent.AgentMemory) ([]*Entry, error) {
 	result := make([]*Entry, 0, len(ents))
 	for _, e := range ents {
-		result = append(result, s.entToEntry(e))
+		entry, err := s.entToEntry(e)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, entry)
 	}
-	return result
+	return result, nil
 }
 
 func (s *EntStore) prepareContent(content string) (string, []byte, []byte, int, error) {
 	if s.payloads == nil {
 		return strings.TrimSpace(content), nil, nil, 0, nil
 	}
-	ciphertext, nonce, keyVersion, err := s.payloads.EncryptPayload([]byte(content))
+	projection, ciphertext, nonce, keyVersion, err := security.ProtectText(s.payloads, content, 256)
 	if err != nil {
 		return "", nil, nil, 0, err
 	}
-	return strings.TrimSpace(content), ciphertext, nonce, keyVersion, nil
+	return projection, ciphertext, nonce, keyVersion, nil
 }
 
 // keywordPredicates splits a query into keywords and creates

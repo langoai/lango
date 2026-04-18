@@ -2,6 +2,8 @@
 
 Commands for inspecting agent configuration, managing observational memory, and interacting with the knowledge graph store.
 
+Persistent agent memory stores original content as broker-protected ciphertext. CLI and retrieval flows display decrypted values when available, while SQLite search columns keep only redacted projections.
+
 ---
 
 ## Agent Commands

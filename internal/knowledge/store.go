@@ -2,8 +2,8 @@ package knowledge
 
 import (
 	"context"
+	stdsql "database/sql"
 	"fmt"
-	"regexp"
 	"strings"
 	"time"
 
@@ -34,11 +34,11 @@ type Store struct {
 	payloads        security.PayloadProtector
 }
 
-var (
-	emailProjectionPattern = regexp.MustCompile(`[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}`)
-	longDigitsPattern      = regexp.MustCompile(`\b\d{6,}\b`)
-	longSecretTokenPattern = regexp.MustCompile(`\b(?:[A-Fa-f0-9]{32,}|[A-Za-z0-9_\-]{32,})\b`)
-)
+type learningPayload struct {
+	ErrorPattern string `json:"error_pattern"`
+	Diagnosis    string `json:"diagnosis"`
+	Fix          string `json:"fix"`
+}
 
 // NewStore creates a new knowledge store.
 func NewStore(client *ent.Client, logger *zap.SugaredLogger) *Store {
@@ -676,15 +676,12 @@ func (s *Store) SearchLearningsScored(ctx context.Context, errorPattern string, 
 
 	result := make([]ScoredLearningEntry, 0, len(entries))
 	for _, l := range entries {
+		resolved, err := s.resolveLearningEntry(ctx, l)
+		if err != nil {
+			return nil, fmt.Errorf("resolve scored learning %q: %w", l.ID, err)
+		}
 		result = append(result, ScoredLearningEntry{
-			Entry: LearningEntry{
-				Trigger:      l.Trigger,
-				ErrorPattern: l.ErrorPattern,
-				Diagnosis:    l.Diagnosis,
-				Fix:          l.Fix,
-				Category:     l.Category,
-				Tags:         l.Tags,
-			},
+			Entry:        resolved,
 			Score:        l.Confidence,
 			SearchSource: "like",
 		})
@@ -804,18 +801,32 @@ func (s *Store) DeleteKnowledge(ctx context.Context, key string) error {
 
 // SaveLearning creates a new learning entry.
 func (s *Store) SaveLearning(ctx context.Context, sessionKey string, entry LearningEntry) error {
+	if s.payloads != nil && s.learningFTS5Idx != nil && s.learningFTS5Idx.DB() != nil {
+		return s.saveLearningAtomic(ctx, entry)
+	}
+
+	trigger := strings.TrimSpace(entry.Trigger)
+	projections, ciphertext, nonce, keyVersion, err := s.prepareLearningWrite(entry)
+	if err != nil {
+		return fmt.Errorf("prepare learning payload: %w", err)
+	}
 	builder := s.client.Learning.Create().
-		SetTrigger(entry.Trigger).
+		SetTrigger(trigger).
 		SetCategory(entry.Category)
 
-	if entry.ErrorPattern != "" {
-		builder.SetErrorPattern(entry.ErrorPattern)
+	if projections.ErrorPattern != "" {
+		builder.SetErrorPattern(projections.ErrorPattern)
 	}
-	if entry.Diagnosis != "" {
-		builder.SetDiagnosis(entry.Diagnosis)
+	if projections.Diagnosis != "" {
+		builder.SetDiagnosis(projections.Diagnosis)
 	}
-	if entry.Fix != "" {
-		builder.SetFix(entry.Fix)
+	if projections.Fix != "" {
+		builder.SetFix(projections.Fix)
+	}
+	if ciphertext != nil {
+		builder.SetPayloadCiphertext(ciphertext)
+		builder.SetPayloadNonce(nonce)
+		builder.SetPayloadKeyVersion(keyVersion)
 	}
 	if len(entry.Tags) > 0 {
 		builder.SetTags(entry.Tags)
@@ -826,14 +837,14 @@ func (s *Store) SaveLearning(ctx context.Context, sessionKey string, entry Learn
 		return fmt.Errorf("create learning: %w", err)
 	}
 
-	content := entry.Trigger
-	if entry.Fix != "" {
-		content += "\n" + entry.Fix
+	content := trigger
+	if projections.Fix != "" {
+		content += "\n" + projections.Fix
 	}
 	s.publishContentSaved(created.ID.String(), "learning", content, map[string]string{
 		"category": string(entry.Category),
 	}, true, false, 0)
-	s.syncLearningFTS5(ctx, created.ID.String(), entry.Trigger, entry.ErrorPattern, entry.Fix)
+	s.syncLearningFTS5(ctx, created.ID.String(), trigger, projections.ErrorPattern, projections.Fix)
 
 	return nil
 }
@@ -847,14 +858,11 @@ func (s *Store) GetLearning(ctx context.Context, id uuid.UUID) (*LearningEntry, 
 		}
 		return nil, fmt.Errorf("get learning: %w", err)
 	}
-	return &LearningEntry{
-		Trigger:      l.Trigger,
-		ErrorPattern: l.ErrorPattern,
-		Diagnosis:    l.Diagnosis,
-		Fix:          l.Fix,
-		Category:     l.Category,
-		Tags:         l.Tags,
-	}, nil
+	resolved, err := s.resolveLearningEntry(ctx, l)
+	if err != nil {
+		return nil, fmt.Errorf("resolve learning %q: %w", id, err)
+	}
+	return &resolved, nil
 }
 
 // SearchLearnings searches learnings by error pattern or trigger substring match.
@@ -904,14 +912,11 @@ func (s *Store) searchLearningsLIKE(ctx context.Context, errorPattern string, ca
 
 	result := make([]LearningEntry, 0, len(entries))
 	for _, l := range entries {
-		result = append(result, LearningEntry{
-			Trigger:      l.Trigger,
-			ErrorPattern: l.ErrorPattern,
-			Diagnosis:    l.Diagnosis,
-			Fix:          l.Fix,
-			Category:     l.Category,
-			Tags:         l.Tags,
-		})
+		resolved, err := s.resolveLearningEntry(ctx, l)
+		if err != nil {
+			return nil, fmt.Errorf("resolve learning %q: %w", l.ID, err)
+		}
+		result = append(result, resolved)
 	}
 	return result, nil
 }
@@ -955,14 +960,11 @@ func (s *Store) resolveLearningsByIDs(ctx context.Context, ftsResults []search.S
 		if !ok {
 			continue
 		}
-		result = append(result, LearningEntry{
-			Trigger:      l.Trigger,
-			ErrorPattern: l.ErrorPattern,
-			Diagnosis:    l.Diagnosis,
-			Fix:          l.Fix,
-			Category:     l.Category,
-			Tags:         l.Tags,
-		})
+		resolved, err := s.resolveLearningEntry(ctx, l)
+		if err != nil {
+			return nil, fmt.Errorf("resolve learning %q: %w", l.ID, err)
+		}
+		result = append(result, resolved)
 	}
 	return result, nil
 }
@@ -1159,6 +1161,64 @@ func externalRefKeywordPredicates(query string) []predicate.ExternalRef {
 	return preds
 }
 
+func (s *Store) saveLearningAtomic(ctx context.Context, entry LearningEntry) error {
+	tx, err := s.learningFTS5Idx.DB().BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin learning sql tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	drv := entsql.NewDriver(dialect.SQLite, entsql.Conn{ExecQuerier: tx})
+	txClient := ent.NewClient(ent.Driver(drv))
+
+	trigger := strings.TrimSpace(entry.Trigger)
+	projections, ciphertext, nonce, keyVersion, err := s.prepareLearningWrite(entry)
+	if err != nil {
+		return fmt.Errorf("prepare learning payload: %w", err)
+	}
+
+	builder := txClient.Learning.Create().
+		SetTrigger(trigger).
+		SetCategory(entry.Category)
+	if projections.ErrorPattern != "" {
+		builder.SetErrorPattern(projections.ErrorPattern)
+	}
+	if projections.Diagnosis != "" {
+		builder.SetDiagnosis(projections.Diagnosis)
+	}
+	if projections.Fix != "" {
+		builder.SetFix(projections.Fix)
+	}
+	if ciphertext != nil {
+		builder.SetPayloadCiphertext(ciphertext)
+		builder.SetPayloadNonce(nonce)
+		builder.SetPayloadKeyVersion(keyVersion)
+	}
+	if len(entry.Tags) > 0 {
+		builder.SetTags(entry.Tags)
+	}
+
+	created, err := builder.Save(ctx)
+	if err != nil {
+		return fmt.Errorf("create learning: %w", err)
+	}
+	if err := s.syncLearningFTS5WithExec(ctx, tx, created.ID.String(), trigger, projections.ErrorPattern, projections.Fix, false); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit learning tx: %w", err)
+	}
+
+	content := trigger
+	if projections.Fix != "" {
+		content += "\n" + projections.Fix
+	}
+	s.publishContentSaved(created.ID.String(), "learning", content, map[string]string{
+		"category": string(entry.Category),
+	}, true, false, 0)
+	return nil
+}
+
 // syncKnowledgeFTS5 updates the FTS5 index after a knowledge write.
 // Logs warning on failure; never blocks the Ent write.
 func (s *Store) syncKnowledgeFTS5(ctx context.Context, key, content string, isUpdate bool) {
@@ -1204,18 +1264,7 @@ func (s *Store) resolveKnowledgeContent(ctx context.Context, k *ent.Knowledge) s
 }
 
 func redactKnowledgeProjection(content string) string {
-	projection := strings.TrimSpace(content)
-	if projection == "" {
-		return ""
-	}
-	projection = emailProjectionPattern.ReplaceAllString(projection, "[email]")
-	projection = longDigitsPattern.ReplaceAllString(projection, "[number]")
-	projection = longSecretTokenPattern.ReplaceAllString(projection, "[secret]")
-	projection = strings.Join(strings.Fields(projection), " ")
-	if len(projection) > 512 {
-		projection = projection[:512]
-	}
-	return projection
+	return security.RedactedProjection(content, 512)
 }
 
 // deleteKnowledgeFTS5 removes a knowledge entry from the FTS5 index.
@@ -1233,9 +1282,73 @@ func (s *Store) syncLearningFTS5(ctx context.Context, id, trigger, errorPattern,
 	if s.learningFTS5Idx == nil {
 		return
 	}
-	if err := s.learningFTS5Idx.Insert(ctx, id, []string{trigger, errorPattern, fix}); err != nil {
+	if err := s.syncLearningFTS5WithExec(ctx, s.learningFTS5Idx.DB(), id, trigger, errorPattern, fix, false); err != nil {
 		s.logger.Warnw("FTS5 learning sync failed", "id", id, "error", err)
 	}
+}
+
+func (s *Store) syncLearningFTS5WithExec(ctx context.Context, ex interface {
+	ExecContext(context.Context, string, ...any) (stdsql.Result, error)
+}, id, trigger, errorPattern, fix string, isUpdate bool) error {
+	if s.learningFTS5Idx == nil {
+		return nil
+	}
+	var err error
+	if isUpdate {
+		err = s.learningFTS5Idx.UpdateWithExec(ctx, ex, id, []string{trigger, errorPattern, fix})
+	} else {
+		err = s.learningFTS5Idx.InsertWithExec(ctx, ex, id, []string{trigger, errorPattern, fix})
+	}
+	if err != nil {
+		return fmt.Errorf("sync learning FTS5 %s: %w", id, err)
+	}
+	return nil
+}
+
+func (s *Store) prepareLearningWrite(entry LearningEntry) (learningPayload, []byte, []byte, int, error) {
+	payload := learningPayload{
+		ErrorPattern: entry.ErrorPattern,
+		Diagnosis:    entry.Diagnosis,
+		Fix:          entry.Fix,
+	}
+	if s.payloads == nil {
+		return payload, nil, nil, 0, nil
+	}
+	ciphertext, nonce, keyVersion, err := security.ProtectJSONBundle(s.payloads, payload)
+	if err != nil {
+		return learningPayload{}, nil, nil, 0, err
+	}
+	return learningPayload{
+		ErrorPattern: security.RedactedProjection(entry.ErrorPattern, 512),
+		Diagnosis:    security.RedactedProjection(entry.Diagnosis, 512),
+		Fix:          security.RedactedProjection(entry.Fix, 512),
+	}, ciphertext, nonce, keyVersion, nil
+}
+
+func (s *Store) resolveLearningEntry(ctx context.Context, l *ent.Learning) (LearningEntry, error) {
+	if l == nil {
+		return LearningEntry{}, nil
+	}
+	entry := LearningEntry{
+		Trigger:  l.Trigger,
+		Category: l.Category,
+		Tags:     l.Tags,
+	}
+	if s.payloads == nil || l.PayloadCiphertext == nil || l.PayloadNonce == nil || l.PayloadKeyVersion == nil {
+		entry.ErrorPattern = l.ErrorPattern
+		entry.Diagnosis = l.Diagnosis
+		entry.Fix = l.Fix
+		return entry, nil
+	}
+	payload, err := security.UnprotectJSONBundle[learningPayload](s.payloads, *l.PayloadCiphertext, *l.PayloadNonce, *l.PayloadKeyVersion)
+	if err != nil {
+		return LearningEntry{}, fmt.Errorf("decrypt learning payload: %w", err)
+	}
+	entry.ErrorPattern = payload.ErrorPattern
+	entry.Diagnosis = payload.Diagnosis
+	entry.Fix = payload.Fix
+	_ = ctx
+	return entry, nil
 }
 
 // deleteLearningFTS5 removes a learning entry from the FTS5 index.

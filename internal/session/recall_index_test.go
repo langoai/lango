@@ -114,3 +114,19 @@ func TestRecallIndex_RedactsSensitiveProjection(t *testing.T) {
 	assert.Contains(t, summary, "[secret]")
 	assert.Contains(t, summary, "[number]")
 }
+
+func TestRecallIndex_ProtectedDecryptFailureDoesNotUseProjection(t *testing.T) {
+	store := newTestEntStore(t, WithPayloadProtector(stubPayloadProtector{}))
+	skipWithoutFTS5Recall(t, store)
+	require.NoError(t, store.Create(&Session{
+		Key: "sess-protected-recall",
+		History: []Message{
+			{Role: types.RoleUser, Content: "top secret"},
+		},
+	}))
+	store.SetPayloadProtector(failDecryptProtector{})
+
+	idx := NewRecallIndex(store)
+	err := idx.IndexSession(context.Background(), "sess-protected-recall")
+	require.Error(t, err)
+}

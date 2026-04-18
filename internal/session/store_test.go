@@ -1,10 +1,14 @@
 package session
 
 import (
+	"context"
 	"errors"
 	"os"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/langoai/lango/internal/security"
 )
 
 func newTestEntStore(t *testing.T, opts ...StoreOption) *EntStore {
@@ -22,6 +26,28 @@ func newTestEntStore(t *testing.T, opts ...StoreOption) *EntStore {
 	t.Cleanup(func() { store.Close() })
 
 	return store
+}
+
+type stubPayloadProtector struct{}
+
+func (stubPayloadProtector) EncryptPayload(plaintext []byte) ([]byte, []byte, int, error) {
+	return append([]byte("enc:"), plaintext...), []byte("123456789012"), security.PayloadKeyVersionV1, nil
+}
+
+func (stubPayloadProtector) DecryptPayload(ciphertext []byte, nonce []byte, keyVersion int) ([]byte, error) {
+	if keyVersion != security.PayloadKeyVersionV1 {
+		return nil, errors.New("unexpected key version")
+	}
+	if string(nonce) != "123456789012" {
+		return nil, errors.New("unexpected nonce")
+	}
+	return []byte(strings.TrimPrefix(string(ciphertext), "enc:")), nil
+}
+
+type failDecryptProtector struct{ stubPayloadProtector }
+
+func (failDecryptProtector) DecryptPayload(ciphertext []byte, nonce []byte, keyVersion int) ([]byte, error) {
+	return nil, errors.New("decrypt failed")
 }
 
 func TestEntStore_CreateAndGet(t *testing.T) {
@@ -153,6 +179,97 @@ func TestEntStore_AppendMessage_WithToolCalls(t *testing.T) {
 	}
 	if tc.Name != "exec" {
 		t.Errorf("ToolCall Name: want %q, got %q", "exec", tc.Name)
+	}
+}
+
+func TestEntStore_PayloadProtection_RoundTripAndProjection(t *testing.T) {
+	store := newTestEntStore(t, WithPayloadProtector(stubPayloadProtector{}))
+
+	session := &Session{
+		Key: "sess-protected",
+		History: []Message{
+			{
+				Role:    "assistant",
+				Content: "email alice@example.com token SECRETSECRETSECRETSECRETSECRETSECRET",
+				ToolCalls: []ToolCall{
+					{ID: "tc-1", Name: "exec", Input: `{"secret":"ABCDEFABCDEFABCDEFABCDEFABCDEFAB"}`, Output: "top-secret", Thought: true, ThoughtSignature: []byte("sig")},
+				},
+			},
+		},
+	}
+	if err := store.Create(session); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	got, err := store.Get("sess-protected")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.History[0].Content != session.History[0].Content {
+		t.Fatalf("want decrypted content %q, got %q", session.History[0].Content, got.History[0].Content)
+	}
+	if got.History[0].ToolCalls[0].Input != session.History[0].ToolCalls[0].Input {
+		t.Fatalf("want decrypted tool input %q, got %q", session.History[0].ToolCalls[0].Input, got.History[0].ToolCalls[0].Input)
+	}
+
+	row, err := store.client.Message.Query().Only(context.Background())
+	if err != nil {
+		t.Fatalf("query message row: %v", err)
+	}
+	if strings.Contains(row.Content, "alice@example.com") {
+		t.Fatalf("message projection leaked email: %q", row.Content)
+	}
+	if row.ContentCiphertext == nil || row.ToolCallsCiphertext == nil {
+		t.Fatal("expected ciphertext columns to be set")
+	}
+	if len(row.ToolCalls) != 1 {
+		t.Fatalf("want 1 tool call projection, got %d", len(row.ToolCalls))
+	}
+	if row.ToolCalls[0].Input != "" || row.ToolCalls[0].Output != "" || row.ToolCalls[0].Thought {
+		t.Fatalf("tool call projection leaked sensitive fields: %+v", row.ToolCalls[0])
+	}
+}
+
+func TestEntStore_CompactMessages_UsesProtectedSummary(t *testing.T) {
+	store := newTestEntStore(t, WithPayloadProtector(stubPayloadProtector{}))
+	if err := store.Create(&Session{Key: "sess-compact"}); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if err := store.AppendMessage("sess-compact", Message{Role: "user", Content: "first"}); err != nil {
+		t.Fatalf("AppendMessage: %v", err)
+	}
+	if err := store.AppendMessage("sess-compact", Message{Role: "assistant", Content: "second"}); err != nil {
+		t.Fatalf("AppendMessage: %v", err)
+	}
+	if err := store.CompactMessages("sess-compact", 1, "email alice@example.com"); err != nil {
+		t.Fatalf("CompactMessages: %v", err)
+	}
+	row, err := store.client.Message.Query().Only(context.Background())
+	if err != nil {
+		t.Fatalf("query summary row: %v", err)
+	}
+	if row.ContentCiphertext == nil {
+		t.Fatal("expected compacted summary ciphertext")
+	}
+	if strings.Contains(row.Content, "alice@example.com") {
+		t.Fatalf("compaction projection leaked email: %q", row.Content)
+	}
+}
+
+func TestEntStore_ProtectedDecryptFailureDoesNotFallback(t *testing.T) {
+	store := newTestEntStore(t, WithPayloadProtector(stubPayloadProtector{}))
+	if err := store.Create(&Session{
+		Key: "sess-fail",
+		History: []Message{
+			{Role: "user", Content: "secret"},
+		},
+	}); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	store.SetPayloadProtector(failDecryptProtector{})
+
+	if _, err := store.Get("sess-fail"); err == nil {
+		t.Fatal("expected decrypt failure")
 	}
 }
 

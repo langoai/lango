@@ -3,9 +3,7 @@
 ## Purpose
 
 Defines the MK/KEK three-layer key hierarchy for Lango's local storage encryption. The Master Key (MK) is a random 32-byte root key wrapped by one or more Key Encryption Keys (KEK). KEKs are derived from user secrets (passphrase, recovery mnemonic) via PBKDF2. The envelope is stored as a JSON file alongside the database, enabling passphrase change without data re-encryption, recovery mnemonic support, and broker-managed payload protection key derivation.
-
 ## Requirements
-
 ### Requirement: Master Key generation
 
 The system SHALL generate a 32-byte Master Key (MK) from a cryptographically secure random source using `crypto/rand`. The MK is the root of data encryption and DB encryption key derivation.
@@ -182,3 +180,12 @@ The system SHALL provide an exported `ZeroBytes(b []byte)` function that overwri
 
 - **WHEN** `ZeroBytes(buf)` is called on a non-empty byte slice
 - **THEN** all bytes of `buf` are `0x00`
+
+### Requirement: Payload key version remains fixed in leakage follow-up
+The corrective leakage-follow-up change MUST continue using payload key version `1` and MUST NOT introduce rotation or multi-version payload handling.
+
+#### Scenario: Protected rows continue using key version 1
+- **WHEN** payload-protected rows are written by the corrective leakage-followup change
+- **THEN** their `*_key_version` fields are set to `1`
+- **AND** no new payload key version is introduced
+

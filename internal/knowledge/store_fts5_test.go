@@ -23,11 +23,11 @@ func newFTS5TestStore(t *testing.T) (*Store, *sql.DB) {
 	t.Helper()
 
 	// Ent client for ORM operations.
-	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&_fk=1")
+	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&cache=shared&_fk=1")
 	t.Cleanup(func() { client.Close() })
 
 	// Separate raw DB for FTS5 (in-memory, shared cache so Ent and FTS5 coexist).
-	rawDB, err := sql.Open("sqlite3", "file:ent?mode=memory&_fk=1")
+	rawDB, err := sql.Open("sqlite3", "file:ent?mode=memory&cache=shared&_fk=1")
 	require.NoError(t, err)
 	t.Cleanup(func() { rawDB.Close() })
 
@@ -204,12 +204,13 @@ func TestFTS5_OnlyLatestVersion(t *testing.T) {
 
 func TestWriteTimeSync_Learning(t *testing.T) {
 	store, rawDB := newFTS5TestStore(t)
+	store.SetPayloadProtector(stubPayloadProtector{})
 	ctx := context.Background()
 
 	require.NoError(t, store.SaveLearning(ctx, "s1", LearningEntry{
 		Trigger:      "timeout error",
-		ErrorPattern: "context deadline exceeded",
-		Fix:          "increase timeout to 30s",
+		ErrorPattern: "context deadline exceeded alice@example.com",
+		Fix:          "increase timeout to 30s token SECRETSECRETSECRETSECRETSECRETSECRET",
 		Category:     entlearning.CategoryTimeout,
 	}))
 
@@ -217,6 +218,12 @@ func TestWriteTimeSync_Learning(t *testing.T) {
 	err := rawDB.QueryRow(`SELECT count(*) FROM learning_fts WHERE learning_fts MATCH 'timeout'`).Scan(&count)
 	require.NoError(t, err)
 	assert.Equal(t, 1, count)
+
+	var trigger, errorPattern, fix string
+	err = rawDB.QueryRow(`SELECT trigger, error_pattern, fix FROM learning_fts LIMIT 1`).Scan(&trigger, &errorPattern, &fix)
+	require.NoError(t, err)
+	assert.NotContains(t, errorPattern, "alice@example.com")
+	assert.NotContains(t, fix, "SECRETSECRETSECRETSECRETSECRETSECRET")
 }
 
 func TestSearchKnowledge_FTS5ErrorFallback(t *testing.T) {
