@@ -6,7 +6,6 @@ import (
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/payment"
 	"github.com/langoai/lango/internal/security"
-	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/storage"
 	"github.com/langoai/lango/internal/wallet"
 	x402pkg "github.com/langoai/lango/internal/x402"
@@ -23,13 +22,9 @@ type paymentComponents struct {
 	chainID   int64
 }
 
-// initPayment creates the payment components if enabled.
+// initPaymentWithStorage creates the payment components if enabled.
 // Follows the same graceful degradation pattern as initGraphStore.
-func initPayment(cfg *config.Config, store session.Store, secrets *security.SecretsStore) *paymentComponents {
-	return initPaymentWithStorage(cfg, store, secrets, nil)
-}
-
-func initPaymentWithStorage(cfg *config.Config, store session.Store, secrets *security.SecretsStore, facade *storage.Facade) *paymentComponents {
+func initPaymentWithStorage(cfg *config.Config, secrets *security.SecretsStore, facade *storage.Facade) *paymentComponents {
 	if !cfg.Payment.Enabled {
 		logger().Info("payment system disabled")
 		return nil
@@ -40,30 +35,15 @@ func initPaymentWithStorage(cfg *config.Config, store session.Store, secrets *se
 		return nil
 	}
 
-	var txStore payment.TxStore
-	var limiter wallet.SpendingLimiter
-	if facade != nil {
-		txStore = facade.PaymentTxStore()
-		if txStore != nil {
-			var err error
-			limiter, err = facade.NewSpendingLimiter(
-				cfg.Payment.Limits.MaxPerTx,
-				cfg.Payment.Limits.MaxDaily,
-				cfg.Payment.Limits.AutoApproveBelow,
-			)
-			if err != nil {
-				logger().Warnw("spending limiter init failed, skipping", "error", err)
-				return nil
-			}
-		}
+	if facade == nil {
+		logger().Warn("payment system requires storage facade, skipping")
+		return nil
 	}
+
+	txStore := facade.PaymentTxStore()
 	if txStore == nil {
-		entStore, ok := store.(*session.EntStore)
-		if !ok {
-			logger().Warn("payment system requires payment tx storage, skipping")
-			return nil
-		}
-		txStore = payment.NewEntTxStore(entStore.Client())
+		logger().Warn("payment system requires payment tx storage, skipping")
+		return nil
 	}
 
 	// Validate RPC URL before attempting to connect.
@@ -97,17 +77,14 @@ func initPaymentWithStorage(cfg *config.Config, store session.Store, secrets *se
 	}
 
 	// Create spending limiter
-	if limiter == nil {
-		var err error
-		limiter, err = wallet.NewStoreSpendingLimiter(txStore,
-			cfg.Payment.Limits.MaxPerTx,
-			cfg.Payment.Limits.MaxDaily,
-			cfg.Payment.Limits.AutoApproveBelow,
-		)
-		if err != nil {
-			logger().Warnw("spending limiter init failed, skipping", "error", err)
-			return nil
-		}
+	limiter, err := facade.NewSpendingLimiter(
+		cfg.Payment.Limits.MaxPerTx,
+		cfg.Payment.Limits.MaxDaily,
+		cfg.Payment.Limits.AutoApproveBelow,
+	)
+	if err != nil {
+		logger().Warnw("spending limiter init failed, skipping", "error", err)
+		return nil
 	}
 
 	// Create transaction builder

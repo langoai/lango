@@ -173,7 +173,7 @@ The intelligence layer provides the agent with persistent knowledge, learning ca
 | **Graph RAG** | `internal/graph/` | 2-phase hybrid retrieval: vector search finds seed results, then graph expansion discovers structurally connected context |
 | **Librarian** | `internal/librarian/` | Proactive knowledge extraction: `ObservationAnalyzer` identifies knowledge gaps, `InquiryProcessor` generates and resolves inquiries |
 
-Production app and CLI layers consume DB-backed capabilities through `internal/storage` factories/readers rather than generic raw Ent/SQL handle access.
+Production app and CLI layers consume DB-backed capabilities through `internal/storage` factories/readers rather than generic raw Ent/SQL handle access. Broker transport correctness and removed raw storage accessors are enforced by `internal/archtest` and `internal/storagebroker` regression tests in the normal `go test ./...` path.
 
 ### Blockchain Layer
 

@@ -175,3 +175,84 @@ func TestExtraFilesOnlyConfiguredByBroker(t *testing.T) {
 		t.Fatalf("unexpected ExtraFiles usage: %s", line)
 	}
 }
+
+func TestNoRemovedStorageFacadeRawAccessorsInProductionPackages(t *testing.T) {
+	root := findModuleRoot(t)
+	cmd := exec.Command(
+		"rg",
+		"-n",
+		"-g",
+		"!**/*_test.go",
+		`EntClient\(|RawDB\(|FTSDB\(|PaymentClient\(`,
+		"./internal/app",
+		"./internal/cli",
+		"./internal/knowledge",
+		"./internal/librarian",
+		"./internal/agentmemory",
+		"./internal/payment",
+		"./internal/p2p",
+		"./internal/observability",
+		"./internal/workflow",
+	)
+	cmd.Dir = root
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("found removed raw storage accessor usage in production packages:\n%s", string(out))
+	}
+	if ee, ok := err.(*exec.ExitError); ok && ee.ExitCode() == 1 {
+		return
+	}
+	t.Fatalf("rg failed: %v\n%s", err, string(out))
+}
+
+func TestNoTestOnlyStorageWiringHelpersInProductionPackages(t *testing.T) {
+	root := findModuleRoot(t)
+	cmd := exec.Command(
+		"rg",
+		"-n",
+		"-g",
+		"!**/*_test.go",
+		`WithEntClient\(|WithRawDB\(`,
+		"./internal/app",
+		"./internal/cli",
+		"./internal/knowledge",
+		"./internal/librarian",
+		"./internal/agentmemory",
+		"./internal/payment",
+		"./internal/p2p",
+		"./internal/observability",
+		"./internal/workflow",
+	)
+	cmd.Dir = root
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("found test-only storage wiring helper usage in production packages:\n%s", string(out))
+	}
+	if ee, ok := err.(*exec.ExitError); ok && ee.ExitCode() == 1 {
+		return
+	}
+	t.Fatalf("rg failed: %v\n%s", err, string(out))
+}
+
+func TestNoPaymentEntClientExtractionInProductionPaths(t *testing.T) {
+	root := findModuleRoot(t)
+	cmd := exec.Command(
+		"rg",
+		"-n",
+		"-g",
+		"!**/*_test.go",
+		`entStore\.Client\(`,
+		"./internal/cli/payment",
+		"./internal/app/wiring_payment.go",
+		"./internal/app/wiring_p2p.go",
+	)
+	cmd.Dir = root
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("found payment-side ent client extraction in production paths:\n%s", string(out))
+	}
+	if ee, ok := err.(*exec.ExitError); ok && ee.ExitCode() == 1 {
+		return
+	}
+	t.Fatalf("rg failed: %v\n%s", err, string(out))
+}

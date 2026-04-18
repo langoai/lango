@@ -650,7 +650,7 @@ func (m *networkModule) Init(ctx context.Context, r appinit.Resolver) (*appinit.
 	if m.boot != nil {
 		storageFacade = m.boot.Storage
 	}
-	pc := initPaymentWithStorage(cfg, fv.Store, fv.Secrets, storageFacade)
+	pc := initPaymentWithStorage(cfg, fv.Secrets, storageFacade)
 	var p2pc *p2pComponents
 	var econc *economyComponents
 	var cc *contractComponents
