@@ -15,6 +15,12 @@ It exists to review the product area that most directly defines Lango:
 - team formation,
 - shared artifacts.
 
+## Document Ownership
+
+- Primary capability area: `External Collaboration & Economic Exchange`
+- Primary execution track: `P2P Knowledge Exchange Track`
+- Rows may override to `Leader-Led Team Execution Track` when the main responsibility is team formation, role coordination, delegated budget control, or shared artifacts for Phase 3/4 execution work.
+
 ## Audit Order
 
 1. P2P identity / trust / reputation
@@ -23,6 +29,21 @@ It exists to review the product area that most directly defines Lango:
 4. workspace / shared artifacts
 
 ## Audit Method
+
+This ledger adopts the master document's minimum audit schema for detailed row-level work.
+
+Each row should capture:
+
+- feature name,
+- capability area,
+- product-path linkage,
+- current surface area,
+- core value,
+- current problem,
+- judgment,
+- execution track,
+- secondary capability areas,
+- secondary tracks.
 
 Each feature family should be judged by:
 
