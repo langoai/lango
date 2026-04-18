@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/big"
 	"sync"
 	"time"
 
@@ -18,7 +19,9 @@ import (
 	entauditlog "github.com/langoai/lango/internal/ent/auditlog"
 	entinquiry "github.com/langoai/lango/internal/ent/inquiry"
 	entlearning "github.com/langoai/lango/internal/ent/learning"
+	entpaymenttx "github.com/langoai/lango/internal/ent/paymenttx"
 	"github.com/langoai/lango/internal/ent/workflowrun"
+	"github.com/langoai/lango/internal/finance"
 	peerrep "github.com/langoai/lango/internal/p2p/reputation"
 	sec "github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/session"
@@ -269,6 +272,14 @@ func (s *Server) dispatch(ctx context.Context, req Request) (interface{}, error)
 			return nil, err
 		}
 		return s.reputationGet(ctx, payload)
+	case methodPaymentHistory:
+		var payload PaymentHistoryRequest
+		if err := decodePayload(req.Payload, &payload); err != nil {
+			return nil, err
+		}
+		return s.paymentHistory(ctx, payload)
+	case methodPaymentUsage:
+		return s.paymentUsage(ctx)
 	case methodOpenDB:
 		var payload OpenDBRequest
 		if err := decodePayload(req.Payload, &payload); err != nil {
@@ -885,6 +896,71 @@ func (s *Server) reputationGet(ctx context.Context, req ReputationGetRequest) (R
 		LastInteraction:     details.LastInteraction,
 		Found:               true,
 	}, nil
+}
+
+func (s *Server) paymentHistory(ctx context.Context, req PaymentHistoryRequest) (PaymentHistoryResult, error) {
+	s.mu.Lock()
+	client := s.client
+	s.mu.Unlock()
+	if client == nil {
+		return PaymentHistoryResult{}, fmt.Errorf("database not opened")
+	}
+	limit := req.Limit
+	if limit <= 0 {
+		limit = 20
+	}
+	rows, err := client.PaymentTx.Query().
+		Order(entpaymenttx.ByCreatedAt(entsql.OrderDesc())).
+		Limit(limit).
+		All(ctx)
+	if err != nil {
+		return PaymentHistoryResult{}, err
+	}
+	result := PaymentHistoryResult{Entries: make([]PaymentHistoryRecord, 0, len(rows))}
+	for _, tx := range rows {
+		result.Entries = append(result.Entries, PaymentHistoryRecord{
+			TxHash:        tx.TxHash,
+			Status:        string(tx.Status),
+			Amount:        tx.Amount,
+			From:          tx.FromAddress,
+			To:            tx.ToAddress,
+			ChainID:       tx.ChainID,
+			Purpose:       tx.Purpose,
+			X402URL:       tx.X402URL,
+			PaymentMethod: string(tx.PaymentMethod),
+			ErrorMessage:  tx.ErrorMessage,
+			CreatedAt:     tx.CreatedAt,
+		})
+	}
+	return result, nil
+}
+
+func (s *Server) paymentUsage(ctx context.Context) (PaymentUsageResult, error) {
+	s.mu.Lock()
+	client := s.client
+	s.mu.Unlock()
+	if client == nil {
+		return PaymentUsageResult{}, fmt.Errorf("database not opened")
+	}
+	start := time.Date(time.Now().Year(), time.Now().Month(), time.Now().Day(), 0, 0, 0, 0, time.Now().Location())
+	rows, err := client.PaymentTx.Query().
+		Where(
+			entpaymenttx.CreatedAtGTE(start),
+			entpaymenttx.StatusIn(entpaymenttx.StatusPending, entpaymenttx.StatusSubmitted, entpaymenttx.StatusConfirmed),
+		).
+		All(ctx)
+	if err != nil {
+		return PaymentUsageResult{}, err
+	}
+	total := big.NewInt(0)
+	for _, tx := range rows {
+		amt, err := finance.ParseUSDC(tx.Amount)
+		if err != nil {
+			continue
+		}
+		total.Add(total, amt)
+	}
+	return PaymentUsageResult{DailySpent: finance.FormatUSDC(total)}, nil
 }
 
 type serverPayloadProtector struct {

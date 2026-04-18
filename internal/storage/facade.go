@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"math/big"
 	"time"
 
 	entsql "entgo.io/ent/dialect/sql"
@@ -15,6 +16,8 @@ import (
 	entauditlog "github.com/langoai/lango/internal/ent/auditlog"
 	entinquiry "github.com/langoai/lango/internal/ent/inquiry"
 	entlearning "github.com/langoai/lango/internal/ent/learning"
+	entpaymenttx "github.com/langoai/lango/internal/ent/paymenttx"
+	"github.com/langoai/lango/internal/finance"
 	"github.com/langoai/lango/internal/observability/audit"
 	"github.com/langoai/lango/internal/observability/token"
 	"github.com/langoai/lango/internal/ontology"
@@ -106,6 +109,24 @@ type AlertRecord struct {
 	Timestamp time.Time
 }
 
+type PaymentHistoryRecord struct {
+	TxHash        string
+	Status        string
+	Amount        string
+	From          string
+	To            string
+	ChainID       int64
+	Purpose       string
+	X402URL       string
+	PaymentMethod string
+	ErrorMessage  string
+	CreatedAt     time.Time
+}
+
+type PaymentUsageSummary struct {
+	DailySpent string
+}
+
 type ReputationReader interface {
 	GetDetails(ctx context.Context, peerDID string) (*reputation.PeerDetails, error)
 	GetScore(ctx context.Context, peerDID string) (float64, error)
@@ -152,6 +173,8 @@ type Facade struct {
 	reputationStore  func(logger *zap.SugaredLogger) *reputation.Store
 	reputationLookup func(ctx context.Context, peerDID string) (*reputation.PeerDetails, error)
 	workflowState    func(logger *zap.SugaredLogger) WorkflowRunReader
+	paymentHistory   func(ctx context.Context, limit int) ([]PaymentHistoryRecord, error)
+	paymentUsage     func(ctx context.Context) (PaymentUsageSummary, error)
 	closeFn          func() error
 }
 
@@ -312,6 +335,20 @@ func (f *Facade) WorkflowStateStore(logger *zap.SugaredLogger) WorkflowRunReader
 		return nil
 	}
 	return f.workflowState(logger)
+}
+
+func (f *Facade) PaymentHistory(ctx context.Context, limit int) ([]PaymentHistoryRecord, error) {
+	if f == nil || f.paymentHistory == nil {
+		return nil, fmt.Errorf("payment history unavailable")
+	}
+	return f.paymentHistory(ctx, limit)
+}
+
+func (f *Facade) PaymentUsage(ctx context.Context) (PaymentUsageSummary, error) {
+	if f == nil || f.paymentUsage == nil {
+		return PaymentUsageSummary{}, fmt.Errorf("payment usage unavailable")
+	}
+	return f.paymentUsage(ctx)
 }
 
 func (f *Facade) PaymentClient() *ent.Client {
@@ -529,8 +566,62 @@ func WithEntClient(client *ent.Client) Option {
 		f.workflowState = func(logger *zap.SugaredLogger) WorkflowRunReader {
 			return workflow.NewStateStore(client, logger)
 		}
+		f.paymentHistory = func(ctx context.Context, limit int) ([]PaymentHistoryRecord, error) {
+			if limit <= 0 {
+				limit = 20
+			}
+			rows, err := client.PaymentTx.Query().
+				Order(entpaymenttx.ByCreatedAt(entsql.OrderDesc())).
+				Limit(limit).
+				All(ctx)
+			if err != nil {
+				return nil, err
+			}
+			out := make([]PaymentHistoryRecord, 0, len(rows))
+			for _, tx := range rows {
+				out = append(out, PaymentHistoryRecord{
+					TxHash:        tx.TxHash,
+					Status:        string(tx.Status),
+					Amount:        tx.Amount,
+					From:          tx.FromAddress,
+					To:            tx.ToAddress,
+					ChainID:       tx.ChainID,
+					Purpose:       tx.Purpose,
+					X402URL:       tx.X402URL,
+					PaymentMethod: string(tx.PaymentMethod),
+					ErrorMessage:  tx.ErrorMessage,
+					CreatedAt:     tx.CreatedAt,
+				})
+			}
+			return out, nil
+		}
+		f.paymentUsage = func(ctx context.Context) (PaymentUsageSummary, error) {
+			rows, err := client.PaymentTx.Query().
+				Where(
+					entpaymenttx.CreatedAtGTE(storageStartOfToday()),
+					entpaymenttx.StatusIn(entpaymenttx.StatusPending, entpaymenttx.StatusSubmitted, entpaymenttx.StatusConfirmed),
+				).
+				All(ctx)
+			if err != nil {
+				return PaymentUsageSummary{}, err
+			}
+			total := big.NewInt(0)
+			for _, tx := range rows {
+				amt, err := finance.ParseUSDC(tx.Amount)
+				if err != nil {
+					continue
+				}
+				total.Add(total, amt)
+			}
+			return PaymentUsageSummary{DailySpent: finance.FormatUSDC(total)}, nil
+		}
 		f.closeFn = client.Close
 	}
+}
+
+func storageStartOfToday() time.Time {
+	now := time.Now()
+	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 }
 
 // WithRawDB exposes the shared SQL DB to transitional callers that still need

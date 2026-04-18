@@ -67,6 +67,36 @@ func WithBrokerRuntimeReaders(broker storagebroker.API) Option {
 			}
 			return out, nil
 		}
+		f.paymentHistory = func(ctx context.Context, limit int) ([]PaymentHistoryRecord, error) {
+			result, err := broker.PaymentHistory(ctx, limit)
+			if err != nil {
+				return nil, err
+			}
+			out := make([]PaymentHistoryRecord, 0, len(result.Entries))
+			for _, row := range result.Entries {
+				out = append(out, PaymentHistoryRecord{
+					TxHash:        row.TxHash,
+					Status:        row.Status,
+					Amount:        row.Amount,
+					From:          row.From,
+					To:            row.To,
+					ChainID:       row.ChainID,
+					Purpose:       row.Purpose,
+					X402URL:       row.X402URL,
+					PaymentMethod: row.PaymentMethod,
+					ErrorMessage:  row.ErrorMessage,
+					CreatedAt:     row.CreatedAt,
+				})
+			}
+			return out, nil
+		}
+		f.paymentUsage = func(ctx context.Context) (PaymentUsageSummary, error) {
+			result, err := broker.PaymentUsage(ctx)
+			if err != nil {
+				return PaymentUsageSummary{}, err
+			}
+			return PaymentUsageSummary{DailySpent: result.DailySpent}, nil
+		}
 		f.reputationLookup = func(ctx context.Context, peerDID string) (*reputation.PeerDetails, error) {
 			return (&brokerReputationStore{broker: broker}).GetDetails(ctx, peerDID)
 		}

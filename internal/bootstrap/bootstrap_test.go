@@ -229,4 +229,10 @@ func (s *stubBrokerClient) Alerts(context.Context, time.Time) (storagebroker.Ale
 func (s *stubBrokerClient) ReputationGet(context.Context, string) (storagebroker.ReputationGetResult, error) {
 	return storagebroker.ReputationGetResult{}, nil
 }
+func (s *stubBrokerClient) PaymentHistory(context.Context, int) (storagebroker.PaymentHistoryResult, error) {
+	return storagebroker.PaymentHistoryResult{}, nil
+}
+func (s *stubBrokerClient) PaymentUsage(context.Context) (storagebroker.PaymentUsageResult, error) {
+	return storagebroker.PaymentUsageResult{}, nil
+}
 func (s *stubBrokerClient) Close(context.Context) error { return nil }

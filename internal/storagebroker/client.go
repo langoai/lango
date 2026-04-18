@@ -49,6 +49,8 @@ type API interface {
 	WorkflowRuns(ctx context.Context, limit int) (WorkflowRunsResult, error)
 	Alerts(ctx context.Context, from time.Time) (AlertsResult, error)
 	ReputationGet(ctx context.Context, peerDID string) (ReputationGetResult, error)
+	PaymentHistory(ctx context.Context, limit int) (PaymentHistoryResult, error)
+	PaymentUsage(ctx context.Context) (PaymentUsageResult, error)
 	Close(ctx context.Context) error
 }
 
@@ -323,6 +325,22 @@ func (c *Client) ReputationGet(ctx context.Context, peerDID string) (ReputationG
 	var result ReputationGetResult
 	if err := c.call(ctx, methodReputationGet, ReputationGetRequest{PeerDID: peerDID}, &result); err != nil {
 		return ReputationGetResult{}, err
+	}
+	return result, nil
+}
+
+func (c *Client) PaymentHistory(ctx context.Context, limit int) (PaymentHistoryResult, error) {
+	var result PaymentHistoryResult
+	if err := c.call(ctx, methodPaymentHistory, PaymentHistoryRequest{Limit: limit}, &result); err != nil {
+		return PaymentHistoryResult{}, err
+	}
+	return result, nil
+}
+
+func (c *Client) PaymentUsage(ctx context.Context) (PaymentUsageResult, error) {
+	var result PaymentUsageResult
+	if err := c.call(ctx, methodPaymentUsage, nil, &result); err != nil {
+		return PaymentUsageResult{}, err
 	}
 	return result, nil
 }

@@ -144,6 +144,12 @@ func (b *runtimeReaderStubBroker) ReputationGet(context.Context, string) (storag
 		Found:               true,
 	}, nil
 }
+func (b *runtimeReaderStubBroker) PaymentHistory(context.Context, int) (storagebroker.PaymentHistoryResult, error) {
+	return storagebroker.PaymentHistoryResult{}, nil
+}
+func (b *runtimeReaderStubBroker) PaymentUsage(context.Context) (storagebroker.PaymentUsageResult, error) {
+	return storagebroker.PaymentUsageResult{DailySpent: "0"}, nil
+}
 
 func TestWithBrokerRuntimeReaders_WiresReaders(t *testing.T) {
 	f := NewFacade(nil, nil, WithBrokerRuntimeReaders(&runtimeReaderStubBroker{}))

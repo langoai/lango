@@ -41,6 +41,8 @@ const (
 	methodWorkflowRuns      = "workflow_runs"
 	methodAlerts            = "alerts"
 	methodReputationGet     = "reputation_get"
+	methodPaymentHistory    = "payment_history"
+	methodPaymentUsage      = "payment_usage"
 	methodShutdown          = "shutdown"
 )
 
@@ -334,6 +336,32 @@ type ReputationGetResult struct {
 	FirstSeen           time.Time `json:"first_seen"`
 	LastInteraction     time.Time `json:"last_interaction"`
 	Found               bool      `json:"found"`
+}
+
+type PaymentHistoryRequest struct {
+	Limit int `json:"limit"`
+}
+
+type PaymentHistoryResult struct {
+	Entries []PaymentHistoryRecord `json:"entries"`
+}
+
+type PaymentHistoryRecord struct {
+	TxHash        string    `json:"tx_hash,omitempty"`
+	Status        string    `json:"status"`
+	Amount        string    `json:"amount"`
+	From          string    `json:"from"`
+	To            string    `json:"to"`
+	ChainID       int64     `json:"chain_id"`
+	Purpose       string    `json:"purpose,omitempty"`
+	X402URL       string    `json:"x402_url,omitempty"`
+	PaymentMethod string    `json:"payment_method,omitempty"`
+	ErrorMessage  string    `json:"error_message,omitempty"`
+	CreatedAt     time.Time `json:"created_at"`
+}
+
+type PaymentUsageResult struct {
+	DailySpent string `json:"daily_spent"`
 }
 
 type ShutdownResult struct {
