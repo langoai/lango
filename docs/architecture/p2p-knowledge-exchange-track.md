@@ -1,5 +1,14 @@
 # P2P Knowledge Exchange Track
 
+## Document Ownership
+
+- Primary capability area: `External Collaboration & Economic Exchange`
+- Primary execution track: `P2P Knowledge Exchange Track`
+- Secondary capability areas: none
+- Secondary tracks: none
+
+This track charter follows `docs/architecture/master-document.md` as the top-level source of truth.
+
 ## Goal
 
 Define the first concrete external market activity for sovereign Lango agents:
