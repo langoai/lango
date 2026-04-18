@@ -290,6 +290,7 @@ func phaseOpenDatabase() Phase {
 				}
 				if _, err := brokerClient.OpenDB(context.Background(), storagebroker.OpenDBRequest{
 					DBPath:         s.Options.DBPath,
+					MasterKey:      s.MasterKey,
 					PayloadKey:     payloadKey,
 					PayloadVersion: security.PayloadKeyVersionV1,
 				}); err != nil {
@@ -506,8 +507,12 @@ func phaseLoadProfile() Phase {
 	return Phase{
 		Name: "load profile",
 		Run: func(ctx context.Context, s *State) error {
-			store := configstore.NewStore(s.Client, s.Crypto)
-			s.Result.ConfigStore = store
+			var store storage.ConfigProfileStore
+			if s.Broker != nil {
+				store = storage.NewBrokerConfigProfiles(s.Broker)
+			} else {
+				store = configstore.NewStore(s.Client, s.Crypto)
+			}
 			profileName := s.Options.ForceProfile
 
 			var explicitKeys map[string]bool
@@ -551,6 +556,9 @@ func phaseLoadProfile() Phase {
 				return fmt.Errorf("post-load config: %w", err)
 			}
 
+			if legacyStore, ok := store.(*configstore.Store); ok {
+				s.Result.ConfigStore = legacyStore
+			}
 			s.Result.Storage = storage.NewFacade(
 				store,
 				security.NewSecurityConfigStore(s.RawDB),

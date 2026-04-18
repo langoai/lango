@@ -250,7 +250,7 @@ func storeChecksumViaBroker(ctx context.Context, broker storagebroker.API, check
 // It creates a default profile with sensible defaults.
 func handleNoProfile(
 	ctx context.Context,
-	store *configstore.Store,
+	store storage.ConfigProfileStore,
 ) (*config.Config, string, error) {
 	cfg := config.DefaultConfig()
 	if err := store.Save(ctx, "default", cfg, nil); err != nil {

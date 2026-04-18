@@ -11,6 +11,13 @@ const (
 	methodLoadSecurityState = "load_security_state"
 	methodStoreSalt         = "store_salt"
 	methodStoreChecksum     = "store_checksum"
+	methodConfigLoad        = "config_load"
+	methodConfigLoadActive  = "config_load_active"
+	methodConfigSave        = "config_save"
+	methodConfigSetActive   = "config_set_active"
+	methodConfigList        = "config_list"
+	methodConfigDelete      = "config_delete"
+	methodConfigExists      = "config_exists"
 	methodShutdown          = "shutdown"
 )
 
@@ -39,6 +46,7 @@ type OpenDBRequest struct {
 	EncryptionKey  string `json:"encryption_key,omitempty"`
 	RawKey         bool   `json:"raw_key,omitempty"`
 	CipherPageSize int    `json:"cipher_page_size,omitempty"`
+	MasterKey      []byte `json:"master_key,omitempty"`
 	PayloadKey     []byte `json:"payload_key,omitempty"`
 	PayloadVersion int    `json:"payload_version,omitempty"`
 }
@@ -94,6 +102,55 @@ type StoreSaltRequest struct {
 
 type StoreChecksumRequest struct {
 	Checksum []byte `json:"checksum"`
+}
+
+type ConfigLoadRequest struct {
+	Name string `json:"name"`
+}
+
+type ConfigLoadResult struct {
+	Config       []byte          `json:"config"`
+	ExplicitKeys map[string]bool `json:"explicit_keys,omitempty"`
+}
+
+type ConfigLoadActiveResult struct {
+	Name         string          `json:"name"`
+	Config       []byte          `json:"config"`
+	ExplicitKeys map[string]bool `json:"explicit_keys,omitempty"`
+}
+
+type ConfigSaveRequest struct {
+	Name         string          `json:"name"`
+	Config       []byte          `json:"config"`
+	ExplicitKeys map[string]bool `json:"explicit_keys,omitempty"`
+}
+
+type ConfigSetActiveRequest struct {
+	Name string `json:"name"`
+}
+
+type ConfigDeleteRequest struct {
+	Name string `json:"name"`
+}
+
+type ConfigExistsRequest struct {
+	Name string `json:"name"`
+}
+
+type ConfigExistsResult struct {
+	Exists bool `json:"exists"`
+}
+
+type ConfigProfileInfo struct {
+	Name      string `json:"name"`
+	Active    bool   `json:"active"`
+	Version   int    `json:"version"`
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
+}
+
+type ConfigListResult struct {
+	Profiles []ConfigProfileInfo `json:"profiles"`
 }
 
 type ShutdownResult struct {

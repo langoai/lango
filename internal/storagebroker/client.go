@@ -21,6 +21,13 @@ type API interface {
 	LoadSecurityState(ctx context.Context) (LoadSecurityStateResult, error)
 	StoreSalt(ctx context.Context, salt []byte) error
 	StoreChecksum(ctx context.Context, checksum []byte) error
+	ConfigLoad(ctx context.Context, name string) (ConfigLoadResult, error)
+	ConfigLoadActive(ctx context.Context) (ConfigLoadActiveResult, error)
+	ConfigSave(ctx context.Context, name string, cfg any, explicitKeys map[string]bool) error
+	ConfigSetActive(ctx context.Context, name string) error
+	ConfigList(ctx context.Context) (ConfigListResult, error)
+	ConfigDelete(ctx context.Context, name string) error
+	ConfigExists(ctx context.Context, name string) (ConfigExistsResult, error)
 	Close(ctx context.Context) error
 }
 
@@ -129,6 +136,54 @@ func (c *Client) StoreSalt(ctx context.Context, salt []byte) error {
 
 func (c *Client) StoreChecksum(ctx context.Context, checksum []byte) error {
 	return c.call(ctx, methodStoreChecksum, StoreChecksumRequest{Checksum: checksum}, nil)
+}
+
+func (c *Client) ConfigLoad(ctx context.Context, name string) (ConfigLoadResult, error) {
+	var result ConfigLoadResult
+	if err := c.call(ctx, methodConfigLoad, ConfigLoadRequest{Name: name}, &result); err != nil {
+		return ConfigLoadResult{}, err
+	}
+	return result, nil
+}
+
+func (c *Client) ConfigLoadActive(ctx context.Context) (ConfigLoadActiveResult, error) {
+	var result ConfigLoadActiveResult
+	if err := c.call(ctx, methodConfigLoadActive, nil, &result); err != nil {
+		return ConfigLoadActiveResult{}, err
+	}
+	return result, nil
+}
+
+func (c *Client) ConfigSave(ctx context.Context, name string, cfg any, explicitKeys map[string]bool) error {
+	raw, err := json.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("marshal config payload: %w", err)
+	}
+	return c.call(ctx, methodConfigSave, ConfigSaveRequest{Name: name, Config: raw, ExplicitKeys: explicitKeys}, nil)
+}
+
+func (c *Client) ConfigSetActive(ctx context.Context, name string) error {
+	return c.call(ctx, methodConfigSetActive, ConfigSetActiveRequest{Name: name}, nil)
+}
+
+func (c *Client) ConfigList(ctx context.Context) (ConfigListResult, error) {
+	var result ConfigListResult
+	if err := c.call(ctx, methodConfigList, nil, &result); err != nil {
+		return ConfigListResult{}, err
+	}
+	return result, nil
+}
+
+func (c *Client) ConfigDelete(ctx context.Context, name string) error {
+	return c.call(ctx, methodConfigDelete, ConfigDeleteRequest{Name: name}, nil)
+}
+
+func (c *Client) ConfigExists(ctx context.Context, name string) (ConfigExistsResult, error) {
+	var result ConfigExistsResult
+	if err := c.call(ctx, methodConfigExists, ConfigExistsRequest{Name: name}, &result); err != nil {
+		return ConfigExistsResult{}, err
+	}
+	return result, nil
 }
 
 func (c *Client) Close(ctx context.Context) error {

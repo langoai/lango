@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -9,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/security/passphrase"
 	"github.com/langoai/lango/internal/storagebroker"
 )
@@ -138,5 +140,25 @@ func (s *stubBrokerClient) LoadSecurityState(context.Context) (storagebroker.Loa
 func (s *stubBrokerClient) StoreSalt(context.Context, []byte) error { return nil }
 func (s *stubBrokerClient) StoreChecksum(context.Context, []byte) error {
 	return nil
+}
+func (s *stubBrokerClient) ConfigLoad(context.Context, string) (storagebroker.ConfigLoadResult, error) {
+	return storagebroker.ConfigLoadResult{}, nil
+}
+func (s *stubBrokerClient) ConfigLoadActive(context.Context) (storagebroker.ConfigLoadActiveResult, error) {
+	raw, _ := json.Marshal(config.DefaultConfig())
+	return storagebroker.ConfigLoadActiveResult{Name: "default", Config: raw}, nil
+}
+func (s *stubBrokerClient) ConfigSave(context.Context, string, any, map[string]bool) error {
+	return nil
+}
+func (s *stubBrokerClient) ConfigSetActive(context.Context, string) error {
+	return nil
+}
+func (s *stubBrokerClient) ConfigList(context.Context) (storagebroker.ConfigListResult, error) {
+	return storagebroker.ConfigListResult{}, nil
+}
+func (s *stubBrokerClient) ConfigDelete(context.Context, string) error { return nil }
+func (s *stubBrokerClient) ConfigExists(context.Context, string) (storagebroker.ConfigExistsResult, error) {
+	return storagebroker.ConfigExistsResult{Exists: true}, nil
 }
 func (s *stubBrokerClient) Close(context.Context) error { return nil }
