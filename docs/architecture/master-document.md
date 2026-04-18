@@ -120,9 +120,10 @@ Every audit record must include these fields:
 
 ### Downstream Precedence Rule
 
-This master document is the top-level source of truth for product constitution, capability taxonomy, audit judgment, and track routing.
+This master document is the top-level source of truth for product constitution, capability taxonomy, audit framework, vocabulary, and track routing.
 
 If any audit doc, track charter, stabilization doc, or future architecture doc conflicts with this document, the downstream document must defer to this one and be updated to match it.
+Concrete keep, stabilize, merge, defer, and remove decisions belong in downstream audit ledgers, but they must follow this document's framework and vocabulary.
 
 ## Track Portfolio
 
@@ -154,6 +155,7 @@ Architecture boundary, naming, documentation, and codebase clarity improvements.
 
 ### Capability-to-Track Routing
 
+- Every downstream audit or plan must declare exactly one primary execution track; any other affected tracks are secondary impacts only.
 - `Sovereign Runtime & Operator UX` routes primarily to `Stabilization Track` and `UX Clarity Track`.
 - `Knowledge & Intelligence Capital` routes primarily to `Stabilization Track` and `Consolidation Track` when overlapping systems need cleanup.
 - `External Collaboration & Economic Exchange` routes primarily to `P2P Knowledge Exchange Track` and, later, `Leader-Led Team Execution Track`.
