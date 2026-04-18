@@ -60,8 +60,8 @@ Lango is a sovereign peer-to-peer agent network, not just a local agent runtime.
 
 ## Capability Areas
 
-Capability areas are a classification lens, not execution tracks. They describe where work belongs conceptually and route to one default primary track, with optional secondary impacts in other tracks.
-Every downstream audit or plan must declare exactly one primary capability area. Choose the area that best represents the work's main user-facing or system responsibility; all other touched capability areas are secondary impacts only.
+Capability areas are a classification lens, not execution tracks. They describe where work belongs conceptually and map to one binding primary execution track, with explicit override conditions where noted.
+Every downstream audit or plan must declare exactly one primary capability area. Choose the area that best represents the work's main user-facing or system responsibility; all other touched capability areas are secondary capability areas only.
 
 ### Sovereign Runtime & Operator UX
 
@@ -118,7 +118,8 @@ Every audit record must include these fields:
 - current problem
 - judgment
 - execution track
-- secondary impacts
+- secondary capability areas
+- secondary tracks
 
 The `capability area` field means the single primary capability area for the audit or plan.
 The `execution track` field means the single primary execution track for the audit or plan.
@@ -161,14 +162,14 @@ Architecture boundary, naming, documentation, and codebase clarity improvements.
 
 ### Capability-to-Track Routing
 
-- Every downstream audit or plan must declare exactly one primary capability area; any other affected capability areas are secondary impacts only.
-- Every downstream audit or plan must declare exactly one primary execution track; any other affected tracks are secondary impacts only.
-- `Sovereign Runtime & Operator UX` defaults to `Stabilization Track`; secondary impact: `UX Clarity Track`.
-- `Knowledge & Intelligence Capital` defaults to `Stabilization Track`; secondary impact: `Consolidation Track` when overlapping systems need cleanup.
-- `External Collaboration & Economic Exchange` defaults to `P2P Knowledge Exchange Track`; secondary impact: `Leader-Led Team Execution Track` for later-stage team execution work.
-- `Trust, Security & Policy` defaults to `Stabilization Track`; secondary impact: none unless a downstream audit explicitly identifies one.
-- `Execution, Continuity & Accountability` defaults to `Stabilization Track`; secondary impact: `Consolidation Track`.
-- `Extensibility & Developer Clarity` defaults to `Developer Clarity Track`; secondary impact: `UX Clarity Track` when the work is user-facing simplification or default cleanup.
+- Every downstream audit or plan must declare exactly one primary capability area; any other affected capability areas are secondary capability areas only.
+- Every downstream audit or plan must declare exactly one primary execution track; any other affected tracks are secondary tracks only.
+- `Sovereign Runtime & Operator UX` binds to `Stabilization Track`; it may override to `UX Clarity Track` only when the work's main responsibility is simplifying operator flows, settings, cockpit behavior, CLI defaults, or other user-facing surface clarity.
+- `Knowledge & Intelligence Capital` binds to `Stabilization Track`; secondary track: `Consolidation Track` when overlapping systems need cleanup.
+- `External Collaboration & Economic Exchange` binds to `P2P Knowledge Exchange Track`; secondary track: `Leader-Led Team Execution Track` for later-stage team execution work.
+- `Trust, Security & Policy` binds to `Stabilization Track`; secondary track: none unless a downstream audit explicitly identifies one.
+- `Execution, Continuity & Accountability` binds to `Stabilization Track`; secondary track: `Consolidation Track`.
+- `Extensibility & Developer Clarity` binds to `Developer Clarity Track`; it may override to `UX Clarity Track` only when the work is user-facing simplification or default cleanup.
 
 ## Near-Term Priorities
 
