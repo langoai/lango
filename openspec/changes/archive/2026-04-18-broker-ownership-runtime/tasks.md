@@ -6,7 +6,7 @@
 ## 2. Runtime Reader Adoption
 
 - [x] 2.1 Switch production CLI and app reader paths to broker-backed storage readers.
-- [ ] 2.2 Remove reader-side production dependence on `FTSDB()` / `PaymentClient()` where this slice can replace them.
+- [x] 2.2 Remove reader-side production dependence on `FTSDB()` / `PaymentClient()` where this slice can replace them.
 
 ## 3. Verification
 

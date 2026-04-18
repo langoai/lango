@@ -51,3 +51,10 @@ The `lango librarian inquiries` command MUST read pending inquiries through a st
 - **WHEN** the user runs `lango librarian inquiries`
 - **THEN** the command loads pending inquiry records from the storage facade reader
 
+### Requirement: Librarian inquiries support broker-backed runtime reads
+The `lango librarian inquiries` command MUST remain functional when bootstrap is broker-owned and runtime reads come from broker-backed storage.
+
+#### Scenario: Librarian inquiries under broker-owned runtime
+- **WHEN** broker-backed runtime storage is active
+- **THEN** `lango librarian inquiries` still returns pending inquiry records through the broker-backed reader path
+

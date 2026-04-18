@@ -342,13 +342,6 @@ func (f *Facade) PaymentUsage(ctx context.Context) (PaymentUsageSummary, error) 
 	return f.paymentUsage(ctx)
 }
 
-func (f *Facade) PaymentClient() *ent.Client {
-	if f == nil {
-		return nil
-	}
-	return f.client
-}
-
 func (f *Facade) Close() error {
 	if f == nil || f.closeFn == nil {
 		return nil

@@ -12,6 +12,7 @@ import (
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/payment"
 	"github.com/langoai/lango/internal/security"
+	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/wallet"
 )
 
@@ -57,7 +58,15 @@ func initPaymentDeps(boot *bootstrap.Result) (*paymentDeps, error) {
 	}
 	registry := boot.Storage.KeyRegistry()
 	secrets := boot.Storage.SecretsStore(boot.Crypto)
-	client := boot.Storage.PaymentClient()
+	sessStore, err := boot.Storage.OpenSessionStore()
+	if err != nil {
+		return nil, fmt.Errorf("open session store: %w", err)
+	}
+	entStore, ok := sessStore.(*session.EntStore)
+	if !ok {
+		return nil, fmt.Errorf("payment requires Ent-backed session store")
+	}
+	client := entStore.Client()
 	if registry == nil || secrets == nil || client == nil {
 		return nil, fmt.Errorf("payment secrets store unavailable")
 	}

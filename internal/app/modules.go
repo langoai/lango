@@ -658,7 +658,9 @@ func (m *networkModule) Init(ctx context.Context, r appinit.Resolver) (*appinit.
 	var paymentClient *ent.Client
 	if m.boot != nil && m.boot.Storage != nil {
 		repStore = m.boot.Storage.ReputationStore(logger())
-		paymentClient = m.boot.Storage.PaymentClient()
+		if entStore, ok := fv.Store.(*session.EntStore); ok {
+			paymentClient = entStore.Client()
+		}
 	}
 
 	if pc != nil {

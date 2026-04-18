@@ -80,3 +80,10 @@ Workflow CLI commands MUST obtain workflow state persistence through a storage f
 - **WHEN** the workflow CLI initializes a workflow engine
 - **THEN** it resolves the workflow state store from the storage facade capability
 
+### Requirement: Workflow history/status support broker-backed runtime reads
+Workflow CLI read surfaces MUST remain functional when runtime state is served by broker-backed storage.
+
+#### Scenario: Workflow read path under broker-owned runtime
+- **WHEN** broker-backed runtime storage is active
+- **THEN** workflow list/history/status read state through broker-backed storage capabilities
+
