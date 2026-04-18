@@ -61,6 +61,7 @@ Lango is a sovereign peer-to-peer agent network, not just a local agent runtime.
 ## Capability Areas
 
 Capability areas are a classification lens, not execution tracks. They describe where work belongs conceptually and route to one default primary track, with optional secondary impacts in other tracks.
+Every downstream audit or plan must declare exactly one primary capability area. Choose the area that best represents the work's main user-facing or system responsibility; all other touched capability areas are secondary impacts only.
 
 ### Sovereign Runtime & Operator UX
 
@@ -119,7 +120,9 @@ Every audit record must include these fields:
 - execution track
 - secondary impacts
 
+The `capability area` field means the single primary capability area for the audit or plan.
 The `execution track` field means the single primary execution track for the audit or plan.
+Downstream docs must not invent new capability areas or track names; new names must be added here first.
 
 ### Downstream Precedence Rule
 
@@ -158,6 +161,7 @@ Architecture boundary, naming, documentation, and codebase clarity improvements.
 
 ### Capability-to-Track Routing
 
+- Every downstream audit or plan must declare exactly one primary capability area; any other affected capability areas are secondary impacts only.
 - Every downstream audit or plan must declare exactly one primary execution track; any other affected tracks are secondary impacts only.
 - `Sovereign Runtime & Operator UX` defaults to `Stabilization Track`; secondary impact: `UX Clarity Track`.
 - `Knowledge & Intelligence Capital` defaults to `Stabilization Track`; secondary impact: `Consolidation Track` when overlapping systems need cleanup.
