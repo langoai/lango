@@ -10,5 +10,5 @@
 
 ## 3. Verification
 
-- [ ] 3.1 Add tests for broker-backed config profile and session adapter round-trips.
-- [ ] 3.2 Run `go build ./...`, `go test ./...`, and `openspec validate --type change broker-ownership-bootstrap`.
+- [x] 3.1 Add tests for broker-backed config profile and session adapter round-trips.
+- [x] 3.2 Run `go build ./...`, `go test ./...`, and `openspec validate --type change broker-ownership-bootstrap`.

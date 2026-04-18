@@ -14,16 +14,14 @@ var Version string
 // The caller is responsible for closing the result via boot.Close().
 func BootResult() (*bootstrap.Result, error) {
 	return bootstrap.Run(bootstrap.Options{
-		Version:            Version,
-		StartStorageBroker: true,
+		Version: Version,
 	})
 }
 
 // Config runs bootstrap, returns only the config, and closes the DB client.
 func Config() (*config.Config, error) {
 	boot, err := bootstrap.Run(bootstrap.Options{
-		Version:            Version,
-		StartStorageBroker: true,
+		Version: Version,
 	})
 	if err != nil {
 		return nil, err

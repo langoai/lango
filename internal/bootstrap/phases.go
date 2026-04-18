@@ -302,6 +302,10 @@ func phaseOpenDatabase() Phase {
 				}
 				s.Broker = brokerClient
 				s.Result.Broker = brokerClient
+				if payloadKey != nil {
+					security.ZeroBytes(payloadKey)
+				}
+				return nil
 			}
 			if payloadKey != nil {
 				security.ZeroBytes(payloadKey)
@@ -342,6 +346,9 @@ func phaseMigrateEnvelope() Phase {
 		Name: "migrate envelope",
 		Run: func(ctx context.Context, s *State) error {
 			if s.LegacyMode {
+				if s.Broker != nil {
+					return fmt.Errorf("legacy envelope migration requires non-broker bootstrap path")
+				}
 				fmt.Fprintln(os.Stderr, "Upgrading encryption format (one-time migration)...")
 				env, mk, err := security.MigrateToEnvelope(
 					ctx, s.RawDB, s.Client, s.LangoDir,
@@ -357,6 +364,9 @@ func phaseMigrateEnvelope() Phase {
 			}
 
 			if s.Envelope != nil && s.Envelope.PendingMigration {
+				if s.Broker != nil {
+					return fmt.Errorf("pending envelope migration retry requires non-broker bootstrap path")
+				}
 				if s.MasterKey == nil {
 					return fmt.Errorf("pending migration retry requires unwrapped master key")
 				}
@@ -563,14 +573,32 @@ func phaseLoadProfile() Phase {
 			if s.Broker != nil {
 				securityState = storage.NewBrokerSecurityState(s.Broker)
 			}
-			s.Result.Storage = storage.NewFacade(
-				store,
-				securityState,
+			var opts []storage.Option
+			if s.Broker != nil {
+				opts = append(opts, storage.WithSecurityDiagnostics(func(ctx context.Context) (storage.SecuritySummary, error) {
+					result, err := s.Broker.DBStatusSummary(ctx, storagebroker.DBStatusSummaryRequest{
+						DBPath: s.Options.DBPath,
+					})
+					if err != nil {
+						return storage.SecuritySummary{}, err
+					}
+					return storage.SecuritySummary{
+						EncryptionKeys: result.EncryptionKeys,
+						StoredSecrets:  result.StoredSecrets,
+					}, nil
+				}))
+			}
+			opts = append(opts,
 				storage.WithEntClient(s.Client),
 				storage.WithRawDB(s.RawDB),
 				storage.WithBrokerSessionStore(s.Broker),
 				storage.WithSessionClient(s.Client),
 				storage.WithSessionDBPath(s.Result.Config.Session.DatabasePath),
+			)
+			s.Result.Storage = storage.NewFacade(
+				store,
+				securityState,
+				opts...,
 			)
 			return nil
 		},

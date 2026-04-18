@@ -106,6 +106,33 @@ func TestRun_StartStorageBroker(t *testing.T) {
 	require.NoError(t, result.Close())
 }
 
+func TestRun_StartStorageBroker_DoesNotOpenParentDB(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "missing", "test.db")
+	keyfilePath := filepath.Join(dir, "keyfile")
+	pass := "test-passphrase-for-broker-no-parent-open"
+
+	require.NoError(t, passphrase.WriteKeyfile(keyfilePath, pass))
+
+	origStart := startStorageBroker
+	t.Cleanup(func() { startStorageBroker = origStart })
+	startStorageBroker = func(ctx context.Context) (storagebroker.API, error) {
+		return &stubBrokerClient{}, nil
+	}
+
+	result, err := Run(Options{
+		LangoDir:            dir,
+		DBPath:              dbPath,
+		KeyfilePath:         keyfilePath,
+		KeepKeyfile:         true,
+		SkipSecureDetection: true,
+		StartStorageBroker:  true,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, result.Broker)
+	require.NoError(t, result.Close())
+}
+
 type stubBrokerClient struct {
 	opened bool
 }
