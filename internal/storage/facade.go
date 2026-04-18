@@ -106,6 +106,16 @@ type AlertRecord struct {
 	Timestamp time.Time
 }
 
+type ReputationReader interface {
+	GetDetails(ctx context.Context, peerDID string) (*reputation.PeerDetails, error)
+	GetScore(ctx context.Context, peerDID string) (float64, error)
+}
+
+type WorkflowRunReader interface {
+	ListRuns(ctx context.Context, limit int) ([]workflow.RunStatus, error)
+	GetRunStatus(ctx context.Context, runID string) (*workflow.RunStatus, error)
+}
+
 type OntologyDeps struct {
 	Registry  *ontology.EntRegistry
 	Conflict  *ontology.ConflictStore
@@ -140,7 +150,8 @@ type Facade struct {
 	alerts           func(ctx context.Context, from time.Time) ([]AlertRecord, error)
 	ontologyDeps     func() *OntologyDeps
 	reputationStore  func(logger *zap.SugaredLogger) *reputation.Store
-	workflowState    func(logger *zap.SugaredLogger) workflow.RunStore
+	reputationLookup func(ctx context.Context, peerDID string) (*reputation.PeerDetails, error)
+	workflowState    func(logger *zap.SugaredLogger) WorkflowRunReader
 	closeFn          func() error
 }
 
@@ -289,7 +300,14 @@ func (f *Facade) ReputationStore(logger *zap.SugaredLogger) *reputation.Store {
 	return f.reputationStore(logger)
 }
 
-func (f *Facade) WorkflowStateStore(logger *zap.SugaredLogger) workflow.RunStore {
+func (f *Facade) ReputationDetails(ctx context.Context, peerDID string) (*reputation.PeerDetails, error) {
+	if f == nil || f.reputationLookup == nil {
+		return nil, fmt.Errorf("reputation storage unavailable")
+	}
+	return f.reputationLookup(ctx, peerDID)
+}
+
+func (f *Facade) WorkflowStateStore(logger *zap.SugaredLogger) WorkflowRunReader {
 	if f == nil || f.workflowState == nil {
 		return nil
 	}
@@ -505,7 +523,10 @@ func WithEntClient(client *ent.Client) Option {
 		f.reputationStore = func(logger *zap.SugaredLogger) *reputation.Store {
 			return reputation.NewStore(client, logger)
 		}
-		f.workflowState = func(logger *zap.SugaredLogger) workflow.RunStore {
+		f.reputationLookup = func(ctx context.Context, peerDID string) (*reputation.PeerDetails, error) {
+			return reputation.NewStore(client, nil).GetDetails(ctx, peerDID)
+		}
+		f.workflowState = func(logger *zap.SugaredLogger) WorkflowRunReader {
 			return workflow.NewStateStore(client, logger)
 		}
 		f.closeFn = client.Close

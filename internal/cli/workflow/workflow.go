@@ -13,6 +13,7 @@ import (
 
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/runledger"
+	"github.com/langoai/lango/internal/storage"
 	"github.com/langoai/lango/internal/toolchain"
 	"github.com/langoai/lango/internal/workflow"
 )
@@ -333,10 +334,11 @@ func initEngine(boot *bootstrap.Result) *workflow.Engine {
 
 	lg, _ := zap.NewProduction()
 	state := workflowRunStore(boot, lg.Sugar())
-	if state == nil {
+	runStore, ok := state.(workflow.RunStore)
+	if !ok || runStore == nil {
 		return nil
 	}
-	return workflow.NewEngine(nil, state, nil,
+	return workflow.NewEngine(nil, runStore, nil,
 		boot.Config.Workflow.MaxConcurrentSteps,
 		boot.Config.Workflow.DefaultTimeout,
 		lg.Sugar())
@@ -423,7 +425,7 @@ func formatTime(t time.Time) string {
 	return t.Format(time.DateTime)
 }
 
-func workflowRunStore(boot *bootstrap.Result, logger *zap.SugaredLogger) workflow.RunStore {
+func workflowRunStore(boot *bootstrap.Result, logger *zap.SugaredLogger) storage.WorkflowRunReader {
 	if boot != nil && boot.Storage != nil {
 		return boot.Storage.WorkflowStateStore(logger)
 	}

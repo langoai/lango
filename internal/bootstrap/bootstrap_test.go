@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -213,4 +214,19 @@ func (s *stubBrokerClient) RecallSearch(context.Context, string, int) ([]search.
 	return nil, nil
 }
 func (s *stubBrokerClient) RecallGetSummary(context.Context, string) (string, error) { return "", nil }
-func (s *stubBrokerClient) Close(context.Context) error                              { return nil }
+func (s *stubBrokerClient) LearningHistory(context.Context, int) (storagebroker.LearningHistoryResult, error) {
+	return storagebroker.LearningHistoryResult{}, nil
+}
+func (s *stubBrokerClient) PendingInquiries(context.Context, int) (storagebroker.PendingInquiriesResult, error) {
+	return storagebroker.PendingInquiriesResult{}, nil
+}
+func (s *stubBrokerClient) WorkflowRuns(context.Context, int) (storagebroker.WorkflowRunsResult, error) {
+	return storagebroker.WorkflowRunsResult{}, nil
+}
+func (s *stubBrokerClient) Alerts(context.Context, time.Time) (storagebroker.AlertsResult, error) {
+	return storagebroker.AlertsResult{}, nil
+}
+func (s *stubBrokerClient) ReputationGet(context.Context, string) (storagebroker.ReputationGetResult, error) {
+	return storagebroker.ReputationGetResult{}, nil
+}
+func (s *stubBrokerClient) Close(context.Context) error { return nil }

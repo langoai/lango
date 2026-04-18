@@ -42,15 +42,10 @@ func newReputationCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comma
 			if boot.Storage == nil {
 				return fmt.Errorf("p2p reputation storage unavailable")
 			}
-			store := boot.Storage.ReputationStore(logger)
-			if store == nil {
-				return fmt.Errorf("p2p reputation storage unavailable")
-			}
-			details, err := store.GetDetails(cmd.Context(), peerDID)
+			details, err := boot.Storage.ReputationDetails(cmd.Context(), peerDID)
 			if err != nil {
 				return fmt.Errorf("get reputation: %w", err)
 			}
-
 			if details == nil {
 				if jsonOutput {
 					enc := json.NewEncoder(os.Stdout)
@@ -63,6 +58,9 @@ func newReputationCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comma
 				}
 				fmt.Printf("No reputation record found for %s\n", peerDID)
 				return nil
+			}
+			if logger == nil {
+				return fmt.Errorf("p2p reputation storage unavailable")
 			}
 
 			if jsonOutput {
