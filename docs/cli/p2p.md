@@ -822,7 +822,7 @@ lango p2p git push <workspace-id>
 ```bash
 $ lango p2p git push a1b2c3d4-5678-9012-abcd-ef1234567890
 Push requires a running server.
-Use 'lango serve' and the runtime API or p2p_git_push tool.
+Use 'lango serve' and the server-backed runtime or p2p_git_push tool.
 ```
 
 ### lango p2p git fetch
@@ -842,7 +842,7 @@ lango p2p git fetch <workspace-id>
 ```bash
 $ lango p2p git fetch a1b2c3d4-5678-9012-abcd-ef1234567890
 Fetch requires a running server.
-Use 'lango serve' and the runtime API or p2p_git_fetch tool.
+Use 'lango serve' and the server-backed runtime plus provenance or workspace artifact tools for live exchange.
 ```
 
 ### Incremental Bundles

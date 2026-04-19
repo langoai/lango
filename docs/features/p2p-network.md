@@ -446,14 +446,14 @@ lango p2p team status <id>                      # Inspect team guidance for a sp
 lango p2p team disband <id>                     # Inspect disband guidance for a live team
 lango p2p zkp status                            # Show ZKP configuration
 lango p2p zkp circuits                          # List ZKP circuits
-lango p2p workspace create <name>               # Create a collaborative workspace
-lango p2p workspace list                        # List all workspaces
-lango p2p workspace status <id>                 # Show workspace status and members
-lango p2p workspace join <id>                   # Join a workspace
-lango p2p workspace leave <id>                  # Leave a workspace
-lango p2p git init <workspace-id>               # Initialize workspace git repo
-lango p2p git log <workspace-id>                # Show workspace commit history
-lango p2p git diff <workspace-id> <from> <to>   # Show diff between commits
+lango p2p workspace create <name>               # Inspect workspace-create guidance
+lango p2p workspace list                        # Inspect runtime-backed workspace listing behavior
+lango p2p workspace status <id>                 # Inspect workspace status guidance
+lango p2p workspace join <id>                   # Inspect workspace-join guidance
+lango p2p workspace leave <id>                  # Inspect workspace-leave guidance
+lango p2p git init <workspace-id>               # Inspect git-init guidance for workspaces
+lango p2p git log <workspace-id>                # Inspect runtime-backed workspace commit history guidance
+lango p2p git diff <workspace-id> <from> <to>   # Inspect workspace diff guidance
 lango p2p git push <workspace-id>               # Create and push git bundle
 lango p2p git fetch <workspace-id>              # Fetch and apply git bundle
 ```
