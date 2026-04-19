@@ -153,6 +153,11 @@ Allowed judgments:
   - reconcile `postPayMinScore` default drift,
   - publish one canonical operator-facing trust model.
 
+### Post-Implementation Notes
+
+- Landed stabilization work aligned the identity truth across docs, CLI, and operator-facing surfaces for DID, auth semantics, and runtime trust behavior.
+- Payment-side trust defaults are now documented and audited against one canonical inclusive `0.8` post-pay threshold instead of competing operator stories.
+
 ## Detailed Audit: Pricing / Negotiation / Settlement
 
 ### Audit Record
@@ -223,6 +228,11 @@ Allowed judgments:
   - reconcile static pricing vs dynamic pricing exposure,
   - reconcile settlement wording with the actual authorization-driven runtime.
 
+### Post-Implementation Notes
+
+- Landed follow-up work unified the payment trust default and clarified the intended split between provider quote surfaces, local pricing and negotiation policy, and authorization-driven settlement.
+- The audit closeout now reflects one control-plane story instead of treating payment routing defaults as unresolved drift.
+
 ## Detailed Audit: Team Formation / Role Coordination
 
 ### Audit Record
@@ -279,6 +289,11 @@ Allowed judgments:
   - either add the documented team HTTP endpoints or stop documenting them,
   - reconcile conflict-strategy descriptions with the current implementation,
   - define one stable operator path for forming and inspecting live teams.
+
+### Post-Implementation Notes
+
+- Landed truth-alignment work narrowed the team operator story to the surfaces the runtime actually exposes and removed stale implications of a fuller live control plane.
+- Team payment coordination remains aligned with the shared inclusive `0.8` post-pay threshold used by the broader external payment path.
 
 ## Detailed Audit: Workspace / Shared Artifacts
 
@@ -345,6 +360,11 @@ Allowed judgments:
   - clarify provenance vs workspace vs git-bundle responsibilities,
   - either fully wire chronicler persistence or narrow the user-facing claim,
   - publish one canonical operator story for shared artifact exchange.
+
+### Post-Implementation Notes
+
+- Landed operator-surface alignment clarified which workspace and shared-artifact flows are live, which remain guidance-oriented, and where provenance is the concrete external exchange path today.
+- The audit closeout now reflects the narrower, runtime-true collaboration surface rather than the previously overstated workspace and git control story.
 
 ## Next Plan
 
