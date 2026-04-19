@@ -1,6 +1,7 @@
 package p2p
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/langoai/lango/internal/bootstrap"
 	p2pidentity "github.com/langoai/lango/internal/p2p/identity"
+	"github.com/langoai/lango/internal/wallet"
 )
 
 func buildIdentityView(did string, peerID string, keyStorage string, listenAddrs []string) map[string]interface{} {
@@ -22,20 +24,57 @@ func buildIdentityView(did string, peerID string, keyStorage string, listenAddrs
 
 func resolveIdentityDID(boot *bootstrap.Result) string {
 	if boot == nil || boot.LangoDir == "" {
-		return ""
+		return resolveLegacyIdentityDID(boot)
 	}
 
 	bundle, err := p2pidentity.LoadBundleFile(boot.LangoDir)
-	if err != nil || bundle == nil {
+	if err == nil && bundle != nil {
+		did, err := p2pidentity.ComputeDIDv2(bundle)
+		if err == nil {
+			return did
+		}
+	}
+
+	return resolveLegacyIdentityDID(boot)
+}
+
+func resolveLegacyIdentityDID(boot *bootstrap.Result) string {
+	wp := loadReadOnlyWalletProvider(boot)
+	if wp == nil {
 		return ""
 	}
 
-	did, err := p2pidentity.ComputeDIDv2(bundle)
+	pub, err := wp.PublicKey(context.Background())
 	if err != nil {
 		return ""
 	}
 
-	return did
+	did, err := p2pidentity.DIDFromPublicKey(pub)
+	if err != nil {
+		return ""
+	}
+	return did.ID
+}
+
+func loadReadOnlyWalletProvider(boot *bootstrap.Result) wallet.WalletProvider {
+	if boot == nil || boot.Config == nil || boot.Storage == nil || boot.Crypto == nil {
+		return nil
+	}
+
+	secrets := boot.Storage.SecretsStore(boot.Crypto)
+	if secrets == nil {
+		return nil
+	}
+
+	switch boot.Config.Payment.WalletProvider {
+	case "", "local":
+		return wallet.NewLocalWallet(secrets, boot.Config.Payment.Network.RPCURL, boot.Config.Payment.Network.ChainID)
+	case "composite":
+		local := wallet.NewLocalWallet(secrets, boot.Config.Payment.Network.RPCURL, boot.Config.Payment.Network.ChainID)
+		return wallet.NewCompositeWallet(wallet.NewRPCWallet(), local, nil)
+	default:
+		return nil
+	}
 }
 
 func newIdentityCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {

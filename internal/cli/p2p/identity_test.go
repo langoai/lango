@@ -1,12 +1,22 @@
 package p2p
 
 import (
+	"context"
 	"os"
 	"reflect"
 	"testing"
 
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/langoai/lango/internal/bootstrap"
+	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/ent/enttest"
 	p2pidentity "github.com/langoai/lango/internal/p2p/identity"
+	"github.com/langoai/lango/internal/security"
+	"github.com/langoai/lango/internal/storage"
+	"github.com/langoai/lango/internal/wallet"
+	"github.com/stretchr/testify/require"
+
+	_ "github.com/mattn/go-sqlite3"
 )
 
 func TestBuildIdentityView_PreservesDidAndListenAddrs(t *testing.T) {
@@ -77,9 +87,54 @@ func TestResolveIdentityDID_ReadOnlyBundleLookup(t *testing.T) {
 	}
 }
 
-func TestResolveIdentityDID_MissingBundleReturnsEmpty(t *testing.T) {
-	got := resolveIdentityDID(&bootstrap.Result{LangoDir: t.TempDir()})
-	if got != "" {
-		t.Fatalf("resolveIdentityDID() = %q, want empty string", got)
+func TestResolveIdentityDID_LegacyWalletFallback(t *testing.T) {
+	boot, expected := newLegacyIdentityBoot(t)
+
+	got := resolveIdentityDID(boot)
+	if got != expected {
+		t.Fatalf("resolveIdentityDID() = %q, want %q", got, expected)
 	}
+}
+
+func newLegacyIdentityBoot(t *testing.T) (*bootstrap.Result, string) {
+	t.Helper()
+
+	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&_fk=1")
+	t.Cleanup(func() { client.Close() })
+
+	cryptoProvider := security.NewLocalCryptoProvider()
+	require.NoError(t, cryptoProvider.Initialize("test-passphrase-12345"))
+
+	registry := security.NewKeyRegistry(client)
+	require.NotNil(t, registry)
+	_, err := registry.RegisterKey(context.Background(), "default", "local", security.KeyTypeEncryption)
+	require.NoError(t, err)
+
+	secrets := security.NewSecretsStore(client, registry, cryptoProvider)
+	privateKey, err := crypto.GenerateKey()
+	require.NoError(t, err)
+	keyBytes := crypto.FromECDSA(privateKey)
+	require.NoError(t, secrets.Store(context.Background(), wallet.WalletKeyName, keyBytes))
+
+	expectedPub := crypto.CompressPubkey(&privateKey.PublicKey)
+	expectedDID, err := p2pidentity.DIDFromPublicKey(expectedPub)
+	require.NoError(t, err)
+
+	boot := &bootstrap.Result{
+		Config: &config.Config{
+			Payment: config.PaymentConfig{
+				WalletProvider: "local",
+				Network: config.PaymentNetworkConfig{
+					RPCURL:  "http://localhost:8545",
+					ChainID: 1,
+				},
+			},
+		},
+		Crypto: cryptoProvider,
+		Storage: storage.NewFacade(nil, nil, storage.WithSecretsStoreFactory(func(security.CryptoProvider) *security.SecretsStore {
+			return secrets
+		})),
+	}
+
+	return boot, expectedDID.ID
 }
