@@ -112,7 +112,7 @@ func (g *Gate) Ledger() *DeferredLedger {
 
 // Check evaluates whether a tool invocation should proceed. It looks up the
 // tool price, and if payment is required, validates the EIP-3009 authorization
-// embedded in the payload. High-trust peers (score > PostPayMinScore) are
+// embedded in the payload. High-trust peers (score >= PostPayMinScore) are
 // granted post-pay: the tool executes first, settlement happens asynchronously.
 func (g *Gate) Check(peerDID, toolName string, payload map[string]interface{}) (*Result, error) {
 	price, isFree := g.pricingFn(toolName)
@@ -126,7 +126,7 @@ func (g *Gate) Check(peerDID, toolName string, payload map[string]interface{}) (
 		if err != nil {
 			g.logger.Warnw("reputation lookup failed, falling back to prepay",
 				"peerDID", peerDID, "error", err)
-		} else if score > g.trustCfg.PostPayMinScore {
+		} else if score >= g.trustCfg.PostPayMinScore {
 			sid := g.ledger.Add(peerDID, toolName, price)
 			g.logger.Infow("post-pay approved",
 				"peerDID", peerDID, "tool", toolName, "price", price, "score", score)

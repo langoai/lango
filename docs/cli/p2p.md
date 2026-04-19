@@ -540,7 +540,7 @@ Teams support configurable conflict resolution and payment coordination:
 
 - **Conflict Resolution**: `trust_weighted` (default), `majority_vote`, `leader_decides`, `fail_on_conflict`
 - **Assignment**: `best_match`, `round_robin`, `load_balanced`
-- **Payment Modes**: Trust-based mode selection — `free` (price=0), `postpay` (trust >= 0.7), `prepay` (trust < 0.7)
+- **Payment Modes**: Trust-based mode selection — `free` (price=0), `postpay` (trust >= 0.8), `prepay` (trust < 0.8)
 
 Teams are runtime-only structures managed by the running server. Use `lango serve` to start the server and form teams via the agent tools (`p2p_team_create`, `p2p_team_join`).
 
