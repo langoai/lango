@@ -79,7 +79,7 @@ Allowed judgments:
 | P2P identity / trust / reputation | Phase 1 | `docs/features/p2p-network.md`, `docs/features/economy.md`, `internal/config/types_p2p.go`, `internal/cli/p2p/`, `internal/cli/settings/forms_p2p.go` | Detailed audit complete (`stabilize`) |
 | pricing / negotiation / settlement | Phase 1-2 | `docs/features/economy.md`, `docs/payments/usdc.md`, `docs/payments/x402.md`, `internal/config/types_economy.go`, `internal/cli/economy/`, `internal/cli/payment/` | Detailed audit complete (`merge`) |
 | team formation / role coordination | Phase 3 | `docs/features/p2p-network.md`, `docs/features/multi-agent.md`, `internal/config/types_p2p.go`, `internal/config/types_orchestration.go`, `internal/cli/p2p/`, `internal/cli/agent/` | Detailed audit complete (`stabilize`) |
-| workspace / shared artifacts | Phase 3-4 | `docs/features/p2p-network.md`, `docs/features/provenance.md`, `internal/config/types_p2p.go`, `internal/cli/p2p/`, `internal/cli/provenance/` | Ready for detailed audit |
+| workspace / shared artifacts | Phase 3-4 | `docs/features/p2p-network.md`, `docs/features/provenance.md`, `internal/config/types_p2p.go`, `internal/cli/p2p/`, `internal/cli/provenance/` | Detailed audit complete (`stabilize`) |
 
 ## Baseline Decisions Already Locked
 
@@ -280,8 +280,73 @@ Allowed judgments:
   - reconcile team payment thresholds into one canonical model,
   - define one stable operator path for forming and inspecting live teams.
 
+## Detailed Audit: Workspace / Shared Artifacts
+
+### Audit Record
+
+- Feature name: `workspace / shared artifacts`
+- Capability area: `External Collaboration & Economic Exchange`
+- Product-path linkage: `Phase 3: Leader-Led Team Execution`, `Phase 4: Long-Running Multi-Agent Projects`
+- Current surface area: `docs/features/p2p-network.md`, `docs/cli/p2p.md`, `internal/p2p/workspace/*`, `internal/p2p/gitbundle/*`, `internal/p2p/provenanceproto/*`, `internal/cli/p2p/workspace.go`, `internal/cli/p2p/git.go`, `internal/cli/p2p/provenance.go`, `internal/app/wiring_workspace.go`, `internal/app/bridge_workspace_team.go`, `internal/app/tools_workspace.go`
+- Core value: `Provide collaborative external workspaces, shared artifact exchange, and auditable handoff mechanisms for code and provenance.`
+- Current problem: `The runtime subsystems are real, but the operator surface is uneven: provenance exchange is live, while workspace and git bundle controls are mostly documented as direct commands even though the runtime expects server-backed or tool-backed flows.`
+- Judgment: `stabilize`
+- Execution track: `Leader-Led Team Execution Track`
+- Secondary capability areas:
+  - `Execution, Continuity & Accountability`
+  - `Trust, Security & Policy`
+- Secondary tracks:
+  - `Stabilization Track`
+
+### Findings
+
+1. `Major` Workspace and shared-artifact infrastructure is real and broad enough to keep.
+   - The codebase includes a persistent workspace manager, workspace gossip, contribution tracking, chronicler hooks, git bundle services, provenance exchange protocol handlers, and team-to-workspace bridges.
+   - This is a genuine Phase 3/4 capability, not a speculative placeholder.
+   - References: `internal/p2p/workspace/manager.go:17-223`, `internal/p2p/workspace/gossip.go:14-160`, `internal/p2p/gitbundle/bundle.go:51-470`, `internal/app/bridge_workspace_team.go:14-102`, `internal/app/p2p_routes.go:36-37`
+
+2. `Major` Workspace CLI docs overstate direct command behavior.
+   - The docs show `workspace create/list/status/join/leave` as if they return live workspace data.
+   - The actual CLI commands are runtime placeholders that direct the operator to `lango serve` and agent tools instead of performing the documented live action.
+   - References: `docs/cli/p2p.md:601-732`, `internal/cli/p2p/workspace.go:15-204`
+
+3. `Major` Git bundle CLI docs also overstate direct command behavior.
+   - The docs present `git init/log/diff/push/fetch` as if they directly operate on live workspace repos.
+   - The actual CLI commands mostly print “requires a running server” and defer to agent tools or server-backed flows.
+   - The underlying gitbundle service is real; the operator-facing command story is what drifts.
+   - References: `docs/cli/p2p.md:738-888`, `internal/cli/p2p/git.go:13-151`, `internal/app/tools_workspace.go`
+
+4. `Major` Provenance bundle exchange is the one genuinely live operator surface in this family, which makes the shared-artifact model uneven.
+   - `lango p2p provenance push/fetch` actually talks to gateway-backed `/api/p2p/provenance/*` endpoints.
+   - That means one shared-artifact path is live and concrete, while neighboring workspace/git surfaces remain mostly placeholder or tool-backed.
+   - References: `docs/cli/p2p.md:327-349`, `internal/cli/p2p/provenance.go:15-142`, `internal/app/p2p_routes.go:36-37`, `internal/app/p2p_routes.go:183-260`
+
+5. `Major` The chronicler path is documented as persistent graph-triple capture, but the current app wiring still leaves the triple adder pending.
+   - The docs describe chronicler persistence as an available workspace feature.
+   - The workspace wiring currently instantiates the chronicler with a `nil` triple adder and logs that the triple adder is still pending.
+   - So the concept is present, but the operator-facing statement is ahead of the fully wired default runtime path.
+   - References: `docs/features/p2p-network.md:780-789`, `internal/app/wiring_workspace.go:102-109`, `internal/p2p/workspace/chronicler.go:24-46`
+
+6. `Major` Shared artifacts are implemented through multiple overlapping mechanisms without one canonical operator story.
+   - Workspaces manage runtime membership and message flow.
+   - Git bundles manage code-state transfer.
+   - Provenance bundles manage signed historical/session exchange.
+   - Team bridges auto-create workspaces and record contributions.
+   - All of these pieces are individually reasonable, but the operator-facing path for “how external agents actually share artifacts” is not yet unified.
+   - References: `internal/p2p/workspace/manager.go`, `internal/p2p/gitbundle/bundle.go`, `internal/p2p/provenanceproto/protocol.go`, `internal/app/bridge_workspace_team.go`
+
+### Assessment
+
+- `Workspace / shared artifacts` should be kept. It is part of the Phase 3 and Phase 4 collaboration story.
+- The correct action is `stabilize`, not `merge` or `defer`:
+  - reconcile workspace/git CLI docs with the actual live control path,
+  - decide which artifact operations are server-backed, which are agent-tool-backed, and which are true direct CLI commands,
+  - clarify provenance vs workspace vs git-bundle responsibilities,
+  - either fully wire chronicler persistence or narrow the user-facing claim,
+  - publish one canonical operator story for shared artifact exchange.
+
 ## Next Plan
 
 The next implementation plan after this document lands should perform the detailed audit for the first row:
 
-- workspace / shared artifacts
+- convert the completed external-collaboration audit into a prioritized stabilization and consolidation plan
