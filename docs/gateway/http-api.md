@@ -99,7 +99,7 @@ curl http://localhost:18789/api/p2p/peers
 
 #### `GET /api/p2p/identity`
 
-Returns the local DID derived from the wallet and the libp2p peer ID.
+Returns the active local DID, when available, together with the libp2p peer ID. The DID may be v1 or v2 depending on the configured identity provider.
 
 ```bash
 curl http://localhost:18789/api/p2p/identity
@@ -107,7 +107,7 @@ curl http://localhost:18789/api/p2p/identity
 
 ```json
 {
-  "did": "did:lango:02abc...",
+  "did": "did:lango:v2:4f2c9a8b7d6e5c1a0f1e2d3c4b5a697887766554",
   "peerId": "12D3KooW..."
 }
 ```

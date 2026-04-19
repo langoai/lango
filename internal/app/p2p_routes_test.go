@@ -3,6 +3,8 @@ package app
 import (
 	"context"
 	"crypto/ecdsa"
+	"crypto/ed25519"
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"math/big"
@@ -183,6 +185,48 @@ func TestP2PIdentityHandler_IncludesDIDWhenIdentityAvailable(t *testing.T) {
 	did, ok := resp["did"].(string)
 	require.True(t, ok)
 	assert.Equal(t, localDID, did)
+	assert.Equal(t, p2pc.node.PeerID().String(), resp["peerId"])
+}
+
+func TestP2PIdentityHandler_IncludesBundleBackedV2DID(t *testing.T) {
+	_, p2pc, _, _, _, cleanup := setupProvenanceRouteRuntime(t)
+	defer cleanup()
+
+	settlementWallet, _ := newRouteTestWallet(t)
+	settlementPub, err := settlementWallet.PublicKey(context.Background())
+	require.NoError(t, err)
+
+	_, signingKey, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+
+	bundleProvider, err := identity.NewBundleProvider(identity.BundleProviderConfig{
+		SigningKey:    signingKey,
+		SettlementPub: settlementPub,
+		LangoDir:      t.TempDir(),
+		Logger:        testLog(),
+	})
+	require.NoError(t, err)
+
+	p2pc.identity = bundleProvider
+
+	handler := p2pIdentityHandler(p2pc)
+	req := httptest.NewRequest("GET", "/api/p2p/identity", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]interface{}
+	err = json.NewDecoder(w.Body).Decode(&resp)
+	require.NoError(t, err)
+
+	did, ok := resp["did"].(string)
+	require.True(t, ok)
+
+	bundleDID, err := bundleProvider.DID(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, bundleDID.ID, did)
+	assert.Equal(t, 2, bundleDID.Version)
 	assert.Equal(t, p2pc.node.PeerID().String(), resp["peerId"])
 }
 
