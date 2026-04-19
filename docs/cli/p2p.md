@@ -193,7 +193,7 @@ research-bot      did:lango:02abc...      research, summarize   QmPeer1abc123
 
 ## lango p2p identity
 
-Show the local P2P identity including peer ID, key directory, and listen addresses.
+Show the local P2P identity including the active DID when available, peer ID, key storage mode, and listen addresses.
 
 ```
 lango p2p identity [--json]
@@ -208,8 +208,9 @@ lango p2p identity [--json]
 ```bash
 $ lango p2p identity
 P2P Identity
+  DID:          did:lango:v2:abcdef1234567890abcdef1234567890abcdef12
   Peer ID:      QmYourPeerId123...
-  Key Dir:      ~/.lango/p2p
+  Key Storage:  secrets-store
   Listen Addrs:
     /ip4/0.0.0.0/tcp/9000
     /ip6/::/tcp/9000

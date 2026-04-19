@@ -15,7 +15,7 @@ Lango supports decentralized agent-to-agent connectivity via libp2p. The Soverei
 The P2P subsystem enables direct agent communication without centralized coordination:
 
 - **Direct connectivity** -- agents connect peer-to-peer using libp2p with Noise encryption
-- **DID-based identity** -- each agent derives a `did:lango:<pubkey>` identity from its wallet
+- **DID-based identity** -- each agent can expose either a legacy `did:lango:<hex>` identity or a bundle-backed `did:lango:v2:<hash>` identity
 - **Knowledge firewall** -- default deny-all ACL controls which peers can access which tools
 - **Agent discovery** -- GossipSub-based agent card propagation for capability-based search
 - **ZK-enhanced handshake** -- optional zero-knowledge proof verification during peer authentication
@@ -45,11 +45,12 @@ graph TB
 
 ## Identity
 
-Each Lango agent derives a decentralized identifier (DID) from its wallet's compressed secp256k1 public key:
+Each Lango agent supports two DID forms:
 
-```
-did:lango:<hex-compressed-pubkey>
-```
+- `did:lango:<hex>` for legacy wallet-derived identities
+- `did:lango:v2:<hash>` for bundle-backed identities
+
+The active DID is exposed by the CLI and by `GET /api/p2p/identity` when the local identity provider can resolve one.
 
 The DID is deterministically mapped to a libp2p peer ID, ensuring cryptographic binding between the wallet identity and the network identity. Private keys never leave the wallet layer.
 
@@ -395,7 +396,7 @@ When the gateway is running (`lango serve`), read-only P2P endpoints are availab
 |----------|-------------|
 | `GET /api/p2p/status` | Peer ID, listen addresses, connected peer count |
 | `GET /api/p2p/peers` | List of connected peers with multiaddresses |
-| `GET /api/p2p/identity` | Local DID (`did:lango:...`) and peer ID |
+| `GET /api/p2p/identity` | Active DID when available and peer ID |
 | `GET /api/p2p/reputation` | Peer trust score and exchange history |
 | `GET /api/p2p/pricing` | Tool pricing (single or all tools) |
 
@@ -417,7 +418,7 @@ curl http://localhost:18789/api/p2p/pricing
 curl "http://localhost:18789/api/p2p/pricing?tool=knowledge_search"
 ```
 
-These endpoints query the running server's persistent P2P node. They are public (no authentication) and expose only node metadata. See the [HTTP API Reference](../gateway/http-api.md#p2p-network) for response format details.
+These endpoints query the running server's persistent P2P node. They are public only when gateway auth is disabled; when auth is configured, the entire `/api/p2p/*` subtree is protected by gateway auth. See the [HTTP API Reference](../gateway/http-api.md#p2p-network) for response format details.
 
 ## CLI Commands
 
@@ -431,7 +432,7 @@ lango p2p disconnect <peer-id> # Disconnect from a peer
 lango p2p firewall list        # List firewall rules
 lango p2p firewall add         # Add a firewall rule
 lango p2p discover             # Discover agents
-lango p2p identity             # Show local identity
+lango p2p identity             # Show local identity and active DID when available
 lango p2p reputation --peer-did <did>  # Query trust score
 lango p2p pricing              # Show tool pricing
 lango p2p session list                          # List active sessions

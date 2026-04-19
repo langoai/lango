@@ -23,8 +23,8 @@ func writeJSON(w http.ResponseWriter, v interface{}) {
 }
 
 // registerP2PRoutes mounts P2P status endpoints on the gateway router.
-// When OIDC is configured, endpoints require authentication.
-// When auth is nil (dev mode), endpoints are accessible without authentication.
+// The subtree is public only when gateway auth is disabled; otherwise the
+// RequireAuth middleware protects every /api/p2p route.
 func registerP2PRoutes(r chi.Router, app *App, p2pc *p2pComponents, auth *gateway.AuthManager) {
 	r.Route("/api/p2p", func(r chi.Router) {
 		r.Use(gateway.RequireAuth(auth))
@@ -180,7 +180,7 @@ func p2pIdentityHandler(p2pc *p2pComponents) http.HandlerFunc {
 			return
 		}
 
-		ctx := context.Background()
+		ctx := r.Context()
 		did, err := p2pc.identity.DID(ctx)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)

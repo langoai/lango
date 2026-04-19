@@ -165,11 +165,26 @@ func TestP2PReputationHandler_NilReputationSystem(t *testing.T) {
 
 // --- p2pIdentityHandler ---
 
-func TestP2PIdentityHandler_NilIdentity(t *testing.T) {
-	// When identity is nil but node is also nil, handler will panic at node.PeerID().
-	// We test only the nil identity path by providing a minimal node.
-	// Since creating a real node requires libp2p, this test documents the expected behavior.
-	t.Skip("requires libp2p node; tested via integration tests")
+func TestP2PIdentityHandler_IncludesDIDWhenIdentityAvailable(t *testing.T) {
+	_, p2pc, _, _, cleanup := setupProvenanceRouteRuntime(t)
+	defer cleanup()
+
+	handler := p2pIdentityHandler(p2pc)
+	req := httptest.NewRequest("GET", "/api/p2p/identity", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]interface{}
+	err := json.NewDecoder(w.Body).Decode(&resp)
+	require.NoError(t, err)
+
+	did, ok := resp["did"].(string)
+	require.True(t, ok)
+	assert.NotEmpty(t, did)
+	assert.Contains(t, did, "did:lango:")
+	assert.Equal(t, p2pc.node.PeerID().String(), resp["peerId"])
 }
 
 type routeTestWallet struct {
