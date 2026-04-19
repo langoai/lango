@@ -129,11 +129,11 @@ Allowed judgments:
    - The codebase supports `did:lango:v2:<hash>`, identity bundles, bundle resolution, DID aliasing, and runtime selection of the bundle provider when identity material is available.
    - References: `docs/features/p2p-network.md:46-54`, `internal/p2p/identity/identity.go:20-27`, `internal/app/wiring_p2p.go:186-204`, `internal/app/wiring_p2p.go:261-279`
 
-4. `Major` The post-pay trust threshold has a documented default of `0.8`, but the runtime falls back to `0.7` when the config leaves the field unset.
-   - The docs and config comments present `postPayMinScore` as `0.8`.
-   - The runtime builds `trustCfg` from `paygate.DefaultTrustConfig()` and only overrides it if the config value is greater than zero.
-   - `paygate.DefaultTrustConfig()` resolves to `0.7`.
-   - References: `docs/features/p2p-network.md:506-525`, `internal/config/types_p2p.go:175-178`, `internal/p2p/paygate/trust.go:6-23`, `internal/app/wiring_p2p.go:465-469`
+4. `Resolved` The post-pay trust threshold is now canonicalized at `0.8` across the payment-side runtime and operator-facing docs.
+   - `paygate` and team payment now share the same canonical constant.
+   - Exact-threshold behavior is inclusive on both sides of the payment path.
+   - Operator-facing docs now describe `0.8` consistently and explicitly separate admission trust from payment trust.
+   - References: `docs/features/p2p-network.md:506-525`, `docs/features/economy.md:20-23`, `docs/cli/p2p.md:540-543`, `internal/config/types_p2p.go:175-178`, `internal/p2p/trustpolicy/defaults.go:1-4`, `internal/p2p/paygate/trust.go:1-24`, `internal/p2p/paygate/gate.go:114-129`, `internal/p2p/team/payment.go:40-99`
 
 5. `Major` Trust is operationally wired end-to-end, but the operator-facing model is fragmented across admission, session invalidation, and payment-tier routing.
    - Firewall admission rejects known low-score peers but still lets new peers with score `0` through.
@@ -192,11 +192,10 @@ Allowed judgments:
    - The economic path is real, but the user-facing story is not phrased in the same terms as the runtime.
    - References: `docs/features/p2p-network.md:487-571`, `internal/p2p/paygate/gate.go:112-185`, `internal/p2p/settlement/service.go:85-124`
 
-4. `Major` Payment trust thresholds are still not one stable model.
-   - Admission trust and payment trust are distinct by design, but the defaults and operator story are not reconciled.
-   - `minTrustScore` gates admission around `0.3`, while post-pay routing falls back to `0.7` in code even though the docs and config comments still present `0.8`.
-   - The result is a real but fragmented trust-to-friction model.
-   - References: `docs/features/p2p-network.md:506-525`, `internal/config/types_p2p.go:175-178`, `internal/p2p/paygate/trust.go:6-23`, `internal/app/wiring_p2p.go:465-469`
+4. `Resolved` Payment trust thresholds are now one stable payment-side model.
+   - Admission trust and payment trust remain distinct by design, but payment-side post-pay routing now uses one canonical default of `0.8`.
+   - The operator story now explicitly treats admission trust and payment trust as separate gates instead of competing defaults.
+   - References: `docs/features/p2p-network.md:506-525`, `docs/features/economy.md:20-23`, `internal/config/types_p2p.go:175-178`, `internal/p2p/trustpolicy/defaults.go:1-4`, `internal/p2p/paygate/gate.go:114-129`, `internal/p2p/team/payment.go:40-99`
 
 5. `Major` The current P2P pricing API exposes only static quotes, while dynamic pricing and negotiation live elsewhere.
    - `/api/p2p/pricing` and `lango p2p pricing` surface only `perQuery` and `toolPrices`.
@@ -216,8 +215,7 @@ Allowed judgments:
   - define one canonical operator story for quoting, negotiation, and settlement,
   - decide which surfaces belong to `P2P` and which belong to `Economy`,
   - reconcile static pricing vs dynamic pricing exposure,
-  - reconcile settlement wording with the actual authorization-driven runtime,
-  - reconcile trust thresholds and payment-tier defaults.
+  - reconcile settlement wording with the actual authorization-driven runtime.
 
 ## Detailed Audit: Team Formation / Role Coordination
 
@@ -257,12 +255,9 @@ Allowed judgments:
    - The implementation currently returns the first successful result.
    - References: `docs/features/p2p-network.md:618-632`, `internal/p2p/team/conflict.go:18-57`
 
-4. `Major` Team payment coordination uses inconsistent post-pay thresholds inside the same subsystem family.
-   - The docs describe team payment mode switching at `>= 0.7`.
-   - `SelectPaymentMode` and `DefaultPostPayThreshold` in `internal/p2p/team/payment.go` use `0.7`.
-   - `Negotiator.NewNegotiator()` falls back to `0.8` when no threshold is configured.
-   - This means even inside the team-payment layer, the trust-to-friction rule is not one stable operator model.
-   - References: `docs/features/p2p-network.md:711-719`, `internal/p2p/team/payment.go:40-48`, `internal/p2p/team/payment.go:82-99`
+4. `Resolved` Team payment coordination now uses the same inclusive `0.8` post-pay threshold as the broader external payment path.
+   - Team payment mode switching is now aligned with the shared payment-side threshold rather than carrying its own competing default.
+   - References: `docs/features/p2p-network.md:711-719`, `docs/features/multi-agent.md:388-392`, `docs/cli/p2p.md:540-543`, `internal/p2p/team/payment.go:40-99`, `internal/p2p/trustpolicy/defaults.go:1-4`
 
 5. `Major` Team formation exists as an internal coordinator flow, but not as a stable user-facing formation path.
    - `FormTeamRequest` and `Coordinator.FormTeam()` provide a concrete internal formation API that selects workers from the pool by capability.
@@ -277,7 +272,6 @@ Allowed judgments:
   - reconcile CLI/docs with the actual live control surface,
   - either add the documented team HTTP endpoints or stop documenting them,
   - reconcile conflict-strategy descriptions with the current implementation,
-  - reconcile team payment thresholds into one canonical model,
   - define one stable operator path for forming and inspecting live teams.
 
 ## Detailed Audit: Workspace / Shared Artifacts
