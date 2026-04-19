@@ -464,6 +464,10 @@ See the [P2P CLI Reference](../cli/p2p.md) for detailed command documentation.
 
 Lango supports paid P2P tool invocations via the **Payment Gate**. When pricing is enabled, remote peers must pay in USDC before invoking tools.
 
+`p2p.pricing` is the provider-side public quote surface used by remote peers.
+It does not, by itself, imply that dynamic pricing, negotiation, or escrow are enabled.
+Those higher-level policies are owned by the economy subsystem.
+
 ### Payment Gate Flow
 
 1. **Price Query** — The caller queries the provider's pricing via `p2p_price_query` or `GET /api/p2p/pricing`

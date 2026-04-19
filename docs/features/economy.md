@@ -10,6 +10,10 @@ title: P2P Economy
 
 Lango includes a P2P economy layer that manages the financial lifecycle of inter-agent transactions. It consists of five sub-systems: Budget Manager, Risk Assessor, Dynamic Pricer, Negotiation Engine, and Escrow Service.
 
+The economy subsystem is the local policy layer for dynamic pricing, negotiation, risk, and escrow.
+It may influence public P2P exchange behavior, but it is not the same thing as the provider-side quote surface exposed through `p2p.pricing`.
+`economy.pricing`, `economy.negotiation`, and `economy.escrow` are policy and engine surfaces layered above the P2P market path.
+
 ## Overview
 
 The economy layer coordinates spending, risk, pricing, negotiation, and settlement for paid P2P tool invocations:

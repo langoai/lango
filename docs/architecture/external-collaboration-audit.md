@@ -211,6 +211,7 @@ Allowed judgments:
   - `economy.pricing`
   - `economy.negotiation`
   - `economy.escrow`
+  - The merged control-plane decision is to keep `p2p.pricing` as the provider-side public quote surface and treat `economy.pricing`, `economy.negotiation`, and `economy.escrow` as local policy/engine surfaces layered above the P2P market path.
 - The correct action is `merge`, with stabilization work following that convergence:
   - define one canonical operator story for quoting, negotiation, and settlement,
   - decide which surfaces belong to `P2P` and which belong to `Economy`,
