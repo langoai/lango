@@ -14,10 +14,11 @@ func newTeamCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "team",
 		Short: "Manage P2P agent teams",
-		Long: `List, inspect, and disband dynamic P2P agent teams.
+		Long: `Inspect the truth-aligned team operator surface for the running P2P runtime.
 
-Teams are runtime-only structures that exist while the lango server is running.
-Use the server API for live team management.`,
+Teams are real runtime-only structures that exist while the lango server is running.
+The current CLI primarily explains how to use the server-backed runtime and
+agent/tool-backed control paths rather than providing full live team control.`,
 	}
 
 	cmd.AddCommand(newTeamListCmd(bootLoader))
@@ -33,10 +34,10 @@ func newTeamListCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List active P2P teams",
-		Long: `List all currently active agent teams on the P2P network.
+		Long: `Describe how to inspect active agent teams in the running P2P runtime.
 
 Note: Teams are runtime-only and exist only while the server is running.
-Connect to the running server API to inspect live teams.`,
+Use lango serve plus the server-backed runtime and agent tools for live teams.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			boot, err := bootLoader()
 			if err != nil {
@@ -57,7 +58,7 @@ Connect to the running server API to inspect live teams.`,
 			fmt.Println("No active teams.")
 			fmt.Println()
 			fmt.Println("Teams are runtime-only structures created during agent collaboration.")
-			fmt.Println("Start the server with 'lango serve' and form teams via the API.")
+			fmt.Println("Start the server with 'lango serve' and inspect/form teams via runtime integrations and agent tools.")
 			return nil
 		},
 	}
@@ -72,7 +73,7 @@ func newTeamStatusCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comma
 	cmd := &cobra.Command{
 		Use:   "status <team-id>",
 		Short: "Show team details",
-		Long:  "Show detailed information about a specific P2P agent team including members, budget, and status.",
+		Long:  "Explain how to inspect a specific runtime-backed P2P agent team, including members, budget, and status.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			boot, err := bootLoader()
@@ -98,7 +99,7 @@ func newTeamStatusCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comma
 			fmt.Println("Team not found.")
 			fmt.Println()
 			fmt.Println("Teams are runtime-only structures that exist only while the server is running.")
-			fmt.Println("Use the server API (GET /api/p2p/teams/<id>) for live team inspection.")
+			fmt.Println("Use the running server plus the team runtime or agent tools for live inspection.")
 			return nil
 		},
 	}
@@ -111,7 +112,7 @@ func newTeamDisbandCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comm
 	cmd := &cobra.Command{
 		Use:   "disband <team-id>",
 		Short: "Disband a team",
-		Long:  "Disband a P2P agent team, releasing all members.",
+		Long:  "Explain how to disband a runtime-backed P2P agent team and release its members.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			boot, err := bootLoader()
@@ -128,8 +129,8 @@ func newTeamDisbandCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comm
 
 			fmt.Println("Team not found.")
 			fmt.Println()
-			fmt.Println("Teams are runtime-only structures. Use the server API")
-			fmt.Println("(DELETE /api/p2p/teams/<id>) to disband a live team.")
+			fmt.Println("Teams are runtime-only structures.")
+			fmt.Println("Use the running server plus the team runtime or agent tools to disband a live team.")
 			return nil
 		},
 	}

@@ -751,7 +751,7 @@ Source: `internal/eventbus/team_events.go`
 
 ## Collaborative Workspaces
 
-Workspaces are collaborative environments where multiple agents share code, messages, and context within a P2P network. Each workspace has a lifecycle, members, and optional features like chronicling and contribution tracking.
+Workspaces are collaborative environments where multiple agents share code, messages, and context within a P2P network. The runtime workspace subsystem is real, but today's operator surface is mixed: live provenance exchange is concrete, while most workspace and git control currently flows through the running server and agent tools.
 
 ### Workspace Lifecycle
 
@@ -789,9 +789,9 @@ Workspaces use GossipSub for real-time message distribution:
 
 ### Chronicler
 
-When `chroniclerEnabled` is true, workspace messages are persisted as graph triples for long-term knowledge retention. Each message generates triples:
+When `chroniclerEnabled` is true, the runtime enables chronicler hooks intended to persist workspace messages as graph triples for long-term knowledge retention. The current default app wiring still leaves the triple-adder pending, so this should be treated as partial wiring rather than a guaranteed live persistence path. When the triple-adder is connected, each message generates triples such as:
 - `workspace:message:<id>` → type, workspace, sender, content, timestamp
-- Reply chains are linked via `replyTo` predicates
+- Reply chains linked via `replyTo` predicates
 
 Source: `internal/p2p/workspace/chronicler.go`
 

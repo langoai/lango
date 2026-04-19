@@ -250,8 +250,8 @@ Allowed judgments:
 
 2. `Major` The documented/live operator surface is not aligned with the implementation.
    - `lango p2p team list/status/disband` are documented as active management commands with concrete examples.
-   - The actual CLI subcommands are runtime-only placeholders that return empty or “team not found” results and tell the operator to use server API endpoints.
-   - Those referenced `/api/p2p/teams/<id>` endpoints are not registered in the current P2P HTTP routes.
+   - The actual CLI subcommands are truth-aligned runtime guidance: they return empty or “team not found” results and point operators toward the running server and agent/tool-backed control paths.
+   - In other words, the runtime subsystem is real, but the current CLI is mostly guidance-oriented rather than a full live team control plane.
    - References: `docs/cli/p2p.md:463-532`, `internal/cli/p2p/team.go:15-132`, `internal/app/p2p_routes.go:28-37`
 
 3. `Major` Conflict-resolution docs overstate what the code currently does.
@@ -289,7 +289,7 @@ Allowed judgments:
 - Product-path linkage: `Phase 3: Leader-Led Team Execution`, `Phase 4: Long-Running Multi-Agent Projects`
 - Current surface area: `docs/features/p2p-network.md`, `docs/cli/p2p.md`, `internal/p2p/workspace/*`, `internal/p2p/gitbundle/*`, `internal/p2p/provenanceproto/*`, `internal/cli/p2p/workspace.go`, `internal/cli/p2p/git.go`, `internal/cli/p2p/provenance.go`, `internal/app/wiring_workspace.go`, `internal/app/bridge_workspace_team.go`, `internal/app/tools_workspace.go`
 - Core value: `Provide collaborative external workspaces, shared artifact exchange, and auditable handoff mechanisms for code and provenance.`
-- Current problem: `The runtime subsystems are real, but the operator surface is uneven: provenance exchange is live, while workspace and git bundle controls are mostly documented as direct commands even though the runtime expects server-backed or tool-backed flows.`
+- Current problem: `The runtime subsystems are real, but the operator surface is uneven: provenance exchange is live, while workspace and git bundle controls are mostly truth-aligned guidance around server-backed or tool-backed flows rather than full direct CLI control.`
 - Judgment: `stabilize`
 - Execution track: `Leader-Led Team Execution Track`
 - Secondary capability areas:
@@ -307,24 +307,25 @@ Allowed judgments:
 
 2. `Major` Workspace CLI docs overstate direct command behavior.
    - The docs show `workspace create/list/status/join/leave` as if they return live workspace data.
-   - The actual CLI commands are runtime placeholders that direct the operator to `lango serve` and agent tools instead of performing the documented live action.
+   - The actual CLI commands are truth-aligned runtime guidance that direct the operator to `lango serve` and runtime/tool-backed flows instead of performing the documented live action themselves.
+   - The workspace runtime is real; the CLI is mostly a guidance layer today.
    - References: `docs/cli/p2p.md:601-732`, `internal/cli/p2p/workspace.go:15-204`
 
 3. `Major` Git bundle CLI docs also overstate direct command behavior.
    - The docs present `git init/log/diff/push/fetch` as if they directly operate on live workspace repos.
-   - The actual CLI commands mostly print “requires a running server” and defer to agent tools or server-backed flows.
-   - The underlying gitbundle service is real; the operator-facing command story is what drifts.
+   - The actual CLI commands mostly print “requires a running server” and defer to runtime/tool-backed flows.
+   - The underlying gitbundle service is real; the operator-facing CLI is mostly guidance-oriented today, and provenance remains the main live exception in this family.
    - References: `docs/cli/p2p.md:738-888`, `internal/cli/p2p/git.go:13-151`, `internal/app/tools_workspace.go`
 
 4. `Major` Provenance bundle exchange is the one genuinely live operator surface in this family, which makes the shared-artifact model uneven.
    - `lango p2p provenance push/fetch` actually talks to gateway-backed `/api/p2p/provenance/*` endpoints.
-   - That means one shared-artifact path is live and concrete, while neighboring workspace/git surfaces remain mostly placeholder or tool-backed.
+   - That means one shared-artifact path is live and concrete, while neighboring workspace/git surfaces remain mostly truth-aligned guidance around server-backed or tool-backed flows.
    - References: `docs/cli/p2p.md:327-349`, `internal/cli/p2p/provenance.go:15-142`, `internal/app/p2p_routes.go:36-37`, `internal/app/p2p_routes.go:183-260`
 
 5. `Major` The chronicler path is documented as persistent graph-triple capture, but the current app wiring still leaves the triple adder pending.
-   - The docs describe chronicler persistence as an available workspace feature.
+   - The docs describe chronicler persistence as an available workspace feature rather than a partially wired path.
    - The workspace wiring currently instantiates the chronicler with a `nil` triple adder and logs that the triple adder is still pending.
-   - So the concept is present, but the operator-facing statement is ahead of the fully wired default runtime path.
+   - So the concept is present, but the operator-facing statement must stay narrower until the fully wired default runtime path exists.
    - References: `docs/features/p2p-network.md:780-789`, `internal/app/wiring_workspace.go:102-109`, `internal/p2p/workspace/chronicler.go:24-46`
 
 6. `Major` Shared artifacts are implemented through multiple overlapping mechanisms without one canonical operator story.
