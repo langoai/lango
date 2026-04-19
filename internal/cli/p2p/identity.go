@@ -1,7 +1,9 @@
 package p2p
 
 import (
+	"bytes"
 	"context"
+	"crypto/ed25519"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -28,7 +30,7 @@ func resolveIdentityDID(boot *bootstrap.Result) string {
 	}
 
 	bundle, err := p2pidentity.LoadBundleFile(boot.LangoDir)
-	if err == nil && bundle != nil {
+	if err == nil && bundle != nil && (len(boot.IdentityKey) == 0 || bundleMatchesIdentityKey(bundle, boot.IdentityKey)) {
 		did, err := p2pidentity.ComputeDIDv2(bundle)
 		if err == nil {
 			return did
@@ -69,12 +71,27 @@ func loadReadOnlyWalletProvider(boot *bootstrap.Result) wallet.WalletProvider {
 	switch boot.Config.Payment.WalletProvider {
 	case "", "local":
 		return wallet.NewLocalWallet(secrets, boot.Config.Payment.Network.RPCURL, boot.Config.Payment.Network.ChainID)
+	case "rpc":
+		return nil
 	case "composite":
 		local := wallet.NewLocalWallet(secrets, boot.Config.Payment.Network.RPCURL, boot.Config.Payment.Network.ChainID)
 		return wallet.NewCompositeWallet(wallet.NewRPCWallet(), local, nil)
 	default:
 		return wallet.NewLocalWallet(secrets, boot.Config.Payment.Network.RPCURL, boot.Config.Payment.Network.ChainID)
 	}
+}
+
+func bundleMatchesIdentityKey(bundle *p2pidentity.IdentityBundle, identityKey ed25519.PrivateKey) bool {
+	if bundle == nil || len(identityKey) == 0 {
+		return false
+	}
+
+	pub, ok := identityKey.Public().(ed25519.PublicKey)
+	if !ok || len(pub) == 0 {
+		return false
+	}
+
+	return bundle.SigningKey.Algorithm == "ed25519" && bytes.Equal(bundle.SigningKey.PublicKey, pub)
 }
 
 func newIdentityCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {

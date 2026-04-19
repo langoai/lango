@@ -2,6 +2,8 @@ package p2p
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"os"
 	"reflect"
 	"testing"
@@ -87,6 +89,39 @@ func TestResolveIdentityDID_ReadOnlyBundleLookup(t *testing.T) {
 	}
 }
 
+func TestResolveIdentityDID_MismatchedPersistedBundleFallsBackToLegacy(t *testing.T) {
+	dir := t.TempDir()
+	_, currentPriv, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	persistedPub, _, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+
+	bundle := &p2pidentity.IdentityBundle{
+		Version: 1,
+		SigningKey: p2pidentity.PublicKeyEntry{
+			Algorithm: "ed25519",
+			PublicKey: persistedPub,
+		},
+		SettlementKey: p2pidentity.PublicKeyEntry{
+			Algorithm: "secp256k1-keccak256",
+			PublicKey: []byte("settlement-key"),
+		},
+		LegacyDID: "did:lango:02abcdef",
+	}
+	if err := p2pidentity.StoreBundleFile(dir, bundle); err != nil {
+		t.Fatalf("StoreBundleFile() error = %v", err)
+	}
+
+	boot, expected := newLegacyIdentityBoot(t, "local")
+	boot.LangoDir = dir
+	boot.IdentityKey = currentPriv
+
+	got := resolveIdentityDID(boot)
+	if got != expected {
+		t.Fatalf("resolveIdentityDID() = %q, want %q", got, expected)
+	}
+}
+
 func TestResolveIdentityDID_LegacyWalletFallback(t *testing.T) {
 	boot, expected := newLegacyIdentityBoot(t, "local")
 
@@ -102,6 +137,15 @@ func TestResolveIdentityDID_UnknownWalletProviderFallsBackToLocal(t *testing.T) 
 	got := resolveIdentityDID(boot)
 	if got != expected {
 		t.Fatalf("resolveIdentityDID() = %q, want %q", got, expected)
+	}
+}
+
+func TestResolveIdentityDID_RpcWalletProviderDoesNotFallbackToLegacy(t *testing.T) {
+	boot, _ := newLegacyIdentityBoot(t, "rpc")
+
+	got := resolveIdentityDID(boot)
+	if got != "" {
+		t.Fatalf("resolveIdentityDID() = %q, want empty string", got)
 	}
 }
 
