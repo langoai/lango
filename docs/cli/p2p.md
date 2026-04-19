@@ -195,6 +195,8 @@ research-bot      did:lango:02abc...      research, summarize   QmPeer1abc123
 
 Show the local P2P identity including the active DID when available, peer ID, key storage mode, and listen addresses.
 
+Lango supports both legacy wallet-derived `did:lango:<hex>` identities and bundle-backed `did:lango:v2:<hash>` identities. The CLI and `GET /api/p2p/identity` expose the active DID when available. The `/api/p2p/*` routes are public only when gateway auth is disabled; otherwise the subtree is protected by gateway auth.
+
 ```
 lango p2p identity [--json]
 ```

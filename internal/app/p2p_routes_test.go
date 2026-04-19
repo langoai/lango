@@ -166,7 +166,7 @@ func TestP2PReputationHandler_NilReputationSystem(t *testing.T) {
 // --- p2pIdentityHandler ---
 
 func TestP2PIdentityHandler_IncludesDIDWhenIdentityAvailable(t *testing.T) {
-	_, p2pc, _, _, cleanup := setupProvenanceRouteRuntime(t)
+	_, p2pc, _, localDID, _, cleanup := setupProvenanceRouteRuntime(t)
 	defer cleanup()
 
 	handler := p2pIdentityHandler(p2pc)
@@ -182,8 +182,7 @@ func TestP2PIdentityHandler_IncludesDIDWhenIdentityAvailable(t *testing.T) {
 
 	did, ok := resp["did"].(string)
 	require.True(t, ok)
-	assert.NotEmpty(t, did)
-	assert.Contains(t, did, "did:lango:")
+	assert.Equal(t, localDID, did)
 	assert.Equal(t, p2pc.node.PeerID().String(), resp["peerId"])
 }
 
@@ -213,7 +212,7 @@ func (w *routeTestWallet) PublicKey(context.Context) ([]byte, error) {
 	return ethcrypto.CompressPubkey(&w.key.PublicKey), nil
 }
 
-func setupProvenanceRouteRuntime(t *testing.T) (*App, *p2pComponents, host.Host, string, func()) {
+func setupProvenanceRouteRuntime(t *testing.T) (*App, *p2pComponents, host.Host, string, string, func()) {
 	t.Helper()
 
 	cfg := config.DefaultConfig()
@@ -283,11 +282,11 @@ func setupProvenanceRouteRuntime(t *testing.T) (*App, *p2pComponents, host.Host,
 		_ = localDID
 	}
 
-	return app, p2pc, serverHost, serverDID.ID, cleanup
+	return app, p2pc, serverHost, localDID, serverDID.ID, cleanup
 }
 
 func TestP2PProvenancePushHandler_InvalidRedaction(t *testing.T) {
-	app, p2pc, _, _, cleanup := setupProvenanceRouteRuntime(t)
+	app, p2pc, _, _, _, cleanup := setupProvenanceRouteRuntime(t)
 	defer cleanup()
 
 	router := chi.NewRouter()
@@ -304,7 +303,7 @@ func TestP2PProvenancePushHandler_InvalidRedaction(t *testing.T) {
 }
 
 func TestP2PProvenanceFetchHandler_InvalidRedaction(t *testing.T) {
-	app, p2pc, _, _, cleanup := setupProvenanceRouteRuntime(t)
+	app, p2pc, _, _, _, cleanup := setupProvenanceRouteRuntime(t)
 	defer cleanup()
 
 	router := chi.NewRouter()
@@ -321,7 +320,7 @@ func TestP2PProvenanceFetchHandler_InvalidRedaction(t *testing.T) {
 }
 
 func TestP2PProvenancePushHandler_RequiresActiveSession(t *testing.T) {
-	app, p2pc, _, _, cleanup := setupProvenanceRouteRuntime(t)
+	app, p2pc, _, _, _, cleanup := setupProvenanceRouteRuntime(t)
 	defer cleanup()
 
 	router := chi.NewRouter()
@@ -338,7 +337,7 @@ func TestP2PProvenancePushHandler_RequiresActiveSession(t *testing.T) {
 }
 
 func TestP2PProvenancePushAndFetchHandlers(t *testing.T) {
-	app, p2pc, serverHost, serverPeerDID, cleanup := setupProvenanceRouteRuntime(t)
+	app, p2pc, serverHost, _, serverPeerDID, cleanup := setupProvenanceRouteRuntime(t)
 	defer cleanup()
 
 	remoteWallet, remoteSignerDID := newRouteTestWallet(t)
@@ -398,7 +397,7 @@ func TestP2PProvenancePushAndFetchHandlers(t *testing.T) {
 }
 
 func TestP2PProvenanceFetchHandler_TamperedBundle(t *testing.T) {
-	app, p2pc, serverHost, serverPeerDID, cleanup := setupProvenanceRouteRuntime(t)
+	app, p2pc, serverHost, _, serverPeerDID, cleanup := setupProvenanceRouteRuntime(t)
 	defer cleanup()
 
 	handler := provenanceproto.NewHandler(provenanceproto.HandlerConfig{
