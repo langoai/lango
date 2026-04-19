@@ -434,16 +434,16 @@ lango p2p firewall add         # Add a firewall rule
 lango p2p discover             # Discover agents
 lango p2p identity             # Show local identity and active DID when available
 lango p2p reputation --peer-did <did>  # Query trust score
-lango p2p pricing              # Show tool pricing
+lango p2p pricing              # Show provider-side public quote configuration
 lango p2p session list                          # List active sessions
 lango p2p session revoke --peer-did <did>       # Revoke peer session
 lango p2p session revoke-all                    # Revoke all sessions
 lango p2p sandbox status                        # Show sandbox status
 lango p2p sandbox test                          # Run sandbox smoke test
 lango p2p sandbox cleanup                       # Remove orphaned containers
-lango p2p team list                             # List active P2P teams
-lango p2p team status <id>                      # Show team details
-lango p2p team disband <id>                     # Disband an active team
+lango p2p team list                             # Inspect the current team CLI surface
+lango p2p team status <id>                      # Inspect team guidance for a specific ID
+lango p2p team disband <id>                     # Inspect disband guidance for a live team
 lango p2p zkp status                            # Show ZKP configuration
 lango p2p zkp circuits                          # List ZKP circuits
 lango p2p workspace create <name>               # Create a collaborative workspace

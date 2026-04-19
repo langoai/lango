@@ -541,7 +541,7 @@ Teams support configurable conflict resolution and payment coordination:
 - **Assignment**: `best_match`, `round_robin`, `load_balanced`
 - **Payment Modes**: Trust-based mode selection — `free` (price=0), `postpay` (trust >= 0.8), `prepay` (trust < 0.8)
 
-Teams are runtime-only structures managed by the running server. Today the stable operator path is runtime-backed or tool-backed (`p2p_team_create`, `p2p_team_join`), while these CLI commands remain guidance-oriented.
+Teams are runtime-only structures managed by the running server. Today the stable operator path is runtime-backed or tool-backed (`team_form`, `team_delegate`, `team_status`, `team_list`, `team_disband`), while these CLI commands remain guidance-oriented.
 
 See the [P2P Team Coordination](../features/p2p-network.md#p2p-team-coordination) section for detailed documentation on conflict resolution strategies, assignment strategies, and payment coordination.
 
@@ -626,7 +626,7 @@ lango p2p workspace create <name> [--goal <goal>] [--json]
 ```bash
 $ lango p2p workspace create "research-project" --goal "Collaborative research on RAG optimization"
 Workspace creation requires a running server.
-Start the server with 'lango serve' and use the runtime API or agent tools.
+Start the server with 'lango serve' and use the server-backed runtime or agent tools.
 
 Example: p2p_workspace_create name="research-project" goal="Collaborative research on RAG optimization"
 ```
@@ -650,7 +650,7 @@ $ lango p2p workspace list
 No workspaces found.
 
 Workspaces are runtime structures managed by the running server.
-Start the server with 'lango serve' and use the runtime API or p2p_workspace_* tools.
+Start the server with 'lango serve' and use the server-backed runtime or p2p_workspace_* tools.
 ```
 
 ### lango p2p workspace status
@@ -696,7 +696,7 @@ lango p2p workspace join <id>
 ```bash
 $ lango p2p workspace join a1b2c3d4-5678-9012-abcd-ef1234567890
 Joining a workspace requires a running server.
-Use 'lango serve' and the runtime API or p2p_workspace_join tool.
+Use 'lango serve' and the server-backed runtime or p2p_workspace_join tool.
 ```
 
 ### lango p2p workspace leave
@@ -716,7 +716,7 @@ lango p2p workspace leave <id>
 ```bash
 $ lango p2p workspace leave a1b2c3d4-5678-9012-abcd-ef1234567890
 Leaving a workspace requires a running server.
-Use 'lango serve' and the runtime API or p2p_workspace_leave tool.
+Use 'lango serve' and the server-backed runtime or p2p_workspace_leave tool.
 ```
 
 ### Workspace Features
