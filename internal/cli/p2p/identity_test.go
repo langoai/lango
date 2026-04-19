@@ -88,7 +88,7 @@ func TestResolveIdentityDID_ReadOnlyBundleLookup(t *testing.T) {
 }
 
 func TestResolveIdentityDID_LegacyWalletFallback(t *testing.T) {
-	boot, expected := newLegacyIdentityBoot(t)
+	boot, expected := newLegacyIdentityBoot(t, "local")
 
 	got := resolveIdentityDID(boot)
 	if got != expected {
@@ -96,7 +96,16 @@ func TestResolveIdentityDID_LegacyWalletFallback(t *testing.T) {
 	}
 }
 
-func newLegacyIdentityBoot(t *testing.T) (*bootstrap.Result, string) {
+func TestResolveIdentityDID_UnknownWalletProviderFallsBackToLocal(t *testing.T) {
+	boot, expected := newLegacyIdentityBoot(t, "mystery-provider")
+
+	got := resolveIdentityDID(boot)
+	if got != expected {
+		t.Fatalf("resolveIdentityDID() = %q, want %q", got, expected)
+	}
+}
+
+func newLegacyIdentityBoot(t *testing.T, walletProvider string) (*bootstrap.Result, string) {
 	t.Helper()
 
 	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&_fk=1")
@@ -123,7 +132,7 @@ func newLegacyIdentityBoot(t *testing.T) (*bootstrap.Result, string) {
 	boot := &bootstrap.Result{
 		Config: &config.Config{
 			Payment: config.PaymentConfig{
-				WalletProvider: "local",
+				WalletProvider: walletProvider,
 				Network: config.PaymentNetworkConfig{
 					RPCURL:  "http://localhost:8545",
 					ChainID: 1,

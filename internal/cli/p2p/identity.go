@@ -73,7 +73,7 @@ func loadReadOnlyWalletProvider(boot *bootstrap.Result) wallet.WalletProvider {
 		local := wallet.NewLocalWallet(secrets, boot.Config.Payment.Network.RPCURL, boot.Config.Payment.Network.ChainID)
 		return wallet.NewCompositeWallet(wallet.NewRPCWallet(), local, nil)
 	default:
-		return nil
+		return wallet.NewLocalWallet(secrets, boot.Config.Payment.Network.RPCURL, boot.Config.Payment.Network.ChainID)
 	}
 }
 
