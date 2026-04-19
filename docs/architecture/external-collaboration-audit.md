@@ -77,7 +77,7 @@ Allowed judgments:
 | Feature family | Primary phase | Current surface clues | Audit status |
 | --- | --- | --- | --- |
 | P2P identity / trust / reputation | Phase 1 | `docs/features/p2p-network.md`, `docs/features/economy.md`, `internal/config/types_p2p.go`, `internal/cli/p2p/`, `internal/cli/settings/forms_p2p.go` | Detailed audit complete (`stabilize`) |
-| pricing / negotiation / settlement | Phase 1-2 | `docs/features/economy.md`, `docs/payments/usdc.md`, `docs/payments/x402.md`, `internal/config/types_economy.go`, `internal/cli/economy/`, `internal/cli/payment/` | Ready for detailed audit |
+| pricing / negotiation / settlement | Phase 1-2 | `docs/features/economy.md`, `docs/payments/usdc.md`, `docs/payments/x402.md`, `internal/config/types_economy.go`, `internal/cli/economy/`, `internal/cli/payment/` | Detailed audit complete (`merge`) |
 | team formation / role coordination | Phase 3 | `docs/features/p2p-network.md`, `docs/features/multi-agent.md`, `internal/config/types_p2p.go`, `internal/config/types_orchestration.go`, `internal/cli/p2p/`, `internal/cli/agent/` | Ready for detailed audit |
 | workspace / shared artifacts | Phase 3-4 | `docs/features/p2p-network.md`, `docs/features/provenance.md`, `internal/config/types_p2p.go`, `internal/cli/p2p/`, `internal/cli/provenance/` | Ready for detailed audit |
 
@@ -153,8 +153,74 @@ Allowed judgments:
   - reconcile `postPayMinScore` default drift,
   - publish one canonical operator-facing trust model.
 
+## Detailed Audit: Pricing / Negotiation / Settlement
+
+### Audit Record
+
+- Feature name: `pricing / negotiation / settlement`
+- Capability area: `External Collaboration & Economic Exchange`
+- Product-path linkage: `Phase 1: Knowledge Exchange`, `Phase 2: Result Exchange with Controlled Execution`
+- Current surface area: `docs/features/p2p-network.md`, `docs/features/economy.md`, `docs/payments/usdc.md`, `docs/payments/x402.md`, `internal/p2p/paygate/*`, `internal/p2p/settlement/*`, `internal/economy/pricing/*`, `internal/economy/negotiation/*`, `internal/cli/p2p/pricing.go`, `internal/cli/economy/*`, `internal/app/wiring_p2p.go`, `internal/app/wiring_economy.go`
+- Core value: `Turn peer trust and tool value into a payable external exchange path, including quoting, negotiation, and on-chain settlement.`
+- Current problem: `The capability exists, but it is split across a P2P payment-gate path and a separate economy subsystem, so pricing, negotiation, and settlement do not present one canonical operator model.`
+- Judgment: `merge`
+- Execution track: `P2P Knowledge Exchange Track`
+- Secondary capability areas:
+  - `Trust, Security & Policy`
+  - `Execution, Continuity & Accountability`
+- Secondary tracks:
+  - `Consolidation Track`
+  - `Stabilization Track`
+
+### Findings
+
+1. `Major` The operator-facing pricing/settlement surface is split across `p2p` and `economy`, not expressed as one coherent external-exchange model.
+   - The P2P surface exposes static tool pricing through `p2p.pricing.perQuery` and `p2p.pricing.toolPrices`, plus a payment gate and settlement service.
+   - The economy surface separately exposes dynamic pricing, negotiation, escrow, and on-chain escrow tooling.
+   - This makes the same conceptual capability appear under two control planes with different defaults and narratives.
+   - References: `docs/features/p2p-network.md:464-571`, `docs/features/economy.md:11-21`, `internal/cli/p2p/pricing.go:21-76`, `internal/cli/economy/pricing.go:11-38`, `internal/cli/economy/negotiate.go:11-40`
+
+2. `Major` Negotiation is implemented, but it is under-surfaced for the P2P knowledge-exchange path.
+   - The economy negotiation engine is real and wired into the P2P protocol handler.
+   - The exposed operator surface is still mostly economy-config and economy-tool oriented, rather than a clear P2P-facing transaction path.
+   - In other words, the runtime can negotiate, but the track-level surface does not yet read like one canonical external market flow.
+   - References: `internal/app/wiring_economy.go:120-180`, `internal/app/wiring_economy.go:331-383`, `internal/economy/tools.go:209-260`, `docs/features/economy.md:112-154`
+
+3. `Major` Settlement documentation overstates or blurs how the current runtime actually authorizes payment.
+   - The P2P docs say wallet addresses are derived from peer DIDs for settlement.
+   - The payment-gate path actually validates an explicit `paymentAuth`, checks that `auth.To` matches the local wallet address, then hands the authorization to the settlement service.
+   - The economic path is real, but the user-facing story is not phrased in the same terms as the runtime.
+   - References: `docs/features/p2p-network.md:487-571`, `internal/p2p/paygate/gate.go:112-185`, `internal/p2p/settlement/service.go:85-124`
+
+4. `Major` Payment trust thresholds are still not one stable model.
+   - Admission trust and payment trust are distinct by design, but the defaults and operator story are not reconciled.
+   - `minTrustScore` gates admission around `0.3`, while post-pay routing falls back to `0.7` in code even though the docs and config comments still present `0.8`.
+   - The result is a real but fragmented trust-to-friction model.
+   - References: `docs/features/p2p-network.md:506-525`, `internal/config/types_p2p.go:175-178`, `internal/p2p/paygate/trust.go:6-23`, `internal/app/wiring_p2p.go:465-469`
+
+5. `Major` The current P2P pricing API exposes only static quotes, while dynamic pricing and negotiation live elsewhere.
+   - `/api/p2p/pricing` and `lango p2p pricing` surface only `perQuery` and `toolPrices`.
+   - The dynamic pricing engine can compute trust-sensitive quotes, but that logic is not what the P2P surface exposes today.
+   - This reinforces that the current capability is not missing, but split.
+   - References: `internal/app/p2p_routes.go:142-167`, `internal/cli/p2p/pricing.go:21-76`, `internal/economy/pricing/engine.go:18-141`
+
+### Assessment
+
+- `Pricing / negotiation / settlement` is a core Phase 1 and Phase 2 capability and should be kept.
+- The primary problem is not absence. The problem is duplicated or fragmented control planes:
+  - `p2p.pricing` and `paygate/settlement`
+  - `economy.pricing`
+  - `economy.negotiation`
+  - `economy.escrow`
+- The correct action is `merge`, with stabilization work following that convergence:
+  - define one canonical operator story for quoting, negotiation, and settlement,
+  - decide which surfaces belong to `P2P` and which belong to `Economy`,
+  - reconcile static pricing vs dynamic pricing exposure,
+  - reconcile settlement wording with the actual authorization-driven runtime,
+  - reconcile trust thresholds and payment-tier defaults.
+
 ## Next Plan
 
 The next implementation plan after this document lands should perform the detailed audit for the first row:
 
-- pricing / negotiation / settlement
+- team formation / role coordination
