@@ -20,6 +20,8 @@ The economy layer coordinates spending, risk, pricing, negotiation, and settleme
 - **Negotiation Engine** -- multi-round price negotiation protocol with auto-negotiation
 - **Escrow Service** -- milestone-based escrow with dispute resolution and on-chain settlement
 
+Admission trust and payment trust are separate gates: `minTrustScore` governs whether a peer clears the P2P firewall, while `postPayMinScore` governs whether a paid request can settle after execution.
+
 ```mermaid
 graph LR
     BM[Budget Manager] --> RA[Risk Assessor]

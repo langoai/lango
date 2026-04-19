@@ -515,6 +515,8 @@ The pricing system supports differentiated payment flows based on peer reputatio
 
 This tiered approach rewards trusted peers with lower friction while protecting against unknown or low-reputation callers.
 
+Admission trust and payment trust are separate gates: `minTrustScore` controls whether a peer is admitted by the firewall, while `postPayMinScore` controls whether that peer can use post-pay routing after admission.
+
 ### Configuration
 
 ```json
@@ -714,8 +716,8 @@ The `PaymentCoordinator` negotiates payment terms between team leader and member
 | Trust Score | Mode | Description |
 |-------------|------|-------------|
 | Price = 0 | `free` | No payment required |
-| >= 0.7 | `postpay` | Tool executes first, payment settles after |
-| < 0.7 | `prepay` | Payment must confirm before tool execution |
+| >= 0.8 | `postpay` | Tool executes first, payment settles after |
+| < 0.8 | `prepay` | Payment must confirm before tool execution |
 
 The `Negotiator` queries each member's tool price and trust score to determine the payment mode. Agreements include `PricePerUse`, `Currency` (USDC), `MaxUses`, and `ValidUntil`.
 

@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/langoai/lango/internal/p2p/trustpolicy"
 )
 
 // Sentinel errors for payment negotiation.
@@ -43,8 +45,8 @@ func (a *PaymentAgreement) IsExpired() bool {
 }
 
 // DefaultPostPayThreshold is the minimum trust score for post-pay eligibility.
-// Matches paygate.DefaultPostPayThreshold to keep both layers consistent.
-const DefaultPostPayThreshold = 0.7
+// It is shared with paygate via trustpolicy to keep both layers consistent.
+const DefaultPostPayThreshold = trustpolicy.DefaultPostPayThreshold
 
 // SelectPaymentMode chooses payment mode based on trust score and price.
 // High trust (>= DefaultPostPayThreshold) with nonzero price -> PostPay; low trust -> PrePay; zero price -> Free.
@@ -97,7 +99,7 @@ type Negotiator struct {
 func NewNegotiator(cfg NegotiatorConfig) *Negotiator {
 	threshold := cfg.PostPayThreshold
 	if threshold <= 0 {
-		threshold = 0.8
+		threshold = DefaultPostPayThreshold
 	}
 	validity := cfg.DefaultValidity
 	if validity <= 0 {
