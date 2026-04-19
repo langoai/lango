@@ -78,7 +78,7 @@ Allowed judgments:
 | --- | --- | --- | --- |
 | P2P identity / trust / reputation | Phase 1 | `docs/features/p2p-network.md`, `docs/features/economy.md`, `internal/config/types_p2p.go`, `internal/cli/p2p/`, `internal/cli/settings/forms_p2p.go` | Detailed audit complete (`stabilize`) |
 | pricing / negotiation / settlement | Phase 1-2 | `docs/features/economy.md`, `docs/payments/usdc.md`, `docs/payments/x402.md`, `internal/config/types_economy.go`, `internal/cli/economy/`, `internal/cli/payment/` | Detailed audit complete (`merge`) |
-| team formation / role coordination | Phase 3 | `docs/features/p2p-network.md`, `docs/features/multi-agent.md`, `internal/config/types_p2p.go`, `internal/config/types_orchestration.go`, `internal/cli/p2p/`, `internal/cli/agent/` | Ready for detailed audit |
+| team formation / role coordination | Phase 3 | `docs/features/p2p-network.md`, `docs/features/multi-agent.md`, `internal/config/types_p2p.go`, `internal/config/types_orchestration.go`, `internal/cli/p2p/`, `internal/cli/agent/` | Detailed audit complete (`stabilize`) |
 | workspace / shared artifacts | Phase 3-4 | `docs/features/p2p-network.md`, `docs/features/provenance.md`, `internal/config/types_p2p.go`, `internal/cli/p2p/`, `internal/cli/provenance/` | Ready for detailed audit |
 
 ## Baseline Decisions Already Locked
@@ -219,8 +219,69 @@ Allowed judgments:
   - reconcile settlement wording with the actual authorization-driven runtime,
   - reconcile trust thresholds and payment-tier defaults.
 
+## Detailed Audit: Team Formation / Role Coordination
+
+### Audit Record
+
+- Feature name: `team formation / role coordination`
+- Capability area: `External Collaboration & Economic Exchange`
+- Product-path linkage: `Phase 3: Leader-Led Team Execution`, `Phase 4: Long-Running Multi-Agent Projects`
+- Current surface area: `docs/features/p2p-network.md`, `docs/features/multi-agent.md`, `docs/cli/p2p.md`, `internal/p2p/team/*`, `internal/app/bridge_team_*`, `internal/cli/p2p/team.go`, `internal/config/types_p2p.go`
+- Core value: `Form leader-led external teams, assign roles, coordinate delegated work, and connect reputation, budget, escrow, and health into one collaborative execution model.`
+- Current problem: `The subsystem is real and broad in code, but operator-facing control is largely placeholder, and several documented semantics do not match the actual coordinator, conflict, and payment logic.`
+- Judgment: `stabilize`
+- Execution track: `Leader-Led Team Execution Track`
+- Secondary capability areas:
+  - `Execution, Continuity & Accountability`
+  - `Trust, Security & Policy`
+- Secondary tracks:
+  - `Stabilization Track`
+
+### Findings
+
+1. `Major` Team coordination is a real subsystem worth keeping.
+   - The codebase includes a real `Coordinator`, `Team` model, role system, assignment strategies, conflict strategies, health monitor, payment negotiation, and bridges into budget, escrow, reputation, shutdown, metrics, and workspace flows.
+   - This is not a stubbed idea; it is an actual Phase 3 subsystem with meaningful runtime integration.
+   - References: `internal/p2p/team/coordinator.go:18-212`, `internal/p2p/team/team.go:17-189`, `internal/app/bridge_team_budget.go`, `internal/app/bridge_team_escrow.go`, `internal/app/bridge_team_reputation.go`, `internal/app/bridge_team_shutdown.go`
+
+2. `Major` The documented/live operator surface is not aligned with the implementation.
+   - `lango p2p team list/status/disband` are documented as active management commands with concrete examples.
+   - The actual CLI subcommands are runtime-only placeholders that return empty or “team not found” results and tell the operator to use server API endpoints.
+   - Those referenced `/api/p2p/teams/<id>` endpoints are not registered in the current P2P HTTP routes.
+   - References: `docs/cli/p2p.md:463-532`, `internal/cli/p2p/team.go:15-132`, `internal/app/p2p_routes.go:28-37`
+
+3. `Major` Conflict-resolution docs overstate what the code currently does.
+   - The docs describe `trust_weighted` as selecting the highest-trust result.
+   - The implementation actually chooses the shortest-duration successful result as a trust proxy.
+   - The docs describe `majority_vote` as selecting the most common result.
+   - The implementation currently returns the first successful result.
+   - References: `docs/features/p2p-network.md:618-632`, `internal/p2p/team/conflict.go:18-57`
+
+4. `Major` Team payment coordination uses inconsistent post-pay thresholds inside the same subsystem family.
+   - The docs describe team payment mode switching at `>= 0.7`.
+   - `SelectPaymentMode` and `DefaultPostPayThreshold` in `internal/p2p/team/payment.go` use `0.7`.
+   - `Negotiator.NewNegotiator()` falls back to `0.8` when no threshold is configured.
+   - This means even inside the team-payment layer, the trust-to-friction rule is not one stable operator model.
+   - References: `docs/features/p2p-network.md:711-719`, `internal/p2p/team/payment.go:40-48`, `internal/p2p/team/payment.go:82-99`
+
+5. `Major` Team formation exists as an internal coordinator flow, but not as a stable user-facing formation path.
+   - `FormTeamRequest` and `Coordinator.FormTeam()` provide a concrete internal formation API that selects workers from the pool by capability.
+   - The public CLI/API surface does not yet expose a matching live formation/control path.
+   - This makes the feature real for runtime integrations but not yet stable as an operator-facing product surface.
+   - References: `internal/p2p/team/coordinator.go:124-212`, `internal/cli/p2p/team.go:15-132`, `internal/app/p2p_routes.go:28-37`
+
+### Assessment
+
+- `Team formation / role coordination` should be kept. It is central to the Phase 3 and Phase 4 product path.
+- The correct action is `stabilize`, not `defer`:
+  - reconcile CLI/docs with the actual live control surface,
+  - either add the documented team HTTP endpoints or stop documenting them,
+  - reconcile conflict-strategy descriptions with the current implementation,
+  - reconcile team payment thresholds into one canonical model,
+  - define one stable operator path for forming and inspecting live teams.
+
 ## Next Plan
 
 The next implementation plan after this document lands should perform the detailed audit for the first row:
 
-- team formation / role coordination
+- workspace / shared artifacts
