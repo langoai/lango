@@ -429,7 +429,7 @@ Orphaned sandbox containers cleaned up.
 
 ## `lango p2p pricing`
 
-Show P2P tool pricing configuration.
+Show provider-side P2P quote configuration.
 
 ### Usage
 

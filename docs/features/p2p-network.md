@@ -489,7 +489,7 @@ This applies to both outbound payments (`p2p_pay`, `payment_send`) and inbound p
 
 ### USDC Registry
 
-Payment settlements use on-chain USDC transfers. The system supports multiple chains via the `contracts.LookupUSDC()` registry. Wallet addresses are derived from peer DIDs.
+Payment settlements use on-chain USDC transfers. The system supports multiple chains via the `contracts.LookupUSDC()` registry. The live payment path validates an explicit `paymentAuth`, checks that the authorization recipient matches the local wallet address, and then hands the authorization to the settlement service.
 
 ### Configuration
 
