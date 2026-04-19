@@ -48,6 +48,16 @@ func TestBuildIdentityView_PreservesDidAndListenAddrs(t *testing.T) {
 	}
 }
 
+func TestDidJSONValue_EmptyReturnsNil(t *testing.T) {
+	if got := didJSONValue(""); got != nil {
+		t.Fatalf("didJSONValue(\"\") = %v, want nil", got)
+	}
+
+	if got := didJSONValue("did:lango:02abcdef"); got != "did:lango:02abcdef" {
+		t.Fatalf("didJSONValue(non-empty) = %v, want string", got)
+	}
+}
+
 func TestResolveIdentityDID_ReadOnlyBundleLookup(t *testing.T) {
 	dir := t.TempDir()
 	bundle := &p2pidentity.IdentityBundle{

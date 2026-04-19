@@ -15,13 +15,20 @@ import (
 	"github.com/langoai/lango/internal/wallet"
 )
 
-func buildIdentityView(did string, peerID string, keyStorage string, listenAddrs []string) map[string]interface{} {
+func buildIdentityView(did any, peerID string, keyStorage string, listenAddrs []string) map[string]interface{} {
 	return map[string]interface{}{
 		"did":         did,
 		"peerId":      peerID,
 		"listenAddrs": listenAddrs,
 		"keyStorage":  keyStorage,
 	}
+}
+
+func didJSONValue(did string) any {
+	if did == "" {
+		return nil
+	}
+	return did
 }
 
 func resolveIdentityDID(boot *bootstrap.Result) string {
@@ -122,7 +129,7 @@ func newIdentityCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command
 				listenAddrs[i] = a.String()
 			}
 			did := resolveIdentityDID(boot)
-			view := buildIdentityView(did, peerID, deps.keyStorage, listenAddrs)
+			view := buildIdentityView(didJSONValue(did), peerID, deps.keyStorage, listenAddrs)
 
 			if jsonOutput {
 				enc := json.NewEncoder(os.Stdout)

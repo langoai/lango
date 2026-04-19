@@ -172,26 +172,22 @@ func p2pIdentityHandler(p2pc *p2pComponents) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 
+		var did any
 		if p2pc.identity == nil {
-			writeJSON(w, map[string]interface{}{
-				"did":    nil,
+			writeJSON(w, map[string]any{
+				"did":    did,
 				"peerId": p2pc.node.PeerID().String(),
 			})
 			return
 		}
 
 		ctx := r.Context()
-		did, err := p2pc.identity.DID(ctx)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			writeJSON(w, map[string]string{
-				"error": err.Error(),
-			})
-			return
+		if resolvedDID, err := p2pc.identity.DID(ctx); err == nil && resolvedDID != nil && resolvedDID.ID != "" {
+			did = resolvedDID.ID
 		}
 
-		writeJSON(w, map[string]interface{}{
-			"did":    did.ID,
+		writeJSON(w, map[string]any{
+			"did":    did,
 			"peerId": p2pc.node.PeerID().String(),
 		})
 	}

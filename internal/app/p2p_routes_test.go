@@ -230,6 +230,38 @@ func TestP2PIdentityHandler_IncludesBundleBackedV2DID(t *testing.T) {
 	assert.Equal(t, p2pc.node.PeerID().String(), resp["peerId"])
 }
 
+func TestP2PIdentityHandler_ReturnsNullWhenDIDUnavailable(t *testing.T) {
+	_, p2pc, _, _, _, cleanup := setupProvenanceRouteRuntime(t)
+	defer cleanup()
+
+	p2pc.identity = failingIdentityProvider{err: context.DeadlineExceeded}
+
+	handler := p2pIdentityHandler(p2pc)
+	req := httptest.NewRequest("GET", "/api/p2p/identity", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]interface{}
+	err := json.NewDecoder(w.Body).Decode(&resp)
+	require.NoError(t, err)
+	assert.Nil(t, resp["did"])
+	assert.Equal(t, p2pc.node.PeerID().String(), resp["peerId"])
+}
+
+type failingIdentityProvider struct {
+	err error
+}
+
+func (p failingIdentityProvider) DID(context.Context) (*identity.DID, error) {
+	return nil, p.err
+}
+
+func (p failingIdentityProvider) VerifyDID(*identity.DID, peer.ID) error {
+	return nil
+}
+
 type routeTestWallet struct {
 	key *ecdsa.PrivateKey
 }
