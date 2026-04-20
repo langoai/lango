@@ -188,6 +188,18 @@ func TestSaveAndGetKnowledge(t *testing.T) {
 			t.Fatalf("want version 2, got %d", got.Version)
 		}
 	})
+
+	t.Run("invalid source class is rejected", func(t *testing.T) {
+		entry := KnowledgeEntry{
+			Key:         "invalid-source-class",
+			Category:    "fact",
+			Content:     "should fail",
+			SourceClass: "top-secret",
+		}
+		if err := store.SaveKnowledge(ctx, "session-1", entry); err == nil {
+			t.Fatal("expected invalid source class error, got nil")
+		}
+	})
 }
 
 func TestKnowledgePayloadProtection_RoundTripAndProjection(t *testing.T) {
@@ -233,6 +245,32 @@ func TestKnowledgePayloadProtection_RoundTripAndProjection(t *testing.T) {
 	if !strings.Contains(row.Content, "[email]") || !strings.Contains(row.Content, "[secret]") {
 		t.Fatalf("projection did not redact sensitive material: %q", row.Content)
 	}
+}
+
+func TestSaveKnowledge_PayloadProtectedDedupUsesPlaintextComparison(t *testing.T) {
+	store := newTestStore(t)
+	store.SetPayloadProtector(stubPayloadProtector{})
+	ctx := context.Background()
+
+	entry := KnowledgeEntry{
+		Key:         "encrypted-dedup",
+		Category:    "fact",
+		Content:     "dedup should compare plaintext content",
+		Source:      "tool:save_knowledge",
+		SourceClass: "private-confidential",
+		AssetLabel:  "knowledge/encrypted-dedup",
+	}
+	require.NoError(t, store.SaveKnowledge(ctx, "session-1", entry))
+	require.NoError(t, store.SaveKnowledge(ctx, "session-1", entry))
+
+	got, err := store.GetKnowledge(ctx, entry.Key)
+	require.NoError(t, err)
+	require.Equal(t, 1, got.Version)
+	require.Equal(t, entry.Content, got.Content)
+
+	rows, err := store.client.Knowledge.Query().Where(entknowledge.Key(entry.Key)).All(ctx)
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
 }
 
 func TestLearningPayloadProtection_RoundTripAndProjection(t *testing.T) {

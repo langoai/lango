@@ -20,6 +20,7 @@ import (
 	entlearning "github.com/langoai/lango/internal/ent/learning"
 	"github.com/langoai/lango/internal/ent/predicate"
 	"github.com/langoai/lango/internal/eventbus"
+	"github.com/langoai/lango/internal/exportability"
 	"github.com/langoai/lango/internal/search"
 	"github.com/langoai/lango/internal/security"
 )
@@ -119,18 +120,40 @@ func (s *Store) SaveKnowledge(ctx context.Context, sessionKey string, entry Know
 	return err
 }
 
-func knowledgeVersionEquivalent(existing *ent.Knowledge, entry KnowledgeEntry, resolvedContent string) bool {
+func knowledgeVersionEquivalent(existing *ent.Knowledge, entry KnowledgeEntry, resolvedContent string) (bool, error) {
+	existingSourceClass, err := exportability.ParseSourceClass(existing.SourceClass)
+	if err != nil {
+		return false, fmt.Errorf("invalid stored source class %q for knowledge %q: %w", existing.SourceClass, existing.Key, err)
+	}
+	entrySourceClass, err := exportability.ParseSourceClass(entry.SourceClass)
+	if err != nil {
+		return false, fmt.Errorf("invalid knowledge source class %q: %w", entry.SourceClass, err)
+	}
 	return existing.Category == entry.Category &&
 		resolvedContent == entry.Content &&
 		existing.Source == entry.Source &&
-		existing.SourceClass == entry.SourceClass &&
-		existing.AssetLabel == entry.AssetLabel
+		existingSourceClass == entrySourceClass &&
+		existing.AssetLabel == entry.AssetLabel, nil
+}
+
+func normalizeKnowledgeSourceClass(value string) (string, error) {
+	normalized, err := exportability.ParseSourceClass(value)
+	if err != nil {
+		return "", err
+	}
+	return string(normalized), nil
 }
 
 func (s *Store) saveKnowledgeOnce(ctx context.Context, _ string, entry KnowledgeEntry) error {
 	if s.payloads != nil && s.fts5Index != nil && s.fts5Index.DB() != nil {
 		return s.saveKnowledgeAtomic(ctx, entry)
 	}
+
+	normalizedSourceClass, err := normalizeKnowledgeSourceClass(entry.SourceClass)
+	if err != nil {
+		return fmt.Errorf("validate knowledge source class: %w", err)
+	}
+	entry.SourceClass = normalizedSourceClass
 
 	existing, err := s.client.Knowledge.Query().
 		Where(entknowledge.Key(entry.Key), entknowledge.IsLatest(true)).
@@ -182,7 +205,11 @@ func (s *Store) saveKnowledgeOnce(ctx context.Context, _ string, entry Knowledge
 	}
 
 	// Dedup if the latest version has the same exportability-significant inputs.
-	if knowledgeVersionEquivalent(existing, entry, existing.Content) {
+	same, err := knowledgeVersionEquivalent(existing, entry, s.resolveKnowledgeContent(ctx, existing))
+	if err != nil {
+		return err
+	}
+	if same {
 		return nil
 	}
 
@@ -253,6 +280,12 @@ func isUniqueConstraintError(err error) bool {
 }
 
 func (s *Store) saveKnowledgeAtomic(ctx context.Context, entry KnowledgeEntry) error {
+	normalizedSourceClass, err := normalizeKnowledgeSourceClass(entry.SourceClass)
+	if err != nil {
+		return fmt.Errorf("validate knowledge source class: %w", err)
+	}
+	entry.SourceClass = normalizedSourceClass
+
 	tx, err := s.fts5Index.DB().BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin knowledge sql tx: %w", err)
@@ -273,8 +306,14 @@ func (s *Store) saveKnowledgeAtomic(ctx context.Context, entry KnowledgeEntry) e
 	if err != nil && !isNew {
 		return fmt.Errorf("query knowledge: %w", err)
 	}
-	if err == nil && knowledgeVersionEquivalent(existing, entry, s.resolveKnowledgeContent(ctx, existing)) {
-		return nil
+	if err == nil {
+		same, sameErr := knowledgeVersionEquivalent(existing, entry, s.resolveKnowledgeContent(ctx, existing))
+		if sameErr != nil {
+			return fmt.Errorf("compare knowledge version: %w", sameErr)
+		}
+		if same {
+			return nil
+		}
 	}
 
 	storedContent, ciphertext, nonce, keyVersion, err := s.prepareKnowledgeWrite(ctx, entry.Content)

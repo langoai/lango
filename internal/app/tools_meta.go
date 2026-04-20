@@ -15,6 +15,7 @@ import (
 	"github.com/langoai/lango/internal/config"
 	entknowledge "github.com/langoai/lango/internal/ent/knowledge"
 	entlearning "github.com/langoai/lango/internal/ent/learning"
+	"github.com/langoai/lango/internal/exportability"
 	"github.com/langoai/lango/internal/knowledge"
 	"github.com/langoai/lango/internal/learning"
 	"github.com/langoai/lango/internal/session"
@@ -62,7 +63,10 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 					return nil, err
 				}
 				source := toolparam.OptionalString(params, "source", "knowledge")
-				sourceClass := toolparam.OptionalString(params, "source_class", "private-confidential")
+				sourceClass, err := exportability.ParseSourceClass(toolparam.OptionalString(params, "source_class", string(exportability.DefaultSourceClass)))
+				if err != nil {
+					return nil, err
+				}
 				assetLabel := toolparam.OptionalString(params, "asset_label", key)
 
 				cat := entknowledge.Category(category)
@@ -78,7 +82,7 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 					Content:     content,
 					Tags:        tags,
 					Source:      source,
-					SourceClass: sourceClass,
+					SourceClass: string(sourceClass),
 					AssetLabel:  assetLabel,
 				}
 

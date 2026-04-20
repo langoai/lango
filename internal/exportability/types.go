@@ -1,5 +1,10 @@
 package exportability
 
+import (
+	"fmt"
+	"strings"
+)
+
 type SourceClass string
 
 const (
@@ -7,6 +12,33 @@ const (
 	ClassUserExportable      SourceClass = "user-exportable"
 	ClassPrivateConfidential SourceClass = "private-confidential"
 )
+
+// DefaultSourceClass is used when source class metadata is omitted.
+const DefaultSourceClass = ClassPrivateConfidential
+
+// Valid reports whether c is one of the supported source classes.
+func (c SourceClass) Valid() bool {
+	switch c {
+	case ClassPublic, ClassUserExportable, ClassPrivateConfidential:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseSourceClass normalizes and validates a source class value.
+// Empty values default to private-confidential for backwards compatibility.
+func ParseSourceClass(value string) (SourceClass, error) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return DefaultSourceClass, nil
+	}
+	c := SourceClass(trimmed)
+	if c.Valid() {
+		return c, nil
+	}
+	return "", fmt.Errorf("invalid source class %q", value)
+}
 
 type DecisionStage string
 
