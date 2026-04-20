@@ -15,6 +15,7 @@ Lango provides multiple layers of security to protect sensitive data flowing bet
 | **PII Redaction** | Strip personal information before it reaches AI providers | Regex patterns + optional NER via Microsoft Presidio |
 | **Exportability Policy** | Decide what early knowledge artifacts can be traded | Source-primary evaluation for knowledge exchange v1 |
 | **Approval Flow** | Decide when early artifact releases can move forward | Structured artifact release states and audit-backed receipts |
+| **Dispute-Ready Receipts** | Preserve receipt evidence for early knowledge exchange | Lite submission/transaction receipt model with a current `create_dispute_ready_receipt` entrypoint |
 | **Tool Approval** | Control which tools agents can execute | Policy-based approval workflows with channel notifications |
 | **Authentication** | Secure gateway access | OIDC login flow, session management, CORS controls |
 | **Hardware Keyring** | Secure passphrase storage | Hardware-backed passphrase via Touch ID (macOS Secure Enclave) or TPM 2.0 (Linux) |
@@ -79,7 +80,7 @@ See [Encryption & Secrets](encryption.md) for full details.
 - [PII Redaction](pii-redaction.md) -- Builtin patterns, custom regex, Presidio integration
 - [Exportability Policy](exportability.md) -- Source-primary exportability evaluation for early knowledge exchange
 - [Approval Flow](approval-flow.md) -- Structured artifact release decisions and audit-backed receipts
-- [Dispute-Ready Receipts](dispute-ready-receipts.md) -- Lite submission and transaction receipts for early knowledge exchange
+- [Dispute-Ready Receipts](dispute-ready-receipts.md) -- Lite receipt evidence model and current operator entrypoint
 - [Tool Approval](tool-approval.md) -- Approval policies, sensitive/exempt tools, notifications
 - [Authentication](authentication.md) -- OIDC providers, session management, CORS configuration
 - [Hardware Keyring](encryption.md#hardware-keyring-integration) -- Secure passphrase storage via Touch ID / TPM

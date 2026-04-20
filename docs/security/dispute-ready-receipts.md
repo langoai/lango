@@ -5,11 +5,11 @@ title: Dispute-Ready Receipts
 # Dispute-Ready Receipts
 
 Lango's dispute-ready receipts slice is a lite operator surface for early knowledge exchange.
-It gives operators a canonical record for what was submitted, what transaction it belongs to, and what the current state is without pretending to be a full dispute system.
+The underlying receipt model tracks canonical current state and append-only event history, but the exposed operator surface is still narrow: today it is primarily the `create_dispute_ready_receipt` meta tool.
 
-## What Ships in This Slice
+## Internal Model
 
-This first slice includes:
+The internal receipt model provides:
 
 - submission receipts linked to transaction receipts
 - a current submission pointer for the canonical submission in a transaction
@@ -17,9 +17,32 @@ This first slice includes:
 - an append-only event trail for receipt changes
 - lite provenance and settlement references for later integration
 
+This model exists inside `internal/receipts/*`. It is the data shape the runtime can build on, not a promise that every field is already surfaced to operators.
+
+## What Ships in This Slice
+
+The currently exposed operator entrypoint is the `create_dispute_ready_receipt` meta tool in `internal/app/tools_meta.go`.
+
+What it returns today:
+
+- `submission_receipt_id`
+- `transaction_receipt_id`
+- `current_submission_receipt_id`
+
+What it does not expose yet:
+
+- the full submission receipt payload
+- the transaction receipt payload
+- event trail reads
+- direct operator reads of canonical approval or settlement state
+- dispute adjudication or settlement execution
+
 ## Operator Use
 
-Use this surface to answer narrow operational questions:
+Use the current entrypoint to create the first lite record for a submission.
+It is useful when you need receipt identifiers for later follow-up, but it is not yet a full read surface.
+
+The broader operator questions this model will eventually support are:
 
 - what was submitted
 - which transaction it belongs to
