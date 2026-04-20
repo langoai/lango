@@ -44,7 +44,7 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 					"content":      map[string]interface{}{"type": "string", "description": "The knowledge content to save"},
 					"tags":         map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Optional tags for categorization"},
 					"source":       map[string]interface{}{"type": "string", "description": "Where this knowledge came from"},
-					"source_class": map[string]interface{}{"type": "string", "description": "Exportability source class: public, user-exportable, or private-confidential"},
+					"source_class": map[string]interface{}{"type": "string", "description": "Exportability source class: public, user-exportable, or private-confidential", "enum": []string{"public", "user-exportable", "private-confidential"}},
 					"asset_label":  map[string]interface{}{"type": "string", "description": "Asset label used for exportability evaluation"},
 				},
 				"required": []string{"key", "category", "content"},
