@@ -32,7 +32,7 @@ func newExportabilityToolConfig(enabled bool) *config.Config {
 
 func TestBuildMetaTools_IncludesEvaluateExportability(t *testing.T) {
 	store, _ := newExportabilityToolStore(t)
-	tools := buildMetaTools(store, nil, nil, config.SkillConfig{}, newExportabilityToolConfig(true))
+	tools := buildMetaTools(store, nil, nil, config.SkillConfig{}, newExportabilityToolConfig(true), nil)
 	tool := findTool(tools, "evaluate_exportability")
 	require.NotNil(t, tool)
 
@@ -52,7 +52,7 @@ func TestBuildMetaTools_IncludesEvaluateExportability(t *testing.T) {
 
 func TestBuildMetaTools_EvaluateExportabilityCapabilityMetadata(t *testing.T) {
 	store, _ := newExportabilityToolStore(t)
-	tools := buildMetaTools(store, nil, nil, config.SkillConfig{}, newExportabilityToolConfig(true))
+	tools := buildMetaTools(store, nil, nil, config.SkillConfig{}, newExportabilityToolConfig(true), nil)
 	tool := findTool(tools, "evaluate_exportability")
 	require.NotNil(t, tool)
 
@@ -63,7 +63,7 @@ func TestBuildMetaTools_EvaluateExportabilityCapabilityMetadata(t *testing.T) {
 
 func TestEvaluateExportability_SavesAuditRow(t *testing.T) {
 	store, client := newExportabilityToolStore(t)
-	tools := buildMetaTools(store, nil, nil, config.SkillConfig{}, newExportabilityToolConfig(true))
+	tools := buildMetaTools(store, nil, nil, config.SkillConfig{}, newExportabilityToolConfig(true), nil)
 	saveTool := findTool(tools, "save_knowledge")
 	require.NotNil(t, saveTool)
 	evalTool := findTool(tools, "evaluate_exportability")
@@ -105,7 +105,7 @@ func TestEvaluateExportability_SavesAuditRow(t *testing.T) {
 
 func TestEvaluateExportability_InvalidStage(t *testing.T) {
 	store, _ := newExportabilityToolStore(t)
-	tools := buildMetaTools(store, nil, nil, config.SkillConfig{}, newExportabilityToolConfig(true))
+	tools := buildMetaTools(store, nil, nil, config.SkillConfig{}, newExportabilityToolConfig(true), nil)
 	saveTool := findTool(tools, "save_knowledge")
 	require.NotNil(t, saveTool)
 	evalTool := findTool(tools, "evaluate_exportability")
@@ -131,7 +131,7 @@ func TestEvaluateExportability_InvalidStage(t *testing.T) {
 
 func TestEvaluateExportability_MissingSourceKey(t *testing.T) {
 	store, _ := newExportabilityToolStore(t)
-	tools := buildMetaTools(store, nil, nil, config.SkillConfig{}, newExportabilityToolConfig(true))
+	tools := buildMetaTools(store, nil, nil, config.SkillConfig{}, newExportabilityToolConfig(true), nil)
 	evalTool := findTool(tools, "evaluate_exportability")
 	require.NotNil(t, evalTool)
 
@@ -146,7 +146,7 @@ func TestEvaluateExportability_MissingSourceKey(t *testing.T) {
 
 func TestEvaluateExportability_PolicyDisabled(t *testing.T) {
 	store, _ := newExportabilityToolStore(t)
-	tools := buildMetaTools(store, nil, nil, config.SkillConfig{}, newExportabilityToolConfig(false))
+	tools := buildMetaTools(store, nil, nil, config.SkillConfig{}, newExportabilityToolConfig(false), nil)
 	saveTool := findTool(tools, "save_knowledge")
 	require.NotNil(t, saveTool)
 	evalTool := findTool(tools, "evaluate_exportability")

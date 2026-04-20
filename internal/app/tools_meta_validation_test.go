@@ -23,7 +23,7 @@ func newAppKnowledgeStore(t *testing.T) *knowledge.Store {
 
 func TestSaveKnowledge_SourceClassValidationAndDefaults(t *testing.T) {
 	store := newAppKnowledgeStore(t)
-	tools := buildMetaTools(store, nil, nil, config.SkillConfig{}, nil)
+	tools := buildMetaTools(store, nil, nil, config.SkillConfig{}, nil, nil)
 	tool := findTool(tools, "save_knowledge")
 	require.NotNil(t, tool)
 

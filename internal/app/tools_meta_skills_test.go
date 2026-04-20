@@ -25,7 +25,7 @@ func findTool(tools []*agent.Tool, name string) *agent.Tool {
 func TestListSkills_AcceptsSummaryParameter(t *testing.T) {
 	// Tool builds without a registry so handler short-circuits to empty set;
 	// what we verify is that the parameter schema accepts `summary`.
-	tools := buildMetaTools(nil, nil, nil, config.SkillConfig{}, nil)
+	tools := buildMetaTools(nil, nil, nil, config.SkillConfig{}, nil, nil)
 	tool := findTool(tools, "list_skills")
 	require.NotNil(t, tool)
 
@@ -35,7 +35,7 @@ func TestListSkills_AcceptsSummaryParameter(t *testing.T) {
 }
 
 func TestViewSkill_ToolRegistered(t *testing.T) {
-	tools := buildMetaTools(nil, nil, nil, config.SkillConfig{}, nil)
+	tools := buildMetaTools(nil, nil, nil, config.SkillConfig{}, nil, nil)
 	tool := findTool(tools, "view_skill")
 	require.NotNil(t, tool, "view_skill tool should be registered")
 
@@ -64,7 +64,7 @@ func TestViewSkill_RejectsPathEscape(t *testing.T) {
 }
 
 func TestListSkills_HandlerReturnsEmptyWhenNoRegistry(t *testing.T) {
-	tools := buildMetaTools(nil, nil, nil, config.SkillConfig{}, nil)
+	tools := buildMetaTools(nil, nil, nil, config.SkillConfig{}, nil, nil)
 	tool := findTool(tools, "list_skills")
 	require.NotNil(t, tool)
 	res, err := tool.Handler(context.Background(), nil)

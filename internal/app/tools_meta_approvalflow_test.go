@@ -25,7 +25,7 @@ func newApprovalFlowToolStore(t *testing.T) (*knowledge.Store, *ent.Client) {
 
 func TestBuildMetaTools_IncludesApproveArtifactRelease(t *testing.T) {
 	store, _ := newApprovalFlowToolStore(t)
-	tools := buildMetaTools(store, nil, nil, config.SkillConfig{}, nil)
+	tools := buildMetaTools(store, nil, nil, config.SkillConfig{}, nil, nil)
 	tool := findTool(tools, "approve_artifact_release")
 	require.NotNil(t, tool)
 
@@ -55,7 +55,7 @@ func TestBuildMetaTools_IncludesApproveArtifactRelease(t *testing.T) {
 
 func TestApproveArtifactRelease_EscalatesNeedsHumanReview(t *testing.T) {
 	store, client := newApprovalFlowToolStore(t)
-	tools := buildMetaTools(store, nil, nil, config.SkillConfig{}, nil)
+	tools := buildMetaTools(store, nil, nil, config.SkillConfig{}, nil, nil)
 	tool := findTool(tools, "approve_artifact_release")
 	require.NotNil(t, tool)
 
@@ -90,7 +90,7 @@ func TestApproveArtifactRelease_EscalatesNeedsHumanReview(t *testing.T) {
 
 func TestApproveArtifactRelease_ApprovePayloadShapeAndAuditRow(t *testing.T) {
 	store, client := newApprovalFlowToolStore(t)
-	tools := buildMetaTools(store, nil, nil, config.SkillConfig{}, nil)
+	tools := buildMetaTools(store, nil, nil, config.SkillConfig{}, nil, nil)
 	tool := findTool(tools, "approve_artifact_release")
 	require.NotNil(t, tool)
 
@@ -122,7 +122,7 @@ func TestApproveArtifactRelease_ApprovePayloadShapeAndAuditRow(t *testing.T) {
 
 func TestApproveArtifactRelease_RejectPayloadShape(t *testing.T) {
 	store, _ := newApprovalFlowToolStore(t)
-	tools := buildMetaTools(store, nil, nil, config.SkillConfig{}, nil)
+	tools := buildMetaTools(store, nil, nil, config.SkillConfig{}, nil, nil)
 	tool := findTool(tools, "approve_artifact_release")
 	require.NotNil(t, tool)
 
@@ -143,7 +143,7 @@ func TestApproveArtifactRelease_RejectPayloadShape(t *testing.T) {
 
 func TestApproveArtifactRelease_RequestRevisionPayloadShape(t *testing.T) {
 	store, _ := newApprovalFlowToolStore(t)
-	tools := buildMetaTools(store, nil, nil, config.SkillConfig{}, nil)
+	tools := buildMetaTools(store, nil, nil, config.SkillConfig{}, nil, nil)
 	tool := findTool(tools, "approve_artifact_release")
 	require.NotNil(t, tool)
 
@@ -164,7 +164,7 @@ func TestApproveArtifactRelease_RequestRevisionPayloadShape(t *testing.T) {
 
 func TestApproveArtifactRelease_InvalidExportabilityState(t *testing.T) {
 	store, _ := newApprovalFlowToolStore(t)
-	tools := buildMetaTools(store, nil, nil, config.SkillConfig{}, nil)
+	tools := buildMetaTools(store, nil, nil, config.SkillConfig{}, nil, nil)
 	tool := findTool(tools, "approve_artifact_release")
 	require.NotNil(t, tool)
 

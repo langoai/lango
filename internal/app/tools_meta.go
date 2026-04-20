@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -25,16 +24,10 @@ import (
 	"github.com/langoai/lango/internal/toolparam"
 )
 
-var (
-	metaReceiptsStoreMu sync.Mutex
-	metaReceiptsStore   *receipts.Store
-	metaReceiptsFactory = receipts.NewStore
-)
-
 // buildMetaTools creates knowledge/learning/skill meta-tools for the agent.
 // cfg is used for session-mode-aware skill filtering and view_skill path resolution;
 // it may be nil for tests that don't exercise mode features.
-func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *skill.Registry, skillCfg config.SkillConfig, cfg *config.Config) []*agent.Tool {
+func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *skill.Registry, skillCfg config.SkillConfig, cfg *config.Config, receiptStore *receipts.Store) []*agent.Tool {
 	exportabilityEnabled := exportabilityPolicyEnabled(cfg)
 
 	tools := []*agent.Tool{
@@ -254,7 +247,7 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 				return payload, nil
 			},
 		},
-		newDisputeReadyReceiptTool(),
+		newDisputeReadyReceiptTool(receiptStore),
 		{
 			Name:        "get_knowledge_history",
 			Description: "Get version history for a knowledge entry. Returns all versions ordered newest first",
@@ -1010,7 +1003,7 @@ func exportabilityReceiptPayload(artifactLabel string, receipt exportability.Rec
 	}
 }
 
-func newDisputeReadyReceiptTool() *agent.Tool {
+func newDisputeReadyReceiptTool(receiptStore *receipts.Store) *agent.Tool {
 	return &agent.Tool{
 		Name:        "create_dispute_ready_receipt",
 		Description: "Create a lite dispute-ready submission receipt linked to a transaction receipt",
@@ -1030,57 +1023,55 @@ func newDisputeReadyReceiptTool() *agent.Tool {
 			"required": []string{"transaction_id", "artifact_label", "payload_hash", "source_lineage_digest"},
 		},
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-			store := metaReceiptsStoreInstance()
-			if store == nil {
+			if receiptStore == nil {
 				return nil, fmt.Errorf("receipts store dependency is not configured")
 			}
 
-			transactionID, err := toolparam.RequireString(params, "transaction_id")
-			if err != nil {
-				return nil, err
-			}
-			artifactLabel, err := toolparam.RequireString(params, "artifact_label")
-			if err != nil {
-				return nil, err
-			}
-			payloadHash, err := toolparam.RequireString(params, "payload_hash")
-			if err != nil {
-				return nil, err
-			}
-			sourceLineageDigest, err := toolparam.RequireString(params, "source_lineage_digest")
+			input, err := parseDisputeReadyReceiptInput(params)
 			if err != nil {
 				return nil, err
 			}
 
-			submission, transaction, err := store.CreateSubmissionReceipt(ctx, receipts.CreateSubmissionInput{
-				TransactionID:       transactionID,
-				ArtifactLabel:       artifactLabel,
-				PayloadHash:         payloadHash,
-				SourceLineageDigest: sourceLineageDigest,
-			})
-			if err != nil {
-				return nil, fmt.Errorf("create dispute-ready receipt: %w", err)
-			}
-
-			return map[string]interface{}{
-				"submission_receipt_id":         submission.SubmissionReceiptID,
-				"transaction_receipt_id":        transaction.TransactionReceiptID,
-				"current_submission_receipt_id": transaction.CurrentSubmissionReceiptID,
-			}, nil
+			return createDisputeReadyReceipt(ctx, receiptStore, input)
 		},
 	}
 }
 
-func metaReceiptsStoreInstance() *receipts.Store {
-	metaReceiptsStoreMu.Lock()
-	defer metaReceiptsStoreMu.Unlock()
+func parseDisputeReadyReceiptInput(params map[string]interface{}) (receipts.CreateSubmissionInput, error) {
+	transactionID, err := toolparam.RequireString(params, "transaction_id")
+	if err != nil {
+		return receipts.CreateSubmissionInput{}, err
+	}
+	artifactLabel, err := toolparam.RequireString(params, "artifact_label")
+	if err != nil {
+		return receipts.CreateSubmissionInput{}, err
+	}
+	payloadHash, err := toolparam.RequireString(params, "payload_hash")
+	if err != nil {
+		return receipts.CreateSubmissionInput{}, err
+	}
+	sourceLineageDigest, err := toolparam.RequireString(params, "source_lineage_digest")
+	if err != nil {
+		return receipts.CreateSubmissionInput{}, err
+	}
 
-	if metaReceiptsStore != nil {
-		return metaReceiptsStore
+	return receipts.CreateSubmissionInput{
+		TransactionID:       transactionID,
+		ArtifactLabel:       artifactLabel,
+		PayloadHash:         payloadHash,
+		SourceLineageDigest: sourceLineageDigest,
+	}, nil
+}
+
+func createDisputeReadyReceipt(ctx context.Context, receiptStore *receipts.Store, input receipts.CreateSubmissionInput) (interface{}, error) {
+	submission, transaction, err := receiptStore.CreateSubmissionReceipt(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("create dispute-ready receipt: %w", err)
 	}
-	if metaReceiptsFactory == nil {
-		return nil
-	}
-	metaReceiptsStore = metaReceiptsFactory()
-	return metaReceiptsStore
+
+	return map[string]interface{}{
+		"submission_receipt_id":         submission.SubmissionReceiptID,
+		"transaction_receipt_id":        transaction.TransactionReceiptID,
+		"current_submission_receipt_id": transaction.CurrentSubmissionReceiptID,
+	}, nil
 }

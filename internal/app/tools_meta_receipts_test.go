@@ -9,11 +9,11 @@ import (
 
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/receipts"
 )
 
 func TestBuildMetaTools_IncludesCreateDisputeReadyReceipt(t *testing.T) {
-	store, _ := newApprovalFlowToolStore(t)
-	tools := buildMetaTools(store, nil, nil, config.SkillConfig{}, nil)
+	tools := buildMetaTools(nil, nil, nil, config.SkillConfig{}, nil, receipts.NewStore())
 	tool := findTool(tools, "create_dispute_ready_receipt")
 	require.NotNil(t, tool)
 
@@ -39,14 +39,14 @@ func TestBuildMetaTools_IncludesCreateDisputeReadyReceipt(t *testing.T) {
 }
 
 func TestBuildMetaTools_IncludesCreateDisputeReadyReceiptWithoutStore(t *testing.T) {
-	tools := buildMetaTools(nil, nil, nil, config.SkillConfig{}, nil)
+	tools := buildMetaTools(nil, nil, nil, config.SkillConfig{}, nil, nil)
 	tool := findTool(tools, "create_dispute_ready_receipt")
 	require.NotNil(t, tool)
 }
 
 func TestCreateDisputeReadyReceipt_CreatesAndReusesTransactionIDs(t *testing.T) {
-	store, _ := newApprovalFlowToolStore(t)
-	tools := buildMetaTools(store, nil, nil, config.SkillConfig{}, nil)
+	store := receipts.NewStore()
+	tools := buildMetaTools(nil, nil, nil, config.SkillConfig{}, nil, store)
 	tool := findTool(tools, "create_dispute_ready_receipt")
 	require.NotNil(t, tool)
 
@@ -86,16 +86,7 @@ func TestCreateDisputeReadyReceipt_CreatesAndReusesTransactionIDs(t *testing.T) 
 }
 
 func TestCreateDisputeReadyReceipt_ReportsMissingReceiptsDependency(t *testing.T) {
-	oldFactory := metaReceiptsFactory
-	oldStore := metaReceiptsStore
-	metaReceiptsFactory = nil
-	metaReceiptsStore = nil
-	t.Cleanup(func() {
-		metaReceiptsFactory = oldFactory
-		metaReceiptsStore = oldStore
-	})
-
-	tools := buildMetaTools(nil, nil, nil, config.SkillConfig{}, nil)
+	tools := buildMetaTools(nil, nil, nil, config.SkillConfig{}, nil, nil)
 	tool := findTool(tools, "create_dispute_ready_receipt")
 	require.NotNil(t, tool)
 
