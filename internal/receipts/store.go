@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
+	"github.com/langoai/lango/internal/paymentapproval"
 )
 
 type CreateSubmissionInput struct {
@@ -17,6 +18,8 @@ type CreateSubmissionInput struct {
 
 type ReceiptEvent struct {
 	SubmissionReceiptID string
+	Source              string
+	Subtype             string
 	Type                EventType
 }
 
@@ -80,7 +83,8 @@ func (s *Store) CreateSubmissionReceipt(_ context.Context, in CreateSubmissionIn
 	return submission, transaction, nil
 }
 
-func (s *Store) ApplyUpfrontPaymentApproval(_ context.Context, transactionReceiptID string, status PaymentApprovalStatus, canonicalDecision string, canonicalSettlementHint string) (TransactionReceipt, error) {
+func (s *Store) ApplyUpfrontPaymentApproval(_ context.Context, transactionReceiptID string, outcome paymentapproval.Outcome) (TransactionReceipt, error) {
+	status := paymentApprovalStatusFromDecision(outcome.Decision)
 	if err := validatePaymentApprovalStatus(status); err != nil {
 		return TransactionReceipt{}, err
 	}
@@ -101,12 +105,14 @@ func (s *Store) ApplyUpfrontPaymentApproval(_ context.Context, transactionReceip
 	}
 
 	transaction.CurrentPaymentApprovalStatus = status
-	transaction.CanonicalPaymentApprovalDecision = canonicalDecision
-	transaction.CanonicalPaymentSettlementHint = canonicalSettlementHint
+	transaction.CanonicalDecision = string(outcome.Decision)
+	transaction.CanonicalSettlementHint = string(outcome.SuggestedMode)
 	s.transactions[transactionReceiptID] = transaction
 
 	s.events[transaction.CurrentSubmissionReceiptID] = append(s.events[transaction.CurrentSubmissionReceiptID], ReceiptEvent{
 		SubmissionReceiptID: transaction.CurrentSubmissionReceiptID,
+		Source:              "approval",
+		Subtype:             "approval.upfront_payment",
 		Type:                EventPaymentApproval,
 	})
 
@@ -127,6 +133,8 @@ func (s *Store) AppendReceiptEvent(_ context.Context, submissionReceiptID string
 
 	s.events[submissionReceiptID] = append(s.events[submissionReceiptID], ReceiptEvent{
 		SubmissionReceiptID: submissionReceiptID,
+		Source:              "manual",
+		Subtype:             string(eventType),
 		Type:                eventType,
 	})
 
@@ -184,5 +192,18 @@ func validatePaymentApprovalStatus(status PaymentApprovalStatus) error {
 		return nil
 	default:
 		return fmt.Errorf("%w: %q", ErrInvalidPaymentApprovalStatus, status)
+	}
+}
+
+func paymentApprovalStatusFromDecision(decision paymentapproval.Decision) PaymentApprovalStatus {
+	switch decision {
+	case paymentapproval.DecisionApprove:
+		return PaymentApprovalApproved
+	case paymentapproval.DecisionReject:
+		return PaymentApprovalRejected
+	case paymentapproval.DecisionEscalate:
+		return PaymentApprovalEscalated
+	default:
+		return PaymentApprovalPending
 	}
 }

@@ -305,13 +305,7 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 					},
 				})
 
-				updatedTx, err := receiptStore.ApplyUpfrontPaymentApproval(
-					ctx,
-					transactionReceiptID,
-					paymentApprovalStatusForDecision(outcome.Decision),
-					string(outcome.Decision),
-					string(outcome.SuggestedMode),
-				)
+				updatedTx, err := receiptStore.ApplyUpfrontPaymentApproval(ctx, transactionReceiptID, outcome)
 				if err != nil {
 					return nil, fmt.Errorf("apply upfront payment approval: %w", err)
 				}
@@ -1156,21 +1150,21 @@ func createDisputeReadyReceipt(ctx context.Context, receiptStore *receipts.Store
 }
 
 type upfrontPaymentApprovalReceipt struct {
-	TransactionReceiptID             string  `json:"transaction_receipt_id"`
-	Amount                           string  `json:"amount"`
-	TrustScore                       float64 `json:"trust_score"`
-	UserMaxPrepay                    string  `json:"user_max_prepay"`
-	RemainingBudget                  string  `json:"remaining_budget"`
-	Decision                         string  `json:"decision"`
-	Reason                           string  `json:"reason"`
-	PolicyCode                       string  `json:"policy_code,omitempty"`
-	SuggestedMode                    string  `json:"suggested_mode"`
-	AmountClass                      string  `json:"amount_class,omitempty"`
-	RiskClass                        string  `json:"risk_class,omitempty"`
-	FailureDetail                    string  `json:"failure_detail,omitempty"`
-	CurrentPaymentApprovalStatus     string  `json:"current_payment_approval_status"`
-	CanonicalPaymentApprovalDecision string  `json:"canonical_payment_approval_decision,omitempty"`
-	CanonicalPaymentSettlementHint   string  `json:"canonical_payment_settlement_hint,omitempty"`
+	TransactionReceiptID         string  `json:"transaction_receipt_id"`
+	Amount                       string  `json:"amount"`
+	TrustScore                   float64 `json:"trust_score"`
+	UserMaxPrepay                string  `json:"user_max_prepay"`
+	RemainingBudget              string  `json:"remaining_budget"`
+	Decision                     string  `json:"decision"`
+	Reason                       string  `json:"reason"`
+	PolicyCode                   string  `json:"policy_code,omitempty"`
+	SuggestedMode                string  `json:"suggested_mode"`
+	AmountClass                  string  `json:"amount_class,omitempty"`
+	RiskClass                    string  `json:"risk_class,omitempty"`
+	FailureDetail                string  `json:"failure_detail,omitempty"`
+	CurrentPaymentApprovalStatus string  `json:"current_payment_approval_status"`
+	CanonicalDecision            string  `json:"canonical_decision,omitempty"`
+	CanonicalSettlementHint      string  `json:"canonical_settlement_hint,omitempty"`
 }
 
 func newUpfrontPaymentApprovalReceipt(
@@ -1183,33 +1177,20 @@ func newUpfrontPaymentApprovalReceipt(
 	updatedTx receipts.TransactionReceipt,
 ) upfrontPaymentApprovalReceipt {
 	return upfrontPaymentApprovalReceipt{
-		TransactionReceiptID:             transactionReceiptID,
-		Amount:                           amount,
-		TrustScore:                       trustScore,
-		UserMaxPrepay:                    userMaxPrepay,
-		RemainingBudget:                  remainingBudget,
-		Decision:                         string(outcome.Decision),
-		Reason:                           outcome.Reason,
-		PolicyCode:                       outcome.PolicyCode,
-		SuggestedMode:                    string(outcome.SuggestedMode),
-		AmountClass:                      string(outcome.AmountClass),
-		RiskClass:                        string(outcome.RiskClass),
-		FailureDetail:                    outcome.FailureDetail,
-		CurrentPaymentApprovalStatus:     string(updatedTx.CurrentPaymentApprovalStatus),
-		CanonicalPaymentApprovalDecision: updatedTx.CanonicalPaymentApprovalDecision,
-		CanonicalPaymentSettlementHint:   updatedTx.CanonicalPaymentSettlementHint,
-	}
-}
-
-func paymentApprovalStatusForDecision(decision paymentapproval.Decision) receipts.PaymentApprovalStatus {
-	switch decision {
-	case paymentapproval.DecisionApprove:
-		return receipts.PaymentApprovalApproved
-	case paymentapproval.DecisionReject:
-		return receipts.PaymentApprovalRejected
-	case paymentapproval.DecisionEscalate:
-		return receipts.PaymentApprovalEscalated
-	default:
-		return receipts.PaymentApprovalPending
+		TransactionReceiptID:         transactionReceiptID,
+		Amount:                       amount,
+		TrustScore:                   trustScore,
+		UserMaxPrepay:                userMaxPrepay,
+		RemainingBudget:              remainingBudget,
+		Decision:                     string(outcome.Decision),
+		Reason:                       outcome.Reason,
+		PolicyCode:                   outcome.PolicyCode,
+		SuggestedMode:                string(outcome.SuggestedMode),
+		AmountClass:                  string(outcome.AmountClass),
+		RiskClass:                    string(outcome.RiskClass),
+		FailureDetail:                outcome.FailureDetail,
+		CurrentPaymentApprovalStatus: string(updatedTx.CurrentPaymentApprovalStatus),
+		CanonicalDecision:            updatedTx.CanonicalDecision,
+		CanonicalSettlementHint:      updatedTx.CanonicalSettlementHint,
 	}
 }

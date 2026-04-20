@@ -78,8 +78,8 @@ func TestApproveUpfrontPayment_UpdatesTransactionAndReturnsDecisionPayload(t *te
 	assert.Equal(t, "low", payload.AmountClass)
 	assert.Equal(t, "low", payload.RiskClass)
 	assert.Equal(t, string(receipts.PaymentApprovalApproved), payload.CurrentPaymentApprovalStatus)
-	assert.Equal(t, "approve", payload.CanonicalPaymentApprovalDecision)
-	assert.Equal(t, "prepay", payload.CanonicalPaymentSettlementHint)
+	assert.Equal(t, "approve", payload.CanonicalDecision)
+	assert.Equal(t, "prepay", payload.CanonicalSettlementHint)
 
 	gotSubmission, events, err := store.GetSubmissionReceipt(ctx, submission.SubmissionReceiptID)
 	require.NoError(t, err)
@@ -87,6 +87,8 @@ func TestApproveUpfrontPayment_UpdatesTransactionAndReturnsDecisionPayload(t *te
 	require.Len(t, events, 1)
 	assert.Equal(t, receipts.EventPaymentApproval, events[0].Type)
 	assert.Equal(t, submission.SubmissionReceiptID, events[0].SubmissionReceiptID)
+	assert.Equal(t, "approval", events[0].Source)
+	assert.Equal(t, "approval.upfront_payment", events[0].Subtype)
 }
 
 func TestApproveUpfrontPayment_ReportsMissingReceiptsDependency(t *testing.T) {

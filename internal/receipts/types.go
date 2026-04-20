@@ -70,12 +70,12 @@ type SubmissionReceipt struct {
 }
 
 type TransactionReceipt struct {
-	TransactionReceiptID             string                `json:"transaction_receipt_id"`
-	TransactionID                    string                `json:"transaction_id"`
-	CurrentSubmissionReceiptID       string                `json:"current_submission_receipt_id,omitempty"`
-	CanonicalApprovalStatus          ApprovalStatus        `json:"canonical_approval_status"`
-	CanonicalSettlementStatus        SettlementStatus      `json:"canonical_settlement_status"`
-	CurrentPaymentApprovalStatus     PaymentApprovalStatus `json:"current_payment_approval_status"`
-	CanonicalPaymentApprovalDecision string                `json:"canonical_payment_approval_decision,omitempty"`
-	CanonicalPaymentSettlementHint   string                `json:"canonical_payment_settlement_hint,omitempty"`
+	TransactionReceiptID         string                `json:"transaction_receipt_id"`
+	TransactionID                string                `json:"transaction_id"`
+	CurrentSubmissionReceiptID   string                `json:"current_submission_receipt_id,omitempty"`
+	CanonicalApprovalStatus      ApprovalStatus        `json:"canonical_approval_status"`
+	CanonicalSettlementStatus    SettlementStatus      `json:"canonical_settlement_status"`
+	CurrentPaymentApprovalStatus PaymentApprovalStatus `json:"current_payment_approval_status"`
+	CanonicalDecision            string                `json:"canonical_decision,omitempty"`
+	CanonicalSettlementHint      string                `json:"canonical_settlement_hint,omitempty"`
 }

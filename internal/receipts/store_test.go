@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/langoai/lango/internal/paymentapproval"
 )
 
 func newTestStore(t *testing.T) *Store {
@@ -30,8 +32,8 @@ func TestCreateSubmissionReceipt_CreatesTransactionAndCurrentPointer(t *testing.
 	require.Equal(t, ApprovalPending, sub.CanonicalApprovalStatus)
 	require.Equal(t, SettlementPending, tx.CanonicalSettlementStatus)
 	require.Equal(t, PaymentApprovalPending, tx.CurrentPaymentApprovalStatus)
-	require.Empty(t, tx.CanonicalPaymentApprovalDecision)
-	require.Empty(t, tx.CanonicalPaymentSettlementHint)
+	require.Empty(t, tx.CanonicalDecision)
+	require.Empty(t, tx.CanonicalSettlementHint)
 }
 
 func TestCreateSubmissionReceipt_RejectsEmptyInput(t *testing.T) {
@@ -92,6 +94,8 @@ func TestAppendReceiptEvent_PreservesCanonicalReceiptAndTrail(t *testing.T) {
 	require.Len(t, events, 1)
 	require.Equal(t, EventApprovalRequested, events[0].Type)
 	require.Equal(t, sub.SubmissionReceiptID, events[0].SubmissionReceiptID)
+	require.Equal(t, "manual", events[0].Source)
+	require.Equal(t, string(EventApprovalRequested), events[0].Subtype)
 }
 
 func TestApplyUpfrontPaymentApproval_UpdatesTransactionAndAppendsEvent(t *testing.T) {
@@ -106,12 +110,18 @@ func TestApplyUpfrontPaymentApproval_UpdatesTransactionAndAppendsEvent(t *testin
 	})
 	require.NoError(t, err)
 
-	updatedTx, err := store.ApplyUpfrontPaymentApproval(ctx, tx.TransactionReceiptID, PaymentApprovalApproved, "approve", "prepay")
+	outcome := paymentapproval.Outcome{
+		Decision:      paymentapproval.DecisionApprove,
+		Reason:        "Upfront payment approved.",
+		SuggestedMode: paymentapproval.ModePrepay,
+	}
+
+	updatedTx, err := store.ApplyUpfrontPaymentApproval(ctx, tx.TransactionReceiptID, outcome)
 	require.NoError(t, err)
 	require.Equal(t, tx.TransactionReceiptID, updatedTx.TransactionReceiptID)
 	require.Equal(t, PaymentApprovalApproved, updatedTx.CurrentPaymentApprovalStatus)
-	require.Equal(t, "approve", updatedTx.CanonicalPaymentApprovalDecision)
-	require.Equal(t, "prepay", updatedTx.CanonicalPaymentSettlementHint)
+	require.Equal(t, "approve", updatedTx.CanonicalDecision)
+	require.Equal(t, "prepay", updatedTx.CanonicalSettlementHint)
 
 	gotSub, events, err := store.GetSubmissionReceipt(ctx, sub.SubmissionReceiptID)
 	require.NoError(t, err)
@@ -119,6 +129,8 @@ func TestApplyUpfrontPaymentApproval_UpdatesTransactionAndAppendsEvent(t *testin
 	require.Len(t, events, 1)
 	require.Equal(t, EventPaymentApproval, events[0].Type)
 	require.Equal(t, sub.SubmissionReceiptID, events[0].SubmissionReceiptID)
+	require.Equal(t, "approval", events[0].Source)
+	require.Equal(t, "approval.upfront_payment", events[0].Subtype)
 }
 
 func TestAppendReceiptEvent_RejectsInvalidEventType(t *testing.T) {
