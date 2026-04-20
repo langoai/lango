@@ -812,6 +812,41 @@ func TestSaveAuditLog_ExportabilityDecisionAction(t *testing.T) {
 	}
 }
 
+func TestSaveAuditLog_ArtifactReleaseApprovalAction(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	entry := AuditEntry{
+		Action: "artifact_release_approval",
+		Actor:  "agent-main",
+		Target: "artifact:artifact-2",
+		Details: map[string]interface{}{
+			"decision":            "escalate",
+			"exportability_state": "needs-human-review",
+			"requested_scope":     "artifact-2",
+			"artifact_label":      "artifact-2",
+			"override_requested":  false,
+			"high_risk":           false,
+			"settlement_hint":     "review",
+			"fulfillment_ratio":   0.0,
+			"reason":              "Artifact release requires human escalation.",
+		},
+	}
+	if err := store.SaveAuditLog(ctx, entry); err != nil {
+		t.Fatalf("SaveAuditLog(artifact_release_approval): %v", err)
+	}
+
+	count, err := store.client.AuditLog.Query().
+		Where(auditlog.ActionEQ(auditlog.ActionArtifactReleaseApproval)).
+		Count(ctx)
+	if err != nil {
+		t.Fatalf("count artifact release approval audit rows: %v", err)
+	}
+	if count == 0 {
+		t.Fatal("expected artifact release approval audit row to be persisted")
+	}
+}
+
 func TestSaveAndSearchExternalRef(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()

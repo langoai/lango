@@ -37,6 +37,7 @@ func (AuditLog) Fields() []ent.Field {
 				"approval_response",
 				"policy_decision",
 				"exportability_decision",
+				"artifact_release_approval",
 				"alert",
 				"sandbox_decision",
 			),
