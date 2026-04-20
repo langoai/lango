@@ -7,23 +7,25 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestApproveArtifactRelease_ApproveOnExportableScopeMatch(t *testing.T) {
-	outcome := ApproveArtifactRelease(ArtifactReleaseInput{
-		ArtifactLabel:  "research memo",
-		RequestedScope: "research memo",
+func TestEvaluateArtifactRelease_ApproveOnExportableArtifactLabelMatch(t *testing.T) {
+	outcome := EvaluateArtifactRelease(ArtifactReleaseInput{
+		ArtifactLabel:          "research memo",
+		RequestedArtifactLabel: "research memo",
 		Exportability: exportability.Receipt{
 			State: exportability.StateExportable,
 		},
 	})
 
 	assert.Equal(t, DecisionApprove, outcome.Decision)
+	assert.Equal(t, FulfillmentSubstantial, outcome.Fulfillment)
+	assert.Equal(t, 1.0, outcome.FulfillmentRatio)
 	assert.Equal(t, SettlementAutoRelease, outcome.SettlementHint)
 }
 
-func TestApproveArtifactRelease_RequestRevisionOnScopeMismatch(t *testing.T) {
-	outcome := ApproveArtifactRelease(ArtifactReleaseInput{
-		ArtifactLabel:  "rough draft",
-		RequestedScope: "final design memo",
+func TestEvaluateArtifactRelease_RequestRevisionOnArtifactLabelMismatch(t *testing.T) {
+	outcome := EvaluateArtifactRelease(ArtifactReleaseInput{
+		ArtifactLabel:          "rough draft",
+		RequestedArtifactLabel: "final design memo",
 		Exportability: exportability.Receipt{
 			State: exportability.StateExportable,
 		},
@@ -33,10 +35,10 @@ func TestApproveArtifactRelease_RequestRevisionOnScopeMismatch(t *testing.T) {
 	assert.Equal(t, IssueScopeMismatch, outcome.Issue)
 }
 
-func TestApproveArtifactRelease_EscalateOnNeedsHumanReview(t *testing.T) {
-	outcome := ApproveArtifactRelease(ArtifactReleaseInput{
-		ArtifactLabel:  "sensitive memo",
-		RequestedScope: "sensitive memo",
+func TestEvaluateArtifactRelease_EscalateOnNeedsHumanReview(t *testing.T) {
+	outcome := EvaluateArtifactRelease(ArtifactReleaseInput{
+		ArtifactLabel:          "sensitive memo",
+		RequestedArtifactLabel: "sensitive memo",
 		Exportability: exportability.Receipt{
 			State: exportability.StateNeedsHumanReview,
 		},
@@ -46,10 +48,38 @@ func TestApproveArtifactRelease_EscalateOnNeedsHumanReview(t *testing.T) {
 	assert.Equal(t, IssuePolicy, outcome.Issue)
 }
 
-func TestApproveArtifactRelease_RejectOnBlockedOverrideAttempt(t *testing.T) {
-	outcome := ApproveArtifactRelease(ArtifactReleaseInput{
-		ArtifactLabel:  "blocked memo",
-		RequestedScope: "blocked memo",
+func TestEvaluateArtifactRelease_EscalateOnHighRisk(t *testing.T) {
+	outcome := EvaluateArtifactRelease(ArtifactReleaseInput{
+		ArtifactLabel:          "sensitive memo",
+		RequestedArtifactLabel: "sensitive memo",
+		Exportability: exportability.Receipt{
+			State: exportability.StateExportable,
+		},
+		HighRisk: true,
+	})
+
+	assert.Equal(t, DecisionEscalate, outcome.Decision)
+	assert.Equal(t, IssuePolicy, outcome.Issue)
+}
+
+func TestEvaluateArtifactRelease_EscalateOnBlockedOverrideRequested(t *testing.T) {
+	outcome := EvaluateArtifactRelease(ArtifactReleaseInput{
+		ArtifactLabel:          "blocked memo",
+		RequestedArtifactLabel: "blocked memo",
+		Exportability: exportability.Receipt{
+			State: exportability.StateBlocked,
+		},
+		OverrideRequested: true,
+	})
+
+	assert.Equal(t, DecisionEscalate, outcome.Decision)
+	assert.Equal(t, IssuePolicy, outcome.Issue)
+}
+
+func TestEvaluateArtifactRelease_RejectOnBlockedWithoutOverride(t *testing.T) {
+	outcome := EvaluateArtifactRelease(ArtifactReleaseInput{
+		ArtifactLabel:          "blocked memo",
+		RequestedArtifactLabel: "blocked memo",
 		Exportability: exportability.Receipt{
 			State: exportability.StateBlocked,
 		},
@@ -58,4 +88,5 @@ func TestApproveArtifactRelease_RejectOnBlockedOverrideAttempt(t *testing.T) {
 
 	assert.Equal(t, DecisionReject, outcome.Decision)
 	assert.Equal(t, IssuePolicy, outcome.Issue)
+	assert.Equal(t, FulfillmentNone, outcome.Fulfillment)
 }

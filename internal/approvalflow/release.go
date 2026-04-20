@@ -1,12 +1,14 @@
 package approvalflow
 
-func ApproveArtifactRelease(in ArtifactReleaseInput) ArtifactReleaseOutcome {
+import "github.com/langoai/lango/internal/exportability"
+
+func EvaluateArtifactRelease(in ArtifactReleaseInput) ArtifactReleaseOutcome {
 	out := ArtifactReleaseOutcome{
 		Object:         ObjectArtifactRelease,
 		SettlementHint: SettlementHold,
 	}
 
-	if in.Exportability.State == "needs-human-review" || in.HighRisk {
+	if in.Exportability.State == exportability.StateNeedsHumanReview || in.HighRisk {
 		out.Decision = DecisionEscalate
 		out.Issue = IssuePolicy
 		out.Reason = "Artifact release requires human escalation."
@@ -14,7 +16,7 @@ func ApproveArtifactRelease(in ArtifactReleaseInput) ArtifactReleaseOutcome {
 		return out
 	}
 
-	if in.Exportability.State == "blocked" {
+	if in.Exportability.State == exportability.StateBlocked {
 		if in.OverrideRequested {
 			out.Decision = DecisionEscalate
 			out.Issue = IssuePolicy
@@ -30,11 +32,20 @@ func ApproveArtifactRelease(in ArtifactReleaseInput) ArtifactReleaseOutcome {
 		return out
 	}
 
-	if in.ArtifactLabel != in.RequestedScope {
+	if in.Exportability.State != exportability.StateExportable {
+		out.Decision = DecisionRequestRevision
+		out.Issue = IssuePolicy
+		out.Fulfillment = FulfillmentPartial
+		out.Reason = "Artifact release requires exportable receipt state."
+		out.SettlementHint = SettlementReview
+		return out
+	}
+
+	if in.ArtifactLabel != in.RequestedArtifactLabel {
 		out.Decision = DecisionRequestRevision
 		out.Issue = IssueScopeMismatch
 		out.Fulfillment = FulfillmentPartial
-		out.Reason = "Submitted artifact does not match requested scope."
+		out.Reason = "Submitted artifact label does not match requested artifact label."
 		out.SettlementHint = SettlementReview
 		return out
 	}

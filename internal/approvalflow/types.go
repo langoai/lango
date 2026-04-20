@@ -43,11 +43,11 @@ const (
 )
 
 type ArtifactReleaseInput struct {
-	ArtifactLabel     string
-	RequestedScope    string
-	Exportability     exportability.Receipt
-	OverrideRequested bool
-	HighRisk          bool
+	ArtifactLabel          string
+	RequestedArtifactLabel string
+	Exportability          exportability.Receipt
+	OverrideRequested      bool
+	HighRisk               bool
 }
 
 type ArtifactReleaseOutcome struct {
