@@ -138,6 +138,56 @@ func TestSaveAndGetKnowledge(t *testing.T) {
 			t.Errorf("want source %q, got %q", "team-wiki", got.Source)
 		}
 	})
+
+	t.Run("source tagging round trip", func(t *testing.T) {
+		entry := KnowledgeEntry{
+			Key:         "tagged-knowledge",
+			Category:    "fact",
+			Content:     "Persist classification metadata",
+			Source:      "tool:save_knowledge",
+			SourceClass: "user-exportable",
+			AssetLabel:  "knowledge/note",
+		}
+		if err := store.SaveKnowledge(ctx, "session-1", entry); err != nil {
+			t.Fatalf("SaveKnowledge: %v", err)
+		}
+		got, err := store.GetKnowledge(ctx, "tagged-knowledge")
+		if err != nil {
+			t.Fatalf("GetKnowledge: %v", err)
+		}
+		if got.SourceClass != "user-exportable" {
+			t.Errorf("want source class %q, got %q", "user-exportable", got.SourceClass)
+		}
+		if got.AssetLabel != "knowledge/note" {
+			t.Errorf("want asset label %q, got %q", "knowledge/note", got.AssetLabel)
+		}
+	})
+
+	t.Run("classification change bumps version", func(t *testing.T) {
+		entry := KnowledgeEntry{
+			Key:         "classification-versioning",
+			Category:    "fact",
+			Content:     "Source metadata affects exportability",
+			Source:      "tool:save_knowledge",
+			SourceClass: "private-confidential",
+			AssetLabel:  "knowledge/draft",
+		}
+		if err := store.SaveKnowledge(ctx, "session-1", entry); err != nil {
+			t.Fatalf("SaveKnowledge (v1): %v", err)
+		}
+		entry.SourceClass = "user-exportable"
+		entry.AssetLabel = "knowledge/final"
+		if err := store.SaveKnowledge(ctx, "session-1", entry); err != nil {
+			t.Fatalf("SaveKnowledge (v2): %v", err)
+		}
+		got, err := store.GetKnowledge(ctx, "classification-versioning")
+		if err != nil {
+			t.Fatalf("GetKnowledge: %v", err)
+		}
+		if got.Version != 2 {
+			t.Fatalf("want version 2, got %d", got.Version)
+		}
+	})
 }
 
 func TestKnowledgePayloadProtection_RoundTripAndProjection(t *testing.T) {

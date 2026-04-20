@@ -85,6 +85,34 @@ func (_c *KnowledgeCreate) SetNillableSource(v *string) *KnowledgeCreate {
 	return _c
 }
 
+// SetSourceClass sets the "source_class" field.
+func (_c *KnowledgeCreate) SetSourceClass(v string) *KnowledgeCreate {
+	_c.mutation.SetSourceClass(v)
+	return _c
+}
+
+// SetNillableSourceClass sets the "source_class" field if the given value is not nil.
+func (_c *KnowledgeCreate) SetNillableSourceClass(v *string) *KnowledgeCreate {
+	if v != nil {
+		_c.SetSourceClass(*v)
+	}
+	return _c
+}
+
+// SetAssetLabel sets the "asset_label" field.
+func (_c *KnowledgeCreate) SetAssetLabel(v string) *KnowledgeCreate {
+	_c.mutation.SetAssetLabel(v)
+	return _c
+}
+
+// SetNillableAssetLabel sets the "asset_label" field if the given value is not nil.
+func (_c *KnowledgeCreate) SetNillableAssetLabel(v *string) *KnowledgeCreate {
+	if v != nil {
+		_c.SetAssetLabel(*v)
+	}
+	return _c
+}
+
 // SetVersion sets the "version" field.
 func (_c *KnowledgeCreate) SetVersion(v int) *KnowledgeCreate {
 	_c.mutation.SetVersion(v)
@@ -358,6 +386,14 @@ func (_c *KnowledgeCreate) createSpec() (*Knowledge, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Source(); ok {
 		_spec.SetField(knowledge.FieldSource, field.TypeString, value)
 		_node.Source = value
+	}
+	if value, ok := _c.mutation.SourceClass(); ok {
+		_spec.SetField(knowledge.FieldSourceClass, field.TypeString, value)
+		_node.SourceClass = value
+	}
+	if value, ok := _c.mutation.AssetLabel(); ok {
+		_spec.SetField(knowledge.FieldAssetLabel, field.TypeString, value)
+		_node.AssetLabel = value
 	}
 	if value, ok := _c.mutation.Version(); ok {
 		_spec.SetField(knowledge.FieldVersion, field.TypeInt, value)

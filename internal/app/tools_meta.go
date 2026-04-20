@@ -13,13 +13,13 @@ import (
 
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/config"
-	"github.com/langoai/lango/internal/toolparam"
 	entknowledge "github.com/langoai/lango/internal/ent/knowledge"
 	entlearning "github.com/langoai/lango/internal/ent/learning"
 	"github.com/langoai/lango/internal/knowledge"
 	"github.com/langoai/lango/internal/learning"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/skill"
+	"github.com/langoai/lango/internal/toolparam"
 )
 
 // buildMetaTools creates knowledge/learning/skill meta-tools for the agent.
@@ -38,11 +38,13 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
-					"key":      map[string]interface{}{"type": "string", "description": "Unique key for this knowledge entry"},
-					"category": map[string]interface{}{"type": "string", "description": "Category: rule, definition, preference, fact, pattern, or correction", "enum": []string{"rule", "definition", "preference", "fact", "pattern", "correction"}},
-					"content":  map[string]interface{}{"type": "string", "description": "The knowledge content to save"},
-					"tags":     map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Optional tags for categorization"},
-					"source":   map[string]interface{}{"type": "string", "description": "Where this knowledge came from"},
+					"key":          map[string]interface{}{"type": "string", "description": "Unique key for this knowledge entry"},
+					"category":     map[string]interface{}{"type": "string", "description": "Category: rule, definition, preference, fact, pattern, or correction", "enum": []string{"rule", "definition", "preference", "fact", "pattern", "correction"}},
+					"content":      map[string]interface{}{"type": "string", "description": "The knowledge content to save"},
+					"tags":         map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Optional tags for categorization"},
+					"source":       map[string]interface{}{"type": "string", "description": "Where this knowledge came from"},
+					"source_class": map[string]interface{}{"type": "string", "description": "Exportability source class: public, user-exportable, or private-confidential"},
+					"asset_label":  map[string]interface{}{"type": "string", "description": "Asset label used for exportability evaluation"},
 				},
 				"required": []string{"key", "category", "content"},
 			},
@@ -60,6 +62,8 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 					return nil, err
 				}
 				source := toolparam.OptionalString(params, "source", "knowledge")
+				sourceClass := toolparam.OptionalString(params, "source_class", "private-confidential")
+				assetLabel := toolparam.OptionalString(params, "asset_label", key)
 
 				cat := entknowledge.Category(category)
 				if err := entknowledge.CategoryValidator(cat); err != nil {
@@ -69,11 +73,13 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 				tags := toolparam.StringSlice(params, "tags")
 
 				entry := knowledge.KnowledgeEntry{
-					Key:      key,
-					Category: cat,
-					Content:  content,
-					Tags:     tags,
-					Source:   source,
+					Key:         key,
+					Category:    cat,
+					Content:     content,
+					Tags:        tags,
+					Source:      source,
+					SourceClass: sourceClass,
+					AssetLabel:  assetLabel,
 				}
 
 				if err := store.SaveKnowledge(ctx, "", entry); err != nil {

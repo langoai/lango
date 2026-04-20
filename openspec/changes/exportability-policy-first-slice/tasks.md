@@ -5,10 +5,10 @@
 
 ## 2. Knowledge Asset Source Tagging
 
-- [ ] 2.1 Extend the `knowledge` Ent schema with `source_class` and `asset_label`
-- [ ] 2.2 Extend `knowledge.KnowledgeEntry` and store CRUD paths to persist and read source tagging metadata
-- [ ] 2.3 Treat exportability-class changes as version-significant in the knowledge store
-- [ ] 2.4 Extend `save_knowledge` tool parameters to accept source tagging metadata
+- [x] 2.1 Extend the `knowledge` Ent schema with `source_class` and `asset_label`
+- [x] 2.2 Extend `knowledge.KnowledgeEntry` and store CRUD paths to persist and read source tagging metadata
+- [x] 2.3 Treat exportability-class changes as version-significant in the knowledge store
+- [x] 2.4 Extend `save_knowledge` tool parameters to accept source tagging metadata
 
 ## 3. Evaluation Receipts
 

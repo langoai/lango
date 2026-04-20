@@ -160,6 +160,46 @@ func (_u *KnowledgeUpdate) ClearSource() *KnowledgeUpdate {
 	return _u
 }
 
+// SetSourceClass sets the "source_class" field.
+func (_u *KnowledgeUpdate) SetSourceClass(v string) *KnowledgeUpdate {
+	_u.mutation.SetSourceClass(v)
+	return _u
+}
+
+// SetNillableSourceClass sets the "source_class" field if the given value is not nil.
+func (_u *KnowledgeUpdate) SetNillableSourceClass(v *string) *KnowledgeUpdate {
+	if v != nil {
+		_u.SetSourceClass(*v)
+	}
+	return _u
+}
+
+// ClearSourceClass clears the value of the "source_class" field.
+func (_u *KnowledgeUpdate) ClearSourceClass() *KnowledgeUpdate {
+	_u.mutation.ClearSourceClass()
+	return _u
+}
+
+// SetAssetLabel sets the "asset_label" field.
+func (_u *KnowledgeUpdate) SetAssetLabel(v string) *KnowledgeUpdate {
+	_u.mutation.SetAssetLabel(v)
+	return _u
+}
+
+// SetNillableAssetLabel sets the "asset_label" field if the given value is not nil.
+func (_u *KnowledgeUpdate) SetNillableAssetLabel(v *string) *KnowledgeUpdate {
+	if v != nil {
+		_u.SetAssetLabel(*v)
+	}
+	return _u
+}
+
+// ClearAssetLabel clears the value of the "asset_label" field.
+func (_u *KnowledgeUpdate) ClearAssetLabel() *KnowledgeUpdate {
+	_u.mutation.ClearAssetLabel()
+	return _u
+}
+
 // SetVersion sets the "version" field.
 func (_u *KnowledgeUpdate) SetVersion(v int) *KnowledgeUpdate {
 	_u.mutation.ResetVersion()
@@ -363,6 +403,18 @@ func (_u *KnowledgeUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if _u.mutation.SourceCleared() {
 		_spec.ClearField(knowledge.FieldSource, field.TypeString)
 	}
+	if value, ok := _u.mutation.SourceClass(); ok {
+		_spec.SetField(knowledge.FieldSourceClass, field.TypeString, value)
+	}
+	if _u.mutation.SourceClassCleared() {
+		_spec.ClearField(knowledge.FieldSourceClass, field.TypeString)
+	}
+	if value, ok := _u.mutation.AssetLabel(); ok {
+		_spec.SetField(knowledge.FieldAssetLabel, field.TypeString, value)
+	}
+	if _u.mutation.AssetLabelCleared() {
+		_spec.ClearField(knowledge.FieldAssetLabel, field.TypeString)
+	}
 	if value, ok := _u.mutation.Version(); ok {
 		_spec.SetField(knowledge.FieldVersion, field.TypeInt, value)
 	}
@@ -535,6 +587,46 @@ func (_u *KnowledgeUpdateOne) SetNillableSource(v *string) *KnowledgeUpdateOne {
 // ClearSource clears the value of the "source" field.
 func (_u *KnowledgeUpdateOne) ClearSource() *KnowledgeUpdateOne {
 	_u.mutation.ClearSource()
+	return _u
+}
+
+// SetSourceClass sets the "source_class" field.
+func (_u *KnowledgeUpdateOne) SetSourceClass(v string) *KnowledgeUpdateOne {
+	_u.mutation.SetSourceClass(v)
+	return _u
+}
+
+// SetNillableSourceClass sets the "source_class" field if the given value is not nil.
+func (_u *KnowledgeUpdateOne) SetNillableSourceClass(v *string) *KnowledgeUpdateOne {
+	if v != nil {
+		_u.SetSourceClass(*v)
+	}
+	return _u
+}
+
+// ClearSourceClass clears the value of the "source_class" field.
+func (_u *KnowledgeUpdateOne) ClearSourceClass() *KnowledgeUpdateOne {
+	_u.mutation.ClearSourceClass()
+	return _u
+}
+
+// SetAssetLabel sets the "asset_label" field.
+func (_u *KnowledgeUpdateOne) SetAssetLabel(v string) *KnowledgeUpdateOne {
+	_u.mutation.SetAssetLabel(v)
+	return _u
+}
+
+// SetNillableAssetLabel sets the "asset_label" field if the given value is not nil.
+func (_u *KnowledgeUpdateOne) SetNillableAssetLabel(v *string) *KnowledgeUpdateOne {
+	if v != nil {
+		_u.SetAssetLabel(*v)
+	}
+	return _u
+}
+
+// ClearAssetLabel clears the value of the "asset_label" field.
+func (_u *KnowledgeUpdateOne) ClearAssetLabel() *KnowledgeUpdateOne {
+	_u.mutation.ClearAssetLabel()
 	return _u
 }
 
@@ -770,6 +862,18 @@ func (_u *KnowledgeUpdateOne) sqlSave(ctx context.Context) (_node *Knowledge, er
 	}
 	if _u.mutation.SourceCleared() {
 		_spec.ClearField(knowledge.FieldSource, field.TypeString)
+	}
+	if value, ok := _u.mutation.SourceClass(); ok {
+		_spec.SetField(knowledge.FieldSourceClass, field.TypeString, value)
+	}
+	if _u.mutation.SourceClassCleared() {
+		_spec.ClearField(knowledge.FieldSourceClass, field.TypeString)
+	}
+	if value, ok := _u.mutation.AssetLabel(); ok {
+		_spec.SetField(knowledge.FieldAssetLabel, field.TypeString, value)
+	}
+	if _u.mutation.AssetLabelCleared() {
+		_spec.ClearField(knowledge.FieldAssetLabel, field.TypeString)
 	}
 	if value, ok := _u.mutation.Version(); ok {
 		_spec.SetField(knowledge.FieldVersion, field.TypeInt, value)
