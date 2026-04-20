@@ -221,7 +221,7 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 				if err := store.SaveAuditLog(ctx, knowledge.AuditEntry{
 					Action:  "exportability_decision",
 					Actor:   "agent",
-					Target:  artifactLabel,
+					Target:  "artifact:" + artifactLabel,
 					Details: payload,
 				}); err != nil {
 					return nil, fmt.Errorf("save exportability decision audit log: %w", err)

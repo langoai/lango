@@ -781,32 +781,35 @@ func TestSaveAuditLog(t *testing.T) {
 			t.Fatalf("SaveAuditLog: %v", err)
 		}
 	})
+}
 
-	t.Run("save exportability decision", func(t *testing.T) {
-		entry := AuditEntry{
-			Action: "exportability_decision",
-			Actor:  "agent-main",
-			Target: "artifact-1",
-			Details: map[string]interface{}{
-				"stage":       "final",
-				"state":       "blocked",
-				"policy_code": "blocked_private_source",
-			},
-		}
-		if err := store.SaveAuditLog(ctx, entry); err != nil {
-			t.Fatalf("SaveAuditLog(exportability_decision): %v", err)
-		}
+func TestSaveAuditLog_ExportabilityDecisionAction(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
 
-		count, err := store.client.AuditLog.Query().
-			Where(auditlog.ActionEQ(auditlog.ActionExportabilityDecision)).
-			Count(ctx)
-		if err != nil {
-			t.Fatalf("count exportability decision audit rows: %v", err)
-		}
-		if count == 0 {
-			t.Fatal("expected exportability decision audit row to be persisted")
-		}
-	})
+	entry := AuditEntry{
+		Action: "exportability_decision",
+		Actor:  "agent-main",
+		Target: "artifact:artifact-1",
+		Details: map[string]interface{}{
+			"stage":       "final",
+			"state":       "blocked",
+			"policy_code": "blocked_private_source",
+		},
+	}
+	if err := store.SaveAuditLog(ctx, entry); err != nil {
+		t.Fatalf("SaveAuditLog(exportability_decision): %v", err)
+	}
+
+	count, err := store.client.AuditLog.Query().
+		Where(auditlog.ActionEQ(auditlog.ActionExportabilityDecision)).
+		Count(ctx)
+	if err != nil {
+		t.Fatalf("count exportability decision audit rows: %v", err)
+	}
+	if count == 0 {
+		t.Fatal("expected exportability decision audit row to be persisted")
+	}
 }
 
 func TestSaveAndSearchExternalRef(t *testing.T) {
