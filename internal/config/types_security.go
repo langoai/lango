@@ -6,12 +6,19 @@ import "time"
 type SecurityConfig struct {
 	// Interceptor configuration
 	Interceptor InterceptorConfig `mapstructure:"interceptor" json:"interceptor"`
+	// Exportability configuration
+	Exportability ExportabilityConfig `mapstructure:"exportability" json:"exportability"`
 	// Signer configuration
 	Signer SignerConfig `mapstructure:"signer" json:"signer"`
 	// DBEncryption configuration (SQLCipher transparent encryption)
 	DBEncryption DBEncryptionConfig `mapstructure:"dbEncryption" json:"dbEncryption"`
 	// KMS configuration (Cloud KMS / HSM backends)
 	KMS KMSConfig `mapstructure:"kms" json:"kms"`
+}
+
+// ExportabilityConfig defines exportability policy settings.
+type ExportabilityConfig struct {
+	Enabled bool `mapstructure:"enabled" json:"enabled"`
 }
 
 // KMSConfig defines Cloud KMS and HSM backend settings.

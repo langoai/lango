@@ -73,6 +73,9 @@ func DefaultConfig() *Config {
 					Language:       "en",
 				},
 			},
+			Exportability: ExportabilityConfig{
+				Enabled: true,
+			},
 			DBEncryption: DBEncryptionConfig{
 				Enabled:        false,
 				CipherPageSize: 4096,
@@ -275,7 +278,7 @@ func DefaultConfig() *Config {
 				MaxCredentialAge: "24h",
 			},
 			MaxSafetyLevel: "moderate",
-			ToolIsolation:  ToolIsolationConfig{
+			ToolIsolation: ToolIsolationConfig{
 				Enabled:        false,
 				TimeoutPerTool: 30 * time.Second,
 				MaxMemoryMB:    256,
