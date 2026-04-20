@@ -19,14 +19,14 @@ The gateway SHALL expose `GET /api/p2p/peers` that returns a list of currently c
 - **THEN** the response SHALL be HTTP 200 with JSON containing `peers` (array of objects with `peerId` and `addrs` fields) and `count` (integer)
 
 ### Requirement: P2P identity endpoint
-The gateway SHALL expose `GET /api/p2p/identity` that returns the local DID string derived from the wallet.
+The gateway SHALL expose `GET /api/p2p/identity` that returns the active local DID, when available, together with the libp2p peer ID.
 
-#### Scenario: Query identity with wallet configured
-- **WHEN** a client sends `GET /api/p2p/identity` and the identity provider is available
+#### Scenario: Query identity with active DID available
+- **WHEN** a client sends `GET /api/p2p/identity` and the runtime can resolve an active DID
 - **THEN** the response SHALL be HTTP 200 with JSON containing `did` (string starting with `did:lango:`) and `peerId` (string)
 
-#### Scenario: Query identity without identity provider
-- **WHEN** a client sends `GET /api/p2p/identity` and the identity provider is nil
+#### Scenario: Query identity without active DID
+- **WHEN** a client sends `GET /api/p2p/identity` and the runtime cannot resolve an active DID
 - **THEN** the response SHALL be HTTP 200 with JSON containing `did` as null and `peerId` (string)
 
 ### Requirement: P2P reputation endpoint
