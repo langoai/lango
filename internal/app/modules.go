@@ -32,6 +32,7 @@ import (
 	"github.com/langoai/lango/internal/p2p/ontologybridge"
 	"github.com/langoai/lango/internal/p2p/reputation"
 	"github.com/langoai/lango/internal/p2p/team"
+	"github.com/langoai/lango/internal/receipts"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/storage"
@@ -328,7 +329,8 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 		// FTS5 search index.
 		fts5Available = initFTS5(ctx, rawDB, kc.store)
 
-		metaTools := buildMetaTools(kc.store, kc.engine, skillReg, cfg.Skill, cfg, nil)
+		receiptStore := receipts.NewStore()
+		metaTools := buildMetaTools(kc.store, kc.engine, skillReg, cfg.Skill, cfg, receiptStore)
 		tools = append(tools, metaTools...)
 		entries = append(entries, appinit.CatalogEntry{Category: "meta", Description: "Knowledge, learning, and skill management", ConfigKey: "knowledge.enabled", Enabled: true, Tools: metaTools})
 	} else {
