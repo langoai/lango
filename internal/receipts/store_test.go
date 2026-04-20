@@ -31,6 +31,43 @@ func TestCreateSubmissionReceipt_CreatesTransactionAndCurrentPointer(t *testing.
 	require.Equal(t, SettlementPending, tx.CanonicalSettlementStatus)
 }
 
+func TestCreateSubmissionReceipt_RejectsEmptyInput(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	_, _, err := store.CreateSubmissionReceipt(ctx, CreateSubmissionInput{})
+	require.ErrorIs(t, err, ErrInvalidSubmissionInput)
+}
+
+func TestCreateSubmissionReceipt_UpdatesCurrentPointerOnSecondSubmission(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	first, tx, err := store.CreateSubmissionReceipt(ctx, CreateSubmissionInput{
+		TransactionID:       "tx-3",
+		ArtifactLabel:       "memo-a",
+		PayloadHash:         "hash-a",
+		SourceLineageDigest: "lineage-a",
+	})
+	require.NoError(t, err)
+
+	second, nextTx, err := store.CreateSubmissionReceipt(ctx, CreateSubmissionInput{
+		TransactionID:       "tx-3",
+		ArtifactLabel:       "memo-b",
+		PayloadHash:         "hash-b",
+		SourceLineageDigest: "lineage-b",
+	})
+	require.NoError(t, err)
+	require.Equal(t, tx.TransactionReceiptID, nextTx.TransactionReceiptID)
+	require.NotEqual(t, first.SubmissionReceiptID, second.SubmissionReceiptID)
+	require.Equal(t, second.SubmissionReceiptID, nextTx.CurrentSubmissionReceiptID)
+
+	got, events, err := store.GetSubmissionReceipt(ctx, second.SubmissionReceiptID)
+	require.NoError(t, err)
+	require.Equal(t, "memo-b", got.ArtifactLabel)
+	require.Empty(t, events)
+}
+
 func TestAppendReceiptEvent_PreservesCanonicalReceiptAndTrail(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
@@ -52,4 +89,31 @@ func TestAppendReceiptEvent_PreservesCanonicalReceiptAndTrail(t *testing.T) {
 	require.Len(t, events, 1)
 	require.Equal(t, EventApprovalRequested, events[0].Type)
 	require.Equal(t, sub.SubmissionReceiptID, events[0].SubmissionReceiptID)
+}
+
+func TestAppendReceiptEvent_RejectsInvalidEventType(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	sub, _, err := store.CreateSubmissionReceipt(ctx, CreateSubmissionInput{
+		TransactionID:       "tx-4",
+		ArtifactLabel:       "memo",
+		PayloadHash:         "hash-4",
+		SourceLineageDigest: "lineage-4",
+	})
+	require.NoError(t, err)
+
+	err = store.AppendReceiptEvent(ctx, sub.SubmissionReceiptID, "")
+	require.ErrorIs(t, err, ErrInvalidReceiptEventType)
+
+	err = store.AppendReceiptEvent(ctx, sub.SubmissionReceiptID, EventType("unknown"))
+	require.ErrorIs(t, err, ErrInvalidReceiptEventType)
+}
+
+func TestAppendReceiptEvent_RejectsMissingSubmission(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	err := store.AppendReceiptEvent(ctx, "missing-submission", EventApprovalRequested)
+	require.ErrorIs(t, err, ErrSubmissionReceiptNotFound)
 }

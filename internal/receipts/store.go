@@ -39,6 +39,10 @@ func NewStore() *Store {
 }
 
 func (s *Store) CreateSubmissionReceipt(_ context.Context, in CreateSubmissionInput) (SubmissionReceipt, TransactionReceipt, error) {
+	if err := validateCreateSubmissionInput(in); err != nil {
+		return SubmissionReceipt{}, TransactionReceipt{}, err
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -76,15 +80,17 @@ func (s *Store) CreateSubmissionReceipt(_ context.Context, in CreateSubmissionIn
 }
 
 func (s *Store) AppendReceiptEvent(_ context.Context, submissionReceiptID string, eventType EventType) error {
+	if err := validateEventType(eventType); err != nil {
+		return err
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	submission, ok := s.submissions[submissionReceiptID]
-	if !ok {
-		return fmt.Errorf("submission receipt not found")
+	if _, ok := s.submissions[submissionReceiptID]; !ok {
+		return ErrSubmissionReceiptNotFound
 	}
 
-	s.submissions[submissionReceiptID] = submission
 	s.events[submissionReceiptID] = append(s.events[submissionReceiptID], ReceiptEvent{
 		SubmissionReceiptID: submissionReceiptID,
 		Type:                eventType,
@@ -99,10 +105,40 @@ func (s *Store) GetSubmissionReceipt(_ context.Context, submissionReceiptID stri
 
 	submission, ok := s.submissions[submissionReceiptID]
 	if !ok {
-		return SubmissionReceipt{}, nil, fmt.Errorf("submission receipt not found")
+		return SubmissionReceipt{}, nil, ErrSubmissionReceiptNotFound
 	}
 
 	events := append([]ReceiptEvent(nil), s.events[submissionReceiptID]...)
 
 	return submission, events, nil
+}
+
+func validateCreateSubmissionInput(in CreateSubmissionInput) error {
+	switch {
+	case in.TransactionID == "":
+		return fmt.Errorf("%w: transaction_id is required", ErrInvalidSubmissionInput)
+	case in.ArtifactLabel == "":
+		return fmt.Errorf("%w: artifact_label is required", ErrInvalidSubmissionInput)
+	case in.PayloadHash == "":
+		return fmt.Errorf("%w: payload_hash is required", ErrInvalidSubmissionInput)
+	case in.SourceLineageDigest == "":
+		return fmt.Errorf("%w: source_lineage_digest is required", ErrInvalidSubmissionInput)
+	default:
+		return nil
+	}
+}
+
+func validateEventType(eventType EventType) error {
+	switch eventType {
+	case EventDraftExportability,
+		EventFinalExportability,
+		EventApprovalRequested,
+		EventApprovalResolved,
+		EventSettlementUpdated,
+		EventEscalated,
+		EventDisputed:
+		return nil
+	default:
+		return fmt.Errorf("%w: %q", ErrInvalidReceiptEventType, eventType)
+	}
 }

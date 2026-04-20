@@ -1,5 +1,13 @@
 package receipts
 
+import "errors"
+
+var (
+	ErrSubmissionReceiptNotFound = errors.New("submission receipt not found")
+	ErrInvalidSubmissionInput    = errors.New("invalid submission input")
+	ErrInvalidReceiptEventType   = errors.New("invalid receipt event type")
+)
+
 type ApprovalStatus string
 
 const (
