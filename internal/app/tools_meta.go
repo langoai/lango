@@ -27,6 +27,11 @@ import (
 // cfg is used for session-mode-aware skill filtering and view_skill path resolution;
 // it may be nil for tests that don't exercise mode features.
 func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *skill.Registry, skillCfg config.SkillConfig, cfg *config.Config) []*agent.Tool {
+	exportabilityEnabled := true
+	if cfg != nil {
+		exportabilityEnabled = cfg.Security.Exportability.Enabled
+	}
+
 	return []*agent.Tool{
 		{
 			Name:        "save_knowledge",
@@ -111,6 +116,118 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 					"version": version,
 					"message": fmt.Sprintf("Knowledge '%s' saved (version %d)", key, version),
 				}, nil
+			},
+		},
+		{
+			Name:        "evaluate_exportability",
+			Description: "Evaluate exportability for a knowledge-backed artifact label from the latest source entries and emit a durable decision receipt",
+			SafetyLevel: agent.SafetyLevelModerate,
+			Capability: agent.ToolCapability{
+				Category: "knowledge",
+				Activity: agent.ActivityQuery,
+			},
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"artifact_label": map[string]interface{}{"type": "string", "description": "Label for the artifact being evaluated"},
+					"source_keys": map[string]interface{}{
+						"type":        "array",
+						"items":       map[string]interface{}{"type": "string"},
+						"description": "Knowledge keys that provide source lineage for the artifact",
+					},
+					"stage": map[string]interface{}{
+						"type":        "string",
+						"description": "Decision stage: draft or final",
+						"enum":        []string{"draft", "final"},
+					},
+				},
+				"required": []string{"artifact_label", "source_keys", "stage"},
+			},
+			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+				if store == nil {
+					return nil, fmt.Errorf("knowledge store is not available")
+				}
+
+				artifactLabel, err := toolparam.RequireString(params, "artifact_label")
+				if err != nil {
+					return nil, err
+				}
+				stageStr, err := toolparam.RequireString(params, "stage")
+				if err != nil {
+					return nil, err
+				}
+				var stage exportability.DecisionStage
+				switch stageStr {
+				case string(exportability.StageDraft):
+					stage = exportability.StageDraft
+				case string(exportability.StageFinal):
+					stage = exportability.StageFinal
+				default:
+					return nil, fmt.Errorf("invalid stage %q: must be draft or final", stageStr)
+				}
+
+				sourceKeys := toolparam.StringSlice(params, "source_keys")
+				if len(sourceKeys) == 0 {
+					return nil, fmt.Errorf("source_keys must not be empty")
+				}
+				for _, key := range sourceKeys {
+					if strings.TrimSpace(key) == "" {
+						return nil, fmt.Errorf("source_keys must not contain empty values")
+					}
+				}
+
+				entries, err := store.GetKnowledgeByKeys(ctx, sourceKeys)
+				if err != nil {
+					return nil, fmt.Errorf("load source knowledge: %w", err)
+				}
+
+				refs := make([]exportability.SourceRef, 0, len(entries))
+				for _, entry := range entries {
+					class, err := exportability.ParseSourceClass(entry.SourceClass)
+					if err != nil {
+						return nil, fmt.Errorf("parse source class for %q: %w", entry.Key, err)
+					}
+					label := entry.AssetLabel
+					if label == "" {
+						label = entry.Key
+					}
+					refs = append(refs, exportability.SourceRef{
+						AssetID:    entry.Key,
+						AssetLabel: label,
+						Class:      class,
+					})
+				}
+
+				receipt := exportability.Evaluate(exportability.Policy{Enabled: exportabilityEnabled}, stage, refs)
+				lineage := make([]map[string]interface{}, 0, len(receipt.Lineage))
+				for _, row := range receipt.Lineage {
+					lineage = append(lineage, map[string]interface{}{
+						"asset_id":    row.AssetID,
+						"asset_label": row.AssetLabel,
+						"class":       string(row.Class),
+						"rule":        row.Rule,
+					})
+				}
+
+				payload := map[string]interface{}{
+					"artifact_label": artifactLabel,
+					"stage":          string(receipt.Stage),
+					"state":          string(receipt.State),
+					"policy_code":    receipt.PolicyCode,
+					"explanation":    receipt.Explanation,
+					"lineage":        lineage,
+				}
+
+				if err := store.SaveAuditLog(ctx, knowledge.AuditEntry{
+					Action:  "exportability_decision",
+					Actor:   "agent",
+					Target:  artifactLabel,
+					Details: payload,
+				}); err != nil {
+					return nil, fmt.Errorf("save exportability decision audit log: %w", err)
+				}
+
+				return payload, nil
 			},
 		},
 		{

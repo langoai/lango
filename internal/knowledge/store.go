@@ -405,6 +405,64 @@ func (s *Store) GetKnowledge(ctx context.Context, key string) (*KnowledgeEntry, 
 	}, nil
 }
 
+// GetKnowledgeByKeys retrieves the latest versions of multiple knowledge entries by key.
+// Results preserve the input key order and return an error if any key is missing.
+func (s *Store) GetKnowledgeByKeys(ctx context.Context, keys []string) ([]KnowledgeEntry, error) {
+	if len(keys) == 0 {
+		return nil, nil
+	}
+
+	seen := make(map[string]struct{}, len(keys))
+	uniqueKeys := make([]string, 0, len(keys))
+	for _, key := range keys {
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		uniqueKeys = append(uniqueKeys, key)
+	}
+
+	entries, err := s.client.Knowledge.Query().
+		Where(entknowledge.KeyIn(uniqueKeys...), entknowledge.IsLatest(true)).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("query knowledge by keys: %w", err)
+	}
+
+	byKey := make(map[string]*ent.Knowledge, len(entries))
+	for _, k := range entries {
+		byKey[k.Key] = k
+	}
+
+	result := make([]KnowledgeEntry, 0, len(keys))
+	missing := make([]string, 0)
+	for _, key := range keys {
+		k, ok := byKey[key]
+		if !ok {
+			missing = append(missing, key)
+			continue
+		}
+		result = append(result, KnowledgeEntry{
+			Key:         k.Key,
+			Category:    k.Category,
+			Content:     s.resolveKnowledgeContent(ctx, k),
+			Tags:        k.Tags,
+			Source:      k.Source,
+			SourceClass: k.SourceClass,
+			AssetLabel:  k.AssetLabel,
+			Version:     k.Version,
+			CreatedAt:   k.CreatedAt,
+			UpdatedAt:   k.UpdatedAt,
+		})
+	}
+
+	if len(missing) > 0 {
+		return nil, fmt.Errorf("get knowledge by keys %q: %w", strings.Join(missing, ", "), ErrKnowledgeNotFound)
+	}
+
+	return result, nil
+}
+
 // GetKnowledgeHistory returns all versions of a knowledge entry ordered by version descending.
 func (s *Store) GetKnowledgeHistory(ctx context.Context, key string) ([]KnowledgeEntry, error) {
 	entries, err := s.client.Knowledge.Query().

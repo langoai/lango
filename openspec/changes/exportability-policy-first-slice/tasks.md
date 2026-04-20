@@ -12,9 +12,9 @@
 
 ## 3. Evaluation Receipts
 
-- [ ] 3.1 Extend the audit log schema with `exportability_decision`
-- [ ] 3.2 Add a batch knowledge lookup helper for evaluation inputs
-- [ ] 3.3 Add `evaluate_exportability` meta tool that evaluates source keys and writes audit-backed receipts
+- [x] 3.1 Extend the audit log schema with `exportability_decision`
+- [x] 3.2 Add a batch knowledge lookup helper for evaluation inputs
+- [x] 3.3 Add `evaluate_exportability` meta tool that evaluates source keys and writes audit-backed receipts
 
 ## 4. Operator Surface And Docs
 

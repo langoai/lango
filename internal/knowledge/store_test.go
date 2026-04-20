@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
+	"github.com/langoai/lango/internal/ent/auditlog"
 	"github.com/langoai/lango/internal/ent/enttest"
 	entknowledge "github.com/langoai/lango/internal/ent/knowledge"
 	entlearning "github.com/langoai/lango/internal/ent/learning"
@@ -186,6 +187,47 @@ func TestSaveAndGetKnowledge(t *testing.T) {
 		}
 		if got.Version != 2 {
 			t.Fatalf("want version 2, got %d", got.Version)
+		}
+	})
+
+	t.Run("batch lookup returns latest entries in input order", func(t *testing.T) {
+		first := KnowledgeEntry{
+			Key:      "batch-first",
+			Category: "fact",
+			Content:  "first version",
+		}
+		second := KnowledgeEntry{
+			Key:         "batch-second",
+			Category:    "fact",
+			Content:     "second version",
+			SourceClass: "user-exportable",
+		}
+		if err := store.SaveKnowledge(ctx, "session-1", first); err != nil {
+			t.Fatalf("SaveKnowledge (first): %v", err)
+		}
+		if err := store.SaveKnowledge(ctx, "session-1", second); err != nil {
+			t.Fatalf("SaveKnowledge (second): %v", err)
+		}
+		first.Content = "first version updated"
+		if err := store.SaveKnowledge(ctx, "session-1", first); err != nil {
+			t.Fatalf("SaveKnowledge (first v2): %v", err)
+		}
+
+		got, err := store.GetKnowledgeByKeys(ctx, []string{"batch-second", "batch-first"})
+		if err != nil {
+			t.Fatalf("GetKnowledgeByKeys: %v", err)
+		}
+		if len(got) != 2 {
+			t.Fatalf("want 2 entries, got %d", len(got))
+		}
+		if got[0].Key != "batch-second" || got[1].Key != "batch-first" {
+			t.Fatalf("want input order preserved, got %q then %q", got[0].Key, got[1].Key)
+		}
+		if got[1].Version != 2 {
+			t.Fatalf("want latest version 2 for batch-first, got %d", got[1].Version)
+		}
+		if got[0].SourceClass != "user-exportable" {
+			t.Fatalf("want source class user-exportable, got %q", got[0].SourceClass)
 		}
 	})
 
@@ -737,6 +779,32 @@ func TestSaveAuditLog(t *testing.T) {
 		}
 		if err := store.SaveAuditLog(ctx, entry); err != nil {
 			t.Fatalf("SaveAuditLog: %v", err)
+		}
+	})
+
+	t.Run("save exportability decision", func(t *testing.T) {
+		entry := AuditEntry{
+			Action: "exportability_decision",
+			Actor:  "agent-main",
+			Target: "artifact-1",
+			Details: map[string]interface{}{
+				"stage":       "final",
+				"state":       "blocked",
+				"policy_code": "blocked_private_source",
+			},
+		}
+		if err := store.SaveAuditLog(ctx, entry); err != nil {
+			t.Fatalf("SaveAuditLog(exportability_decision): %v", err)
+		}
+
+		count, err := store.client.AuditLog.Query().
+			Where(auditlog.ActionEQ(auditlog.ActionExportabilityDecision)).
+			Count(ctx)
+		if err != nil {
+			t.Fatalf("count exportability decision audit rows: %v", err)
+		}
+		if count == 0 {
+			t.Fatal("expected exportability decision audit row to be persisted")
 		}
 	})
 }
