@@ -71,7 +71,7 @@ The judgment baseline for this audit is narrow by design:
 | --- | --- | --- | --- |
 | Identity, Auth & Trust Entry | Phase 1-2 | `docs/security/authentication.md`, `docs/gateway/http-api.md`, `internal/gateway/auth.go`, `internal/p2p/handshake/*`, `internal/config/types_security.go` | Detailed audit complete (`stabilize`) |
 | Privacy, Exportability & Output Policy | Phase 1 | `docs/security/index.md`, `docs/security/exportability.md`, `docs/security/pii-redaction.md`, `internal/cli/security/status.go`, `internal/config/types_security.go`, `internal/config/types.go`, `internal/gatekeeper/*` | Detailed audit complete (`stabilize`) |
-| Approval, Execution Policy & Sandboxing | Phase 1-2 | `docs/security/tool-approval.md`, `docs/cli/sandbox.md`, `internal/toolchain/mw_approval.go`, `internal/tools/exec/*`, `internal/sandbox/*`, `internal/cli/settings/forms_security.go`, `internal/cli/settings/forms_sandbox.go` | Detailed audit complete (`stabilize`) |
+| Approval, Execution Policy & Sandboxing | Phase 1-2 | `docs/security/tool-approval.md`, `docs/security/approval-flow.md`, `docs/cli/sandbox.md`, `internal/toolchain/mw_approval.go`, `internal/approvalflow/*`, `internal/app/tools_meta_approvalflow.go`, `internal/tools/exec/*`, `internal/sandbox/*`, `internal/cli/settings/forms_security.go`, `internal/cli/settings/forms_sandbox.go` | Detailed audit complete (`stabilize`) |
 | Auditability, Provenance & Cryptographic Accountability | Phase 1-2 | `docs/features/provenance.md`, `docs/security/encryption.md`, `internal/observability/audit/*`, `internal/provenance/*`, `internal/security/*`, `internal/app/wiring_provenance.go` | Detailed audit complete (`stabilize`) |
 
 ## Baseline Decisions Already Locked
@@ -211,6 +211,9 @@ The judgment baseline for this audit is narrow by design:
    - References: `internal/cli/settings/forms_sandbox.go:17-19`, `internal/cli/settings/forms_sandbox.go:39-40`, `internal/tools/exec/exec.go:105-141`, `internal/cli/p2p/sandbox.go:16-18`
 
 ### Assessment
+
+- Post-implementation note: the first-slice artifact release approval path is now landed with structured `approve`, `reject`, `request-revision`, and `escalate` outcomes plus audit-backed receipts.
+- The remaining gaps are still explicit: no human approval UI, no upfront payment approval runtime, no dispute orchestration, and no partial settlement execution.
 
 - `Approval, Execution Policy & Sandboxing` is a real capability and should be kept.
 - The correct action is `stabilize`:
