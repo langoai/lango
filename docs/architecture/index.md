@@ -34,6 +34,12 @@ This section describes the internal architecture of Lango, a Go-based AI agent b
 
     The first audit ledger for the product area that most directly defines Lango: trust, pricing, settlement, teams, and shared artifacts.
 
+-   :material-shield-check-outline: **[Trust, Security & Policy Audit](trust-security-policy-audit.md)**
+
+    ---
+
+    Detailed audit ledger for the policy and safety boundaries that determine whether early knowledge exchange is actually safe to operate.
+
 -   :material-cash-fast: **[P2P Knowledge Exchange Track](p2p-knowledge-exchange-track.md)**
 
     ---
