@@ -18,11 +18,11 @@
 
 ## 4. Operator Surface And Docs
 
-- [ ] 4.1 Surface exportability status in `lango security status`
-- [ ] 4.2 Add the security/operator docs for exportability and update architecture docs and README truthfully
+- [x] 4.1 Surface exportability status in `lango security status`
+- [x] 4.2 Add the security/operator docs for exportability and update architecture docs and README truthfully
 
 ## 5. Verification And OpenSpec Closeout
 
-- [ ] 5.1 Run targeted tests while implementing each slice
-- [ ] 5.2 Run `go test ./...`, `go build ./...`, and `python3 -m mkdocs build --strict`
-- [ ] 5.3 Verify the change against OpenSpec, sync main specs, and archive the completed change
+- [x] 5.1 Run targeted tests while implementing each slice
+- [x] 5.2 Run `go test ./...`, `go build ./...`, and `python3 -m mkdocs build --strict`
+- [x] 5.3 Verify the change against OpenSpec, sync main specs, and archive the completed change

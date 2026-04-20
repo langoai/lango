@@ -108,3 +108,14 @@ The `openspec/security-roadmap.md` SHALL have `✅ COMPLETED` markers on all P0 
 #### Scenario: Roadmap completion markers
 - **WHEN** a user reads the security roadmap
 - **THEN** all P0 (P0-1, P0-2, P0-3) and P1 (P1-4, P1-5, P1-6) items show completion markers
+
+### Requirement: Exportability operator docs
+The security documentation set SHALL include an exportability document that describes source classes, artifact-level evaluation, decision states, and receipt-style decision records for the first slice.
+
+#### Scenario: Exportability doc available
+- **WHEN** a user reads the security documentation
+- **THEN** they SHALL find a dedicated exportability document describing the first-slice policy model and its current limits
+
+#### Scenario: Exportability docs linked from index
+- **WHEN** a user reads `docs/security/index.md`
+- **THEN** they SHALL find a quick link to the exportability document
