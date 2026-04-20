@@ -70,7 +70,7 @@ The judgment baseline for this audit is narrow by design:
 | Feature family | Primary phase | Current surface clues | Audit status |
 | --- | --- | --- | --- |
 | Identity, Auth & Trust Entry | Phase 1-2 | `docs/security/authentication.md`, `docs/gateway/http-api.md`, `internal/gateway/auth.go`, `internal/p2p/handshake/*`, `internal/config/types_security.go` | Detailed audit complete (`stabilize`) |
-| Privacy, Exportability & Output Policy | Phase 1 | `docs/security/index.md`, `docs/security/pii-redaction.md`, `internal/config/types_security.go`, `internal/config/types.go`, `internal/gatekeeper/*` | Detailed audit complete (`stabilize`) |
+| Privacy, Exportability & Output Policy | Phase 1 | `docs/security/index.md`, `docs/security/exportability.md`, `docs/security/pii-redaction.md`, `internal/cli/security/status.go`, `internal/config/types_security.go`, `internal/config/types.go`, `internal/gatekeeper/*` | Detailed audit complete (`stabilize`) |
 | Approval, Execution Policy & Sandboxing | Phase 1-2 | `docs/security/tool-approval.md`, `docs/cli/sandbox.md`, `internal/toolchain/mw_approval.go`, `internal/tools/exec/*`, `internal/sandbox/*`, `internal/cli/settings/forms_security.go`, `internal/cli/settings/forms_sandbox.go` | Detailed audit complete (`stabilize`) |
 | Auditability, Provenance & Cryptographic Accountability | Phase 1-2 | `docs/features/provenance.md`, `docs/security/encryption.md`, `internal/observability/audit/*`, `internal/provenance/*`, `internal/security/*`, `internal/app/wiring_provenance.go` | Detailed audit complete (`stabilize`) |
 
@@ -134,7 +134,7 @@ The judgment baseline for this audit is narrow by design:
 - Product-path linkage: `Phase 1: Knowledge Exchange`
 - Current surface area: `docs/security/index.md`, `docs/security/pii-redaction.md`, `internal/config/types_security.go`, `internal/config/types.go`, `internal/gatekeeper/sanitizer.go`
 - Core value: `Prevent sensitive inputs and unsafe outputs from leaking into external exchange, while defining what is and is not tradeable in early knowledge exchange.`
-- Current problem: `Privacy tooling exists, but exportability policy does not yet exist as a first-class runtime or operator surface, so hygiene and tradeability are still conflated.`
+- Current problem: `Privacy tooling exists, and exportability now has a first source-primary runtime/operator surface, but the broader policy model is still intentionally narrow, so hygiene and tradeability are no longer conflated.`
 - Judgment: `stabilize`
 - Execution track: `Stabilization Track`
 - Secondary capability areas:
@@ -149,10 +149,10 @@ The judgment baseline for this audit is narrow by design:
    - The gatekeeper sanitizer independently strips thought tags, internal markers, and oversized raw JSON, and supports custom removal patterns.
    - References: `docs/security/index.md:9-23`, `docs/security/pii-redaction.md:7-27`, `docs/security/pii-redaction.md:71-181`, `internal/config/types_security.go:104-125`, `internal/config/types.go:529-548`, `internal/gatekeeper/sanitizer.go:11-18`, `internal/gatekeeper/sanitizer.go:21-37`, `internal/gatekeeper/sanitizer.go:45-84`
 
-2. `Major` Exportability policy is still a product requirement without a first-class runtime surface.
+2. `Major` Exportability policy is still a product requirement, but the first runtime/operator slice is now landed.
    - The master product path and P2P knowledge-exchange track require explicit exportability policy.
-   - The actual security config exposes approval, PII, and Presidio settings, but no exportability classification, tradeability rule, or operator policy surface.
-   - In practice, the runtime can sanitize content, but it cannot yet answer the core `knowledge exchange v1` question: "is this artifact tradeable?"
+   - The actual security config now exposes exportability alongside approval, PII, and Presidio settings, and `lango security status` surfaces the current state.
+   - In practice, the runtime can now answer the narrow first-slice question from source lineage, but it still cannot express a full policy-rule DSL, human override UI, or unified dispute-ready receipt model.
    - References: `docs/architecture/master-document.md:202-204`, `docs/architecture/p2p-knowledge-exchange-track.md:46-51`, `internal/config/types_security.go:104-125`, `internal/config/types.go:529-548`
 
 3. `Major` The current output policy is hygiene-oriented, not market-oriented.

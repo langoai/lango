@@ -143,6 +143,7 @@ nav:
     - security/index.md
     - Encryption & Secrets: security/encryption.md
     - PII Redaction: security/pii-redaction.md
+    - Exportability Policy: security/exportability.md
     - Tool Approval: security/tool-approval.md
     - Authentication: security/authentication.md
   - Payments:

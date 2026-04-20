@@ -13,6 +13,7 @@ Lango provides multiple layers of security to protect sensitive data flowing bet
 | **Master Key Envelope** | Hierarchical key management | MK/KEK architecture, recovery mnemonic, passphrase rotation without re-encryption |
 | **Encryption & Secrets** | Protect data at rest and in transit | AES-256-GCM encryption, key registry, secret management |
 | **PII Redaction** | Strip personal information before it reaches AI providers | Regex patterns + optional NER via Microsoft Presidio |
+| **Exportability Policy** | Decide what early knowledge artifacts can be traded | Source-primary evaluation for knowledge exchange v1 |
 | **Tool Approval** | Control which tools agents can execute | Policy-based approval workflows with channel notifications |
 | **Authentication** | Secure gateway access | OIDC login flow, session management, CORS controls |
 | **Hardware Keyring** | Secure passphrase storage | Hardware-backed passphrase via Touch ID (macOS Secure Enclave) or TPM 2.0 (Linux) |
@@ -75,6 +76,7 @@ See [Encryption & Secrets](encryption.md) for full details.
 - [Master Key Envelope](envelope-migration.md) -- MK/KEK hierarchy, migration from legacy, backup & recovery
 - [Encryption & Secrets](encryption.md) -- Key derivation, secret storage, output scanning, companion app
 - [PII Redaction](pii-redaction.md) -- Builtin patterns, custom regex, Presidio integration
+- [Exportability Policy](exportability.md) -- Source-primary exportability evaluation for early knowledge exchange
 - [Tool Approval](tool-approval.md) -- Approval policies, sensitive/exempt tools, notifications
 - [Authentication](authentication.md) -- OIDC providers, session management, CORS configuration
 - [Hardware Keyring](encryption.md#hardware-keyring-integration) -- Secure passphrase storage via Touch ID / TPM

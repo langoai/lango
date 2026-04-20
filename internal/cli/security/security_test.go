@@ -1,6 +1,9 @@
 package security
 
 import (
+	"bytes"
+	"io"
+	"os"
 	"testing"
 
 	"github.com/langoai/lango/internal/bootstrap"
@@ -98,6 +101,48 @@ func TestKMSCmd_HasSubcommands(t *testing.T) {
 func TestBoolToStatus(t *testing.T) {
 	assert.Equal(t, "enabled", boolToStatus(true))
 	assert.Equal(t, "disabled", boolToStatus(false))
+}
+
+func TestRenderStatus_IncludesExportability(t *testing.T) {
+	out := statusOutput{
+		SignerProvider:       "local",
+		ApprovalPolicy:       "dangerous",
+		DBEncryption:         "disabled (plaintext)",
+		ExportabilityEnabled: true,
+	}
+
+	stdout, err := captureStdout(t, func() error {
+		return renderStatus(out, false)
+	})
+	require.NoError(t, err)
+	assert.Contains(t, stdout, "Exportability:")
+	assert.Contains(t, stdout, "enabled")
+
+	jsonOut, err := captureStdout(t, func() error {
+		return renderStatus(out, true)
+	})
+	require.NoError(t, err)
+	assert.Contains(t, jsonOut, "\"exportability_enabled\": true")
+}
+
+func captureStdout(t *testing.T, fn func() error) (string, error) {
+	t.Helper()
+
+	origStdout := os.Stdout
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+	os.Stdout = w
+
+	runErr := fn()
+
+	w.Close()
+	os.Stdout = origStdout
+
+	var buf bytes.Buffer
+	_, _ = io.Copy(&buf, r)
+	r.Close()
+
+	return buf.String(), runErr
 }
 
 func TestIsKMSProvider(t *testing.T) {

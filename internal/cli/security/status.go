@@ -57,21 +57,22 @@ type identityBundleSection struct {
 }
 
 type statusOutput struct {
-	SignerProvider     string                `json:"signer_provider"`
-	EncryptionKeys     int                   `json:"encryption_keys"`
-	StoredSecrets      int                   `json:"stored_secrets"`
-	Interceptor        string                `json:"interceptor"`
-	PIIRedaction       string                `json:"pii_redaction"`
-	ApprovalPolicy     string                `json:"approval_policy"`
-	DBEncryption       string                `json:"db_encryption"`
-	Envelope           envelopeSection       `json:"envelope"`
-	IdentityBundle     identityBundleSection `json:"identity_bundle"`
-	DBAvailable        bool                  `json:"db_available"`
-	KMSProvider        string                `json:"kms_provider,omitempty"`
-	KMSKeyID           string                `json:"kms_key_id,omitempty"`
-	KMSFallback        string                `json:"kms_fallback,omitempty"`
-	PQHandshakeEnabled bool                  `json:"pq_handshake_enabled"`
-	PQHandshakeAlgo    string                `json:"pq_handshake_algorithm,omitempty"`
+	SignerProvider       string                `json:"signer_provider"`
+	EncryptionKeys       int                   `json:"encryption_keys"`
+	StoredSecrets        int                   `json:"stored_secrets"`
+	Interceptor          string                `json:"interceptor"`
+	PIIRedaction         string                `json:"pii_redaction"`
+	ApprovalPolicy       string                `json:"approval_policy"`
+	ExportabilityEnabled bool                  `json:"exportability_enabled"`
+	DBEncryption         string                `json:"db_encryption"`
+	Envelope             envelopeSection       `json:"envelope"`
+	IdentityBundle       identityBundleSection `json:"identity_bundle"`
+	DBAvailable          bool                  `json:"db_available"`
+	KMSProvider          string                `json:"kms_provider,omitempty"`
+	KMSKeyID             string                `json:"kms_key_id,omitempty"`
+	KMSFallback          string                `json:"kms_fallback,omitempty"`
+	PQHandshakeEnabled   bool                  `json:"pq_handshake_enabled"`
+	PQHandshakeAlgo      string                `json:"pq_handshake_algorithm,omitempty"`
 }
 
 // readIdentityBundleStatus reads the identity bundle file from langoDir.
@@ -364,18 +365,19 @@ func runStatusNonInteractive(jsonOutput bool) error {
 	}
 
 	s := statusOutput{
-		SignerProvider:     signer,
-		EncryptionKeys:     dbStatus.encryptionKeys,
-		StoredSecrets:      dbStatus.storedSecrets,
-		Interceptor:        boolToStatus(cfg.Security.Interceptor.Enabled),
-		PIIRedaction:       boolToStatus(cfg.Security.Interceptor.RedactPII),
-		ApprovalPolicy:     policy,
-		DBEncryption:       dbEncStatus,
-		Envelope:           envelope,
-		IdentityBundle:     readIdentityBundleStatus(langoDir),
-		DBAvailable:        dbStatus.available,
-		PQHandshakeEnabled: cfg.P2P.EnablePQHandshake,
-		PQHandshakeAlgo:    pqAlgorithmLabel(cfg.P2P.EnablePQHandshake),
+		SignerProvider:       signer,
+		EncryptionKeys:       dbStatus.encryptionKeys,
+		StoredSecrets:        dbStatus.storedSecrets,
+		Interceptor:          boolToStatus(cfg.Security.Interceptor.Enabled),
+		PIIRedaction:         boolToStatus(cfg.Security.Interceptor.RedactPII),
+		ApprovalPolicy:       policy,
+		ExportabilityEnabled: cfg.Security.Exportability.Enabled,
+		DBEncryption:         dbEncStatus,
+		Envelope:             envelope,
+		IdentityBundle:       readIdentityBundleStatus(langoDir),
+		DBAvailable:          dbStatus.available,
+		PQHandshakeEnabled:   cfg.P2P.EnablePQHandshake,
+		PQHandshakeAlgo:      pqAlgorithmLabel(cfg.P2P.EnablePQHandshake),
 	}
 	return renderStatus(s, jsonOutput)
 }
@@ -410,16 +412,17 @@ func runStatusFullBootstrap(bootLoader func() (*bootstrap.Result, error), jsonOu
 	}
 
 	s := statusOutput{
-		SignerProvider:     cfg.Security.Signer.Provider,
-		Interceptor:        boolToStatus(cfg.Security.Interceptor.Enabled),
-		PIIRedaction:       boolToStatus(cfg.Security.Interceptor.RedactPII),
-		ApprovalPolicy:     policy,
-		DBEncryption:       dbEncStatus,
-		Envelope:           readEnvelopeStatus(langoDir),
-		IdentityBundle:     readIdentityBundleStatus(langoDir),
-		DBAvailable:        true,
-		PQHandshakeEnabled: cfg.P2P.EnablePQHandshake,
-		PQHandshakeAlgo:    pqAlgorithmLabel(cfg.P2P.EnablePQHandshake),
+		SignerProvider:       cfg.Security.Signer.Provider,
+		Interceptor:          boolToStatus(cfg.Security.Interceptor.Enabled),
+		PIIRedaction:         boolToStatus(cfg.Security.Interceptor.RedactPII),
+		ApprovalPolicy:       policy,
+		ExportabilityEnabled: cfg.Security.Exportability.Enabled,
+		DBEncryption:         dbEncStatus,
+		Envelope:             readEnvelopeStatus(langoDir),
+		IdentityBundle:       readIdentityBundleStatus(langoDir),
+		DBAvailable:          true,
+		PQHandshakeEnabled:   cfg.P2P.EnablePQHandshake,
+		PQHandshakeAlgo:      pqAlgorithmLabel(cfg.P2P.EnablePQHandshake),
 	}
 
 	if isKMSProvider(cfg.Security.Signer.Provider) {
@@ -458,6 +461,7 @@ func renderStatus(s statusOutput, jsonOutput bool) error {
 	fmt.Printf("  Interceptor:        %s\n", s.Interceptor)
 	fmt.Printf("  PII Redaction:      %s\n", s.PIIRedaction)
 	fmt.Printf("  Approval Policy:    %s\n", s.ApprovalPolicy)
+	fmt.Printf("  Exportability:      %s\n", boolToStatus(s.ExportabilityEnabled))
 	fmt.Printf("  DB Encryption:      %s\n", s.DBEncryption)
 	if !s.DBAvailable {
 		fmt.Println("  DB Access:          unavailable (no non-interactive credential)")
