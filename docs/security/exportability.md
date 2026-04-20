@@ -14,8 +14,8 @@ The current surface includes:
 
 - source-class metadata on knowledge assets,
 - source-primary exportability evaluation,
-- audit-backed exportability decision receipts,
-- operator visibility in `lango security status`.
+- receipts produced by the `evaluate_exportability` meta tool and stored as `exportability_decision` audit entries,
+- an enablement signal in `lango security status`.
 
 ## Operator Surface
 
@@ -36,7 +36,7 @@ When enabled, `lango security status` shows:
 - `Exportability: enabled`
 - `"exportability_enabled": true` in JSON output
 
-When disabled, the operator surface stays conservative and the exportability policy path remains off.
+When disabled, the operator signal stays conservative and the exportability policy path remains off.
 
 ## What It Is Not Yet
 

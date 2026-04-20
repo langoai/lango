@@ -283,7 +283,32 @@ func readDBStatusNonInteractive(
 	result.available = summary.Available
 	result.encryptionKeys = summary.EncryptionKeys
 	result.storedSecrets = summary.StoredSecrets
+	if cfg, ok := loadActiveStatusConfig(brokerClient); ok {
+		result.config = cfg
+	}
 	return result
+}
+
+type activeConfigLoader interface {
+	ConfigLoadActive(context.Context) (storagebroker.ConfigLoadActiveResult, error)
+}
+
+func loadActiveStatusConfig(brokerClient activeConfigLoader) (*config.Config, bool) {
+	if brokerClient == nil {
+		return nil, false
+	}
+	cfgResult, err := brokerClient.ConfigLoadActive(context.Background())
+	if err != nil {
+		return nil, false
+	}
+	var cfg config.Config
+	if err := json.Unmarshal(cfgResult.Config, &cfg); err != nil {
+		return nil, false
+	}
+	if err := config.PostLoad(&cfg); err != nil {
+		return nil, false
+	}
+	return &cfg, true
 }
 
 // resolveStatusConfig loads the config without opening the encrypted DB.
