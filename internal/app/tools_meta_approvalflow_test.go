@@ -49,8 +49,8 @@ func TestBuildMetaTools_IncludesApproveArtifactRelease(t *testing.T) {
 	assert.Contains(t, required, "artifact_label")
 	assert.Contains(t, required, "requested_scope")
 	assert.Contains(t, required, "exportability_state")
-	assert.Contains(t, required, "override_requested")
-	assert.Contains(t, required, "high_risk")
+	assert.NotContains(t, required, "override_requested")
+	assert.NotContains(t, required, "high_risk")
 }
 
 func TestApproveArtifactRelease_EscalatesNeedsHumanReview(t *testing.T) {
@@ -64,16 +64,19 @@ func TestApproveArtifactRelease_EscalatesNeedsHumanReview(t *testing.T) {
 		"artifact_label":      "artifact/needs-review",
 		"requested_scope":     "artifact/needs-review",
 		"exportability_state": "needs-human-review",
-		"override_requested":  false,
-		"high_risk":           false,
 	})
 	require.NoError(t, err)
 
-	payload := got.(map[string]interface{})
-	assert.Equal(t, "escalate", payload["decision"])
-	assert.Equal(t, "policy_issue", payload["issue"])
-	assert.Equal(t, "review", payload["settlement_hint"])
-	assert.Contains(t, payload["reason"].(string), "human escalation")
+	payload := got.(artifactReleaseApprovalReceipt)
+	assert.Equal(t, "artifact/needs-review", payload.ArtifactLabel)
+	assert.Equal(t, "artifact/needs-review", payload.RequestedScope)
+	assert.Equal(t, "needs-human-review", payload.ExportabilityState)
+	assert.False(t, payload.OverrideRequested)
+	assert.False(t, payload.HighRisk)
+	assert.Equal(t, "escalate", payload.Decision)
+	assert.Equal(t, "policy_issue", payload.Issue)
+	assert.Equal(t, "review", payload.SettlementHint)
+	assert.Contains(t, payload.Reason, "human escalation")
 
 	row, err := client.AuditLog.Query().
 		Where(auditlog.ActionEQ(auditlog.ActionArtifactReleaseApproval), auditlog.TargetEQ("artifact:artifact/needs-review")).
@@ -85,25 +88,91 @@ func TestApproveArtifactRelease_EscalatesNeedsHumanReview(t *testing.T) {
 	assert.Equal(t, "escalate", row.Details["decision"])
 }
 
-func TestApproveArtifactRelease_SavesAuditRow(t *testing.T) {
+func TestApproveArtifactRelease_ApprovePayloadShapeAndAuditRow(t *testing.T) {
 	store, client := newApprovalFlowToolStore(t)
 	tools := buildMetaTools(store, nil, nil, config.SkillConfig{}, nil)
 	tool := findTool(tools, "approve_artifact_release")
 	require.NotNil(t, tool)
 
 	ctx := context.Background()
-	_, err := tool.Handler(ctx, map[string]interface{}{
+	got, err := tool.Handler(ctx, map[string]interface{}{
 		"artifact_label":      "artifact/final-memo",
 		"requested_scope":     "artifact/final-memo",
 		"exportability_state": "exportable",
-		"override_requested":  false,
-		"high_risk":           false,
 	})
 	require.NoError(t, err)
+
+	payload := got.(artifactReleaseApprovalReceipt)
+	assert.Equal(t, "approve", payload.Decision)
+	assert.Equal(t, "artifact/final-memo", payload.ArtifactLabel)
+	assert.Equal(t, "artifact/final-memo", payload.RequestedScope)
+	assert.Equal(t, "exportable", payload.ExportabilityState)
+	assert.False(t, payload.OverrideRequested)
+	assert.False(t, payload.HighRisk)
+	assert.Equal(t, "substantial", payload.Fulfillment)
+	assert.Equal(t, 1.0, payload.FulfillmentRatio)
+	assert.Equal(t, "auto_release", payload.SettlementHint)
 
 	count, err := client.AuditLog.Query().
 		Where(auditlog.ActionEQ(auditlog.ActionArtifactReleaseApproval)).
 		Count(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, 1, count)
+}
+
+func TestApproveArtifactRelease_RejectPayloadShape(t *testing.T) {
+	store, _ := newApprovalFlowToolStore(t)
+	tools := buildMetaTools(store, nil, nil, config.SkillConfig{}, nil)
+	tool := findTool(tools, "approve_artifact_release")
+	require.NotNil(t, tool)
+
+	got, err := tool.Handler(context.Background(), map[string]interface{}{
+		"artifact_label":      "artifact/blocked",
+		"requested_scope":     "artifact/blocked",
+		"exportability_state": "blocked",
+	})
+	require.NoError(t, err)
+
+	payload := got.(artifactReleaseApprovalReceipt)
+	assert.Equal(t, "reject", payload.Decision)
+	assert.Equal(t, "policy_issue", payload.Issue)
+	assert.Equal(t, "none", payload.Fulfillment)
+	assert.Equal(t, 0.0, payload.FulfillmentRatio)
+	assert.Equal(t, "hold", payload.SettlementHint)
+}
+
+func TestApproveArtifactRelease_RequestRevisionPayloadShape(t *testing.T) {
+	store, _ := newApprovalFlowToolStore(t)
+	tools := buildMetaTools(store, nil, nil, config.SkillConfig{}, nil)
+	tool := findTool(tools, "approve_artifact_release")
+	require.NotNil(t, tool)
+
+	got, err := tool.Handler(context.Background(), map[string]interface{}{
+		"artifact_label":      "artifact-draft",
+		"requested_scope":     "artifact-final",
+		"exportability_state": "exportable",
+	})
+	require.NoError(t, err)
+
+	payload := got.(artifactReleaseApprovalReceipt)
+	assert.Equal(t, "request-revision", payload.Decision)
+	assert.Equal(t, "scope_mismatch", payload.Issue)
+	assert.Equal(t, "partial", payload.Fulfillment)
+	assert.Equal(t, 0.0, payload.FulfillmentRatio)
+	assert.Equal(t, "review", payload.SettlementHint)
+}
+
+func TestApproveArtifactRelease_InvalidExportabilityState(t *testing.T) {
+	store, _ := newApprovalFlowToolStore(t)
+	tools := buildMetaTools(store, nil, nil, config.SkillConfig{}, nil)
+	tool := findTool(tools, "approve_artifact_release")
+	require.NotNil(t, tool)
+
+	_, err := tool.Handler(context.Background(), map[string]interface{}{
+		"artifact_label":      "artifact/bad-state",
+		"requested_scope":     "artifact/bad-state",
+		"exportability_state": "review",
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid exportability_state")
 }

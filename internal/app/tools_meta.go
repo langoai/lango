@@ -12,7 +12,6 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/langoai/lango/internal/agent"
-	"github.com/langoai/lango/internal/approvalflow"
 	"github.com/langoai/lango/internal/config"
 	entknowledge "github.com/langoai/lango/internal/ent/knowledge"
 	entlearning "github.com/langoai/lango/internal/ent/learning"
@@ -198,7 +197,7 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 					"override_requested": map[string]interface{}{"type": "boolean", "description": "Whether a blocked release override was requested"},
 					"high_risk":          map[string]interface{}{"type": "boolean", "description": "Whether the release is high risk"},
 				},
-				"required": []string{"artifact_label", "requested_scope", "exportability_state", "override_requested", "high_risk"},
+				"required": []string{"artifact_label", "requested_scope", "exportability_state"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
 				if store == nil {
@@ -233,22 +232,13 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 					return nil, fmt.Errorf("invalid exportability_state %q", exportabilityStateStr)
 				}
 
-				outcome := approvalflow.EvaluateArtifactRelease(approvalflow.ArtifactReleaseInput{
-					ArtifactLabel:          artifactLabel,
-					RequestedArtifactLabel: requestedScope,
-					Exportability: exportability.Receipt{
-						State: state,
-					},
-					OverrideRequested: overrideRequested,
-					HighRisk:          highRisk,
-				})
-
-				payload := artifactReleaseApprovalPayload(artifactLabel, requestedScope, state, outcome, overrideRequested, highRisk)
+				outcome := evaluateArtifactReleaseApproval(artifactLabel, requestedScope, state, overrideRequested, highRisk)
+				payload := newArtifactReleaseApprovalReceipt(artifactLabel, requestedScope, state, outcome, overrideRequested, highRisk)
 				if err := store.SaveAuditLog(ctx, knowledge.AuditEntry{
 					Action:  "artifact_release_approval",
 					Actor:   "agent",
 					Target:  "artifact:" + artifactLabel,
-					Details: payload,
+					Details: payload.Details(),
 				}); err != nil {
 					return nil, fmt.Errorf("save artifact release approval audit log: %w", err)
 				}
@@ -1006,28 +996,5 @@ func exportabilityReceiptPayload(artifactLabel string, receipt exportability.Rec
 		"policy_code":    receipt.PolicyCode,
 		"explanation":    receipt.Explanation,
 		"lineage":        lineage,
-	}
-}
-
-func artifactReleaseApprovalPayload(
-	artifactLabel string,
-	requestedScope string,
-	state exportability.DecisionState,
-	outcome approvalflow.ArtifactReleaseOutcome,
-	overrideRequested bool,
-	highRisk bool,
-) map[string]interface{} {
-	return map[string]interface{}{
-		"artifact_label":      artifactLabel,
-		"requested_scope":     requestedScope,
-		"exportability_state": string(state),
-		"override_requested":  overrideRequested,
-		"high_risk":           highRisk,
-		"decision":            string(outcome.Decision),
-		"reason":              outcome.Reason,
-		"issue":               string(outcome.Issue),
-		"fulfillment":         string(outcome.Fulfillment),
-		"fulfillment_ratio":   outcome.FulfillmentRatio,
-		"settlement_hint":     string(outcome.SettlementHint),
 	}
 }
