@@ -23,11 +23,13 @@ func TestBuildMetaTools_IncludesApproveUpfrontPayment(t *testing.T) {
 
 	props, _ := tool.Parameters["properties"].(map[string]interface{})
 	_, hasTransactionReceiptID := props["transaction_receipt_id"]
+	_, hasSubmissionReceiptID := props["submission_receipt_id"]
 	_, hasAmount := props["amount"]
 	_, hasTrustScore := props["trust_score"]
 	_, hasUserMaxPrepay := props["user_max_prepay"]
 	_, hasRemainingBudget := props["remaining_budget"]
 	assert.True(t, hasTransactionReceiptID)
+	assert.True(t, hasSubmissionReceiptID)
 	assert.True(t, hasAmount)
 	assert.True(t, hasTrustScore)
 	assert.True(t, hasUserMaxPrepay)
@@ -35,6 +37,7 @@ func TestBuildMetaTools_IncludesApproveUpfrontPayment(t *testing.T) {
 
 	required, _ := tool.Parameters["required"].([]string)
 	assert.Contains(t, required, "transaction_receipt_id")
+	assert.Contains(t, required, "submission_receipt_id")
 	assert.Contains(t, required, "amount")
 	assert.Contains(t, required, "trust_score")
 	assert.Contains(t, required, "user_max_prepay")
@@ -59,6 +62,7 @@ func TestApproveUpfrontPayment_UpdatesTransactionAndReturnsDecisionPayload(t *te
 
 	got, err := tool.Handler(ctx, map[string]interface{}{
 		"transaction_receipt_id": tx.TransactionReceiptID,
+		"submission_receipt_id":  submission.SubmissionReceiptID,
 		"amount":                 "2.00",
 		"trust_score":            0.95,
 		"user_max_prepay":        "5.00",
@@ -68,6 +72,7 @@ func TestApproveUpfrontPayment_UpdatesTransactionAndReturnsDecisionPayload(t *te
 
 	payload := got.(upfrontPaymentApprovalReceipt)
 	assert.Equal(t, tx.TransactionReceiptID, payload.TransactionReceiptID)
+	assert.Equal(t, submission.SubmissionReceiptID, payload.SubmissionReceiptID)
 	assert.Equal(t, "2.00", payload.Amount)
 	assert.Equal(t, 0.95, payload.TrustScore)
 	assert.Equal(t, "5.00", payload.UserMaxPrepay)
@@ -89,6 +94,33 @@ func TestApproveUpfrontPayment_UpdatesTransactionAndReturnsDecisionPayload(t *te
 	assert.Equal(t, submission.SubmissionReceiptID, events[0].SubmissionReceiptID)
 	assert.Equal(t, "approval", events[0].Source)
 	assert.Equal(t, "approval.upfront_payment", events[0].Subtype)
+}
+
+func TestApproveUpfrontPayment_ReportsMissingSubmissionReceiptID(t *testing.T) {
+	store := receipts.NewStore()
+	ctx := context.Background()
+
+	_, tx, err := store.CreateSubmissionReceipt(ctx, receipts.CreateSubmissionInput{
+		TransactionID:       "tx-upfront-missing-submission",
+		ArtifactLabel:       "artifact/upfront",
+		PayloadHash:         "hash-upfront",
+		SourceLineageDigest: "lineage-upfront",
+	})
+	require.NoError(t, err)
+
+	tools := buildMetaTools(nil, nil, nil, config.SkillConfig{}, nil, store)
+	tool := findTool(tools, "approve_upfront_payment")
+	require.NotNil(t, tool)
+
+	_, err = tool.Handler(ctx, map[string]interface{}{
+		"transaction_receipt_id": tx.TransactionReceiptID,
+		"amount":                 "2.00",
+		"trust_score":            0.95,
+		"user_max_prepay":        "5.00",
+		"remaining_budget":       "9.00",
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "submission_receipt_id")
 }
 
 func TestApproveUpfrontPayment_ReportsMissingReceiptsDependency(t *testing.T) {

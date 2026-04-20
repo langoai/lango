@@ -261,12 +261,13 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 				"type": "object",
 				"properties": map[string]interface{}{
 					"transaction_receipt_id": map[string]interface{}{"type": "string", "description": "Linked transaction receipt identifier"},
+					"submission_receipt_id":  map[string]interface{}{"type": "string", "description": "Explicit submission receipt identifier for this approval"},
 					"amount":                 map[string]interface{}{"type": "string", "description": "Requested upfront payment amount"},
 					"trust_score":            map[string]interface{}{"type": "number", "description": "Trust score used for upfront payment policy evaluation"},
 					"user_max_prepay":        map[string]interface{}{"type": "string", "description": "Maximum prepay amount allowed by policy"},
 					"remaining_budget":       map[string]interface{}{"type": "string", "description": "Remaining budget available for the transaction"},
 				},
-				"required": []string{"transaction_receipt_id", "amount", "trust_score", "user_max_prepay", "remaining_budget"},
+				"required": []string{"transaction_receipt_id", "submission_receipt_id", "amount", "trust_score", "user_max_prepay", "remaining_budget"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
 				if receiptStore == nil {
@@ -274,6 +275,10 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 				}
 
 				transactionReceiptID, err := toolparam.RequireString(params, "transaction_receipt_id")
+				if err != nil {
+					return nil, err
+				}
+				submissionReceiptID, err := toolparam.RequireString(params, "submission_receipt_id")
 				if err != nil {
 					return nil, err
 				}
@@ -305,13 +310,14 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 					},
 				})
 
-				updatedTx, err := receiptStore.ApplyUpfrontPaymentApproval(ctx, transactionReceiptID, outcome)
+				updatedTx, err := receiptStore.ApplyUpfrontPaymentApproval(ctx, transactionReceiptID, submissionReceiptID, outcome)
 				if err != nil {
 					return nil, fmt.Errorf("apply upfront payment approval: %w", err)
 				}
 
 				return newUpfrontPaymentApprovalReceipt(
 					transactionReceiptID,
+					submissionReceiptID,
 					amount,
 					trustScore,
 					userMaxPrepay,
@@ -1151,6 +1157,7 @@ func createDisputeReadyReceipt(ctx context.Context, receiptStore *receipts.Store
 
 type upfrontPaymentApprovalReceipt struct {
 	TransactionReceiptID         string  `json:"transaction_receipt_id"`
+	SubmissionReceiptID          string  `json:"submission_receipt_id"`
 	Amount                       string  `json:"amount"`
 	TrustScore                   float64 `json:"trust_score"`
 	UserMaxPrepay                string  `json:"user_max_prepay"`
@@ -1169,6 +1176,7 @@ type upfrontPaymentApprovalReceipt struct {
 
 func newUpfrontPaymentApprovalReceipt(
 	transactionReceiptID string,
+	submissionReceiptID string,
 	amount string,
 	trustScore float64,
 	userMaxPrepay string,
@@ -1178,6 +1186,7 @@ func newUpfrontPaymentApprovalReceipt(
 ) upfrontPaymentApprovalReceipt {
 	return upfrontPaymentApprovalReceipt{
 		TransactionReceiptID:         transactionReceiptID,
+		SubmissionReceiptID:          submissionReceiptID,
 		Amount:                       amount,
 		TrustScore:                   trustScore,
 		UserMaxPrepay:                userMaxPrepay,

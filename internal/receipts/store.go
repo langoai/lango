@@ -83,10 +83,16 @@ func (s *Store) CreateSubmissionReceipt(_ context.Context, in CreateSubmissionIn
 	return submission, transaction, nil
 }
 
-func (s *Store) ApplyUpfrontPaymentApproval(_ context.Context, transactionReceiptID string, outcome paymentapproval.Outcome) (TransactionReceipt, error) {
-	status := paymentApprovalStatusFromDecision(outcome.Decision)
+func (s *Store) ApplyUpfrontPaymentApproval(_ context.Context, transactionReceiptID, submissionReceiptID string, outcome paymentapproval.Outcome) (TransactionReceipt, error) {
+	status, err := paymentApprovalStatusFromDecision(outcome.Decision)
+	if err != nil {
+		return TransactionReceipt{}, err
+	}
 	if err := validatePaymentApprovalStatus(status); err != nil {
 		return TransactionReceipt{}, err
+	}
+	if submissionReceiptID == "" {
+		return TransactionReceipt{}, fmt.Errorf("%w: submission_receipt_id is required", ErrSubmissionReceiptNotFound)
 	}
 
 	s.mu.Lock()
@@ -97,11 +103,12 @@ func (s *Store) ApplyUpfrontPaymentApproval(_ context.Context, transactionReceip
 		return TransactionReceipt{}, ErrTransactionReceiptNotFound
 	}
 
-	if transaction.CurrentSubmissionReceiptID == "" {
+	submission, ok := s.submissions[submissionReceiptID]
+	if !ok {
 		return TransactionReceipt{}, ErrSubmissionReceiptNotFound
 	}
-	if _, ok := s.submissions[transaction.CurrentSubmissionReceiptID]; !ok {
-		return TransactionReceipt{}, ErrSubmissionReceiptNotFound
+	if submission.TransactionReceiptID != transactionReceiptID {
+		return TransactionReceipt{}, fmt.Errorf("%w: submission does not belong to transaction", ErrSubmissionReceiptNotFound)
 	}
 
 	transaction.CurrentPaymentApprovalStatus = status
@@ -109,8 +116,8 @@ func (s *Store) ApplyUpfrontPaymentApproval(_ context.Context, transactionReceip
 	transaction.CanonicalSettlementHint = string(outcome.SuggestedMode)
 	s.transactions[transactionReceiptID] = transaction
 
-	s.events[transaction.CurrentSubmissionReceiptID] = append(s.events[transaction.CurrentSubmissionReceiptID], ReceiptEvent{
-		SubmissionReceiptID: transaction.CurrentSubmissionReceiptID,
+	s.events[submissionReceiptID] = append(s.events[submissionReceiptID], ReceiptEvent{
+		SubmissionReceiptID: submissionReceiptID,
 		Source:              "approval",
 		Subtype:             "approval.upfront_payment",
 		Type:                EventPaymentApproval,
@@ -195,15 +202,15 @@ func validatePaymentApprovalStatus(status PaymentApprovalStatus) error {
 	}
 }
 
-func paymentApprovalStatusFromDecision(decision paymentapproval.Decision) PaymentApprovalStatus {
+func paymentApprovalStatusFromDecision(decision paymentapproval.Decision) (PaymentApprovalStatus, error) {
 	switch decision {
 	case paymentapproval.DecisionApprove:
-		return PaymentApprovalApproved
+		return PaymentApprovalApproved, nil
 	case paymentapproval.DecisionReject:
-		return PaymentApprovalRejected
+		return PaymentApprovalRejected, nil
 	case paymentapproval.DecisionEscalate:
-		return PaymentApprovalEscalated
+		return PaymentApprovalEscalated, nil
 	default:
-		return PaymentApprovalPending
+		return PaymentApprovalPending, fmt.Errorf("%w: %q", ErrInvalidPaymentApprovalStatus, decision)
 	}
 }
