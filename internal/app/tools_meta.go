@@ -26,9 +26,9 @@ import (
 )
 
 var (
-	metaReceiptsStoreOnce sync.Once
-	metaReceiptsStore     *receipts.Store
-	newMetaReceiptsStore  = receipts.NewStore
+	metaReceiptsStoreMu sync.Mutex
+	metaReceiptsStore   *receipts.Store
+	metaReceiptsFactory = receipts.NewStore
 )
 
 // buildMetaTools creates knowledge/learning/skill meta-tools for the agent.
@@ -254,6 +254,7 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 				return payload, nil
 			},
 		},
+		newDisputeReadyReceiptTool(),
 		{
 			Name:        "get_knowledge_history",
 			Description: "Get version history for a knowledge entry. Returns all versions ordered newest first",
@@ -932,10 +933,6 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 		},
 	}
 
-	if store != nil {
-		tools = append(tools, newDisputeReadyReceiptTool())
-	}
-
 	return tools
 }
 
@@ -1035,7 +1032,7 @@ func newDisputeReadyReceiptTool() *agent.Tool {
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
 			store := metaReceiptsStoreInstance()
 			if store == nil {
-				return nil, fmt.Errorf("receipts store is not available")
+				return nil, fmt.Errorf("receipts store dependency is not configured")
 			}
 
 			transactionID, err := toolparam.RequireString(params, "transaction_id")
@@ -1075,11 +1072,15 @@ func newDisputeReadyReceiptTool() *agent.Tool {
 }
 
 func metaReceiptsStoreInstance() *receipts.Store {
-	metaReceiptsStoreOnce.Do(func() {
-		if newMetaReceiptsStore == nil {
-			newMetaReceiptsStore = receipts.NewStore
-		}
-		metaReceiptsStore = newMetaReceiptsStore()
-	})
+	metaReceiptsStoreMu.Lock()
+	defer metaReceiptsStoreMu.Unlock()
+
+	if metaReceiptsStore != nil {
+		return metaReceiptsStore
+	}
+	if metaReceiptsFactory == nil {
+		return nil
+	}
+	metaReceiptsStore = metaReceiptsFactory()
 	return metaReceiptsStore
 }

@@ -299,6 +299,7 @@ func TestBuildMetaTools_Parity(t *testing.T) {
 		"save_knowledge",
 		"evaluate_exportability",
 		"approve_artifact_release",
+		"create_dispute_ready_receipt",
 		"get_knowledge_history",
 		"search_knowledge",
 		"save_learning",

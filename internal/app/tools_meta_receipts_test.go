@@ -38,6 +38,12 @@ func TestBuildMetaTools_IncludesCreateDisputeReadyReceipt(t *testing.T) {
 	assert.Contains(t, required, "source_lineage_digest")
 }
 
+func TestBuildMetaTools_IncludesCreateDisputeReadyReceiptWithoutStore(t *testing.T) {
+	tools := buildMetaTools(nil, nil, nil, config.SkillConfig{}, nil)
+	tool := findTool(tools, "create_dispute_ready_receipt")
+	require.NotNil(t, tool)
+}
+
 func TestCreateDisputeReadyReceipt_CreatesAndReusesTransactionIDs(t *testing.T) {
 	store, _ := newApprovalFlowToolStore(t)
 	tools := buildMetaTools(store, nil, nil, config.SkillConfig{}, nil)
@@ -77,4 +83,28 @@ func TestCreateDisputeReadyReceipt_CreatesAndReusesTransactionIDs(t *testing.T) 
 	assert.NotEqual(t, firstPayload["submission_receipt_id"], secondPayload["submission_receipt_id"])
 	assert.Equal(t, firstPayload["transaction_receipt_id"], secondPayload["transaction_receipt_id"])
 	assert.Equal(t, secondPayload["submission_receipt_id"], secondPayload["current_submission_receipt_id"])
+}
+
+func TestCreateDisputeReadyReceipt_ReportsMissingReceiptsDependency(t *testing.T) {
+	oldFactory := metaReceiptsFactory
+	oldStore := metaReceiptsStore
+	metaReceiptsFactory = nil
+	metaReceiptsStore = nil
+	t.Cleanup(func() {
+		metaReceiptsFactory = oldFactory
+		metaReceiptsStore = oldStore
+	})
+
+	tools := buildMetaTools(nil, nil, nil, config.SkillConfig{}, nil)
+	tool := findTool(tools, "create_dispute_ready_receipt")
+	require.NotNil(t, tool)
+
+	_, err := tool.Handler(context.Background(), map[string]interface{}{
+		"transaction_id":        "tx-missing",
+		"artifact_label":        "artifact/missing",
+		"payload_hash":          "hash-missing",
+		"source_lineage_digest": "lineage-missing",
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "receipts store dependency is not configured")
 }
