@@ -51,10 +51,11 @@ func (s *Store) CreateSubmissionReceipt(_ context.Context, in CreateSubmissionIn
 		txReceiptID = uuid.NewString()
 		s.txByExternalID[in.TransactionID] = txReceiptID
 		s.transactions[txReceiptID] = TransactionReceipt{
-			TransactionReceiptID:      txReceiptID,
-			TransactionID:             in.TransactionID,
-			CanonicalApprovalStatus:   ApprovalPending,
-			CanonicalSettlementStatus: SettlementPending,
+			TransactionReceiptID:         txReceiptID,
+			TransactionID:                in.TransactionID,
+			CanonicalApprovalStatus:      ApprovalPending,
+			CanonicalSettlementStatus:    SettlementPending,
+			CurrentPaymentApprovalStatus: PaymentApprovalPending,
 		}
 	}
 
@@ -77,6 +78,39 @@ func (s *Store) CreateSubmissionReceipt(_ context.Context, in CreateSubmissionIn
 	s.transactions[txReceiptID] = transaction
 
 	return submission, transaction, nil
+}
+
+func (s *Store) ApplyUpfrontPaymentApproval(_ context.Context, transactionReceiptID string, status PaymentApprovalStatus, canonicalDecision string, canonicalSettlementHint string) (TransactionReceipt, error) {
+	if err := validatePaymentApprovalStatus(status); err != nil {
+		return TransactionReceipt{}, err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	transaction, ok := s.transactions[transactionReceiptID]
+	if !ok {
+		return TransactionReceipt{}, ErrTransactionReceiptNotFound
+	}
+
+	if transaction.CurrentSubmissionReceiptID == "" {
+		return TransactionReceipt{}, ErrSubmissionReceiptNotFound
+	}
+	if _, ok := s.submissions[transaction.CurrentSubmissionReceiptID]; !ok {
+		return TransactionReceipt{}, ErrSubmissionReceiptNotFound
+	}
+
+	transaction.CurrentPaymentApprovalStatus = status
+	transaction.CanonicalPaymentApprovalDecision = canonicalDecision
+	transaction.CanonicalPaymentSettlementHint = canonicalSettlementHint
+	s.transactions[transactionReceiptID] = transaction
+
+	s.events[transaction.CurrentSubmissionReceiptID] = append(s.events[transaction.CurrentSubmissionReceiptID], ReceiptEvent{
+		SubmissionReceiptID: transaction.CurrentSubmissionReceiptID,
+		Type:                EventPaymentApproval,
+	})
+
+	return transaction, nil
 }
 
 func (s *Store) AppendReceiptEvent(_ context.Context, submissionReceiptID string, eventType EventType) error {
@@ -134,11 +168,21 @@ func validateEventType(eventType EventType) error {
 		EventFinalExportability,
 		EventApprovalRequested,
 		EventApprovalResolved,
+		EventPaymentApproval,
 		EventSettlementUpdated,
 		EventEscalated,
 		EventDisputed:
 		return nil
 	default:
 		return fmt.Errorf("%w: %q", ErrInvalidReceiptEventType, eventType)
+	}
+}
+
+func validatePaymentApprovalStatus(status PaymentApprovalStatus) error {
+	switch status {
+	case PaymentApprovalPending, PaymentApprovalApproved, PaymentApprovalRejected, PaymentApprovalEscalated:
+		return nil
+	default:
+		return fmt.Errorf("%w: %q", ErrInvalidPaymentApprovalStatus, status)
 	}
 }

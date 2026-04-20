@@ -29,6 +29,9 @@ func TestCreateSubmissionReceipt_CreatesTransactionAndCurrentPointer(t *testing.
 	require.Equal(t, sub.SubmissionReceiptID, tx.CurrentSubmissionReceiptID)
 	require.Equal(t, ApprovalPending, sub.CanonicalApprovalStatus)
 	require.Equal(t, SettlementPending, tx.CanonicalSettlementStatus)
+	require.Equal(t, PaymentApprovalPending, tx.CurrentPaymentApprovalStatus)
+	require.Empty(t, tx.CanonicalPaymentApprovalDecision)
+	require.Empty(t, tx.CanonicalPaymentSettlementHint)
 }
 
 func TestCreateSubmissionReceipt_RejectsEmptyInput(t *testing.T) {
@@ -88,6 +91,33 @@ func TestAppendReceiptEvent_PreservesCanonicalReceiptAndTrail(t *testing.T) {
 	require.Equal(t, ApprovalPending, got.CanonicalApprovalStatus)
 	require.Len(t, events, 1)
 	require.Equal(t, EventApprovalRequested, events[0].Type)
+	require.Equal(t, sub.SubmissionReceiptID, events[0].SubmissionReceiptID)
+}
+
+func TestApplyUpfrontPaymentApproval_UpdatesTransactionAndAppendsEvent(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	sub, tx, err := store.CreateSubmissionReceipt(ctx, CreateSubmissionInput{
+		TransactionID:       "tx-approval",
+		ArtifactLabel:       "memo",
+		PayloadHash:         "hash-approval",
+		SourceLineageDigest: "lineage-approval",
+	})
+	require.NoError(t, err)
+
+	updatedTx, err := store.ApplyUpfrontPaymentApproval(ctx, tx.TransactionReceiptID, PaymentApprovalApproved, "approve", "prepay")
+	require.NoError(t, err)
+	require.Equal(t, tx.TransactionReceiptID, updatedTx.TransactionReceiptID)
+	require.Equal(t, PaymentApprovalApproved, updatedTx.CurrentPaymentApprovalStatus)
+	require.Equal(t, "approve", updatedTx.CanonicalPaymentApprovalDecision)
+	require.Equal(t, "prepay", updatedTx.CanonicalPaymentSettlementHint)
+
+	gotSub, events, err := store.GetSubmissionReceipt(ctx, sub.SubmissionReceiptID)
+	require.NoError(t, err)
+	require.Equal(t, sub.SubmissionReceiptID, gotSub.SubmissionReceiptID)
+	require.Len(t, events, 1)
+	require.Equal(t, EventPaymentApproval, events[0].Type)
 	require.Equal(t, sub.SubmissionReceiptID, events[0].SubmissionReceiptID)
 }
 

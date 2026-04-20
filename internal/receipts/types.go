@@ -3,9 +3,11 @@ package receipts
 import "errors"
 
 var (
-	ErrSubmissionReceiptNotFound = errors.New("submission receipt not found")
-	ErrInvalidSubmissionInput    = errors.New("invalid submission input")
-	ErrInvalidReceiptEventType   = errors.New("invalid receipt event type")
+	ErrSubmissionReceiptNotFound    = errors.New("submission receipt not found")
+	ErrTransactionReceiptNotFound   = errors.New("transaction receipt not found")
+	ErrInvalidSubmissionInput       = errors.New("invalid submission input")
+	ErrInvalidReceiptEventType      = errors.New("invalid receipt event type")
+	ErrInvalidPaymentApprovalStatus = errors.New("invalid payment approval status")
 )
 
 type ApprovalStatus string
@@ -27,6 +29,15 @@ const (
 	SettlementDisputed         SettlementStatus = "disputed"
 )
 
+type PaymentApprovalStatus string
+
+const (
+	PaymentApprovalPending   PaymentApprovalStatus = "pending"
+	PaymentApprovalApproved  PaymentApprovalStatus = "approved"
+	PaymentApprovalRejected  PaymentApprovalStatus = "rejected"
+	PaymentApprovalEscalated PaymentApprovalStatus = "escalated"
+)
+
 type EventType string
 
 const (
@@ -34,6 +45,7 @@ const (
 	EventFinalExportability EventType = "final_exportability"
 	EventApprovalRequested  EventType = "approval_requested"
 	EventApprovalResolved   EventType = "approval_resolved"
+	EventPaymentApproval    EventType = "payment_approval"
 	EventSettlementUpdated  EventType = "settlement_updated"
 	EventEscalated          EventType = "escalated"
 	EventDisputed           EventType = "disputed"
@@ -58,9 +70,12 @@ type SubmissionReceipt struct {
 }
 
 type TransactionReceipt struct {
-	TransactionReceiptID       string           `json:"transaction_receipt_id"`
-	TransactionID              string           `json:"transaction_id"`
-	CurrentSubmissionReceiptID string           `json:"current_submission_receipt_id,omitempty"`
-	CanonicalApprovalStatus    ApprovalStatus   `json:"canonical_approval_status"`
-	CanonicalSettlementStatus  SettlementStatus `json:"canonical_settlement_status"`
+	TransactionReceiptID             string                `json:"transaction_receipt_id"`
+	TransactionID                    string                `json:"transaction_id"`
+	CurrentSubmissionReceiptID       string                `json:"current_submission_receipt_id,omitempty"`
+	CanonicalApprovalStatus          ApprovalStatus        `json:"canonical_approval_status"`
+	CanonicalSettlementStatus        SettlementStatus      `json:"canonical_settlement_status"`
+	CurrentPaymentApprovalStatus     PaymentApprovalStatus `json:"current_payment_approval_status"`
+	CanonicalPaymentApprovalDecision string                `json:"canonical_payment_approval_decision,omitempty"`
+	CanonicalPaymentSettlementHint   string                `json:"canonical_payment_settlement_hint,omitempty"`
 }

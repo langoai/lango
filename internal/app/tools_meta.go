@@ -18,6 +18,7 @@ import (
 	"github.com/langoai/lango/internal/exportability"
 	"github.com/langoai/lango/internal/knowledge"
 	"github.com/langoai/lango/internal/learning"
+	"github.com/langoai/lango/internal/paymentapproval"
 	"github.com/langoai/lango/internal/receipts"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/skill"
@@ -248,6 +249,84 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 			},
 		},
 		newDisputeReadyReceiptTool(receiptStore),
+		{
+			Name:        "approve_upfront_payment",
+			Description: "Evaluate an upfront payment request and update the linked transaction receipt with canonical payment approval state",
+			SafetyLevel: agent.SafetyLevelModerate,
+			Capability: agent.ToolCapability{
+				Category: "knowledge",
+				Activity: agent.ActivityWrite,
+			},
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"transaction_receipt_id": map[string]interface{}{"type": "string", "description": "Linked transaction receipt identifier"},
+					"amount":                 map[string]interface{}{"type": "string", "description": "Requested upfront payment amount"},
+					"trust_score":            map[string]interface{}{"type": "number", "description": "Trust score used for upfront payment policy evaluation"},
+					"user_max_prepay":        map[string]interface{}{"type": "string", "description": "Maximum prepay amount allowed by policy"},
+					"remaining_budget":       map[string]interface{}{"type": "string", "description": "Remaining budget available for the transaction"},
+				},
+				"required": []string{"transaction_receipt_id", "amount", "trust_score", "user_max_prepay", "remaining_budget"},
+			},
+			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+				if receiptStore == nil {
+					return nil, fmt.Errorf("receipts store dependency is not configured")
+				}
+
+				transactionReceiptID, err := toolparam.RequireString(params, "transaction_receipt_id")
+				if err != nil {
+					return nil, err
+				}
+				amount, err := toolparam.RequireString(params, "amount")
+				if err != nil {
+					return nil, err
+				}
+				trustScore, err := toolparam.RequireFloat64(params, "trust_score")
+				if err != nil {
+					return nil, err
+				}
+				userMaxPrepay, err := toolparam.RequireString(params, "user_max_prepay")
+				if err != nil {
+					return nil, err
+				}
+				remainingBudget, err := toolparam.RequireString(params, "remaining_budget")
+				if err != nil {
+					return nil, err
+				}
+
+				outcome := paymentapproval.EvaluateUpfrontPayment(paymentapproval.Input{
+					Amount: amount,
+					Trust: paymentapproval.TrustInput{
+						Score: trustScore,
+					},
+					Budget: paymentapproval.BudgetPolicyContext{
+						UserMaxPrepay:   userMaxPrepay,
+						RemainingBudget: remainingBudget,
+					},
+				})
+
+				updatedTx, err := receiptStore.ApplyUpfrontPaymentApproval(
+					ctx,
+					transactionReceiptID,
+					paymentApprovalStatusForDecision(outcome.Decision),
+					string(outcome.Decision),
+					string(outcome.SuggestedMode),
+				)
+				if err != nil {
+					return nil, fmt.Errorf("apply upfront payment approval: %w", err)
+				}
+
+				return newUpfrontPaymentApprovalReceipt(
+					transactionReceiptID,
+					amount,
+					trustScore,
+					userMaxPrepay,
+					remainingBudget,
+					outcome,
+					updatedTx,
+				), nil
+			},
+		},
 		{
 			Name:        "get_knowledge_history",
 			Description: "Get version history for a knowledge entry. Returns all versions ordered newest first",
@@ -1074,4 +1153,63 @@ func createDisputeReadyReceipt(ctx context.Context, receiptStore *receipts.Store
 		"transaction_receipt_id":        transaction.TransactionReceiptID,
 		"current_submission_receipt_id": transaction.CurrentSubmissionReceiptID,
 	}, nil
+}
+
+type upfrontPaymentApprovalReceipt struct {
+	TransactionReceiptID             string  `json:"transaction_receipt_id"`
+	Amount                           string  `json:"amount"`
+	TrustScore                       float64 `json:"trust_score"`
+	UserMaxPrepay                    string  `json:"user_max_prepay"`
+	RemainingBudget                  string  `json:"remaining_budget"`
+	Decision                         string  `json:"decision"`
+	Reason                           string  `json:"reason"`
+	PolicyCode                       string  `json:"policy_code,omitempty"`
+	SuggestedMode                    string  `json:"suggested_mode"`
+	AmountClass                      string  `json:"amount_class,omitempty"`
+	RiskClass                        string  `json:"risk_class,omitempty"`
+	FailureDetail                    string  `json:"failure_detail,omitempty"`
+	CurrentPaymentApprovalStatus     string  `json:"current_payment_approval_status"`
+	CanonicalPaymentApprovalDecision string  `json:"canonical_payment_approval_decision,omitempty"`
+	CanonicalPaymentSettlementHint   string  `json:"canonical_payment_settlement_hint,omitempty"`
+}
+
+func newUpfrontPaymentApprovalReceipt(
+	transactionReceiptID string,
+	amount string,
+	trustScore float64,
+	userMaxPrepay string,
+	remainingBudget string,
+	outcome paymentapproval.Outcome,
+	updatedTx receipts.TransactionReceipt,
+) upfrontPaymentApprovalReceipt {
+	return upfrontPaymentApprovalReceipt{
+		TransactionReceiptID:             transactionReceiptID,
+		Amount:                           amount,
+		TrustScore:                       trustScore,
+		UserMaxPrepay:                    userMaxPrepay,
+		RemainingBudget:                  remainingBudget,
+		Decision:                         string(outcome.Decision),
+		Reason:                           outcome.Reason,
+		PolicyCode:                       outcome.PolicyCode,
+		SuggestedMode:                    string(outcome.SuggestedMode),
+		AmountClass:                      string(outcome.AmountClass),
+		RiskClass:                        string(outcome.RiskClass),
+		FailureDetail:                    outcome.FailureDetail,
+		CurrentPaymentApprovalStatus:     string(updatedTx.CurrentPaymentApprovalStatus),
+		CanonicalPaymentApprovalDecision: updatedTx.CanonicalPaymentApprovalDecision,
+		CanonicalPaymentSettlementHint:   updatedTx.CanonicalPaymentSettlementHint,
+	}
+}
+
+func paymentApprovalStatusForDecision(decision paymentapproval.Decision) receipts.PaymentApprovalStatus {
+	switch decision {
+	case paymentapproval.DecisionApprove:
+		return receipts.PaymentApprovalApproved
+	case paymentapproval.DecisionReject:
+		return receipts.PaymentApprovalRejected
+	case paymentapproval.DecisionEscalate:
+		return receipts.PaymentApprovalEscalated
+	default:
+		return receipts.PaymentApprovalPending
+	}
 }

@@ -300,6 +300,7 @@ func TestBuildMetaTools_Parity(t *testing.T) {
 		"evaluate_exportability",
 		"approve_artifact_release",
 		"create_dispute_ready_receipt",
+		"approve_upfront_payment",
 		"get_knowledge_history",
 		"search_knowledge",
 		"save_learning",
