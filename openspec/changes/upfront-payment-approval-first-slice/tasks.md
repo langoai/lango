@@ -10,7 +10,7 @@
 
 ## 3. Operator Surface And Docs
 
-- [ ] 3.1 Add minimal operator-facing upfront payment approval docs and truth-align surrounding surfaces
+- [x] 3.1 Add minimal operator-facing upfront payment approval docs and truth-align surrounding surfaces
 
 ## 4. Verification And OpenSpec Closeout
 

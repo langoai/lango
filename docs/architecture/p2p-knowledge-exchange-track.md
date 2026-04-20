@@ -39,7 +39,7 @@ This track is intentionally narrower than leader-led team execution.
 
 It establishes the trust, settlement, deliverable, and exportability boundaries that later team-based collaboration depends on, without taking on full role orchestration, delegated budget control, or broader shared-workspace behavior. Leader-led team execution builds on these boundaries rather than replacing them.
 
-The exportability policy work has already started as a first slice: source-based evaluation and operator visibility are now landed. Approval flow now has a first slice too: structured artifact release approval states and audit-backed receipts are landed. Dispute-ready receipts also have a lite slice now: canonical submission and transaction records, current submission pointers, and append-only event trails are in place. The remaining work is deeper provenance, settlement, and dispute integration rather than starting from zero.
+The exportability policy work has already started as a first slice: source-based evaluation and operator visibility are now landed. Approval flow now has a first slice too: structured artifact release approval states and audit-backed receipts are landed. Upfront payment approval now has a first slice as well: structured decisioning, suggested payment modes, and canonical transaction receipt state updates are landed. Dispute-ready receipts also have a lite slice now: canonical submission and transaction records, current submission pointers, and append-only event trails are in place. The remaining work is deeper provenance, settlement, and dispute integration rather than starting from zero.
 
 ## In Scope
 
@@ -47,6 +47,7 @@ The exportability policy work has already started as a first slice: source-based
 - owner-root trust plus agent-specific reputation,
 - allowlist plus explicit exportability policy,
 - structured artifact release approval and audit-backed release receipts,
+- structured upfront payment approval decisioning and receipt updates,
 - expertise access and reviewable deliverables,
 - small upfront payment plus approval-based final settlement,
 - on-chain stablecoin as the trust anchor,
@@ -61,7 +62,7 @@ The exportability policy work has already started as a first slice: source-based
 - complete reputation formula design,
 - final smart-contract design,
 - human approval UI,
-- upfront payment approval runtime,
+- upfront payment approval execution gating,
 - dispute orchestration,
 - partial settlement execution.
 
@@ -80,5 +81,5 @@ The exportability policy work has already started as a first slice: source-based
 1. `P2P identity / trust / reputation` detailed audit
 2. `pricing / negotiation / settlement` detailed audit
 3. exportability policy follow-on work (the first source-primary slice has landed; the remaining gaps are richer rules, override/dispute handling, and receipt unification)
-4. approval-flow follow-on work (artifact release approval has landed; remaining gaps are human approval UI, upfront payment approval runtime, dispute orchestration, and partial settlement execution)
+4. upfront payment approval follow-on work (the first slice has landed; remaining gaps are execution gating, human approval UI, dispute orchestration, and partial settlement execution)
 5. first implementation plan for the `knowledge exchange` runtime path

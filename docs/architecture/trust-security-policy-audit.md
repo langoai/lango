@@ -71,7 +71,7 @@ The judgment baseline for this audit is narrow by design:
 | --- | --- | --- | --- |
 | Identity, Auth & Trust Entry | Phase 1-2 | `docs/security/authentication.md`, `docs/gateway/http-api.md`, `internal/gateway/auth.go`, `internal/p2p/handshake/*`, `internal/config/types_security.go` | Detailed audit complete (`stabilize`) |
 | Privacy, Exportability & Output Policy | Phase 1 | `docs/security/index.md`, `docs/security/exportability.md`, `docs/security/pii-redaction.md`, `internal/cli/security/status.go`, `internal/config/types_security.go`, `internal/config/types.go`, `internal/gatekeeper/*` | Detailed audit complete (`stabilize`) |
-| Approval, Execution Policy & Sandboxing | Phase 1-2 | `docs/security/tool-approval.md`, `docs/security/approval-flow.md`, `docs/security/index.md`, `docs/cli/sandbox.md`, `internal/toolchain/mw_approval.go`, `internal/approvalflow/*`, `internal/app/tools_meta_approvalflow.go`, `internal/tools/exec/*`, `internal/sandbox/*`, `internal/cli/settings/forms_security.go`, `internal/cli/settings/forms_sandbox.go` | Detailed audit complete (`stabilize`) |
+| Approval, Execution Policy & Sandboxing | Phase 1-2 | `docs/security/tool-approval.md`, `docs/security/approval-flow.md`, `docs/security/upfront-payment-approval.md`, `docs/security/index.md`, `docs/cli/sandbox.md`, `internal/toolchain/mw_approval.go`, `internal/approvalflow/*`, `internal/paymentapproval/*`, `internal/receipts/*`, `internal/app/tools_meta_approvalflow.go`, `internal/app/tools_meta.go`, `internal/tools/exec/*`, `internal/sandbox/*`, `internal/cli/settings/forms_security.go`, `internal/cli/settings/forms_sandbox.go` | Detailed audit complete (`stabilize`); post-implementation note: the first upfront payment approval slice now lands structured `approve`, `reject`, and `escalate` decisioning, suggested payment modes, amount/risk classes, and canonical transaction receipt payment approval updates. Remaining gaps are execution gating, human approval UI, dispute orchestration, and partial settlement execution |
 | Auditability, Provenance & Cryptographic Accountability | Phase 1-2 | `docs/features/provenance.md`, `docs/security/dispute-ready-receipts.md`, `docs/security/encryption.md`, `internal/observability/audit/*`, `internal/provenance/*`, `internal/receipts/*`, `internal/security/*`, `internal/app/tools_meta.go`, `internal/app/wiring_provenance.go` | Detailed audit complete (`stabilize`); lite dispute-ready receipt model landed in `internal/receipts/*` and is exposed today through the `create_dispute_ready_receipt` meta tool |
 
 ## Baseline Decisions Already Locked
@@ -80,6 +80,7 @@ The judgment baseline for this audit is narrow by design:
 - Private conversations, confidential material, and raw sensitive inputs are not tradeable by default.
 - Tradeable knowledge and deliverables must stay inside an allowlist plus explicit exportability policy.
 - Limited execution opens only under higher trust, explicit approval, and stronger policy boundaries.
+- Upfront payment approval now has a first slice that records prepayment decisions and canonical transaction receipt state, but it does not gate actual payment execution or escrow.
 - Dispute handling for early exchange should be grounded in signed logs, provenance, acceptance criteria, escrow state, and immutable receipts.
 
 ## Detailed Audit: Identity, Auth & Trust Entry
@@ -209,6 +210,12 @@ The judgment baseline for this audit is narrow by design:
    - There is OS-level sandboxing for local tool execution and a separate P2P tool-isolation/container path elsewhere in the system.
    - For `knowledge exchange v1` that is acceptable, but for `limited execution Phase 2` it will need one clearer operator story.
    - References: `internal/cli/settings/forms_sandbox.go:17-19`, `internal/cli/settings/forms_sandbox.go:39-40`, `internal/tools/exec/exec.go:105-141`, `internal/cli/p2p/sandbox.go:16-18`
+
+5. `Major` Upfront payment approval now has a real first slice, but it is still only a decisioning-and-evidence surface.
+   - The `approve_upfront_payment` path evaluates structured payment inputs, emits `approve`, `reject`, or `escalate`, and returns a suggested payment mode plus amount/risk classes.
+   - The linked transaction receipt is updated with canonical payment approval state and a payment approval event, so later surfaces have one current truth.
+   - That output is useful for operator judgment and later settlement wiring, but it does not execute payment or escrow paths yet.
+   - References: `docs/security/upfront-payment-approval.md`, `internal/app/tools_meta.go`, `internal/paymentapproval/*`, `internal/receipts/store.go`
 
 ### Assessment
 

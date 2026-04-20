@@ -15,6 +15,7 @@ Lango provides multiple layers of security to protect sensitive data flowing bet
 | **PII Redaction** | Strip personal information before it reaches AI providers | Regex patterns + optional NER via Microsoft Presidio |
 | **Exportability Policy** | Decide what early knowledge artifacts can be traded | Source-primary evaluation for knowledge exchange v1 |
 | **Approval Flow** | Decide when early artifact releases can move forward | Structured artifact release states and audit-backed receipts |
+| **Upfront Payment Approval** | Decide whether a transaction may start with an upfront payment | Structured prepayment decisioning and canonical transaction receipt state |
 | **Dispute-Ready Receipts** | Preserve receipt evidence for early knowledge exchange | Lite submission/transaction receipt model with a current `create_dispute_ready_receipt` entrypoint |
 | **Tool Approval** | Control which tools agents can execute | Policy-based approval workflows with channel notifications |
 | **Authentication** | Secure gateway access | OIDC login flow, session management, CORS controls |
@@ -80,6 +81,7 @@ See [Encryption & Secrets](encryption.md) for full details.
 - [PII Redaction](pii-redaction.md) -- Builtin patterns, custom regex, Presidio integration
 - [Exportability Policy](exportability.md) -- Source-primary exportability evaluation for early knowledge exchange
 - [Approval Flow](approval-flow.md) -- Structured artifact release decisions and audit-backed receipts
+- [Upfront Payment Approval](upfront-payment-approval.md) -- Structured prepayment decisioning and transaction-level payment approval state
 - [Dispute-Ready Receipts](dispute-ready-receipts.md) -- Lite receipt evidence model and current operator entrypoint
 - [Tool Approval](tool-approval.md) -- Approval policies, sensitive/exempt tools, notifications
 - [Authentication](authentication.md) -- OIDC providers, session management, CORS configuration
