@@ -27,10 +27,7 @@ import (
 // cfg is used for session-mode-aware skill filtering and view_skill path resolution;
 // it may be nil for tests that don't exercise mode features.
 func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *skill.Registry, skillCfg config.SkillConfig, cfg *config.Config) []*agent.Tool {
-	exportabilityEnabled := true
-	if cfg != nil {
-		exportabilityEnabled = cfg.Security.Exportability.Enabled
-	}
+	exportabilityEnabled := exportabilityPolicyEnabled(cfg)
 
 	return []*agent.Tool{
 		{
@@ -124,7 +121,7 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 			SafetyLevel: agent.SafetyLevelModerate,
 			Capability: agent.ToolCapability{
 				Category: "knowledge",
-				Activity: agent.ActivityQuery,
+				Activity: agent.ActivityWrite,
 			},
 			Parameters: map[string]interface{}{
 				"type": "object",
@@ -176,58 +173,7 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 					}
 				}
 
-				entries, err := store.GetKnowledgeByKeys(ctx, sourceKeys)
-				if err != nil {
-					return nil, fmt.Errorf("load source knowledge: %w", err)
-				}
-
-				refs := make([]exportability.SourceRef, 0, len(entries))
-				for _, entry := range entries {
-					class, err := exportability.ParseSourceClass(entry.SourceClass)
-					if err != nil {
-						return nil, fmt.Errorf("parse source class for %q: %w", entry.Key, err)
-					}
-					label := entry.AssetLabel
-					if label == "" {
-						label = entry.Key
-					}
-					refs = append(refs, exportability.SourceRef{
-						AssetID:    entry.Key,
-						AssetLabel: label,
-						Class:      class,
-					})
-				}
-
-				receipt := exportability.Evaluate(exportability.Policy{Enabled: exportabilityEnabled}, stage, refs)
-				lineage := make([]map[string]interface{}, 0, len(receipt.Lineage))
-				for _, row := range receipt.Lineage {
-					lineage = append(lineage, map[string]interface{}{
-						"asset_id":    row.AssetID,
-						"asset_label": row.AssetLabel,
-						"class":       string(row.Class),
-						"rule":        row.Rule,
-					})
-				}
-
-				payload := map[string]interface{}{
-					"artifact_label": artifactLabel,
-					"stage":          string(receipt.Stage),
-					"state":          string(receipt.State),
-					"policy_code":    receipt.PolicyCode,
-					"explanation":    receipt.Explanation,
-					"lineage":        lineage,
-				}
-
-				if err := store.SaveAuditLog(ctx, knowledge.AuditEntry{
-					Action:  "exportability_decision",
-					Actor:   "agent",
-					Target:  "artifact:" + artifactLabel,
-					Details: payload,
-				}); err != nil {
-					return nil, fmt.Errorf("save exportability decision audit log: %w", err)
-				}
-
-				return payload, nil
+				return evaluateExportabilityArtifact(ctx, store, artifactLabel, sourceKeys, stage, exportabilityEnabled)
 			},
 		},
 		{
@@ -906,5 +852,79 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 				return map[string]interface{}{"deleted": n, "dry_run": false}, nil
 			},
 		},
+	}
+}
+
+func exportabilityPolicyEnabled(cfg *config.Config) bool {
+	if cfg == nil {
+		cfg = config.DefaultConfig()
+	}
+	return cfg.Security.Exportability.Enabled
+}
+
+func evaluateExportabilityArtifact(ctx context.Context, store *knowledge.Store, artifactLabel string, sourceKeys []string, stage exportability.DecisionStage, enabled bool) (map[string]interface{}, error) {
+	entries, err := store.GetKnowledgeByKeys(ctx, sourceKeys)
+	if err != nil {
+		return nil, fmt.Errorf("load source knowledge: %w", err)
+	}
+
+	refs, err := exportabilitySourceRefs(entries)
+	if err != nil {
+		return nil, err
+	}
+
+	receipt := exportability.Evaluate(exportability.Policy{Enabled: enabled}, stage, refs)
+	payload := exportabilityReceiptPayload(artifactLabel, receipt)
+
+	if err := store.SaveAuditLog(ctx, knowledge.AuditEntry{
+		Action:  "exportability_decision",
+		Actor:   "agent",
+		Target:  "artifact:" + artifactLabel,
+		Details: payload,
+	}); err != nil {
+		return nil, fmt.Errorf("save exportability decision audit log: %w", err)
+	}
+
+	return payload, nil
+}
+
+func exportabilitySourceRefs(entries []knowledge.KnowledgeEntry) ([]exportability.SourceRef, error) {
+	refs := make([]exportability.SourceRef, 0, len(entries))
+	for _, entry := range entries {
+		class, err := exportability.ParseSourceClass(entry.SourceClass)
+		if err != nil {
+			return nil, fmt.Errorf("parse source class for %q: %w", entry.Key, err)
+		}
+		label := entry.AssetLabel
+		if label == "" {
+			label = entry.Key
+		}
+		refs = append(refs, exportability.SourceRef{
+			AssetID:    entry.Key,
+			AssetLabel: label,
+			Class:      class,
+		})
+	}
+	return refs, nil
+}
+
+func exportabilityReceiptPayload(artifactLabel string, receipt exportability.Receipt) map[string]interface{} {
+	lineage := make([]map[string]interface{}, 0, len(receipt.Lineage))
+	for _, row := range receipt.Lineage {
+		lineage = append(lineage, map[string]interface{}{
+			"asset_id":    row.AssetID,
+			"asset_label": row.AssetLabel,
+			"class":       string(row.Class),
+			"rule":        row.Rule,
+		})
+	}
+
+	return map[string]interface{}{
+		"artifact_label": artifactLabel,
+		"stage":          string(receipt.Stage),
+		"state":          string(receipt.State),
+		"policy_code":    receipt.PolicyCode,
+		"explanation":    receipt.Explanation,
+		"lineage":        lineage,
 	}
 }

@@ -7,23 +7,32 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 
+	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/ent"
+	"github.com/langoai/lango/internal/ent/auditlog"
 	"github.com/langoai/lango/internal/ent/enttest"
 	"github.com/langoai/lango/internal/knowledge"
-	"go.uber.org/zap"
 )
 
-func newExportabilityToolStore(t *testing.T) *knowledge.Store {
+func newExportabilityToolStore(t *testing.T) (*knowledge.Store, *ent.Client) {
 	t.Helper()
 	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&_fk=1")
 	t.Cleanup(func() { client.Close() })
-	return knowledge.NewStore(client, zap.NewNop().Sugar())
+	return knowledge.NewStore(client, zap.NewNop().Sugar()), client
+}
+
+func newExportabilityToolConfig(enabled bool) *config.Config {
+	cfg := config.DefaultConfig()
+	cfg.Security.Exportability.Enabled = enabled
+	return cfg
 }
 
 func TestBuildMetaTools_IncludesEvaluateExportability(t *testing.T) {
-	store := newExportabilityToolStore(t)
-	tools := buildMetaTools(store, nil, nil, config.SkillConfig{}, config.DefaultConfig())
+	store, _ := newExportabilityToolStore(t)
+	tools := buildMetaTools(store, nil, nil, config.SkillConfig{}, newExportabilityToolConfig(true))
 	tool := findTool(tools, "evaluate_exportability")
 	require.NotNil(t, tool)
 
@@ -41,9 +50,20 @@ func TestBuildMetaTools_IncludesEvaluateExportability(t *testing.T) {
 	assert.Contains(t, required, "stage")
 }
 
-func TestEvaluateExportability_BlocksPrivateKnowledgeSource(t *testing.T) {
-	store := newExportabilityToolStore(t)
-	tools := buildMetaTools(store, nil, nil, config.SkillConfig{}, config.DefaultConfig())
+func TestBuildMetaTools_EvaluateExportabilityCapabilityMetadata(t *testing.T) {
+	store, _ := newExportabilityToolStore(t)
+	tools := buildMetaTools(store, nil, nil, config.SkillConfig{}, newExportabilityToolConfig(true))
+	tool := findTool(tools, "evaluate_exportability")
+	require.NotNil(t, tool)
+
+	assert.Equal(t, "knowledge", tool.Capability.Category)
+	assert.Equal(t, agent.ActivityWrite, tool.Capability.Activity)
+	assert.False(t, tool.Capability.ReadOnly)
+}
+
+func TestEvaluateExportability_SavesAuditRow(t *testing.T) {
+	store, client := newExportabilityToolStore(t)
+	tools := buildMetaTools(store, nil, nil, config.SkillConfig{}, newExportabilityToolConfig(true))
 	saveTool := findTool(tools, "save_knowledge")
 	require.NotNil(t, saveTool)
 	evalTool := findTool(tools, "evaluate_exportability")
@@ -51,33 +71,104 @@ func TestEvaluateExportability_BlocksPrivateKnowledgeSource(t *testing.T) {
 
 	ctx := context.Background()
 	_, err := saveTool.Handler(ctx, map[string]interface{}{
-		"key":          "private-source",
+		"key":          "public-source",
 		"category":     "fact",
-		"content":      "classified source content",
+		"content":      "public content",
 		"source":       "agent",
-		"source_class": "private-confidential",
-		"asset_label":  "knowledge/private-source",
+		"source_class": "public",
+		"asset_label":  "knowledge/public-source",
 	})
 	require.NoError(t, err)
 
 	got, err := evalTool.Handler(ctx, map[string]interface{}{
-		"artifact_label": "artifact/private-doc",
-		"source_keys":    []interface{}{"private-source"},
+		"artifact_label": "artifact/public-doc",
+		"source_keys":    []interface{}{"public-source"},
 		"stage":          "final",
 	})
 	require.NoError(t, err)
 
 	payload := got.(map[string]interface{})
-	assert.Equal(t, "artifact/private-doc", payload["artifact_label"])
+	assert.Equal(t, "artifact/public-doc", payload["artifact_label"])
 	assert.Equal(t, "final", payload["stage"])
-	assert.Equal(t, "blocked", payload["state"])
-	assert.Equal(t, "blocked_private_source", payload["policy_code"])
-	assert.NotEmpty(t, payload["explanation"])
+	assert.Equal(t, "exportable", payload["state"])
 
-	lineage, ok := payload["lineage"].([]map[string]interface{})
-	require.True(t, ok)
-	require.Len(t, lineage, 1)
-	assert.Equal(t, "private-source", lineage[0]["asset_id"])
-	assert.Equal(t, "knowledge/private-source", lineage[0]["asset_label"])
-	assert.Equal(t, "private-confidential", lineage[0]["class"])
+	row, err := client.AuditLog.Query().
+		Where(auditlog.ActionEQ(auditlog.ActionExportabilityDecision), auditlog.TargetEQ("artifact:artifact/public-doc")).
+		Only(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "exportability_decision", string(row.Action))
+	assert.Equal(t, "agent", row.Actor)
+	assert.Equal(t, "artifact:artifact/public-doc", row.Target)
+
+	assert.Equal(t, "artifact/public-doc", row.Details["artifact_label"])
+}
+
+func TestEvaluateExportability_InvalidStage(t *testing.T) {
+	store, _ := newExportabilityToolStore(t)
+	tools := buildMetaTools(store, nil, nil, config.SkillConfig{}, newExportabilityToolConfig(true))
+	saveTool := findTool(tools, "save_knowledge")
+	require.NotNil(t, saveTool)
+	evalTool := findTool(tools, "evaluate_exportability")
+	require.NotNil(t, evalTool)
+
+	ctx := context.Background()
+	_, err := saveTool.Handler(ctx, map[string]interface{}{
+		"key":          "stage-source",
+		"category":     "fact",
+		"content":      "stage content",
+		"source_class": "public",
+	})
+	require.NoError(t, err)
+
+	_, err = evalTool.Handler(ctx, map[string]interface{}{
+		"artifact_label": "artifact/stage-doc",
+		"source_keys":    []interface{}{"stage-source"},
+		"stage":          "review",
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid stage")
+}
+
+func TestEvaluateExportability_MissingSourceKey(t *testing.T) {
+	store, _ := newExportabilityToolStore(t)
+	tools := buildMetaTools(store, nil, nil, config.SkillConfig{}, newExportabilityToolConfig(true))
+	evalTool := findTool(tools, "evaluate_exportability")
+	require.NotNil(t, evalTool)
+
+	_, err := evalTool.Handler(context.Background(), map[string]interface{}{
+		"artifact_label": "artifact/missing-source",
+		"source_keys":    []interface{}{"missing-source"},
+		"stage":          "final",
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "load source knowledge")
+}
+
+func TestEvaluateExportability_PolicyDisabled(t *testing.T) {
+	store, _ := newExportabilityToolStore(t)
+	tools := buildMetaTools(store, nil, nil, config.SkillConfig{}, newExportabilityToolConfig(false))
+	saveTool := findTool(tools, "save_knowledge")
+	require.NotNil(t, saveTool)
+	evalTool := findTool(tools, "evaluate_exportability")
+	require.NotNil(t, evalTool)
+
+	ctx := context.Background()
+	_, err := saveTool.Handler(ctx, map[string]interface{}{
+		"key":          "disabled-source",
+		"category":     "fact",
+		"content":      "disabled content",
+		"source_class": "public",
+	})
+	require.NoError(t, err)
+
+	got, err := evalTool.Handler(ctx, map[string]interface{}{
+		"artifact_label": "artifact/disabled-doc",
+		"source_keys":    []interface{}{"disabled-source"},
+		"stage":          "draft",
+	})
+	require.NoError(t, err)
+
+	payload := got.(map[string]interface{})
+	assert.Equal(t, "needs-human-review", payload["state"])
+	assert.Equal(t, "review_policy_disabled", payload["policy_code"])
 }
