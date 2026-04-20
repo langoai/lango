@@ -25,3 +25,14 @@ The receipt model SHALL keep canonical current state and append-only event trail
 #### Scenario: Event trail preserved
 - **WHEN** a receipt event is appended
 - **THEN** the system SHALL preserve the append-only history for that submission
+
+### Requirement: Transaction receipt payment approval state
+Transaction receipts SHALL track current payment approval state for the upfront payment path.
+
+#### Scenario: Payment approval updates transaction state
+- **WHEN** an upfront payment approval outcome is applied to a transaction receipt
+- **THEN** the transaction receipt SHALL update its current payment approval status
+
+#### Scenario: Payment approval event appended
+- **WHEN** an upfront payment approval outcome is applied
+- **THEN** the receipt event trail SHALL append a payment approval event for later reconstruction

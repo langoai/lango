@@ -14,6 +14,6 @@
 
 ## 4. Verification And OpenSpec Closeout
 
-- [ ] 4.1 Run targeted tests while implementing each slice
-- [ ] 4.2 Run `go test ./...`, `go build ./...`, and `python3 -m mkdocs build --strict`
-- [ ] 4.3 Sync main specs and archive the completed change
+- [x] 4.1 Run targeted tests while implementing each slice
+- [x] 4.2 Run `go test ./...`, `go build ./...`, and `python3 -m mkdocs build --strict`
+- [x] 4.3 Sync main specs and archive the completed change
