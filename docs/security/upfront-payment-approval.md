@@ -18,11 +18,14 @@ The landed surface is narrow and operator-facing:
 
 What the operator entrypoint returns today:
 
-- the approval decision
-- the reason
+- `transaction_receipt_id`
+- `submission_receipt_id`
+- the evaluated amount, trust score, user max prepay, and remaining budget inputs
+- the approval decision and reason
 - the suggested payment mode
-- the amount class
-- the risk class
+- the amount class and risk class
+- the updated canonical payment approval state on the linked transaction receipt
+- the canonical decision and settlement hint stored on that receipt
 
 ## Decision Model
 
@@ -30,7 +33,7 @@ What the operator entrypoint returns today:
 - `reject` means the upfront payment path should not proceed under current policy or budget context.
 - `escalate` means the decision cannot be resolved automatically and needs follow-on handling.
 
-The suggested payment mode is a recommendation, not execution. The current slice may recommend `prepay` or `escrow`, but it does not open, move, or settle funds.
+The suggested payment mode is a recommendation, not execution. The current evaluator path may recommend `prepay`, `reject`, or `escalate`, but it does not recommend `escrow`, and it does not open, move, or settle funds.
 
 ## Operator Notes
 
