@@ -79,6 +79,7 @@ See [Encryption & Secrets](encryption.md) for full details.
 - [PII Redaction](pii-redaction.md) -- Builtin patterns, custom regex, Presidio integration
 - [Exportability Policy](exportability.md) -- Source-primary exportability evaluation for early knowledge exchange
 - [Approval Flow](approval-flow.md) -- Structured artifact release decisions and audit-backed receipts
+- [Dispute-Ready Receipts](dispute-ready-receipts.md) -- Lite submission and transaction receipts for early knowledge exchange
 - [Tool Approval](tool-approval.md) -- Approval policies, sensitive/exempt tools, notifications
 - [Authentication](authentication.md) -- OIDC providers, session management, CORS configuration
 - [Hardware Keyring](encryption.md#hardware-keyring-integration) -- Secure passphrase storage via Touch ID / TPM

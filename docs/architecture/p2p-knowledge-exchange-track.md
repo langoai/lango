@@ -39,7 +39,7 @@ This track is intentionally narrower than leader-led team execution.
 
 It establishes the trust, settlement, deliverable, and exportability boundaries that later team-based collaboration depends on, without taking on full role orchestration, delegated budget control, or broader shared-workspace behavior. Leader-led team execution builds on these boundaries rather than replacing them.
 
-The exportability policy work has already started as a first slice: source-based evaluation and operator visibility are now landed. Approval flow now has a first slice too: structured artifact release approval states and audit-backed receipts are landed, while human approval UI, upfront payment approval runtime, dispute orchestration, and partial settlement execution remain pending. The remaining exportability work is richer policy rules, explicit override/dispute handling, and receipt unification.
+The exportability policy work has already started as a first slice: source-based evaluation and operator visibility are now landed. Approval flow now has a first slice too: structured artifact release approval states and audit-backed receipts are landed. Dispute-ready receipts also have a lite slice now: canonical submission and transaction records, current submission pointers, and append-only event trails are in place. The remaining work is deeper provenance, settlement, and dispute integration rather than starting from zero.
 
 ## In Scope
 

@@ -72,7 +72,7 @@ The judgment baseline for this audit is narrow by design:
 | Identity, Auth & Trust Entry | Phase 1-2 | `docs/security/authentication.md`, `docs/gateway/http-api.md`, `internal/gateway/auth.go`, `internal/p2p/handshake/*`, `internal/config/types_security.go` | Detailed audit complete (`stabilize`) |
 | Privacy, Exportability & Output Policy | Phase 1 | `docs/security/index.md`, `docs/security/exportability.md`, `docs/security/pii-redaction.md`, `internal/cli/security/status.go`, `internal/config/types_security.go`, `internal/config/types.go`, `internal/gatekeeper/*` | Detailed audit complete (`stabilize`) |
 | Approval, Execution Policy & Sandboxing | Phase 1-2 | `docs/security/tool-approval.md`, `docs/security/approval-flow.md`, `docs/security/index.md`, `docs/cli/sandbox.md`, `internal/toolchain/mw_approval.go`, `internal/approvalflow/*`, `internal/app/tools_meta_approvalflow.go`, `internal/tools/exec/*`, `internal/sandbox/*`, `internal/cli/settings/forms_security.go`, `internal/cli/settings/forms_sandbox.go` | Detailed audit complete (`stabilize`) |
-| Auditability, Provenance & Cryptographic Accountability | Phase 1-2 | `docs/features/provenance.md`, `docs/security/encryption.md`, `internal/observability/audit/*`, `internal/provenance/*`, `internal/security/*`, `internal/app/wiring_provenance.go` | Detailed audit complete (`stabilize`) |
+| Auditability, Provenance & Cryptographic Accountability | Phase 1-2 | `docs/features/provenance.md`, `docs/security/dispute-ready-receipts.md`, `docs/security/encryption.md`, `internal/observability/audit/*`, `internal/provenance/*`, `internal/security/*`, `internal/app/wiring_provenance.go` | Detailed audit complete (`stabilize`); lite dispute-ready receipt model landed for submission/transaction records and event trails |
 
 ## Baseline Decisions Already Locked
 
@@ -255,10 +255,11 @@ The judgment baseline for this audit is narrow by design:
    - This means cryptographic accountability is real, but not yet one unified signer story.
    - References: `docs/features/provenance.md:69-75`, `internal/app/wiring_provenance.go:110-129`, `internal/security/kms_factory.go:9-44`, `internal/config/types_security.go:17-41`, `internal/config/types_security.go:128-133`
 
-4. `Major` The product still lacks one canonical `dispute-ready receipt` surface.
-   - Audit records, provenance bundles, and payment receipts all exist, but they are not yet presented as one operator-facing evidence package for artifact approval, rejection, or dispute.
-   - For `knowledge exchange v1`, this is the main policy-and-product gap rather than a missing low-level capability.
-   - References: `docs/architecture/p2p-knowledge-exchange-track.md:46-51`, `docs/features/provenance.md:7-16`, `internal/observability/audit/recorder.go:23-30`, `internal/provenance/bundle.go:161-188`
+4. `Major` The product now has a lite dispute-ready receipt surface, but it is still not the full operator-facing evidence package.
+   - The landed slice covers submission receipts, transaction receipts, current submission pointers, canonical current state, and append-only event trails.
+   - Audit records, provenance bundles, and payment receipts still remain separate systems, so deeper provenance, settlement, and dispute integration are still pending.
+   - The slice should not be described as a dispute engine or human dispute workflow.
+   - References: `docs/security/dispute-ready-receipts.md:1-46`, `docs/architecture/p2p-knowledge-exchange-track.md:46-51`, `docs/features/provenance.md:7-16`, `internal/observability/audit/recorder.go:23-30`, `internal/provenance/bundle.go:161-188`
 
 ### Assessment
 
@@ -274,4 +275,4 @@ The next follow-on work should stay narrow and directly build on this audit:
 
 1. design an explicit `exportability policy` for `knowledge exchange v1`
 2. design the `approval flow` for early external artifact exchange
-3. define the first `dispute-ready receipts` model from audit logs, provenance, and settlement evidence
+3. complete deeper provenance, settlement, and dispute integration around the landed lite `dispute-ready receipts` model

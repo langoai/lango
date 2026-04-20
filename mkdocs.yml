@@ -145,6 +145,7 @@ nav:
     - PII Redaction: security/pii-redaction.md
     - Exportability Policy: security/exportability.md
     - Approval Flow: security/approval-flow.md
+    - Dispute-Ready Receipts: security/dispute-ready-receipts.md
     - Tool Approval: security/tool-approval.md
     - Authentication: security/authentication.md
   - Payments:
