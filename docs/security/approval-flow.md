@@ -13,7 +13,7 @@ The landed surface is narrow and operator-facing:
 - structured artifact release decisions: `approve`, `reject`, `request-revision`, and `escalate`
 - outcome records with reason, issue classification, fulfillment assessment, and settlement hint
 - audit-backed approval receipts stored as `artifact_release_approval` audit entries
-- a release path that consumes the exportability receipt and the requested artifact scope
+- a release path that consumes the exportability decision state and the requested artifact scope, then reconstructs a minimal receipt for this slice
 
 ## Decision Model
 

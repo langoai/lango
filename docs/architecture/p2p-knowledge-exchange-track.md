@@ -72,8 +72,8 @@ The exportability policy work has already started as a first slice: source-based
 3. The parties agree on price, delivery window, and deliverable scope.
 4. A small upfront payment or escrowed commitment is created.
 5. The external agent delivers a reviewable artifact.
-6. The leader agent approves, rejects, or disputes the artifact.
-7. Final settlement is released on approval or handled through dispute rules.
+6. The leader agent approves, rejects, requests revision, escalates, or disputes the artifact.
+7. Final settlement is released on approval, deferred for revision or escalation, or handled through dispute rules.
 
 ## Required Follow-On Plans
 

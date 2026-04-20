@@ -1426,7 +1426,7 @@ The P2P network includes multiple security layers:
 - **Tool Sandbox** — Subprocess and container-based process isolation for remote tool execution
 - **Credential Revocation** — DID revocation set and max credential age enforcement via gossip discovery
 
-For early knowledge exchange, Lango now evaluates exportability from source lineage first and layers structured artifact release approval states on top of that signal in the first slice. This is not the full policy/receipt system.
+For early knowledge exchange, Lango now evaluates exportability from source lineage first and layers structured artifact release approval states on top of that policy/operator surface in the first slice. This is not the full policy/receipt system.
 
 ### Authentication
 
