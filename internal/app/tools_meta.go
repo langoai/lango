@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -18,9 +19,16 @@ import (
 	"github.com/langoai/lango/internal/exportability"
 	"github.com/langoai/lango/internal/knowledge"
 	"github.com/langoai/lango/internal/learning"
+	"github.com/langoai/lango/internal/receipts"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/skill"
 	"github.com/langoai/lango/internal/toolparam"
+)
+
+var (
+	metaReceiptsStoreOnce sync.Once
+	metaReceiptsStore     *receipts.Store
+	newMetaReceiptsStore  = receipts.NewStore
 )
 
 // buildMetaTools creates knowledge/learning/skill meta-tools for the agent.
@@ -29,7 +37,7 @@ import (
 func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *skill.Registry, skillCfg config.SkillConfig, cfg *config.Config) []*agent.Tool {
 	exportabilityEnabled := exportabilityPolicyEnabled(cfg)
 
-	return []*agent.Tool{
+	tools := []*agent.Tool{
 		{
 			Name:        "save_knowledge",
 			Description: "Save knowledge (appends new version if content changes, skips duplicates). Categories: rule, definition, preference, fact, pattern, correction. Temporal tags (evergreen/current_state) are auto-assigned by analyzers",
@@ -923,6 +931,12 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 			},
 		},
 	}
+
+	if store != nil {
+		tools = append(tools, newDisputeReadyReceiptTool())
+	}
+
+	return tools
 }
 
 func exportabilityPolicyEnabled(cfg *config.Config) bool {
@@ -997,4 +1011,75 @@ func exportabilityReceiptPayload(artifactLabel string, receipt exportability.Rec
 		"explanation":    receipt.Explanation,
 		"lineage":        lineage,
 	}
+}
+
+func newDisputeReadyReceiptTool() *agent.Tool {
+	return &agent.Tool{
+		Name:        "create_dispute_ready_receipt",
+		Description: "Create a lite dispute-ready submission receipt linked to a transaction receipt",
+		SafetyLevel: agent.SafetyLevelModerate,
+		Capability: agent.ToolCapability{
+			Category: "knowledge",
+			Activity: agent.ActivityWrite,
+		},
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"transaction_id":        map[string]interface{}{"type": "string", "description": "External transaction identifier"},
+				"artifact_label":        map[string]interface{}{"type": "string", "description": "Label for the artifact being submitted"},
+				"payload_hash":          map[string]interface{}{"type": "string", "description": "Payload content hash"},
+				"source_lineage_digest": map[string]interface{}{"type": "string", "description": "Digest of the source lineage for the submission"},
+			},
+			"required": []string{"transaction_id", "artifact_label", "payload_hash", "source_lineage_digest"},
+		},
+		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+			store := metaReceiptsStoreInstance()
+			if store == nil {
+				return nil, fmt.Errorf("receipts store is not available")
+			}
+
+			transactionID, err := toolparam.RequireString(params, "transaction_id")
+			if err != nil {
+				return nil, err
+			}
+			artifactLabel, err := toolparam.RequireString(params, "artifact_label")
+			if err != nil {
+				return nil, err
+			}
+			payloadHash, err := toolparam.RequireString(params, "payload_hash")
+			if err != nil {
+				return nil, err
+			}
+			sourceLineageDigest, err := toolparam.RequireString(params, "source_lineage_digest")
+			if err != nil {
+				return nil, err
+			}
+
+			submission, transaction, err := store.CreateSubmissionReceipt(ctx, receipts.CreateSubmissionInput{
+				TransactionID:       transactionID,
+				ArtifactLabel:       artifactLabel,
+				PayloadHash:         payloadHash,
+				SourceLineageDigest: sourceLineageDigest,
+			})
+			if err != nil {
+				return nil, fmt.Errorf("create dispute-ready receipt: %w", err)
+			}
+
+			return map[string]interface{}{
+				"submission_receipt_id":         submission.SubmissionReceiptID,
+				"transaction_receipt_id":        transaction.TransactionReceiptID,
+				"current_submission_receipt_id": transaction.CurrentSubmissionReceiptID,
+			}, nil
+		},
+	}
+}
+
+func metaReceiptsStoreInstance() *receipts.Store {
+	metaReceiptsStoreOnce.Do(func() {
+		if newMetaReceiptsStore == nil {
+			newMetaReceiptsStore = receipts.NewStore
+		}
+		metaReceiptsStore = newMetaReceiptsStore()
+	})
+	return metaReceiptsStore
 }
