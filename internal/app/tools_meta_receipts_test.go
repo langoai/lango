@@ -44,6 +44,106 @@ func TestBuildMetaTools_IncludesCreateDisputeReadyReceiptWithoutStore(t *testing
 	require.NotNil(t, tool)
 }
 
+func TestCreateDisputeReadyReceipt_ValidationErrors(t *testing.T) {
+	store := receipts.NewStore()
+	tools := buildMetaTools(nil, nil, nil, config.SkillConfig{}, nil, store)
+	tool := findTool(tools, "create_dispute_ready_receipt")
+	require.NotNil(t, tool)
+
+	cases := []struct {
+		name      string
+		params    map[string]interface{}
+		wantError string
+	}{
+		{
+			name: "missing transaction_id",
+			params: map[string]interface{}{
+				"artifact_label":        "artifact/one",
+				"payload_hash":          "hash-1",
+				"source_lineage_digest": "lineage-1",
+			},
+			wantError: "missing transaction_id parameter",
+		},
+		{
+			name: "empty transaction_id",
+			params: map[string]interface{}{
+				"transaction_id":        "",
+				"artifact_label":        "artifact/one",
+				"payload_hash":          "hash-1",
+				"source_lineage_digest": "lineage-1",
+			},
+			wantError: "missing transaction_id parameter",
+		},
+		{
+			name: "missing artifact_label",
+			params: map[string]interface{}{
+				"transaction_id":        "tx-1",
+				"payload_hash":          "hash-1",
+				"source_lineage_digest": "lineage-1",
+			},
+			wantError: "missing artifact_label parameter",
+		},
+		{
+			name: "empty artifact_label",
+			params: map[string]interface{}{
+				"transaction_id":        "tx-1",
+				"artifact_label":        "",
+				"payload_hash":          "hash-1",
+				"source_lineage_digest": "lineage-1",
+			},
+			wantError: "missing artifact_label parameter",
+		},
+		{
+			name: "missing payload_hash",
+			params: map[string]interface{}{
+				"transaction_id":        "tx-1",
+				"artifact_label":        "artifact/one",
+				"source_lineage_digest": "lineage-1",
+			},
+			wantError: "missing payload_hash parameter",
+		},
+		{
+			name: "empty payload_hash",
+			params: map[string]interface{}{
+				"transaction_id":        "tx-1",
+				"artifact_label":        "artifact/one",
+				"payload_hash":          "",
+				"source_lineage_digest": "lineage-1",
+			},
+			wantError: "missing payload_hash parameter",
+		},
+		{
+			name: "missing source_lineage_digest",
+			params: map[string]interface{}{
+				"transaction_id": "tx-1",
+				"artifact_label": "artifact/one",
+				"payload_hash":   "hash-1",
+			},
+			wantError: "missing source_lineage_digest parameter",
+		},
+		{
+			name: "empty source_lineage_digest",
+			params: map[string]interface{}{
+				"transaction_id":        "tx-1",
+				"artifact_label":        "artifact/one",
+				"payload_hash":          "hash-1",
+				"source_lineage_digest": "",
+			},
+			wantError: "missing source_lineage_digest parameter",
+		},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := tool.Handler(context.Background(), tt.params)
+			require.Error(t, err)
+			assert.ErrorContains(t, err, tt.wantError)
+		})
+	}
+}
+
 func TestCreateDisputeReadyReceipt_CreatesAndReusesTransactionIDs(t *testing.T) {
 	store := receipts.NewStore()
 	tools := buildMetaTools(nil, nil, nil, config.SkillConfig{}, nil, store)

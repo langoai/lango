@@ -253,10 +253,11 @@ func buildFoundationCatalogEntries(cfg *config.Config, base, crypto, secrets []*
 // ─── Intelligence Module ───
 
 type intelligenceModule struct {
-	cfg    *config.Config
-	boot   *bootstrap.Result
-	bus    *eventbus.Bus
-	extReg *extension.Registry
+	cfg          *config.Config
+	boot         *bootstrap.Result
+	bus          *eventbus.Bus
+	extReg       *extension.Registry
+	receiptStore *receipts.Store
 }
 
 func (m *intelligenceModule) Name() string { return "intelligence" }
@@ -329,8 +330,10 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 		// FTS5 search index.
 		fts5Available = initFTS5(ctx, rawDB, kc.store)
 
-		receiptStore := receipts.NewStore()
-		metaTools := buildMetaTools(kc.store, kc.engine, skillReg, cfg.Skill, cfg, receiptStore)
+		if m.receiptStore == nil {
+			m.receiptStore = receipts.NewStore()
+		}
+		metaTools := buildMetaTools(kc.store, kc.engine, skillReg, cfg.Skill, cfg, m.receiptStore)
 		tools = append(tools, metaTools...)
 		entries = append(entries, appinit.CatalogEntry{Category: "meta", Description: "Knowledge, learning, and skill management", ConfigKey: "knowledge.enabled", Enabled: true, Tools: metaTools})
 	} else {
