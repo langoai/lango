@@ -269,7 +269,8 @@ func (s *Store) saveKnowledgeAtomic(ctx context.Context, entry KnowledgeEntry) e
 		Where(entknowledge.Key(entry.Key), entknowledge.IsLatest(true)).
 		Only(ctx)
 
-	if err != nil && !ent.IsNotFound(err) {
+	isNew := ent.IsNotFound(err)
+	if err != nil && !isNew {
 		return fmt.Errorf("query knowledge: %w", err)
 	}
 	if err == nil && knowledgeVersionEquivalent(existing, entry, s.resolveKnowledgeContent(ctx, existing)) {
@@ -281,7 +282,6 @@ func (s *Store) saveKnowledgeAtomic(ctx context.Context, entry KnowledgeEntry) e
 		return fmt.Errorf("prepare knowledge payload: %w", err)
 	}
 
-	isNew := ent.IsNotFound(err)
 	version := 1
 	if !isNew {
 		if err := txClient.Knowledge.UpdateOne(existing).SetIsLatest(false).Exec(ctx); err != nil {
