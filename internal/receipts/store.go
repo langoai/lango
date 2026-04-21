@@ -162,6 +162,18 @@ func (s *Store) GetSubmissionReceipt(_ context.Context, submissionReceiptID stri
 	return submission, events, nil
 }
 
+func (s *Store) GetTransactionReceipt(_ context.Context, transactionReceiptID string) (TransactionReceipt, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	transaction, ok := s.transactions[transactionReceiptID]
+	if !ok {
+		return TransactionReceipt{}, ErrTransactionReceiptNotFound
+	}
+
+	return transaction, nil
+}
+
 func validateCreateSubmissionInput(in CreateSubmissionInput) error {
 	switch {
 	case in.TransactionID == "":
