@@ -1333,7 +1333,7 @@ type upfrontPaymentApprovalReceipt struct {
 type executeEscrowRecommendationReceipt struct {
 	TransactionReceiptID  string `json:"transaction_receipt_id"`
 	SubmissionReceiptID   string `json:"submission_receipt_id"`
-	EscrowReference       string `json:"escrow_reference"`
+	EscrowReference       string `json:"escrow_reference,omitempty"`
 	EscrowExecutionStatus string `json:"escrow_execution_status"`
 }
 
