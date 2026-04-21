@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -355,6 +357,58 @@ func TestService_ExecuteRecommendation_RecordsFailedStateWhenFundedWriteFails(t 
 	assert.Equal(t, "escrow-funded", store.transaction.EscrowReference)
 }
 
+func TestService_ExecuteRecommendation_SerializesPerTransaction(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := receipts.NewStore()
+	_, tx := createApprovedEscrowReceipt(t, ctx, store)
+	createStarted := make(chan struct{}, 1)
+	releaseCreate := make(chan struct{})
+	var createCalls atomic.Int32
+	runtime := &blockingRuntime{
+		createFn: func(_ context.Context, req escrow.CreateRequest) (*escrow.EscrowEntry, error) {
+			createCalls.Add(1)
+			createStarted <- struct{}{}
+			<-releaseCreate
+			return &escrow.EscrowEntry{ID: "escrow-serial"}, nil
+		},
+		fundFn: func(context.Context, string) (*escrow.EscrowEntry, error) {
+			return &escrow.EscrowEntry{ID: "escrow-serial"}, nil
+		},
+	}
+
+	service := NewService(store, runtime)
+	firstDone := make(chan error, 1)
+	go func() {
+		_, err := service.ExecuteRecommendation(ctx, Request{TransactionReceiptID: tx.TransactionReceiptID})
+		firstDone <- err
+	}()
+
+	select {
+	case <-createStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("first execution did not enter create")
+	}
+
+	secondDone := make(chan error, 1)
+	go func() {
+		_, err := service.ExecuteRecommendation(ctx, Request{TransactionReceiptID: tx.TransactionReceiptID})
+		secondDone <- err
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+	require.Equal(t, int32(1), createCalls.Load())
+
+	close(releaseCreate)
+	require.NoError(t, <-firstDone)
+
+	err := <-secondDone
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "already progressed")
+	require.Equal(t, int32(1), createCalls.Load())
+}
+
 type fakeRuntime struct {
 	createEntry *escrow.EscrowEntry
 	createErr   error
@@ -362,6 +416,11 @@ type fakeRuntime struct {
 	fundErr     error
 	createCalls []escrow.CreateRequest
 	fundCalls   []string
+}
+
+type blockingRuntime struct {
+	createFn func(context.Context, escrow.CreateRequest) (*escrow.EscrowEntry, error)
+	fundFn   func(context.Context, string) (*escrow.EscrowEntry, error)
 }
 
 type progressKey struct {
@@ -433,6 +492,14 @@ func (f *fakeRuntime) Fund(_ context.Context, escrowID string) (*escrow.EscrowEn
 		return &escrow.EscrowEntry{ID: escrowID}, nil
 	}
 	return f.fundEntry, nil
+}
+
+func (b *blockingRuntime) Create(ctx context.Context, req escrow.CreateRequest) (*escrow.EscrowEntry, error) {
+	return b.createFn(ctx, req)
+}
+
+func (b *blockingRuntime) Fund(ctx context.Context, escrowID string) (*escrow.EscrowEntry, error) {
+	return b.fundFn(ctx, escrowID)
 }
 
 func createApprovedEscrowReceipt(t *testing.T, ctx context.Context, store *receipts.Store) (receipts.SubmissionReceipt, receipts.TransactionReceipt) {

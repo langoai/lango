@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/langoai/lango/internal/economy/escrow"
 	"github.com/langoai/lango/internal/paymentapproval"
@@ -24,12 +25,16 @@ type runtime interface {
 type Service struct {
 	store   receiptStore
 	runtime runtime
+
+	mu       sync.Mutex
+	inFlight map[string]*sync.Mutex
 }
 
 func NewService(store receiptStore, runtime runtime) *Service {
 	return &Service{
-		store:   store,
-		runtime: runtime,
+		store:    store,
+		runtime:  runtime,
+		inFlight: make(map[string]*sync.Mutex),
 	}
 }
 
@@ -38,6 +43,9 @@ func (s *Service) ExecuteRecommendation(ctx context.Context, req Request) (Resul
 	if transactionReceiptID == "" {
 		return Result{}, fmt.Errorf("transaction receipt id is required")
 	}
+	lock := s.lockForTransaction(transactionReceiptID)
+	lock.Lock()
+	defer lock.Unlock()
 
 	transaction, err := s.store.GetTransactionReceipt(ctx, transactionReceiptID)
 	if err != nil {
@@ -186,4 +194,16 @@ func escrowIDFromEntry(entry *escrow.EscrowEntry) string {
 		return ""
 	}
 	return strings.TrimSpace(entry.ID)
+}
+
+func (s *Service) lockForTransaction(transactionReceiptID string) *sync.Mutex {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	lock, ok := s.inFlight[transactionReceiptID]
+	if !ok {
+		lock = &sync.Mutex{}
+		s.inFlight[transactionReceiptID] = lock
+	}
+	return lock
 }

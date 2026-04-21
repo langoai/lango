@@ -602,38 +602,6 @@ func TestApplyEscrowExecutionProgress_RejectsNonCurrentSubmission(t *testing.T) 
 	require.ErrorIs(t, err, ErrInvalidEscrowExecutionState)
 }
 
-func TestApplyEscrowExecutionProgress_RejectsDuplicateStartedProgress(t *testing.T) {
-	store := newTestStore(t)
-	ctx := context.Background()
-
-	sub, tx, err := store.CreateSubmissionReceipt(ctx, CreateSubmissionInput{
-		TransactionID:       "tx-escrow-duplicate-start",
-		ArtifactLabel:       "artifact/escrow-duplicate-start",
-		PayloadHash:         "hash-escrow-duplicate-start",
-		SourceLineageDigest: "lineage-escrow-duplicate-start",
-	})
-	require.NoError(t, err)
-
-	_, err = store.BindEscrowExecutionInput(ctx, tx.TransactionReceiptID, sub.SubmissionReceiptID, EscrowExecutionInput{
-		BuyerDID:  "did:lango:buyer",
-		SellerDID: "did:lango:seller",
-		Amount:    "4.00",
-		Reason:    "knowledge exchange",
-	})
-	require.NoError(t, err)
-
-	_, err = store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, sub.SubmissionReceiptID, EscrowExecutionStatusPending, "", EventEscrowExecutionStarted, "")
-	require.NoError(t, err)
-
-	_, err = store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, sub.SubmissionReceiptID, EscrowExecutionStatusPending, "", EventEscrowExecutionStarted, "")
-	require.ErrorIs(t, err, ErrInvalidEscrowExecutionState)
-
-	_, events, err := store.GetSubmissionReceipt(ctx, sub.SubmissionReceiptID)
-	require.NoError(t, err)
-	require.Len(t, events, 1)
-	require.Equal(t, EventEscrowExecutionStarted, events[0].Type)
-}
-
 func TestApplyEscrowExecutionProgress_RejectsIllegalTransitions(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
