@@ -81,7 +81,7 @@ The judgment baseline for this audit is deliberately narrow:
 | --- | --- | --- | --- |
 | Pricing Surface | Phase 1-2 | `docs/features/p2p-network.md`, `docs/features/economy.md`, `docs/cli/p2p.md`, `internal/cli/p2p/pricing.go`, `internal/economy/pricing/*`, `internal/app/p2p_routes.go` | Detailed audit complete (`stabilize`) |
 | Negotiation | Phase 1-2 | `docs/features/economy.md`, `internal/economy/negotiation/*`, `internal/economy/tools.go`, `internal/app/wiring_economy.go` | Detailed audit complete (`stabilize`) |
-| Settlement | Phase 1-2 | `docs/security/upfront-payment-approval.md`, `docs/security/actual-payment-execution-gating.md`, `internal/paymentapproval/*`, `internal/paymentgate/*`, `internal/tools/payment/*`, `internal/app/tools_p2p.go` | Detailed audit complete (`stabilize`) |
+| Settlement | Phase 1-2 | `docs/features/p2p-network.md`, `docs/security/upfront-payment-approval.md`, `docs/security/actual-payment-execution-gating.md`, `internal/paymentapproval/*`, `internal/paymentgate/*`, `internal/tools/payment/*`, `internal/app/tools_p2p.go`, `internal/p2p/settlement/*` | Detailed audit complete (`stabilize`) |
 | Escrow | Phase 1-2 | `docs/security/escrow-execution.md`, `docs/features/economy.md`, `internal/economy/escrow/*`, `internal/escrowexecution/*`, `internal/app/tools_escrow.go` | Detailed audit complete (`stabilize`) |
 
 ## Baseline Control-Plane Model
@@ -98,7 +98,7 @@ This means the current model is intentionally layered:
 
 - public quote exposure lives under `p2p.pricing`,
 - local pricing and negotiation policy lives under `economy.*`,
-- settlement currently means approval plus direct-payment execution control and post-pay progression semantics,
+- settlement currently means approval, direct-payment execution control, a landed on-chain settlement service/runtime path, and still-limited deferred post-pay progression semantics,
 - escrow currently means recommendation, bound execution input, and the first `create + fund` lifecycle slice.
 
 ## Detailed Audit: Pricing Surface
