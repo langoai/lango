@@ -88,16 +88,16 @@ The `docs/security/encryption.md` SHALL include a Cloud KMS Mode section with al
 - **WHEN** a user reads encryption docs
 - **THEN** they find all 4 KMS backends with configuration examples
 
-### Requirement: Public Security NAV exposes the deep-dive slice
-The MkDocs public Security navigation SHALL expose `approval-cli.md` and `envelope-migration.md` as discoverable docs surfaced by the MkDocs IA recovery slice.
+### Requirement: Security index reflects the public deep-dive slice
+The `docs/security/index.md` SHALL surface the newly public deep-dive docs exposed by the MkDocs IA recovery slice, including Approval CLI and Envelope Migration.
 
-#### Scenario: Approval CLI is discoverable in public nav
-- **WHEN** a user browses the public Security navigation
-- **THEN** they find `approval-cli.md` as a discoverable public doc
+#### Scenario: Approval CLI is surfaced from the security index
+- **WHEN** a user reads `docs/security/index.md`
+- **THEN** they find a link or quick reference to `approval-cli.md`
 
-#### Scenario: Envelope Migration is discoverable in public nav
-- **WHEN** a user browses the public Security navigation
-- **THEN** they find `envelope-migration.md` as a discoverable public doc
+#### Scenario: Envelope Migration is surfaced from the security index
+- **WHEN** a user reads `docs/security/index.md`
+- **THEN** they find a link or quick reference to `envelope-migration.md`
 
 ### Requirement: README config table includes new keys
 The `README.md` configuration table SHALL include all P2P security, tool isolation, ZKP, keyring, DB encryption, and KMS config keys matching `mapstructure` tags.
