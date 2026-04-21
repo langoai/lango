@@ -445,6 +445,42 @@ func TestBindEscrowExecutionInput_ResetsEscrowReferenceOnRebind(t *testing.T) {
 	require.Empty(t, gotTx.EscrowReference)
 }
 
+func TestBindEscrowExecutionInput_RejectsNonCurrentSubmission(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	first, tx, err := store.CreateSubmissionReceipt(ctx, CreateSubmissionInput{
+		TransactionID:       "tx-escrow-stale-bind",
+		ArtifactLabel:       "artifact/escrow-stale-bind-1",
+		PayloadHash:         "hash-escrow-stale-bind-1",
+		SourceLineageDigest: "lineage-escrow-stale-bind-1",
+	})
+	require.NoError(t, err)
+
+	second, nextTx, err := store.CreateSubmissionReceipt(ctx, CreateSubmissionInput{
+		TransactionID:       "tx-escrow-stale-bind",
+		ArtifactLabel:       "artifact/escrow-stale-bind-2",
+		PayloadHash:         "hash-escrow-stale-bind-2",
+		SourceLineageDigest: "lineage-escrow-stale-bind-2",
+	})
+	require.NoError(t, err)
+	require.Equal(t, tx.TransactionReceiptID, nextTx.TransactionReceiptID)
+	require.Equal(t, second.SubmissionReceiptID, nextTx.CurrentSubmissionReceiptID)
+
+	_, err = store.BindEscrowExecutionInput(ctx, tx.TransactionReceiptID, first.SubmissionReceiptID, EscrowExecutionInput{
+		BuyerDID:  "did:lango:buyer",
+		SellerDID: "did:lango:seller",
+		Amount:    "6.00",
+		Reason:    "knowledge exchange",
+	})
+	require.ErrorIs(t, err, ErrInvalidEscrowExecutionState)
+
+	gotTx, err := store.GetTransactionReceipt(ctx, tx.TransactionReceiptID)
+	require.NoError(t, err)
+	require.Nil(t, gotTx.EscrowExecutionInput)
+	require.Empty(t, gotTx.EscrowExecutionStatus)
+}
+
 func TestApplyEscrowExecutionProgress_RecordsCreatedFundedAndFailed(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()

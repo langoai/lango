@@ -219,6 +219,52 @@ func TestService_ExecuteRecommendation_FundFailurePreservesCreatedReference(t *t
 	assert.Contains(t, events[3].Reason, "lock funds failed")
 }
 
+func TestService_ExecuteRecommendation_RerunAfterFundedIsRejected(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := receipts.NewStore()
+	_, tx := createApprovedEscrowReceipt(t, ctx, store)
+	runtime := &fakeRuntime{
+		createEntry: &escrow.EscrowEntry{ID: "escrow-1"},
+		fundEntry:   &escrow.EscrowEntry{ID: "escrow-1"},
+	}
+
+	service := NewService(store, runtime)
+	_, err := service.ExecuteRecommendation(ctx, Request{TransactionReceiptID: tx.TransactionReceiptID})
+	require.NoError(t, err)
+
+	result, err := service.ExecuteRecommendation(ctx, Request{TransactionReceiptID: tx.TransactionReceiptID})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "already progressed")
+	assert.Equal(t, Result{}, result)
+	require.Len(t, runtime.createCalls, 1)
+	require.Len(t, runtime.fundCalls, 1)
+}
+
+func TestService_ExecuteRecommendation_RerunAfterFailedIsRejected(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := receipts.NewStore()
+	_, tx := createApprovedEscrowReceipt(t, ctx, store)
+	runtime := &fakeRuntime{
+		createEntry: &escrow.EscrowEntry{ID: "escrow-created"},
+		fundErr:     errors.New("lock funds failed"),
+	}
+
+	service := NewService(store, runtime)
+	_, err := service.ExecuteRecommendation(ctx, Request{TransactionReceiptID: tx.TransactionReceiptID})
+	require.Error(t, err)
+
+	result, err := service.ExecuteRecommendation(ctx, Request{TransactionReceiptID: tx.TransactionReceiptID})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "already progressed")
+	assert.Equal(t, Result{}, result)
+	require.Len(t, runtime.createCalls, 1)
+	require.Len(t, runtime.fundCalls, 1)
+}
+
 type fakeRuntime struct {
 	createEntry *escrow.EscrowEntry
 	createErr   error

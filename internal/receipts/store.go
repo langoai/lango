@@ -146,6 +146,9 @@ func (s *Store) BindEscrowExecutionInput(_ context.Context, transactionReceiptID
 	if submission.TransactionReceiptID != transactionReceiptID {
 		return TransactionReceipt{}, fmt.Errorf("%w: submission does not belong to transaction", ErrSubmissionReceiptNotFound)
 	}
+	if transaction.CurrentSubmissionReceiptID != submissionReceiptID {
+		return TransactionReceipt{}, fmt.Errorf("%w: submission is not current for transaction", ErrInvalidEscrowExecutionState)
+	}
 
 	inputCopy := cloneEscrowExecutionInput(&input)
 	transaction.EscrowExecutionStatus = EscrowExecutionStatusPending

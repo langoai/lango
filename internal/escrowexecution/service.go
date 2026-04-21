@@ -57,6 +57,10 @@ func (s *Service) ExecuteRecommendation(ctx context.Context, req Request) (Resul
 	if transaction.EscrowExecutionInput == nil {
 		return Result{}, fmt.Errorf("transaction receipt %q is missing bound escrow execution input", transactionReceiptID)
 	}
+	switch transaction.EscrowExecutionStatus {
+	case receipts.EscrowExecutionStatusCreated, receipts.EscrowExecutionStatusFunded, receipts.EscrowExecutionStatusFailed:
+		return Result{}, fmt.Errorf("transaction receipt %q escrow execution already progressed to %q", transactionReceiptID, transaction.EscrowExecutionStatus)
+	}
 
 	createReq, err := buildCreateRequest(*transaction.EscrowExecutionInput)
 	if err != nil {
