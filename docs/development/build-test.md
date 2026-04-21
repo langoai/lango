@@ -41,6 +41,14 @@ go test -tags "integration" ./...
 
 The Makefile uses the default runtime for normal `build` and `test` targets.
 
+## Documentation
+
+Build the public documentation site with Zensical:
+
+```bash
+.venv/bin/zensical build
+```
+
 ## Makefile Targets
 
 | Target | Description |

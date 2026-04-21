@@ -80,7 +80,7 @@ nav = [
       { "Authentication" = "security/authentication.md" }
   ]},
   { "Research" = [
-      { "phase7-pq-onchain-feasibility.md" = "research/phase7-pq-onchain-feasibility.md" }
+      { "Phase 7 PQ On-Chain Feasibility" = "research/phase7-pq-onchain-feasibility.md" }
   ]},
   { "Payments" = [
       "payments/index.md",

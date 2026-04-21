@@ -208,6 +208,8 @@ Additional shortcuts: Ctrl+B (toggle sidebar), Tab (switch focus), Ctrl+Y (copy 
 
 See [Cockpit Reference](docs/features/cockpit.md), [Security](docs/security/index.md), [Channels](docs/features/channels.md), and [Background Tasks](docs/automation/background.md) for related public operator docs.
 
+Public docs live under `docs/` and build with `.venv/bin/zensical build` using `zensical.toml`.
+
 ## Architecture
 
 ```
