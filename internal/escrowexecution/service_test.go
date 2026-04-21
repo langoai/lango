@@ -309,6 +309,52 @@ func TestService_ExecuteRecommendation_RecordsFailedStateWhenCreatedWriteFails(t
 	assert.Equal(t, "escrow-created", store.transaction.EscrowReference)
 }
 
+func TestService_ExecuteRecommendation_RecordsFailedStateWhenFundedWriteFails(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := newFakeReceiptStore(receipts.TransactionReceipt{
+		TransactionReceiptID:         "tx-funded-write-fail",
+		TransactionID:                "tx-funded-write-fail",
+		CurrentSubmissionReceiptID:   "sub-funded-write-fail",
+		CurrentPaymentApprovalStatus: receipts.PaymentApprovalApproved,
+		CanonicalSettlementHint:      string(paymentapproval.ModeEscrow),
+		EscrowExecutionStatus:        receipts.EscrowExecutionStatusPending,
+		EscrowExecutionInput: &receipts.EscrowExecutionInput{
+			BuyerDID:  "did:lango:buyer",
+			SellerDID: "did:lango:seller",
+			Amount:    "25.00",
+			Reason:    "knowledge exchange",
+			TaskID:    "task-escrow",
+			Milestones: []receipts.EscrowMilestoneInput{
+				{Description: "draft", Amount: "10.00"},
+				{Description: "final", Amount: "15.00"},
+			},
+		},
+	})
+	store.failOn = progressKey{status: receipts.EscrowExecutionStatusFunded, eventType: receipts.EventEscrowExecutionFunded}
+	runtime := &fakeRuntime{
+		createEntry: &escrow.EscrowEntry{ID: "escrow-funded"},
+		fundEntry:   &escrow.EscrowEntry{ID: "escrow-funded"},
+	}
+
+	service := NewService(store, runtime)
+	result, err := service.ExecuteRecommendation(ctx, Request{TransactionReceiptID: "tx-funded-write-fail"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "record escrow funded progress")
+	assert.Equal(t, Result{}, result)
+
+	require.Len(t, store.progressCalls, 4)
+	assert.Equal(t, receipts.EscrowExecutionStatusPending, store.progressCalls[0].status)
+	assert.Equal(t, receipts.EscrowExecutionStatusCreated, store.progressCalls[1].status)
+	assert.Equal(t, receipts.EscrowExecutionStatusFunded, store.progressCalls[2].status)
+	assert.Equal(t, receipts.EscrowExecutionStatusFailed, store.progressCalls[3].status)
+	assert.Equal(t, "escrow-funded", store.progressCalls[3].escrowReference)
+	assert.Contains(t, store.progressCalls[3].reason, "record escrow funded progress")
+	assert.Equal(t, receipts.EscrowExecutionStatusFailed, store.transaction.EscrowExecutionStatus)
+	assert.Equal(t, "escrow-funded", store.transaction.EscrowReference)
+}
+
 type fakeRuntime struct {
 	createEntry *escrow.EscrowEntry
 	createErr   error
