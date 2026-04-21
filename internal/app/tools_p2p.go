@@ -557,10 +557,11 @@ func buildP2PPaymentTool(p2pc *p2pComponents, pc *paymentComponents, receiptStor
 				"properties": map[string]interface{}{
 					"peer_did":               map[string]interface{}{"type": "string", "description": "The recipient peer's DID"},
 					"transaction_receipt_id": map[string]interface{}{"type": "string", "description": "Linked transaction receipt identifier that must be approved for direct payment execution"},
+					"submission_receipt_id":  map[string]interface{}{"type": "string", "description": "Explicit submission receipt identifier that should receive the execution evidence"},
 					"amount":                 map[string]interface{}{"type": "string", "description": "Amount in USDC (e.g., '0.50')"},
 					"memo":                   map[string]interface{}{"type": "string", "description": "Payment memo/reason"},
 				},
-				"required": []string{"peer_did", "transaction_receipt_id", "amount"},
+				"required": []string{"peer_did", "transaction_receipt_id", "submission_receipt_id", "amount"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
 				peerDID, err := toolparam.RequireString(params, "peer_did")
@@ -568,6 +569,7 @@ func buildP2PPaymentTool(p2pc *p2pComponents, pc *paymentComponents, receiptStor
 					return nil, err
 				}
 				transactionReceiptID := toolparam.OptionalString(params, "transaction_receipt_id", "")
+				submissionReceiptID := toolparam.OptionalString(params, "submission_receipt_id", "")
 				amount, err := toolparam.RequireString(params, "amount")
 				if err != nil {
 					return nil, err
@@ -598,7 +600,7 @@ func buildP2PPaymentTool(p2pc *p2pComponents, pc *paymentComponents, receiptStor
 					trail = receiptStore
 				}
 
-				allowed, denied, err := toolpayment.CheckDirectPaymentExecution(ctx, "p2p_pay", transactionReceiptID, gate, trail, auditor)
+				allowed, denied, err := toolpayment.CheckDirectPaymentExecution(ctx, "p2p_pay", transactionReceiptID, submissionReceiptID, gate, trail, auditor)
 				if err != nil {
 					return nil, err
 				}

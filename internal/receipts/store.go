@@ -149,12 +149,12 @@ func (s *Store) AppendReceiptEvent(_ context.Context, submissionReceiptID string
 	return nil
 }
 
-func (s *Store) AppendPaymentExecutionAuthorized(ctx context.Context, transactionReceiptID string) error {
-	return s.appendPaymentExecutionEvent(ctx, transactionReceiptID, EventPaymentExecutionAuthorized, "", "authorized")
+func (s *Store) AppendPaymentExecutionAuthorized(ctx context.Context, submissionReceiptID string) error {
+	return s.appendPaymentExecutionEvent(ctx, submissionReceiptID, EventPaymentExecutionAuthorized, "", "authorized")
 }
 
-func (s *Store) AppendPaymentExecutionDenied(ctx context.Context, transactionReceiptID, reason string) error {
-	return s.appendPaymentExecutionEvent(ctx, transactionReceiptID, EventPaymentExecutionDenied, reason, "denied")
+func (s *Store) AppendPaymentExecutionDenied(ctx context.Context, submissionReceiptID, reason string) error {
+	return s.appendPaymentExecutionEvent(ctx, submissionReceiptID, EventPaymentExecutionDenied, reason, "denied")
 }
 
 func (s *Store) GetSubmissionReceipt(_ context.Context, submissionReceiptID string) (SubmissionReceipt, []ReceiptEvent, error) {
@@ -183,7 +183,7 @@ func (s *Store) GetTransactionReceipt(_ context.Context, transactionReceiptID st
 	return transaction, nil
 }
 
-func (s *Store) appendPaymentExecutionEvent(_ context.Context, transactionReceiptID string, eventType EventType, reason string, subtype string) error {
+func (s *Store) appendPaymentExecutionEvent(_ context.Context, submissionReceiptID string, eventType EventType, reason string, subtype string) error {
 	if err := validateEventType(eventType); err != nil {
 		return err
 	}
@@ -191,15 +191,6 @@ func (s *Store) appendPaymentExecutionEvent(_ context.Context, transactionReceip
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	transaction, ok := s.transactions[transactionReceiptID]
-	if !ok {
-		return ErrTransactionReceiptNotFound
-	}
-
-	submissionReceiptID := transaction.CurrentSubmissionReceiptID
-	if submissionReceiptID == "" {
-		return ErrSubmissionReceiptNotFound
-	}
 	if _, ok := s.submissions[submissionReceiptID]; !ok {
 		return ErrSubmissionReceiptNotFound
 	}

@@ -33,6 +33,13 @@ func TestP2PPayment_DeniesWhenSettlementHintIsNotPrepay(t *testing.T) {
 		SuggestedMode: paymentapproval.ModeEscrow,
 	})
 	require.NoError(t, err)
+	otherSub, _, err := receiptStore.CreateSubmissionReceipt(context.Background(), receipts.CreateSubmissionInput{
+		TransactionID:       "tx-p2p-deny",
+		ArtifactLabel:       "artifact-second",
+		PayloadHash:         "hash-second",
+		SourceLineageDigest: "lineage-second",
+	})
+	require.NoError(t, err)
 
 	pk, err := ethcrypto.GenerateKey()
 	require.NoError(t, err)
@@ -53,6 +60,7 @@ func TestP2PPayment_DeniesWhenSettlementHintIsNotPrepay(t *testing.T) {
 	result, err := tools[0].Handler(context.Background(), map[string]interface{}{
 		"peer_did":               did.ID,
 		"transaction_receipt_id": tx.TransactionReceiptID,
+		"submission_receipt_id":  sub.SubmissionReceiptID,
 		"amount":                 "0.50",
 		"memo":                   "settlement mismatch",
 	})
@@ -68,6 +76,10 @@ func TestP2PPayment_DeniesWhenSettlementHintIsNotPrepay(t *testing.T) {
 	require.Len(t, events, 2)
 	assert.Equal(t, receipts.EventPaymentExecutionDenied, events[1].Type)
 	assert.Equal(t, "execution_mode_mismatch", events[1].Reason)
+
+	_, otherEvents, err := receiptStore.GetSubmissionReceipt(context.Background(), otherSub.SubmissionReceiptID)
+	require.NoError(t, err)
+	require.Empty(t, otherEvents)
 
 	require.Len(t, auditor.entries, 1)
 	assert.Equal(t, "denied", auditor.entries[0].Outcome)

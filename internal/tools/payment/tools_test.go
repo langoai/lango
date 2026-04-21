@@ -2,12 +2,14 @@ package payment
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/langoai/lango/internal/agent"
 	corepayment "github.com/langoai/lango/internal/payment"
 	"github.com/langoai/lango/internal/paymentapproval"
+	"github.com/langoai/lango/internal/paymentgate"
 	"github.com/langoai/lango/internal/receipts"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/x402"
@@ -99,6 +101,13 @@ func TestPaymentSend_DeniesWithoutTransactionReceiptID(t *testing.T) {
 	t.Parallel()
 
 	receiptStore := receipts.NewStore()
+	sub, _, err := receiptStore.CreateSubmissionReceipt(context.Background(), receipts.CreateSubmissionInput{
+		TransactionID:       "tx-missing-tx",
+		ArtifactLabel:       "artifact",
+		PayloadHash:         "hash",
+		SourceLineageDigest: "lineage",
+	})
+	require.NoError(t, err)
 	auditor := &fakeExecutionAuditor{}
 	tools := BuildTools(&fakePaymentService{}, nil, nil, 84532, nil, receiptStore, auditor)
 
@@ -106,9 +115,10 @@ func TestPaymentSend_DeniesWithoutTransactionReceiptID(t *testing.T) {
 	require.NotNil(t, sendTool)
 
 	result, err := sendTool.Handler(context.Background(), map[string]interface{}{
-		"to":      "0x1111111111111111111111111111111111111111",
-		"amount":  "1.00",
-		"purpose": "missing tx receipt",
+		"to":                    "0x1111111111111111111111111111111111111111",
+		"submission_receipt_id": sub.SubmissionReceiptID,
+		"amount":                "1.00",
+		"purpose":               "missing tx receipt",
 	})
 	require.NoError(t, err)
 
@@ -117,6 +127,42 @@ func TestPaymentSend_DeniesWithoutTransactionReceiptID(t *testing.T) {
 	assert.Equal(t, "denied", denied.Status)
 	assert.Equal(t, "missing_receipt", denied.Reason)
 	assert.Contains(t, denied.Message, "transaction_receipt_id")
+
+	require.Len(t, auditor.entries, 1)
+	assert.Equal(t, "denied", auditor.entries[0].Outcome)
+	assert.Equal(t, "missing_receipt", auditor.entries[0].Reason)
+}
+
+func TestPaymentSend_DeniesWithUnknownTransactionReceiptID(t *testing.T) {
+	t.Parallel()
+
+	receiptStore := receipts.NewStore()
+	sub, _, err := receiptStore.CreateSubmissionReceipt(context.Background(), receipts.CreateSubmissionInput{
+		TransactionID:       "tx-known-submission",
+		ArtifactLabel:       "artifact",
+		PayloadHash:         "hash",
+		SourceLineageDigest: "lineage",
+	})
+	require.NoError(t, err)
+	auditor := &fakeExecutionAuditor{}
+	tools := BuildTools(&fakePaymentService{}, nil, nil, 84532, nil, receiptStore, auditor)
+
+	sendTool := findTool(tools, "payment_send")
+	require.NotNil(t, sendTool)
+
+	result, err := sendTool.Handler(context.Background(), map[string]interface{}{
+		"transaction_receipt_id": "missing-transaction",
+		"submission_receipt_id":  sub.SubmissionReceiptID,
+		"to":                     "0x1111111111111111111111111111111111111111",
+		"amount":                 "1.00",
+		"purpose":                "unknown tx receipt",
+	})
+	require.NoError(t, err)
+
+	denied, ok := result.(*PaymentExecutionDeniedResult)
+	require.True(t, ok)
+	assert.Equal(t, "missing_receipt", denied.Reason)
+	assert.Contains(t, denied.Message, "was not found")
 
 	require.Len(t, auditor.entries, 1)
 	assert.Equal(t, "denied", auditor.entries[0].Outcome)
@@ -149,6 +195,7 @@ func TestPaymentSend_DeniesWhenApprovalIsNotApproved(t *testing.T) {
 	result, err := sendTool.Handler(context.Background(), map[string]interface{}{
 		"to":                     "0x1111111111111111111111111111111111111111",
 		"transaction_receipt_id": tx.TransactionReceiptID,
+		"submission_receipt_id":  sub.SubmissionReceiptID,
 		"amount":                 "1.00",
 		"purpose":                "approval denied",
 	})
@@ -209,6 +256,7 @@ func TestPaymentSend_AllowPathRecordsSuccessEvents(t *testing.T) {
 	result, err := sendTool.Handler(context.Background(), map[string]interface{}{
 		"to":                     "0x1111111111111111111111111111111111111111",
 		"transaction_receipt_id": tx.TransactionReceiptID,
+		"submission_receipt_id":  sub.SubmissionReceiptID,
 		"amount":                 "1.00",
 		"purpose":                "approved payment",
 	})
@@ -230,7 +278,126 @@ func TestPaymentSend_AllowPathRecordsSuccessEvents(t *testing.T) {
 	assert.Equal(t, tx.TransactionReceiptID, auditor.entries[0].TransactionReceiptID)
 }
 
+func TestPaymentSend_RecordsAuthorizedEventOnRequestedSubmission(t *testing.T) {
+	t.Parallel()
+
+	receiptStore := receipts.NewStore()
+	firstSub, tx, err := receiptStore.CreateSubmissionReceipt(context.Background(), receipts.CreateSubmissionInput{
+		TransactionID:       "tx-multi-submission",
+		ArtifactLabel:       "artifact-first",
+		PayloadHash:         "hash-first",
+		SourceLineageDigest: "lineage-first",
+	})
+	require.NoError(t, err)
+	_, err = receiptStore.ApplyUpfrontPaymentApproval(context.Background(), tx.TransactionReceiptID, firstSub.SubmissionReceiptID, paymentapproval.Outcome{
+		Decision:      paymentapproval.DecisionApprove,
+		Reason:        "approved",
+		SuggestedMode: paymentapproval.ModePrepay,
+	})
+	require.NoError(t, err)
+
+	secondSub, _, err := receiptStore.CreateSubmissionReceipt(context.Background(), receipts.CreateSubmissionInput{
+		TransactionID:       "tx-multi-submission",
+		ArtifactLabel:       "artifact-second",
+		PayloadHash:         "hash-second",
+		SourceLineageDigest: "lineage-second",
+	})
+	require.NoError(t, err)
+
+	auditor := &fakeExecutionAuditor{}
+	tools := BuildTools(&fakePaymentService{
+		receipt: &corepayment.PaymentReceipt{
+			TxHash:      "0xabc",
+			Status:      "confirmed",
+			Amount:      "1.00",
+			From:        "0x2222222222222222222222222222222222222222",
+			To:          "0x1111111111111111111111111111111111111111",
+			ChainID:     84532,
+			GasUsed:     21000,
+			BlockNumber: 42,
+			Timestamp:   time.Unix(1700000000, 0).UTC(),
+		},
+	}, nil, nil, 84532, nil, receiptStore, auditor)
+	sendTool := findTool(tools, "payment_send")
+	require.NotNil(t, sendTool)
+
+	result, err := sendTool.Handler(context.Background(), map[string]interface{}{
+		"to":                     "0x1111111111111111111111111111111111111111",
+		"transaction_receipt_id": tx.TransactionReceiptID,
+		"submission_receipt_id":  firstSub.SubmissionReceiptID,
+		"amount":                 "1.00",
+		"purpose":                "multi submission",
+	})
+	require.NoError(t, err)
+
+	payload, ok := result.(map[string]interface{})
+	require.True(t, ok)
+	assert.Equal(t, "confirmed", payload["status"])
+
+	_, firstEvents, err := receiptStore.GetSubmissionReceipt(context.Background(), firstSub.SubmissionReceiptID)
+	require.NoError(t, err)
+	require.Len(t, firstEvents, 2)
+	assert.Equal(t, receipts.EventPaymentExecutionAuthorized, firstEvents[1].Type)
+
+	_, secondEvents, err := receiptStore.GetSubmissionReceipt(context.Background(), secondSub.SubmissionReceiptID)
+	require.NoError(t, err)
+	require.Empty(t, secondEvents)
+}
+
+func TestCheckDirectPaymentExecution_ReturnsErrorOnAuditWriteFailure(t *testing.T) {
+	t.Parallel()
+
+	allowedGate := fakeExecutionGate{result: paymentgate.Result{Decision: paymentgate.Allow}}
+	trail := &fakeExecutionTrail{}
+	auditor := &fakeExecutionAuditor{err: errors.New("audit write failed")}
+
+	allowed, denied, err := CheckDirectPaymentExecution(context.Background(), "payment_send", "tx-1", "submission-1", &allowedGate, trail, auditor)
+	require.Error(t, err)
+	require.False(t, allowed)
+	require.Nil(t, denied)
+	assert.Contains(t, err.Error(), "record payment execution audit")
+}
+
+func TestCheckDirectPaymentExecution_ReturnsErrorOnTrailWriteFailure(t *testing.T) {
+	t.Parallel()
+
+	allowedGate := fakeExecutionGate{result: paymentgate.Result{Decision: paymentgate.Allow}}
+	trail := &fakeExecutionTrail{allowErr: errors.New("trail write failed")}
+	auditor := &fakeExecutionAuditor{}
+
+	allowed, denied, err := CheckDirectPaymentExecution(context.Background(), "payment_send", "tx-1", "submission-1", &allowedGate, trail, auditor)
+	require.Error(t, err)
+	require.False(t, allowed)
+	require.Nil(t, denied)
+	assert.Contains(t, err.Error(), "record payment execution receipt trail")
+}
+
 // --- helpers ---
+
+type fakeExecutionGate struct {
+	result paymentgate.Result
+	err    error
+}
+
+func (f *fakeExecutionGate) EvaluateDirectPayment(context.Context, paymentgate.Request) (paymentgate.Result, error) {
+	if f.err != nil {
+		return paymentgate.Result{}, f.err
+	}
+	return f.result, nil
+}
+
+type fakeExecutionTrail struct {
+	allowErr error
+	denyErr  error
+}
+
+func (f *fakeExecutionTrail) AppendPaymentExecutionAuthorized(context.Context, string) error {
+	return f.allowErr
+}
+
+func (f *fakeExecutionTrail) AppendPaymentExecutionDenied(context.Context, string, string) error {
+	return f.denyErr
+}
 
 type fakePaymentService struct {
 	receipt *corepayment.PaymentReceipt
@@ -265,9 +432,13 @@ func (f *fakePaymentService) RecordX402Payment(context.Context, corepayment.X402
 
 type fakeExecutionAuditor struct {
 	entries []PaymentExecutionAuditEntry
+	err     error
 }
 
 func (f *fakeExecutionAuditor) RecordPaymentExecution(_ context.Context, entry PaymentExecutionAuditEntry) error {
+	if f.err != nil {
+		return f.err
+	}
 	f.entries = append(f.entries, entry)
 	return nil
 }
