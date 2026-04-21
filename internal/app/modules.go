@@ -268,7 +268,7 @@ func (m *intelligenceModule) Provides() []appinit.Provides {
 	return []appinit.Provides{appinit.ProvidesKnowledge, appinit.ProvidesMemory, appinit.ProvidesGraph, appinit.ProvidesLibrarian, appinit.ProvidesSkills}
 }
 func (m *intelligenceModule) DependsOn() []appinit.Provides {
-	return []appinit.Provides{appinit.ProvidesSessionStore, appinit.ProvidesSupervisor}
+	return []appinit.Provides{appinit.ProvidesSessionStore, appinit.ProvidesSupervisor, appinit.ProvidesEconomy}
 }
 func (m *intelligenceModule) Enabled() bool { return true } // always enabled — subsystems check their own config
 
@@ -338,7 +338,11 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 			receiptStore = receipts.NewStore()
 		}
 		m.receiptStore = receiptStore
-		metaTools := buildMetaTools(kc.store, kc.engine, skillReg, cfg.Skill, cfg, receiptStore)
+		var escrowRuntime escrowExecutionRuntime
+		if econc, ok := r.Resolve(appinit.ProvidesEconomy).(*economyComponents); ok && econc != nil {
+			escrowRuntime = econc.escrowEngine
+		}
+		metaTools := buildMetaToolsWithEscrow(kc.store, kc.engine, skillReg, cfg.Skill, cfg, receiptStore, escrowRuntime)
 		tools = append(tools, metaTools...)
 		entries = append(entries, appinit.CatalogEntry{Category: "meta", Description: "Knowledge, learning, and skill management", ConfigKey: "knowledge.enabled", Enabled: true, Tools: metaTools})
 	} else {
@@ -820,16 +824,6 @@ func (m *networkModule) Init(ctx context.Context, r appinit.Resolver) (*appinit.
 				sentTools := sentinel.BuildTools(econc.sentinelEngine)
 				tools = append(tools, sentTools...)
 				entries = append(entries, appinit.CatalogEntry{Category: "sentinel", Description: "Security Sentinel anomaly detection", ConfigKey: "economy.escrow.enabled", Enabled: true, Tools: sentTools})
-			}
-			if escrowMetaTool := newExecuteEscrowRecommendationTool(fv.ReceiptStore, econc.escrowEngine); escrowMetaTool != nil {
-				tools = append(tools, escrowMetaTool)
-				entries = append(entries, appinit.CatalogEntry{
-					Category:    "meta",
-					Description: "Knowledge, learning, and skill management",
-					ConfigKey:   "knowledge.enabled",
-					Enabled:     true,
-					Tools:       []*agent.Tool{escrowMetaTool},
-				})
 			}
 
 			// Economy lifecycle components (EventMonitor, DanglingDetector).
