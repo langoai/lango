@@ -1113,6 +1113,17 @@ func approveUpfrontPayment(ctx context.Context, receiptStore *receipts.Store, pa
 		if err != nil {
 			return nil, err
 		}
+		transaction, err := receiptStore.GetTransactionReceipt(ctx, transactionReceiptID)
+		if err != nil {
+			return nil, fmt.Errorf("load transaction receipt for escrow approval: %w", err)
+		}
+		if transaction.CurrentSubmissionReceiptID != submissionReceiptID {
+			return nil, fmt.Errorf(
+				"submission receipt %q is not current for transaction receipt %q",
+				submissionReceiptID,
+				transactionReceiptID,
+			)
+		}
 	}
 
 	updatedTx, err := receiptStore.ApplyUpfrontPaymentApproval(ctx, transactionReceiptID, submissionReceiptID, outcome)

@@ -222,6 +222,78 @@ func TestApproveUpfrontPayment_RejectsMalformedEscrowInputWithoutMutatingReceipt
 	require.Empty(t, events)
 }
 
+func TestApproveUpfrontPayment_RejectsStaleEscrowSubmissionWithoutMutatingReceipt(t *testing.T) {
+	store := receipts.NewStore()
+	ctx := context.Background()
+
+	firstSubmission, tx, err := store.CreateSubmissionReceipt(ctx, receipts.CreateSubmissionInput{
+		TransactionID:       "tx-upfront-escrow-stale",
+		ArtifactLabel:       "artifact/upfront-escrow-stale-v1",
+		PayloadHash:         "hash-upfront-escrow-stale-v1",
+		SourceLineageDigest: "lineage-upfront-escrow-stale-v1",
+	})
+	require.NoError(t, err)
+
+	secondSubmission, latestTx, err := store.CreateSubmissionReceipt(ctx, receipts.CreateSubmissionInput{
+		TransactionID:       "tx-upfront-escrow-stale",
+		ArtifactLabel:       "artifact/upfront-escrow-stale-v2",
+		PayloadHash:         "hash-upfront-escrow-stale-v2",
+		SourceLineageDigest: "lineage-upfront-escrow-stale-v2",
+	})
+	require.NoError(t, err)
+	require.NotEqual(t, firstSubmission.SubmissionReceiptID, secondSubmission.SubmissionReceiptID)
+	require.Equal(t, secondSubmission.SubmissionReceiptID, latestTx.CurrentSubmissionReceiptID)
+
+	beforeTx, err := store.GetTransactionReceipt(ctx, tx.TransactionReceiptID)
+	require.NoError(t, err)
+	require.Equal(t, receipts.PaymentApprovalPending, beforeTx.CurrentPaymentApprovalStatus)
+	require.Empty(t, beforeTx.CanonicalSettlementHint)
+	require.Empty(t, beforeTx.CanonicalDecision)
+
+	_, err = approveUpfrontPayment(ctx, store, map[string]interface{}{
+		"transaction_receipt_id": tx.TransactionReceiptID,
+		"submission_receipt_id":  firstSubmission.SubmissionReceiptID,
+		"amount":                 "25.00",
+		"trust_score":            0.30,
+		"user_max_prepay":        "5.00",
+		"remaining_budget":       "50.00",
+		"escrow_buyer_did":       "did:lango:buyer",
+		"escrow_seller_did":      "did:lango:seller",
+		"escrow_reason":          "knowledge exchange",
+		"escrow_task_id":         "task-upfront-escrow-stale",
+		"escrow_milestones": []interface{}{
+			map[string]interface{}{"description": "draft", "amount": "10.00"},
+			map[string]interface{}{"description": "final", "amount": "15.00"},
+		},
+	}, func(paymentapproval.Input) paymentapproval.Outcome {
+		return paymentapproval.Outcome{
+			Decision:      paymentapproval.DecisionApprove,
+			Reason:        "Upfront payment approved.",
+			SuggestedMode: paymentapproval.ModeEscrow,
+			AmountClass:   paymentapproval.AmountMedium,
+			RiskClass:     paymentapproval.RiskLow,
+		}
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "is not current for transaction receipt")
+
+	afterTx, err := store.GetTransactionReceipt(ctx, tx.TransactionReceiptID)
+	require.NoError(t, err)
+	assert.Equal(t, receipts.PaymentApprovalPending, afterTx.CurrentPaymentApprovalStatus)
+	assert.Empty(t, afterTx.CanonicalSettlementHint)
+	assert.Empty(t, afterTx.CanonicalDecision)
+	assert.Nil(t, afterTx.EscrowExecutionInput)
+	assert.Empty(t, afterTx.EscrowExecutionStatus)
+
+	_, staleEvents, err := store.GetSubmissionReceipt(ctx, firstSubmission.SubmissionReceiptID)
+	require.NoError(t, err)
+	require.Empty(t, staleEvents)
+
+	_, currentEvents, err := store.GetSubmissionReceipt(ctx, secondSubmission.SubmissionReceiptID)
+	require.NoError(t, err)
+	require.Empty(t, currentEvents)
+}
+
 func TestApproveUpfrontPayment_ReportsMissingSubmissionReceiptID(t *testing.T) {
 	store := receipts.NewStore()
 	ctx := context.Background()
