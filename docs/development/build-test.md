@@ -43,7 +43,7 @@ The Makefile uses the default runtime for normal `build` and `test` targets.
 
 ## Documentation
 
-Build the public documentation site with Zensical:
+For the in-progress docs migration, the local Zensical build path is:
 
 ```bash
 .venv/bin/zensical build
