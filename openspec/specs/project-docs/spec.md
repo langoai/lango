@@ -1,7 +1,18 @@
 ## Purpose
 
-Capability spec for project-docs. See requirements below for scope and behavior contracts.
+Capability spec for repository-facing docs references and layout. See requirements below for scope and behavior contracts.
 ## Requirements
+### Requirement: Repository docs references describe the Zensical docs toolchain
+The README.md, docs/architecture/project-structure.md, and docs/development/build-test.md SHALL describe Zensical as the canonical docs toolchain and reference `zensical.toml` and `.venv/bin/zensical build` instead of MkDocs as the default docs path.
+
+#### Scenario: README and architecture docs reference Zensical
+- **WHEN** a user reads README.md and docs/architecture/project-structure.md
+- **THEN** they SHALL see Zensical-native docs tooling references instead of `mkdocs.yml` as the canonical site definition
+
+#### Scenario: Build-test docs reference the Zensical build path
+- **WHEN** a user reads docs/development/build-test.md
+- **THEN** the docs build instructions SHALL use `.venv/bin/zensical build`
+
 ### Requirement: New packages documented in architecture
 The README.md Architecture section and docs/architecture/project-structure.md SHALL include dbmigrate, lifecycle, keyring, and sandbox packages.
 
@@ -52,4 +63,3 @@ Project documentation MUST describe FTS5 as included in the default runtime and 
 - **WHEN** a user reads installation or development build instructions
 - **THEN** normal build and install examples omit `-tags "fts5"`
 - **AND** optional `vec` examples remain explicitly tagged
-

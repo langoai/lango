@@ -1,32 +1,32 @@
 # mkdocs-documentation-site Specification
 
 ## Purpose
-MkDocs documentation site with an exclusion-aware public IA and selected security deep-dive exposure.
+Zensical-native documentation site with an explicit public IA and feature parity for the public docs experience.
 ## Requirements
-### Requirement: MkDocs configuration file
-The project SHALL have a `mkdocs.yml` at the repository root configuring MkDocs Material with search, minify, code copy, Mermaid diagrams, dark/light mode toggle, and a navigation structure covering all documentation sections.
+### Requirement: Zensical configuration file
+The project SHALL have a `zensical.toml` at the repository root configuring the canonical docs site with public navigation, search, dark/light mode, code copy support, and Mermaid rendering.
 
-#### Scenario: Valid MkDocs configuration
-- **WHEN** `mkdocs build` is run from the project root
-- **THEN** the site builds without errors and produces a static site in `site/`
+#### Scenario: Valid Zensical configuration
+- **WHEN** `.venv/bin/zensical build` is run from the project root
+- **THEN** the site builds successfully and produces a static site in `site/`
 
 #### Scenario: Theme features enabled
 - **WHEN** the documentation site is served
-- **THEN** it SHALL have navigation tabs, search with suggestions, code copy buttons, dark/light mode toggle, and Mermaid diagram rendering
+- **THEN** it SHALL have navigation tabs, search suggestions, code copy buttons, dark/light mode toggle, and Mermaid diagram rendering
 
 ### Requirement: Documentation directory structure
-The `docs/` directory SHALL contain markdown files organized into subdirectories: `getting-started/`, `architecture/`, `features/`, `automation/`, `security/`, `payments/`, `cli/`, `gateway/`, `deployment/`, `development/`, and root-level `index.md` and `configuration.md`.
+The `docs/` directory SHALL contain public markdown files organized into subdirectories: `getting-started/`, `architecture/`, `features/`, `automation/`, `security/`, `payments/`, `cli/`, `gateway/`, `deployment/`, `development/`, and root-level `index.md` and `configuration.md`. Hidden support docs and withdrawn cockpit sub-guides SHALL live outside `docs/`.
 
 #### Scenario: All navigation entries resolve
-- **WHEN** `mkdocs build` is run
-- **THEN** every entry in the `nav:` section of `mkdocs.yml` SHALL resolve to an existing markdown file
+- **WHEN** the docs site is built
+- **THEN** every entry in the public navigation SHALL resolve to an existing public markdown file
 
-### Requirement: Hidden docs are excluded from the public build
-The project SHALL configure `exclude_docs` so hidden docs, superpowers planning artifacts, and withdrawn cockpit sub-guides do not ship in the built site.
+### Requirement: Hidden docs are outside the public docs tree
+The project SHALL keep hidden docs, superpowers planning artifacts, and withdrawn cockpit sub-guides out of `docs/` so the public site is represented structurally rather than through exclusion rules.
 
-#### Scenario: Hidden docs do not appear in the public site
-- **WHEN** `python3 -m mkdocs build --strict` is run from the project root
-- **THEN** the excluded files SHALL be omitted from the generated site and SHALL not produce not-in-nav warnings
+#### Scenario: Hidden docs do not ship in the public site
+- **WHEN** `.venv/bin/zensical build` is run from the project root
+- **THEN** the hidden files SHALL not appear in the generated site or public navigation
 
 ### Requirement: Home page with feature grid
 The `docs/index.md` SHALL display a feature grid using Material grid cards, an experimental warning admonition, a quick install snippet, and links to getting started.
@@ -64,26 +64,26 @@ The documentation SHALL include a complete CLI reference organized by command ca
 - **THEN** they SHALL find syntax, flags, and usage examples
 
 ### Requirement: Navigation includes P2P pages
-The mkdocs.yml navigation SHALL include "P2P Network: features/p2p-network.md", "P2P Economy: features/economy.md", "Smart Contracts: features/contracts.md", and "Observability: features/observability.md" in the Features section and "P2P Commands: cli/p2p.md", "Economy Commands: cli/economy.md", "Contract Commands: cli/contract.md", and "Metrics Commands: cli/metrics.md" in the CLI Reference section.
+The site navigation SHALL include "P2P Network: features/p2p-network.md", "P2P Economy: features/economy.md", "Smart Contracts: features/contracts.md", and "Observability: features/observability.md" in the Features section and "P2P Commands: cli/p2p.md", "Economy Commands: cli/economy.md", "Contract Commands: cli/contract.md", and "Metrics Commands: cli/metrics.md" in the CLI Reference section.
 
 #### Scenario: P2P feature in nav
-- **WHEN** the mkdocs site is built
+- **WHEN** the docs site is built
 - **THEN** the Features navigation section includes a "P2P Network" entry after "A2A Protocol"
 
 #### Scenario: Economy, contract, observability features in nav
-- **WHEN** the mkdocs site is built
+- **WHEN** the docs site is built
 - **THEN** the Features navigation section includes "P2P Economy", "Smart Contracts", and "Observability" entries after "P2P Network"
 
 #### Scenario: P2P CLI in nav
-- **WHEN** the mkdocs site is built
+- **WHEN** the docs site is built
 - **THEN** the CLI Reference navigation section includes a "P2P Commands" entry after "Payment Commands"
 
 #### Scenario: Economy, contract, metrics CLI in nav
-- **WHEN** the mkdocs site is built
+- **WHEN** the docs site is built
 - **THEN** the CLI Reference navigation section includes "Economy Commands", "Contract Commands", and "Metrics Commands" entries after "P2P Commands"
 
-### Requirement: Public MkDocs IA exposes the chosen public surfaces
-The MkDocs navigation SHALL surface the selected public Security pages and the top-level Research page while keeping the rest of the documentation tree hidden from the public site.
+### Requirement: Public site navigation exposes the chosen public surfaces
+The docs site navigation SHALL surface the selected public Security pages and the top-level Research page while keeping the rest of the documentation tree hidden from the public site.
 
 #### Scenario: Public security and research pages remain navigable
 - **WHEN** the documentation site is built

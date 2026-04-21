@@ -181,7 +181,7 @@ The getting started quickstart documentation SHALL link to the existing installa
 - **THEN** the installation link SHALL target the existing installation section and its compiler setup anchor
 
 ### Requirement: Cockpit public-entry consolidation
-The public cockpit documentation SHALL consolidate the operator-facing material from the cockpit approval, channels, tasks, and troubleshooting sub-guides into `docs/features/cockpit.md`.
+After the hidden cockpit guides move out of `docs/`, the public cockpit documentation SHALL keep `docs/features/cockpit.md` as the single public entry for operator-facing material from the cockpit approval, channels, tasks, and troubleshooting guides.
 
 #### Scenario: Approval guidance is on the main cockpit page
 - **WHEN** a user reads `docs/features/cockpit.md`
