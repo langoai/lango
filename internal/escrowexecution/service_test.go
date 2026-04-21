@@ -3,6 +3,7 @@ package escrowexecution
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/big"
 	"testing"
 
@@ -265,6 +266,49 @@ func TestService_ExecuteRecommendation_RerunAfterFailedIsRejected(t *testing.T) 
 	require.Len(t, runtime.fundCalls, 1)
 }
 
+func TestService_ExecuteRecommendation_RecordsFailedStateWhenCreatedWriteFails(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := newFakeReceiptStore(receipts.TransactionReceipt{
+		TransactionReceiptID:         "tx-created-write-fail",
+		TransactionID:                "tx-created-write-fail",
+		CurrentSubmissionReceiptID:   "sub-created-write-fail",
+		CurrentPaymentApprovalStatus: receipts.PaymentApprovalApproved,
+		CanonicalSettlementHint:      string(paymentapproval.ModeEscrow),
+		EscrowExecutionStatus:        receipts.EscrowExecutionStatusPending,
+		EscrowExecutionInput: &receipts.EscrowExecutionInput{
+			BuyerDID:  "did:lango:buyer",
+			SellerDID: "did:lango:seller",
+			Amount:    "25.00",
+			Reason:    "knowledge exchange",
+			TaskID:    "task-escrow",
+			Milestones: []receipts.EscrowMilestoneInput{
+				{Description: "draft", Amount: "10.00"},
+				{Description: "final", Amount: "15.00"},
+			},
+		},
+	})
+	store.failOn = progressKey{status: receipts.EscrowExecutionStatusCreated, eventType: receipts.EventEscrowExecutionCreated}
+	runtime := &fakeRuntime{
+		createEntry: &escrow.EscrowEntry{ID: "escrow-created"},
+	}
+
+	service := NewService(store, runtime)
+	result, err := service.ExecuteRecommendation(ctx, Request{TransactionReceiptID: "tx-created-write-fail"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "record escrow created progress")
+	assert.Equal(t, Result{}, result)
+
+	require.Len(t, store.progressCalls, 3)
+	assert.Equal(t, receipts.EscrowExecutionStatusPending, store.progressCalls[0].status)
+	assert.Equal(t, receipts.EscrowExecutionStatusCreated, store.progressCalls[1].status)
+	assert.Equal(t, receipts.EscrowExecutionStatusFailed, store.progressCalls[2].status)
+	assert.Equal(t, "escrow-created", store.progressCalls[2].escrowReference)
+	assert.Equal(t, receipts.EscrowExecutionStatusFailed, store.transaction.EscrowExecutionStatus)
+	assert.Equal(t, "escrow-created", store.transaction.EscrowReference)
+}
+
 type fakeRuntime struct {
 	createEntry *escrow.EscrowEntry
 	createErr   error
@@ -272,6 +316,55 @@ type fakeRuntime struct {
 	fundErr     error
 	createCalls []escrow.CreateRequest
 	fundCalls   []string
+}
+
+type progressKey struct {
+	status    receipts.EscrowExecutionStatus
+	eventType receipts.EventType
+}
+
+type progressCall struct {
+	status          receipts.EscrowExecutionStatus
+	escrowReference string
+	eventType       receipts.EventType
+	reason          string
+}
+
+type fakeReceiptStore struct {
+	transaction   receipts.TransactionReceipt
+	txErr         error
+	failOn        progressKey
+	progressCalls []progressCall
+}
+
+func newFakeReceiptStore(transaction receipts.TransactionReceipt) *fakeReceiptStore {
+	return &fakeReceiptStore{transaction: transaction}
+}
+
+func (f *fakeReceiptStore) GetTransactionReceipt(context.Context, string) (receipts.TransactionReceipt, error) {
+	if f.txErr != nil {
+		return receipts.TransactionReceipt{}, f.txErr
+	}
+	return f.transaction, nil
+}
+
+func (f *fakeReceiptStore) ApplyEscrowExecutionProgress(_ context.Context, _, _ string, status receipts.EscrowExecutionStatus, escrowReference string, eventType receipts.EventType, reason string) (receipts.TransactionReceipt, error) {
+	f.progressCalls = append(f.progressCalls, progressCall{
+		status:          status,
+		escrowReference: escrowReference,
+		eventType:       eventType,
+		reason:          reason,
+	})
+
+	if f.failOn == (progressKey{status: status, eventType: eventType}) {
+		return receipts.TransactionReceipt{}, fmt.Errorf("write %s/%s: boom", status, eventType)
+	}
+
+	f.transaction.EscrowExecutionStatus = status
+	if escrowReference != "" {
+		f.transaction.EscrowReference = escrowReference
+	}
+	return f.transaction, nil
 }
 
 func (f *fakeRuntime) Create(_ context.Context, req escrow.CreateRequest) (*escrow.EscrowEntry, error) {

@@ -100,7 +100,8 @@ func (s *Service) ExecuteRecommendation(ctx context.Context, req Request) (Resul
 		receipts.EventEscrowExecutionCreated,
 		"",
 	); err != nil {
-		return Result{}, fmt.Errorf("record escrow created progress for transaction receipt %q: %w", transactionReceiptID, err)
+		opErr := fmt.Errorf("record escrow created progress for transaction receipt %q: %w", transactionReceiptID, err)
+		return Result{}, s.appendFailure(ctx, transactionReceiptID, submissionReceiptID, createdEscrowID, opErr)
 	}
 
 	fundedEntry, err := s.runtime.Fund(ctx, createdEscrowID)

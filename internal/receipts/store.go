@@ -185,6 +185,9 @@ func (s *Store) ApplyEscrowExecutionProgress(_ context.Context, transactionRecei
 	if transaction.EscrowExecutionInput == nil {
 		return TransactionReceipt{}, fmt.Errorf("%w: escrow execution input is required", ErrInvalidEscrowExecutionState)
 	}
+	if err := validateEscrowExecutionTransition(transaction.EscrowExecutionStatus, status); err != nil {
+		return TransactionReceipt{}, err
+	}
 	if status == EscrowExecutionStatusFunded {
 		if escrowReference == "" {
 			return TransactionReceipt{}, fmt.Errorf("%w: escrow reference is required for funded progress", ErrInvalidEscrowExecutionState)
@@ -366,6 +369,30 @@ func escrowExecutionEventTypeForStatus(status EscrowExecutionStatus) (EventType,
 	default:
 		return "", fmt.Errorf("%w: %q", ErrInvalidEscrowExecutionStatus, status)
 	}
+}
+
+func validateEscrowExecutionTransition(current, next EscrowExecutionStatus) error {
+	switch current {
+	case "":
+		if next == EscrowExecutionStatusCreated || next == EscrowExecutionStatusFunded || next == EscrowExecutionStatusFailed || next == EscrowExecutionStatusPending {
+			return nil
+		}
+	case EscrowExecutionStatusPending:
+		if next == EscrowExecutionStatusPending || next == EscrowExecutionStatusCreated || next == EscrowExecutionStatusFailed {
+			return nil
+		}
+	case EscrowExecutionStatusCreated:
+		if next == EscrowExecutionStatusFunded || next == EscrowExecutionStatusFailed {
+			return nil
+		}
+	case EscrowExecutionStatusFunded:
+		if next == EscrowExecutionStatusFailed {
+			return nil
+		}
+	case EscrowExecutionStatusFailed:
+	}
+
+	return fmt.Errorf("%w: illegal transition from %q to %q", ErrInvalidEscrowExecutionState, current, next)
 }
 
 func cloneEscrowExecutionInput(input *EscrowExecutionInput) *EscrowExecutionInput {

@@ -568,6 +568,71 @@ func TestApplyEscrowExecutionProgress_RejectsInvalidStatusAndUnboundInput(t *tes
 	require.ErrorIs(t, err, ErrInvalidEscrowExecutionState)
 }
 
+func TestApplyEscrowExecutionProgress_RejectsIllegalTransitions(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	sub, tx, err := store.CreateSubmissionReceipt(ctx, CreateSubmissionInput{
+		TransactionID:       "tx-escrow-illegal-transitions",
+		ArtifactLabel:       "artifact/escrow-illegal-transitions",
+		PayloadHash:         "hash-escrow-illegal-transitions",
+		SourceLineageDigest: "lineage-escrow-illegal-transitions",
+	})
+	require.NoError(t, err)
+
+	_, err = store.BindEscrowExecutionInput(ctx, tx.TransactionReceiptID, sub.SubmissionReceiptID, EscrowExecutionInput{
+		BuyerDID:  "did:lango:buyer",
+		SellerDID: "did:lango:seller",
+		Amount:    "4.00",
+		Reason:    "knowledge exchange",
+	})
+	require.NoError(t, err)
+
+	_, err = store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, sub.SubmissionReceiptID, EscrowExecutionStatusCreated, "escrow-created", EventEscrowExecutionCreated, "")
+	require.NoError(t, err)
+
+	_, err = store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, sub.SubmissionReceiptID, EscrowExecutionStatusPending, "", EventEscrowExecutionStarted, "")
+	require.ErrorIs(t, err, ErrInvalidEscrowExecutionState)
+
+	_, err = store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, sub.SubmissionReceiptID, EscrowExecutionStatusFailed, "escrow-created", EventEscrowExecutionFailed, "fund failed")
+	require.NoError(t, err)
+
+	_, err = store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, sub.SubmissionReceiptID, EscrowExecutionStatusCreated, "escrow-created-2", EventEscrowExecutionCreated, "")
+	require.ErrorIs(t, err, ErrInvalidEscrowExecutionState)
+}
+
+func TestApplyEscrowExecutionProgress_RejectsTransitionsFromFunded(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	sub, tx, err := store.CreateSubmissionReceipt(ctx, CreateSubmissionInput{
+		TransactionID:       "tx-escrow-funded-transitions",
+		ArtifactLabel:       "artifact/escrow-funded-transitions",
+		PayloadHash:         "hash-escrow-funded-transitions",
+		SourceLineageDigest: "lineage-escrow-funded-transitions",
+	})
+	require.NoError(t, err)
+
+	_, err = store.BindEscrowExecutionInput(ctx, tx.TransactionReceiptID, sub.SubmissionReceiptID, EscrowExecutionInput{
+		BuyerDID:  "did:lango:buyer",
+		SellerDID: "did:lango:seller",
+		Amount:    "4.00",
+		Reason:    "knowledge exchange",
+	})
+	require.NoError(t, err)
+
+	_, err = store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, sub.SubmissionReceiptID, EscrowExecutionStatusCreated, "escrow-funded", EventEscrowExecutionCreated, "")
+	require.NoError(t, err)
+	_, err = store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, sub.SubmissionReceiptID, EscrowExecutionStatusFunded, "escrow-funded", EventEscrowExecutionFunded, "")
+	require.NoError(t, err)
+
+	_, err = store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, sub.SubmissionReceiptID, EscrowExecutionStatusCreated, "escrow-funded", EventEscrowExecutionCreated, "")
+	require.ErrorIs(t, err, ErrInvalidEscrowExecutionState)
+
+	_, err = store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, sub.SubmissionReceiptID, EscrowExecutionStatusPending, "", EventEscrowExecutionStarted, "")
+	require.ErrorIs(t, err, ErrInvalidEscrowExecutionState)
+}
+
 func TestAppendReceiptEvent_RejectsInvalidEventType(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
