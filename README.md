@@ -206,7 +206,7 @@ The cockpit is a multi-panel terminal dashboard launched via `lango` or `lango c
 
 Additional shortcuts: Ctrl+B (toggle sidebar), Tab (switch focus), Ctrl+Y (copy to clipboard).
 
-See [Cockpit Reference](docs/features/cockpit.md) and [Security](docs/security/index.md) for the public operator documentation.
+See [Cockpit Reference](docs/features/cockpit.md), [Security](docs/security/index.md), [Channels](docs/features/channels.md), and [Background Tasks](docs/automation/background.md) for related public operator docs.
 
 ## Architecture
 
