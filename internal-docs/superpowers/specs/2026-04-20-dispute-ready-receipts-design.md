@@ -16,8 +16,8 @@ This document is subordinate to:
 - `docs/architecture/master-document.md`
 - `docs/architecture/p2p-knowledge-exchange-track.md`
 - `docs/architecture/trust-security-policy-audit.md`
-- `docs/superpowers/specs/2026-04-20-exportability-policy-design.md`
-- `docs/superpowers/specs/2026-04-20-approval-flow-design.md`
+- `internal-docs/superpowers/specs/2026-04-20-exportability-policy-design.md`
+- `internal-docs/superpowers/specs/2026-04-20-approval-flow-design.md`
 
 ## Scope
 

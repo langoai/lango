@@ -597,7 +597,7 @@ Expected:
 Run:
 
 ```bash
-rg -n "^## Product Constitution$|^## Primary Product Path$|^## Capability Areas$|^## Feature Audit Framework$|^## Track Portfolio$|^## Near-Term Sequencing$|^## External Collaboration Decisions Captured So Far$" docs/superpowers/specs/2026-04-18-lango-master-document-design.md
+rg -n "^## Product Constitution$|^## Primary Product Path$|^## Capability Areas$|^## Feature Audit Framework$|^## Track Portfolio$|^## Near-Term Sequencing$|^## External Collaboration Decisions Captured So Far$" internal-docs/superpowers/specs/2026-04-18-lango-master-document-design.md
 ```
 
 Expected:

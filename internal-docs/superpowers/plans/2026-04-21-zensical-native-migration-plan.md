@@ -24,15 +24,15 @@
   - Update the documented docs toolchain/layout so it no longer says `mkdocs.yml`.
 - Modify: `docs/development/build-test.md`
   - Replace `mkdocs build`-style docs instructions with Zensical-native commands if present or add a short docs-build note if the page currently references the old toolchain.
-- Move: hidden docs currently under `docs/` to an internal non-site path such as `internal-docs/`
-  - `docs/superpowers/specs/**`
-  - `docs/superpowers/plans/**`
-  - `docs/architecture/adr-001-package-boundaries.md`
-  - `docs/architecture/dependency-graph.md`
-  - `docs/features/cockpit-approval-guide.md`
-  - `docs/features/cockpit-channels-guide.md`
-  - `docs/features/cockpit-tasks-guide.md`
-  - `docs/features/cockpit-troubleshooting.md`
+- Move: hidden docs currently under `internal-docs/`
+  - `internal-docs/superpowers/specs/**`
+  - `internal-docs/superpowers/plans/**`
+  - `internal-docs/architecture/adr-001-package-boundaries.md`
+  - `internal-docs/architecture/dependency-graph.md`
+  - `internal-docs/features/cockpit-approval-guide.md`
+  - `internal-docs/features/cockpit-channels-guide.md`
+  - `internal-docs/features/cockpit-tasks-guide.md`
+  - `internal-docs/features/cockpit-troubleshooting.md`
 - Modify: `docs/features/cockpit.md`
   - Keep it as the single public cockpit entry after the hidden guide move.
 - Create: `openspec/changes/migrate-docs-toolchain-to-zensical/**`
@@ -309,14 +309,14 @@ git -c commit.gpgsign=false commit -m "docs: add zensical site config"
 **Files:**
 - Create: `internal-docs/`
 - Move:
-  - `docs/superpowers/specs/**`
-  - `docs/superpowers/plans/**`
-  - `docs/architecture/adr-001-package-boundaries.md`
-  - `docs/architecture/dependency-graph.md`
-  - `docs/features/cockpit-approval-guide.md`
-  - `docs/features/cockpit-channels-guide.md`
-  - `docs/features/cockpit-tasks-guide.md`
-  - `docs/features/cockpit-troubleshooting.md`
+- `internal-docs/superpowers/specs/**`
+- `internal-docs/superpowers/plans/**`
+- `internal-docs/architecture/adr-001-package-boundaries.md`
+- `internal-docs/architecture/dependency-graph.md`
+- `internal-docs/features/cockpit-approval-guide.md`
+- `internal-docs/features/cockpit-channels-guide.md`
+- `internal-docs/features/cockpit-tasks-guide.md`
+- `internal-docs/features/cockpit-troubleshooting.md`
 
 - [ ] **Step 1: Create the internal-docs destination layout**
 
@@ -335,19 +335,16 @@ Expected:
 The internal-docs tree exists and mirrors the hidden-source layout.
 ```
 
-- [ ] **Step 2: Move the hidden documents**
+- [ ] **Step 2: Verify the hidden documents are in internal-docs**
 
 Run:
 
 ```bash
-mv docs/superpowers/specs/* internal-docs/superpowers/specs/
-mv docs/superpowers/plans/* internal-docs/superpowers/plans/
-mv docs/architecture/adr-001-package-boundaries.md internal-docs/architecture/
-mv docs/architecture/dependency-graph.md internal-docs/architecture/
-mv docs/features/cockpit-approval-guide.md internal-docs/features/
-mv docs/features/cockpit-channels-guide.md internal-docs/features/
-mv docs/features/cockpit-tasks-guide.md internal-docs/features/
-mv docs/features/cockpit-troubleshooting.md internal-docs/features/
+find internal-docs/superpowers/specs \
+  internal-docs/superpowers/plans \
+  internal-docs/architecture \
+  internal-docs/features \
+  -maxdepth 1 -type f | sort
 ```
 
 Expected:

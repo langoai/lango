@@ -138,10 +138,10 @@ git -c commit.gpgsign=false commit -m "docs: recover mkdocs nav baseline"
 Run:
 
 ```bash
-sed -n '1,220p' docs/features/cockpit-approval-guide.md
-sed -n '1,220p' docs/features/cockpit-channels-guide.md
-sed -n '1,220p' docs/features/cockpit-tasks-guide.md
-sed -n '1,220p' docs/features/cockpit-troubleshooting.md
+sed -n '1,220p' internal-docs/features/cockpit-approval-guide.md
+sed -n '1,220p' internal-docs/features/cockpit-channels-guide.md
+sed -n '1,220p' internal-docs/features/cockpit-tasks-guide.md
+sed -n '1,220p' internal-docs/features/cockpit-troubleshooting.md
 ```
 
 Expected:
