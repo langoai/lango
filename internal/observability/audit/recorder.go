@@ -150,6 +150,7 @@ func (r *Recorder) RecordPaymentExecution(ctx context.Context, entry toolpayment
 	details := map[string]interface{}{
 		"toolName":             entry.ToolName,
 		"transactionReceiptId": entry.TransactionReceiptID,
+		"submissionReceiptId":  entry.SubmissionReceiptID,
 		"outcome":              entry.Outcome,
 	}
 	if entry.Reason != "" {

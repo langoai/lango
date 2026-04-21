@@ -40,6 +40,7 @@ type PaymentExecutionAuditEntry struct {
 	ToolName             string
 	SessionKey           string
 	TransactionReceiptID string
+	SubmissionReceiptID  string
 	Outcome              string
 	Reason               string
 }
@@ -513,6 +514,7 @@ func CheckDirectPaymentExecution(ctx context.Context, toolName, transactionRecei
 		ToolName:             toolName,
 		SessionKey:           session.SessionKeyFromContext(ctx),
 		TransactionReceiptID: transactionReceiptID,
+		SubmissionReceiptID:  submissionReceiptID,
 	}
 
 	if result.Decision == paymentgate.Deny {

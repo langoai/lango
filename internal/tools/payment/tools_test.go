@@ -276,6 +276,7 @@ func TestPaymentSend_AllowPathRecordsSuccessEvents(t *testing.T) {
 	require.Len(t, auditor.entries, 1)
 	assert.Equal(t, "authorized", auditor.entries[0].Outcome)
 	assert.Equal(t, tx.TransactionReceiptID, auditor.entries[0].TransactionReceiptID)
+	assert.Equal(t, sub.SubmissionReceiptID, auditor.entries[0].SubmissionReceiptID)
 }
 
 func TestPaymentSend_RecordsAuthorizedEventOnRequestedSubmission(t *testing.T) {
@@ -338,10 +339,16 @@ func TestPaymentSend_RecordsAuthorizedEventOnRequestedSubmission(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, firstEvents, 2)
 	assert.Equal(t, receipts.EventPaymentExecutionAuthorized, firstEvents[1].Type)
+	assert.Equal(t, firstSub.SubmissionReceiptID, firstEvents[1].SubmissionReceiptID)
 
 	_, secondEvents, err := receiptStore.GetSubmissionReceipt(context.Background(), secondSub.SubmissionReceiptID)
 	require.NoError(t, err)
 	require.Empty(t, secondEvents)
+
+	require.Len(t, auditor.entries, 1)
+	assert.Equal(t, "authorized", auditor.entries[0].Outcome)
+	assert.Equal(t, tx.TransactionReceiptID, auditor.entries[0].TransactionReceiptID)
+	assert.Equal(t, firstSub.SubmissionReceiptID, auditor.entries[0].SubmissionReceiptID)
 }
 
 func TestCheckDirectPaymentExecution_ReturnsErrorOnAuditWriteFailure(t *testing.T) {
