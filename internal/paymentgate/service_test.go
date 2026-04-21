@@ -10,7 +10,7 @@ import (
 	"github.com/langoai/lango/internal/receipts"
 )
 
-func TestService_Decide_AllowsApprovedPrepay(t *testing.T) {
+func TestService_EvaluateDirectPayment_AllowsApprovedPrepay(t *testing.T) {
 	store := receipts.NewStore()
 	ctx := context.Background()
 
@@ -30,31 +30,36 @@ func TestService_Decide_AllowsApprovedPrepay(t *testing.T) {
 	require.NoError(t, err)
 
 	service := NewService(store)
-	result, err := service.Decide(ctx, Request{TransactionReceiptID: tx.TransactionReceiptID})
+	result, err := service.EvaluateDirectPayment(ctx, Request{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		SubmissionReceiptID:  submission.SubmissionReceiptID,
+		ToolName:             "payment_send",
+		Context:              map[string]interface{}{"source": "test"},
+	})
 	require.NoError(t, err)
-	require.Equal(t, DecisionAllow, result.Decision)
-	require.Empty(t, result.DenyReason)
+	require.Equal(t, Allow, result.Decision)
+	require.Empty(t, result.Reason)
 }
 
-func TestService_Decide_DeniesMissingTransactionReceiptID(t *testing.T) {
+func TestService_EvaluateDirectPayment_DeniesMissingTransactionReceiptID(t *testing.T) {
 	service := NewService(receipts.NewStore())
 
-	result, err := service.Decide(context.Background(), Request{})
+	result, err := service.EvaluateDirectPayment(context.Background(), Request{})
 	require.NoError(t, err)
-	require.Equal(t, DecisionDeny, result.Decision)
-	require.Equal(t, DenyReasonMissingReceipt, result.DenyReason)
+	require.Equal(t, Deny, result.Decision)
+	require.Equal(t, ReasonMissingReceipt, result.Reason)
 }
 
-func TestService_Decide_DeniesMissingTransactionInStore(t *testing.T) {
+func TestService_EvaluateDirectPayment_DeniesMissingTransactionInStore(t *testing.T) {
 	service := NewService(receipts.NewStore())
 
-	result, err := service.Decide(context.Background(), Request{TransactionReceiptID: "missing"})
+	result, err := service.EvaluateDirectPayment(context.Background(), Request{TransactionReceiptID: "missing"})
 	require.NoError(t, err)
-	require.Equal(t, DecisionDeny, result.Decision)
-	require.Equal(t, DenyReasonMissingReceipt, result.DenyReason)
+	require.Equal(t, Deny, result.Decision)
+	require.Equal(t, ReasonMissingReceipt, result.Reason)
 }
 
-func TestService_Decide_DeniesWhenApprovalIsNotApproved(t *testing.T) {
+func TestService_EvaluateDirectPayment_DeniesWhenApprovalIsNotApproved(t *testing.T) {
 	store := receipts.NewStore()
 	ctx := context.Background()
 
@@ -74,13 +79,13 @@ func TestService_Decide_DeniesWhenApprovalIsNotApproved(t *testing.T) {
 	require.NoError(t, err)
 
 	service := NewService(store)
-	result, err := service.Decide(ctx, Request{TransactionReceiptID: tx.TransactionReceiptID})
+	result, err := service.EvaluateDirectPayment(ctx, Request{TransactionReceiptID: tx.TransactionReceiptID})
 	require.NoError(t, err)
-	require.Equal(t, DecisionDeny, result.Decision)
-	require.Equal(t, DenyReasonApprovalNotApproved, result.DenyReason)
+	require.Equal(t, Deny, result.Decision)
+	require.Equal(t, ReasonApprovalNotApproved, result.Reason)
 }
 
-func TestService_Decide_DeniesWhenExecutionModeIsNotPrepay(t *testing.T) {
+func TestService_EvaluateDirectPayment_DeniesWhenExecutionModeIsNotPrepay(t *testing.T) {
 	store := receipts.NewStore()
 	ctx := context.Background()
 
@@ -100,8 +105,8 @@ func TestService_Decide_DeniesWhenExecutionModeIsNotPrepay(t *testing.T) {
 	require.NoError(t, err)
 
 	service := NewService(store)
-	result, err := service.Decide(ctx, Request{TransactionReceiptID: tx.TransactionReceiptID})
+	result, err := service.EvaluateDirectPayment(ctx, Request{TransactionReceiptID: tx.TransactionReceiptID})
 	require.NoError(t, err)
-	require.Equal(t, DecisionDeny, result.Decision)
-	require.Equal(t, DenyReasonExecutionModeMismatch, result.DenyReason)
+	require.Equal(t, Deny, result.Decision)
+	require.Equal(t, ReasonExecutionModeMismatch, result.Reason)
 }

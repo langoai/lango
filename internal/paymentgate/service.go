@@ -19,26 +19,26 @@ func NewService(store receiptStore) *Service {
 	return &Service{store: store}
 }
 
-func (s *Service) Decide(ctx context.Context, req Request) (Result, error) {
+func (s *Service) EvaluateDirectPayment(ctx context.Context, req Request) (Result, error) {
 	if strings.TrimSpace(req.TransactionReceiptID) == "" {
-		return Result{Decision: DecisionDeny, DenyReason: DenyReasonMissingReceipt}, nil
+		return Result{Decision: Deny, Reason: ReasonMissingReceipt}, nil
 	}
 
 	transaction, err := s.store.GetTransactionReceipt(ctx, req.TransactionReceiptID)
 	if err != nil {
 		if err == receipts.ErrTransactionReceiptNotFound {
-			return Result{Decision: DecisionDeny, DenyReason: DenyReasonMissingReceipt}, nil
+			return Result{Decision: Deny, Reason: ReasonMissingReceipt}, nil
 		}
 		return Result{}, err
 	}
 
 	if transaction.CurrentPaymentApprovalStatus != receipts.PaymentApprovalApproved {
-		return Result{Decision: DecisionDeny, DenyReason: DenyReasonApprovalNotApproved}, nil
+		return Result{Decision: Deny, Reason: ReasonApprovalNotApproved}, nil
 	}
 
 	if transaction.CanonicalSettlementHint != "prepay" {
-		return Result{Decision: DecisionDeny, DenyReason: DenyReasonExecutionModeMismatch}, nil
+		return Result{Decision: Deny, Reason: ReasonExecutionModeMismatch}, nil
 	}
 
-	return Result{Decision: DecisionAllow}, nil
+	return Result{Decision: Allow}, nil
 }
