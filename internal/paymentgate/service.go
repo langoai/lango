@@ -2,8 +2,10 @@ package paymentgate
 
 import (
 	"context"
+	"errors"
 	"strings"
 
+	"github.com/langoai/lango/internal/paymentapproval"
 	"github.com/langoai/lango/internal/receipts"
 )
 
@@ -26,7 +28,7 @@ func (s *Service) EvaluateDirectPayment(ctx context.Context, req Request) (Resul
 
 	transaction, err := s.store.GetTransactionReceipt(ctx, req.TransactionReceiptID)
 	if err != nil {
-		if err == receipts.ErrTransactionReceiptNotFound {
+		if errors.Is(err, receipts.ErrTransactionReceiptNotFound) {
 			return Result{Decision: Deny, Reason: ReasonMissingReceipt}, nil
 		}
 		return Result{}, err
@@ -36,7 +38,7 @@ func (s *Service) EvaluateDirectPayment(ctx context.Context, req Request) (Resul
 		return Result{Decision: Deny, Reason: ReasonApprovalNotApproved}, nil
 	}
 
-	if transaction.CanonicalSettlementHint != "prepay" {
+	if transaction.CanonicalSettlementHint != string(paymentapproval.ModePrepay) {
 		return Result{Decision: Deny, Reason: ReasonExecutionModeMismatch}, nil
 	}
 

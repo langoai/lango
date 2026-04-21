@@ -2,6 +2,7 @@ package paymentgate
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -109,4 +110,21 @@ func TestService_EvaluateDirectPayment_DeniesWhenExecutionModeIsNotPrepay(t *tes
 	require.NoError(t, err)
 	require.Equal(t, Deny, result.Decision)
 	require.Equal(t, ReasonExecutionModeMismatch, result.Reason)
+}
+
+func TestService_EvaluateDirectPayment_PropagatesUnexpectedStoreErrors(t *testing.T) {
+	storeErr := errors.New("boom")
+	service := NewService(&fakeReceiptStore{err: storeErr})
+
+	result, err := service.EvaluateDirectPayment(context.Background(), Request{TransactionReceiptID: "tx-error"})
+	require.ErrorIs(t, err, storeErr)
+	require.Equal(t, Result{}, result)
+}
+
+type fakeReceiptStore struct {
+	err error
+}
+
+func (f *fakeReceiptStore) GetTransactionReceipt(context.Context, string) (receipts.TransactionReceipt, error) {
+	return receipts.TransactionReceipt{}, f.err
 }
