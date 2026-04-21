@@ -357,7 +357,7 @@ func TestService_ExecuteRecommendation_RecordsFailedStateWhenFundedWriteFails(t 
 	assert.Equal(t, "escrow-funded", store.transaction.EscrowReference)
 }
 
-func TestService_ExecuteRecommendation_SerializesPerTransaction(t *testing.T) {
+func TestService_ExecuteRecommendation_SerializesPerTransactionAcrossServiceInstances(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -378,10 +378,11 @@ func TestService_ExecuteRecommendation_SerializesPerTransaction(t *testing.T) {
 		},
 	}
 
-	service := NewService(store, runtime)
+	firstService := NewService(store, runtime)
+	secondService := NewService(store, runtime)
 	firstDone := make(chan error, 1)
 	go func() {
-		_, err := service.ExecuteRecommendation(ctx, Request{TransactionReceiptID: tx.TransactionReceiptID})
+		_, err := firstService.ExecuteRecommendation(ctx, Request{TransactionReceiptID: tx.TransactionReceiptID})
 		firstDone <- err
 	}()
 
@@ -393,7 +394,7 @@ func TestService_ExecuteRecommendation_SerializesPerTransaction(t *testing.T) {
 
 	secondDone := make(chan error, 1)
 	go func() {
-		_, err := service.ExecuteRecommendation(ctx, Request{TransactionReceiptID: tx.TransactionReceiptID})
+		_, err := secondService.ExecuteRecommendation(ctx, Request{TransactionReceiptID: tx.TransactionReceiptID})
 		secondDone <- err
 	}()
 

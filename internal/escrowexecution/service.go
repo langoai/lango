@@ -25,16 +25,19 @@ type runtime interface {
 type Service struct {
 	store   receiptStore
 	runtime runtime
+}
 
-	mu       sync.Mutex
-	inFlight map[string]*sync.Mutex
+var escrowExecutionLocks = struct {
+	mu    sync.Mutex
+	locks map[string]*sync.Mutex
+}{
+	locks: make(map[string]*sync.Mutex),
 }
 
 func NewService(store receiptStore, runtime runtime) *Service {
 	return &Service{
-		store:    store,
-		runtime:  runtime,
-		inFlight: make(map[string]*sync.Mutex),
+		store:   store,
+		runtime: runtime,
 	}
 }
 
@@ -197,13 +200,13 @@ func escrowIDFromEntry(entry *escrow.EscrowEntry) string {
 }
 
 func (s *Service) lockForTransaction(transactionReceiptID string) *sync.Mutex {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	escrowExecutionLocks.mu.Lock()
+	defer escrowExecutionLocks.mu.Unlock()
 
-	lock, ok := s.inFlight[transactionReceiptID]
+	lock, ok := escrowExecutionLocks.locks[transactionReceiptID]
 	if !ok {
 		lock = &sync.Mutex{}
-		s.inFlight[transactionReceiptID] = lock
+		escrowExecutionLocks.locks[transactionReceiptID] = lock
 	}
 	return lock
 }
