@@ -311,6 +311,91 @@ func TestApplyUpfrontPaymentApproval_UsesExplicitSubmissionInMultiSubmissionTran
 	require.Empty(t, secondEvents)
 }
 
+func TestBindEscrowExecutionInput_PersistsCanonicalInputOnTransaction(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	sub, tx, err := store.CreateSubmissionReceipt(ctx, CreateSubmissionInput{
+		TransactionID:       "tx-escrow-bind",
+		ArtifactLabel:       "artifact/escrow-bind",
+		PayloadHash:         "hash-escrow-bind",
+		SourceLineageDigest: "lineage-escrow-bind",
+	})
+	require.NoError(t, err)
+
+	updated, err := store.BindEscrowExecutionInput(ctx, tx.TransactionReceiptID, sub.SubmissionReceiptID, EscrowExecutionInput{
+		BuyerDID:  "did:lango:buyer",
+		SellerDID: "did:lango:seller",
+		Amount:    "3.50",
+		Reason:    "knowledge exchange",
+		TaskID:    "task-escrow-bind",
+		Milestones: []EscrowMilestoneInput{
+			{Description: "draft", Amount: "1.50"},
+			{Description: "final", Amount: "2.00"},
+		},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, updated.EscrowExecutionInput)
+	require.Equal(t, EscrowExecutionStatusPending, updated.EscrowExecutionStatus)
+	require.Equal(t, "did:lango:buyer", updated.EscrowExecutionInput.BuyerDID)
+	require.Equal(t, "3.50", updated.EscrowExecutionInput.Amount)
+
+	gotSub, events, err := store.GetSubmissionReceipt(ctx, sub.SubmissionReceiptID)
+	require.NoError(t, err)
+	require.Equal(t, sub.SubmissionReceiptID, gotSub.SubmissionReceiptID)
+	require.Len(t, events, 1)
+	require.Equal(t, EventEscrowExecutionStarted, events[0].Type)
+	require.Equal(t, "escrow_execution", events[0].Source)
+	require.Equal(t, "started", events[0].Subtype)
+}
+
+func TestApplyEscrowExecutionProgress_RecordsCreatedFundedAndFailed(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	sub, tx, err := store.CreateSubmissionReceipt(ctx, CreateSubmissionInput{
+		TransactionID:       "tx-escrow-progress",
+		ArtifactLabel:       "artifact/escrow-progress",
+		PayloadHash:         "hash-escrow-progress",
+		SourceLineageDigest: "lineage-escrow-progress",
+	})
+	require.NoError(t, err)
+
+	_, err = store.BindEscrowExecutionInput(ctx, tx.TransactionReceiptID, sub.SubmissionReceiptID, EscrowExecutionInput{
+		BuyerDID:  "did:lango:buyer",
+		SellerDID: "did:lango:seller",
+		Amount:    "4.00",
+		Reason:    "knowledge exchange",
+		TaskID:    "task-escrow-progress",
+		Milestones: []EscrowMilestoneInput{
+			{Description: "delivery", Amount: "4.00"},
+		},
+	})
+	require.NoError(t, err)
+
+	_, err = store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, sub.SubmissionReceiptID, EscrowExecutionStatusCreated, "escrow-1", EventEscrowExecutionCreated, "")
+	require.NoError(t, err)
+
+	updated, err := store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, sub.SubmissionReceiptID, EscrowExecutionStatusFunded, "escrow-1", EventEscrowExecutionFunded, "")
+	require.NoError(t, err)
+	require.Equal(t, EscrowExecutionStatusFunded, updated.EscrowExecutionStatus)
+	require.Equal(t, "escrow-1", updated.EscrowReference)
+
+	failed, err := store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, sub.SubmissionReceiptID, EscrowExecutionStatusFailed, "escrow-1", EventEscrowExecutionFailed, "funding reverted")
+	require.NoError(t, err)
+	require.Equal(t, EscrowExecutionStatusFailed, failed.EscrowExecutionStatus)
+	require.Equal(t, "escrow-1", failed.EscrowReference)
+
+	_, events, err := store.GetSubmissionReceipt(ctx, sub.SubmissionReceiptID)
+	require.NoError(t, err)
+	require.Len(t, events, 4)
+	require.Equal(t, EventEscrowExecutionStarted, events[0].Type)
+	require.Equal(t, EventEscrowExecutionCreated, events[1].Type)
+	require.Equal(t, EventEscrowExecutionFunded, events[2].Type)
+	require.Equal(t, EventEscrowExecutionFailed, events[3].Type)
+	require.Equal(t, "funding reverted", events[3].Reason)
+}
+
 func TestAppendReceiptEvent_RejectsInvalidEventType(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
@@ -328,6 +413,29 @@ func TestAppendReceiptEvent_RejectsInvalidEventType(t *testing.T) {
 
 	err = store.AppendReceiptEvent(ctx, sub.SubmissionReceiptID, EventType("unknown"))
 	require.ErrorIs(t, err, ErrInvalidReceiptEventType)
+}
+
+func TestAppendReceiptEvent_AllowsEscrowExecutionEventTypes(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	sub, _, err := store.CreateSubmissionReceipt(ctx, CreateSubmissionInput{
+		TransactionID:       "tx-escrow-events",
+		ArtifactLabel:       "memo",
+		PayloadHash:         "hash-escrow-events",
+		SourceLineageDigest: "lineage-escrow-events",
+	})
+	require.NoError(t, err)
+
+	for _, eventType := range []EventType{
+		EventEscrowExecutionStarted,
+		EventEscrowExecutionCreated,
+		EventEscrowExecutionFunded,
+		EventEscrowExecutionFailed,
+	} {
+		err = store.AppendReceiptEvent(ctx, sub.SubmissionReceiptID, eventType)
+		require.NoError(t, err)
+	}
 }
 
 func TestAppendReceiptEvent_RejectsMissingSubmission(t *testing.T) {

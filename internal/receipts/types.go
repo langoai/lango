@@ -29,6 +29,15 @@ const (
 	SettlementDisputed         SettlementStatus = "disputed"
 )
 
+type EscrowExecutionStatus string
+
+const (
+	EscrowExecutionStatusPending EscrowExecutionStatus = "pending"
+	EscrowExecutionStatusCreated EscrowExecutionStatus = "created"
+	EscrowExecutionStatusFunded  EscrowExecutionStatus = "funded"
+	EscrowExecutionStatusFailed  EscrowExecutionStatus = "failed"
+)
+
 type PaymentApprovalStatus string
 
 const (
@@ -48,10 +57,28 @@ const (
 	EventPaymentApproval            EventType = "payment_approval"
 	EventPaymentExecutionAuthorized EventType = "payment_execution_authorized"
 	EventPaymentExecutionDenied     EventType = "payment_execution_denied"
+	EventEscrowExecutionStarted     EventType = "escrow_execution_started"
+	EventEscrowExecutionCreated     EventType = "escrow_execution_created"
+	EventEscrowExecutionFunded      EventType = "escrow_execution_funded"
+	EventEscrowExecutionFailed      EventType = "escrow_execution_failed"
 	EventSettlementUpdated          EventType = "settlement_updated"
 	EventEscalated                  EventType = "escalated"
 	EventDisputed                   EventType = "disputed"
 )
+
+type EscrowMilestoneInput struct {
+	Description string `json:"description"`
+	Amount      string `json:"amount"`
+}
+
+type EscrowExecutionInput struct {
+	BuyerDID   string                 `json:"buyer_did"`
+	SellerDID  string                 `json:"seller_did"`
+	Amount     string                 `json:"amount"`
+	Reason     string                 `json:"reason"`
+	TaskID     string                 `json:"task_id,omitempty"`
+	Milestones []EscrowMilestoneInput `json:"milestones"`
+}
 
 type ProvenanceSummary struct {
 	ReferenceID        string `json:"reference_id"`
@@ -80,4 +107,7 @@ type TransactionReceipt struct {
 	CurrentPaymentApprovalStatus PaymentApprovalStatus `json:"current_payment_approval_status"`
 	CanonicalDecision            string                `json:"canonical_decision,omitempty"`
 	CanonicalSettlementHint      string                `json:"canonical_settlement_hint,omitempty"`
+	EscrowExecutionStatus        EscrowExecutionStatus `json:"escrow_execution_status,omitempty"`
+	EscrowReference              string                `json:"escrow_reference,omitempty"`
+	EscrowExecutionInput         *EscrowExecutionInput `json:"escrow_execution_input,omitempty"`
 }

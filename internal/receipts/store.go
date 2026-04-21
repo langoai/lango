@@ -127,6 +127,75 @@ func (s *Store) ApplyUpfrontPaymentApproval(_ context.Context, transactionReceip
 	return transaction, nil
 }
 
+func (s *Store) BindEscrowExecutionInput(_ context.Context, transactionReceiptID, submissionReceiptID string, input EscrowExecutionInput) (TransactionReceipt, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	transaction, ok := s.transactions[transactionReceiptID]
+	if !ok {
+		return TransactionReceipt{}, ErrTransactionReceiptNotFound
+	}
+
+	submission, ok := s.submissions[submissionReceiptID]
+	if !ok {
+		return TransactionReceipt{}, ErrSubmissionReceiptNotFound
+	}
+	if submission.TransactionReceiptID != transactionReceiptID {
+		return TransactionReceipt{}, fmt.Errorf("%w: submission does not belong to transaction", ErrSubmissionReceiptNotFound)
+	}
+
+	inputCopy := input
+	transaction.EscrowExecutionStatus = EscrowExecutionStatusPending
+	transaction.EscrowExecutionInput = &inputCopy
+	transaction.EscrowReference = ""
+	s.transactions[transactionReceiptID] = transaction
+
+	s.events[submissionReceiptID] = append(s.events[submissionReceiptID], ReceiptEvent{
+		SubmissionReceiptID: submissionReceiptID,
+		Source:              "escrow_execution",
+		Subtype:             "started",
+		Type:                EventEscrowExecutionStarted,
+	})
+
+	return transaction, nil
+}
+
+func (s *Store) ApplyEscrowExecutionProgress(_ context.Context, transactionReceiptID, submissionReceiptID string, status EscrowExecutionStatus, escrowReference string, eventType EventType, reason string) (TransactionReceipt, error) {
+	if err := validateEventType(eventType); err != nil {
+		return TransactionReceipt{}, err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	transaction, ok := s.transactions[transactionReceiptID]
+	if !ok {
+		return TransactionReceipt{}, ErrTransactionReceiptNotFound
+	}
+
+	submission, ok := s.submissions[submissionReceiptID]
+	if !ok {
+		return TransactionReceipt{}, ErrSubmissionReceiptNotFound
+	}
+	if submission.TransactionReceiptID != transactionReceiptID {
+		return TransactionReceipt{}, fmt.Errorf("%w: submission does not belong to transaction", ErrSubmissionReceiptNotFound)
+	}
+
+	transaction.EscrowExecutionStatus = status
+	transaction.EscrowReference = escrowReference
+	s.transactions[transactionReceiptID] = transaction
+
+	s.events[submissionReceiptID] = append(s.events[submissionReceiptID], ReceiptEvent{
+		SubmissionReceiptID: submissionReceiptID,
+		Source:              "escrow_execution",
+		Subtype:             string(status),
+		Reason:              reason,
+		Type:                eventType,
+	})
+
+	return transaction, nil
+}
+
 func (s *Store) AppendReceiptEvent(_ context.Context, submissionReceiptID string, eventType EventType) error {
 	if err := validateEventType(eventType); err != nil {
 		return err
@@ -230,6 +299,10 @@ func validateEventType(eventType EventType) error {
 		EventPaymentApproval,
 		EventPaymentExecutionAuthorized,
 		EventPaymentExecutionDenied,
+		EventEscrowExecutionStarted,
+		EventEscrowExecutionCreated,
+		EventEscrowExecutionFunded,
+		EventEscrowExecutionFailed,
 		EventSettlementUpdated,
 		EventEscalated,
 		EventDisputed:
