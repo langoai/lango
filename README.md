@@ -208,7 +208,7 @@ Additional shortcuts: Ctrl+B (toggle sidebar), Tab (switch focus), Ctrl+Y (copy 
 
 See [Cockpit Reference](docs/features/cockpit.md), [Security](docs/security/index.md), [Channels](docs/features/channels.md), and [Background Tasks](docs/automation/background.md) for related public operator docs.
 
-Public docs live under `docs/`. The Zensical config and local build path are available via `zensical.toml` and `.venv/bin/zensical build` as the docs migration continues.
+Public docs live under `docs/`. Zensical is the canonical docs toolchain, with `zensical.toml` as the canonical docs config and `.venv/bin/zensical build` as the local docs build path.
 
 ## Architecture
 

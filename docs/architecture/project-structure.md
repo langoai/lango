@@ -11,9 +11,9 @@ lango/
 ├── prompts/                # Default prompt .md files (embedded via go:embed)
 ├── skills/                 # Skill system scaffold (go:embed)
 ├── openspec/               # Specifications (OpenSpec workflow)
-├── docs/                   # Public documentation source (migration in progress)
+├── docs/                   # Public documentation source
 ├── go.mod / go.sum         # Go module definition
-└── zensical.toml           # Zensical configuration introduced for the docs migration
+└── zensical.toml           # Canonical Zensical documentation configuration
 ```
 
 ## `cmd/lango/`
