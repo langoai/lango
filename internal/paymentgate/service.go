@@ -49,6 +49,9 @@ func (s *Service) EvaluateDirectPayment(ctx context.Context, req Request) (Resul
 	if submission.TransactionReceiptID != req.TransactionReceiptID {
 		return Result{Decision: Deny, Reason: ReasonMissingReceipt}, nil
 	}
+	if transaction.CurrentSubmissionReceiptID != req.SubmissionReceiptID {
+		return Result{Decision: Deny, Reason: ReasonStaleState}, nil
+	}
 
 	if transaction.CurrentPaymentApprovalStatus != receipts.PaymentApprovalApproved {
 		return Result{Decision: Deny, Reason: ReasonApprovalNotApproved}, nil

@@ -279,7 +279,40 @@ func TestPaymentSend_AllowPathRecordsSuccessEvents(t *testing.T) {
 	assert.Equal(t, sub.SubmissionReceiptID, auditor.entries[0].SubmissionReceiptID)
 }
 
-func TestPaymentSend_RecordsAuthorizedEventOnRequestedSubmission(t *testing.T) {
+func TestPaymentSend_FailsWhenAuditRecorderIsMissing(t *testing.T) {
+	t.Parallel()
+
+	receiptStore := receipts.NewStore()
+	sub, tx, err := receiptStore.CreateSubmissionReceipt(context.Background(), receipts.CreateSubmissionInput{
+		TransactionID:       "tx-no-audit",
+		ArtifactLabel:       "artifact",
+		PayloadHash:         "hash",
+		SourceLineageDigest: "lineage",
+	})
+	require.NoError(t, err)
+	_, err = receiptStore.ApplyUpfrontPaymentApproval(context.Background(), tx.TransactionReceiptID, sub.SubmissionReceiptID, paymentapproval.Outcome{
+		Decision:      paymentapproval.DecisionApprove,
+		Reason:        "approved",
+		SuggestedMode: paymentapproval.ModePrepay,
+	})
+	require.NoError(t, err)
+
+	tools := BuildTools(&fakePaymentService{}, nil, nil, 84532, nil, receiptStore, nil)
+	sendTool := findTool(tools, "payment_send")
+	require.NotNil(t, sendTool)
+
+	_, err = sendTool.Handler(context.Background(), map[string]interface{}{
+		"to":                     "0x1111111111111111111111111111111111111111",
+		"transaction_receipt_id": tx.TransactionReceiptID,
+		"submission_receipt_id":  sub.SubmissionReceiptID,
+		"amount":                 "1.00",
+		"purpose":                "missing audit recorder",
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "payment execution audit recorder is required")
+}
+
+func TestPaymentSend_RecordsAuthorizedEventOnCurrentSubmission(t *testing.T) {
 	t.Parallel()
 
 	receiptStore := receipts.NewStore()
@@ -325,9 +358,9 @@ func TestPaymentSend_RecordsAuthorizedEventOnRequestedSubmission(t *testing.T) {
 	result, err := sendTool.Handler(context.Background(), map[string]interface{}{
 		"to":                     "0x1111111111111111111111111111111111111111",
 		"transaction_receipt_id": tx.TransactionReceiptID,
-		"submission_receipt_id":  firstSub.SubmissionReceiptID,
+		"submission_receipt_id":  secondSub.SubmissionReceiptID,
 		"amount":                 "1.00",
-		"purpose":                "multi submission",
+		"purpose":                "current canonical submission",
 	})
 	require.NoError(t, err)
 
@@ -337,18 +370,19 @@ func TestPaymentSend_RecordsAuthorizedEventOnRequestedSubmission(t *testing.T) {
 
 	_, firstEvents, err := receiptStore.GetSubmissionReceipt(context.Background(), firstSub.SubmissionReceiptID)
 	require.NoError(t, err)
-	require.Len(t, firstEvents, 2)
-	assert.Equal(t, receipts.EventPaymentExecutionAuthorized, firstEvents[1].Type)
-	assert.Equal(t, firstSub.SubmissionReceiptID, firstEvents[1].SubmissionReceiptID)
+	require.Len(t, firstEvents, 1)
+	assert.Equal(t, receipts.EventPaymentApproval, firstEvents[0].Type)
 
 	_, secondEvents, err := receiptStore.GetSubmissionReceipt(context.Background(), secondSub.SubmissionReceiptID)
 	require.NoError(t, err)
-	require.Empty(t, secondEvents)
+	require.Len(t, secondEvents, 1)
+	assert.Equal(t, receipts.EventPaymentExecutionAuthorized, secondEvents[0].Type)
+	assert.Equal(t, secondSub.SubmissionReceiptID, secondEvents[0].SubmissionReceiptID)
 
 	require.Len(t, auditor.entries, 1)
 	assert.Equal(t, "authorized", auditor.entries[0].Outcome)
 	assert.Equal(t, tx.TransactionReceiptID, auditor.entries[0].TransactionReceiptID)
-	assert.Equal(t, firstSub.SubmissionReceiptID, auditor.entries[0].SubmissionReceiptID)
+	assert.Equal(t, secondSub.SubmissionReceiptID, auditor.entries[0].SubmissionReceiptID)
 }
 
 func TestCheckDirectPaymentExecution_ReturnsErrorOnAuditWriteFailure(t *testing.T) {

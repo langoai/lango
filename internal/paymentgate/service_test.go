@@ -155,6 +155,44 @@ func TestService_EvaluateDirectPayment_DeniesUnknownOrMismatchedSubmissionReceip
 	}
 }
 
+func TestService_EvaluateDirectPayment_DeniesStaleNonCurrentSubmissionReceiptID(t *testing.T) {
+	store := receipts.NewStore()
+	ctx := context.Background()
+
+	firstSubmission, tx, err := store.CreateSubmissionReceipt(ctx, receipts.CreateSubmissionInput{
+		TransactionID:       "tx-stale",
+		ArtifactLabel:       "artifact-stale-1",
+		PayloadHash:         "hash-stale-1",
+		SourceLineageDigest: "lineage-stale-1",
+	})
+	require.NoError(t, err)
+
+	secondSubmission, tx, err := store.CreateSubmissionReceipt(ctx, receipts.CreateSubmissionInput{
+		TransactionID:       "tx-stale",
+		ArtifactLabel:       "artifact-stale-2",
+		PayloadHash:         "hash-stale-2",
+		SourceLineageDigest: "lineage-stale-2",
+	})
+	require.NoError(t, err)
+	require.Equal(t, secondSubmission.SubmissionReceiptID, tx.CurrentSubmissionReceiptID)
+
+	_, err = store.ApplyUpfrontPaymentApproval(ctx, tx.TransactionReceiptID, secondSubmission.SubmissionReceiptID, paymentapproval.Outcome{
+		Decision:      paymentapproval.DecisionApprove,
+		Reason:        "Upfront payment approved.",
+		SuggestedMode: paymentapproval.ModePrepay,
+	})
+	require.NoError(t, err)
+
+	service := NewService(store)
+	result, err := service.EvaluateDirectPayment(ctx, Request{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		SubmissionReceiptID:  firstSubmission.SubmissionReceiptID,
+	})
+	require.NoError(t, err)
+	require.Equal(t, Deny, result.Decision)
+	require.Equal(t, ReasonStaleState, result.Reason)
+}
+
 func TestService_EvaluateDirectPayment_DeniesWhenApprovalIsNotApproved(t *testing.T) {
 	store := receipts.NewStore()
 	ctx := context.Background()

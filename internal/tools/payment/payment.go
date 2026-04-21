@@ -498,6 +498,10 @@ func buildX402FetchTool(interceptor *x402.Interceptor, svc ServiceAPI) *agent.To
 }
 
 func CheckDirectPaymentExecution(ctx context.Context, toolName, transactionReceiptID, submissionReceiptID string, gate PaymentExecutionGate, trail PaymentExecutionTrail, auditor PaymentExecutionAuditor) (bool, *PaymentExecutionDeniedResult, error) {
+	if trail != nil && auditor == nil {
+		return false, nil, fmt.Errorf("payment execution audit recorder is required")
+	}
+
 	result, err := gate.EvaluateDirectPayment(ctx, paymentgate.Request{
 		TransactionReceiptID: transactionReceiptID,
 		SubmissionReceiptID:  submissionReceiptID,

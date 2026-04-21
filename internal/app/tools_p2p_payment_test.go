@@ -42,7 +42,7 @@ func TestP2PPayment_DeniesWhenSettlementHintIsNotPrepay(t *testing.T) {
 	_, err = receiptStore.ApplyUpfrontPaymentApproval(context.Background(), tx.TransactionReceiptID, sub.SubmissionReceiptID, paymentapproval.Outcome{
 		Decision:      paymentapproval.DecisionApprove,
 		Reason:        "approved",
-		SuggestedMode: paymentapproval.ModeEscrow,
+		SuggestedMode: paymentapproval.ModePrepay,
 	})
 	require.NoError(t, err)
 	otherSub, _, err := receiptStore.CreateSubmissionReceipt(context.Background(), receipts.CreateSubmissionInput{
@@ -50,6 +50,12 @@ func TestP2PPayment_DeniesWhenSettlementHintIsNotPrepay(t *testing.T) {
 		ArtifactLabel:       "artifact-second",
 		PayloadHash:         "hash-second",
 		SourceLineageDigest: "lineage-second",
+	})
+	require.NoError(t, err)
+	_, err = receiptStore.ApplyUpfrontPaymentApproval(context.Background(), tx.TransactionReceiptID, otherSub.SubmissionReceiptID, paymentapproval.Outcome{
+		Decision:      paymentapproval.DecisionApprove,
+		Reason:        "approved",
+		SuggestedMode: paymentapproval.ModeEscrow,
 	})
 	require.NoError(t, err)
 
@@ -73,7 +79,7 @@ func TestP2PPayment_DeniesWhenSettlementHintIsNotPrepay(t *testing.T) {
 	result, err := tools[0].Handler(context.Background(), map[string]interface{}{
 		"peer_did":               did.ID,
 		"transaction_receipt_id": tx.TransactionReceiptID,
-		"submission_receipt_id":  sub.SubmissionReceiptID,
+		"submission_receipt_id":  otherSub.SubmissionReceiptID,
 		"amount":                 "0.50",
 		"memo":                   "settlement mismatch",
 	})
@@ -84,15 +90,16 @@ func TestP2PPayment_DeniesWhenSettlementHintIsNotPrepay(t *testing.T) {
 	assert.Equal(t, "execution_mode_mismatch", denied.Reason)
 	assert.Contains(t, denied.Message, "prepay")
 
-	_, events, err := receiptStore.GetSubmissionReceipt(context.Background(), sub.SubmissionReceiptID)
+	_, events, err := receiptStore.GetSubmissionReceipt(context.Background(), otherSub.SubmissionReceiptID)
 	require.NoError(t, err)
 	require.Len(t, events, 2)
 	assert.Equal(t, receipts.EventPaymentExecutionDenied, events[1].Type)
 	assert.Equal(t, "execution_mode_mismatch", events[1].Reason)
 
-	_, otherEvents, err := receiptStore.GetSubmissionReceipt(context.Background(), otherSub.SubmissionReceiptID)
+	_, otherEvents, err := receiptStore.GetSubmissionReceipt(context.Background(), sub.SubmissionReceiptID)
 	require.NoError(t, err)
-	require.Empty(t, otherEvents)
+	require.Len(t, otherEvents, 1)
+	assert.Equal(t, receipts.EventPaymentApproval, otherEvents[0].Type)
 
 	require.Len(t, auditor.entries, 1)
 	assert.Equal(t, "denied", auditor.entries[0].Outcome)
@@ -160,6 +167,51 @@ func TestP2PPayment_AllowsAndAppendsAuthorizedTrail(t *testing.T) {
 	assert.Equal(t, "authorized", auditor.entries[0].Outcome)
 	assert.Equal(t, tx.TransactionReceiptID, auditor.entries[0].TransactionReceiptID)
 	assert.Equal(t, sub.SubmissionReceiptID, auditor.entries[0].SubmissionReceiptID)
+}
+
+func TestP2PPayment_FailsWhenAuditRecorderIsMissing(t *testing.T) {
+	t.Parallel()
+
+	receiptStore := receipts.NewStore()
+	sub, tx, err := receiptStore.CreateSubmissionReceipt(context.Background(), receipts.CreateSubmissionInput{
+		TransactionID:       "tx-p2p-no-audit",
+		ArtifactLabel:       "artifact",
+		PayloadHash:         "hash",
+		SourceLineageDigest: "lineage",
+	})
+	require.NoError(t, err)
+	_, err = receiptStore.ApplyUpfrontPaymentApproval(context.Background(), tx.TransactionReceiptID, sub.SubmissionReceiptID, paymentapproval.Outcome{
+		Decision:      paymentapproval.DecisionApprove,
+		Reason:        "approved",
+		SuggestedMode: paymentapproval.ModePrepay,
+	})
+	require.NoError(t, err)
+
+	pk, err := ethcrypto.GenerateKey()
+	require.NoError(t, err)
+	did, err := identity.DIDFromPublicKey(ethcrypto.CompressPubkey(&pk.PublicKey))
+	require.NoError(t, err)
+
+	sessions, err := handshake.NewSessionStore(time.Hour)
+	require.NoError(t, err)
+	_, err = sessions.Create(did.ID, false)
+	require.NoError(t, err)
+
+	pc, cleanup := newTestP2PPaymentComponents(t)
+	t.Cleanup(cleanup)
+	p2pc := &p2pComponents{sessions: sessions}
+	tools := buildP2PPaymentTool(p2pc, pc, receiptStore, nil)
+	require.Len(t, tools, 1)
+
+	_, err = tools[0].Handler(context.Background(), map[string]interface{}{
+		"peer_did":               did.ID,
+		"transaction_receipt_id": tx.TransactionReceiptID,
+		"submission_receipt_id":  sub.SubmissionReceiptID,
+		"amount":                 "0.50",
+		"memo":                   "missing audit recorder",
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "payment execution audit recorder is required")
 }
 
 type fakeP2PAuditor struct {
