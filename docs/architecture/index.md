@@ -40,6 +40,12 @@ This section describes the internal architecture of Lango, a Go-based AI agent b
 
     Detailed audit ledger for the policy and safety boundaries that determine whether early knowledge exchange is actually safe to operate.
 
+-   :material-account-check-outline: **[Identity Trust Reputation Audit](identity-trust-reputation-audit.md)**
+
+    ---
+
+    Audit ledger for identity continuity, trust entry, reputation, and revocation in `knowledge exchange v1`.
+
 -   :material-cash-fast: **[P2P Knowledge Exchange Track](p2p-knowledge-exchange-track.md)**
 
     ---
