@@ -41,19 +41,19 @@ This slice is intentionally narrow.
 
 It does not yet include:
 
-- actual payment execution gating
 - escrow execution
 - human approval UI
 - full transaction orchestration
 - payment dispute adjudication
 - partial settlement execution
 
-The receipt update is the important durable output of this slice. It gives later surfaces one canonical payment approval state for the transaction, but it is not a settlement engine.
+The receipt update is the important durable output of this slice. It gives later surfaces one canonical payment approval state for the transaction, and the first direct-payment execution gate now consumes that state. It is still not a settlement engine.
 
 ## Related Docs
 
 - [Security Overview](index.md)
 - [Approval Flow](approval-flow.md)
+- [Actual Payment Execution Gating](actual-payment-execution-gating.md)
 - [Dispute-Ready Receipts](dispute-ready-receipts.md)
 - [P2P Knowledge Exchange Track](../architecture/p2p-knowledge-exchange-track.md)
 - [Trust, Security & Policy Audit](../architecture/trust-security-policy-audit.md)

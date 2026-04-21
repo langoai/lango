@@ -472,7 +472,7 @@ Those higher-level policies are owned by the economy subsystem.
 
 1. **Price Query** — The caller queries the provider's pricing via `p2p_price_query` or `GET /api/p2p/pricing`
 2. **Price Quote** — The provider returns a `PriceQuoteResult` with the tool price in USDC
-3. **Payment** — The caller sends USDC via `p2p_pay` to the provider's wallet address
+3. **Payment** — The caller sends USDC via `p2p_pay` to the provider's wallet address. In the current direct-payment slice, this call is receipt-backed: `transaction_receipt_id` is required, `submission_receipt_id` is optional, and the canonical payment state must be approved for `prepay`.
 4. **Tool Invocation** — After payment confirmation, the caller invokes the tool via `p2p_query`
 
 ### Auto-Approval for Small Amounts

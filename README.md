@@ -1106,6 +1106,8 @@ When `payment.enabled` is `true`, the following agent tools are registered:
 | `payment_x402_fetch`    | HTTP request with automatic X402 payment (EIP-3009)   | Dangerous    |
 
 
+Direct payment execution for `payment_send` and `p2p_pay` is now receipt-backed. These paths require a linked `transaction_receipt_id`, fall back to the transaction's current canonical submission when `submission_receipt_id` is omitted, and only allow direct execution when the canonical payment approval state is approved with a `prepay` settlement hint.
+
 ### Wallet Providers
 
 

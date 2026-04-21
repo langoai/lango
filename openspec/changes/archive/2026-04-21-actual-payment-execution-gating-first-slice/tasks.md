@@ -11,10 +11,10 @@
 
 ## 3. Operator Surface And Docs
 
-- [ ] 3.1 Add minimal operator-facing payment execution gating docs and truth-align surrounding surfaces
+- [x] 3.1 Add minimal operator-facing payment execution gating docs and truth-align surrounding surfaces
 
 ## 4. Verification And OpenSpec Closeout
 
 - [x] 4.1 Run targeted tests while implementing each slice
-- [ ] 4.2 Run `go test ./...`, `go build ./...`, and `python3 -m mkdocs build --strict`
-- [ ] 4.3 Sync main specs and archive the completed change
+- [x] 4.2 Run `go test ./...`, `go build ./...`, and `python3 -m mkdocs build --strict`
+- [x] 4.3 Sync main specs and archive the completed change

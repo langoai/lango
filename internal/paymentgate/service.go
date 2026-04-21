@@ -35,11 +35,15 @@ func (s *Service) EvaluateDirectPayment(ctx context.Context, req Request) (Resul
 		return Result{}, err
 	}
 
-	if strings.TrimSpace(req.SubmissionReceiptID) == "" {
+	resolvedSubmissionReceiptID := strings.TrimSpace(req.SubmissionReceiptID)
+	if resolvedSubmissionReceiptID == "" {
+		resolvedSubmissionReceiptID = strings.TrimSpace(transaction.CurrentSubmissionReceiptID)
+	}
+	if resolvedSubmissionReceiptID == "" {
 		return Result{Decision: Deny, Reason: ReasonMissingReceipt}, nil
 	}
 
-	submission, _, err := s.store.GetSubmissionReceipt(ctx, req.SubmissionReceiptID)
+	submission, _, err := s.store.GetSubmissionReceipt(ctx, resolvedSubmissionReceiptID)
 	if err != nil {
 		if errors.Is(err, receipts.ErrSubmissionReceiptNotFound) {
 			return Result{Decision: Deny, Reason: ReasonMissingReceipt}, nil
@@ -49,17 +53,17 @@ func (s *Service) EvaluateDirectPayment(ctx context.Context, req Request) (Resul
 	if submission.TransactionReceiptID != req.TransactionReceiptID {
 		return Result{Decision: Deny, Reason: ReasonMissingReceipt}, nil
 	}
-	if transaction.CurrentSubmissionReceiptID != req.SubmissionReceiptID {
+	if transaction.CurrentSubmissionReceiptID != resolvedSubmissionReceiptID {
 		return Result{Decision: Deny, Reason: ReasonStaleState}, nil
 	}
 
 	if transaction.CurrentPaymentApprovalStatus != receipts.PaymentApprovalApproved {
-		return Result{Decision: Deny, Reason: ReasonApprovalNotApproved}, nil
+		return Result{Decision: Deny, Reason: ReasonApprovalNotApproved, SubmissionReceiptID: resolvedSubmissionReceiptID}, nil
 	}
 
 	if transaction.CanonicalSettlementHint != string(paymentapproval.ModePrepay) {
-		return Result{Decision: Deny, Reason: ReasonExecutionModeMismatch}, nil
+		return Result{Decision: Deny, Reason: ReasonExecutionModeMismatch, SubmissionReceiptID: resolvedSubmissionReceiptID}, nil
 	}
 
-	return Result{Decision: Allow}, nil
+	return Result{Decision: Allow, SubmissionReceiptID: resolvedSubmissionReceiptID}, nil
 }

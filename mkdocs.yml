@@ -146,6 +146,7 @@ nav:
     - Exportability Policy: security/exportability.md
     - Approval Flow: security/approval-flow.md
     - Upfront Payment Approval: security/upfront-payment-approval.md
+    - Actual Payment Execution Gating: security/actual-payment-execution-gating.md
     - Dispute-Ready Receipts: security/dispute-ready-receipts.md
     - Tool Approval: security/tool-approval.md
     - Authentication: security/authentication.md

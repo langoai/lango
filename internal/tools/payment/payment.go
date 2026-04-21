@@ -121,7 +121,7 @@ func buildSendTool(svc ServiceAPI, gate PaymentExecutionGate, trail PaymentExecu
 				},
 				"submission_receipt_id": map[string]interface{}{
 					"type":        "string",
-					"description": "Explicit submission receipt identifier that should receive the execution evidence",
+					"description": "Optional explicit submission receipt identifier. When omitted, the current canonical submission on the transaction receipt is used.",
 				},
 				"amount": map[string]interface{}{
 					"type":        "string",
@@ -132,7 +132,7 @@ func buildSendTool(svc ServiceAPI, gate PaymentExecutionGate, trail PaymentExecu
 					"description": "Human-readable purpose of the payment",
 				},
 			},
-			"required": []string{"to", "transaction_receipt_id", "submission_receipt_id", "amount", "purpose"},
+			"required": []string{"to", "transaction_receipt_id", "amount", "purpose"},
 		},
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
 			to := toolparam.OptionalString(params, "to", "")
@@ -498,8 +498,11 @@ func buildX402FetchTool(interceptor *x402.Interceptor, svc ServiceAPI) *agent.To
 }
 
 func CheckDirectPaymentExecution(ctx context.Context, toolName, transactionReceiptID, submissionReceiptID string, gate PaymentExecutionGate, trail PaymentExecutionTrail, auditor PaymentExecutionAuditor) (bool, *PaymentExecutionDeniedResult, error) {
-	if trail != nil && auditor == nil {
+	if auditor == nil {
 		return false, nil, fmt.Errorf("payment execution audit recorder is required")
+	}
+	if trail == nil {
+		return false, nil, fmt.Errorf("payment execution receipt trail is required")
 	}
 
 	result, err := gate.EvaluateDirectPayment(ctx, paymentgate.Request{
@@ -514,28 +517,29 @@ func CheckDirectPaymentExecution(ctx context.Context, toolName, transactionRecei
 		return false, nil, fmt.Errorf("evaluate payment execution gate: %w", err)
 	}
 
+	resolvedSubmissionReceiptID := strings.TrimSpace(result.SubmissionReceiptID)
+	if resolvedSubmissionReceiptID == "" {
+		resolvedSubmissionReceiptID = strings.TrimSpace(submissionReceiptID)
+	}
+
 	entry := PaymentExecutionAuditEntry{
 		ToolName:             toolName,
 		SessionKey:           session.SessionKeyFromContext(ctx),
 		TransactionReceiptID: transactionReceiptID,
-		SubmissionReceiptID:  submissionReceiptID,
+		SubmissionReceiptID:  resolvedSubmissionReceiptID,
 	}
 
 	if result.Decision == paymentgate.Deny {
 		entry.Outcome = "denied"
 		entry.Reason = string(result.Reason)
-		if auditor != nil {
-			if err := auditor.RecordPaymentExecution(ctx, entry); err != nil {
-				return false, nil, fmt.Errorf("record payment execution audit: %w", err)
-			}
+		if err := auditor.RecordPaymentExecution(ctx, entry); err != nil {
+			return false, nil, fmt.Errorf("record payment execution audit: %w", err)
 		}
-		if trail != nil {
-			if strings.TrimSpace(submissionReceiptID) == "" {
-				return false, nil, fmt.Errorf("record payment execution receipt trail: submission_receipt_id is required")
-			}
-			if err := trail.AppendPaymentExecutionDenied(ctx, submissionReceiptID, string(result.Reason)); err != nil {
-				return false, nil, fmt.Errorf("record payment execution receipt trail: %w", err)
-			}
+		if resolvedSubmissionReceiptID == "" {
+			return false, nil, fmt.Errorf("record payment execution receipt trail: submission_receipt_id is required")
+		}
+		if err := trail.AppendPaymentExecutionDenied(ctx, resolvedSubmissionReceiptID, string(result.Reason)); err != nil {
+			return false, nil, fmt.Errorf("record payment execution receipt trail: %w", err)
 		}
 		return false, &PaymentExecutionDeniedResult{
 			Status:               "denied",
@@ -547,18 +551,14 @@ func CheckDirectPaymentExecution(ctx context.Context, toolName, transactionRecei
 	}
 
 	entry.Outcome = "authorized"
-	if auditor != nil {
-		if err := auditor.RecordPaymentExecution(ctx, entry); err != nil {
-			return false, nil, fmt.Errorf("record payment execution audit: %w", err)
-		}
+	if err := auditor.RecordPaymentExecution(ctx, entry); err != nil {
+		return false, nil, fmt.Errorf("record payment execution audit: %w", err)
 	}
-	if trail != nil {
-		if strings.TrimSpace(submissionReceiptID) == "" {
-			return false, nil, fmt.Errorf("record payment execution receipt trail: submission_receipt_id is required")
-		}
-		if err := trail.AppendPaymentExecutionAuthorized(ctx, submissionReceiptID); err != nil {
-			return false, nil, fmt.Errorf("record payment execution receipt trail: %w", err)
-		}
+	if resolvedSubmissionReceiptID == "" {
+		return false, nil, fmt.Errorf("record payment execution receipt trail: submission_receipt_id is required")
+	}
+	if err := trail.AppendPaymentExecutionAuthorized(ctx, resolvedSubmissionReceiptID); err != nil {
+		return false, nil, fmt.Errorf("record payment execution receipt trail: %w", err)
 	}
 	return true, nil, nil
 }
@@ -570,9 +570,9 @@ func PaymentExecutionDeniedMessage(reason paymentgate.DenyReason, transactionRec
 			return "direct payment execution denied: transaction_receipt_id is required"
 		}
 		if strings.TrimSpace(submissionReceiptID) == "" {
-			return "direct payment execution denied: submission_receipt_id is required"
+			return "direct payment execution denied: current canonical submission receipt was not found"
 		}
-		return "direct payment execution denied: transaction_receipt_id was not found"
+		return "direct payment execution denied: submission_receipt_id was not found"
 	case paymentgate.ReasonApprovalNotApproved:
 		return "direct payment execution denied: canonical payment approval is not approved"
 	case paymentgate.ReasonExecutionModeMismatch:

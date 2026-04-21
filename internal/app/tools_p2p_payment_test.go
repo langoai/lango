@@ -106,7 +106,7 @@ func TestP2PPayment_DeniesWhenSettlementHintIsNotPrepay(t *testing.T) {
 	assert.Equal(t, "execution_mode_mismatch", auditor.entries[0].Reason)
 }
 
-func TestP2PPayment_AllowsAndAppendsAuthorizedTrail(t *testing.T) {
+func TestP2PPayment_AllowsAndAppendsAuthorizedTrailWhenSubmissionReceiptIDIsOmitted(t *testing.T) {
 	t.Parallel()
 
 	receiptStore := receipts.NewStore()
@@ -144,7 +144,6 @@ func TestP2PPayment_AllowsAndAppendsAuthorizedTrail(t *testing.T) {
 	result, err := tools[0].Handler(context.Background(), map[string]interface{}{
 		"peer_did":               did.ID,
 		"transaction_receipt_id": tx.TransactionReceiptID,
-		"submission_receipt_id":  sub.SubmissionReceiptID,
 		"amount":                 "0.50",
 		"memo":                   "authorized payment",
 	})
@@ -212,6 +211,35 @@ func TestP2PPayment_FailsWhenAuditRecorderIsMissing(t *testing.T) {
 	})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "payment execution audit recorder is required")
+}
+
+func TestP2PPayment_FailsWhenReceiptTrailIsMissing(t *testing.T) {
+	t.Parallel()
+
+	pk, err := ethcrypto.GenerateKey()
+	require.NoError(t, err)
+	did, err := identity.DIDFromPublicKey(ethcrypto.CompressPubkey(&pk.PublicKey))
+	require.NoError(t, err)
+
+	sessions, err := handshake.NewSessionStore(time.Hour)
+	require.NoError(t, err)
+	_, err = sessions.Create(did.ID, false)
+	require.NoError(t, err)
+
+	pc, cleanup := newTestP2PPaymentComponents(t)
+	t.Cleanup(cleanup)
+	p2pc := &p2pComponents{sessions: sessions}
+	tools := buildP2PPaymentTool(p2pc, pc, nil, &fakeP2PAuditor{})
+	require.Len(t, tools, 1)
+
+	_, err = tools[0].Handler(context.Background(), map[string]interface{}{
+		"peer_did":               did.ID,
+		"transaction_receipt_id": "tx-no-trail",
+		"amount":                 "0.50",
+		"memo":                   "missing receipt trail",
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "payment execution receipt trail is required")
 }
 
 type fakeP2PAuditor struct {

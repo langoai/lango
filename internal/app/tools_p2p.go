@@ -557,11 +557,11 @@ func buildP2PPaymentTool(p2pc *p2pComponents, pc *paymentComponents, receiptStor
 				"properties": map[string]interface{}{
 					"peer_did":               map[string]interface{}{"type": "string", "description": "The recipient peer's DID"},
 					"transaction_receipt_id": map[string]interface{}{"type": "string", "description": "Linked transaction receipt identifier that must be approved for direct payment execution"},
-					"submission_receipt_id":  map[string]interface{}{"type": "string", "description": "Explicit submission receipt identifier that should receive the execution evidence"},
+					"submission_receipt_id":  map[string]interface{}{"type": "string", "description": "Optional explicit submission receipt identifier. When omitted, the current canonical submission on the transaction receipt is used."},
 					"amount":                 map[string]interface{}{"type": "string", "description": "Amount in USDC (e.g., '0.50')"},
 					"memo":                   map[string]interface{}{"type": "string", "description": "Payment memo/reason"},
 				},
-				"required": []string{"peer_did", "transaction_receipt_id", "submission_receipt_id", "amount"},
+				"required": []string{"peer_did", "transaction_receipt_id", "amount"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
 				peerDID, err := toolparam.RequireString(params, "peer_did")

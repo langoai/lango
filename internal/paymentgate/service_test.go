@@ -63,7 +63,7 @@ func TestService_EvaluateDirectPayment_DeniesMissingTransactionInStore(t *testin
 	require.Equal(t, ReasonMissingReceipt, result.Reason)
 }
 
-func TestService_EvaluateDirectPayment_DeniesMissingSubmissionReceiptID(t *testing.T) {
+func TestService_EvaluateDirectPayment_UsesCurrentSubmissionWhenSubmissionReceiptIDIsOmitted(t *testing.T) {
 	store := receipts.NewStore()
 	ctx := context.Background()
 
@@ -87,8 +87,8 @@ func TestService_EvaluateDirectPayment_DeniesMissingSubmissionReceiptID(t *testi
 		TransactionReceiptID: tx.TransactionReceiptID,
 	})
 	require.NoError(t, err)
-	require.Equal(t, Deny, result.Decision)
-	require.Equal(t, ReasonMissingReceipt, result.Reason)
+	require.Equal(t, Allow, result.Decision)
+	require.Equal(t, submission.SubmissionReceiptID, result.SubmissionReceiptID)
 }
 
 func TestService_EvaluateDirectPayment_DeniesUnknownOrMismatchedSubmissionReceiptID(t *testing.T) {
@@ -193,6 +193,26 @@ func TestService_EvaluateDirectPayment_DeniesStaleNonCurrentSubmissionReceiptID(
 	require.Equal(t, ReasonStaleState, result.Reason)
 }
 
+func TestService_EvaluateDirectPayment_DeniesWhenTransactionHasNoCurrentSubmission(t *testing.T) {
+	service := NewService(&fakeReceiptStore{
+		transaction: receipts.TransactionReceipt{
+			TransactionReceiptID:         "tx-no-current",
+			TransactionID:                "tx-no-current",
+			CanonicalApprovalStatus:      receipts.ApprovalPending,
+			CanonicalSettlementStatus:    receipts.SettlementPending,
+			CurrentPaymentApprovalStatus: receipts.PaymentApprovalApproved,
+			CanonicalSettlementHint:      string(paymentapproval.ModePrepay),
+		},
+	})
+
+	result, err := service.EvaluateDirectPayment(context.Background(), Request{
+		TransactionReceiptID: "tx-no-current",
+	})
+	require.NoError(t, err)
+	require.Equal(t, Deny, result.Decision)
+	require.Equal(t, ReasonMissingReceipt, result.Reason)
+}
+
 func TestService_EvaluateDirectPayment_DeniesWhenApprovalIsNotApproved(t *testing.T) {
 	store := receipts.NewStore()
 	ctx := context.Background()
@@ -264,14 +284,28 @@ func TestService_EvaluateDirectPayment_PropagatesUnexpectedStoreErrors(t *testin
 }
 
 type fakeReceiptStore struct {
+	transaction   receipts.TransactionReceipt
 	txErr         error
+	submission    receipts.SubmissionReceipt
 	submissionErr error
 }
 
 func (f *fakeReceiptStore) GetTransactionReceipt(context.Context, string) (receipts.TransactionReceipt, error) {
+	if f.txErr == nil && f.transaction.TransactionReceiptID != "" {
+		return f.transaction, nil
+	}
+	if f.txErr == nil {
+		return receipts.TransactionReceipt{}, receipts.ErrTransactionReceiptNotFound
+	}
 	return receipts.TransactionReceipt{}, f.txErr
 }
 
 func (f *fakeReceiptStore) GetSubmissionReceipt(context.Context, string) (receipts.SubmissionReceipt, []receipts.ReceiptEvent, error) {
+	if f.submissionErr == nil && f.submission.SubmissionReceiptID != "" {
+		return f.submission, nil, nil
+	}
+	if f.submissionErr == nil {
+		return receipts.SubmissionReceipt{}, nil, receipts.ErrSubmissionReceiptNotFound
+	}
 	return receipts.SubmissionReceipt{}, nil, f.submissionErr
 }

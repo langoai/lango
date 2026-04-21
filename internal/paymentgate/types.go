@@ -24,6 +24,7 @@ type Request struct {
 }
 
 type Result struct {
-	Decision Decision   `json:"decision"`
-	Reason   DenyReason `json:"reason,omitempty"`
+	Decision            Decision   `json:"decision"`
+	Reason              DenyReason `json:"reason,omitempty"`
+	SubmissionReceiptID string     `json:"submission_receipt_id,omitempty"`
 }
