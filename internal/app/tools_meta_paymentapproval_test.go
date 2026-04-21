@@ -9,6 +9,7 @@ import (
 
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/paymentapproval"
 	"github.com/langoai/lango/internal/receipts"
 )
 
@@ -28,12 +29,22 @@ func TestBuildMetaTools_IncludesApproveUpfrontPayment(t *testing.T) {
 	_, hasTrustScore := props["trust_score"]
 	_, hasUserMaxPrepay := props["user_max_prepay"]
 	_, hasRemainingBudget := props["remaining_budget"]
+	_, hasEscrowBuyerDID := props["escrow_buyer_did"]
+	_, hasEscrowSellerDID := props["escrow_seller_did"]
+	_, hasEscrowReason := props["escrow_reason"]
+	_, hasEscrowTaskID := props["escrow_task_id"]
+	_, hasEscrowMilestones := props["escrow_milestones"]
 	assert.True(t, hasTransactionReceiptID)
 	assert.True(t, hasSubmissionReceiptID)
 	assert.True(t, hasAmount)
 	assert.True(t, hasTrustScore)
 	assert.True(t, hasUserMaxPrepay)
 	assert.True(t, hasRemainingBudget)
+	assert.True(t, hasEscrowBuyerDID)
+	assert.True(t, hasEscrowSellerDID)
+	assert.True(t, hasEscrowReason)
+	assert.True(t, hasEscrowTaskID)
+	assert.True(t, hasEscrowMilestones)
 
 	required, _ := tool.Parameters["required"].([]string)
 	assert.Contains(t, required, "transaction_receipt_id")
@@ -85,6 +96,7 @@ func TestApproveUpfrontPayment_UpdatesTransactionAndReturnsDecisionPayload(t *te
 	assert.Equal(t, string(receipts.PaymentApprovalApproved), payload.CurrentPaymentApprovalStatus)
 	assert.Equal(t, "approve", payload.CanonicalDecision)
 	assert.Equal(t, "prepay", payload.CanonicalSettlementHint)
+	assert.Empty(t, payload.EscrowExecutionStatus)
 
 	gotSubmission, events, err := store.GetSubmissionReceipt(ctx, submission.SubmissionReceiptID)
 	require.NoError(t, err)
@@ -94,6 +106,72 @@ func TestApproveUpfrontPayment_UpdatesTransactionAndReturnsDecisionPayload(t *te
 	assert.Equal(t, submission.SubmissionReceiptID, events[0].SubmissionReceiptID)
 	assert.Equal(t, "approval", events[0].Source)
 	assert.Equal(t, "approval.upfront_payment", events[0].Subtype)
+}
+
+func TestApproveUpfrontPayment_BindsEscrowExecutionInputWhenModeEscrow(t *testing.T) {
+	origEvaluateUpfrontPaymentFn := evaluateUpfrontPaymentFn
+	evaluateUpfrontPaymentFn = func(paymentapproval.Input) paymentapproval.Outcome {
+		return paymentapproval.Outcome{
+			Decision:      paymentapproval.DecisionApprove,
+			Reason:        "Upfront payment approved.",
+			SuggestedMode: paymentapproval.ModeEscrow,
+			AmountClass:   paymentapproval.AmountMedium,
+			RiskClass:     paymentapproval.RiskLow,
+		}
+	}
+	t.Cleanup(func() { evaluateUpfrontPaymentFn = origEvaluateUpfrontPaymentFn })
+
+	store := receipts.NewStore()
+	ctx := context.Background()
+
+	submission, tx, err := store.CreateSubmissionReceipt(ctx, receipts.CreateSubmissionInput{
+		TransactionID:       "tx-upfront-escrow",
+		ArtifactLabel:       "artifact/upfront-escrow",
+		PayloadHash:         "hash-upfront-escrow",
+		SourceLineageDigest: "lineage-upfront-escrow",
+	})
+	require.NoError(t, err)
+
+	tools := buildMetaTools(nil, nil, nil, config.SkillConfig{}, nil, store)
+	tool := findTool(tools, "approve_upfront_payment")
+	require.NotNil(t, tool)
+
+	got, err := tool.Handler(ctx, map[string]interface{}{
+		"transaction_receipt_id": tx.TransactionReceiptID,
+		"submission_receipt_id":  submission.SubmissionReceiptID,
+		"amount":                 "25.00",
+		"trust_score":            0.30,
+		"user_max_prepay":        "5.00",
+		"remaining_budget":       "50.00",
+		"escrow_buyer_did":       "did:lango:buyer",
+		"escrow_seller_did":      "did:lango:seller",
+		"escrow_reason":          "knowledge exchange",
+		"escrow_task_id":         "task-upfront-escrow",
+		"escrow_milestones": []interface{}{
+			map[string]interface{}{"description": "draft", "amount": "10.00"},
+			map[string]interface{}{"description": "final", "amount": "15.00"},
+		},
+	})
+	require.NoError(t, err)
+
+	payload := got.(upfrontPaymentApprovalReceipt)
+	assert.Equal(t, "escrow", payload.SuggestedMode)
+	assert.Equal(t, string(receipts.EscrowExecutionStatusPending), payload.EscrowExecutionStatus)
+
+	updatedTx, err := store.GetTransactionReceipt(ctx, tx.TransactionReceiptID)
+	require.NoError(t, err)
+	require.NotNil(t, updatedTx.EscrowExecutionInput)
+	assert.Equal(t, "did:lango:buyer", updatedTx.EscrowExecutionInput.BuyerDID)
+	assert.Equal(t, "did:lango:seller", updatedTx.EscrowExecutionInput.SellerDID)
+	assert.Equal(t, "25.00", updatedTx.EscrowExecutionInput.Amount)
+	assert.Equal(t, "knowledge exchange", updatedTx.EscrowExecutionInput.Reason)
+	assert.Equal(t, "task-upfront-escrow", updatedTx.EscrowExecutionInput.TaskID)
+	require.Len(t, updatedTx.EscrowExecutionInput.Milestones, 2)
+	assert.Equal(t, "draft", updatedTx.EscrowExecutionInput.Milestones[0].Description)
+	assert.Equal(t, "10.00", updatedTx.EscrowExecutionInput.Milestones[0].Amount)
+	assert.Equal(t, "final", updatedTx.EscrowExecutionInput.Milestones[1].Description)
+	assert.Equal(t, "15.00", updatedTx.EscrowExecutionInput.Milestones[1].Amount)
+	assert.Equal(t, receipts.EscrowExecutionStatusPending, updatedTx.EscrowExecutionStatus)
 }
 
 func TestApproveUpfrontPayment_ReportsMissingSubmissionReceiptID(t *testing.T) {

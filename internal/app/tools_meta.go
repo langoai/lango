@@ -25,6 +25,8 @@ import (
 	"github.com/langoai/lango/internal/toolparam"
 )
 
+var evaluateUpfrontPaymentFn = paymentapproval.EvaluateUpfrontPayment
+
 // buildMetaTools creates knowledge/learning/skill meta-tools for the agent.
 // cfg is used for session-mode-aware skill filtering and view_skill path resolution;
 // it may be nil for tests that don't exercise mode features.
@@ -266,6 +268,21 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 					"trust_score":            map[string]interface{}{"type": "number", "description": "Trust score used for upfront payment policy evaluation"},
 					"user_max_prepay":        map[string]interface{}{"type": "string", "description": "Maximum prepay amount allowed by policy"},
 					"remaining_budget":       map[string]interface{}{"type": "string", "description": "Remaining budget available for the transaction"},
+					"escrow_buyer_did":       map[string]interface{}{"type": "string", "description": "Buyer DID for escrow-backed execution"},
+					"escrow_seller_did":      map[string]interface{}{"type": "string", "description": "Seller DID for escrow-backed execution"},
+					"escrow_reason":          map[string]interface{}{"type": "string", "description": "Reason to store for escrow-backed execution"},
+					"escrow_task_id":         map[string]interface{}{"type": "string", "description": "Optional task identifier for escrow-backed execution"},
+					"escrow_milestones": map[string]interface{}{
+						"type": "array",
+						"items": map[string]interface{}{
+							"type": "object",
+							"properties": map[string]interface{}{
+								"description": map[string]interface{}{"type": "string", "description": "Milestone description"},
+								"amount":      map[string]interface{}{"type": "string", "description": "Milestone amount"},
+							},
+						},
+						"description": "Optional escrow milestone breakdown",
+					},
 				},
 				"required": []string{"transaction_receipt_id", "submission_receipt_id", "amount", "trust_score", "user_max_prepay", "remaining_budget"},
 			},
@@ -299,7 +316,7 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 					return nil, err
 				}
 
-				outcome := paymentapproval.EvaluateUpfrontPayment(paymentapproval.Input{
+				outcome := evaluateUpfrontPaymentFn(paymentapproval.Input{
 					Amount: amount,
 					Trust: paymentapproval.TrustInput{
 						Score: trustScore,
@@ -313,6 +330,16 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 				updatedTx, err := receiptStore.ApplyUpfrontPaymentApproval(ctx, transactionReceiptID, submissionReceiptID, outcome)
 				if err != nil {
 					return nil, fmt.Errorf("apply upfront payment approval: %w", err)
+				}
+				if outcome.SuggestedMode == paymentapproval.ModeEscrow {
+					escrowInput, err := parseEscrowExecutionInput(params, amount)
+					if err != nil {
+						return nil, err
+					}
+					updatedTx, err = receiptStore.BindEscrowExecutionInput(ctx, transactionReceiptID, submissionReceiptID, escrowInput)
+					if err != nil {
+						return nil, fmt.Errorf("bind escrow execution input: %w", err)
+					}
 				}
 
 				return newUpfrontPaymentApprovalReceipt(
@@ -1082,6 +1109,58 @@ func exportabilityReceiptPayload(artifactLabel string, receipt exportability.Rec
 	}
 }
 
+func parseEscrowExecutionInput(params map[string]interface{}, amount string) (receipts.EscrowExecutionInput, error) {
+	buyerDID, err := toolparam.RequireString(params, "escrow_buyer_did")
+	if err != nil {
+		return receipts.EscrowExecutionInput{}, err
+	}
+	sellerDID, err := toolparam.RequireString(params, "escrow_seller_did")
+	if err != nil {
+		return receipts.EscrowExecutionInput{}, err
+	}
+	reason, err := toolparam.RequireString(params, "escrow_reason")
+	if err != nil {
+		return receipts.EscrowExecutionInput{}, err
+	}
+	taskID := toolparam.OptionalString(params, "escrow_task_id", "")
+
+	var milestones []receipts.EscrowMilestoneInput
+	if raw, ok := params["escrow_milestones"]; ok {
+		rawMilestones, ok := raw.([]interface{})
+		if !ok {
+			return receipts.EscrowExecutionInput{}, fmt.Errorf("escrow_milestones must be an array")
+		}
+		milestones = make([]receipts.EscrowMilestoneInput, 0, len(rawMilestones))
+		for i, rawMilestone := range rawMilestones {
+			milestoneMap, ok := rawMilestone.(map[string]interface{})
+			if !ok {
+				return receipts.EscrowExecutionInput{}, fmt.Errorf("escrow_milestones[%d] must be an object", i)
+			}
+			description, err := toolparam.RequireString(milestoneMap, "description")
+			if err != nil {
+				return receipts.EscrowExecutionInput{}, fmt.Errorf("escrow_milestones[%d]: %w", i, err)
+			}
+			milestoneAmount, err := toolparam.RequireString(milestoneMap, "amount")
+			if err != nil {
+				return receipts.EscrowExecutionInput{}, fmt.Errorf("escrow_milestones[%d]: %w", i, err)
+			}
+			milestones = append(milestones, receipts.EscrowMilestoneInput{
+				Description: description,
+				Amount:      milestoneAmount,
+			})
+		}
+	}
+
+	return receipts.EscrowExecutionInput{
+		BuyerDID:   buyerDID,
+		SellerDID:  sellerDID,
+		Amount:     amount,
+		Reason:     reason,
+		TaskID:     taskID,
+		Milestones: milestones,
+	}, nil
+}
+
 func newDisputeReadyReceiptTool(receiptStore *receipts.Store) *agent.Tool {
 	return &agent.Tool{
 		Name:        "create_dispute_ready_receipt",
@@ -1172,6 +1251,7 @@ type upfrontPaymentApprovalReceipt struct {
 	CurrentPaymentApprovalStatus string  `json:"current_payment_approval_status"`
 	CanonicalDecision            string  `json:"canonical_decision,omitempty"`
 	CanonicalSettlementHint      string  `json:"canonical_settlement_hint,omitempty"`
+	EscrowExecutionStatus        string  `json:"escrow_execution_status,omitempty"`
 }
 
 func newUpfrontPaymentApprovalReceipt(
@@ -1201,5 +1281,6 @@ func newUpfrontPaymentApprovalReceipt(
 		CurrentPaymentApprovalStatus: string(updatedTx.CurrentPaymentApprovalStatus),
 		CanonicalDecision:            updatedTx.CanonicalDecision,
 		CanonicalSettlementHint:      updatedTx.CanonicalSettlementHint,
+		EscrowExecutionStatus:        string(updatedTx.EscrowExecutionStatus),
 	}
 }
