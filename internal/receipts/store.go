@@ -343,7 +343,7 @@ func validatePaymentApprovalStatus(status PaymentApprovalStatus) error {
 
 func validateEscrowExecutionStatus(status EscrowExecutionStatus) error {
 	switch status {
-	case EscrowExecutionStatusCreated, EscrowExecutionStatusFunded, EscrowExecutionStatusFailed:
+	case EscrowExecutionStatusPending, EscrowExecutionStatusCreated, EscrowExecutionStatusFunded, EscrowExecutionStatusFailed:
 		return nil
 	default:
 		return fmt.Errorf("%w: %q", ErrInvalidEscrowExecutionStatus, status)
@@ -352,6 +352,8 @@ func validateEscrowExecutionStatus(status EscrowExecutionStatus) error {
 
 func escrowExecutionEventTypeForStatus(status EscrowExecutionStatus) (EventType, error) {
 	switch status {
+	case EscrowExecutionStatusPending:
+		return EventEscrowExecutionStarted, nil
 	case EscrowExecutionStatusCreated:
 		return EventEscrowExecutionCreated, nil
 	case EscrowExecutionStatusFunded:

@@ -18,8 +18,8 @@ func TestService_ExecuteRecommendation_CreateAndFundSuccess(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	store := newReceiptStoreAdapter()
-	submission, tx := createApprovedEscrowReceipt(t, ctx, store.Store)
+	store := receipts.NewStore()
+	submission, tx := createApprovedEscrowReceipt(t, ctx, store)
 	runtime := &fakeRuntime{
 		createEntry: &escrow.EscrowEntry{ID: "escrow-1"},
 		fundEntry:   &escrow.EscrowEntry{ID: "escrow-1"},
@@ -63,7 +63,7 @@ func TestService_ExecuteRecommendation_DeniesWhenApprovalIsNotApproved(t *testin
 	t.Parallel()
 
 	ctx := context.Background()
-	store := newReceiptStoreAdapter()
+	store := receipts.NewStore()
 	submission, tx, err := store.CreateSubmissionReceipt(ctx, receipts.CreateSubmissionInput{
 		TransactionID:       "tx-not-approved",
 		ArtifactLabel:       "artifact/not-approved",
@@ -102,7 +102,7 @@ func TestService_ExecuteRecommendation_DeniesWhenSettlementHintIsNotEscrow(t *te
 	t.Parallel()
 
 	ctx := context.Background()
-	store := newReceiptStoreAdapter()
+	store := receipts.NewStore()
 	submission, tx, err := store.CreateSubmissionReceipt(ctx, receipts.CreateSubmissionInput{
 		TransactionID:       "tx-mode-mismatch",
 		ArtifactLabel:       "artifact/mode-mismatch",
@@ -131,7 +131,7 @@ func TestService_ExecuteRecommendation_DeniesWhenInputIsNotBound(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	store := newReceiptStoreAdapter()
+	store := receipts.NewStore()
 	submission, tx, err := store.CreateSubmissionReceipt(ctx, receipts.CreateSubmissionInput{
 		TransactionID:       "tx-input-missing",
 		ArtifactLabel:       "artifact/input-missing",
@@ -160,8 +160,8 @@ func TestService_ExecuteRecommendation_CreateFailureRecordsFailedState(t *testin
 	t.Parallel()
 
 	ctx := context.Background()
-	store := newReceiptStoreAdapter()
-	submission, tx := createApprovedEscrowReceipt(t, ctx, store.Store)
+	store := receipts.NewStore()
+	submission, tx := createApprovedEscrowReceipt(t, ctx, store)
 	runtime := &fakeRuntime{
 		createEntry: &escrow.EscrowEntry{ID: "escrow-create-failed"},
 		createErr:   errors.New("create escrow failed"),
@@ -192,8 +192,8 @@ func TestService_ExecuteRecommendation_FundFailurePreservesCreatedReference(t *t
 	t.Parallel()
 
 	ctx := context.Background()
-	store := newReceiptStoreAdapter()
-	submission, tx := createApprovedEscrowReceipt(t, ctx, store.Store)
+	store := receipts.NewStore()
+	submission, tx := createApprovedEscrowReceipt(t, ctx, store)
 	runtime := &fakeRuntime{
 		createEntry: &escrow.EscrowEntry{ID: "escrow-created"},
 		fundErr:     errors.New("lock funds failed"),
@@ -226,24 +226,6 @@ type fakeRuntime struct {
 	fundErr     error
 	createCalls []escrow.CreateRequest
 	fundCalls   []string
-}
-
-type receiptStoreAdapter struct {
-	*receipts.Store
-}
-
-func newReceiptStoreAdapter() *receiptStoreAdapter {
-	return &receiptStoreAdapter{Store: receipts.NewStore()}
-}
-
-func (a *receiptStoreAdapter) ApplyEscrowExecutionProgress(ctx context.Context, transactionReceiptID, submissionReceiptID string, status receipts.EscrowExecutionStatus, escrowReference string, eventType receipts.EventType, reason string) (receipts.TransactionReceipt, error) {
-	if status == receipts.EscrowExecutionStatusPending && eventType == receipts.EventEscrowExecutionStarted {
-		if err := a.Store.AppendReceiptEvent(ctx, submissionReceiptID, eventType); err != nil {
-			return receipts.TransactionReceipt{}, err
-		}
-		return a.Store.GetTransactionReceipt(ctx, transactionReceiptID)
-	}
-	return a.Store.ApplyEscrowExecutionProgress(ctx, transactionReceiptID, submissionReceiptID, status, escrowReference, eventType, reason)
 }
 
 func (f *fakeRuntime) Create(_ context.Context, req escrow.CreateRequest) (*escrow.EscrowEntry, error) {

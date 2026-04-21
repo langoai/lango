@@ -397,6 +397,10 @@ func TestBindEscrowExecutionInput_PersistsCanonicalInputOnTransaction(t *testing
 	require.NotNil(t, gotTx.EscrowExecutionInput)
 	require.Equal(t, "1.50", gotTx.EscrowExecutionInput.Milestones[0].Amount)
 	require.Equal(t, "2.00", gotTx.EscrowExecutionInput.Milestones[1].Amount)
+
+	_, events, err := store.GetSubmissionReceipt(ctx, sub.SubmissionReceiptID)
+	require.NoError(t, err)
+	require.Empty(t, events)
 }
 
 func TestBindEscrowExecutionInput_ResetsEscrowReferenceOnRebind(t *testing.T) {
@@ -465,6 +469,11 @@ func TestApplyEscrowExecutionProgress_RecordsCreatedFundedAndFailed(t *testing.T
 	})
 	require.NoError(t, err)
 
+	started, err := store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, sub.SubmissionReceiptID, EscrowExecutionStatusPending, "", EventEscrowExecutionStarted, "")
+	require.NoError(t, err)
+	require.Equal(t, EscrowExecutionStatusPending, started.EscrowExecutionStatus)
+	require.Empty(t, started.EscrowReference)
+
 	created, err := store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, sub.SubmissionReceiptID, EscrowExecutionStatusCreated, "", EventEscrowExecutionCreated, "")
 	require.NoError(t, err)
 	require.Equal(t, EscrowExecutionStatusCreated, created.EscrowExecutionStatus)
@@ -482,11 +491,12 @@ func TestApplyEscrowExecutionProgress_RecordsCreatedFundedAndFailed(t *testing.T
 
 	_, events, err := store.GetSubmissionReceipt(ctx, sub.SubmissionReceiptID)
 	require.NoError(t, err)
-	require.Len(t, events, 3)
-	require.Equal(t, EventEscrowExecutionCreated, events[0].Type)
-	require.Equal(t, EventEscrowExecutionFunded, events[1].Type)
-	require.Equal(t, EventEscrowExecutionFailed, events[2].Type)
-	require.Equal(t, "funding reverted", events[2].Reason)
+	require.Len(t, events, 4)
+	require.Equal(t, EventEscrowExecutionStarted, events[0].Type)
+	require.Equal(t, EventEscrowExecutionCreated, events[1].Type)
+	require.Equal(t, EventEscrowExecutionFunded, events[2].Type)
+	require.Equal(t, EventEscrowExecutionFailed, events[3].Type)
+	require.Equal(t, "funding reverted", events[3].Reason)
 }
 
 func TestApplyEscrowExecutionProgress_RejectsInvalidStatusAndUnboundInput(t *testing.T) {
