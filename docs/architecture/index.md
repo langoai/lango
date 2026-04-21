@@ -46,6 +46,12 @@ This section describes the internal architecture of Lango, a Go-based AI agent b
 
     Audit ledger for identity continuity, trust entry, reputation, and revocation in `knowledge exchange v1`.
 
+-   :material-cash-refund: **[Pricing Negotiation Settlement Audit](pricing-negotiation-settlement-audit.md)**
+
+    ---
+
+    Audit ledger for pricing surfaces, negotiation, settlement, and escrow in `knowledge exchange v1`.
+
 -   :material-cash-fast: **[P2P Knowledge Exchange Track](p2p-knowledge-exchange-track.md)**
 
     ---

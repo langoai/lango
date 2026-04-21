@@ -27,6 +27,7 @@ nav = [
       { "External Collaboration Audit" = "architecture/external-collaboration-audit.md" },
       { "Trust, Security & Policy Audit" = "architecture/trust-security-policy-audit.md" },
       { "Identity Trust Reputation Audit" = "architecture/identity-trust-reputation-audit.md" },
+      { "Pricing Negotiation Settlement Audit" = "architecture/pricing-negotiation-settlement-audit.md" },
       { "P2P Knowledge Exchange Track" = "architecture/p2p-knowledge-exchange-track.md" }
   ]},
   { "Features" = [

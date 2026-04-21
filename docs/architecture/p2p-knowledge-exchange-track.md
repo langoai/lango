@@ -80,7 +80,7 @@ The exportability policy work has already started as a first slice: source-based
 ## Required Follow-On Plans
 
 1. `identity / trust / reputation` detailed audit is now landed; the follow-on work is `reputation v2`, stronger trust-entry contracts, and runtime integration
-2. `pricing / negotiation / settlement` detailed audit
+2. `pricing / negotiation / settlement` detailed audit is now landed; the follow-on work is runtime integration, final settlement progression, and escrow lifecycle completion
 3. exportability policy follow-on work (the first source-primary slice has landed; the remaining gaps are richer rules, override/dispute handling, and receipt unification)
 4. upfront payment approval and payment execution follow-on work (the first slices have landed; remaining gaps are human approval UI, escrow activation/release/refund, dispute orchestration, and partial settlement execution beyond escrow funding)
 5. first implementation plan for the `knowledge exchange` runtime path
