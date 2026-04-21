@@ -11,6 +11,7 @@ import (
 
 type receiptStore interface {
 	GetTransactionReceipt(context.Context, string) (receipts.TransactionReceipt, error)
+	GetSubmissionReceipt(context.Context, string) (receipts.SubmissionReceipt, []receipts.ReceiptEvent, error)
 }
 
 type Service struct {
@@ -35,6 +36,17 @@ func (s *Service) EvaluateDirectPayment(ctx context.Context, req Request) (Resul
 	}
 
 	if strings.TrimSpace(req.SubmissionReceiptID) == "" {
+		return Result{Decision: Deny, Reason: ReasonMissingReceipt}, nil
+	}
+
+	submission, _, err := s.store.GetSubmissionReceipt(ctx, req.SubmissionReceiptID)
+	if err != nil {
+		if errors.Is(err, receipts.ErrSubmissionReceiptNotFound) {
+			return Result{Decision: Deny, Reason: ReasonMissingReceipt}, nil
+		}
+		return Result{}, err
+	}
+	if submission.TransactionReceiptID != req.TransactionReceiptID {
 		return Result{Decision: Deny, Reason: ReasonMissingReceipt}, nil
 	}
 
