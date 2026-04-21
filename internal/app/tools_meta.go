@@ -25,8 +25,6 @@ import (
 	"github.com/langoai/lango/internal/toolparam"
 )
 
-var evaluateUpfrontPaymentFn = paymentapproval.EvaluateUpfrontPayment
-
 // buildMetaTools creates knowledge/learning/skill meta-tools for the agent.
 // cfg is used for session-mode-aware skill filtering and view_skill path resolution;
 // it may be nil for tests that don't exercise mode features.
@@ -287,71 +285,7 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 				"required": []string{"transaction_receipt_id", "submission_receipt_id", "amount", "trust_score", "user_max_prepay", "remaining_budget"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				if receiptStore == nil {
-					return nil, fmt.Errorf("receipts store dependency is not configured")
-				}
-
-				transactionReceiptID, err := toolparam.RequireString(params, "transaction_receipt_id")
-				if err != nil {
-					return nil, err
-				}
-				submissionReceiptID, err := toolparam.RequireString(params, "submission_receipt_id")
-				if err != nil {
-					return nil, err
-				}
-				amount, err := toolparam.RequireString(params, "amount")
-				if err != nil {
-					return nil, err
-				}
-				trustScore, err := toolparam.RequireFloat64(params, "trust_score")
-				if err != nil {
-					return nil, err
-				}
-				userMaxPrepay, err := toolparam.RequireString(params, "user_max_prepay")
-				if err != nil {
-					return nil, err
-				}
-				remainingBudget, err := toolparam.RequireString(params, "remaining_budget")
-				if err != nil {
-					return nil, err
-				}
-
-				outcome := evaluateUpfrontPaymentFn(paymentapproval.Input{
-					Amount: amount,
-					Trust: paymentapproval.TrustInput{
-						Score: trustScore,
-					},
-					Budget: paymentapproval.BudgetPolicyContext{
-						UserMaxPrepay:   userMaxPrepay,
-						RemainingBudget: remainingBudget,
-					},
-				})
-
-				updatedTx, err := receiptStore.ApplyUpfrontPaymentApproval(ctx, transactionReceiptID, submissionReceiptID, outcome)
-				if err != nil {
-					return nil, fmt.Errorf("apply upfront payment approval: %w", err)
-				}
-				if outcome.SuggestedMode == paymentapproval.ModeEscrow {
-					escrowInput, err := parseEscrowExecutionInput(params, amount)
-					if err != nil {
-						return nil, err
-					}
-					updatedTx, err = receiptStore.BindEscrowExecutionInput(ctx, transactionReceiptID, submissionReceiptID, escrowInput)
-					if err != nil {
-						return nil, fmt.Errorf("bind escrow execution input: %w", err)
-					}
-				}
-
-				return newUpfrontPaymentApprovalReceipt(
-					transactionReceiptID,
-					submissionReceiptID,
-					amount,
-					trustScore,
-					userMaxPrepay,
-					remainingBudget,
-					outcome,
-					updatedTx,
-				), nil
+				return approveUpfrontPayment(ctx, receiptStore, params, paymentapproval.EvaluateUpfrontPayment)
 			},
 		},
 		{
@@ -1107,6 +1041,78 @@ func exportabilityReceiptPayload(artifactLabel string, receipt exportability.Rec
 		"explanation":    receipt.Explanation,
 		"lineage":        lineage,
 	}
+}
+
+func approveUpfrontPayment(ctx context.Context, receiptStore *receipts.Store, params map[string]interface{}, evaluate func(paymentapproval.Input) paymentapproval.Outcome) (interface{}, error) {
+	if receiptStore == nil {
+		return nil, fmt.Errorf("receipts store dependency is not configured")
+	}
+
+	transactionReceiptID, err := toolparam.RequireString(params, "transaction_receipt_id")
+	if err != nil {
+		return nil, err
+	}
+	submissionReceiptID, err := toolparam.RequireString(params, "submission_receipt_id")
+	if err != nil {
+		return nil, err
+	}
+	amount, err := toolparam.RequireString(params, "amount")
+	if err != nil {
+		return nil, err
+	}
+	trustScore, err := toolparam.RequireFloat64(params, "trust_score")
+	if err != nil {
+		return nil, err
+	}
+	userMaxPrepay, err := toolparam.RequireString(params, "user_max_prepay")
+	if err != nil {
+		return nil, err
+	}
+	remainingBudget, err := toolparam.RequireString(params, "remaining_budget")
+	if err != nil {
+		return nil, err
+	}
+
+	outcome := evaluate(paymentapproval.Input{
+		Amount: amount,
+		Trust: paymentapproval.TrustInput{
+			Score: trustScore,
+		},
+		Budget: paymentapproval.BudgetPolicyContext{
+			UserMaxPrepay:   userMaxPrepay,
+			RemainingBudget: remainingBudget,
+		},
+	})
+
+	var escrowInput receipts.EscrowExecutionInput
+	if outcome.SuggestedMode == paymentapproval.ModeEscrow {
+		escrowInput, err = parseEscrowExecutionInput(params, amount)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	updatedTx, err := receiptStore.ApplyUpfrontPaymentApproval(ctx, transactionReceiptID, submissionReceiptID, outcome)
+	if err != nil {
+		return nil, fmt.Errorf("apply upfront payment approval: %w", err)
+	}
+	if outcome.SuggestedMode == paymentapproval.ModeEscrow {
+		updatedTx, err = receiptStore.BindEscrowExecutionInput(ctx, transactionReceiptID, submissionReceiptID, escrowInput)
+		if err != nil {
+			return nil, fmt.Errorf("bind escrow execution input: %w", err)
+		}
+	}
+
+	return newUpfrontPaymentApprovalReceipt(
+		transactionReceiptID,
+		submissionReceiptID,
+		amount,
+		trustScore,
+		userMaxPrepay,
+		remainingBudget,
+		outcome,
+		updatedTx,
+	), nil
 }
 
 func parseEscrowExecutionInput(params map[string]interface{}, amount string) (receipts.EscrowExecutionInput, error) {
