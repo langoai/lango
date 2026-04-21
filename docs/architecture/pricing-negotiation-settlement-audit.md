@@ -189,9 +189,9 @@ This means the current model is intentionally layered:
 - Feature name: `Settlement`
 - Capability area: `External Collaboration & Economic Exchange`
 - Product-path linkage: `Phase 1: Knowledge Exchange`, `Phase 2: Result Exchange with Controlled Execution`
-- Current surface area: `docs/features/p2p-network.md`, `docs/security/upfront-payment-approval.md`, `docs/security/actual-payment-execution-gating.md`, `internal/paymentapproval/*`, `internal/paymentgate/*`, `internal/tools/payment/*`, `internal/app/tools_p2p.go`, `internal/p2p/paygate/*`
-- Core value: `Turn paid exchange into a controlled execution path by linking approval state, direct payment execution, and post-pay settlement semantics.`
-- Current problem: `Settlement is real, but the current model is still split across approval, direct-payment gating, and trust-conditional post-pay behavior, so the end-to-end progression is not yet one fully consolidated operator story.`
+- Current surface area: `docs/features/p2p-network.md`, `docs/security/upfront-payment-approval.md`, `docs/security/actual-payment-execution-gating.md`, `internal/paymentapproval/*`, `internal/paymentgate/*`, `internal/tools/payment/*`, `internal/app/tools_p2p.go`, `internal/p2p/paygate/*`, `internal/p2p/settlement/*`
+- Core value: `Turn paid exchange into a controlled execution path by linking approval state, direct payment execution, a real on-chain settlement runtime, and limited deferred-settlement behavior.`
+- Current problem: `Settlement is real, but the current model is still split across approval, direct-payment gating, the on-chain settlement service, and trust-conditional deferred-payment hooks, so the end-to-end progression is not yet one fully consolidated operator story.`
 - Judgment: `stabilize`
 - Execution track: `P2P Knowledge Exchange Track`
 - Secondary capability areas:
@@ -207,14 +207,15 @@ This means the current model is intentionally layered:
    - `docs/security/actual-payment-execution-gating.md` defines a fail-closed direct-payment gate for `payment_send` and `p2p_pay`.
    - `internal/paymentgate/service.go`, `internal/tools/payment/payment.go`, and `internal/app/tools_p2p.go` enforce that direct payment executes only when the receipt state is approved for `prepay`.
 
-2. `Major` The P2P payment path still includes trust-conditional post-pay semantics.
-   - `docs/features/p2p-network.md` and `internal/p2p/paygate/*` keep `postPayMinScore` as the payment-side threshold for whether execution may happen before settlement.
-   - That means settlement is not only direct prepay. It also includes deferred settlement behavior for sufficiently trusted peers.
+2. `Major` Settlement also includes a real on-chain runtime surface, not only approval plus direct-payment gating.
+   - `docs/features/p2p-network.md` describes a settlement service that handles asynchronous USDC settlement for paid P2P tool invocations.
+   - `internal/p2p/settlement/service.go` subscribes to paid-execution events, builds `transferWithAuthorization` transactions, submits them on-chain with retry, waits for confirmation, and records success or failure for reputation tracking.
+   - This makes settlement a real runtime path, even though the overall operator story is still fragmented.
 
-3. `Major` Off-chain accrual and postpay remain limited Phase 2 capability, not a universal default.
-   - The master document and current P2P docs treat post-pay as trust-conditional.
-   - The paygate ledger and deferred settlement hooks exist, but the operator-facing narrative still correctly stops short of describing a fully generalized off-chain accrual system.
-   - This row should therefore lock postpay as Phase 2, trust-conditional, and still limited.
+3. `Major` The P2P payment path still includes trust-conditional post-pay semantics, but they should be read conservatively.
+   - `docs/features/p2p-network.md` and `internal/p2p/paygate/*` keep `postPayMinScore` as the payment-side threshold for whether execution may happen before settlement.
+   - The current high-trust path is closer to deferred ledger and event-hook behavior than to a fully mature, generalized post-pay settlement runtime.
+   - This row should therefore treat post-pay and off-chain accrual as limited Phase 2 behavior, not as a broad landed default.
 
 4. `Major` Settlement should remain distinct from escrow.
    - The current direct-payment gate decides whether a `prepay` execution may proceed now.
@@ -225,8 +226,8 @@ This means the current model is intentionally layered:
 
 - `Settlement` should be kept.
 - The correct action is `stabilize`:
-  - keep approval state, direct-payment gating, and trust-conditional post-pay semantics inside the settlement row,
-  - keep off-chain accrual and postpay explicitly limited and Phase 2,
+  - keep approval state, direct-payment gating, the on-chain settlement service, and trust-conditional deferred-payment behavior inside the settlement row,
+  - keep off-chain accrual and postpay explicitly limited, Phase 2, and less mature than the direct-payment path,
   - avoid collapsing settlement into escrow.
 
 ## Detailed Audit: Escrow
