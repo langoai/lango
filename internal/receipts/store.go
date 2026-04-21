@@ -150,6 +150,7 @@ func (s *Store) BindEscrowExecutionInput(_ context.Context, transactionReceiptID
 	inputCopy := cloneEscrowExecutionInput(&input)
 	transaction.EscrowExecutionStatus = EscrowExecutionStatusPending
 	transaction.EscrowExecutionInput = inputCopy
+	transaction.EscrowReference = ""
 	s.transactions[transactionReceiptID] = transaction
 
 	return cloneTransactionReceipt(transaction), nil
@@ -180,6 +181,14 @@ func (s *Store) ApplyEscrowExecutionProgress(_ context.Context, transactionRecei
 	}
 	if transaction.EscrowExecutionInput == nil {
 		return TransactionReceipt{}, fmt.Errorf("%w: escrow execution input is required", ErrInvalidEscrowExecutionState)
+	}
+	if status == EscrowExecutionStatusFunded {
+		if escrowReference == "" {
+			return TransactionReceipt{}, fmt.Errorf("%w: escrow reference is required for funded progress", ErrInvalidEscrowExecutionState)
+		}
+		if transaction.EscrowExecutionStatus != EscrowExecutionStatusCreated {
+			return TransactionReceipt{}, fmt.Errorf("%w: funded progress requires created state", ErrInvalidEscrowExecutionState)
+		}
 	}
 
 	expectedEventType, err := escrowExecutionEventTypeForStatus(status)

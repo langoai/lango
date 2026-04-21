@@ -399,6 +399,48 @@ func TestBindEscrowExecutionInput_PersistsCanonicalInputOnTransaction(t *testing
 	require.Equal(t, "2.00", gotTx.EscrowExecutionInput.Milestones[1].Amount)
 }
 
+func TestBindEscrowExecutionInput_ResetsEscrowReferenceOnRebind(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	sub, tx, err := store.CreateSubmissionReceipt(ctx, CreateSubmissionInput{
+		TransactionID:       "tx-escrow-rebind",
+		ArtifactLabel:       "artifact/escrow-rebind",
+		PayloadHash:         "hash-escrow-rebind",
+		SourceLineageDigest: "lineage-escrow-rebind",
+	})
+	require.NoError(t, err)
+
+	_, err = store.BindEscrowExecutionInput(ctx, tx.TransactionReceiptID, sub.SubmissionReceiptID, EscrowExecutionInput{
+		BuyerDID:  "did:lango:buyer",
+		SellerDID: "did:lango:seller",
+		Amount:    "6.00",
+		Reason:    "knowledge exchange",
+	})
+	require.NoError(t, err)
+
+	_, err = store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, sub.SubmissionReceiptID, EscrowExecutionStatusCreated, "", EventEscrowExecutionCreated, "")
+	require.NoError(t, err)
+
+	_, err = store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, sub.SubmissionReceiptID, EscrowExecutionStatusFunded, "escrow-123", EventEscrowExecutionFunded, "")
+	require.NoError(t, err)
+
+	updated, err := store.BindEscrowExecutionInput(ctx, tx.TransactionReceiptID, sub.SubmissionReceiptID, EscrowExecutionInput{
+		BuyerDID:  "did:lango:buyer",
+		SellerDID: "did:lango:seller",
+		Amount:    "6.00",
+		Reason:    "knowledge exchange",
+	})
+	require.NoError(t, err)
+	require.Equal(t, EscrowExecutionStatusPending, updated.EscrowExecutionStatus)
+	require.Empty(t, updated.EscrowReference)
+
+	gotTx, err := store.GetTransactionReceipt(ctx, tx.TransactionReceiptID)
+	require.NoError(t, err)
+	require.Equal(t, EscrowExecutionStatusPending, gotTx.EscrowExecutionStatus)
+	require.Empty(t, gotTx.EscrowReference)
+}
+
 func TestApplyEscrowExecutionProgress_RecordsCreatedFundedAndFailed(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
@@ -472,6 +514,9 @@ func TestApplyEscrowExecutionProgress_RejectsInvalidStatusAndUnboundInput(t *tes
 
 	_, err = store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, sub.SubmissionReceiptID, EscrowExecutionStatus("bogus"), "", EventEscrowExecutionCreated, "")
 	require.ErrorIs(t, err, ErrInvalidEscrowExecutionStatus)
+
+	_, err = store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, sub.SubmissionReceiptID, EscrowExecutionStatusFunded, "", EventEscrowExecutionFunded, "")
+	require.ErrorIs(t, err, ErrInvalidEscrowExecutionState)
 
 	_, err = store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, sub.SubmissionReceiptID, EscrowExecutionStatusFunded, "", EventEscrowExecutionCreated, "")
 	require.ErrorIs(t, err, ErrInvalidEscrowExecutionState)
