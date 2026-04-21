@@ -83,6 +83,7 @@ See [Encryption & Secrets](encryption.md) for full details.
 - [PII Redaction](pii-redaction.md) -- Builtin patterns, custom regex, Presidio integration
 - [Exportability Policy](exportability.md) -- Source-primary exportability evaluation for early knowledge exchange
 - [Approval Flow](approval-flow.md) -- Structured artifact release decisions and audit-backed receipts
+- [Approval CLI](approval-cli.md) -- Operational approval-system behavior in the CLI/TUI surface
 - [Upfront Payment Approval](upfront-payment-approval.md) -- Structured prepayment decisioning and transaction-level payment approval state
 - [Escrow Execution](escrow-execution.md) -- Receipt-backed `create + fund` execution for approved escrow recommendations
 - [Actual Payment Execution Gating](actual-payment-execution-gating.md) -- Receipt-backed direct payment allow/deny enforcement for `payment_send` and `p2p_pay`
