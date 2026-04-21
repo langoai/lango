@@ -14,7 +14,7 @@ cd lango
 make build
 ```
 
-See [Installation](installation.md) for detailed instructions, including [platform-specific C compiler setup](installation.md#platform-specific-c-compiler-setup) required for CGO.
+See [Installation](installation.md) for detailed instructions, including [optional C compiler setup](installation.md#optional-c-compiler-setup) required for CGO.
 
 ## Step 2: Onboard
 

@@ -80,6 +80,17 @@ markdown_extensions:
   - pymdownx.tasklist:
       custom_checkbox: true
 
+exclude_docs: |
+  .DS_Store
+  /superpowers/specs/**
+  /superpowers/plans/**
+  /architecture/adr-001-package-boundaries.md
+  /architecture/dependency-graph.md
+  /features/cockpit-approval-guide.md
+  /features/cockpit-channels-guide.md
+  /features/cockpit-tasks-guide.md
+  /features/cockpit-troubleshooting.md
+
 extra:
   social:
     - icon: fontawesome/brands/github
@@ -142,15 +153,19 @@ nav:
   - Security:
     - security/index.md
     - Encryption & Secrets: security/encryption.md
+    - Envelope Migration: security/envelope-migration.md
     - PII Redaction: security/pii-redaction.md
     - Exportability Policy: security/exportability.md
     - Approval Flow: security/approval-flow.md
+    - Approval CLI: security/approval-cli.md
     - Upfront Payment Approval: security/upfront-payment-approval.md
     - Escrow Execution: security/escrow-execution.md
     - Actual Payment Execution Gating: security/actual-payment-execution-gating.md
     - Dispute-Ready Receipts: security/dispute-ready-receipts.md
     - Tool Approval: security/tool-approval.md
     - Authentication: security/authentication.md
+  - Research:
+    - phase7-pq-onchain-feasibility.md: research/phase7-pq-onchain-feasibility.md
   - Payments:
     - payments/index.md
     - USDC Payments: payments/usdc.md
