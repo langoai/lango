@@ -1,7 +1,7 @@
 # mkdocs-documentation-site Specification
 
 ## Purpose
-Exclusion-aware MkDocs documentation site with a strict public IA surface.
+TBD - created by archiving change add-mkdocs-documentation-site. Update Purpose after archive.
 ## Requirements
 ### Requirement: MkDocs configuration file
 The project SHALL have a `mkdocs.yml` at the repository root configuring MkDocs Material with search, minify, code copy, Mermaid diagrams, dark/light mode toggle, and a navigation structure covering all documentation sections.

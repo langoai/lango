@@ -1,12 +1,12 @@
 ## ADDED Requirements
 
-### Requirement: Security index reflects the public deep-dive slice
-The `docs/security/index.md` SHALL provide quick links to the public security deep-dive docs surfaced by the MkDocs IA recovery slice, including Approval CLI and Envelope Migration.
+### Requirement: Public Security NAV exposes the deep-dive slice
+The MkDocs public Security navigation SHALL expose `approval-cli.md` and `envelope-migration.md` as discoverable docs surfaced by the MkDocs IA recovery slice.
 
-#### Scenario: Approval CLI quick link is present
-- **WHEN** a user reads `docs/security/index.md`
-- **THEN** they find a quick link to `approval-cli.md`
+#### Scenario: Approval CLI is discoverable in public nav
+- **WHEN** a user browses the public Security navigation
+- **THEN** they find `approval-cli.md` as a discoverable public doc
 
-#### Scenario: Envelope Migration quick link is present
-- **WHEN** a user reads `docs/security/index.md`
-- **THEN** they find a quick link to `envelope-migration.md`
+#### Scenario: Envelope Migration is discoverable in public nav
+- **WHEN** a user browses the public Security navigation
+- **THEN** they find `envelope-migration.md` as a discoverable public doc
