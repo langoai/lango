@@ -8,6 +8,8 @@ var (
 	ErrInvalidSubmissionInput       = errors.New("invalid submission input")
 	ErrInvalidReceiptEventType      = errors.New("invalid receipt event type")
 	ErrInvalidPaymentApprovalStatus = errors.New("invalid payment approval status")
+	ErrInvalidEscrowExecutionStatus = errors.New("invalid escrow execution status")
+	ErrInvalidEscrowExecutionState  = errors.New("invalid escrow execution state")
 )
 
 type ApprovalStatus string

@@ -73,6 +73,53 @@ func TestCreateSubmissionReceipt_UpdatesCurrentPointerOnSecondSubmission(t *test
 	require.Empty(t, events)
 }
 
+func TestCreateSubmissionReceipt_ResetsEscrowExecutionMetadataOnCurrentSubmissionChange(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	first, tx, err := store.CreateSubmissionReceipt(ctx, CreateSubmissionInput{
+		TransactionID:       "tx-escrow-reset",
+		ArtifactLabel:       "memo-a",
+		PayloadHash:         "hash-a",
+		SourceLineageDigest: "lineage-a",
+	})
+	require.NoError(t, err)
+
+	_, err = store.BindEscrowExecutionInput(ctx, tx.TransactionReceiptID, first.SubmissionReceiptID, EscrowExecutionInput{
+		BuyerDID:  "did:lango:buyer",
+		SellerDID: "did:lango:seller",
+		Amount:    "5.00",
+		Reason:    "knowledge exchange",
+		Milestones: []EscrowMilestoneInput{
+			{Description: "draft", Amount: "2.00"},
+		},
+	})
+	require.NoError(t, err)
+
+	_, err = store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, first.SubmissionReceiptID, EscrowExecutionStatusCreated, "", EventEscrowExecutionCreated, "")
+	require.NoError(t, err)
+
+	second, nextTx, err := store.CreateSubmissionReceipt(ctx, CreateSubmissionInput{
+		TransactionID:       "tx-escrow-reset",
+		ArtifactLabel:       "memo-b",
+		PayloadHash:         "hash-b",
+		SourceLineageDigest: "lineage-b",
+	})
+	require.NoError(t, err)
+	require.NotEqual(t, first.SubmissionReceiptID, second.SubmissionReceiptID)
+	require.Equal(t, second.SubmissionReceiptID, nextTx.CurrentSubmissionReceiptID)
+	require.Empty(t, nextTx.EscrowExecutionStatus)
+	require.Empty(t, nextTx.EscrowReference)
+	require.Nil(t, nextTx.EscrowExecutionInput)
+
+	gotTx, err := store.GetTransactionReceipt(ctx, tx.TransactionReceiptID)
+	require.NoError(t, err)
+	require.Equal(t, second.SubmissionReceiptID, gotTx.CurrentSubmissionReceiptID)
+	require.Empty(t, gotTx.EscrowExecutionStatus)
+	require.Empty(t, gotTx.EscrowReference)
+	require.Nil(t, gotTx.EscrowExecutionInput)
+}
+
 func TestAppendReceiptEvent_PreservesCanonicalReceiptAndTrail(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
@@ -315,6 +362,10 @@ func TestBindEscrowExecutionInput_PersistsCanonicalInputOnTransaction(t *testing
 	store := newTestStore(t)
 	ctx := context.Background()
 
+	milestones := []EscrowMilestoneInput{
+		{Description: "draft", Amount: "1.50"},
+		{Description: "final", Amount: "2.00"},
+	}
 	sub, tx, err := store.CreateSubmissionReceipt(ctx, CreateSubmissionInput{
 		TransactionID:       "tx-escrow-bind",
 		ArtifactLabel:       "artifact/escrow-bind",
@@ -324,26 +375,28 @@ func TestBindEscrowExecutionInput_PersistsCanonicalInputOnTransaction(t *testing
 	require.NoError(t, err)
 
 	updated, err := store.BindEscrowExecutionInput(ctx, tx.TransactionReceiptID, sub.SubmissionReceiptID, EscrowExecutionInput{
-		BuyerDID:  "did:lango:buyer",
-		SellerDID: "did:lango:seller",
-		Amount:    "3.50",
-		Reason:    "knowledge exchange",
-		TaskID:    "task-escrow-bind",
-		Milestones: []EscrowMilestoneInput{
-			{Description: "draft", Amount: "1.50"},
-			{Description: "final", Amount: "2.00"},
-		},
+		BuyerDID:   "did:lango:buyer",
+		SellerDID:  "did:lango:seller",
+		Amount:     "3.50",
+		Reason:     "knowledge exchange",
+		TaskID:     "task-escrow-bind",
+		Milestones: milestones,
 	})
 	require.NoError(t, err)
 	require.NotNil(t, updated.EscrowExecutionInput)
 	require.Equal(t, EscrowExecutionStatusPending, updated.EscrowExecutionStatus)
 	require.Equal(t, "did:lango:buyer", updated.EscrowExecutionInput.BuyerDID)
 	require.Equal(t, "3.50", updated.EscrowExecutionInput.Amount)
+	require.Len(t, updated.EscrowExecutionInput.Milestones, 2)
 
-	gotSub, events, err := store.GetSubmissionReceipt(ctx, sub.SubmissionReceiptID)
+	milestones[0].Amount = "9.99"
+	updated.EscrowExecutionInput.Milestones[0].Amount = "7.77"
+
+	gotTx, err := store.GetTransactionReceipt(ctx, tx.TransactionReceiptID)
 	require.NoError(t, err)
-	require.Equal(t, sub.SubmissionReceiptID, gotSub.SubmissionReceiptID)
-	require.Empty(t, events)
+	require.NotNil(t, gotTx.EscrowExecutionInput)
+	require.Equal(t, "1.50", gotTx.EscrowExecutionInput.Milestones[0].Amount)
+	require.Equal(t, "2.00", gotTx.EscrowExecutionInput.Milestones[1].Amount)
 }
 
 func TestApplyEscrowExecutionProgress_RecordsCreatedFundedAndFailed(t *testing.T) {
@@ -392,6 +445,36 @@ func TestApplyEscrowExecutionProgress_RecordsCreatedFundedAndFailed(t *testing.T
 	require.Equal(t, EventEscrowExecutionFunded, events[1].Type)
 	require.Equal(t, EventEscrowExecutionFailed, events[2].Type)
 	require.Equal(t, "funding reverted", events[2].Reason)
+}
+
+func TestApplyEscrowExecutionProgress_RejectsInvalidStatusAndUnboundInput(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	sub, tx, err := store.CreateSubmissionReceipt(ctx, CreateSubmissionInput{
+		TransactionID:       "tx-escrow-invalid-progress",
+		ArtifactLabel:       "memo",
+		PayloadHash:         "hash-invalid-progress",
+		SourceLineageDigest: "lineage-invalid-progress",
+	})
+	require.NoError(t, err)
+
+	_, err = store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, sub.SubmissionReceiptID, EscrowExecutionStatusCreated, "", EventEscrowExecutionCreated, "")
+	require.ErrorIs(t, err, ErrInvalidEscrowExecutionState)
+
+	_, err = store.BindEscrowExecutionInput(ctx, tx.TransactionReceiptID, sub.SubmissionReceiptID, EscrowExecutionInput{
+		BuyerDID:  "did:lango:buyer",
+		SellerDID: "did:lango:seller",
+		Amount:    "4.00",
+		Reason:    "knowledge exchange",
+	})
+	require.NoError(t, err)
+
+	_, err = store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, sub.SubmissionReceiptID, EscrowExecutionStatus("bogus"), "", EventEscrowExecutionCreated, "")
+	require.ErrorIs(t, err, ErrInvalidEscrowExecutionStatus)
+
+	_, err = store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, sub.SubmissionReceiptID, EscrowExecutionStatusFunded, "", EventEscrowExecutionCreated, "")
+	require.ErrorIs(t, err, ErrInvalidEscrowExecutionState)
 }
 
 func TestAppendReceiptEvent_RejectsInvalidEventType(t *testing.T) {

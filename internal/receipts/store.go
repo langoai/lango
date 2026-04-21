@@ -79,9 +79,12 @@ func (s *Store) CreateSubmissionReceipt(_ context.Context, in CreateSubmissionIn
 
 	transaction := s.transactions[txReceiptID]
 	transaction.CurrentSubmissionReceiptID = submissionReceiptID
+	transaction.EscrowExecutionStatus = ""
+	transaction.EscrowReference = ""
+	transaction.EscrowExecutionInput = nil
 	s.transactions[txReceiptID] = transaction
 
-	return submission, transaction, nil
+	return submission, cloneTransactionReceipt(transaction), nil
 }
 
 func (s *Store) ApplyUpfrontPaymentApproval(_ context.Context, transactionReceiptID, submissionReceiptID string, outcome paymentapproval.Outcome) (TransactionReceipt, error) {
@@ -124,7 +127,7 @@ func (s *Store) ApplyUpfrontPaymentApproval(_ context.Context, transactionReceip
 		Type:                EventPaymentApproval,
 	})
 
-	return transaction, nil
+	return cloneTransactionReceipt(transaction), nil
 }
 
 func (s *Store) BindEscrowExecutionInput(_ context.Context, transactionReceiptID, submissionReceiptID string, input EscrowExecutionInput) (TransactionReceipt, error) {
@@ -144,16 +147,19 @@ func (s *Store) BindEscrowExecutionInput(_ context.Context, transactionReceiptID
 		return TransactionReceipt{}, fmt.Errorf("%w: submission does not belong to transaction", ErrSubmissionReceiptNotFound)
 	}
 
-	inputCopy := input
+	inputCopy := cloneEscrowExecutionInput(&input)
 	transaction.EscrowExecutionStatus = EscrowExecutionStatusPending
-	transaction.EscrowExecutionInput = &inputCopy
+	transaction.EscrowExecutionInput = inputCopy
 	s.transactions[transactionReceiptID] = transaction
 
-	return transaction, nil
+	return cloneTransactionReceipt(transaction), nil
 }
 
 func (s *Store) ApplyEscrowExecutionProgress(_ context.Context, transactionReceiptID, submissionReceiptID string, status EscrowExecutionStatus, escrowReference string, eventType EventType, reason string) (TransactionReceipt, error) {
 	if err := validateEventType(eventType); err != nil {
+		return TransactionReceipt{}, err
+	}
+	if err := validateEscrowExecutionStatus(status); err != nil {
 		return TransactionReceipt{}, err
 	}
 
@@ -172,6 +178,17 @@ func (s *Store) ApplyEscrowExecutionProgress(_ context.Context, transactionRecei
 	if submission.TransactionReceiptID != transactionReceiptID {
 		return TransactionReceipt{}, fmt.Errorf("%w: submission does not belong to transaction", ErrSubmissionReceiptNotFound)
 	}
+	if transaction.EscrowExecutionInput == nil {
+		return TransactionReceipt{}, fmt.Errorf("%w: escrow execution input is required", ErrInvalidEscrowExecutionState)
+	}
+
+	expectedEventType, err := escrowExecutionEventTypeForStatus(status)
+	if err != nil {
+		return TransactionReceipt{}, err
+	}
+	if eventType != expectedEventType {
+		return TransactionReceipt{}, fmt.Errorf("%w: status %q does not match event type %q", ErrInvalidEscrowExecutionState, status, eventType)
+	}
 
 	transaction.EscrowExecutionStatus = status
 	if escrowReference != "" {
@@ -187,7 +204,7 @@ func (s *Store) ApplyEscrowExecutionProgress(_ context.Context, transactionRecei
 		Type:                eventType,
 	})
 
-	return transaction, nil
+	return cloneTransactionReceipt(transaction), nil
 }
 
 func (s *Store) AppendReceiptEvent(_ context.Context, submissionReceiptID string, eventType EventType) error {
@@ -243,7 +260,7 @@ func (s *Store) GetTransactionReceipt(_ context.Context, transactionReceiptID st
 		return TransactionReceipt{}, ErrTransactionReceiptNotFound
 	}
 
-	return transaction, nil
+	return cloneTransactionReceipt(transaction), nil
 }
 
 func (s *Store) appendPaymentExecutionEvent(_ context.Context, submissionReceiptID string, eventType EventType, reason string, subtype string) error {
@@ -313,6 +330,46 @@ func validatePaymentApprovalStatus(status PaymentApprovalStatus) error {
 	default:
 		return fmt.Errorf("%w: %q", ErrInvalidPaymentApprovalStatus, status)
 	}
+}
+
+func validateEscrowExecutionStatus(status EscrowExecutionStatus) error {
+	switch status {
+	case EscrowExecutionStatusCreated, EscrowExecutionStatusFunded, EscrowExecutionStatusFailed:
+		return nil
+	default:
+		return fmt.Errorf("%w: %q", ErrInvalidEscrowExecutionStatus, status)
+	}
+}
+
+func escrowExecutionEventTypeForStatus(status EscrowExecutionStatus) (EventType, error) {
+	switch status {
+	case EscrowExecutionStatusCreated:
+		return EventEscrowExecutionCreated, nil
+	case EscrowExecutionStatusFunded:
+		return EventEscrowExecutionFunded, nil
+	case EscrowExecutionStatusFailed:
+		return EventEscrowExecutionFailed, nil
+	default:
+		return "", fmt.Errorf("%w: %q", ErrInvalidEscrowExecutionStatus, status)
+	}
+}
+
+func cloneEscrowExecutionInput(input *EscrowExecutionInput) *EscrowExecutionInput {
+	if input == nil {
+		return nil
+	}
+
+	cloned := *input
+	if len(input.Milestones) > 0 {
+		cloned.Milestones = append([]EscrowMilestoneInput(nil), input.Milestones...)
+	}
+
+	return &cloned
+}
+
+func cloneTransactionReceipt(transaction TransactionReceipt) TransactionReceipt {
+	transaction.EscrowExecutionInput = cloneEscrowExecutionInput(transaction.EscrowExecutionInput)
+	return transaction
 }
 
 func paymentApprovalStatusFromDecision(decision paymentapproval.Decision) (PaymentApprovalStatus, error) {
