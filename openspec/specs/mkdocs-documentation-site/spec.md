@@ -1,7 +1,7 @@
 # mkdocs-documentation-site Specification
 
 ## Purpose
-TBD - created by archiving change add-mkdocs-documentation-site. Update Purpose after archive.
+Exclusion-aware MkDocs documentation site with a strict public IA surface.
 ## Requirements
 ### Requirement: MkDocs configuration file
 The project SHALL have a `mkdocs.yml` at the repository root configuring MkDocs Material with search, minify, code copy, Mermaid diagrams, dark/light mode toggle, and a navigation structure covering all documentation sections.
@@ -20,6 +20,13 @@ The `docs/` directory SHALL contain markdown files organized into subdirectories
 #### Scenario: All navigation entries resolve
 - **WHEN** `mkdocs build` is run
 - **THEN** every entry in the `nav:` section of `mkdocs.yml` SHALL resolve to an existing markdown file
+
+### Requirement: Hidden docs are excluded from the public build
+The project SHALL configure `exclude_docs` so hidden docs, superpowers planning artifacts, and withdrawn cockpit sub-guides do not ship in the built site.
+
+#### Scenario: Hidden docs do not appear in the public site
+- **WHEN** `python3 -m mkdocs build --strict` is run from the project root
+- **THEN** the excluded files SHALL be omitted from the generated site and SHALL not produce not-in-nav warnings
 
 ### Requirement: Home page with feature grid
 The `docs/index.md` SHALL display a feature grid using Material grid cards, an experimental warning admonition, a quick install snippet, and links to getting started.
@@ -75,6 +82,13 @@ The mkdocs.yml navigation SHALL include "P2P Network: features/p2p-network.md", 
 - **WHEN** the mkdocs site is built
 - **THEN** the CLI Reference navigation section includes "Economy Commands", "Contract Commands", and "Metrics Commands" entries after "P2P Commands"
 
+### Requirement: Public MkDocs IA exposes the chosen public surfaces
+The MkDocs navigation SHALL surface the selected public Security pages and the top-level Research page while keeping the rest of the documentation tree hidden from the public site.
+
+#### Scenario: Public security and research pages remain navigable
+- **WHEN** the documentation site is built
+- **THEN** the nav SHALL include only the intended public Security entries and the Research entry
+
 ### Requirement: Configuration reference
 The documentation SHALL include a complete configuration reference page listing all configuration keys with type, default value, and description, organized by category, including Economy and Observability sections.
 
@@ -88,4 +102,3 @@ The `docs/assets/` directory SHALL contain the project logo. The `docs/styleshee
 #### Scenario: Logo and styles present
 - **WHEN** the documentation site is served
 - **THEN** the logo SHALL appear in the navigation header and badge CSS SHALL be available
-
