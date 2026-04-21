@@ -343,10 +343,7 @@ func TestBindEscrowExecutionInput_PersistsCanonicalInputOnTransaction(t *testing
 	gotSub, events, err := store.GetSubmissionReceipt(ctx, sub.SubmissionReceiptID)
 	require.NoError(t, err)
 	require.Equal(t, sub.SubmissionReceiptID, gotSub.SubmissionReceiptID)
-	require.Len(t, events, 1)
-	require.Equal(t, EventEscrowExecutionStarted, events[0].Type)
-	require.Equal(t, "escrow_execution", events[0].Source)
-	require.Equal(t, "started", events[0].Subtype)
+	require.Empty(t, events)
 }
 
 func TestApplyEscrowExecutionProgress_RecordsCreatedFundedAndFailed(t *testing.T) {
@@ -373,8 +370,10 @@ func TestApplyEscrowExecutionProgress_RecordsCreatedFundedAndFailed(t *testing.T
 	})
 	require.NoError(t, err)
 
-	_, err = store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, sub.SubmissionReceiptID, EscrowExecutionStatusCreated, "escrow-1", EventEscrowExecutionCreated, "")
+	created, err := store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, sub.SubmissionReceiptID, EscrowExecutionStatusCreated, "", EventEscrowExecutionCreated, "")
 	require.NoError(t, err)
+	require.Equal(t, EscrowExecutionStatusCreated, created.EscrowExecutionStatus)
+	require.Empty(t, created.EscrowReference)
 
 	updated, err := store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, sub.SubmissionReceiptID, EscrowExecutionStatusFunded, "escrow-1", EventEscrowExecutionFunded, "")
 	require.NoError(t, err)
@@ -388,12 +387,11 @@ func TestApplyEscrowExecutionProgress_RecordsCreatedFundedAndFailed(t *testing.T
 
 	_, events, err := store.GetSubmissionReceipt(ctx, sub.SubmissionReceiptID)
 	require.NoError(t, err)
-	require.Len(t, events, 4)
-	require.Equal(t, EventEscrowExecutionStarted, events[0].Type)
-	require.Equal(t, EventEscrowExecutionCreated, events[1].Type)
-	require.Equal(t, EventEscrowExecutionFunded, events[2].Type)
-	require.Equal(t, EventEscrowExecutionFailed, events[3].Type)
-	require.Equal(t, "funding reverted", events[3].Reason)
+	require.Len(t, events, 3)
+	require.Equal(t, EventEscrowExecutionCreated, events[0].Type)
+	require.Equal(t, EventEscrowExecutionFunded, events[1].Type)
+	require.Equal(t, EventEscrowExecutionFailed, events[2].Type)
+	require.Equal(t, "funding reverted", events[2].Reason)
 }
 
 func TestAppendReceiptEvent_RejectsInvalidEventType(t *testing.T) {

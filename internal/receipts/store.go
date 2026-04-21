@@ -147,15 +147,7 @@ func (s *Store) BindEscrowExecutionInput(_ context.Context, transactionReceiptID
 	inputCopy := input
 	transaction.EscrowExecutionStatus = EscrowExecutionStatusPending
 	transaction.EscrowExecutionInput = &inputCopy
-	transaction.EscrowReference = ""
 	s.transactions[transactionReceiptID] = transaction
-
-	s.events[submissionReceiptID] = append(s.events[submissionReceiptID], ReceiptEvent{
-		SubmissionReceiptID: submissionReceiptID,
-		Source:              "escrow_execution",
-		Subtype:             "started",
-		Type:                EventEscrowExecutionStarted,
-	})
 
 	return transaction, nil
 }
@@ -182,7 +174,9 @@ func (s *Store) ApplyEscrowExecutionProgress(_ context.Context, transactionRecei
 	}
 
 	transaction.EscrowExecutionStatus = status
-	transaction.EscrowReference = escrowReference
+	if escrowReference != "" {
+		transaction.EscrowReference = escrowReference
+	}
 	s.transactions[transactionReceiptID] = transaction
 
 	s.events[submissionReceiptID] = append(s.events[submissionReceiptID], ReceiptEvent{
