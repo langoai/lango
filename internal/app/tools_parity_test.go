@@ -22,6 +22,7 @@ import (
 	"github.com/langoai/lango/internal/librarian"
 	"github.com/langoai/lango/internal/memory"
 	"github.com/langoai/lango/internal/p2p/team"
+	"github.com/langoai/lango/internal/receipts"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/supervisor"
 	"github.com/langoai/lango/internal/tooloutput"
@@ -311,6 +312,38 @@ func TestBuildMetaTools_Parity(t *testing.T) {
 		"import_skill",
 		"learning_stats",
 		"learning_cleanup",
+	}
+
+	assert.Len(t, tools, len(wantNames))
+	assert.Equal(t, wantNames, toolNamesUnsorted(tools))
+	assertAllHandlersNonNil(t, tools)
+	assertNoDuplicateNames(t, tools)
+}
+
+func TestBuildMetaToolsWithEscrow_Parity(t *testing.T) {
+	t.Parallel()
+
+	receiptStore := receipts.NewStore()
+	escrowEngine := escrow.NewEngine(escrow.NewMemoryStore(), escrow.NoopSettler{}, escrow.DefaultEngineConfig())
+	tools := buildMetaToolsWithEscrow(nil, nil, nil, config.SkillConfig{}, nil, receiptStore, escrowEngine)
+
+	wantNames := []string{
+		"save_knowledge",
+		"evaluate_exportability",
+		"approve_artifact_release",
+		"create_dispute_ready_receipt",
+		"approve_upfront_payment",
+		"get_knowledge_history",
+		"search_knowledge",
+		"save_learning",
+		"search_learnings",
+		"create_skill",
+		"list_skills",
+		"view_skill",
+		"import_skill",
+		"learning_stats",
+		"learning_cleanup",
+		"execute_escrow_recommendation",
 	}
 
 	assert.Len(t, tools, len(wantNames))

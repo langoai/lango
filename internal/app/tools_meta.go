@@ -13,8 +13,10 @@ import (
 
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/economy/escrow"
 	entknowledge "github.com/langoai/lango/internal/ent/knowledge"
 	entlearning "github.com/langoai/lango/internal/ent/learning"
+	"github.com/langoai/lango/internal/escrowexecution"
 	"github.com/langoai/lango/internal/exportability"
 	"github.com/langoai/lango/internal/knowledge"
 	"github.com/langoai/lango/internal/learning"
@@ -29,6 +31,18 @@ import (
 // cfg is used for session-mode-aware skill filtering and view_skill path resolution;
 // it may be nil for tests that don't exercise mode features.
 func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *skill.Registry, skillCfg config.SkillConfig, cfg *config.Config, receiptStore *receipts.Store) []*agent.Tool {
+	return buildMetaToolsWithEscrow(store, engine, registry, skillCfg, cfg, receiptStore, nil)
+}
+
+func buildMetaToolsWithEscrow(
+	store *knowledge.Store,
+	engine *learning.Engine,
+	registry *skill.Registry,
+	skillCfg config.SkillConfig,
+	cfg *config.Config,
+	receiptStore *receipts.Store,
+	escrowRuntime escrowExecutionRuntime,
+) []*agent.Tool {
 	exportabilityEnabled := exportabilityPolicyEnabled(cfg)
 
 	tools := []*agent.Tool{
@@ -966,7 +980,16 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 		},
 	}
 
+	if escrowTool := newExecuteEscrowRecommendationTool(receiptStore, escrowRuntime); escrowTool != nil {
+		tools = append(tools, escrowTool)
+	}
+
 	return tools
+}
+
+type escrowExecutionRuntime interface {
+	Create(context.Context, escrow.CreateRequest) (*escrow.EscrowEntry, error)
+	Fund(context.Context, string) (*escrow.EscrowEntry, error)
 }
 
 func exportabilityPolicyEnabled(cfg *config.Config) bool {
@@ -1165,6 +1188,53 @@ func parseEscrowExecutionInput(params map[string]interface{}, amount string) (re
 		TaskID:     taskID,
 		Milestones: milestones,
 	}, nil
+}
+
+func newExecuteEscrowRecommendationTool(receiptStore *receipts.Store, runtime escrowExecutionRuntime) *agent.Tool {
+	if runtime == nil {
+		return nil
+	}
+
+	return &agent.Tool{
+		Name:        "execute_escrow_recommendation",
+		Description: "Execute a previously approved escrow recommendation for a transaction receipt and persist canonical escrow evidence",
+		SafetyLevel: agent.SafetyLevelDangerous,
+		Capability: agent.ToolCapability{
+			Category: "knowledge",
+			Activity: agent.ActivityWrite,
+		},
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"transaction_receipt_id": map[string]interface{}{"type": "string", "description": "Approved transaction receipt identifier with bound escrow execution input"},
+			},
+			"required": []string{"transaction_receipt_id"},
+		},
+		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+			if receiptStore == nil {
+				return nil, fmt.Errorf("receipts store dependency is not configured")
+			}
+
+			transactionReceiptID, err := toolparam.RequireString(params, "transaction_receipt_id")
+			if err != nil {
+				return nil, err
+			}
+
+			result, err := escrowexecution.NewService(receiptStore, runtime).ExecuteRecommendation(ctx, escrowexecution.Request{
+				TransactionReceiptID: transactionReceiptID,
+			})
+			if err != nil {
+				return nil, err
+			}
+
+			return map[string]interface{}{
+				"transaction_receipt_id":  result.TransactionReceiptID,
+				"submission_receipt_id":   result.SubmissionReceiptID,
+				"escrow_reference":        result.EscrowReference,
+				"escrow_execution_status": string(result.EscrowExecutionStatus),
+			}, nil
+		},
+	}
 }
 
 func newDisputeReadyReceiptTool(receiptStore *receipts.Store) *agent.Tool {

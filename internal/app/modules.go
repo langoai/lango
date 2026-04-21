@@ -821,6 +821,16 @@ func (m *networkModule) Init(ctx context.Context, r appinit.Resolver) (*appinit.
 				tools = append(tools, sentTools...)
 				entries = append(entries, appinit.CatalogEntry{Category: "sentinel", Description: "Security Sentinel anomaly detection", ConfigKey: "economy.escrow.enabled", Enabled: true, Tools: sentTools})
 			}
+			if escrowMetaTool := newExecuteEscrowRecommendationTool(fv.ReceiptStore, econc.escrowEngine); escrowMetaTool != nil {
+				tools = append(tools, escrowMetaTool)
+				entries = append(entries, appinit.CatalogEntry{
+					Category:    "meta",
+					Description: "Knowledge, learning, and skill management",
+					ConfigKey:   "knowledge.enabled",
+					Enabled:     true,
+					Tools:       []*agent.Tool{escrowMetaTool},
+				})
+			}
 
 			// Economy lifecycle components (EventMonitor, DanglingDetector).
 			if econc.eventMonitor != nil {
