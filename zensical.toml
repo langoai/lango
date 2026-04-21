@@ -80,7 +80,7 @@ nav = [
       { "Authentication" = "security/authentication.md" }
   ]},
   { "Research" = [
-      { "Phase 7 PQ On-Chain Feasibility" = "research/phase7-pq-onchain-feasibility.md" }
+      { "phase7-pq-onchain-feasibility.md" = "research/phase7-pq-onchain-feasibility.md" }
   ]},
   { "Payments" = [
       "payments/index.md",
@@ -138,8 +138,11 @@ features = [
   "navigation.top",
   "navigation.indexes",
   "navigation.footer",
+  "search.suggest",
+  "search.share",
   "search.highlight",
   "content.code.copy",
+  "content.code.annotate",
   "content.tabs.link",
   "toc.follow",
 ]
