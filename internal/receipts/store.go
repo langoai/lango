@@ -207,6 +207,13 @@ func (s *Store) ApplyEscrowExecutionProgress(_ context.Context, transactionRecei
 	if eventType != expectedEventType {
 		return TransactionReceipt{}, fmt.Errorf("%w: status %q does not match event type %q", ErrInvalidEscrowExecutionState, status, eventType)
 	}
+	if status == EscrowExecutionStatusPending && eventType == EventEscrowExecutionStarted {
+		for _, existing := range s.events[submissionReceiptID] {
+			if existing.Type == EventEscrowExecutionStarted && existing.Source == "escrow_execution" {
+				return TransactionReceipt{}, fmt.Errorf("%w: duplicate escrow start for submission", ErrInvalidEscrowExecutionState)
+			}
+		}
+	}
 
 	transaction.EscrowExecutionStatus = status
 	if escrowReference != "" {
