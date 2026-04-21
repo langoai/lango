@@ -568,6 +568,40 @@ func TestApplyEscrowExecutionProgress_RejectsInvalidStatusAndUnboundInput(t *tes
 	require.ErrorIs(t, err, ErrInvalidEscrowExecutionState)
 }
 
+func TestApplyEscrowExecutionProgress_RejectsNonCurrentSubmission(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	first, tx, err := store.CreateSubmissionReceipt(ctx, CreateSubmissionInput{
+		TransactionID:       "tx-escrow-stale-progress",
+		ArtifactLabel:       "artifact/escrow-stale-progress-1",
+		PayloadHash:         "hash-escrow-stale-progress-1",
+		SourceLineageDigest: "lineage-escrow-stale-progress-1",
+	})
+	require.NoError(t, err)
+
+	second, nextTx, err := store.CreateSubmissionReceipt(ctx, CreateSubmissionInput{
+		TransactionID:       "tx-escrow-stale-progress",
+		ArtifactLabel:       "artifact/escrow-stale-progress-2",
+		PayloadHash:         "hash-escrow-stale-progress-2",
+		SourceLineageDigest: "lineage-escrow-stale-progress-2",
+	})
+	require.NoError(t, err)
+	require.Equal(t, tx.TransactionReceiptID, nextTx.TransactionReceiptID)
+	require.Equal(t, second.SubmissionReceiptID, nextTx.CurrentSubmissionReceiptID)
+
+	_, err = store.BindEscrowExecutionInput(ctx, tx.TransactionReceiptID, second.SubmissionReceiptID, EscrowExecutionInput{
+		BuyerDID:  "did:lango:buyer",
+		SellerDID: "did:lango:seller",
+		Amount:    "4.00",
+		Reason:    "knowledge exchange",
+	})
+	require.NoError(t, err)
+
+	_, err = store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, first.SubmissionReceiptID, EscrowExecutionStatusPending, "", EventEscrowExecutionStarted, "")
+	require.ErrorIs(t, err, ErrInvalidEscrowExecutionState)
+}
+
 func TestApplyEscrowExecutionProgress_RejectsIllegalTransitions(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()

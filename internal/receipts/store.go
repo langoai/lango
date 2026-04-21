@@ -182,6 +182,9 @@ func (s *Store) ApplyEscrowExecutionProgress(_ context.Context, transactionRecei
 	if submission.TransactionReceiptID != transactionReceiptID {
 		return TransactionReceipt{}, fmt.Errorf("%w: submission does not belong to transaction", ErrSubmissionReceiptNotFound)
 	}
+	if transaction.CurrentSubmissionReceiptID != submissionReceiptID {
+		return TransactionReceipt{}, fmt.Errorf("%w: submission is not current for transaction", ErrInvalidEscrowExecutionState)
+	}
 	if transaction.EscrowExecutionInput == nil {
 		return TransactionReceipt{}, fmt.Errorf("%w: escrow execution input is required", ErrInvalidEscrowExecutionState)
 	}
