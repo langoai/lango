@@ -78,7 +78,7 @@ func (s *Service) ExecuteRecommendation(ctx context.Context, req Request) (Resul
 	createdEntry, err := s.runtime.Create(ctx, createReq)
 	if err != nil {
 		opErr := fmt.Errorf("create escrow for transaction receipt %q: %w", transactionReceiptID, err)
-		return Result{}, s.appendFailure(ctx, transactionReceiptID, submissionReceiptID, escrowIDFromEntry(createdEntry), opErr)
+		return Result{}, s.appendFailure(ctx, transactionReceiptID, submissionReceiptID, "", opErr)
 	}
 
 	createdEscrowID := escrowIDFromEntry(createdEntry)

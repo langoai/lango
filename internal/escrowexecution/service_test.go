@@ -178,7 +178,7 @@ func TestService_ExecuteRecommendation_CreateFailureRecordsFailedState(t *testin
 	updatedTx, getErr := store.GetTransactionReceipt(ctx, tx.TransactionReceiptID)
 	require.NoError(t, getErr)
 	assert.Equal(t, receipts.EscrowExecutionStatusFailed, updatedTx.EscrowExecutionStatus)
-	assert.Equal(t, "escrow-create-failed", updatedTx.EscrowReference)
+	assert.Empty(t, updatedTx.EscrowReference)
 
 	_, events, getErr := store.GetSubmissionReceipt(ctx, submission.SubmissionReceiptID)
 	require.NoError(t, getErr)
