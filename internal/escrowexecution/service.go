@@ -13,8 +13,6 @@ import (
 
 type receiptStore interface {
 	GetTransactionReceipt(context.Context, string) (receipts.TransactionReceipt, error)
-	GetSubmissionReceipt(context.Context, string) (receipts.SubmissionReceipt, []receipts.ReceiptEvent, error)
-	AppendReceiptEvent(context.Context, string, receipts.EventType) error
 	ApplyEscrowExecutionProgress(context.Context, string, string, receipts.EscrowExecutionStatus, string, receipts.EventType, string) (receipts.TransactionReceipt, error)
 }
 
@@ -46,23 +44,9 @@ func (s *Service) ExecuteRecommendation(ctx context.Context, req Request) (Resul
 		return Result{}, fmt.Errorf("load transaction receipt %q: %w", transactionReceiptID, err)
 	}
 
-	submissionReceiptID := strings.TrimSpace(req.SubmissionReceiptID)
-	if submissionReceiptID == "" {
-		submissionReceiptID = strings.TrimSpace(transaction.CurrentSubmissionReceiptID)
-	}
+	submissionReceiptID := strings.TrimSpace(transaction.CurrentSubmissionReceiptID)
 	if submissionReceiptID == "" {
 		return Result{}, fmt.Errorf("transaction receipt %q has no current submission receipt", transactionReceiptID)
-	}
-
-	submission, _, err := s.store.GetSubmissionReceipt(ctx, submissionReceiptID)
-	if err != nil {
-		return Result{}, fmt.Errorf("load submission receipt %q: %w", submissionReceiptID, err)
-	}
-	if submission.TransactionReceiptID != transactionReceiptID {
-		return Result{}, fmt.Errorf("submission receipt %q does not belong to transaction receipt %q", submissionReceiptID, transactionReceiptID)
-	}
-	if transaction.CurrentSubmissionReceiptID != submissionReceiptID {
-		return Result{}, fmt.Errorf("submission receipt %q is not the current submission for transaction receipt %q", submissionReceiptID, transactionReceiptID)
 	}
 	if transaction.CurrentPaymentApprovalStatus != receipts.PaymentApprovalApproved {
 		return Result{}, fmt.Errorf("transaction receipt %q payment approval status is %q, want %q", transactionReceiptID, transaction.CurrentPaymentApprovalStatus, receipts.PaymentApprovalApproved)
@@ -79,8 +63,16 @@ func (s *Service) ExecuteRecommendation(ctx context.Context, req Request) (Resul
 		return Result{}, err
 	}
 
-	if err := s.store.AppendReceiptEvent(ctx, submissionReceiptID, receipts.EventEscrowExecutionStarted); err != nil {
-		return Result{}, fmt.Errorf("append escrow execution started event for submission receipt %q: %w", submissionReceiptID, err)
+	if _, err := s.store.ApplyEscrowExecutionProgress(
+		ctx,
+		transactionReceiptID,
+		submissionReceiptID,
+		receipts.EscrowExecutionStatusPending,
+		"",
+		receipts.EventEscrowExecutionStarted,
+		"",
+	); err != nil {
+		return Result{}, fmt.Errorf("record escrow started progress for transaction receipt %q: %w", transactionReceiptID, err)
 	}
 
 	createdEntry, err := s.runtime.Create(ctx, createReq)
@@ -132,10 +124,10 @@ func (s *Service) ExecuteRecommendation(ctx context.Context, req Request) (Resul
 	}
 
 	return Result{
-		TransactionReceiptID: transactionReceiptID,
-		SubmissionReceiptID:  submissionReceiptID,
-		EscrowID:             fundedEscrowID,
-		Status:               updatedTx.EscrowExecutionStatus,
+		TransactionReceiptID:  transactionReceiptID,
+		SubmissionReceiptID:   submissionReceiptID,
+		EscrowReference:       fundedEscrowID,
+		EscrowExecutionStatus: updatedTx.EscrowExecutionStatus,
 	}, nil
 }
 
