@@ -86,7 +86,7 @@ The judgment baseline for this audit is deliberately narrow:
 
 ## Baseline Relationship Model
 
-The following relationship model is locked for this audit.
+The following relationship model is locked for this audit and should remain stable for later runtime and market-facing design work.
 
 - `owner-root trust` provides a bootstrap ceiling and floor, but it does not grant a new agent full inherited trust.
 - `agent/domain reputation` is earned from actual exchange history, fulfillment, and repeated collaboration outcomes.
@@ -268,15 +268,6 @@ This means the current model is intentionally mixed:
 ## Assessment
 
 All four rows remain `stabilize`: the capability family is real, but the operator-facing relationship model still needs consolidation.
-
-The main locked outcome from this audit is the relationship model:
-
-- owner-root trust versus agent/domain reputation,
-- admission trust versus payment trust,
-- operational signals versus durable negative reputation,
-- bootstrap trust versus earned trust.
-
-That relationship model is already implied by the current code and docs surface. The work now is to preserve it consistently across later runtime and market-facing designs.
 
 ## Follow-On Design Inputs
 
