@@ -94,12 +94,12 @@ func TestExecuteEscrowRecommendation_SuccessfulPayloadOnPreparedEscrowRecommende
 	})
 	require.NoError(t, err)
 
-	payload, ok := got.(map[string]interface{})
+	payload, ok := got.(executeEscrowRecommendationReceipt)
 	require.True(t, ok)
-	assert.Equal(t, tx.TransactionReceiptID, payload["transaction_receipt_id"])
-	assert.Equal(t, submission.SubmissionReceiptID, payload["submission_receipt_id"])
-	assert.NotEmpty(t, payload["escrow_reference"])
-	assert.Equal(t, string(receipts.EscrowExecutionStatusFunded), payload["escrow_execution_status"])
+	assert.Equal(t, tx.TransactionReceiptID, payload.TransactionReceiptID)
+	assert.Equal(t, submission.SubmissionReceiptID, payload.SubmissionReceiptID)
+	assert.NotEmpty(t, payload.EscrowReference)
+	assert.Equal(t, string(receipts.EscrowExecutionStatusFunded), payload.EscrowExecutionStatus)
 
 	updatedTx, err := store.GetTransactionReceipt(ctx, tx.TransactionReceiptID)
 	require.NoError(t, err)

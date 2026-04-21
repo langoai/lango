@@ -1227,11 +1227,11 @@ func newExecuteEscrowRecommendationTool(receiptStore *receipts.Store, runtime es
 				return nil, err
 			}
 
-			return map[string]interface{}{
-				"transaction_receipt_id":  result.TransactionReceiptID,
-				"submission_receipt_id":   result.SubmissionReceiptID,
-				"escrow_reference":        result.EscrowReference,
-				"escrow_execution_status": string(result.EscrowExecutionStatus),
+			return executeEscrowRecommendationReceipt{
+				TransactionReceiptID:  result.TransactionReceiptID,
+				SubmissionReceiptID:   result.SubmissionReceiptID,
+				EscrowReference:       result.EscrowReference,
+				EscrowExecutionStatus: string(result.EscrowExecutionStatus),
 			}, nil
 		},
 	}
@@ -1328,6 +1328,13 @@ type upfrontPaymentApprovalReceipt struct {
 	CanonicalDecision            string  `json:"canonical_decision,omitempty"`
 	CanonicalSettlementHint      string  `json:"canonical_settlement_hint,omitempty"`
 	EscrowExecutionStatus        string  `json:"escrow_execution_status,omitempty"`
+}
+
+type executeEscrowRecommendationReceipt struct {
+	TransactionReceiptID  string `json:"transaction_receipt_id"`
+	SubmissionReceiptID   string `json:"submission_receipt_id"`
+	EscrowReference       string `json:"escrow_reference"`
+	EscrowExecutionStatus string `json:"escrow_execution_status"`
 }
 
 func newUpfrontPaymentApprovalReceipt(
