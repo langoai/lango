@@ -304,4 +304,4 @@ Start with `lango doctor` when cockpit behavior looks wrong. The most common iss
 - missing channel messages or approval prompts when `--with-channels` is not enabled or channel credentials are invalid
 - task actions that appear to do nothing because the selected task state does not allow retry or cancel
 
-Check `~/.lango/cockpit.log` for the underlying error details when the TUI does not show enough context. Use a modern terminal with TTY and alt-screen support, and verify the channel/task wiring before assuming the cockpit UI is broken.
+Check `<DataRoot>/cockpit.log` for the underlying error details when the TUI does not show enough context; the default path is `~/.lango/cockpit.log`. Use a modern terminal with TTY and alt-screen support, and verify the channel/task wiring before assuming the cockpit UI is broken.
