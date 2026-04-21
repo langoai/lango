@@ -11,6 +11,8 @@ import (
 
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/payment"
+	"github.com/langoai/lango/internal/paymentgate"
+	"github.com/langoai/lango/internal/receipts"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/toolparam"
@@ -18,10 +20,62 @@ import (
 	"github.com/langoai/lango/internal/x402"
 )
 
+// ServiceAPI captures the payment service methods used by the tool surface.
+type ServiceAPI interface {
+	Send(context.Context, payment.PaymentRequest) (*payment.PaymentReceipt, error)
+	Balance(context.Context) (string, error)
+	History(context.Context, int) ([]payment.TransactionInfo, error)
+	WalletAddress(context.Context) (string, error)
+	ChainID() int64
+	RecordX402Payment(context.Context, payment.X402PaymentRecord) error
+}
+
+// PaymentExecutionGate evaluates whether a direct payment may proceed.
+type PaymentExecutionGate interface {
+	EvaluateDirectPayment(context.Context, paymentgate.Request) (paymentgate.Result, error)
+}
+
+// PaymentExecutionAuditEntry records a payment execution decision for audit logging.
+type PaymentExecutionAuditEntry struct {
+	ToolName             string
+	SessionKey           string
+	TransactionReceiptID string
+	Outcome              string
+	Reason               string
+}
+
+// PaymentExecutionAuditor records payment execution decisions to audit logs.
+type PaymentExecutionAuditor interface {
+	RecordPaymentExecution(context.Context, PaymentExecutionAuditEntry) error
+}
+
+// PaymentExecutionTrail records payment execution decisions in receipt trails.
+type PaymentExecutionTrail interface {
+	AppendPaymentExecutionAuthorized(context.Context, string) error
+	AppendPaymentExecutionDenied(context.Context, string, string) error
+}
+
+type PaymentExecutionDeniedResult struct {
+	Status               string `json:"status"`
+	ToolName             string `json:"tool_name"`
+	TransactionReceiptID string `json:"transaction_receipt_id,omitempty"`
+	Reason               string `json:"reason"`
+	Message              string `json:"message"`
+}
+
 // BuildTools creates the payment agent tools.
-func BuildTools(svc *payment.Service, limiter wallet.SpendingLimiter, secrets *security.SecretsStore, chainID int64, interceptor *x402.Interceptor) []*agent.Tool {
+func BuildTools(svc ServiceAPI, limiter wallet.SpendingLimiter, secrets *security.SecretsStore, chainID int64, interceptor *x402.Interceptor, receiptStore *receipts.Store, auditor PaymentExecutionAuditor) []*agent.Tool {
+	var gate PaymentExecutionGate
+	var trail PaymentExecutionTrail
+	if receiptStore != nil {
+		gate = paymentgate.NewService(receiptStore)
+		trail = receiptStore
+	} else {
+		gate = DenyAllPaymentExecutionGate{}
+	}
+
 	tools := []*agent.Tool{
-		buildSendTool(svc),
+		buildSendTool(svc, gate, trail, auditor),
 		buildBalanceTool(svc),
 		buildHistoryTool(svc),
 		buildLimitsTool(limiter),
@@ -36,7 +90,14 @@ func BuildTools(svc *payment.Service, limiter wallet.SpendingLimiter, secrets *s
 	return tools
 }
 
-func buildSendTool(svc *payment.Service) *agent.Tool {
+// DenyAllPaymentExecutionGate is a fail-closed gate for unavailable receipt-backed execution.
+type DenyAllPaymentExecutionGate struct{}
+
+func (DenyAllPaymentExecutionGate) EvaluateDirectPayment(context.Context, paymentgate.Request) (paymentgate.Result, error) {
+	return paymentgate.Result{Decision: paymentgate.Deny, Reason: paymentgate.ReasonMissingReceipt}, nil
+}
+
+func buildSendTool(svc ServiceAPI, gate PaymentExecutionGate, trail PaymentExecutionTrail, auditor PaymentExecutionAuditor) *agent.Tool {
 	return &agent.Tool{
 		Name:        "payment_send",
 		Description: "Send USDC payment on Base blockchain. Requires approval. Amount is in USDC (e.g. \"0.50\" for 50 cents).",
@@ -53,6 +114,10 @@ func buildSendTool(svc *payment.Service) *agent.Tool {
 					"type":        "string",
 					"description": "Recipient wallet address (0x...)",
 				},
+				"transaction_receipt_id": map[string]interface{}{
+					"type":        "string",
+					"description": "Linked transaction receipt identifier that must be approved for direct payment execution",
+				},
 				"amount": map[string]interface{}{
 					"type":        "string",
 					"description": "Amount in USDC (e.g. \"1.50\")",
@@ -62,10 +127,11 @@ func buildSendTool(svc *payment.Service) *agent.Tool {
 					"description": "Human-readable purpose of the payment",
 				},
 			},
-			"required": []string{"to", "amount", "purpose"},
+			"required": []string{"to", "transaction_receipt_id", "amount", "purpose"},
 		},
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
 			to := toolparam.OptionalString(params, "to", "")
+			transactionReceiptID := toolparam.OptionalString(params, "transaction_receipt_id", "")
 			amount := toolparam.OptionalString(params, "amount", "")
 			purpose := toolparam.OptionalString(params, "purpose", "")
 
@@ -73,8 +139,15 @@ func buildSendTool(svc *payment.Service) *agent.Tool {
 				return nil, fmt.Errorf("to, amount, and purpose are required")
 			}
 
-			sessionKey := session.SessionKeyFromContext(ctx)
+			allowed, denied, err := CheckDirectPaymentExecution(ctx, "payment_send", transactionReceiptID, gate, trail, auditor)
+			if err != nil {
+				return nil, err
+			}
+			if !allowed {
+				return denied, nil
+			}
 
+			sessionKey := session.SessionKeyFromContext(ctx)
 			receipt, err := svc.Send(ctx, payment.PaymentRequest{
 				To:         to,
 				Amount:     amount,
@@ -105,7 +178,7 @@ func buildSendTool(svc *payment.Service) *agent.Tool {
 	}
 }
 
-func buildBalanceTool(svc *payment.Service) *agent.Tool {
+func buildBalanceTool(svc ServiceAPI) *agent.Tool {
 	return &agent.Tool{
 		Name:        "payment_balance",
 		Description: "Check USDC balance of the agent wallet.",
@@ -140,7 +213,7 @@ func buildBalanceTool(svc *payment.Service) *agent.Tool {
 	}
 }
 
-func buildHistoryTool(svc *payment.Service) *agent.Tool {
+func buildHistoryTool(svc ServiceAPI) *agent.Tool {
 	return &agent.Tool{
 		Name:        "payment_history",
 		Description: "View recent payment transaction history.",
@@ -224,7 +297,7 @@ func buildLimitsTool(limiter wallet.SpendingLimiter) *agent.Tool {
 	}
 }
 
-func buildWalletInfoTool(svc *payment.Service) *agent.Tool {
+func buildWalletInfoTool(svc ServiceAPI) *agent.Tool {
 	return &agent.Tool{
 		Name:        "payment_wallet_info",
 		Description: "Show wallet address and network information.",
@@ -295,7 +368,7 @@ func buildCreateWalletTool(secrets *security.SecretsStore, chainID int64) *agent
 }
 
 // buildX402FetchTool creates the payment_x402_fetch tool for HTTP requests with automatic X402 payment.
-func buildX402FetchTool(interceptor *x402.Interceptor, svc *payment.Service) *agent.Tool {
+func buildX402FetchTool(interceptor *x402.Interceptor, svc ServiceAPI) *agent.Tool {
 	return &agent.Tool{
 		Name:        "payment_x402_fetch",
 		Description: "Make an HTTP request with automatic X402 payment. If the server responds with HTTP 402, the agent wallet automatically signs an EIP-3009 authorization and retries. Requires approval.",
@@ -415,5 +488,66 @@ func buildX402FetchTool(interceptor *x402.Interceptor, svc *payment.Service) *ag
 
 			return result, nil
 		},
+	}
+}
+
+func CheckDirectPaymentExecution(ctx context.Context, toolName, transactionReceiptID string, gate PaymentExecutionGate, trail PaymentExecutionTrail, auditor PaymentExecutionAuditor) (bool, *PaymentExecutionDeniedResult, error) {
+	result, err := gate.EvaluateDirectPayment(ctx, paymentgate.Request{
+		TransactionReceiptID: transactionReceiptID,
+		ToolName:             toolName,
+		Context: map[string]interface{}{
+			"session_key": session.SessionKeyFromContext(ctx),
+		},
+	})
+	if err != nil {
+		return false, nil, fmt.Errorf("evaluate payment execution gate: %w", err)
+	}
+
+	entry := PaymentExecutionAuditEntry{
+		ToolName:             toolName,
+		SessionKey:           session.SessionKeyFromContext(ctx),
+		TransactionReceiptID: transactionReceiptID,
+	}
+
+	if result.Decision == paymentgate.Deny {
+		entry.Outcome = "denied"
+		entry.Reason = string(result.Reason)
+		if auditor != nil {
+			_ = auditor.RecordPaymentExecution(ctx, entry)
+		}
+		if trail != nil && transactionReceiptID != "" {
+			_ = trail.AppendPaymentExecutionDenied(ctx, transactionReceiptID, string(result.Reason))
+		}
+		return false, &PaymentExecutionDeniedResult{
+			Status:               "denied",
+			ToolName:             toolName,
+			TransactionReceiptID: transactionReceiptID,
+			Reason:               string(result.Reason),
+			Message:              PaymentExecutionDeniedMessage(result.Reason),
+		}, nil
+	}
+
+	entry.Outcome = "authorized"
+	if auditor != nil {
+		_ = auditor.RecordPaymentExecution(ctx, entry)
+	}
+	if trail != nil && transactionReceiptID != "" {
+		_ = trail.AppendPaymentExecutionAuthorized(ctx, transactionReceiptID)
+	}
+	return true, nil, nil
+}
+
+func PaymentExecutionDeniedMessage(reason paymentgate.DenyReason) string {
+	switch reason {
+	case paymentgate.ReasonMissingReceipt:
+		return "direct payment execution denied: transaction_receipt_id is required"
+	case paymentgate.ReasonApprovalNotApproved:
+		return "direct payment execution denied: canonical payment approval is not approved"
+	case paymentgate.ReasonExecutionModeMismatch:
+		return "direct payment execution denied: canonical settlement hint must be prepay"
+	case paymentgate.ReasonStaleState:
+		return "direct payment execution denied: canonical payment state is stale"
+	default:
+		return "direct payment execution denied"
 	}
 }

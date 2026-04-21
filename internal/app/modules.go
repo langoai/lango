@@ -52,18 +52,19 @@ import (
 
 // foundationValues holds the outputs of the foundation module.
 type foundationValues struct {
-	Supervisor *supervisor.Supervisor
-	Store      session.Store
-	Crypto     security.CryptoProvider
-	Keys       *security.KeyRegistry
-	Secrets    *security.SecretsStore
-	BrowserSM  *browser.SessionManager
-	Refs       *security.RefStore
-	Scanner    *agent.SecretScanner
-	Sanitizer  *gatekeeper.Sanitizer
-	CmdGuard   *execpkg.CommandGuard
-	FsConfig   filesystem.Config
-	AutoAvail  map[string]bool
+	Supervisor   *supervisor.Supervisor
+	Store        session.Store
+	ReceiptStore *receipts.Store
+	Crypto       security.CryptoProvider
+	Keys         *security.KeyRegistry
+	Secrets      *security.SecretsStore
+	BrowserSM    *browser.SessionManager
+	Refs         *security.RefStore
+	Scanner      *agent.SecretScanner
+	Sanitizer    *gatekeeper.Sanitizer
+	CmdGuard     *execpkg.CommandGuard
+	FsConfig     filesystem.Config
+	AutoAvail    map[string]bool
 }
 
 // intelligenceValues holds the outputs of the intelligence module.
@@ -120,6 +121,7 @@ func (m *foundationModule) Init(ctx context.Context, r appinit.Resolver) (*appin
 	if err != nil {
 		return nil, fmt.Errorf("create session store: %w", err)
 	}
+	receiptStore := receipts.NewStore()
 
 	crypto, keys, secrets, err := initSecurity(cfg, store, m.boot)
 	if err != nil {
@@ -184,18 +186,19 @@ func (m *foundationModule) Init(ctx context.Context, r appinit.Resolver) (*appin
 		CatalogEntries: entries,
 		Values: map[appinit.Provides]interface{}{
 			appinit.ProvidesSupervisor: &foundationValues{
-				Supervisor: sv,
-				Store:      store,
-				Crypto:     crypto,
-				Keys:       keys,
-				Secrets:    secrets,
-				BrowserSM:  browserSM,
-				Refs:       refs,
-				Scanner:    scanner,
-				Sanitizer:  san,
-				CmdGuard:   cmdGuard,
-				FsConfig:   fsConfig,
-				AutoAvail:  automationAvailable,
+				Supervisor:   sv,
+				Store:        store,
+				ReceiptStore: receiptStore,
+				Crypto:       crypto,
+				Keys:         keys,
+				Secrets:      secrets,
+				BrowserSM:    browserSM,
+				Refs:         refs,
+				Scanner:      scanner,
+				Sanitizer:    san,
+				CmdGuard:     cmdGuard,
+				FsConfig:     fsConfig,
+				AutoAvail:    automationAvailable,
 			},
 			appinit.ProvidesSessionStore: store,
 			appinit.ProvidesSecurity:     crypto,
@@ -330,10 +333,12 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 		// FTS5 search index.
 		fts5Available = initFTS5(ctx, rawDB, kc.store)
 
-		if m.receiptStore == nil {
-			m.receiptStore = receipts.NewStore()
+		receiptStore := fv.ReceiptStore
+		if receiptStore == nil {
+			receiptStore = receipts.NewStore()
 		}
-		metaTools := buildMetaTools(kc.store, kc.engine, skillReg, cfg.Skill, cfg, m.receiptStore)
+		m.receiptStore = receiptStore
+		metaTools := buildMetaTools(kc.store, kc.engine, skillReg, cfg.Skill, cfg, receiptStore)
 		tools = append(tools, metaTools...)
 		entries = append(entries, appinit.CatalogEntry{Category: "meta", Description: "Knowledge, learning, and skill management", ConfigKey: "knowledge.enabled", Enabled: true, Tools: metaTools})
 	} else {
@@ -666,6 +671,10 @@ func (m *networkModule) Init(ctx context.Context, r appinit.Resolver) (*appinit.
 	if m.boot != nil && m.boot.Storage != nil {
 		repStore = m.boot.Storage.ReputationStore(logger())
 	}
+	var auditRecorder toolpayment.PaymentExecutionAuditor
+	if m.boot != nil && m.boot.Storage != nil {
+		auditRecorder = m.boot.Storage.AuditRecorder()
+	}
 
 	if pc != nil {
 		xc := initX402(cfg, fv.Secrets, pc.limiter)
@@ -673,7 +682,7 @@ func (m *networkModule) Init(ctx context.Context, r appinit.Resolver) (*appinit.
 			x402Interceptor = xc.interceptor
 		}
 
-		pt := toolpayment.BuildTools(pc.service, pc.limiter, pc.secrets, pc.chainID, x402Interceptor)
+		pt := toolpayment.BuildTools(pc.service, pc.limiter, pc.secrets, pc.chainID, x402Interceptor, fv.ReceiptStore, auditRecorder)
 		tools = append(tools, pt...)
 		entries = append(entries, appinit.CatalogEntry{Category: "payment", Description: "Blockchain payments (USDC on Base)", ConfigKey: "payment.enabled", Enabled: true, Tools: pt})
 
@@ -705,7 +714,7 @@ func (m *networkModule) Init(ctx context.Context, r appinit.Resolver) (*appinit.
 			}
 
 			p2pTools := buildP2PTools(p2pc)
-			p2pTools = append(p2pTools, buildP2PPaymentTool(p2pc, pc)...)
+			p2pTools = append(p2pTools, buildP2PPaymentTool(p2pc, pc, fv.ReceiptStore, auditRecorder)...)
 			p2pTools = append(p2pTools, buildP2PPaidInvokeTool(p2pc, pc)...)
 			tools = append(tools, p2pTools...)
 			entries = append(entries, appinit.CatalogEntry{Category: "p2p", Description: "Peer-to-peer networking", ConfigKey: "p2p.enabled", Enabled: true, Tools: p2pTools})

@@ -5,9 +5,9 @@
 
 ## 2. Direct Payment Handler Integration
 
-- [ ] 2.1 Gate `payment_send` with the shared payment execution gate
-- [ ] 2.2 Gate `p2p_pay` with the shared payment execution gate
-- [ ] 2.3 Emit allow/deny execution evidence into audit and receipt trails
+- [x] 2.1 Gate `payment_send` with the shared payment execution gate
+- [x] 2.2 Gate `p2p_pay` with the shared payment execution gate
+- [x] 2.3 Emit allow/deny execution evidence into audit and receipt trails
 
 ## 3. Operator Surface And Docs
 

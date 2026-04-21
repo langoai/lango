@@ -41,14 +41,16 @@ const (
 type EventType string
 
 const (
-	EventDraftExportability EventType = "draft_exportability"
-	EventFinalExportability EventType = "final_exportability"
-	EventApprovalRequested  EventType = "approval_requested"
-	EventApprovalResolved   EventType = "approval_resolved"
-	EventPaymentApproval    EventType = "payment_approval"
-	EventSettlementUpdated  EventType = "settlement_updated"
-	EventEscalated          EventType = "escalated"
-	EventDisputed           EventType = "disputed"
+	EventDraftExportability         EventType = "draft_exportability"
+	EventFinalExportability         EventType = "final_exportability"
+	EventApprovalRequested          EventType = "approval_requested"
+	EventApprovalResolved           EventType = "approval_resolved"
+	EventPaymentApproval            EventType = "payment_approval"
+	EventPaymentExecutionAuthorized EventType = "payment_execution_authorized"
+	EventPaymentExecutionDenied     EventType = "payment_execution_denied"
+	EventSettlementUpdated          EventType = "settlement_updated"
+	EventEscalated                  EventType = "escalated"
+	EventDisputed                   EventType = "disputed"
 )
 
 type ProvenanceSummary struct {

@@ -20,6 +20,7 @@ type ReceiptEvent struct {
 	SubmissionReceiptID string
 	Source              string
 	Subtype             string
+	Reason              string
 	Type                EventType
 }
 
@@ -148,6 +149,14 @@ func (s *Store) AppendReceiptEvent(_ context.Context, submissionReceiptID string
 	return nil
 }
 
+func (s *Store) AppendPaymentExecutionAuthorized(ctx context.Context, transactionReceiptID string) error {
+	return s.appendPaymentExecutionEvent(ctx, transactionReceiptID, EventPaymentExecutionAuthorized, "", "authorized")
+}
+
+func (s *Store) AppendPaymentExecutionDenied(ctx context.Context, transactionReceiptID, reason string) error {
+	return s.appendPaymentExecutionEvent(ctx, transactionReceiptID, EventPaymentExecutionDenied, reason, "denied")
+}
+
 func (s *Store) GetSubmissionReceipt(_ context.Context, submissionReceiptID string) (SubmissionReceipt, []ReceiptEvent, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -174,6 +183,38 @@ func (s *Store) GetTransactionReceipt(_ context.Context, transactionReceiptID st
 	return transaction, nil
 }
 
+func (s *Store) appendPaymentExecutionEvent(_ context.Context, transactionReceiptID string, eventType EventType, reason string, subtype string) error {
+	if err := validateEventType(eventType); err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	transaction, ok := s.transactions[transactionReceiptID]
+	if !ok {
+		return ErrTransactionReceiptNotFound
+	}
+
+	submissionReceiptID := transaction.CurrentSubmissionReceiptID
+	if submissionReceiptID == "" {
+		return ErrSubmissionReceiptNotFound
+	}
+	if _, ok := s.submissions[submissionReceiptID]; !ok {
+		return ErrSubmissionReceiptNotFound
+	}
+
+	s.events[submissionReceiptID] = append(s.events[submissionReceiptID], ReceiptEvent{
+		SubmissionReceiptID: submissionReceiptID,
+		Source:              "payment_execution",
+		Subtype:             subtype,
+		Reason:              reason,
+		Type:                eventType,
+	})
+
+	return nil
+}
+
 func validateCreateSubmissionInput(in CreateSubmissionInput) error {
 	switch {
 	case in.TransactionID == "":
@@ -196,6 +237,8 @@ func validateEventType(eventType EventType) error {
 		EventApprovalRequested,
 		EventApprovalResolved,
 		EventPaymentApproval,
+		EventPaymentExecutionAuthorized,
+		EventPaymentExecutionDenied,
 		EventSettlementUpdated,
 		EventEscalated,
 		EventDisputed:
