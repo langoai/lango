@@ -124,6 +124,38 @@ func TestServiceExecute_DeniesWhenPartialHintIsInvalid(t *testing.T) {
 	require.Equal(t, StatusDenied, result.Status)
 }
 
+func TestServiceExecute_DeniesWhenPartialHintAmountIsNotPositive(t *testing.T) {
+	t.Parallel()
+
+	cases := []string{"settle:0-usdc", "settle:-0.10-usdc"}
+	for _, hint := range cases {
+		hint := hint
+		t.Run(hint, func(t *testing.T) {
+			store := &fakeReceiptStore{
+				transaction: receipts.TransactionReceipt{
+					TransactionReceiptID:        "tx-1",
+					CurrentSubmissionReceiptID:  "sub-1",
+					PriceContext:                "quote:1.00-usdc",
+					PartialSettlementHint:       hint,
+					SettlementProgressionStatus: receipts.SettlementProgressionApprovedForSettlement,
+				},
+				submission: receipts.SubmissionReceipt{
+					SubmissionReceiptID:  "sub-1",
+					TransactionReceiptID: "tx-1",
+				},
+			}
+			runtime := &fakeDirectPaymentRuntime{}
+			svc := NewService(store, runtime)
+
+			result, err := svc.Execute(context.Background(), Request{TransactionReceiptID: "tx-1"})
+
+			require.Error(t, err)
+			assertExecutionError(t, err, FailureKindDenied, DenyReasonPartialHintInvalid)
+			require.Equal(t, StatusDenied, result.Status)
+		})
+	}
+}
+
 func TestServiceExecute_DeniesWhenAlreadyPartiallySettled(t *testing.T) {
 	t.Parallel()
 

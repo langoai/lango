@@ -173,6 +173,9 @@ func parseUSDCContextValue(raw, prefix, suffix string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if parsed.Sign() <= 0 {
+		return "", fmt.Errorf("amount must be positive in %q", raw)
+	}
 
 	return finance.FormatUSDC(parsed), nil
 }
