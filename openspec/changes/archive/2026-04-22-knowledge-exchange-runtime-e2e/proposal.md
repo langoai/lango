@@ -25,4 +25,4 @@
 - Affected docs: `docs/architecture/knowledge-exchange-runtime.md`, `docs/architecture/index.md`, `docs/architecture/p2p-knowledge-exchange-track.md`
 - Affected site config: `zensical.toml`
 - Affected OpenSpec artifacts: `openspec/changes/knowledge-exchange-runtime-e2e/**`
-- Affected specs: `openspec/specs/project-docs/spec.md`, `openspec/specs/docs-only/spec.md`, `openspec/specs/meta-tools/spec.md`
+- Affected specs: `openspec/specs/project-docs/spec.md`, `openspec/specs/docs-only/spec.md`, `openspec/specs/meta-tools/spec.md`, `openspec/specs/mkdocs-documentation-site/spec.md`
