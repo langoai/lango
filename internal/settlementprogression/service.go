@@ -81,7 +81,7 @@ func mapReleaseOutcome(outcome ReleaseOutcome) (SettlementOutcome, error) {
 func escalationReason(reason string) string {
 	reason = strings.TrimSpace(reason)
 	if reason == "" {
-		return string(approvalflow.DecisionEscalate)
+		return "higher approval needed"
 	}
-	return fmt.Sprintf("%s: %s", approvalflow.DecisionEscalate, reason)
+	return reason
 }

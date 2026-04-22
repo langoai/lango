@@ -65,3 +65,58 @@ func TestApplyReleaseOutcome_RejectMapsToReviewNeeded(t *testing.T) {
 	require.Equal(t, receipts.SettlementProgressionReviewNeeded, result.Transaction.SettlementProgressionStatus)
 	require.Equal(t, "reject", result.Transaction.SettlementProgressionReason)
 }
+
+func TestApplyReleaseOutcome_EscalateUsesProvidedReason(t *testing.T) {
+	store := receipts.NewStore()
+	svc := NewService(store)
+	ctx := context.Background()
+
+	tx, err := store.OpenKnowledgeExchangeTransaction(ctx, receipts.OpenTransactionInput{
+		TransactionID:  "deal-release-escalate-provided",
+		Counterparty:   "did:lango:peer-escalate",
+		RequestedScope: "artifact/research-note",
+		PriceContext:   "quote:0.50-usdc",
+		TrustContext:   "trust:0.72",
+	})
+	require.NoError(t, err)
+
+	result, err := svc.ApplyReleaseOutcome(ctx, ApplyReleaseOutcomeRequest{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		Outcome: ReleaseOutcome{
+			Decision: approvalflow.DecisionEscalate,
+			Reason:   "manual approval required",
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, receipts.SettlementProgressionReviewNeeded, result.Outcome.ProgressionStatus)
+	require.Equal(t, "manual approval required", result.Outcome.ProgressionReason)
+	require.Equal(t, receipts.SettlementProgressionReviewNeeded, result.Transaction.SettlementProgressionStatus)
+	require.Equal(t, "manual approval required", result.Transaction.SettlementProgressionReason)
+}
+
+func TestApplyReleaseOutcome_EscalateDefaultsReason(t *testing.T) {
+	store := receipts.NewStore()
+	svc := NewService(store)
+	ctx := context.Background()
+
+	tx, err := store.OpenKnowledgeExchangeTransaction(ctx, receipts.OpenTransactionInput{
+		TransactionID:  "deal-release-escalate-default",
+		Counterparty:   "did:lango:peer-escalate-default",
+		RequestedScope: "artifact/research-note",
+		PriceContext:   "quote:0.50-usdc",
+		TrustContext:   "trust:0.72",
+	})
+	require.NoError(t, err)
+
+	result, err := svc.ApplyReleaseOutcome(ctx, ApplyReleaseOutcomeRequest{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		Outcome: ReleaseOutcome{
+			Decision: approvalflow.DecisionEscalate,
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, receipts.SettlementProgressionReviewNeeded, result.Outcome.ProgressionStatus)
+	require.Equal(t, "higher approval needed", result.Outcome.ProgressionReason)
+	require.Equal(t, receipts.SettlementProgressionReviewNeeded, result.Transaction.SettlementProgressionStatus)
+	require.Equal(t, "higher approval needed", result.Transaction.SettlementProgressionReason)
+}
