@@ -11,6 +11,7 @@ import (
 type receiptStore interface {
 	OpenKnowledgeExchangeTransaction(context.Context, receipts.OpenTransactionInput) (receipts.TransactionReceipt, error)
 	GetTransactionReceipt(context.Context, string) (receipts.TransactionReceipt, error)
+	GetSubmissionReceipt(context.Context, string) (receipts.SubmissionReceipt, []receipts.ReceiptEvent, error)
 	ApplyKnowledgeExchangeRuntimeProgression(context.Context, string, receipts.KnowledgeExchangeRuntimeStatus, string) (receipts.TransactionReceipt, error)
 }
 
@@ -45,6 +46,17 @@ func (s *Service) SelectExecutionPath(ctx context.Context, transactionReceiptID 
 	if err != nil {
 		return BranchSelection{}, err
 	}
+	if tx.CurrentSubmissionReceiptID == "" {
+		return BranchSelection{}, fmt.Errorf("transaction %q has no current submission receipt bound", transactionReceiptID)
+	}
+
+	_, events, err := s.store.GetSubmissionReceipt(ctx, tx.CurrentSubmissionReceiptID)
+	if err != nil {
+		return BranchSelection{}, err
+	}
+	if !hasPaymentApprovalEvent(events, tx.CurrentSubmissionReceiptID) {
+		return BranchSelection{}, fmt.Errorf("transaction %q current submission %q has no canonical payment approval state", transactionReceiptID, tx.CurrentSubmissionReceiptID)
+	}
 
 	var branch Branch
 	switch tx.CanonicalSettlementHint {
@@ -56,12 +68,25 @@ func (s *Service) SelectExecutionPath(ctx context.Context, transactionReceiptID 
 		return BranchSelection{}, fmt.Errorf("transaction %q has unsupported settlement hint %q", transactionReceiptID, tx.CanonicalSettlementHint)
 	}
 
-	if _, err := s.store.ApplyKnowledgeExchangeRuntimeProgression(ctx, transactionReceiptID, receipts.RuntimeStatusPaymentApproved, ""); err != nil {
-		return BranchSelection{}, err
+	if tx.KnowledgeExchangeRuntimeStatus != receipts.RuntimeStatusPaymentApproved {
+		if _, err := s.store.ApplyKnowledgeExchangeRuntimeProgression(ctx, transactionReceiptID, receipts.RuntimeStatusPaymentApproved, tx.CurrentSubmissionReceiptID); err != nil {
+			return BranchSelection{}, err
+		}
 	}
 
 	return BranchSelection{
-		TransactionReceiptID: transactionReceiptID,
-		Branch:               branch,
+		TransactionReceiptID:       transactionReceiptID,
+		CurrentSubmissionReceiptID: tx.CurrentSubmissionReceiptID,
+		Branch:                     branch,
 	}, nil
+}
+
+func hasPaymentApprovalEvent(events []receipts.ReceiptEvent, submissionReceiptID string) bool {
+	for _, event := range events {
+		if event.SubmissionReceiptID == submissionReceiptID && event.Type == receipts.EventPaymentApproval {
+			return true
+		}
+	}
+
+	return false
 }
