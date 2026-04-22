@@ -61,6 +61,16 @@ func TestOpenKnowledgeExchangeTransaction_BindsCanonicalInputs(t *testing.T) {
 	require.Equal(t, "quote:0.50-usdc", tx.PriceContext)
 	require.Equal(t, "trust:0.72", tx.TrustContext)
 	require.Equal(t, RuntimeStatusOpened, tx.KnowledgeExchangeRuntimeStatus)
+
+	stored, err := store.GetTransactionReceipt(ctx, tx.TransactionReceiptID)
+	require.NoError(t, err)
+	require.Equal(t, tx.TransactionReceiptID, stored.TransactionReceiptID)
+	require.Equal(t, "deal-open-1", stored.TransactionID)
+	require.Equal(t, "did:lango:peer-1", stored.Counterparty)
+	require.Equal(t, "artifact/research-note", stored.RequestedScope)
+	require.Equal(t, "quote:0.50-usdc", stored.PriceContext)
+	require.Equal(t, "trust:0.72", stored.TrustContext)
+	require.Equal(t, RuntimeStatusOpened, stored.KnowledgeExchangeRuntimeStatus)
 }
 
 func TestApplyKnowledgeExchangeRuntimeProgression_RejectsIllegalBranchRewinds(t *testing.T) {

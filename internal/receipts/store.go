@@ -471,52 +471,40 @@ func validateKnowledgeExchangeRuntimeTransition(current, next KnowledgeExchangeR
 			return nil
 		}
 	case RuntimeStatusOpened:
-		if next == RuntimeStatusOpened || next == RuntimeStatusExportabilityAdvisory || next == RuntimeStatusPaymentApproved {
-			return nil
-		}
-	case RuntimeStatusExportabilityAdvisory:
 		if next == RuntimeStatusExportabilityAdvisory || next == RuntimeStatusPaymentApproved {
 			return nil
 		}
-	case RuntimeStatusPaymentApproved:
-		if next == RuntimeStatusPaymentApproved || next == RuntimeStatusPaymentAuthorized || next == RuntimeStatusEscrowFunded {
+	case RuntimeStatusExportabilityAdvisory:
+		if next == RuntimeStatusPaymentApproved {
 			return nil
 		}
-	case RuntimeStatusPaymentAuthorized:
+	case RuntimeStatusPaymentApproved:
 		if next == RuntimeStatusPaymentAuthorized || next == RuntimeStatusEscrowFunded {
 			return nil
 		}
+	case RuntimeStatusPaymentAuthorized:
+		if next == RuntimeStatusWorkStarted {
+			return nil
+		}
 	case RuntimeStatusEscrowFunded:
-		if next == RuntimeStatusEscrowFunded || next == RuntimeStatusWorkStarted {
+		if next == RuntimeStatusWorkStarted {
 			return nil
 		}
 	case RuntimeStatusWorkStarted:
-		if next == RuntimeStatusWorkStarted || next == RuntimeStatusSubmissionReceived {
+		if next == RuntimeStatusSubmissionReceived {
 			return nil
 		}
 	case RuntimeStatusSubmissionReceived:
-		if next == RuntimeStatusSubmissionReceived || next == RuntimeStatusReleaseApproved || next == RuntimeStatusRevisionRequested || next == RuntimeStatusEscalated || next == RuntimeStatusDisputeReady {
-			return nil
-		}
-	case RuntimeStatusReleaseApproved:
-		if next == RuntimeStatusReleaseApproved {
+		if next == RuntimeStatusReleaseApproved || next == RuntimeStatusRevisionRequested || next == RuntimeStatusEscalated || next == RuntimeStatusDisputeReady {
 			return nil
 		}
 	case RuntimeStatusRevisionRequested:
-		if next == RuntimeStatusRevisionRequested || next == RuntimeStatusWorkStarted || next == RuntimeStatusSubmissionReceived {
-			return nil
-		}
-	case RuntimeStatusEscalated:
-		if next == RuntimeStatusEscalated || next == RuntimeStatusDisputeReady {
-			return nil
-		}
-	case RuntimeStatusDisputeReady:
-		if next == RuntimeStatusDisputeReady {
+		if next == RuntimeStatusSubmissionReceived {
 			return nil
 		}
 	}
 
-	return fmt.Errorf("%w: illegal transition from %q to %q", ErrInvalidKnowledgeExchangeRuntimeState, current, next)
+	return fmt.Errorf("%w: %q -> %q", ErrInvalidKnowledgeExchangeRuntimeState, current, next)
 }
 
 func cloneEscrowExecutionInput(input *EscrowExecutionInput) *EscrowExecutionInput {
