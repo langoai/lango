@@ -177,6 +177,8 @@ func TestServiceExecute_ExecutesRuntimeAndReportsSettledTarget(t *testing.T) {
 		Counterparty:         "did:lango:peer",
 		Amount:               "0.50",
 	}, runtime.lastRequest)
+	require.Equal(t, "tx-1", store.lastTransactionID)
+	require.Equal(t, "sub-1", store.lastSubmissionID)
 
 	require.Equal(t, 1, store.markSettledCalls)
 	require.Equal(t, CloseoutRequest{
@@ -228,12 +230,52 @@ func TestServiceExecute_RuntimeFailureReturnsFailureShape(t *testing.T) {
 	require.Equal(t, 1, runtime.calls)
 	require.Equal(t, 0, store.markSettledCalls)
 	require.Equal(t, 1, store.recordFailureCalls)
+	require.Equal(t, "tx-1", store.lastTransactionID)
+	require.Equal(t, "sub-1", store.lastSubmissionID)
 	require.Equal(t, FailureRecordRequest{
 		TransactionReceiptID: "tx-1",
 		SubmissionReceiptID:  "sub-1",
 		ResolvedAmount:       "0.50",
 		Reason:               "rpc timeout",
 	}, store.lastFailure)
+}
+
+func TestServiceExecute_RuntimeFailureStillReturnsFailureShapeWhenFailureRecordingFails(t *testing.T) {
+	t.Parallel()
+
+	store := &fakeReceiptStore{
+		transaction: receipts.TransactionReceipt{
+			TransactionReceiptID:        "tx-1",
+			CurrentSubmissionReceiptID:  "sub-1",
+			Counterparty:                "did:lango:peer",
+			PriceContext:                "quote:0.50-usdc",
+			SettlementProgressionStatus: receipts.SettlementProgressionApprovedForSettlement,
+		},
+		submission: receipts.SubmissionReceipt{
+			SubmissionReceiptID:  "sub-1",
+			TransactionReceiptID: "tx-1",
+		},
+		recordFailureErr: errors.New("trail unavailable"),
+	}
+	runtime := &fakeDirectPaymentRuntime{
+		err: errors.New("rpc timeout"),
+	}
+	svc := NewService(store, runtime)
+
+	result, err := svc.Execute(context.Background(), Request{
+		TransactionReceiptID: "tx-1",
+	})
+
+	require.Error(t, err)
+	require.Equal(t, StatusFailed, result.Status)
+	require.Equal(t, "tx-1", result.TransactionReceiptID)
+	require.Equal(t, "sub-1", result.SubmissionReceiptID)
+	require.Equal(t, receipts.SettlementProgressionApprovedForSettlement, result.SettlementProgressionStatus)
+	require.Equal(t, "0.50", result.ResolvedAmount)
+	require.NotNil(t, result.Failure)
+	require.Equal(t, FailureKindExecutionFailed, result.Failure.Kind)
+	require.Equal(t, "rpc timeout", result.Failure.Message)
+	require.ErrorContains(t, err, "record settlement failure")
 }
 
 func assertExecutionError(t *testing.T, err error, wantKind FailureKind, wantReason DenyReason) {
@@ -250,6 +292,8 @@ type fakeReceiptStore struct {
 	submission         receipts.SubmissionReceipt
 	getTransactionErr  error
 	getSubmissionErr   error
+	lastTransactionID  string
+	lastSubmissionID   string
 	markSettledErr     error
 	recordFailureErr   error
 	markSettledResult  receipts.TransactionReceipt
@@ -260,15 +304,17 @@ type fakeReceiptStore struct {
 	lastFailure        FailureRecordRequest
 }
 
-func (f *fakeReceiptStore) GetTransactionReceipt(context.Context, string) (receipts.TransactionReceipt, error) {
+func (f *fakeReceiptStore) GetTransactionReceipt(_ context.Context, transactionReceiptID string) (receipts.TransactionReceipt, error) {
 	f.calls++
+	f.lastTransactionID = transactionReceiptID
 	if f.getTransactionErr != nil {
 		return receipts.TransactionReceipt{}, f.getTransactionErr
 	}
 	return f.transaction, nil
 }
 
-func (f *fakeReceiptStore) GetSubmissionReceipt(context.Context, string) (receipts.SubmissionReceipt, []receipts.ReceiptEvent, error) {
+func (f *fakeReceiptStore) GetSubmissionReceipt(_ context.Context, submissionReceiptID string) (receipts.SubmissionReceipt, []receipts.ReceiptEvent, error) {
+	f.lastSubmissionID = submissionReceiptID
 	if f.getSubmissionErr != nil {
 		return receipts.SubmissionReceipt{}, nil, f.getSubmissionErr
 	}

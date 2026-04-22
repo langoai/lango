@@ -82,6 +82,17 @@ func (s *Service) Execute(ctx context.Context, req ExecuteRequest) (Result, erro
 		Amount:               resolvedAmount,
 	})
 	if err != nil {
+		result := Result{
+			Status:                      ResultStatusFailed,
+			TransactionReceiptID:        transaction.TransactionReceiptID,
+			SubmissionReceiptID:         submissionReceiptID,
+			SettlementProgressionStatus: receipts.SettlementProgressionApprovedForSettlement,
+			ResolvedAmount:              resolvedAmount,
+			Failure: &Failure{
+				Kind:    FailureKindExecutionFailed,
+				Message: err.Error(),
+			},
+		}
 		failure := failureRequest{
 			TransactionReceiptID: transaction.TransactionReceiptID,
 			SubmissionReceiptID:  submissionReceiptID,
@@ -89,20 +100,9 @@ func (s *Service) Execute(ctx context.Context, req ExecuteRequest) (Result, erro
 			Reason:               err.Error(),
 		}
 		if recordErr := s.store.RecordSettlementFailure(ctx, failure); recordErr != nil {
-			return Result{}, fmt.Errorf("record settlement failure: %w", recordErr)
+			return result, fmt.Errorf("record settlement failure: %w", recordErr)
 		}
-		return Result{
-				Status:                      ResultStatusFailed,
-				TransactionReceiptID:        transaction.TransactionReceiptID,
-				SubmissionReceiptID:         submissionReceiptID,
-				SettlementProgressionStatus: receipts.SettlementProgressionApprovedForSettlement,
-				ResolvedAmount:              resolvedAmount,
-				Failure: &Failure{
-					Kind:    FailureKindExecutionFailed,
-					Message: err.Error(),
-				},
-			},
-			&ExecutionError{Kind: FailureKindExecutionFailed, Message: err.Error(), Err: err}
+		return result, &ExecutionError{Kind: FailureKindExecutionFailed, Message: err.Error(), Err: err}
 	}
 
 	updated, err := s.store.MarkSettlementSettled(ctx, closeoutRequest{
