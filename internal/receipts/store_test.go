@@ -535,6 +535,134 @@ func TestRecordSettlementFailure_RejectsFailureAfterSettlementCloseout(t *testin
 	require.ErrorIs(t, err, ErrInvalidSettlementProgressionState)
 }
 
+func TestMarkPartialSettlementSettled_ClosesApprovedProgressionToPartiallySettled(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	submission, tx := createSubmittedTransaction(t, store, ctx, "deal-partial-closeout")
+
+	_, err := store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, SettlementProgressionApprovedForSettlement, SettlementProgressionReasonCodeApprove, "approved", "")
+	require.NoError(t, err)
+
+	updated, err := store.MarkPartialSettlementSettled(ctx, PartialSettlementCloseoutRequest{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		SubmissionReceiptID:  submission.SubmissionReceiptID,
+		ExecutedAmount:       "0.40",
+		RemainingAmount:      "0.60",
+		RuntimeReference:     "partial-tx-123",
+	})
+	require.NoError(t, err)
+	require.Equal(t, SettlementProgressionPartiallySettled, updated.SettlementProgressionStatus)
+	require.Equal(t, SettlementPartiallySettled, updated.CanonicalSettlementStatus)
+}
+
+func TestMarkPartialSettlementSettled_CanonicalizesRemainingHint(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	submission, tx := createSubmittedTransaction(t, store, ctx, "deal-partial-remaining-hint")
+
+	_, err := store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, SettlementProgressionApprovedForSettlement, SettlementProgressionReasonCodeApprove, "approved", "")
+	require.NoError(t, err)
+
+	updated, err := store.MarkPartialSettlementSettled(ctx, PartialSettlementCloseoutRequest{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		SubmissionReceiptID:  submission.SubmissionReceiptID,
+		ExecutedAmount:       "0.40",
+		RemainingAmount:      "0.6000",
+		RuntimeReference:     "partial-tx-123",
+	})
+	require.NoError(t, err)
+	require.Equal(t, "settle:0.60-usdc", updated.PartialSettlementHint)
+}
+
+func TestMarkPartialSettlementSettled_AppendsSuccessTrail(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	submission, tx := createSubmittedTransaction(t, store, ctx, "deal-partial-success-trail")
+
+	_, err := store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, SettlementProgressionApprovedForSettlement, SettlementProgressionReasonCodeApprove, "approved", "")
+	require.NoError(t, err)
+
+	_, err = store.MarkPartialSettlementSettled(ctx, PartialSettlementCloseoutRequest{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		SubmissionReceiptID:  submission.SubmissionReceiptID,
+		ExecutedAmount:       "0.40",
+		RemainingAmount:      "0.60",
+		RuntimeReference:     "partial-tx-123",
+	})
+	require.NoError(t, err)
+
+	err = store.RecordPartialSettlementSuccess(ctx, PartialSettlementExecutionEvidenceRequest{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		SubmissionReceiptID:  submission.SubmissionReceiptID,
+		RuntimeReference:     "partial-tx-123",
+	})
+	require.NoError(t, err)
+
+	_, events, err := store.GetSubmissionReceipt(ctx, submission.SubmissionReceiptID)
+	require.NoError(t, err)
+	require.Len(t, events, 2)
+	last := events[len(events)-1]
+	require.Equal(t, EventSettlementUpdated, last.Type)
+	require.Equal(t, "partial_settlement_execution", last.Source)
+	require.Equal(t, "partially-settled", last.Subtype)
+	require.Equal(t, "partial-tx-123", last.Reason)
+}
+
+func TestRecordPartialSettlementFailure_DoesNotMutateProgression(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	submission, tx := createSubmittedTransaction(t, store, ctx, "deal-partial-failure")
+
+	_, err := store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, SettlementProgressionApprovedForSettlement, SettlementProgressionReasonCodeApprove, "approved", "")
+	require.NoError(t, err)
+
+	err = store.RecordPartialSettlementFailure(ctx, PartialSettlementFailureRequest{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		SubmissionReceiptID:  submission.SubmissionReceiptID,
+		ExecutedAmount:       "0.40",
+		RemainingAmount:      "0.60",
+		Reason:               "rpc timeout",
+	})
+	require.NoError(t, err)
+
+	stored, err := store.GetTransactionReceipt(ctx, tx.TransactionReceiptID)
+	require.NoError(t, err)
+	require.Equal(t, SettlementProgressionApprovedForSettlement, stored.SettlementProgressionStatus)
+	require.Equal(t, SettlementPending, stored.CanonicalSettlementStatus)
+}
+
+func TestRecordPartialSettlementFailure_AppendsFailureTrail(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	submission, tx := createSubmittedTransaction(t, store, ctx, "deal-partial-failure-trail")
+
+	_, err := store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, SettlementProgressionApprovedForSettlement, SettlementProgressionReasonCodeApprove, "approved", "")
+	require.NoError(t, err)
+
+	err = store.RecordPartialSettlementFailure(ctx, PartialSettlementFailureRequest{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		SubmissionReceiptID:  submission.SubmissionReceiptID,
+		ExecutedAmount:       "0.40",
+		RemainingAmount:      "0.60",
+		Reason:               "rpc timeout",
+	})
+	require.NoError(t, err)
+
+	_, events, err := store.GetSubmissionReceipt(ctx, submission.SubmissionReceiptID)
+	require.NoError(t, err)
+	require.Len(t, events, 2)
+	last := events[len(events)-1]
+	require.Equal(t, EventSettlementExecutionFailed, last.Type)
+	require.Equal(t, "partial_settlement_execution", last.Source)
+	require.Equal(t, "failed", last.Subtype)
+	require.Equal(t, "rpc timeout", last.Reason)
+}
+
 func TestApplyKnowledgeExchangeRuntimeProgression_RejectsNonexistentSubmissionPointer(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()

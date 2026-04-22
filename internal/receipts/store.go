@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
+	"github.com/langoai/lango/internal/finance"
 	"github.com/langoai/lango/internal/paymentapproval"
 )
 
@@ -260,6 +261,118 @@ func (s *Store) RecordSettlementFailure(_ context.Context, req SettlementFailure
 	s.events[req.SubmissionReceiptID] = append(s.events[req.SubmissionReceiptID], ReceiptEvent{
 		SubmissionReceiptID: req.SubmissionReceiptID,
 		Source:              "settlement_execution",
+		Subtype:             "failed",
+		Reason:              req.Reason,
+		Type:                EventSettlementExecutionFailed,
+	})
+
+	return nil
+}
+
+func (s *Store) MarkPartialSettlementSettled(_ context.Context, req PartialSettlementCloseoutRequest) (TransactionReceipt, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	transaction, ok := s.transactions[req.TransactionReceiptID]
+	if !ok {
+		return TransactionReceipt{}, ErrTransactionReceiptNotFound
+	}
+	submission, ok := s.submissions[req.SubmissionReceiptID]
+	if !ok {
+		return TransactionReceipt{}, ErrSubmissionReceiptNotFound
+	}
+	if submission.TransactionReceiptID != req.TransactionReceiptID {
+		return TransactionReceipt{}, fmt.Errorf("%w: submission does not belong to transaction", ErrSubmissionReceiptNotFound)
+	}
+	if transaction.CurrentSubmissionReceiptID != req.SubmissionReceiptID {
+		return TransactionReceipt{}, fmt.Errorf("%w: submission is not current for transaction", ErrInvalidSettlementProgressionState)
+	}
+	if transaction.SettlementProgressionStatus != SettlementProgressionApprovedForSettlement {
+		return TransactionReceipt{}, fmt.Errorf("%w: settlement must be approved-for-settlement before partial closeout", ErrInvalidSettlementProgressionState)
+	}
+
+	remainingHint, err := canonicalizePartialSettlementHint(req.RemainingAmount)
+	if err != nil {
+		return TransactionReceipt{}, err
+	}
+
+	transaction.SettlementProgressionStatus = SettlementProgressionPartiallySettled
+	transaction.CanonicalSettlementStatus = SettlementPartiallySettled
+	transaction.SettlementProgressionReasonCode = SettlementProgressionReasonCodeApprove
+	transaction.SettlementProgressionReason = "partial settlement executed"
+	transaction.PartialSettlementHint = remainingHint
+	transaction.DisputeReady = false
+	s.transactions[req.TransactionReceiptID] = transaction
+
+	return cloneTransactionReceipt(transaction), nil
+}
+
+func (s *Store) MarkSettlementPartiallySettled(ctx context.Context, req SettlementPartialCloseoutRequest) (TransactionReceipt, error) {
+	return s.MarkPartialSettlementSettled(ctx, req)
+}
+
+func (s *Store) RecordPartialSettlementSuccess(_ context.Context, req PartialSettlementExecutionEvidenceRequest) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	transaction, ok := s.transactions[req.TransactionReceiptID]
+	if !ok {
+		return ErrTransactionReceiptNotFound
+	}
+	submission, ok := s.submissions[req.SubmissionReceiptID]
+	if !ok {
+		return ErrSubmissionReceiptNotFound
+	}
+	if submission.TransactionReceiptID != req.TransactionReceiptID {
+		return fmt.Errorf("%w: submission does not belong to transaction", ErrSubmissionReceiptNotFound)
+	}
+	if transaction.CurrentSubmissionReceiptID != req.SubmissionReceiptID {
+		return fmt.Errorf("%w: submission is not current for transaction", ErrInvalidSettlementProgressionState)
+	}
+	if transaction.SettlementProgressionStatus != SettlementProgressionPartiallySettled {
+		return fmt.Errorf("%w: settlement must be partially-settled before recording success", ErrInvalidSettlementProgressionState)
+	}
+
+	s.events[req.SubmissionReceiptID] = append(s.events[req.SubmissionReceiptID], ReceiptEvent{
+		SubmissionReceiptID: req.SubmissionReceiptID,
+		Source:              "partial_settlement_execution",
+		Subtype:             "partially-settled",
+		Reason:              req.RuntimeReference,
+		Type:                EventSettlementUpdated,
+	})
+
+	return nil
+}
+
+func (s *Store) RecordSettlementPartialSuccess(ctx context.Context, req SettlementPartialExecutionEvidenceRequest) error {
+	return s.RecordPartialSettlementSuccess(ctx, req)
+}
+
+func (s *Store) RecordPartialSettlementFailure(_ context.Context, req PartialSettlementFailureRequest) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	transaction, ok := s.transactions[req.TransactionReceiptID]
+	if !ok {
+		return ErrTransactionReceiptNotFound
+	}
+	submission, ok := s.submissions[req.SubmissionReceiptID]
+	if !ok {
+		return ErrSubmissionReceiptNotFound
+	}
+	if submission.TransactionReceiptID != req.TransactionReceiptID {
+		return fmt.Errorf("%w: submission does not belong to transaction", ErrSubmissionReceiptNotFound)
+	}
+	if transaction.CurrentSubmissionReceiptID != req.SubmissionReceiptID {
+		return fmt.Errorf("%w: submission is not current for transaction", ErrInvalidSettlementProgressionState)
+	}
+	if transaction.SettlementProgressionStatus != SettlementProgressionApprovedForSettlement {
+		return fmt.Errorf("%w: settlement must remain approved-for-settlement before recording partial failure", ErrInvalidSettlementProgressionState)
+	}
+
+	s.events[req.SubmissionReceiptID] = append(s.events[req.SubmissionReceiptID], ReceiptEvent{
+		SubmissionReceiptID: req.SubmissionReceiptID,
+		Source:              "partial_settlement_execution",
 		Subtype:             "failed",
 		Reason:              req.Reason,
 		Type:                EventSettlementExecutionFailed,
@@ -752,6 +865,18 @@ func cloneEscrowExecutionInput(input *EscrowExecutionInput) *EscrowExecutionInpu
 func cloneTransactionReceipt(transaction TransactionReceipt) TransactionReceipt {
 	transaction.EscrowExecutionInput = cloneEscrowExecutionInput(transaction.EscrowExecutionInput)
 	return transaction
+}
+
+func canonicalizePartialSettlementHint(remainingAmount string) (string, error) {
+	parsed, err := finance.ParseUSDC(strings.TrimSpace(remainingAmount))
+	if err != nil {
+		return "", err
+	}
+	if parsed.Sign() <= 0 {
+		return "", fmt.Errorf("%w: remaining amount must be positive", ErrInvalidSettlementProgressionState)
+	}
+
+	return "settle:" + finance.FormatUSDC(parsed) + "-usdc", nil
 }
 
 func paymentApprovalStatusFromDecision(decision paymentapproval.Decision) (PaymentApprovalStatus, error) {

@@ -185,3 +185,29 @@ type SettlementFailureRequest struct {
 	ResolvedAmount       string `json:"resolved_amount,omitempty"`
 	Reason               string `json:"reason"`
 }
+
+type PartialSettlementCloseoutRequest struct {
+	TransactionReceiptID string `json:"transaction_receipt_id"`
+	SubmissionReceiptID  string `json:"submission_receipt_id"`
+	ExecutedAmount       string `json:"executed_amount"`
+	RemainingAmount      string `json:"remaining_amount"`
+	RuntimeReference     string `json:"runtime_reference,omitempty"`
+}
+
+type SettlementPartialCloseoutRequest = PartialSettlementCloseoutRequest
+
+type PartialSettlementExecutionEvidenceRequest struct {
+	TransactionReceiptID string `json:"transaction_receipt_id"`
+	SubmissionReceiptID  string `json:"submission_receipt_id"`
+	RuntimeReference     string `json:"runtime_reference,omitempty"`
+}
+
+type SettlementPartialExecutionEvidenceRequest = PartialSettlementExecutionEvidenceRequest
+
+type PartialSettlementFailureRequest struct {
+	TransactionReceiptID string `json:"transaction_receipt_id"`
+	SubmissionReceiptID  string `json:"submission_receipt_id"`
+	ExecutedAmount       string `json:"executed_amount,omitempty"`
+	RemainingAmount      string `json:"remaining_amount,omitempty"`
+	Reason               string `json:"reason"`
+}
