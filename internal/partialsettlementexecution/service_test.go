@@ -213,6 +213,21 @@ func TestServiceExecute_ExecutesRuntimeAndReturnsPartialShape(t *testing.T) {
 	require.Equal(t, "0.60", result.RemainingAmount)
 	require.Equal(t, "partial-tx-123", result.RuntimeReference)
 	require.Equal(t, 1, runtime.calls)
+	require.Equal(t, 1, store.markPartialCalls)
+	require.Equal(t, 1, store.recordSuccessCalls)
+	require.Equal(t, 0, store.recordFailureCalls)
+	require.Equal(t, receipts.PartialSettlementCloseoutRequest{
+		TransactionReceiptID: "tx-1",
+		SubmissionReceiptID:  "sub-1",
+		ExecutedAmount:       "0.40",
+		RemainingAmount:      "0.60",
+		RuntimeReference:     "partial-tx-123",
+	}, store.lastCloseout)
+	require.Equal(t, receipts.PartialSettlementExecutionEvidenceRequest{
+		TransactionReceiptID: "tx-1",
+		SubmissionReceiptID:  "sub-1",
+		RuntimeReference:     "partial-tx-123",
+	}, store.lastSuccess)
 	require.Equal(t, DirectPaymentRequest{
 		TransactionReceiptID: "tx-1",
 		SubmissionReceiptID:  "sub-1",
@@ -251,6 +266,16 @@ func TestServiceExecute_RuntimeFailureReturnsFailureShape(t *testing.T) {
 	require.Equal(t, "0.60", result.RemainingAmount)
 	require.NotNil(t, result.Failure)
 	require.Equal(t, FailureKindExecutionFailed, result.Failure.Kind)
+	require.Equal(t, 0, store.markPartialCalls)
+	require.Equal(t, 0, store.recordSuccessCalls)
+	require.Equal(t, 1, store.recordFailureCalls)
+	require.Equal(t, receipts.PartialSettlementFailureRequest{
+		TransactionReceiptID: "tx-1",
+		SubmissionReceiptID:  "sub-1",
+		ExecutedAmount:       "0.40",
+		RemainingAmount:      "0.60",
+		Reason:               "rpc timeout",
+	}, store.lastFailure)
 }
 
 func assertExecutionError(t *testing.T, err error, wantKind FailureKind, wantReason DenyReason) {
@@ -263,10 +288,20 @@ func assertExecutionError(t *testing.T, err error, wantKind FailureKind, wantRea
 }
 
 type fakeReceiptStore struct {
-	transaction       receipts.TransactionReceipt
-	submission        receipts.SubmissionReceipt
-	getTransactionErr error
-	getSubmissionErr  error
+	transaction        receipts.TransactionReceipt
+	submission         receipts.SubmissionReceipt
+	getTransactionErr  error
+	getSubmissionErr   error
+	markPartialErr     error
+	recordSuccessErr   error
+	recordFailureErr   error
+	markPartialResult  receipts.TransactionReceipt
+	markPartialCalls   int
+	recordSuccessCalls int
+	recordFailureCalls int
+	lastCloseout       receipts.PartialSettlementCloseoutRequest
+	lastSuccess        receipts.PartialSettlementExecutionEvidenceRequest
+	lastFailure        receipts.PartialSettlementFailureRequest
 }
 
 func (f *fakeReceiptStore) GetTransactionReceipt(context.Context, string) (receipts.TransactionReceipt, error) {
@@ -281,6 +316,32 @@ func (f *fakeReceiptStore) GetSubmissionReceipt(context.Context, string) (receip
 		return receipts.SubmissionReceipt{}, nil, f.getSubmissionErr
 	}
 	return f.submission, nil, nil
+}
+
+func (f *fakeReceiptStore) MarkPartialSettlementSettled(_ context.Context, req receipts.PartialSettlementCloseoutRequest) (receipts.TransactionReceipt, error) {
+	f.markPartialCalls++
+	f.lastCloseout = req
+	if f.markPartialErr != nil {
+		return receipts.TransactionReceipt{}, f.markPartialErr
+	}
+	if f.markPartialResult.TransactionReceiptID == "" {
+		tx := f.transaction
+		tx.SettlementProgressionStatus = receipts.SettlementProgressionPartiallySettled
+		return tx, nil
+	}
+	return f.markPartialResult, nil
+}
+
+func (f *fakeReceiptStore) RecordPartialSettlementSuccess(_ context.Context, req receipts.PartialSettlementExecutionEvidenceRequest) error {
+	f.recordSuccessCalls++
+	f.lastSuccess = req
+	return f.recordSuccessErr
+}
+
+func (f *fakeReceiptStore) RecordPartialSettlementFailure(_ context.Context, req receipts.PartialSettlementFailureRequest) error {
+	f.recordFailureCalls++
+	f.lastFailure = req
+	return f.recordFailureErr
 }
 
 type fakeDirectPaymentRuntime struct {

@@ -14,6 +14,9 @@ import (
 type receiptStore interface {
 	GetTransactionReceipt(context.Context, string) (receipts.TransactionReceipt, error)
 	GetSubmissionReceipt(context.Context, string) (receipts.SubmissionReceipt, []receipts.ReceiptEvent, error)
+	MarkPartialSettlementSettled(context.Context, receipts.PartialSettlementCloseoutRequest) (receipts.TransactionReceipt, error)
+	RecordPartialSettlementSuccess(context.Context, receipts.PartialSettlementExecutionEvidenceRequest) error
+	RecordPartialSettlementFailure(context.Context, receipts.PartialSettlementFailureRequest) error
 }
 
 type directPaymentRuntime interface {
@@ -121,14 +124,42 @@ func (s *Service) Execute(ctx context.Context, req ExecuteRequest) (Result, erro
 				Message: err.Error(),
 			},
 		}
+		failure := receipts.PartialSettlementFailureRequest{
+			TransactionReceiptID: transaction.TransactionReceiptID,
+			SubmissionReceiptID:  submissionReceiptID,
+			ExecutedAmount:       executedAmount,
+			RemainingAmount:      remainingAmount,
+			Reason:               err.Error(),
+		}
+		if recordErr := s.store.RecordPartialSettlementFailure(ctx, failure); recordErr != nil {
+			return result, fmt.Errorf("record partial settlement failure: %w", recordErr)
+		}
 		return result, &ExecutionError{Kind: FailureKindExecutionFailed, Message: err.Error(), Err: err}
+	}
+
+	updated, err := s.store.MarkPartialSettlementSettled(ctx, receipts.PartialSettlementCloseoutRequest{
+		TransactionReceiptID: transaction.TransactionReceiptID,
+		SubmissionReceiptID:  submissionReceiptID,
+		ExecutedAmount:       executedAmount,
+		RemainingAmount:      remainingAmount,
+		RuntimeReference:     runtimeResult.Reference,
+	})
+	if err != nil {
+		return Result{}, err
+	}
+	if err := s.store.RecordPartialSettlementSuccess(ctx, receipts.PartialSettlementExecutionEvidenceRequest{
+		TransactionReceiptID: transaction.TransactionReceiptID,
+		SubmissionReceiptID:  submissionReceiptID,
+		RuntimeReference:     runtimeResult.Reference,
+	}); err != nil {
+		return Result{}, fmt.Errorf("record partial settlement success: %w", err)
 	}
 
 	return Result{
 		Status:                      ResultStatusPartiallySettledTarget,
-		TransactionReceiptID:        transaction.TransactionReceiptID,
+		TransactionReceiptID:        updated.TransactionReceiptID,
 		SubmissionReceiptID:         submissionReceiptID,
-		SettlementProgressionStatus: receipts.SettlementProgressionPartiallySettled,
+		SettlementProgressionStatus: updated.SettlementProgressionStatus,
 		ExecutedAmount:              executedAmount,
 		RemainingAmount:             remainingAmount,
 		RuntimeReference:            runtimeResult.Reference,
