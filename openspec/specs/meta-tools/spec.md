@@ -140,4 +140,4 @@ The meta tools surface SHALL treat the first knowledge exchange runtime design s
 
 #### Scenario: Runtime slice reuses existing tool contracts
 - **WHEN** the knowledge exchange runtime slice is described through meta-tools behavior
-- **THEN** it SHALL rely on the existing exportability, approval, submission-creation, and upfront-payment tools rather than introducing a duplicate receipt model
+- **THEN** it SHALL rely on the existing exportability, approval, submission-creation, upfront-payment, and escrow recommendation tools rather than introducing a duplicate receipt model

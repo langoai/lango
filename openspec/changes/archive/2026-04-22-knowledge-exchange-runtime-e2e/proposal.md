@@ -17,6 +17,7 @@
 ### Modified Capabilities
 - `project-docs`: Add an architecture landing-page entry for the knowledge exchange runtime design slice.
 - `docs-only`: Add the runtime architecture page and the track-page linkage that closes out the first slice.
+- `mkdocs-documentation-site`: Make the new runtime page navigable from the public architecture docs.
 - `meta-tools`: Record the first runtime control-plane composition around the existing receipt-backed tools.
 
 ## Impact
@@ -25,4 +26,3 @@
 - Affected site config: `zensical.toml`
 - Affected OpenSpec artifacts: `openspec/changes/knowledge-exchange-runtime-e2e/**`
 - Affected specs: `openspec/specs/project-docs/spec.md`, `openspec/specs/docs-only/spec.md`, `openspec/specs/meta-tools/spec.md`
-

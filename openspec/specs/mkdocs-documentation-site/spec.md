@@ -82,6 +82,13 @@ The site navigation SHALL include "P2P Network: features/p2p-network.md", "P2P E
 - **WHEN** the docs site is built
 - **THEN** the CLI Reference navigation section includes "Economy Commands", "Contract Commands", and "Metrics Commands" entries after "P2P Commands"
 
+### Requirement: Navigation includes the knowledge exchange runtime page
+The site navigation SHALL include "Knowledge Exchange Runtime: architecture/knowledge-exchange-runtime.md" in the Architecture section so the first runtime design slice is publicly navigable alongside the other architecture pages.
+
+#### Scenario: Knowledge exchange runtime appears in architecture nav
+- **WHEN** the docs site is built
+- **THEN** the Architecture navigation section includes a "Knowledge Exchange Runtime" entry after "Pricing Negotiation Settlement Audit"
+
 ### Requirement: Public site navigation exposes the chosen public surfaces
 The docs site navigation SHALL surface the selected public Security pages and the top-level Research page while keeping the rest of the documentation tree hidden from the public site.
 
