@@ -19,6 +19,7 @@ import (
 	"github.com/langoai/lango/internal/escrowexecution"
 	"github.com/langoai/lango/internal/exportability"
 	"github.com/langoai/lango/internal/knowledge"
+	"github.com/langoai/lango/internal/knowledgeruntime"
 	"github.com/langoai/lango/internal/learning"
 	"github.com/langoai/lango/internal/paymentapproval"
 	"github.com/langoai/lango/internal/receipts"
@@ -263,6 +264,8 @@ func buildMetaToolsWithEscrow(
 			},
 		},
 		newDisputeReadyReceiptTool(receiptStore),
+		newOpenKnowledgeExchangeTransactionTool(receiptStore),
+		newSelectKnowledgeExchangePathTool(receiptStore),
 		{
 			Name:        "approve_upfront_payment",
 			Description: "Evaluate an upfront payment request and update the linked transaction receipt with canonical payment approval state",
@@ -1278,6 +1281,103 @@ func newDisputeReadyReceiptTool(receiptStore *receipts.Store) *agent.Tool {
 			}
 
 			return createDisputeReadyReceipt(ctx, receiptStore, input)
+		},
+	}
+}
+
+func newOpenKnowledgeExchangeTransactionTool(receiptStore *receipts.Store) *agent.Tool {
+	return &agent.Tool{
+		Name:        "open_knowledge_exchange_transaction",
+		Description: "Open a receipts-backed knowledge exchange transaction and persist canonical runtime-open state",
+		SafetyLevel: agent.SafetyLevelModerate,
+		Capability: agent.ToolCapability{
+			Category: "knowledge",
+			Activity: agent.ActivityWrite,
+		},
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"transaction_id":  map[string]interface{}{"type": "string", "description": "External transaction identifier"},
+				"counterparty":    map[string]interface{}{"type": "string", "description": "Counterparty DID or stable participant identifier"},
+				"requested_scope": map[string]interface{}{"type": "string", "description": "Requested knowledge exchange scope"},
+				"price_context":   map[string]interface{}{"type": "string", "description": "Optional price context to bind at open time"},
+				"trust_context":   map[string]interface{}{"type": "string", "description": "Optional trust context to bind at open time"},
+			},
+			"required": []string{"transaction_id", "counterparty", "requested_scope"},
+		},
+		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+			if receiptStore == nil {
+				return nil, fmt.Errorf("receipts store dependency is not configured")
+			}
+
+			transactionID, err := toolparam.RequireString(params, "transaction_id")
+			if err != nil {
+				return nil, err
+			}
+			counterparty, err := toolparam.RequireString(params, "counterparty")
+			if err != nil {
+				return nil, err
+			}
+			requestedScope, err := toolparam.RequireString(params, "requested_scope")
+			if err != nil {
+				return nil, err
+			}
+
+			result, err := knowledgeruntime.NewService(receiptStore).OpenTransaction(ctx, knowledgeruntime.OpenTransactionRequest{
+				TransactionID:  transactionID,
+				Counterparty:   counterparty,
+				RequestedScope: requestedScope,
+				PriceContext:   toolparam.OptionalString(params, "price_context", ""),
+				TrustContext:   toolparam.OptionalString(params, "trust_context", ""),
+			})
+			if err != nil {
+				return nil, err
+			}
+
+			return map[string]interface{}{
+				"transaction_receipt_id": result.TransactionReceiptID,
+				"runtime_status":         string(result.RuntimeStatus),
+			}, nil
+		},
+	}
+}
+
+func newSelectKnowledgeExchangePathTool(receiptStore *receipts.Store) *agent.Tool {
+	return &agent.Tool{
+		Name:        "select_knowledge_exchange_path",
+		Description: "Select the receipts-backed knowledge exchange execution path from canonical approval state",
+		SafetyLevel: agent.SafetyLevelModerate,
+		Capability: agent.ToolCapability{
+			Category: "knowledge",
+			Activity: agent.ActivityWrite,
+		},
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"transaction_receipt_id": map[string]interface{}{"type": "string", "description": "Transaction receipt identifier to evaluate"},
+			},
+			"required": []string{"transaction_receipt_id"},
+		},
+		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+			if receiptStore == nil {
+				return nil, fmt.Errorf("receipts store dependency is not configured")
+			}
+
+			transactionReceiptID, err := toolparam.RequireString(params, "transaction_receipt_id")
+			if err != nil {
+				return nil, err
+			}
+
+			result, err := knowledgeruntime.NewService(receiptStore).SelectExecutionPath(ctx, transactionReceiptID)
+			if err != nil {
+				return nil, err
+			}
+
+			return map[string]interface{}{
+				"transaction_receipt_id":        result.TransactionReceiptID,
+				"current_submission_receipt_id": result.CurrentSubmissionReceiptID,
+				"selected_path":                 string(result.Branch),
+			}, nil
 		},
 	}
 }
