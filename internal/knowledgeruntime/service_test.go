@@ -66,7 +66,6 @@ func TestService_SelectExecutionPath_UsesPrepayBranch(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, BranchPrepay, branch.Branch)
 	require.Equal(t, updated.TransactionReceiptID, branch.TransactionReceiptID)
-	require.Equal(t, submission.SubmissionReceiptID, branch.CurrentSubmissionReceiptID)
 
 	stored, err := store.GetTransactionReceipt(ctx, updated.TransactionReceiptID)
 	require.NoError(t, err)
@@ -106,7 +105,6 @@ func TestService_SelectExecutionPath_UsesEscrowBranch(t *testing.T) {
 	branch, err := svc.SelectExecutionPath(ctx, updated.TransactionReceiptID)
 	require.NoError(t, err)
 	require.Equal(t, BranchEscrow, branch.Branch)
-	require.Equal(t, submission.SubmissionReceiptID, branch.CurrentSubmissionReceiptID)
 }
 
 func TestService_SelectExecutionPath_RejectsStaleApprovalForNonCurrentSubmission(t *testing.T) {

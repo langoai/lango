@@ -23,7 +23,6 @@ const (
 )
 
 type BranchSelection struct {
-	TransactionReceiptID       string
-	CurrentSubmissionReceiptID string
-	Branch                     Branch
+	TransactionReceiptID string
+	Branch               Branch
 }

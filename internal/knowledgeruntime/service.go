@@ -75,9 +75,8 @@ func (s *Service) SelectExecutionPath(ctx context.Context, transactionReceiptID 
 	}
 
 	return BranchSelection{
-		TransactionReceiptID:       transactionReceiptID,
-		CurrentSubmissionReceiptID: tx.CurrentSubmissionReceiptID,
-		Branch:                     branch,
+		TransactionReceiptID: transactionReceiptID,
+		Branch:               branch,
 	}, nil
 }
 
