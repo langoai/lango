@@ -22,6 +22,7 @@ import (
 	"github.com/langoai/lango/internal/knowledge"
 	"github.com/langoai/lango/internal/knowledgeruntime"
 	"github.com/langoai/lango/internal/learning"
+	"github.com/langoai/lango/internal/partialsettlementexecution"
 	"github.com/langoai/lango/internal/payment"
 	"github.com/langoai/lango/internal/paymentapproval"
 	"github.com/langoai/lango/internal/receipts"
@@ -36,7 +37,7 @@ import (
 // cfg is used for session-mode-aware skill filtering and view_skill path resolution;
 // it may be nil for tests that don't exercise mode features.
 func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *skill.Registry, skillCfg config.SkillConfig, cfg *config.Config, receiptStore *receipts.Store) []*agent.Tool {
-	return buildMetaToolsWithRuntimes(store, engine, registry, skillCfg, cfg, receiptStore, nil, nil)
+	return buildMetaToolsWithRuntimes(store, engine, registry, skillCfg, cfg, receiptStore, nil, nil, nil)
 }
 
 func buildMetaToolsWithEscrow(
@@ -48,7 +49,7 @@ func buildMetaToolsWithEscrow(
 	receiptStore *receipts.Store,
 	escrowRuntime escrowExecutionRuntime,
 ) []*agent.Tool {
-	return buildMetaToolsWithRuntimes(store, engine, registry, skillCfg, cfg, receiptStore, escrowRuntime, nil)
+	return buildMetaToolsWithRuntimes(store, engine, registry, skillCfg, cfg, receiptStore, escrowRuntime, nil, nil)
 }
 
 func buildMetaToolsWithRuntimes(
@@ -60,8 +61,15 @@ func buildMetaToolsWithRuntimes(
 	receiptStore *receipts.Store,
 	escrowRuntime escrowExecutionRuntime,
 	settlementRuntime settlementExecutionRuntime,
+	partialSettlementRuntime ...partialSettlementExecutionRuntime,
 ) []*agent.Tool {
 	exportabilityEnabled := exportabilityPolicyEnabled(cfg)
+	var effectivePartialRuntime partialSettlementExecutionRuntime
+	if len(partialSettlementRuntime) > 0 {
+		effectivePartialRuntime = partialSettlementRuntime[0]
+	} else if settlementRuntime != nil {
+		effectivePartialRuntime = settlementPartialSettlementRuntime{runtime: settlementRuntime}
+	}
 
 	tools := []*agent.Tool{
 		{
@@ -1004,6 +1012,9 @@ func buildMetaToolsWithRuntimes(
 	if settlementTool := newExecuteSettlementTool(receiptStore, settlementRuntime); settlementTool != nil {
 		tools = append(tools, settlementTool)
 	}
+	if partialSettlementTool := newExecutePartialSettlementTool(receiptStore, effectivePartialRuntime); partialSettlementTool != nil {
+		tools = append(tools, partialSettlementTool)
+	}
 	if escrowTool := newExecuteEscrowRecommendationTool(receiptStore, escrowRuntime); escrowTool != nil {
 		tools = append(tools, escrowTool)
 	}
@@ -1494,6 +1505,48 @@ func (p paymentSettlementRuntime) ExecuteSettlement(ctx context.Context, req set
 	return settlementexecution.DirectPaymentResult{Reference: receipt.TxHash}, nil
 }
 
+type partialSettlementExecutionRuntime interface {
+	ExecuteSettlement(context.Context, partialsettlementexecution.DirectPaymentRequest) (partialsettlementexecution.DirectPaymentResult, error)
+}
+
+type paymentPartialSettlementRuntime struct {
+	service *payment.Service
+}
+
+func (p paymentPartialSettlementRuntime) ExecuteSettlement(ctx context.Context, req partialsettlementexecution.DirectPaymentRequest) (partialsettlementexecution.DirectPaymentResult, error) {
+	receipt, err := p.service.Send(ctx, payment.PaymentRequest{
+		To:      req.Counterparty,
+		Amount:  req.Amount,
+		Purpose: "partial settlement",
+	})
+	if err != nil {
+		return partialsettlementexecution.DirectPaymentResult{}, err
+	}
+	return partialsettlementexecution.DirectPaymentResult{Reference: receipt.TxHash}, nil
+}
+
+type settlementPartialSettlementRuntime struct {
+	runtime settlementExecutionRuntime
+}
+
+func (s settlementPartialSettlementRuntime) ExecuteSettlement(ctx context.Context, req partialsettlementexecution.DirectPaymentRequest) (partialsettlementexecution.DirectPaymentResult, error) {
+	if s.runtime == nil {
+		return partialsettlementexecution.DirectPaymentResult{}, fmt.Errorf("direct payment runtime is required")
+	}
+
+	result, err := s.runtime.ExecuteSettlement(ctx, settlementexecution.DirectPaymentRequest{
+		TransactionReceiptID: req.TransactionReceiptID,
+		SubmissionReceiptID:  req.SubmissionReceiptID,
+		Counterparty:         req.Counterparty,
+		Amount:               req.Amount,
+	})
+	if err != nil {
+		return partialsettlementexecution.DirectPaymentResult{}, err
+	}
+
+	return partialsettlementexecution.DirectPaymentResult{Reference: result.Reference}, nil
+}
+
 func newExecuteSettlementTool(receiptStore *receipts.Store, runtime settlementExecutionRuntime) *agent.Tool {
 	if runtime == nil {
 		return nil
@@ -1536,6 +1589,52 @@ func newExecuteSettlementTool(receiptStore *receipts.Store, runtime settlementEx
 			}
 
 			return newExecuteSettlementReceipt(result), nil
+		},
+	}
+}
+
+func newExecutePartialSettlementTool(receiptStore *receipts.Store, runtime partialSettlementExecutionRuntime) *agent.Tool {
+	if runtime == nil {
+		return nil
+	}
+
+	return &agent.Tool{
+		Name:        "execute_partial_settlement",
+		Description: "Execute direct partial settlement for an approved transaction receipt and return canonical partial settlement state",
+		SafetyLevel: agent.SafetyLevelDangerous,
+		Capability: agent.ToolCapability{
+			Category: "knowledge",
+			Activity: agent.ActivityWrite,
+		},
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"transaction_receipt_id": map[string]interface{}{"type": "string", "description": "Approved transaction receipt identifier to partially settle"},
+			},
+			"required": []string{"transaction_receipt_id"},
+		},
+		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+			if receiptStore == nil {
+				return nil, fmt.Errorf("receipts store dependency is not configured")
+			}
+
+			transactionReceiptID, err := toolparam.RequireString(params, "transaction_receipt_id")
+			if err != nil {
+				return nil, err
+			}
+			transactionReceiptID = strings.TrimSpace(transactionReceiptID)
+			if transactionReceiptID == "" {
+				return nil, &toolparam.ErrMissingParam{Name: "transaction_receipt_id"}
+			}
+
+			result, err := partialsettlementexecution.NewService(receiptStore, runtime).Execute(ctx, partialsettlementexecution.ExecuteRequest{
+				TransactionReceiptID: transactionReceiptID,
+			})
+			if err != nil {
+				return nil, err
+			}
+
+			return newExecutePartialSettlementReceipt(result), nil
 		},
 	}
 }
@@ -1622,6 +1721,15 @@ type executeSettlementReceipt struct {
 	RuntimeReference            string `json:"runtime_reference,omitempty"`
 }
 
+type executePartialSettlementReceipt struct {
+	TransactionReceiptID        string `json:"transaction_receipt_id"`
+	SubmissionReceiptID         string `json:"submission_receipt_id,omitempty"`
+	SettlementProgressionStatus string `json:"settlement_progression_status"`
+	ExecutedAmount              string `json:"executed_amount,omitempty"`
+	RemainingAmount             string `json:"remaining_amount,omitempty"`
+	RuntimeReference            string `json:"runtime_reference,omitempty"`
+}
+
 func newUpfrontPaymentApprovalReceipt(
 	transactionReceiptID string,
 	submissionReceiptID string,
@@ -1669,6 +1777,17 @@ func newExecuteSettlementReceipt(result settlementexecution.Result) executeSettl
 		SubmissionReceiptID:         result.SubmissionReceiptID,
 		SettlementProgressionStatus: string(result.SettlementProgressionStatus),
 		ResolvedAmount:              result.ResolvedAmount,
+		RuntimeReference:            result.RuntimeReference,
+	}
+}
+
+func newExecutePartialSettlementReceipt(result partialsettlementexecution.Result) executePartialSettlementReceipt {
+	return executePartialSettlementReceipt{
+		TransactionReceiptID:        result.TransactionReceiptID,
+		SubmissionReceiptID:         result.SubmissionReceiptID,
+		SettlementProgressionStatus: string(result.SettlementProgressionStatus),
+		ExecutedAmount:              result.ExecutedAmount,
+		RemainingAmount:             result.RemainingAmount,
 		RuntimeReference:            result.RuntimeReference,
 	}
 }
