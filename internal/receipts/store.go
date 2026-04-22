@@ -126,6 +126,7 @@ func (s *Store) OpenKnowledgeExchangeTransaction(_ context.Context, in OpenTrans
 		tx.CanonicalSettlementStatus = existing.CanonicalSettlementStatus
 		tx.CurrentPaymentApprovalStatus = existing.CurrentPaymentApprovalStatus
 		tx.SettlementProgressionStatus = existing.SettlementProgressionStatus
+		tx.SettlementProgressionReasonCode = existing.SettlementProgressionReasonCode
 		tx.SettlementProgressionReason = existing.SettlementProgressionReason
 		tx.PartialSettlementHint = existing.PartialSettlementHint
 		tx.DisputeReady = existing.DisputeReady
@@ -140,7 +141,7 @@ func (s *Store) OpenKnowledgeExchangeTransaction(_ context.Context, in OpenTrans
 	return cloneTransactionReceipt(tx), nil
 }
 
-func (s *Store) ApplySettlementProgression(_ context.Context, transactionReceiptID string, next SettlementProgressionStatus, reason string, partialHint string) (TransactionReceipt, error) {
+func (s *Store) ApplySettlementProgression(_ context.Context, transactionReceiptID string, next SettlementProgressionStatus, reasonCode SettlementProgressionReasonCode, reason string, partialHint string) (TransactionReceipt, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -154,6 +155,7 @@ func (s *Store) ApplySettlementProgression(_ context.Context, transactionReceipt
 
 	tx.SettlementProgressionStatus = next
 	tx.CanonicalSettlementStatus = canonicalSettlementStatusForProgression(next)
+	tx.SettlementProgressionReasonCode = reasonCode
 	tx.SettlementProgressionReason = reason
 	tx.PartialSettlementHint = partialHint
 	tx.DisputeReady = next == SettlementProgressionDisputeReady

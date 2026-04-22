@@ -33,8 +33,10 @@ func TestApplyReleaseOutcome_ApproveMapsToApprovedForSettlement(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, receipts.SettlementProgressionApprovedForSettlement, result.Outcome.ProgressionStatus)
+	require.Equal(t, receipts.SettlementProgressionReasonCodeApprove, result.Outcome.ProgressionReasonCode)
 	require.Equal(t, "approve", result.Outcome.ProgressionReason)
 	require.Equal(t, receipts.SettlementProgressionApprovedForSettlement, result.Transaction.SettlementProgressionStatus)
+	require.Equal(t, receipts.SettlementProgressionReasonCodeApprove, result.Transaction.SettlementProgressionReasonCode)
 	require.Equal(t, "approve", result.Transaction.SettlementProgressionReason)
 }
 
@@ -61,8 +63,10 @@ func TestApplyReleaseOutcome_RejectMapsToReviewNeeded(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, receipts.SettlementProgressionReviewNeeded, result.Outcome.ProgressionStatus)
+	require.Equal(t, receipts.SettlementProgressionReasonCodeReject, result.Outcome.ProgressionReasonCode)
 	require.Equal(t, "reject", result.Outcome.ProgressionReason)
 	require.Equal(t, receipts.SettlementProgressionReviewNeeded, result.Transaction.SettlementProgressionStatus)
+	require.Equal(t, receipts.SettlementProgressionReasonCodeReject, result.Transaction.SettlementProgressionReasonCode)
 	require.Equal(t, "reject", result.Transaction.SettlementProgressionReason)
 }
 
@@ -89,8 +93,12 @@ func TestApplyReleaseOutcome_EscalateUsesProvidedReason(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, receipts.SettlementProgressionReviewNeeded, result.Outcome.ProgressionStatus)
+	require.Equal(t, receipts.SettlementProgressionReasonCodeEscalate, result.Outcome.ProgressionReasonCode)
 	require.Equal(t, "manual approval required", result.Outcome.ProgressionReason)
 	require.Equal(t, receipts.SettlementProgressionReviewNeeded, result.Transaction.SettlementProgressionStatus)
+	require.Equal(t, receipts.SettlementProgressionReasonCodeEscalate, result.Transaction.SettlementProgressionReasonCode)
+	require.NotEqual(t, receipts.SettlementProgressionReasonCodeReject, result.Transaction.SettlementProgressionReasonCode)
+	require.NotEqual(t, receipts.SettlementProgressionReasonCodeRequestRevision, result.Transaction.SettlementProgressionReasonCode)
 	require.Equal(t, "manual approval required", result.Transaction.SettlementProgressionReason)
 }
 
@@ -116,7 +124,38 @@ func TestApplyReleaseOutcome_EscalateDefaultsReason(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, receipts.SettlementProgressionReviewNeeded, result.Outcome.ProgressionStatus)
+	require.Equal(t, receipts.SettlementProgressionReasonCodeEscalate, result.Outcome.ProgressionReasonCode)
 	require.Equal(t, "higher approval needed", result.Outcome.ProgressionReason)
 	require.Equal(t, receipts.SettlementProgressionReviewNeeded, result.Transaction.SettlementProgressionStatus)
+	require.Equal(t, receipts.SettlementProgressionReasonCodeEscalate, result.Transaction.SettlementProgressionReasonCode)
 	require.Equal(t, "higher approval needed", result.Transaction.SettlementProgressionReason)
+}
+
+func TestApplyReleaseOutcome_RequestRevisionUsesStableReasonCode(t *testing.T) {
+	store := receipts.NewStore()
+	svc := NewService(store)
+	ctx := context.Background()
+
+	tx, err := store.OpenKnowledgeExchangeTransaction(ctx, receipts.OpenTransactionInput{
+		TransactionID:  "deal-release-request-revision",
+		Counterparty:   "did:lango:peer-request-revision",
+		RequestedScope: "artifact/research-note",
+		PriceContext:   "quote:0.50-usdc",
+		TrustContext:   "trust:0.72",
+	})
+	require.NoError(t, err)
+
+	result, err := svc.ApplyReleaseOutcome(ctx, ApplyReleaseOutcomeRequest{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		Outcome: ReleaseOutcome{
+			Decision: approvalflow.DecisionRequestRevision,
+			Reason:   "Need updated evidence.",
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, receipts.SettlementProgressionReviewNeeded, result.Outcome.ProgressionStatus)
+	require.Equal(t, receipts.SettlementProgressionReasonCodeRequestRevision, result.Outcome.ProgressionReasonCode)
+	require.Equal(t, "request-revision", result.Outcome.ProgressionReason)
+	require.Equal(t, receipts.SettlementProgressionReasonCodeRequestRevision, result.Transaction.SettlementProgressionReasonCode)
+	require.Equal(t, "request-revision", result.Transaction.SettlementProgressionReason)
 }

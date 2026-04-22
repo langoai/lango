@@ -28,7 +28,8 @@ type ApplyReleaseOutcomeResult struct {
 }
 
 type SettlementOutcome struct {
-	ProgressionStatus receipts.SettlementProgressionStatus `json:"progression_status"`
-	ProgressionReason string                               `json:"progression_reason,omitempty"`
-	PartialHint       string                               `json:"partial_hint,omitempty"`
+	ProgressionStatus     receipts.SettlementProgressionStatus     `json:"progression_status"`
+	ProgressionReasonCode receipts.SettlementProgressionReasonCode `json:"progression_reason_code,omitempty"`
+	ProgressionReason     string                                   `json:"progression_reason,omitempty"`
+	PartialHint           string                                   `json:"partial_hint,omitempty"`
 }

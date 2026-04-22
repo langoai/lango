@@ -10,7 +10,7 @@ import (
 )
 
 type receiptStore interface {
-	ApplySettlementProgression(context.Context, string, receipts.SettlementProgressionStatus, string, string) (receipts.TransactionReceipt, error)
+	ApplySettlementProgression(context.Context, string, receipts.SettlementProgressionStatus, receipts.SettlementProgressionReasonCode, string, string) (receipts.TransactionReceipt, error)
 }
 
 type Service struct {
@@ -38,6 +38,7 @@ func (s *Service) ApplyReleaseOutcome(ctx context.Context, req ApplyReleaseOutco
 		ctx,
 		req.TransactionReceiptID,
 		mapped.ProgressionStatus,
+		mapped.ProgressionReasonCode,
 		mapped.ProgressionReason,
 		mapped.PartialHint,
 	)
@@ -55,23 +56,27 @@ func mapReleaseOutcome(outcome ReleaseOutcome) (SettlementOutcome, error) {
 	switch outcome.Decision {
 	case approvalflow.DecisionApprove:
 		return SettlementOutcome{
-			ProgressionStatus: receipts.SettlementProgressionApprovedForSettlement,
-			ProgressionReason: string(approvalflow.DecisionApprove),
+			ProgressionStatus:     receipts.SettlementProgressionApprovedForSettlement,
+			ProgressionReasonCode: receipts.SettlementProgressionReasonCodeApprove,
+			ProgressionReason:     string(approvalflow.DecisionApprove),
 		}, nil
 	case approvalflow.DecisionReject:
 		return SettlementOutcome{
-			ProgressionStatus: receipts.SettlementProgressionReviewNeeded,
-			ProgressionReason: string(approvalflow.DecisionReject),
+			ProgressionStatus:     receipts.SettlementProgressionReviewNeeded,
+			ProgressionReasonCode: receipts.SettlementProgressionReasonCodeReject,
+			ProgressionReason:     string(approvalflow.DecisionReject),
 		}, nil
 	case approvalflow.DecisionRequestRevision:
 		return SettlementOutcome{
-			ProgressionStatus: receipts.SettlementProgressionReviewNeeded,
-			ProgressionReason: string(approvalflow.DecisionRequestRevision),
+			ProgressionStatus:     receipts.SettlementProgressionReviewNeeded,
+			ProgressionReasonCode: receipts.SettlementProgressionReasonCodeRequestRevision,
+			ProgressionReason:     string(approvalflow.DecisionRequestRevision),
 		}, nil
 	case approvalflow.DecisionEscalate:
 		return SettlementOutcome{
-			ProgressionStatus: receipts.SettlementProgressionReviewNeeded,
-			ProgressionReason: escalationReason(outcome.Reason),
+			ProgressionStatus:     receipts.SettlementProgressionReviewNeeded,
+			ProgressionReasonCode: receipts.SettlementProgressionReasonCodeEscalate,
+			ProgressionReason:     escalationReason(outcome.Reason),
 		}, nil
 	default:
 		return SettlementOutcome{}, fmt.Errorf("%w: %q", ErrUnsupportedReleaseDecision, outcome.Decision)

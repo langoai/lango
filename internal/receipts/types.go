@@ -79,6 +79,15 @@ const (
 	SettlementProgressionDisputeReady          SettlementProgressionStatus = "dispute-ready"
 )
 
+type SettlementProgressionReasonCode string
+
+const (
+	SettlementProgressionReasonCodeApprove         SettlementProgressionReasonCode = "approve"
+	SettlementProgressionReasonCodeReject          SettlementProgressionReasonCode = "reject"
+	SettlementProgressionReasonCodeRequestRevision SettlementProgressionReasonCode = "request-revision"
+	SettlementProgressionReasonCodeEscalate        SettlementProgressionReasonCode = "escalate"
+)
+
 type EventType string
 
 const (
@@ -139,24 +148,25 @@ type SubmissionReceipt struct {
 }
 
 type TransactionReceipt struct {
-	TransactionReceiptID           string                         `json:"transaction_receipt_id"`
-	TransactionID                  string                         `json:"transaction_id"`
-	Counterparty                   string                         `json:"counterparty,omitempty"`
-	RequestedScope                 string                         `json:"requested_scope,omitempty"`
-	PriceContext                   string                         `json:"price_context,omitempty"`
-	TrustContext                   string                         `json:"trust_context,omitempty"`
-	KnowledgeExchangeRuntimeStatus KnowledgeExchangeRuntimeStatus `json:"knowledge_exchange_runtime_status,omitempty"`
-	SettlementProgressionStatus    SettlementProgressionStatus    `json:"settlement_progression_status,omitempty"`
-	SettlementProgressionReason    string                         `json:"settlement_progression_reason,omitempty"`
-	PartialSettlementHint          string                         `json:"partial_settlement_hint,omitempty"`
-	DisputeReady                   bool                           `json:"dispute_ready,omitempty"`
-	CurrentSubmissionReceiptID     string                         `json:"current_submission_receipt_id,omitempty"`
-	CanonicalApprovalStatus        ApprovalStatus                 `json:"canonical_approval_status"`
-	CanonicalSettlementStatus      SettlementStatus               `json:"canonical_settlement_status"`
-	CurrentPaymentApprovalStatus   PaymentApprovalStatus          `json:"current_payment_approval_status"`
-	CanonicalDecision              string                         `json:"canonical_decision,omitempty"`
-	CanonicalSettlementHint        string                         `json:"canonical_settlement_hint,omitempty"`
-	EscrowExecutionStatus          EscrowExecutionStatus          `json:"escrow_execution_status,omitempty"`
-	EscrowReference                string                         `json:"escrow_reference,omitempty"`
-	EscrowExecutionInput           *EscrowExecutionInput          `json:"escrow_execution_input,omitempty"`
+	TransactionReceiptID            string                          `json:"transaction_receipt_id"`
+	TransactionID                   string                          `json:"transaction_id"`
+	Counterparty                    string                          `json:"counterparty,omitempty"`
+	RequestedScope                  string                          `json:"requested_scope,omitempty"`
+	PriceContext                    string                          `json:"price_context,omitempty"`
+	TrustContext                    string                          `json:"trust_context,omitempty"`
+	KnowledgeExchangeRuntimeStatus  KnowledgeExchangeRuntimeStatus  `json:"knowledge_exchange_runtime_status,omitempty"`
+	SettlementProgressionStatus     SettlementProgressionStatus     `json:"settlement_progression_status,omitempty"`
+	SettlementProgressionReasonCode SettlementProgressionReasonCode `json:"settlement_progression_reason_code,omitempty"`
+	SettlementProgressionReason     string                          `json:"settlement_progression_reason,omitempty"`
+	PartialSettlementHint           string                          `json:"partial_settlement_hint,omitempty"`
+	DisputeReady                    bool                            `json:"dispute_ready,omitempty"`
+	CurrentSubmissionReceiptID      string                          `json:"current_submission_receipt_id,omitempty"`
+	CanonicalApprovalStatus         ApprovalStatus                  `json:"canonical_approval_status"`
+	CanonicalSettlementStatus       SettlementStatus                `json:"canonical_settlement_status"`
+	CurrentPaymentApprovalStatus    PaymentApprovalStatus           `json:"current_payment_approval_status"`
+	CanonicalDecision               string                          `json:"canonical_decision,omitempty"`
+	CanonicalSettlementHint         string                          `json:"canonical_settlement_hint,omitempty"`
+	EscrowExecutionStatus           EscrowExecutionStatus           `json:"escrow_execution_status,omitempty"`
+	EscrowReference                 string                          `json:"escrow_reference,omitempty"`
+	EscrowExecutionInput            *EscrowExecutionInput           `json:"escrow_execution_input,omitempty"`
 }
