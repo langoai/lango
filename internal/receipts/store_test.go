@@ -126,6 +126,82 @@ func TestOpenKnowledgeExchangeTransaction_RebindsRuntimeStateToOpened(t *testing
 	require.Equal(t, RuntimeStatusOpened, stored.KnowledgeExchangeRuntimeStatus)
 }
 
+func TestOpenKnowledgeExchangeTransaction_RejectsConflictingCanonicalInputs(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	tx, err := store.OpenKnowledgeExchangeTransaction(ctx, OpenTransactionInput{
+		TransactionID:  "deal-open-4",
+		Counterparty:   "did:lango:peer-4",
+		RequestedScope: "artifact/baseline",
+		PriceContext:   "quote:3.00-usdc",
+		TrustContext:   "trust:0.66",
+	})
+	require.NoError(t, err)
+
+	_, err = store.ApplyKnowledgeExchangeRuntimeProgression(ctx, tx.TransactionReceiptID, RuntimeStatusPaymentApproved, "")
+	require.NoError(t, err)
+
+	_, err = store.OpenKnowledgeExchangeTransaction(ctx, OpenTransactionInput{
+		TransactionID:  "deal-open-4",
+		Counterparty:   "did:lango:peer-conflict",
+		RequestedScope: "artifact/baseline",
+		PriceContext:   "quote:3.00-usdc",
+		TrustContext:   "trust:0.66",
+	})
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrInvalidSubmissionInput)
+
+	stored, err := store.GetTransactionReceipt(ctx, tx.TransactionReceiptID)
+	require.NoError(t, err)
+	require.Equal(t, "did:lango:peer-4", stored.Counterparty)
+	require.Equal(t, RuntimeStatusPaymentApproved, stored.KnowledgeExchangeRuntimeStatus)
+}
+
+func TestApplyKnowledgeExchangeRuntimeProgression_RejectsNonexistentSubmissionPointer(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	tx, err := store.OpenKnowledgeExchangeTransaction(ctx, OpenTransactionInput{
+		TransactionID:  "deal-open-5",
+		Counterparty:   "did:lango:peer-5",
+		RequestedScope: "artifact/submission-check",
+		PriceContext:   "quote:4.00-usdc",
+		TrustContext:   "trust:0.77",
+	})
+	require.NoError(t, err)
+
+	_, err = store.ApplyKnowledgeExchangeRuntimeProgression(ctx, tx.TransactionReceiptID, RuntimeStatusPaymentApproved, "missing-submission")
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrSubmissionReceiptNotFound)
+}
+
+func TestApplyKnowledgeExchangeRuntimeProgression_RejectsForeignSubmissionPointer(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	tx, err := store.OpenKnowledgeExchangeTransaction(ctx, OpenTransactionInput{
+		TransactionID:  "deal-open-6",
+		Counterparty:   "did:lango:peer-6",
+		RequestedScope: "artifact/runtime-owner",
+		PriceContext:   "quote:5.00-usdc",
+		TrustContext:   "trust:0.81",
+	})
+	require.NoError(t, err)
+
+	foreignSub, _, err := store.CreateSubmissionReceipt(ctx, CreateSubmissionInput{
+		TransactionID:       "tx-runtime-foreign",
+		ArtifactLabel:       "artifact/runtime-foreign",
+		PayloadHash:         "hash-runtime-foreign",
+		SourceLineageDigest: "lineage-runtime-foreign",
+	})
+	require.NoError(t, err)
+
+	_, err = store.ApplyKnowledgeExchangeRuntimeProgression(ctx, tx.TransactionReceiptID, RuntimeStatusPaymentApproved, foreignSub.SubmissionReceiptID)
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrSubmissionReceiptNotFound)
+}
+
 func TestCreateSubmissionReceipt_UpdatesCurrentPointerOnSecondSubmission(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()

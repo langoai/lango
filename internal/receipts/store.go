@@ -116,6 +116,9 @@ func (s *Store) OpenKnowledgeExchangeTransaction(_ context.Context, in OpenTrans
 	}
 
 	if existing, exists := s.transactions[txReceiptID]; exists {
+		if err := validateCanonicalOpenInputConflict(existing, in); err != nil {
+			return TransactionReceipt{}, err
+		}
 		tx.CurrentSubmissionReceiptID = existing.CurrentSubmissionReceiptID
 		tx.CanonicalApprovalStatus = existing.CanonicalApprovalStatus
 		tx.CanonicalSettlementStatus = existing.CanonicalSettlementStatus
@@ -138,6 +141,15 @@ func (s *Store) ApplyKnowledgeExchangeRuntimeProgression(_ context.Context, tran
 	tx, ok := s.transactions[transactionReceiptID]
 	if !ok {
 		return TransactionReceipt{}, ErrTransactionReceiptNotFound
+	}
+	if submissionReceiptID != "" {
+		submission, ok := s.submissions[submissionReceiptID]
+		if !ok {
+			return TransactionReceipt{}, ErrSubmissionReceiptNotFound
+		}
+		if submission.TransactionReceiptID != transactionReceiptID {
+			return TransactionReceipt{}, fmt.Errorf("%w: submission does not belong to transaction", ErrSubmissionReceiptNotFound)
+		}
 	}
 	if err := validateKnowledgeExchangeRuntimeTransition(tx.KnowledgeExchangeRuntimeStatus, next); err != nil {
 		return TransactionReceipt{}, err
@@ -502,6 +514,21 @@ func validateKnowledgeExchangeRuntimeTransition(current, next KnowledgeExchangeR
 	}
 
 	return fmt.Errorf("%w: %q -> %q", ErrInvalidKnowledgeExchangeRuntimeState, current, next)
+}
+
+func validateCanonicalOpenInputConflict(existing TransactionReceipt, in OpenTransactionInput) error {
+	switch {
+	case existing.Counterparty != "" && existing.Counterparty != in.Counterparty:
+		return fmt.Errorf("%w: counterparty conflicts with existing transaction baseline", ErrInvalidSubmissionInput)
+	case existing.RequestedScope != "" && existing.RequestedScope != in.RequestedScope:
+		return fmt.Errorf("%w: requested_scope conflicts with existing transaction baseline", ErrInvalidSubmissionInput)
+	case existing.PriceContext != "" && existing.PriceContext != in.PriceContext:
+		return fmt.Errorf("%w: price_context conflicts with existing transaction baseline", ErrInvalidSubmissionInput)
+	case existing.TrustContext != "" && existing.TrustContext != in.TrustContext:
+		return fmt.Errorf("%w: trust_context conflicts with existing transaction baseline", ErrInvalidSubmissionInput)
+	default:
+		return nil
+	}
 }
 
 func cloneEscrowExecutionInput(input *EscrowExecutionInput) *EscrowExecutionInput {
