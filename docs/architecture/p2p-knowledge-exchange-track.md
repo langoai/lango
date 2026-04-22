@@ -41,6 +41,8 @@ It establishes the trust, settlement, deliverable, and exportability boundaries 
 
 The exportability policy work has already started as a first slice: source-based evaluation and operator visibility are now landed. Approval flow now has a first slice too: structured artifact release approval states and audit-backed receipts are landed. Upfront payment approval now has a first slice as well: structured decisioning, suggested payment modes, canonical transaction receipt state updates, and escrow execution input binding are landed. Dispute-ready receipts also have a lite slice now: canonical submission and transaction records, current submission pointers, and append-only event trails are in place. Direct payment execution gating is landed for the direct `prepay` path, and escrow recommendation execution is landed for the first `create + fund` path. The remaining work is deeper provenance, broader settlement progression, and dispute integration rather than starting from zero.
 
+The first transaction-oriented runtime design slice is now documented in `docs/architecture/knowledge-exchange-runtime.md`. It ties transaction open, payment-path selection, work-start gating, submission creation, release approval, and post-approval progression into one canonical runtime story while keeping the current limits explicit.
+
 ## In Scope
 
 - pseudonymous but cryptographically continuous identities,
@@ -83,4 +85,4 @@ The exportability policy work has already started as a first slice: source-based
 2. `pricing / negotiation / settlement` detailed audit is now landed; the follow-on work is runtime integration, final settlement progression, and escrow lifecycle completion
 3. exportability policy follow-on work (the first source-primary slice has landed; the remaining gaps are richer rules, override/dispute handling, and receipt unification)
 4. upfront payment approval and payment execution follow-on work (the first slices have landed; remaining gaps are human approval UI, escrow activation/release/refund, dispute orchestration, and partial settlement execution beyond escrow funding)
-5. first implementation plan for the `knowledge exchange` runtime path
+5. the first transaction-oriented runtime design slice, now documented in `docs/architecture/knowledge-exchange-runtime.md`; follow-on work is runtime implementation and broader progression handling

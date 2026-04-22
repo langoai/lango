@@ -52,6 +52,12 @@ This section describes the internal architecture of Lango, a Go-based AI agent b
 
     Audit ledger for pricing surfaces, negotiation, settlement, and escrow in `knowledge exchange v1`.
 
+-   :material-timer-sand: **[Knowledge Exchange Runtime](knowledge-exchange-runtime.md)**
+
+    ---
+
+    The first transaction-oriented runtime control plane for `knowledge exchange v1`, centered on transaction receipt and submission receipt with explicit current limits.
+
 -   :material-cash-fast: **[P2P Knowledge Exchange Track](p2p-knowledge-exchange-track.md)**
 
     ---

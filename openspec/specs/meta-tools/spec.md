@@ -134,3 +134,10 @@ The `save_knowledge` tool SHALL accept exportability-related source tagging meta
 #### Scenario: Save knowledge default source class
 - **WHEN** `save_knowledge` is called without `source_class`
 - **THEN** the tool SHALL default the stored source class to `private-confidential`
+
+### Requirement: Knowledge exchange runtime control plane reuses receipt-backed meta tools
+The meta tools surface SHALL treat the first knowledge exchange runtime design slice as a composition of the existing receipt-backed tools, with `transaction receipt` as canonical control-plane state and `submission receipt` as canonical deliverable state.
+
+#### Scenario: Runtime slice reuses existing tool contracts
+- **WHEN** the knowledge exchange runtime slice is described through meta-tools behavior
+- **THEN** it SHALL rely on the existing exportability, approval, submission-creation, and upfront-payment tools rather than introducing a duplicate receipt model
