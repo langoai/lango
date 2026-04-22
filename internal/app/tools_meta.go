@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/langoai/lango/internal/agent"
+	"github.com/langoai/lango/internal/approvalflow"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/economy/escrow"
 	entknowledge "github.com/langoai/lango/internal/ent/knowledge"
@@ -24,6 +25,7 @@ import (
 	"github.com/langoai/lango/internal/paymentapproval"
 	"github.com/langoai/lango/internal/receipts"
 	"github.com/langoai/lango/internal/session"
+	"github.com/langoai/lango/internal/settlementprogression"
 	"github.com/langoai/lango/internal/skill"
 	"github.com/langoai/lango/internal/toolparam"
 )
@@ -305,6 +307,7 @@ func buildMetaToolsWithEscrow(
 				return approveUpfrontPayment(ctx, receiptStore, params, paymentapproval.EvaluateUpfrontPayment)
 			},
 		},
+		newApplySettlementProgressionTool(receiptStore),
 		{
 			Name:        "get_knowledge_history",
 			Description: "Get version history for a knowledge entry. Returns all versions ordered newest first",
@@ -1390,6 +1393,69 @@ func newSelectKnowledgeExchangePathTool(receiptStore *receipts.Store) *agent.Too
 	}
 }
 
+func newApplySettlementProgressionTool(receiptStore *receipts.Store) *agent.Tool {
+	return &agent.Tool{
+		Name:        "apply_settlement_progression",
+		Description: "Apply a release approval decision to the linked transaction receipt and return canonical settlement progression state",
+		SafetyLevel: agent.SafetyLevelModerate,
+		Capability: agent.ToolCapability{
+			Category: "knowledge",
+			Activity: agent.ActivityWrite,
+		},
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"transaction_receipt_id": map[string]interface{}{"type": "string", "description": "Transaction receipt identifier to update"},
+				"outcome": map[string]interface{}{
+					"type":        "string",
+					"description": "Release approval decision",
+					"enum":        []string{"approve", "reject", "request-revision", "escalate"},
+				},
+				"reason":       map[string]interface{}{"type": "string", "description": "Optional human-readable reason for the progression update"},
+				"partial_hint": map[string]interface{}{"type": "string", "description": "Optional partial settlement hint"},
+			},
+			"required": []string{"transaction_receipt_id", "outcome"},
+		},
+		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+			if receiptStore == nil {
+				return nil, fmt.Errorf("receipts store dependency is not configured")
+			}
+
+			transactionReceiptID, err := toolparam.RequireString(params, "transaction_receipt_id")
+			if err != nil {
+				return nil, err
+			}
+			transactionReceiptID = strings.TrimSpace(transactionReceiptID)
+			if transactionReceiptID == "" {
+				return nil, &toolparam.ErrMissingParam{Name: "transaction_receipt_id"}
+			}
+
+			outcome, err := toolparam.RequireString(params, "outcome")
+			if err != nil {
+				return nil, err
+			}
+			outcome = strings.TrimSpace(outcome)
+			if outcome == "" {
+				return nil, &toolparam.ErrMissingParam{Name: "outcome"}
+			}
+
+			result, err := settlementprogression.NewService(receiptStore).ApplyReleaseOutcome(ctx, settlementprogression.ApplyReleaseOutcomeRequest{
+				TransactionReceiptID: transactionReceiptID,
+				Outcome: settlementprogression.ReleaseOutcome{
+					Decision: approvalflow.Decision(outcome),
+					Reason:   toolparam.OptionalString(params, "reason", ""),
+				},
+				PartialHint: toolparam.OptionalString(params, "partial_hint", ""),
+			})
+			if err != nil {
+				return nil, err
+			}
+
+			return newApplySettlementProgressionReceipt(result), nil
+		},
+	}
+}
+
 func parseDisputeReadyReceiptInput(params map[string]interface{}) (receipts.CreateSubmissionInput, error) {
 	transactionID, err := toolparam.RequireString(params, "transaction_id")
 	if err != nil {
@@ -1456,6 +1522,14 @@ type executeEscrowRecommendationReceipt struct {
 	EscrowExecutionStatus string `json:"escrow_execution_status"`
 }
 
+type applySettlementProgressionReceipt struct {
+	TransactionReceiptID            string `json:"transaction_receipt_id"`
+	SettlementProgressionStatus     string `json:"settlement_progression_status"`
+	SettlementProgressionReasonCode string `json:"settlement_progression_reason_code,omitempty"`
+	SettlementProgressionReason     string `json:"settlement_progression_reason,omitempty"`
+	PartialHint                     string `json:"partial_hint,omitempty"`
+}
+
 func newUpfrontPaymentApprovalReceipt(
 	transactionReceiptID string,
 	submissionReceiptID string,
@@ -1484,5 +1558,15 @@ func newUpfrontPaymentApprovalReceipt(
 		CanonicalDecision:            updatedTx.CanonicalDecision,
 		CanonicalSettlementHint:      updatedTx.CanonicalSettlementHint,
 		EscrowExecutionStatus:        string(updatedTx.EscrowExecutionStatus),
+	}
+}
+
+func newApplySettlementProgressionReceipt(result settlementprogression.ApplyReleaseOutcomeResult) applySettlementProgressionReceipt {
+	return applySettlementProgressionReceipt{
+		TransactionReceiptID:            result.Transaction.TransactionReceiptID,
+		SettlementProgressionStatus:     string(result.Transaction.SettlementProgressionStatus),
+		SettlementProgressionReasonCode: string(result.Transaction.SettlementProgressionReasonCode),
+		SettlementProgressionReason:     result.Transaction.SettlementProgressionReason,
+		PartialHint:                     result.Transaction.PartialSettlementHint,
 	}
 }
