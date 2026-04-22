@@ -3,6 +3,7 @@ package receipts
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/google/uuid"
@@ -85,6 +86,72 @@ func (s *Store) CreateSubmissionReceipt(_ context.Context, in CreateSubmissionIn
 	s.transactions[txReceiptID] = transaction
 
 	return submission, cloneTransactionReceipt(transaction), nil
+}
+
+func (s *Store) OpenKnowledgeExchangeTransaction(_ context.Context, in OpenTransactionInput) (TransactionReceipt, error) {
+	if strings.TrimSpace(in.TransactionID) == "" || strings.TrimSpace(in.Counterparty) == "" || strings.TrimSpace(in.RequestedScope) == "" {
+		return TransactionReceipt{}, fmt.Errorf("%w: transaction_id, counterparty, and requested_scope are required", ErrInvalidSubmissionInput)
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	txReceiptID, ok := s.txByExternalID[in.TransactionID]
+	if !ok {
+		txReceiptID = uuid.NewString()
+		s.txByExternalID[in.TransactionID] = txReceiptID
+	}
+
+	tx := TransactionReceipt{
+		TransactionReceiptID:           txReceiptID,
+		TransactionID:                  in.TransactionID,
+		Counterparty:                   in.Counterparty,
+		RequestedScope:                 in.RequestedScope,
+		PriceContext:                   in.PriceContext,
+		TrustContext:                   in.TrustContext,
+		KnowledgeExchangeRuntimeStatus: RuntimeStatusOpened,
+		CanonicalApprovalStatus:        ApprovalPending,
+		CanonicalSettlementStatus:      SettlementPending,
+		CurrentPaymentApprovalStatus:   PaymentApprovalPending,
+	}
+
+	if existing, exists := s.transactions[txReceiptID]; exists {
+		tx.CurrentSubmissionReceiptID = existing.CurrentSubmissionReceiptID
+		tx.CanonicalApprovalStatus = existing.CanonicalApprovalStatus
+		tx.CanonicalSettlementStatus = existing.CanonicalSettlementStatus
+		tx.CurrentPaymentApprovalStatus = existing.CurrentPaymentApprovalStatus
+		tx.CanonicalDecision = existing.CanonicalDecision
+		tx.CanonicalSettlementHint = existing.CanonicalSettlementHint
+		tx.EscrowExecutionStatus = existing.EscrowExecutionStatus
+		tx.EscrowReference = existing.EscrowReference
+		tx.EscrowExecutionInput = cloneEscrowExecutionInput(existing.EscrowExecutionInput)
+		if existing.KnowledgeExchangeRuntimeStatus != "" {
+			tx.KnowledgeExchangeRuntimeStatus = existing.KnowledgeExchangeRuntimeStatus
+		}
+	}
+
+	s.transactions[txReceiptID] = tx
+	return cloneTransactionReceipt(tx), nil
+}
+
+func (s *Store) ApplyKnowledgeExchangeRuntimeProgression(_ context.Context, transactionReceiptID string, next KnowledgeExchangeRuntimeStatus, submissionReceiptID string) (TransactionReceipt, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	tx, ok := s.transactions[transactionReceiptID]
+	if !ok {
+		return TransactionReceipt{}, ErrTransactionReceiptNotFound
+	}
+	if err := validateKnowledgeExchangeRuntimeTransition(tx.KnowledgeExchangeRuntimeStatus, next); err != nil {
+		return TransactionReceipt{}, err
+	}
+	if submissionReceiptID != "" {
+		tx.CurrentSubmissionReceiptID = submissionReceiptID
+	}
+	tx.KnowledgeExchangeRuntimeStatus = next
+	s.transactions[transactionReceiptID] = tx
+
+	return cloneTransactionReceipt(tx), nil
 }
 
 func (s *Store) ApplyUpfrontPaymentApproval(_ context.Context, transactionReceiptID, submissionReceiptID string, outcome paymentapproval.Outcome) (TransactionReceipt, error) {
@@ -395,6 +462,61 @@ func validateEscrowExecutionTransition(current, next EscrowExecutionStatus) erro
 	}
 
 	return fmt.Errorf("%w: illegal transition from %q to %q", ErrInvalidEscrowExecutionState, current, next)
+}
+
+func validateKnowledgeExchangeRuntimeTransition(current, next KnowledgeExchangeRuntimeStatus) error {
+	switch current {
+	case "":
+		if next == RuntimeStatusOpened {
+			return nil
+		}
+	case RuntimeStatusOpened:
+		if next == RuntimeStatusOpened || next == RuntimeStatusExportabilityAdvisory || next == RuntimeStatusPaymentApproved {
+			return nil
+		}
+	case RuntimeStatusExportabilityAdvisory:
+		if next == RuntimeStatusExportabilityAdvisory || next == RuntimeStatusPaymentApproved {
+			return nil
+		}
+	case RuntimeStatusPaymentApproved:
+		if next == RuntimeStatusPaymentApproved || next == RuntimeStatusPaymentAuthorized || next == RuntimeStatusEscrowFunded {
+			return nil
+		}
+	case RuntimeStatusPaymentAuthorized:
+		if next == RuntimeStatusPaymentAuthorized || next == RuntimeStatusEscrowFunded {
+			return nil
+		}
+	case RuntimeStatusEscrowFunded:
+		if next == RuntimeStatusEscrowFunded || next == RuntimeStatusWorkStarted {
+			return nil
+		}
+	case RuntimeStatusWorkStarted:
+		if next == RuntimeStatusWorkStarted || next == RuntimeStatusSubmissionReceived {
+			return nil
+		}
+	case RuntimeStatusSubmissionReceived:
+		if next == RuntimeStatusSubmissionReceived || next == RuntimeStatusReleaseApproved || next == RuntimeStatusRevisionRequested || next == RuntimeStatusEscalated || next == RuntimeStatusDisputeReady {
+			return nil
+		}
+	case RuntimeStatusReleaseApproved:
+		if next == RuntimeStatusReleaseApproved {
+			return nil
+		}
+	case RuntimeStatusRevisionRequested:
+		if next == RuntimeStatusRevisionRequested || next == RuntimeStatusWorkStarted || next == RuntimeStatusSubmissionReceived {
+			return nil
+		}
+	case RuntimeStatusEscalated:
+		if next == RuntimeStatusEscalated || next == RuntimeStatusDisputeReady {
+			return nil
+		}
+	case RuntimeStatusDisputeReady:
+		if next == RuntimeStatusDisputeReady {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("%w: illegal transition from %q to %q", ErrInvalidKnowledgeExchangeRuntimeState, current, next)
 }
 
 func cloneEscrowExecutionInput(input *EscrowExecutionInput) *EscrowExecutionInput {

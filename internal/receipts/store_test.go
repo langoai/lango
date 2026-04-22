@@ -44,6 +44,46 @@ func TestCreateSubmissionReceipt_RejectsEmptyInput(t *testing.T) {
 	require.ErrorIs(t, err, ErrInvalidSubmissionInput)
 }
 
+func TestOpenKnowledgeExchangeTransaction_BindsCanonicalInputs(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	tx, err := store.OpenKnowledgeExchangeTransaction(ctx, OpenTransactionInput{
+		TransactionID:  "deal-open-1",
+		Counterparty:   "did:lango:peer-1",
+		RequestedScope: "artifact/research-note",
+		PriceContext:   "quote:0.50-usdc",
+		TrustContext:   "trust:0.72",
+	})
+	require.NoError(t, err)
+	require.Equal(t, "did:lango:peer-1", tx.Counterparty)
+	require.Equal(t, "artifact/research-note", tx.RequestedScope)
+	require.Equal(t, "quote:0.50-usdc", tx.PriceContext)
+	require.Equal(t, "trust:0.72", tx.TrustContext)
+	require.Equal(t, RuntimeStatusOpened, tx.KnowledgeExchangeRuntimeStatus)
+}
+
+func TestApplyKnowledgeExchangeRuntimeProgression_RejectsIllegalBranchRewinds(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	tx, err := store.OpenKnowledgeExchangeTransaction(ctx, OpenTransactionInput{
+		TransactionID:  "deal-open-2",
+		Counterparty:   "did:lango:peer-2",
+		RequestedScope: "artifact/code-review",
+		PriceContext:   "quote:1.00-usdc",
+		TrustContext:   "trust:0.83",
+	})
+	require.NoError(t, err)
+
+	_, err = store.ApplyKnowledgeExchangeRuntimeProgression(ctx, tx.TransactionReceiptID, RuntimeStatusPaymentApproved, "")
+	require.NoError(t, err)
+
+	_, err = store.ApplyKnowledgeExchangeRuntimeProgression(ctx, tx.TransactionReceiptID, RuntimeStatusOpened, "")
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrInvalidKnowledgeExchangeRuntimeState)
+}
+
 func TestCreateSubmissionReceipt_UpdatesCurrentPointerOnSecondSubmission(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()

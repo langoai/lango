@@ -3,13 +3,14 @@ package receipts
 import "errors"
 
 var (
-	ErrSubmissionReceiptNotFound    = errors.New("submission receipt not found")
-	ErrTransactionReceiptNotFound   = errors.New("transaction receipt not found")
-	ErrInvalidSubmissionInput       = errors.New("invalid submission input")
-	ErrInvalidReceiptEventType      = errors.New("invalid receipt event type")
-	ErrInvalidPaymentApprovalStatus = errors.New("invalid payment approval status")
-	ErrInvalidEscrowExecutionStatus = errors.New("invalid escrow execution status")
-	ErrInvalidEscrowExecutionState  = errors.New("invalid escrow execution state")
+	ErrSubmissionReceiptNotFound            = errors.New("submission receipt not found")
+	ErrTransactionReceiptNotFound           = errors.New("transaction receipt not found")
+	ErrInvalidSubmissionInput               = errors.New("invalid submission input")
+	ErrInvalidReceiptEventType              = errors.New("invalid receipt event type")
+	ErrInvalidPaymentApprovalStatus         = errors.New("invalid payment approval status")
+	ErrInvalidEscrowExecutionStatus         = errors.New("invalid escrow execution status")
+	ErrInvalidEscrowExecutionState          = errors.New("invalid escrow execution state")
+	ErrInvalidKnowledgeExchangeRuntimeState = errors.New("invalid knowledge exchange runtime state")
 )
 
 type ApprovalStatus string
@@ -47,6 +48,22 @@ const (
 	PaymentApprovalApproved  PaymentApprovalStatus = "approved"
 	PaymentApprovalRejected  PaymentApprovalStatus = "rejected"
 	PaymentApprovalEscalated PaymentApprovalStatus = "escalated"
+)
+
+type KnowledgeExchangeRuntimeStatus string
+
+const (
+	RuntimeStatusOpened                KnowledgeExchangeRuntimeStatus = "opened"
+	RuntimeStatusExportabilityAdvisory KnowledgeExchangeRuntimeStatus = "exportability-advisory"
+	RuntimeStatusPaymentApproved       KnowledgeExchangeRuntimeStatus = "payment-approved"
+	RuntimeStatusPaymentAuthorized     KnowledgeExchangeRuntimeStatus = "payment-authorized"
+	RuntimeStatusEscrowFunded          KnowledgeExchangeRuntimeStatus = "escrow-funded"
+	RuntimeStatusWorkStarted           KnowledgeExchangeRuntimeStatus = "work-started"
+	RuntimeStatusSubmissionReceived    KnowledgeExchangeRuntimeStatus = "submission-received"
+	RuntimeStatusReleaseApproved       KnowledgeExchangeRuntimeStatus = "release-approved"
+	RuntimeStatusRevisionRequested     KnowledgeExchangeRuntimeStatus = "revision-requested"
+	RuntimeStatusEscalated             KnowledgeExchangeRuntimeStatus = "escalated"
+	RuntimeStatusDisputeReady          KnowledgeExchangeRuntimeStatus = "dispute-ready"
 )
 
 type EventType string
@@ -89,6 +106,14 @@ type ProvenanceSummary struct {
 	AttributionSummary string `json:"attribution_summary,omitempty"`
 }
 
+type OpenTransactionInput struct {
+	TransactionID  string `json:"transaction_id"`
+	Counterparty   string `json:"counterparty"`
+	RequestedScope string `json:"requested_scope"`
+	PriceContext   string `json:"price_context"`
+	TrustContext   string `json:"trust_context"`
+}
+
 type SubmissionReceipt struct {
 	SubmissionReceiptID     string            `json:"submission_receipt_id"`
 	TransactionReceiptID    string            `json:"transaction_receipt_id"`
@@ -101,15 +126,20 @@ type SubmissionReceipt struct {
 }
 
 type TransactionReceipt struct {
-	TransactionReceiptID         string                `json:"transaction_receipt_id"`
-	TransactionID                string                `json:"transaction_id"`
-	CurrentSubmissionReceiptID   string                `json:"current_submission_receipt_id,omitempty"`
-	CanonicalApprovalStatus      ApprovalStatus        `json:"canonical_approval_status"`
-	CanonicalSettlementStatus    SettlementStatus      `json:"canonical_settlement_status"`
-	CurrentPaymentApprovalStatus PaymentApprovalStatus `json:"current_payment_approval_status"`
-	CanonicalDecision            string                `json:"canonical_decision,omitempty"`
-	CanonicalSettlementHint      string                `json:"canonical_settlement_hint,omitempty"`
-	EscrowExecutionStatus        EscrowExecutionStatus `json:"escrow_execution_status,omitempty"`
-	EscrowReference              string                `json:"escrow_reference,omitempty"`
-	EscrowExecutionInput         *EscrowExecutionInput `json:"escrow_execution_input,omitempty"`
+	TransactionReceiptID           string                         `json:"transaction_receipt_id"`
+	TransactionID                  string                         `json:"transaction_id"`
+	Counterparty                   string                         `json:"counterparty,omitempty"`
+	RequestedScope                 string                         `json:"requested_scope,omitempty"`
+	PriceContext                   string                         `json:"price_context,omitempty"`
+	TrustContext                   string                         `json:"trust_context,omitempty"`
+	KnowledgeExchangeRuntimeStatus KnowledgeExchangeRuntimeStatus `json:"knowledge_exchange_runtime_status,omitempty"`
+	CurrentSubmissionReceiptID     string                         `json:"current_submission_receipt_id,omitempty"`
+	CanonicalApprovalStatus        ApprovalStatus                 `json:"canonical_approval_status"`
+	CanonicalSettlementStatus      SettlementStatus               `json:"canonical_settlement_status"`
+	CurrentPaymentApprovalStatus   PaymentApprovalStatus          `json:"current_payment_approval_status"`
+	CanonicalDecision              string                         `json:"canonical_decision,omitempty"`
+	CanonicalSettlementHint        string                         `json:"canonical_settlement_hint,omitempty"`
+	EscrowExecutionStatus          EscrowExecutionStatus          `json:"escrow_execution_status,omitempty"`
+	EscrowReference                string                         `json:"escrow_reference,omitempty"`
+	EscrowExecutionInput           *EscrowExecutionInput          `json:"escrow_execution_input,omitempty"`
 }
