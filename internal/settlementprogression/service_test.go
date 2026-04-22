@@ -69,6 +69,32 @@ func TestApplyReleaseOutcome_ApproveDefaultsReasonWhenMissing(t *testing.T) {
 	require.Equal(t, "Artifact release approved.", result.Transaction.SettlementProgressionReason)
 }
 
+func TestApplyReleaseOutcome_TrimsTransactionReceiptIDBeforeLookup(t *testing.T) {
+	store := receipts.NewStore()
+	svc := NewService(store)
+	ctx := context.Background()
+
+	tx, err := store.OpenKnowledgeExchangeTransaction(ctx, receipts.OpenTransactionInput{
+		TransactionID:  "deal-release-trimmed-id",
+		Counterparty:   "did:lango:peer-trimmed-id",
+		RequestedScope: "artifact/research-note",
+		PriceContext:   "quote:0.50-usdc",
+		TrustContext:   "trust:0.72",
+	})
+	require.NoError(t, err)
+
+	result, err := svc.ApplyReleaseOutcome(ctx, ApplyReleaseOutcomeRequest{
+		TransactionReceiptID: "  " + tx.TransactionReceiptID + "  ",
+		Outcome: ReleaseOutcome{
+			Decision: approvalflow.DecisionApprove,
+			Reason:   "Approved after final review.",
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, tx.TransactionReceiptID, result.Transaction.TransactionReceiptID)
+	require.Equal(t, receipts.SettlementProgressionApprovedForSettlement, result.Transaction.SettlementProgressionStatus)
+}
+
 func TestApplyReleaseOutcome_RejectMapsToReviewNeeded(t *testing.T) {
 	store := receipts.NewStore()
 	svc := NewService(store)

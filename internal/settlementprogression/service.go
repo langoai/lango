@@ -22,7 +22,8 @@ func NewService(store receiptStore) *Service {
 }
 
 func (s *Service) ApplyReleaseOutcome(ctx context.Context, req ApplyReleaseOutcomeRequest) (ApplyReleaseOutcomeResult, error) {
-	if strings.TrimSpace(req.TransactionReceiptID) == "" {
+	transactionReceiptID := strings.TrimSpace(req.TransactionReceiptID)
+	if transactionReceiptID == "" {
 		return ApplyReleaseOutcomeResult{}, fmt.Errorf("%w: transaction_receipt_id is required", ErrInvalidApplyReleaseOutcomeRequest)
 	}
 	if s == nil || s.store == nil {
@@ -37,7 +38,7 @@ func (s *Service) ApplyReleaseOutcome(ctx context.Context, req ApplyReleaseOutco
 
 	transaction, err := s.store.ApplySettlementProgression(
 		ctx,
-		req.TransactionReceiptID,
+		transactionReceiptID,
 		mapped.ProgressionStatus,
 		mapped.ProgressionReasonCode,
 		mapped.ProgressionReason,
