@@ -64,10 +64,36 @@ func TestApplyReleaseOutcome_RejectMapsToReviewNeeded(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, receipts.SettlementProgressionReviewNeeded, result.Outcome.ProgressionStatus)
 	require.Equal(t, receipts.SettlementProgressionReasonCodeReject, result.Outcome.ProgressionReasonCode)
-	require.Equal(t, "reject", result.Outcome.ProgressionReason)
+	require.Equal(t, "Artifact release blocked by policy.", result.Outcome.ProgressionReason)
 	require.Equal(t, receipts.SettlementProgressionReviewNeeded, result.Transaction.SettlementProgressionStatus)
 	require.Equal(t, receipts.SettlementProgressionReasonCodeReject, result.Transaction.SettlementProgressionReasonCode)
-	require.Equal(t, "reject", result.Transaction.SettlementProgressionReason)
+	require.Equal(t, "Artifact release blocked by policy.", result.Transaction.SettlementProgressionReason)
+}
+
+func TestApplyReleaseOutcome_RejectDefaultsReasonWhenMissing(t *testing.T) {
+	store := receipts.NewStore()
+	svc := NewService(store)
+	ctx := context.Background()
+
+	tx, err := store.OpenKnowledgeExchangeTransaction(ctx, receipts.OpenTransactionInput{
+		TransactionID:  "deal-release-reject-default",
+		Counterparty:   "did:lango:peer-reject-default",
+		RequestedScope: "artifact/research-note",
+		PriceContext:   "quote:0.50-usdc",
+		TrustContext:   "trust:0.72",
+	})
+	require.NoError(t, err)
+
+	result, err := svc.ApplyReleaseOutcome(ctx, ApplyReleaseOutcomeRequest{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		Outcome: ReleaseOutcome{
+			Decision: approvalflow.DecisionReject,
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, receipts.SettlementProgressionReasonCodeReject, result.Outcome.ProgressionReasonCode)
+	require.Equal(t, "Artifact release rejected.", result.Outcome.ProgressionReason)
+	require.Equal(t, "Artifact release rejected.", result.Transaction.SettlementProgressionReason)
 }
 
 func TestApplyReleaseOutcome_EscalateUsesProvidedReason(t *testing.T) {
@@ -131,7 +157,7 @@ func TestApplyReleaseOutcome_EscalateDefaultsReason(t *testing.T) {
 	require.Equal(t, "higher approval needed", result.Transaction.SettlementProgressionReason)
 }
 
-func TestApplyReleaseOutcome_RequestRevisionUsesStableReasonCode(t *testing.T) {
+func TestApplyReleaseOutcome_RequestRevisionPreservesReason(t *testing.T) {
 	store := receipts.NewStore()
 	svc := NewService(store)
 	ctx := context.Background()
@@ -155,7 +181,33 @@ func TestApplyReleaseOutcome_RequestRevisionUsesStableReasonCode(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, receipts.SettlementProgressionReviewNeeded, result.Outcome.ProgressionStatus)
 	require.Equal(t, receipts.SettlementProgressionReasonCodeRequestRevision, result.Outcome.ProgressionReasonCode)
-	require.Equal(t, "request-revision", result.Outcome.ProgressionReason)
+	require.Equal(t, "Need updated evidence.", result.Outcome.ProgressionReason)
 	require.Equal(t, receipts.SettlementProgressionReasonCodeRequestRevision, result.Transaction.SettlementProgressionReasonCode)
-	require.Equal(t, "request-revision", result.Transaction.SettlementProgressionReason)
+	require.Equal(t, "Need updated evidence.", result.Transaction.SettlementProgressionReason)
+}
+
+func TestApplyReleaseOutcome_RequestRevisionDefaultsReasonWhenMissing(t *testing.T) {
+	store := receipts.NewStore()
+	svc := NewService(store)
+	ctx := context.Background()
+
+	tx, err := store.OpenKnowledgeExchangeTransaction(ctx, receipts.OpenTransactionInput{
+		TransactionID:  "deal-release-request-revision-default",
+		Counterparty:   "did:lango:peer-request-revision-default",
+		RequestedScope: "artifact/research-note",
+		PriceContext:   "quote:0.50-usdc",
+		TrustContext:   "trust:0.72",
+	})
+	require.NoError(t, err)
+
+	result, err := svc.ApplyReleaseOutcome(ctx, ApplyReleaseOutcomeRequest{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		Outcome: ReleaseOutcome{
+			Decision: approvalflow.DecisionRequestRevision,
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, receipts.SettlementProgressionReasonCodeRequestRevision, result.Outcome.ProgressionReasonCode)
+	require.Equal(t, "Artifact release requires revision.", result.Outcome.ProgressionReason)
+	require.Equal(t, "Artifact release requires revision.", result.Transaction.SettlementProgressionReason)
 }

@@ -64,29 +64,29 @@ func mapReleaseOutcome(outcome ReleaseOutcome) (SettlementOutcome, error) {
 		return SettlementOutcome{
 			ProgressionStatus:     receipts.SettlementProgressionReviewNeeded,
 			ProgressionReasonCode: receipts.SettlementProgressionReasonCodeReject,
-			ProgressionReason:     string(approvalflow.DecisionReject),
+			ProgressionReason:     progressionReason(outcome.Reason, "Artifact release rejected."),
 		}, nil
 	case approvalflow.DecisionRequestRevision:
 		return SettlementOutcome{
 			ProgressionStatus:     receipts.SettlementProgressionReviewNeeded,
 			ProgressionReasonCode: receipts.SettlementProgressionReasonCodeRequestRevision,
-			ProgressionReason:     string(approvalflow.DecisionRequestRevision),
+			ProgressionReason:     progressionReason(outcome.Reason, "Artifact release requires revision."),
 		}, nil
 	case approvalflow.DecisionEscalate:
 		return SettlementOutcome{
 			ProgressionStatus:     receipts.SettlementProgressionReviewNeeded,
 			ProgressionReasonCode: receipts.SettlementProgressionReasonCodeEscalate,
-			ProgressionReason:     escalationReason(outcome.Reason),
+			ProgressionReason:     progressionReason(outcome.Reason, "higher approval needed"),
 		}, nil
 	default:
 		return SettlementOutcome{}, fmt.Errorf("%w: %q", ErrUnsupportedReleaseDecision, outcome.Decision)
 	}
 }
 
-func escalationReason(reason string) string {
+func progressionReason(reason string, fallback string) string {
 	reason = strings.TrimSpace(reason)
 	if reason == "" {
-		return "higher approval needed"
+		return fallback
 	}
 	return reason
 }
