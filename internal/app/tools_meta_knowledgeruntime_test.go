@@ -32,7 +32,7 @@ func TestBuildMetaTools_IncludesKnowledgeExchangeRuntimeTools(t *testing.T) {
 	assert.True(t, hasRequestedScope)
 	assert.True(t, hasPriceContext)
 	assert.True(t, hasTrustContext)
-	assert.Equal(t, []string{"transaction_id", "counterparty", "requested_scope"}, openTool.Parameters["required"])
+	assert.Equal(t, []string{"transaction_id", "counterparty", "requested_scope", "price_context", "trust_context"}, openTool.Parameters["required"])
 
 	selectTool := findTool(tools, "select_knowledge_exchange_path")
 	require.NotNil(t, selectTool)
@@ -61,8 +61,10 @@ func TestOpenKnowledgeExchangeTransaction_ReturnsStableReceiptPayload(t *testing
 
 	payload, ok := got.(map[string]interface{})
 	require.True(t, ok)
+	assert.Len(t, payload, 3)
+	assert.Equal(t, "deal-tool-open-1", payload["transaction_id"])
 	assert.NotEmpty(t, payload["transaction_receipt_id"])
-	assert.Equal(t, string(receipts.RuntimeStatusOpened), payload["runtime_status"])
+	assert.Equal(t, string(receipts.RuntimeStatusOpened), payload["knowledge_exchange_runtime_status"])
 
 	stored, err := store.GetTransactionReceipt(context.Background(), payload["transaction_receipt_id"].(string))
 	require.NoError(t, err)
@@ -81,6 +83,8 @@ func TestOpenKnowledgeExchangeTransaction_RequiresReceiptStore(t *testing.T) {
 		"transaction_id":  "deal-tool-open-missing-store",
 		"counterparty":    "did:lango:peer-2",
 		"requested_scope": "artifact/research-note",
+		"price_context":   "quote:1.00-usdc",
+		"trust_context":   "trust:0.65",
 	})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "receipts store dependency is not configured")
@@ -124,9 +128,9 @@ func TestOpenKnowledgeExchangeTransaction_SelectKnowledgeExchangePath_ReturnsBra
 
 	payload, ok := got.(map[string]interface{})
 	require.True(t, ok)
+	assert.Len(t, payload, 2)
 	assert.Equal(t, tx.TransactionReceiptID, payload["transaction_receipt_id"])
-	assert.Equal(t, submission.SubmissionReceiptID, payload["current_submission_receipt_id"])
-	assert.Equal(t, "prepay", payload["selected_path"])
+	assert.Equal(t, "prepay", payload["branch"])
 
 	stored, err := store.GetTransactionReceipt(ctx, tx.TransactionReceiptID)
 	require.NoError(t, err)

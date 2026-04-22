@@ -1300,10 +1300,10 @@ func newOpenKnowledgeExchangeTransactionTool(receiptStore *receipts.Store) *agen
 				"transaction_id":  map[string]interface{}{"type": "string", "description": "External transaction identifier"},
 				"counterparty":    map[string]interface{}{"type": "string", "description": "Counterparty DID or stable participant identifier"},
 				"requested_scope": map[string]interface{}{"type": "string", "description": "Requested knowledge exchange scope"},
-				"price_context":   map[string]interface{}{"type": "string", "description": "Optional price context to bind at open time"},
-				"trust_context":   map[string]interface{}{"type": "string", "description": "Optional trust context to bind at open time"},
+				"price_context":   map[string]interface{}{"type": "string", "description": "Price context to bind at open time"},
+				"trust_context":   map[string]interface{}{"type": "string", "description": "Trust context to bind at open time"},
 			},
-			"required": []string{"transaction_id", "counterparty", "requested_scope"},
+			"required": []string{"transaction_id", "counterparty", "requested_scope", "price_context", "trust_context"},
 		},
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
 			if receiptStore == nil {
@@ -1322,21 +1322,30 @@ func newOpenKnowledgeExchangeTransactionTool(receiptStore *receipts.Store) *agen
 			if err != nil {
 				return nil, err
 			}
+			priceContext, err := toolparam.RequireString(params, "price_context")
+			if err != nil {
+				return nil, err
+			}
+			trustContext, err := toolparam.RequireString(params, "trust_context")
+			if err != nil {
+				return nil, err
+			}
 
 			result, err := knowledgeruntime.NewService(receiptStore).OpenTransaction(ctx, knowledgeruntime.OpenTransactionRequest{
 				TransactionID:  transactionID,
 				Counterparty:   counterparty,
 				RequestedScope: requestedScope,
-				PriceContext:   toolparam.OptionalString(params, "price_context", ""),
-				TrustContext:   toolparam.OptionalString(params, "trust_context", ""),
+				PriceContext:   priceContext,
+				TrustContext:   trustContext,
 			})
 			if err != nil {
 				return nil, err
 			}
 
 			return map[string]interface{}{
-				"transaction_receipt_id": result.TransactionReceiptID,
-				"runtime_status":         string(result.RuntimeStatus),
+				"transaction_id":                    transactionID,
+				"transaction_receipt_id":            result.TransactionReceiptID,
+				"knowledge_exchange_runtime_status": string(result.RuntimeStatus),
 			}, nil
 		},
 	}
@@ -1374,9 +1383,8 @@ func newSelectKnowledgeExchangePathTool(receiptStore *receipts.Store) *agent.Too
 			}
 
 			return map[string]interface{}{
-				"transaction_receipt_id":        result.TransactionReceiptID,
-				"current_submission_receipt_id": result.CurrentSubmissionReceiptID,
-				"selected_path":                 string(result.Branch),
+				"transaction_receipt_id": result.TransactionReceiptID,
+				"branch":                 string(result.Branch),
 			}, nil
 		},
 	}
