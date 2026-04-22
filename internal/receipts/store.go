@@ -149,6 +149,17 @@ func (s *Store) ApplySettlementProgression(_ context.Context, transactionReceipt
 	if !ok {
 		return TransactionReceipt{}, ErrTransactionReceiptNotFound
 	}
+	if tx.CurrentSubmissionReceiptID == "" {
+		return TransactionReceipt{}, fmt.Errorf("%w: current submission receipt is required", ErrInvalidSettlementProgressionState)
+	}
+	submissionReceiptID := tx.CurrentSubmissionReceiptID
+	submission, ok := s.submissions[submissionReceiptID]
+	if !ok {
+		return TransactionReceipt{}, ErrSubmissionReceiptNotFound
+	}
+	if submission.TransactionReceiptID != transactionReceiptID {
+		return TransactionReceipt{}, fmt.Errorf("%w: submission does not belong to transaction", ErrSubmissionReceiptNotFound)
+	}
 	if err := validateSettlementProgressionTransition(tx.SettlementProgressionStatus, next); err != nil {
 		return TransactionReceipt{}, err
 	}
@@ -163,6 +174,23 @@ func (s *Store) ApplySettlementProgression(_ context.Context, transactionReceipt
 	tx.PartialSettlementHint = partialHint
 	tx.DisputeReady = next == SettlementProgressionDisputeReady
 	s.transactions[transactionReceiptID] = tx
+
+	s.events[submissionReceiptID] = append(s.events[submissionReceiptID], ReceiptEvent{
+		SubmissionReceiptID: submissionReceiptID,
+		Source:              "settlement_progression",
+		Subtype:             string(next),
+		Reason:              reason,
+		Type:                EventSettlementUpdated,
+	})
+	if next == SettlementProgressionDisputeReady {
+		s.events[submissionReceiptID] = append(s.events[submissionReceiptID], ReceiptEvent{
+			SubmissionReceiptID: submissionReceiptID,
+			Source:              "settlement_progression",
+			Subtype:             string(next),
+			Reason:              reason,
+			Type:                EventDisputed,
+		})
+	}
 
 	return cloneTransactionReceipt(tx), nil
 }

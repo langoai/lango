@@ -43,7 +43,7 @@ The exportability policy work has already started as a first slice: source-based
 
 The first transaction-oriented runtime design slice is now documented in `docs/architecture/knowledge-exchange-runtime.md`. It ties transaction open, payment-path selection, work-start gating, submission creation, release approval, and post-approval progression into one canonical runtime story while keeping the current limits explicit.
 
-The first settlement progression slice is now landed as well: transaction-level progression state, release-outcome mapping, review-needed handling, dispute-ready opening rules, and the receipts-backed `apply_settlement_progression` tool are now in place. The remaining work is actual settlement execution, partial-settlement rules, and dispute engine completion.
+The first settlement progression slice is now landed as well: transaction-level progression state, release-outcome mapping, review-needed handling, current-submission-gated progression writes, and the receipts-backed `apply_settlement_progression` tool are now in place. Progression updates also append to the current submission receipt event trail. `dispute-ready` remains a model-only follow-on state, and the remaining work is actual settlement execution, partial-settlement rules, and dispute engine completion.
 
 ## In Scope
 

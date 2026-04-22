@@ -62,7 +62,7 @@ This section describes the internal architecture of Lango, a Go-based AI agent b
 
     ---
 
-    The first transaction-level settlement progression slice for `knowledge exchange v1`, covering approve, revise, reject, escalate, and dispute-ready handoff with explicit current implementation limits.
+    The first transaction-level settlement progression slice for `knowledge exchange v1`, covering approve, revise, reject, and escalate with explicit current implementation limits.
 
 -   :material-cash-fast: **[P2P Knowledge Exchange Track](p2p-knowledge-exchange-track.md)**
 

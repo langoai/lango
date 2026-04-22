@@ -12,6 +12,20 @@ import (
 	"github.com/langoai/lango/internal/receipts"
 )
 
+func createSubmittedTransaction(t *testing.T, store *receipts.Store, ctx context.Context, transactionID string) receipts.TransactionReceipt {
+	t.Helper()
+
+	_, transaction, err := store.CreateSubmissionReceipt(ctx, receipts.CreateSubmissionInput{
+		TransactionID:       transactionID,
+		ArtifactLabel:       "artifact-" + transactionID,
+		PayloadHash:         "hash-" + transactionID,
+		SourceLineageDigest: "lineage-" + transactionID,
+	})
+	require.NoError(t, err)
+
+	return transaction
+}
+
 func TestBuildMetaTools_IncludesApplySettlementProgression(t *testing.T) {
 	tools := buildMetaTools(nil, nil, nil, config.SkillConfig{}, nil, receipts.NewStore())
 	tool := findTool(tools, "apply_settlement_progression")
@@ -49,14 +63,7 @@ func TestApplySettlementProgression_ApprovePathReturnsCanonicalReceipt(t *testin
 	require.NotNil(t, tool)
 
 	ctx := context.Background()
-	tx, err := store.OpenKnowledgeExchangeTransaction(ctx, receipts.OpenTransactionInput{
-		TransactionID:  "deal-settlement-progress-approve",
-		Counterparty:   "did:lango:peer-approve",
-		RequestedScope: "artifact/research-note",
-		PriceContext:   "quote:0.50-usdc",
-		TrustContext:   "trust:0.72",
-	})
-	require.NoError(t, err)
+	tx := createSubmittedTransaction(t, store, ctx, "deal-settlement-progress-approve")
 
 	got, err := tool.Handler(ctx, map[string]interface{}{
 		"transaction_receipt_id": tx.TransactionReceiptID,
@@ -87,14 +94,7 @@ func TestApplySettlementProgression_PreservesReasonAndPartialHint(t *testing.T) 
 	require.NotNil(t, tool)
 
 	ctx := context.Background()
-	tx, err := store.OpenKnowledgeExchangeTransaction(ctx, receipts.OpenTransactionInput{
-		TransactionID:  "deal-settlement-progress-revision",
-		Counterparty:   "did:lango:peer-revision",
-		RequestedScope: "artifact/research-note",
-		PriceContext:   "quote:0.50-usdc",
-		TrustContext:   "trust:0.72",
-	})
-	require.NoError(t, err)
+	tx := createSubmittedTransaction(t, store, ctx, "deal-settlement-progress-revision")
 
 	got, err := tool.Handler(ctx, map[string]interface{}{
 		"transaction_receipt_id": tx.TransactionReceiptID,

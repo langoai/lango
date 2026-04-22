@@ -10,19 +10,26 @@ import (
 	"github.com/langoai/lango/internal/receipts"
 )
 
+func createSubmittedTransaction(t *testing.T, store *receipts.Store, ctx context.Context, transactionID string) receipts.TransactionReceipt {
+	t.Helper()
+
+	_, transaction, err := store.CreateSubmissionReceipt(ctx, receipts.CreateSubmissionInput{
+		TransactionID:       transactionID,
+		ArtifactLabel:       "artifact-" + transactionID,
+		PayloadHash:         "hash-" + transactionID,
+		SourceLineageDigest: "lineage-" + transactionID,
+	})
+	require.NoError(t, err)
+
+	return transaction
+}
+
 func TestApplyReleaseOutcome_ApproveMapsToApprovedForSettlement(t *testing.T) {
 	store := receipts.NewStore()
 	svc := NewService(store)
 	ctx := context.Background()
 
-	tx, err := store.OpenKnowledgeExchangeTransaction(ctx, receipts.OpenTransactionInput{
-		TransactionID:  "deal-release-approve",
-		Counterparty:   "did:lango:peer-approve",
-		RequestedScope: "artifact/research-note",
-		PriceContext:   "quote:0.50-usdc",
-		TrustContext:   "trust:0.72",
-	})
-	require.NoError(t, err)
+	tx := createSubmittedTransaction(t, store, ctx, "deal-release-approve")
 
 	result, err := svc.ApplyReleaseOutcome(ctx, ApplyReleaseOutcomeRequest{
 		TransactionReceiptID: tx.TransactionReceiptID,
@@ -45,14 +52,7 @@ func TestApplyReleaseOutcome_ApproveDefaultsReasonWhenMissing(t *testing.T) {
 	svc := NewService(store)
 	ctx := context.Background()
 
-	tx, err := store.OpenKnowledgeExchangeTransaction(ctx, receipts.OpenTransactionInput{
-		TransactionID:  "deal-release-approve-default",
-		Counterparty:   "did:lango:peer-approve-default",
-		RequestedScope: "artifact/research-note",
-		PriceContext:   "quote:0.50-usdc",
-		TrustContext:   "trust:0.72",
-	})
-	require.NoError(t, err)
+	tx := createSubmittedTransaction(t, store, ctx, "deal-release-approve-default")
 
 	result, err := svc.ApplyReleaseOutcome(ctx, ApplyReleaseOutcomeRequest{
 		TransactionReceiptID: tx.TransactionReceiptID,
@@ -74,14 +74,7 @@ func TestApplyReleaseOutcome_TrimsTransactionReceiptIDBeforeLookup(t *testing.T)
 	svc := NewService(store)
 	ctx := context.Background()
 
-	tx, err := store.OpenKnowledgeExchangeTransaction(ctx, receipts.OpenTransactionInput{
-		TransactionID:  "deal-release-trimmed-id",
-		Counterparty:   "did:lango:peer-trimmed-id",
-		RequestedScope: "artifact/research-note",
-		PriceContext:   "quote:0.50-usdc",
-		TrustContext:   "trust:0.72",
-	})
-	require.NoError(t, err)
+	tx := createSubmittedTransaction(t, store, ctx, "deal-release-trimmed-id")
 
 	result, err := svc.ApplyReleaseOutcome(ctx, ApplyReleaseOutcomeRequest{
 		TransactionReceiptID: "  " + tx.TransactionReceiptID + "  ",
@@ -100,14 +93,7 @@ func TestApplyReleaseOutcome_RejectMapsToReviewNeeded(t *testing.T) {
 	svc := NewService(store)
 	ctx := context.Background()
 
-	tx, err := store.OpenKnowledgeExchangeTransaction(ctx, receipts.OpenTransactionInput{
-		TransactionID:  "deal-release-reject",
-		Counterparty:   "did:lango:peer-reject",
-		RequestedScope: "artifact/research-note",
-		PriceContext:   "quote:0.50-usdc",
-		TrustContext:   "trust:0.72",
-	})
-	require.NoError(t, err)
+	tx := createSubmittedTransaction(t, store, ctx, "deal-release-reject")
 
 	result, err := svc.ApplyReleaseOutcome(ctx, ApplyReleaseOutcomeRequest{
 		TransactionReceiptID: tx.TransactionReceiptID,
@@ -130,14 +116,7 @@ func TestApplyReleaseOutcome_RejectDefaultsReasonWhenMissing(t *testing.T) {
 	svc := NewService(store)
 	ctx := context.Background()
 
-	tx, err := store.OpenKnowledgeExchangeTransaction(ctx, receipts.OpenTransactionInput{
-		TransactionID:  "deal-release-reject-default",
-		Counterparty:   "did:lango:peer-reject-default",
-		RequestedScope: "artifact/research-note",
-		PriceContext:   "quote:0.50-usdc",
-		TrustContext:   "trust:0.72",
-	})
-	require.NoError(t, err)
+	tx := createSubmittedTransaction(t, store, ctx, "deal-release-reject-default")
 
 	result, err := svc.ApplyReleaseOutcome(ctx, ApplyReleaseOutcomeRequest{
 		TransactionReceiptID: tx.TransactionReceiptID,
@@ -156,14 +135,7 @@ func TestApplyReleaseOutcome_EscalateUsesProvidedReason(t *testing.T) {
 	svc := NewService(store)
 	ctx := context.Background()
 
-	tx, err := store.OpenKnowledgeExchangeTransaction(ctx, receipts.OpenTransactionInput{
-		TransactionID:  "deal-release-escalate-provided",
-		Counterparty:   "did:lango:peer-escalate",
-		RequestedScope: "artifact/research-note",
-		PriceContext:   "quote:0.50-usdc",
-		TrustContext:   "trust:0.72",
-	})
-	require.NoError(t, err)
+	tx := createSubmittedTransaction(t, store, ctx, "deal-release-escalate-provided")
 
 	result, err := svc.ApplyReleaseOutcome(ctx, ApplyReleaseOutcomeRequest{
 		TransactionReceiptID: tx.TransactionReceiptID,
@@ -188,14 +160,7 @@ func TestApplyReleaseOutcome_EscalateDefaultsReason(t *testing.T) {
 	svc := NewService(store)
 	ctx := context.Background()
 
-	tx, err := store.OpenKnowledgeExchangeTransaction(ctx, receipts.OpenTransactionInput{
-		TransactionID:  "deal-release-escalate-default",
-		Counterparty:   "did:lango:peer-escalate-default",
-		RequestedScope: "artifact/research-note",
-		PriceContext:   "quote:0.50-usdc",
-		TrustContext:   "trust:0.72",
-	})
-	require.NoError(t, err)
+	tx := createSubmittedTransaction(t, store, ctx, "deal-release-escalate-default")
 
 	result, err := svc.ApplyReleaseOutcome(ctx, ApplyReleaseOutcomeRequest{
 		TransactionReceiptID: tx.TransactionReceiptID,
@@ -217,14 +182,7 @@ func TestApplyReleaseOutcome_RequestRevisionPreservesReason(t *testing.T) {
 	svc := NewService(store)
 	ctx := context.Background()
 
-	tx, err := store.OpenKnowledgeExchangeTransaction(ctx, receipts.OpenTransactionInput{
-		TransactionID:  "deal-release-request-revision",
-		Counterparty:   "did:lango:peer-request-revision",
-		RequestedScope: "artifact/research-note",
-		PriceContext:   "quote:0.50-usdc",
-		TrustContext:   "trust:0.72",
-	})
-	require.NoError(t, err)
+	tx := createSubmittedTransaction(t, store, ctx, "deal-release-request-revision")
 
 	result, err := svc.ApplyReleaseOutcome(ctx, ApplyReleaseOutcomeRequest{
 		TransactionReceiptID: tx.TransactionReceiptID,
@@ -246,14 +204,7 @@ func TestApplyReleaseOutcome_RequestRevisionDefaultsReasonWhenMissing(t *testing
 	svc := NewService(store)
 	ctx := context.Background()
 
-	tx, err := store.OpenKnowledgeExchangeTransaction(ctx, receipts.OpenTransactionInput{
-		TransactionID:  "deal-release-request-revision-default",
-		Counterparty:   "did:lango:peer-request-revision-default",
-		RequestedScope: "artifact/research-note",
-		PriceContext:   "quote:0.50-usdc",
-		TrustContext:   "trust:0.72",
-	})
-	require.NoError(t, err)
+	tx := createSubmittedTransaction(t, store, ctx, "deal-release-request-revision-default")
 
 	result, err := svc.ApplyReleaseOutcome(ctx, ApplyReleaseOutcomeRequest{
 		TransactionReceiptID: tx.TransactionReceiptID,
@@ -272,14 +223,7 @@ func TestApplyReleaseOutcome_RequestRevisionPersistsPartialHint(t *testing.T) {
 	svc := NewService(store)
 	ctx := context.Background()
 
-	tx, err := store.OpenKnowledgeExchangeTransaction(ctx, receipts.OpenTransactionInput{
-		TransactionID:  "deal-release-request-revision-partial",
-		Counterparty:   "did:lango:peer-request-revision-partial",
-		RequestedScope: "artifact/research-note",
-		PriceContext:   "quote:0.50-usdc",
-		TrustContext:   "trust:0.72",
-	})
-	require.NoError(t, err)
+	tx := createSubmittedTransaction(t, store, ctx, "deal-release-request-revision-partial")
 
 	result, err := svc.ApplyReleaseOutcome(ctx, ApplyReleaseOutcomeRequest{
 		TransactionReceiptID: tx.TransactionReceiptID,

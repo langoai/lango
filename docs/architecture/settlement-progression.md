@@ -9,8 +9,9 @@ Settlement progression turns artifact release outcomes into canonical transactio
 The slice is intentionally narrow:
 
 - `transaction receipt` owns canonical settlement progression state
-- `submission receipt` contributes evidence, reasons, and hints
+- `submission receipt` contributes evidence, reasons, hints, and the event trail
 - release approval outcomes map into progression states
+- progression updates require a current submission receipt
 - actual money movement remains separate
 
 ## What Ships
@@ -19,7 +20,7 @@ The slice is intentionally narrow:
 - release outcome mapping for `approve`, `request-revision`, `reject`, and `escalate`
 - canonical `approved-for-settlement` and `review-needed` progression
 - `partial_hint` plumbing for bounded partial-settlement guidance
-- `dispute-ready` opening rules tied to review-path disagreements
+- submission-bound progression writes that append settlement events to the current submission receipt
 - a receipts-backed `apply_settlement_progression` meta tool
 
 ## Canonical State
@@ -32,9 +33,10 @@ The current progression states are:
 - `approved-for-settlement`
 - `partially-settled`
 - `settled`
-- `dispute-ready`
+- `dispute-ready` (internal follow-on state model)
 
 `transaction receipt` keeps the canonical state, reason code, human-readable reason, partial-settlement hint, and dispute-ready marker.
+`dispute-ready` remains modeled for follow-on work, but it is not presented here as a currently exposed public path.
 
 ## Current Limits
 
@@ -45,5 +47,6 @@ This slice does not yet include:
 - partial-settlement calculation formulas
 - dispute orchestration
 - human adjudication UI
+- public dispute-ready progression exposure
 
 The current implementation closes the control-plane gap first, not the full settlement lifecycle.
