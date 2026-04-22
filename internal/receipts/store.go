@@ -125,9 +125,6 @@ func (s *Store) OpenKnowledgeExchangeTransaction(_ context.Context, in OpenTrans
 		tx.EscrowExecutionStatus = existing.EscrowExecutionStatus
 		tx.EscrowReference = existing.EscrowReference
 		tx.EscrowExecutionInput = cloneEscrowExecutionInput(existing.EscrowExecutionInput)
-		if existing.KnowledgeExchangeRuntimeStatus != "" {
-			tx.KnowledgeExchangeRuntimeStatus = existing.KnowledgeExchangeRuntimeStatus
-		}
 	}
 
 	s.transactions[txReceiptID] = tx
