@@ -342,7 +342,11 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 		if econc, ok := r.Resolve(appinit.ProvidesEconomy).(*economyComponents); ok && econc != nil {
 			escrowRuntime = econc.escrowEngine
 		}
-		metaTools := buildMetaToolsWithEscrow(kc.store, kc.engine, skillReg, cfg.Skill, cfg, receiptStore, escrowRuntime)
+		var settlementRuntime settlementExecutionRuntime
+		if pcv, ok := r.Resolve(appinit.ProvidesPayment).(*paymentComponents); ok && pcv != nil && pcv.service != nil {
+			settlementRuntime = paymentSettlementRuntime{service: pcv.service}
+		}
+		metaTools := buildMetaToolsWithRuntimes(kc.store, kc.engine, skillReg, cfg.Skill, cfg, receiptStore, escrowRuntime, settlementRuntime)
 		tools = append(tools, metaTools...)
 		entries = append(entries, appinit.CatalogEntry{Category: "meta", Description: "Knowledge, learning, and skill management", ConfigKey: "knowledge.enabled", Enabled: true, Tools: metaTools})
 	} else {

@@ -358,6 +358,43 @@ func TestBuildMetaToolsWithEscrow_Parity(t *testing.T) {
 	assertNoDuplicateNames(t, tools)
 }
 
+func TestBuildMetaToolsWithRuntimes_Parity(t *testing.T) {
+	t.Parallel()
+
+	receiptStore := receipts.NewStore()
+	escrowEngine := escrow.NewEngine(escrow.NewMemoryStore(), escrow.NoopSettler{}, escrow.DefaultEngineConfig())
+	settlementRuntime := &fakeSettlementExecutionRuntime{}
+	tools := buildMetaToolsWithRuntimes(nil, nil, nil, config.SkillConfig{}, nil, receiptStore, escrowEngine, settlementRuntime)
+
+	wantNames := []string{
+		"save_knowledge",
+		"evaluate_exportability",
+		"approve_artifact_release",
+		"create_dispute_ready_receipt",
+		"open_knowledge_exchange_transaction",
+		"select_knowledge_exchange_path",
+		"approve_upfront_payment",
+		"apply_settlement_progression",
+		"execute_settlement",
+		"get_knowledge_history",
+		"search_knowledge",
+		"save_learning",
+		"search_learnings",
+		"create_skill",
+		"list_skills",
+		"view_skill",
+		"import_skill",
+		"learning_stats",
+		"learning_cleanup",
+		"execute_escrow_recommendation",
+	}
+
+	assert.Len(t, tools, len(wantNames))
+	assert.Equal(t, wantNames, toolNamesUnsorted(tools))
+	assertAllHandlersNonNil(t, tools)
+	assertNoDuplicateNames(t, tools)
+}
+
 // ─── Economy: Aggregate economy.BuildTools ───
 
 func TestBuildEconomyTools_AllEngines_Parity(t *testing.T) {

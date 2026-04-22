@@ -22,9 +22,11 @@ import (
 	"github.com/langoai/lango/internal/knowledge"
 	"github.com/langoai/lango/internal/knowledgeruntime"
 	"github.com/langoai/lango/internal/learning"
+	"github.com/langoai/lango/internal/payment"
 	"github.com/langoai/lango/internal/paymentapproval"
 	"github.com/langoai/lango/internal/receipts"
 	"github.com/langoai/lango/internal/session"
+	"github.com/langoai/lango/internal/settlementexecution"
 	"github.com/langoai/lango/internal/settlementprogression"
 	"github.com/langoai/lango/internal/skill"
 	"github.com/langoai/lango/internal/toolparam"
@@ -34,7 +36,7 @@ import (
 // cfg is used for session-mode-aware skill filtering and view_skill path resolution;
 // it may be nil for tests that don't exercise mode features.
 func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *skill.Registry, skillCfg config.SkillConfig, cfg *config.Config, receiptStore *receipts.Store) []*agent.Tool {
-	return buildMetaToolsWithEscrow(store, engine, registry, skillCfg, cfg, receiptStore, nil)
+	return buildMetaToolsWithRuntimes(store, engine, registry, skillCfg, cfg, receiptStore, nil, nil)
 }
 
 func buildMetaToolsWithEscrow(
@@ -45,6 +47,19 @@ func buildMetaToolsWithEscrow(
 	cfg *config.Config,
 	receiptStore *receipts.Store,
 	escrowRuntime escrowExecutionRuntime,
+) []*agent.Tool {
+	return buildMetaToolsWithRuntimes(store, engine, registry, skillCfg, cfg, receiptStore, escrowRuntime, nil)
+}
+
+func buildMetaToolsWithRuntimes(
+	store *knowledge.Store,
+	engine *learning.Engine,
+	registry *skill.Registry,
+	skillCfg config.SkillConfig,
+	cfg *config.Config,
+	receiptStore *receipts.Store,
+	escrowRuntime escrowExecutionRuntime,
+	settlementRuntime settlementExecutionRuntime,
 ) []*agent.Tool {
 	exportabilityEnabled := exportabilityPolicyEnabled(cfg)
 
@@ -986,6 +1001,9 @@ func buildMetaToolsWithEscrow(
 		},
 	}
 
+	if settlementTool := newExecuteSettlementTool(receiptStore, settlementRuntime); settlementTool != nil {
+		tools = append(tools, settlementTool)
+	}
 	if escrowTool := newExecuteEscrowRecommendationTool(receiptStore, escrowRuntime); escrowTool != nil {
 		tools = append(tools, escrowTool)
 	}
@@ -1456,6 +1474,72 @@ func newApplySettlementProgressionTool(receiptStore *receipts.Store) *agent.Tool
 	}
 }
 
+type settlementExecutionRuntime interface {
+	ExecuteSettlement(context.Context, settlementexecution.DirectPaymentRequest) (settlementexecution.DirectPaymentResult, error)
+}
+
+type paymentSettlementRuntime struct {
+	service *payment.Service
+}
+
+func (p paymentSettlementRuntime) ExecuteSettlement(ctx context.Context, req settlementexecution.DirectPaymentRequest) (settlementexecution.DirectPaymentResult, error) {
+	receipt, err := p.service.Send(ctx, payment.PaymentRequest{
+		To:      req.Counterparty,
+		Amount:  req.Amount,
+		Purpose: "final settlement",
+	})
+	if err != nil {
+		return settlementexecution.DirectPaymentResult{}, err
+	}
+	return settlementexecution.DirectPaymentResult{Reference: receipt.TxHash}, nil
+}
+
+func newExecuteSettlementTool(receiptStore *receipts.Store, runtime settlementExecutionRuntime) *agent.Tool {
+	if runtime == nil {
+		return nil
+	}
+
+	return &agent.Tool{
+		Name:        "execute_settlement",
+		Description: "Execute direct final settlement for an approved transaction receipt and return canonical settlement state",
+		SafetyLevel: agent.SafetyLevelDangerous,
+		Capability: agent.ToolCapability{
+			Category: "knowledge",
+			Activity: agent.ActivityWrite,
+		},
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"transaction_receipt_id": map[string]interface{}{"type": "string", "description": "Approved transaction receipt identifier to settle"},
+			},
+			"required": []string{"transaction_receipt_id"},
+		},
+		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+			if receiptStore == nil {
+				return nil, fmt.Errorf("receipts store dependency is not configured")
+			}
+
+			transactionReceiptID, err := toolparam.RequireString(params, "transaction_receipt_id")
+			if err != nil {
+				return nil, err
+			}
+			transactionReceiptID = strings.TrimSpace(transactionReceiptID)
+			if transactionReceiptID == "" {
+				return nil, &toolparam.ErrMissingParam{Name: "transaction_receipt_id"}
+			}
+
+			result, err := settlementexecution.NewService(receiptStore, runtime).Execute(ctx, settlementexecution.ExecuteRequest{
+				TransactionReceiptID: transactionReceiptID,
+			})
+			if err != nil {
+				return nil, err
+			}
+
+			return newExecuteSettlementReceipt(result), nil
+		},
+	}
+}
+
 func parseDisputeReadyReceiptInput(params map[string]interface{}) (receipts.CreateSubmissionInput, error) {
 	transactionID, err := toolparam.RequireString(params, "transaction_id")
 	if err != nil {
@@ -1530,6 +1614,14 @@ type applySettlementProgressionReceipt struct {
 	PartialHint                     string `json:"partial_hint,omitempty"`
 }
 
+type executeSettlementReceipt struct {
+	TransactionReceiptID        string `json:"transaction_receipt_id"`
+	SubmissionReceiptID         string `json:"submission_receipt_id,omitempty"`
+	SettlementProgressionStatus string `json:"settlement_progression_status"`
+	ResolvedAmount              string `json:"resolved_amount,omitempty"`
+	RuntimeReference            string `json:"runtime_reference,omitempty"`
+}
+
 func newUpfrontPaymentApprovalReceipt(
 	transactionReceiptID string,
 	submissionReceiptID string,
@@ -1568,5 +1660,15 @@ func newApplySettlementProgressionReceipt(result settlementprogression.ApplyRele
 		SettlementProgressionReasonCode: string(result.Transaction.SettlementProgressionReasonCode),
 		SettlementProgressionReason:     result.Transaction.SettlementProgressionReason,
 		PartialHint:                     result.Transaction.PartialSettlementHint,
+	}
+}
+
+func newExecuteSettlementReceipt(result settlementexecution.Result) executeSettlementReceipt {
+	return executeSettlementReceipt{
+		TransactionReceiptID:        result.TransactionReceiptID,
+		SubmissionReceiptID:         result.SubmissionReceiptID,
+		SettlementProgressionStatus: string(result.SettlementProgressionStatus),
+		ResolvedAmount:              result.ResolvedAmount,
+		RuntimeReference:            result.RuntimeReference,
 	}
 }

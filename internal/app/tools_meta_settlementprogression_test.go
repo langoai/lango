@@ -15,6 +15,15 @@ import (
 func createSubmittedTransaction(t *testing.T, store *receipts.Store, ctx context.Context, transactionID string) receipts.TransactionReceipt {
 	t.Helper()
 
+	_, err := store.OpenKnowledgeExchangeTransaction(ctx, receipts.OpenTransactionInput{
+		TransactionID:  transactionID,
+		Counterparty:   "did:lango:peer-" + transactionID,
+		RequestedScope: "artifact/research-note",
+		PriceContext:   "quote:0.50-usdc",
+		TrustContext:   "trust:0.72",
+	})
+	require.NoError(t, err)
+
 	_, transaction, err := store.CreateSubmissionReceipt(ctx, receipts.CreateSubmissionInput{
 		TransactionID:       transactionID,
 		ArtifactLabel:       "artifact-" + transactionID,
