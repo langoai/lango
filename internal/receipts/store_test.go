@@ -175,6 +175,90 @@ func TestApplySettlementProgression_MapsReleaseOutcomeToCanonicalState(t *testin
 	require.NoError(t, err)
 	require.Equal(t, SettlementProgressionApprovedForSettlement, updated.SettlementProgressionStatus)
 	require.Equal(t, "approve", updated.SettlementProgressionReason)
+	require.Equal(t, SettlementPending, updated.CanonicalSettlementStatus)
+}
+
+func TestApplySettlementProgression_AllowsRecoveryFromReviewNeededToApprovedForSettlement(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	tx, err := store.OpenKnowledgeExchangeTransaction(ctx, OpenTransactionInput{
+		TransactionID:  "deal-settle-1-recovery",
+		Counterparty:   "did:lango:peer-1",
+		RequestedScope: "artifact/research-note",
+		PriceContext:   "quote:0.50-usdc",
+		TrustContext:   "trust:0.72",
+	})
+	require.NoError(t, err)
+
+	_, err = store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, SettlementProgressionReviewNeeded, "review", "")
+	require.NoError(t, err)
+
+	updated, err := store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, SettlementProgressionApprovedForSettlement, "recover", "")
+	require.NoError(t, err)
+	require.Equal(t, SettlementProgressionApprovedForSettlement, updated.SettlementProgressionStatus)
+	require.Equal(t, SettlementPending, updated.CanonicalSettlementStatus)
+}
+
+func TestApplySettlementProgression_MapsCanonicalSettlementStatusFromProgressionUpdate(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name          string
+		steps         []SettlementProgressionStatus
+		wantCanonical SettlementStatus
+	}{
+		{
+			name:          "approved-for-settlement maps to pending",
+			steps:         []SettlementProgressionStatus{SettlementProgressionApprovedForSettlement},
+			wantCanonical: SettlementPending,
+		},
+		{
+			name:          "partially-settled maps to partially-settled",
+			steps:         []SettlementProgressionStatus{SettlementProgressionApprovedForSettlement, SettlementProgressionPartiallySettled},
+			wantCanonical: SettlementPartiallySettled,
+		},
+		{
+			name:          "settled maps to settled",
+			steps:         []SettlementProgressionStatus{SettlementProgressionApprovedForSettlement, SettlementProgressionSettled},
+			wantCanonical: SettlementSettled,
+		},
+		{
+			name:          "dispute-ready maps to disputed",
+			steps:         []SettlementProgressionStatus{SettlementProgressionApprovedForSettlement, SettlementProgressionPartiallySettled, SettlementProgressionDisputeReady},
+			wantCanonical: SettlementDisputed,
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			store := newTestStore(t)
+			ctx := context.Background()
+
+			tx, err := store.OpenKnowledgeExchangeTransaction(ctx, OpenTransactionInput{
+				TransactionID:  "deal-settle-map-" + tc.name,
+				Counterparty:   "did:lango:peer-map",
+				RequestedScope: "artifact/research-note",
+				PriceContext:   "quote:0.50-usdc",
+				TrustContext:   "trust:0.72",
+			})
+			require.NoError(t, err)
+
+			var updated TransactionReceipt
+			for i, step := range tc.steps {
+				reason := "step"
+				if i == len(tc.steps)-1 {
+					reason = "final"
+				}
+				updated, err = store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, step, reason, "")
+				require.NoError(t, err)
+			}
+
+			require.Equal(t, tc.steps[len(tc.steps)-1], updated.SettlementProgressionStatus)
+			require.Equal(t, tc.wantCanonical, updated.CanonicalSettlementStatus)
+		})
+	}
 }
 
 func TestApplySettlementProgression_RejectsIllegalRewind(t *testing.T) {

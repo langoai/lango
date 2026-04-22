@@ -153,6 +153,7 @@ func (s *Store) ApplySettlementProgression(_ context.Context, transactionReceipt
 	}
 
 	tx.SettlementProgressionStatus = next
+	tx.CanonicalSettlementStatus = canonicalSettlementStatusForProgression(next)
 	tx.SettlementProgressionReason = reason
 	tx.PartialSettlementHint = partialHint
 	tx.DisputeReady = next == SettlementProgressionDisputeReady
@@ -558,7 +559,7 @@ func validateSettlementProgressionTransition(current, next SettlementProgression
 			return nil
 		}
 	case SettlementProgressionReviewNeeded:
-		if next == SettlementProgressionReviewNeeded || next == SettlementProgressionDisputeReady {
+		if next == SettlementProgressionReviewNeeded || next == SettlementProgressionApprovedForSettlement || next == SettlementProgressionDisputeReady {
 			return nil
 		}
 	case SettlementProgressionInProgress:
@@ -572,6 +573,19 @@ func validateSettlementProgressionTransition(current, next SettlementProgression
 	}
 
 	return fmt.Errorf("%w: %q -> %q", ErrInvalidSettlementProgressionState, current, next)
+}
+
+func canonicalSettlementStatusForProgression(progress SettlementProgressionStatus) SettlementStatus {
+	switch progress {
+	case SettlementProgressionPartiallySettled:
+		return SettlementPartiallySettled
+	case SettlementProgressionSettled:
+		return SettlementSettled
+	case SettlementProgressionDisputeReady:
+		return SettlementDisputed
+	default:
+		return SettlementPending
+	}
 }
 
 func validateCanonicalOpenInputConflict(existing TransactionReceipt, in OpenTransactionInput) error {
