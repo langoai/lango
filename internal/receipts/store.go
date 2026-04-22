@@ -58,6 +58,7 @@ func (s *Store) CreateSubmissionReceipt(_ context.Context, in CreateSubmissionIn
 		s.transactions[txReceiptID] = TransactionReceipt{
 			TransactionReceiptID:         txReceiptID,
 			TransactionID:                in.TransactionID,
+			SettlementProgressionStatus:  SettlementProgressionPending,
 			CanonicalApprovalStatus:      ApprovalPending,
 			CanonicalSettlementStatus:    SettlementPending,
 			CurrentPaymentApprovalStatus: PaymentApprovalPending,
@@ -110,6 +111,7 @@ func (s *Store) OpenKnowledgeExchangeTransaction(_ context.Context, in OpenTrans
 		PriceContext:                   in.PriceContext,
 		TrustContext:                   in.TrustContext,
 		KnowledgeExchangeRuntimeStatus: RuntimeStatusOpened,
+		SettlementProgressionStatus:    SettlementProgressionPending,
 		CanonicalApprovalStatus:        ApprovalPending,
 		CanonicalSettlementStatus:      SettlementPending,
 		CurrentPaymentApprovalStatus:   PaymentApprovalPending,
@@ -123,6 +125,10 @@ func (s *Store) OpenKnowledgeExchangeTransaction(_ context.Context, in OpenTrans
 		tx.CanonicalApprovalStatus = existing.CanonicalApprovalStatus
 		tx.CanonicalSettlementStatus = existing.CanonicalSettlementStatus
 		tx.CurrentPaymentApprovalStatus = existing.CurrentPaymentApprovalStatus
+		tx.SettlementProgressionStatus = existing.SettlementProgressionStatus
+		tx.SettlementProgressionReason = existing.SettlementProgressionReason
+		tx.PartialSettlementHint = existing.PartialSettlementHint
+		tx.DisputeReady = existing.DisputeReady
 		tx.CanonicalDecision = existing.CanonicalDecision
 		tx.CanonicalSettlementHint = existing.CanonicalSettlementHint
 		tx.EscrowExecutionStatus = existing.EscrowExecutionStatus
@@ -131,6 +137,27 @@ func (s *Store) OpenKnowledgeExchangeTransaction(_ context.Context, in OpenTrans
 	}
 
 	s.transactions[txReceiptID] = tx
+	return cloneTransactionReceipt(tx), nil
+}
+
+func (s *Store) ApplySettlementProgression(_ context.Context, transactionReceiptID string, next SettlementProgressionStatus, reason string, partialHint string) (TransactionReceipt, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	tx, ok := s.transactions[transactionReceiptID]
+	if !ok {
+		return TransactionReceipt{}, ErrTransactionReceiptNotFound
+	}
+	if err := validateSettlementProgressionTransition(tx.SettlementProgressionStatus, next); err != nil {
+		return TransactionReceipt{}, err
+	}
+
+	tx.SettlementProgressionStatus = next
+	tx.SettlementProgressionReason = reason
+	tx.PartialSettlementHint = partialHint
+	tx.DisputeReady = next == SettlementProgressionDisputeReady
+	s.transactions[transactionReceiptID] = tx
+
 	return cloneTransactionReceipt(tx), nil
 }
 
@@ -514,6 +541,37 @@ func validateKnowledgeExchangeRuntimeTransition(current, next KnowledgeExchangeR
 	}
 
 	return fmt.Errorf("%w: %q -> %q", ErrInvalidKnowledgeExchangeRuntimeState, current, next)
+}
+
+func validateSettlementProgressionTransition(current, next SettlementProgressionStatus) error {
+	switch current {
+	case "":
+		if next == SettlementProgressionPending || next == SettlementProgressionApprovedForSettlement || next == SettlementProgressionReviewNeeded {
+			return nil
+		}
+	case SettlementProgressionPending:
+		if next == SettlementProgressionPending || next == SettlementProgressionApprovedForSettlement || next == SettlementProgressionReviewNeeded {
+			return nil
+		}
+	case SettlementProgressionApprovedForSettlement:
+		if next == SettlementProgressionInProgress || next == SettlementProgressionSettled || next == SettlementProgressionPartiallySettled {
+			return nil
+		}
+	case SettlementProgressionReviewNeeded:
+		if next == SettlementProgressionReviewNeeded || next == SettlementProgressionDisputeReady {
+			return nil
+		}
+	case SettlementProgressionInProgress:
+		if next == SettlementProgressionSettled || next == SettlementProgressionPartiallySettled || next == SettlementProgressionReviewNeeded {
+			return nil
+		}
+	case SettlementProgressionPartiallySettled:
+		if next == SettlementProgressionSettled || next == SettlementProgressionReviewNeeded || next == SettlementProgressionDisputeReady {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("%w: %q -> %q", ErrInvalidSettlementProgressionState, current, next)
 }
 
 func validateCanonicalOpenInputConflict(existing TransactionReceipt, in OpenTransactionInput) error {

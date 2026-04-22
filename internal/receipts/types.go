@@ -11,6 +11,7 @@ var (
 	ErrInvalidEscrowExecutionStatus         = errors.New("invalid escrow execution status")
 	ErrInvalidEscrowExecutionState          = errors.New("invalid escrow execution state")
 	ErrInvalidKnowledgeExchangeRuntimeState = errors.New("invalid knowledge exchange runtime state")
+	ErrInvalidSettlementProgressionState    = errors.New("invalid settlement progression state")
 )
 
 type ApprovalStatus string
@@ -64,6 +65,18 @@ const (
 	RuntimeStatusRevisionRequested     KnowledgeExchangeRuntimeStatus = "revision-requested"
 	RuntimeStatusEscalated             KnowledgeExchangeRuntimeStatus = "escalated"
 	RuntimeStatusDisputeReady          KnowledgeExchangeRuntimeStatus = "dispute-ready"
+)
+
+type SettlementProgressionStatus string
+
+const (
+	SettlementProgressionPending               SettlementProgressionStatus = "pending"
+	SettlementProgressionInProgress            SettlementProgressionStatus = "in-progress"
+	SettlementProgressionReviewNeeded          SettlementProgressionStatus = "review-needed"
+	SettlementProgressionApprovedForSettlement SettlementProgressionStatus = "approved-for-settlement"
+	SettlementProgressionPartiallySettled      SettlementProgressionStatus = "partially-settled"
+	SettlementProgressionSettled               SettlementProgressionStatus = "settled"
+	SettlementProgressionDisputeReady          SettlementProgressionStatus = "dispute-ready"
 )
 
 type EventType string
@@ -133,6 +146,10 @@ type TransactionReceipt struct {
 	PriceContext                   string                         `json:"price_context,omitempty"`
 	TrustContext                   string                         `json:"trust_context,omitempty"`
 	KnowledgeExchangeRuntimeStatus KnowledgeExchangeRuntimeStatus `json:"knowledge_exchange_runtime_status,omitempty"`
+	SettlementProgressionStatus    SettlementProgressionStatus    `json:"settlement_progression_status,omitempty"`
+	SettlementProgressionReason    string                         `json:"settlement_progression_reason,omitempty"`
+	PartialSettlementHint          string                         `json:"partial_settlement_hint,omitempty"`
+	DisputeReady                   bool                           `json:"dispute_ready,omitempty"`
 	CurrentSubmissionReceiptID     string                         `json:"current_submission_receipt_id,omitempty"`
 	CanonicalApprovalStatus        ApprovalStatus                 `json:"canonical_approval_status"`
 	CanonicalSettlementStatus      SettlementStatus               `json:"canonical_settlement_status"`

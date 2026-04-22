@@ -158,6 +158,45 @@ func TestOpenKnowledgeExchangeTransaction_RejectsConflictingCanonicalInputs(t *t
 	require.Equal(t, RuntimeStatusPaymentApproved, stored.KnowledgeExchangeRuntimeStatus)
 }
 
+func TestApplySettlementProgression_MapsReleaseOutcomeToCanonicalState(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	tx, err := store.OpenKnowledgeExchangeTransaction(ctx, OpenTransactionInput{
+		TransactionID:  "deal-settle-1",
+		Counterparty:   "did:lango:peer-1",
+		RequestedScope: "artifact/research-note",
+		PriceContext:   "quote:0.50-usdc",
+		TrustContext:   "trust:0.72",
+	})
+	require.NoError(t, err)
+
+	updated, err := store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, SettlementProgressionApprovedForSettlement, "approve", "")
+	require.NoError(t, err)
+	require.Equal(t, SettlementProgressionApprovedForSettlement, updated.SettlementProgressionStatus)
+	require.Equal(t, "approve", updated.SettlementProgressionReason)
+}
+
+func TestApplySettlementProgression_RejectsIllegalRewind(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	tx, err := store.OpenKnowledgeExchangeTransaction(ctx, OpenTransactionInput{
+		TransactionID:  "deal-settle-2",
+		Counterparty:   "did:lango:peer-2",
+		RequestedScope: "artifact/code-review",
+		PriceContext:   "quote:1.00-usdc",
+		TrustContext:   "trust:0.83",
+	})
+	require.NoError(t, err)
+
+	_, err = store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, SettlementProgressionApprovedForSettlement, "approve", "")
+	require.NoError(t, err)
+	_, err = store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, SettlementProgressionPending, "rewind", "")
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrInvalidSettlementProgressionState)
+}
+
 func TestApplyKnowledgeExchangeRuntimeProgression_RejectsNonexistentSubmissionPointer(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
