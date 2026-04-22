@@ -177,3 +177,15 @@ The meta tools surface SHALL provide an `execute_partial_settlement` tool that e
 - **WHEN** `execute_partial_settlement` is invoked with `transaction_receipt_id`
 - **THEN** it SHALL evaluate the request through the partial settlement execution service
 - **AND** it SHALL return canonical transaction-level execution result including settlement progression state, executed amount, remaining amount, and runtime reference
+
+### Requirement: Escrow release meta tool
+The meta tools surface SHALL provide a `release_escrow_settlement` tool that executes funded escrow release from canonical settlement progression state.
+
+#### Scenario: Escrow release tool available
+- **WHEN** the meta tools are built with a receipts store and escrow release runtime
+- **THEN** `release_escrow_settlement` SHALL be available
+
+#### Scenario: Escrow release tool executes funded release
+- **WHEN** `release_escrow_settlement` is invoked with `transaction_receipt_id`
+- **THEN** it SHALL evaluate the request through the escrow release service
+- **AND** it SHALL return canonical transaction-level execution result including settlement progression state, resolved amount, and runtime reference

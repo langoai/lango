@@ -111,3 +111,11 @@ The `docs/architecture/index.md` page SHALL include a quick link to `partial-set
 - **WHEN** a user reads `docs/architecture/index.md`
 - **THEN** they SHALL find the Partial Settlement Execution entry linking to `partial-settlement-execution.md`
 - **AND** the entry SHALL describe the slice as direct partial settlement execution bounded by current implementation limits
+
+### Requirement: Architecture landing page links the escrow release slice
+The `docs/architecture/index.md` page SHALL include a quick link to `escrow-release.md` and a short summary that frames it as the first funded-escrow release slice for `knowledge exchange v1`.
+
+#### Scenario: Escrow release appears in architecture landing page
+- **WHEN** a user reads `docs/architecture/index.md`
+- **THEN** they SHALL find the Escrow Release entry linking to `escrow-release.md`
+- **AND** the entry SHALL describe the slice as funded-escrow release bounded by current implementation limits

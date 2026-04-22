@@ -76,6 +76,12 @@ This section describes the internal architecture of Lango, a Go-based AI agent b
 
     The first direct partial settlement execution slice for `knowledge exchange v1`, executing one canonical partial amount with explicit current limits.
 
+-   :material-safe-square-outline: **[Escrow Release](escrow-release.md)**
+
+    ---
+
+    The first funded-escrow release slice for `knowledge exchange v1`, connecting funded escrow and approved settlement state to real release execution with explicit current limits.
+
 -   :material-cash-fast: **[P2P Knowledge Exchange Track](p2p-knowledge-exchange-track.md)**
 
     ---

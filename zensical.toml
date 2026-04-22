@@ -32,6 +32,7 @@ nav = [
       { "Settlement Progression" = "architecture/settlement-progression.md" },
       { "Actual Settlement Execution" = "architecture/actual-settlement-execution.md" },
       { "Partial Settlement Execution" = "architecture/partial-settlement-execution.md" },
+      { "Escrow Release" = "architecture/escrow-release.md" },
       { "P2P Knowledge Exchange Track" = "architecture/p2p-knowledge-exchange-track.md" }
   ]},
   { "Features" = [

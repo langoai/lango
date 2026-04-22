@@ -266,3 +266,18 @@ The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the 
 - **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
 - **THEN** they SHALL find partial settlement execution described as a landed first slice
 - **AND** the remaining work SHALL be described as escrow lifecycle completion and dispute engine completion
+
+### Requirement: Escrow release page describes the first funded release slice
+The `docs/architecture/escrow-release.md` page SHALL describe the first escrow release slice for `knowledge exchange v1`, including what currently ships and the current limits of the slice.
+
+#### Scenario: Escrow release page shows the bounded slice
+- **WHEN** a user reads `docs/architecture/escrow-release.md`
+- **THEN** they SHALL find sections describing the current escrow release slice, what currently ships, and current limits
+
+### Requirement: P2P knowledge exchange track reflects landed escrow release
+The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the escrow release first slice as landed work and list the remaining work as refund, dispute-linked escrow handling, and milestone-aware release.
+
+#### Scenario: Track page points to the landed escrow release slice
+- **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
+- **THEN** they SHALL find escrow release described as a landed first slice
+- **AND** the remaining work SHALL be described as refund, dispute-linked escrow handling, and milestone-aware release
