@@ -43,6 +43,8 @@ The exportability policy work has already started as a first slice: source-based
 
 The first transaction-oriented runtime design slice is now documented in `docs/architecture/knowledge-exchange-runtime.md`. It ties transaction open, payment-path selection, work-start gating, submission creation, release approval, and post-approval progression into one canonical runtime story while keeping the current limits explicit.
 
+The first settlement progression slice is now landed as well: transaction-level progression state, release-outcome mapping, review-needed handling, dispute-ready opening rules, and the receipts-backed `apply_settlement_progression` tool are now in place. The remaining work is actual settlement execution, partial-settlement rules, and dispute engine completion.
+
 ## In Scope
 
 - pseudonymous but cryptographically continuous identities,
@@ -82,7 +84,7 @@ The first transaction-oriented runtime design slice is now documented in `docs/a
 ## Required Follow-On Plans
 
 1. `identity / trust / reputation` detailed audit is now landed; the follow-on work is `reputation v2`, stronger trust-entry contracts, and runtime integration
-2. `pricing / negotiation / settlement` detailed audit is now landed; the follow-on work is runtime integration, final settlement progression, and escrow lifecycle completion
+2. `pricing / negotiation / settlement` detailed audit is now landed; the follow-on work is runtime integration, settlement execution, and escrow lifecycle completion
 3. exportability policy follow-on work (the first source-primary slice has landed; the remaining gaps are richer rules, override/dispute handling, and receipt unification)
-4. upfront payment approval and payment execution follow-on work (the first slices have landed; remaining gaps are human approval UI, escrow activation/release/refund, dispute orchestration, and partial settlement execution beyond escrow funding)
+4. `settlement progression` first slice is now landed; the follow-on work is actual settlement execution, partial settlement rules, and dispute engine completion
 5. the first transaction-oriented runtime design slice, now documented in `docs/architecture/knowledge-exchange-runtime.md`; follow-on work is runtime implementation and broader progression handling

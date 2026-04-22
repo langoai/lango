@@ -141,3 +141,15 @@ The meta tools surface SHALL treat the first knowledge exchange runtime design s
 #### Scenario: Runtime slice reuses existing tool contracts
 - **WHEN** the knowledge exchange runtime slice is described through meta-tools behavior
 - **THEN** it SHALL rely on the existing exportability, approval, submission-creation, upfront-payment, and escrow recommendation tools rather than introducing a duplicate receipt model
+
+### Requirement: Settlement progression meta tool
+The meta tools surface SHALL provide an `apply_settlement_progression` tool that maps artifact release outcomes into transaction-level settlement progression state.
+
+#### Scenario: Settlement progression tool available
+- **WHEN** the meta tools are built with a receipts store
+- **THEN** `apply_settlement_progression` SHALL be available
+
+#### Scenario: Settlement progression tool applies release outcomes
+- **WHEN** `apply_settlement_progression` is invoked with `transaction_receipt_id`, `outcome`, and optional `reason` or `partial_hint`
+- **THEN** it SHALL evaluate the request through the settlement progression service
+- **AND** it SHALL return canonical transaction-level settlement progression state

@@ -200,12 +200,12 @@ The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the 
 - **AND** the follow-on work SHALL include `reputation v2`, stronger trust-entry contracts, and runtime integration
 
 ### Requirement: P2P knowledge exchange track reflects the landed pricing negotiation settlement audit
-The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the pricing/negotiation/settlement detailed audit as landed work and list the follow-on work as `runtime integration`, `final settlement progression`, and `escrow lifecycle completion`.
+The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the pricing/negotiation/settlement detailed audit as landed work and list the follow-on work as `runtime integration`, `settlement execution`, and `escrow lifecycle completion`.
 
 #### Scenario: Track follow-on list is updated
 - **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
 - **THEN** the required follow-on plan SHALL state that the pricing/negotiation/settlement detailed audit is now landed
-- **AND** the follow-on work SHALL include `runtime integration`, `final settlement progression`, and `escrow lifecycle completion`
+- **AND** the follow-on work SHALL include `runtime integration`, `settlement execution`, and `escrow lifecycle completion`
 
 ### Requirement: Knowledge exchange runtime architecture page describes the first control-plane slice
 The `docs/architecture/knowledge-exchange-runtime.md` page SHALL describe the first transaction-oriented runtime control-plane design slice for `knowledge exchange v1`, centered on transaction receipt and submission receipt, and SHALL list the current limits of that slice.
@@ -221,3 +221,18 @@ The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL reference `kn
 - **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
 - **THEN** they SHALL find the runtime design slice referenced by name and linked to `knowledge-exchange-runtime.md`
 - **AND** the follow-on work SHALL be described as implementation, not redesign of the landed slice
+
+### Requirement: Settlement progression architecture page describes the first progression slice
+The `docs/architecture/settlement-progression.md` page SHALL describe the first transaction-level settlement progression slice for `knowledge exchange v1`, including what currently ships and the current limits of the slice.
+
+#### Scenario: Settlement progression page shows the bounded slice
+- **WHEN** a user reads `docs/architecture/settlement-progression.md`
+- **THEN** they SHALL find sections describing the current progression slice, what ships, canonical state, and current limits
+
+### Requirement: P2P knowledge exchange track reflects landed settlement progression
+The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the settlement progression first slice as landed work and list the remaining work as actual settlement execution, partial-settlement rules, and dispute engine completion.
+
+#### Scenario: Track page points to the landed settlement progression slice
+- **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
+- **THEN** they SHALL find settlement progression described as a landed first slice
+- **AND** the remaining work SHALL be described as actual settlement execution, partial-settlement rules, and dispute engine completion

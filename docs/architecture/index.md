@@ -58,6 +58,12 @@ This section describes the internal architecture of Lango, a Go-based AI agent b
 
     The first transaction-oriented runtime control plane for `knowledge exchange v1`, centered on transaction receipt and submission receipt with explicit current limits.
 
+-   :material-bank-check-outline: **[Settlement Progression](settlement-progression.md)**
+
+    ---
+
+    The first transaction-level settlement progression slice for `knowledge exchange v1`, covering approve, revise, reject, escalate, and dispute-ready handoff with explicit current implementation limits.
+
 -   :material-cash-fast: **[P2P Knowledge Exchange Track](p2p-knowledge-exchange-track.md)**
 
     ---

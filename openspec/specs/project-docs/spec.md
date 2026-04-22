@@ -87,3 +87,11 @@ The `docs/architecture/index.md` page SHALL include a quick link to `knowledge-e
 - **WHEN** a user reads `docs/architecture/index.md`
 - **THEN** they SHALL find the Knowledge Exchange Runtime entry linking to `knowledge-exchange-runtime.md`
 - **AND** the entry SHALL describe the design slice as transaction-oriented and bounded by current limits
+
+### Requirement: Architecture landing page links the settlement progression slice
+The `docs/architecture/index.md` page SHALL include a quick link to `settlement-progression.md` and a short summary that frames it as the first transaction-level settlement progression slice for `knowledge exchange v1`.
+
+#### Scenario: Settlement progression appears in architecture landing page
+- **WHEN** a user reads `docs/architecture/index.md`
+- **THEN** they SHALL find the Settlement Progression entry linking to `settlement-progression.md`
+- **AND** the entry SHALL describe the slice as transaction-level settlement progression bounded by current implementation limits
