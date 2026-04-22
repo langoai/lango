@@ -550,7 +550,7 @@ func validateSettlementProgressionTransition(current, next SettlementProgression
 			return nil
 		}
 	case SettlementProgressionPending:
-		if next == SettlementProgressionPending || next == SettlementProgressionApprovedForSettlement || next == SettlementProgressionReviewNeeded {
+		if next == SettlementProgressionApprovedForSettlement || next == SettlementProgressionReviewNeeded {
 			return nil
 		}
 	case SettlementProgressionApprovedForSettlement:
