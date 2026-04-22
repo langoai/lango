@@ -70,6 +70,12 @@ This section describes the internal architecture of Lango, a Go-based AI agent b
 
     The first direct settlement execution slice for `knowledge exchange v1`, connecting `approved-for-settlement` state to real payment execution with explicit current limits.
 
+-   :material-cash-multiple: **[Partial Settlement Execution](partial-settlement-execution.md)**
+
+    ---
+
+    The first direct partial settlement execution slice for `knowledge exchange v1`, executing one canonical partial amount with explicit current limits.
+
 -   :material-cash-fast: **[P2P Knowledge Exchange Track](p2p-knowledge-exchange-track.md)**
 
     ---

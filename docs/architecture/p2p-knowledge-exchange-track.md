@@ -43,9 +43,9 @@ The exportability policy work has already started as a first slice: source-based
 
 The first transaction-oriented runtime design slice is now documented in `docs/architecture/knowledge-exchange-runtime.md`. It ties transaction open, payment-path selection, work-start gating, submission creation, release approval, and post-approval progression into one canonical runtime story while keeping the current limits explicit.
 
-The first settlement progression slice is now landed as well: transaction-level progression state, release-outcome mapping, review-needed handling, current-submission-gated progression writes, and the receipts-backed `apply_settlement_progression` tool are now in place. Progression updates also append to the current submission receipt event trail. `dispute-ready` remains a model-only follow-on state, and the remaining work is actual settlement execution, partial-settlement rules, and dispute engine completion.
+The first settlement progression slice is now landed as well: transaction-level progression state, release-outcome mapping, review-needed handling, current-submission-gated progression writes, and the receipts-backed `apply_settlement_progression` tool are now in place. Progression updates also append to the current submission receipt event trail. `dispute-ready` remains a model-only follow-on state, and the remaining work is multi-round partial settlement, escrow lifecycle completion, and dispute engine completion.
 
-The first direct actual settlement execution slice is now landed too: `execute_settlement` resolves canonical amount context from the transaction receipt, requires the current submission and `approved-for-settlement` state, reuses the direct payment runtime, and closes settlement progression to `settled` on success. The remaining work is partial settlement execution, escrow lifecycle completion, and dispute engine completion.
+The first direct actual settlement execution slice is now landed too: `execute_settlement` resolves canonical amount context from the transaction receipt, requires the current submission and `approved-for-settlement` state, reuses the direct payment runtime, and closes settlement progression to `settled` on success. The first direct partial settlement execution slice is now landed as well: `execute_partial_settlement` resolves canonical amount context from the transaction's `partial_settlement_hint`, requires the current submission and `approved-for-settlement` state, reuses the direct payment runtime, and closes settlement progression to `partially-settled` on success. The remaining work is escrow lifecycle completion and dispute engine completion.
 
 ## In Scope
 
@@ -56,6 +56,7 @@ The first direct actual settlement execution slice is now landed too: `execute_s
 - structured upfront payment approval decisioning and receipt updates,
 - receipt-backed direct payment execution gating for the direct `prepay` path,
 - receipt-backed escrow recommendation execution for the first `create + fund` path,
+- partial settlement execution,
 - expertise access and reviewable deliverables,
 - small upfront payment plus approval-based final settlement,
 - on-chain stablecoin as the trust anchor,
@@ -71,7 +72,7 @@ The first direct actual settlement execution slice is now landed too: `execute_s
 - final smart-contract design,
 - human approval UI,
 - dispute orchestration,
-- partial settlement execution after escrow funding.
+- escrow lifecycle completion.
 
 ## Default Transaction Shape
 
@@ -81,13 +82,13 @@ The first direct actual settlement execution slice is now landed too: `execute_s
 4. A small upfront payment or an escrow can now be created for the first landed payment paths. The escrow path currently covers `create + fund` only.
 5. The external agent delivers a reviewable artifact.
 6. The leader agent approves, rejects, requests revision, escalates, or disputes the artifact.
-7. Final settlement is released on approval, deferred for revision or escalation, or handled through dispute rules.
+7. Final settlement is released on approval, partially settled when the canonical partial-settlement hint applies, deferred for revision or escalation, or handled through dispute rules.
 
 ## Required Follow-On Plans
 
 1. `identity / trust / reputation` detailed audit is now landed; the follow-on work is `reputation v2`, stronger trust-entry contracts, and runtime integration
-2. `pricing / negotiation / settlement` detailed audit is now landed; the follow-on work is runtime integration, settlement execution, and escrow lifecycle completion
+2. `pricing / negotiation / settlement` detailed audit is now landed; the follow-on work is runtime integration, escrow lifecycle completion, and broader dispute completion
 3. exportability policy follow-on work (the first source-primary slice has landed; the remaining gaps are richer rules, override/dispute handling, and receipt unification)
 4. `settlement progression` first slice is now landed; the follow-on work is partial settlement rules, dispute engine completion, and deeper disagreement handling
-5. `actual settlement execution` first slice is now landed; the follow-on work is partial settlement execution, escrow lifecycle completion, and dispute engine completion
+5. `actual settlement execution` first slice is now landed; `partial settlement execution` first slice is now landed too; the follow-on work is escrow lifecycle completion and dispute engine completion
 6. the first transaction-oriented runtime design slice, now documented in `docs/architecture/knowledge-exchange-runtime.md`; follow-on work is runtime implementation and broader progression handling
