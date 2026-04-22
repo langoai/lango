@@ -18,6 +18,7 @@ import (
 	entknowledge "github.com/langoai/lango/internal/ent/knowledge"
 	entlearning "github.com/langoai/lango/internal/ent/learning"
 	"github.com/langoai/lango/internal/escrowexecution"
+	"github.com/langoai/lango/internal/escrowrelease"
 	"github.com/langoai/lango/internal/exportability"
 	"github.com/langoai/lango/internal/knowledge"
 	"github.com/langoai/lango/internal/knowledgeruntime"
@@ -37,7 +38,7 @@ import (
 // cfg is used for session-mode-aware skill filtering and view_skill path resolution;
 // it may be nil for tests that don't exercise mode features.
 func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *skill.Registry, skillCfg config.SkillConfig, cfg *config.Config, receiptStore *receipts.Store) []*agent.Tool {
-	return buildMetaToolsWithRuntimes(store, engine, registry, skillCfg, cfg, receiptStore, nil, nil, nil)
+	return buildMetaToolsWithRuntimes(store, engine, registry, skillCfg, cfg, receiptStore, nil, nil, nil, nil)
 }
 
 func buildMetaToolsWithEscrow(
@@ -49,7 +50,12 @@ func buildMetaToolsWithEscrow(
 	receiptStore *receipts.Store,
 	escrowRuntime escrowExecutionRuntime,
 ) []*agent.Tool {
-	return buildMetaToolsWithRuntimes(store, engine, registry, skillCfg, cfg, receiptStore, escrowRuntime, nil, nil)
+	var escrowReleaseRuntime escrowReleaseExecutionRuntime
+	if engine, ok := escrowRuntime.(*escrow.Engine); ok && engine != nil {
+		escrowReleaseRuntime = engineEscrowReleaseRuntime{engine: engine}
+	}
+
+	return buildMetaToolsWithRuntimes(store, engine, registry, skillCfg, cfg, receiptStore, escrowRuntime, nil, nil, escrowReleaseRuntime)
 }
 
 func buildMetaToolsWithRuntimes(
@@ -61,13 +67,12 @@ func buildMetaToolsWithRuntimes(
 	receiptStore *receipts.Store,
 	escrowRuntime escrowExecutionRuntime,
 	settlementRuntime settlementExecutionRuntime,
-	partialSettlementRuntime ...partialSettlementExecutionRuntime,
+	partialSettlementRuntime partialSettlementExecutionRuntime,
+	escrowReleaseRuntime escrowReleaseExecutionRuntime,
 ) []*agent.Tool {
 	exportabilityEnabled := exportabilityPolicyEnabled(cfg)
-	var effectivePartialRuntime partialSettlementExecutionRuntime
-	if len(partialSettlementRuntime) > 0 {
-		effectivePartialRuntime = partialSettlementRuntime[0]
-	} else if settlementRuntime != nil {
+	effectivePartialRuntime := partialSettlementRuntime
+	if effectivePartialRuntime == nil && settlementRuntime != nil {
 		effectivePartialRuntime = settlementPartialSettlementRuntime{runtime: settlementRuntime}
 	}
 
@@ -1015,6 +1020,9 @@ func buildMetaToolsWithRuntimes(
 	if partialSettlementTool := newExecutePartialSettlementTool(receiptStore, effectivePartialRuntime); partialSettlementTool != nil {
 		tools = append(tools, partialSettlementTool)
 	}
+	if escrowReleaseTool := newReleaseEscrowSettlementTool(receiptStore, escrowReleaseRuntime); escrowReleaseTool != nil {
+		tools = append(tools, escrowReleaseTool)
+	}
 	if escrowTool := newExecuteEscrowRecommendationTool(receiptStore, escrowRuntime); escrowTool != nil {
 		tools = append(tools, escrowTool)
 	}
@@ -1547,6 +1555,28 @@ func (s settlementPartialSettlementRuntime) ExecuteSettlement(ctx context.Contex
 	return partialsettlementexecution.DirectPaymentResult{Reference: result.Reference}, nil
 }
 
+type escrowReleaseExecutionRuntime interface {
+	Release(context.Context, escrowrelease.ReleaseRequest) (escrowrelease.ReleaseResult, error)
+}
+
+type engineEscrowReleaseRuntime struct {
+	engine *escrow.Engine
+}
+
+func (e engineEscrowReleaseRuntime) Release(ctx context.Context, req escrowrelease.ReleaseRequest) (escrowrelease.ReleaseResult, error) {
+	if e.engine == nil {
+		return escrowrelease.ReleaseResult{}, fmt.Errorf("escrow engine is required")
+	}
+	entry, err := e.engine.Release(ctx, req.EscrowReference)
+	if err != nil {
+		return escrowrelease.ReleaseResult{}, err
+	}
+	if entry == nil {
+		return escrowrelease.ReleaseResult{}, fmt.Errorf("escrow release returned nil entry")
+	}
+	return escrowrelease.ReleaseResult{Reference: entry.ID}, nil
+}
+
 func newExecuteSettlementTool(receiptStore *receipts.Store, runtime settlementExecutionRuntime) *agent.Tool {
 	if runtime == nil {
 		return nil
@@ -1635,6 +1665,52 @@ func newExecutePartialSettlementTool(receiptStore *receipts.Store, runtime parti
 			}
 
 			return newExecutePartialSettlementReceipt(result), nil
+		},
+	}
+}
+
+func newReleaseEscrowSettlementTool(receiptStore *receipts.Store, runtime escrowReleaseExecutionRuntime) *agent.Tool {
+	if runtime == nil {
+		return nil
+	}
+
+	return &agent.Tool{
+		Name:        "release_escrow_settlement",
+		Description: "Release a funded escrow for an approved transaction receipt and return canonical settlement state",
+		SafetyLevel: agent.SafetyLevelDangerous,
+		Capability: agent.ToolCapability{
+			Category: "knowledge",
+			Activity: agent.ActivityWrite,
+		},
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"transaction_receipt_id": map[string]interface{}{"type": "string", "description": "Funded transaction receipt identifier to release"},
+			},
+			"required": []string{"transaction_receipt_id"},
+		},
+		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+			if receiptStore == nil {
+				return nil, fmt.Errorf("receipts store dependency is not configured")
+			}
+
+			transactionReceiptID, err := toolparam.RequireString(params, "transaction_receipt_id")
+			if err != nil {
+				return nil, err
+			}
+			transactionReceiptID = strings.TrimSpace(transactionReceiptID)
+			if transactionReceiptID == "" {
+				return nil, &toolparam.ErrMissingParam{Name: "transaction_receipt_id"}
+			}
+
+			result, err := escrowrelease.NewService(receiptStore, runtime).Execute(ctx, escrowrelease.ExecuteRequest{
+				TransactionReceiptID: transactionReceiptID,
+			})
+			if err != nil {
+				return nil, err
+			}
+
+			return newReleaseEscrowSettlementReceipt(result), nil
 		},
 	}
 }
@@ -1730,6 +1806,14 @@ type executePartialSettlementReceipt struct {
 	RuntimeReference            string `json:"runtime_reference,omitempty"`
 }
 
+type releaseEscrowSettlementReceipt struct {
+	TransactionReceiptID        string `json:"transaction_receipt_id"`
+	SubmissionReceiptID         string `json:"submission_receipt_id,omitempty"`
+	SettlementProgressionStatus string `json:"settlement_progression_status"`
+	ResolvedAmount              string `json:"resolved_amount,omitempty"`
+	RuntimeReference            string `json:"runtime_reference,omitempty"`
+}
+
 func newUpfrontPaymentApprovalReceipt(
 	transactionReceiptID string,
 	submissionReceiptID string,
@@ -1788,6 +1872,16 @@ func newExecutePartialSettlementReceipt(result partialsettlementexecution.Result
 		SettlementProgressionStatus: string(result.SettlementProgressionStatus),
 		ExecutedAmount:              result.ExecutedAmount,
 		RemainingAmount:             result.RemainingAmount,
+		RuntimeReference:            result.RuntimeReference,
+	}
+}
+
+func newReleaseEscrowSettlementReceipt(result escrowrelease.Result) releaseEscrowSettlementReceipt {
+	return releaseEscrowSettlementReceipt{
+		TransactionReceiptID:        result.TransactionReceiptID,
+		SubmissionReceiptID:         result.SubmissionReceiptID,
+		SettlementProgressionStatus: string(result.SettlementProgressionStatus),
+		ResolvedAmount:              result.ResolvedAmount,
 		RuntimeReference:            result.RuntimeReference,
 	}
 }
