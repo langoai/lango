@@ -171,11 +171,11 @@ func TestApplySettlementProgression_MapsReleaseOutcomeToCanonicalState(t *testin
 	})
 	require.NoError(t, err)
 
-	updated, err := store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, SettlementProgressionApprovedForSettlement, SettlementProgressionReasonCodeApprove, "approve", "")
+	updated, err := store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, SettlementProgressionApprovedForSettlement, SettlementProgressionReasonCodeApprove, "Artifact release approved after review.", "")
 	require.NoError(t, err)
 	require.Equal(t, SettlementProgressionApprovedForSettlement, updated.SettlementProgressionStatus)
 	require.Equal(t, SettlementProgressionReasonCodeApprove, updated.SettlementProgressionReasonCode)
-	require.Equal(t, "approve", updated.SettlementProgressionReason)
+	require.Equal(t, "Artifact release approved after review.", updated.SettlementProgressionReason)
 	require.Equal(t, SettlementPending, updated.CanonicalSettlementStatus)
 }
 
@@ -249,10 +249,14 @@ func TestApplySettlementProgression_MapsCanonicalSettlementStatusFromProgression
 			var updated TransactionReceipt
 			for i, step := range tc.steps {
 				reason := "step"
+				reasonCode := SettlementProgressionReasonCodeApprove
 				if i == len(tc.steps)-1 {
 					reason = "final"
 				}
-				updated, err = store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, step, SettlementProgressionReasonCodeApprove, reason, "")
+				if step == SettlementProgressionReviewNeeded || step == SettlementProgressionDisputeReady {
+					reasonCode = SettlementProgressionReasonCodeEscalate
+				}
+				updated, err = store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, step, reasonCode, reason, "")
 				require.NoError(t, err)
 			}
 
@@ -275,7 +279,7 @@ func TestApplySettlementProgression_RejectsIllegalRewind(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	_, err = store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, SettlementProgressionApprovedForSettlement, SettlementProgressionReasonCodeApprove, "approve", "")
+	_, err = store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, SettlementProgressionApprovedForSettlement, SettlementProgressionReasonCodeApprove, "Artifact release approved.", "")
 	require.NoError(t, err)
 	_, err = store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, SettlementProgressionPending, SettlementProgressionReasonCodeReject, "rewind", "")
 	require.Error(t, err)
@@ -314,6 +318,67 @@ func TestApplySettlementProgression_PreservesStableReasonCodeAndHumanReason(t *t
 	require.NoError(t, err)
 	require.Equal(t, SettlementProgressionReasonCodeEscalate, stored.SettlementProgressionReasonCode)
 	require.Equal(t, "manual approval required", stored.SettlementProgressionReason)
+}
+
+func TestApplySettlementProgression_RejectsInvalidReasonCodeForReviewNeeded(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	tx, err := store.OpenKnowledgeExchangeTransaction(ctx, OpenTransactionInput{
+		TransactionID:  "deal-settle-invalid-review-needed",
+		Counterparty:   "did:lango:peer-invalid",
+		RequestedScope: "artifact/research-note",
+		PriceContext:   "quote:0.50-usdc",
+		TrustContext:   "trust:0.72",
+	})
+	require.NoError(t, err)
+
+	_, err = store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, SettlementProgressionReviewNeeded, SettlementProgressionReasonCodeApprove, "Artifact release requires review.", "")
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrInvalidSettlementProgressionState)
+}
+
+func TestApplySettlementProgression_RejectsInvalidReasonCodeForApprovedForSettlement(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	tx, err := store.OpenKnowledgeExchangeTransaction(ctx, OpenTransactionInput{
+		TransactionID:  "deal-settle-invalid-approved",
+		Counterparty:   "did:lango:peer-invalid-approved",
+		RequestedScope: "artifact/research-note",
+		PriceContext:   "quote:0.50-usdc",
+		TrustContext:   "trust:0.72",
+	})
+	require.NoError(t, err)
+
+	_, err = store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, SettlementProgressionApprovedForSettlement, SettlementProgressionReasonCodeReject, "Approved after review.", "")
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrInvalidSettlementProgressionState)
+}
+
+func TestApplySettlementProgression_PersistsPartialHint(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	tx, err := store.OpenKnowledgeExchangeTransaction(ctx, OpenTransactionInput{
+		TransactionID:  "deal-settle-partial-hint",
+		Counterparty:   "did:lango:peer-partial",
+		RequestedScope: "artifact/research-note",
+		PriceContext:   "quote:0.50-usdc",
+		TrustContext:   "trust:0.72",
+	})
+	require.NoError(t, err)
+
+	updated, err := store.ApplySettlementProgression(
+		ctx,
+		tx.TransactionReceiptID,
+		SettlementProgressionReviewNeeded,
+		SettlementProgressionReasonCodeRequestRevision,
+		"Need updated evidence.",
+		"settle 40% now, defer the rest",
+	)
+	require.NoError(t, err)
+	require.Equal(t, "settle 40% now, defer the rest", updated.PartialSettlementHint)
 }
 
 func TestApplyKnowledgeExchangeRuntimeProgression_RejectsNonexistentSubmissionPointer(t *testing.T) {

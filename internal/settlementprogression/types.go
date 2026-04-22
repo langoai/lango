@@ -20,6 +20,7 @@ type ReleaseOutcome struct {
 type ApplyReleaseOutcomeRequest struct {
 	TransactionReceiptID string         `json:"transaction_receipt_id"`
 	Outcome              ReleaseOutcome `json:"outcome"`
+	PartialHint          string         `json:"partial_hint,omitempty"`
 }
 
 type ApplyReleaseOutcomeResult struct {

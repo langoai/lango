@@ -152,6 +152,9 @@ func (s *Store) ApplySettlementProgression(_ context.Context, transactionReceipt
 	if err := validateSettlementProgressionTransition(tx.SettlementProgressionStatus, next); err != nil {
 		return TransactionReceipt{}, err
 	}
+	if err := validateSettlementProgressionReasonCode(next, reasonCode); err != nil {
+		return TransactionReceipt{}, err
+	}
 
 	tx.SettlementProgressionStatus = next
 	tx.CanonicalSettlementStatus = canonicalSettlementStatusForProgression(next)
@@ -575,6 +578,32 @@ func validateSettlementProgressionTransition(current, next SettlementProgression
 	}
 
 	return fmt.Errorf("%w: %q -> %q", ErrInvalidSettlementProgressionState, current, next)
+}
+
+func validateSettlementProgressionReasonCode(next SettlementProgressionStatus, reasonCode SettlementProgressionReasonCode) error {
+	switch next {
+	case SettlementProgressionApprovedForSettlement,
+		SettlementProgressionInProgress,
+		SettlementProgressionPartiallySettled,
+		SettlementProgressionSettled:
+		if reasonCode == SettlementProgressionReasonCodeApprove {
+			return nil
+		}
+		return fmt.Errorf("%w: %q requires approve reason code, got %q", ErrInvalidSettlementProgressionState, next, reasonCode)
+	case SettlementProgressionReviewNeeded:
+		fallthrough
+	case SettlementProgressionDisputeReady:
+		switch reasonCode {
+		case SettlementProgressionReasonCodeReject,
+			SettlementProgressionReasonCodeRequestRevision,
+			SettlementProgressionReasonCodeEscalate:
+			return nil
+		default:
+			return fmt.Errorf("%w: %q requires reject, request-revision, or escalate reason code, got %q", ErrInvalidSettlementProgressionState, next, reasonCode)
+		}
+	default:
+		return nil
+	}
 }
 
 func canonicalSettlementStatusForProgression(progress SettlementProgressionStatus) SettlementStatus {

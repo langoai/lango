@@ -33,6 +33,7 @@ func (s *Service) ApplyReleaseOutcome(ctx context.Context, req ApplyReleaseOutco
 	if err != nil {
 		return ApplyReleaseOutcomeResult{}, err
 	}
+	mapped.PartialHint = strings.TrimSpace(req.PartialHint)
 
 	transaction, err := s.store.ApplySettlementProgression(
 		ctx,
@@ -58,7 +59,7 @@ func mapReleaseOutcome(outcome ReleaseOutcome) (SettlementOutcome, error) {
 		return SettlementOutcome{
 			ProgressionStatus:     receipts.SettlementProgressionApprovedForSettlement,
 			ProgressionReasonCode: receipts.SettlementProgressionReasonCodeApprove,
-			ProgressionReason:     string(approvalflow.DecisionApprove),
+			ProgressionReason:     progressionReason(outcome.Reason, "Artifact release approved."),
 		}, nil
 	case approvalflow.DecisionReject:
 		return SettlementOutcome{
