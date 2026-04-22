@@ -8,8 +8,8 @@
 
 - Add `docs/architecture/knowledge-exchange-runtime.md` as the first runtime control-plane design slice for knowledge exchange.
 - Wire the new page into the architecture landing page, the P2P knowledge exchange track page, and the docs site navigation.
-- Record the documentation slice in OpenSpec with matching delta specs for `project-docs`, `docs-only`, and `meta-tools`.
-- Sync the main specs so the repository docs, track ledger, and meta-tools contract stay aligned with the landed slice.
+- Record the documentation slice in OpenSpec with matching delta specs for `project-docs`, `docs-only`, `meta-tools`, and `mkdocs-documentation-site`.
+- Sync the main specs so the repository docs, track ledger, docs-site navigation, and meta-tools contract stay aligned with the landed slice.
 - Archive the completed OpenSpec change after the docs and specs are updated.
 
 ## Capabilities

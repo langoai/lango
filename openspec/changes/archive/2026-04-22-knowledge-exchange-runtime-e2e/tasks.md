@@ -8,7 +8,7 @@
 ## 2. OpenSpec Sync
 
 - [x] 2.1 Create the `knowledge-exchange-runtime-e2e` proposal, design, and task artifacts.
-- [x] 2.2 Add delta specs for `project-docs`, `docs-only`, and `meta-tools`.
+- [x] 2.2 Add delta specs for `project-docs`, `docs-only`, `meta-tools`, and `mkdocs-documentation-site`.
 - [x] 2.3 Sync the main specs under `openspec/specs/`.
 
 ## 3. Closeout
