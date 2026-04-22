@@ -375,7 +375,6 @@ func TestBuildMetaToolsWithRuntimes_Parity(t *testing.T) {
 		"select_knowledge_exchange_path",
 		"approve_upfront_payment",
 		"apply_settlement_progression",
-		"execute_settlement",
 		"get_knowledge_history",
 		"search_knowledge",
 		"save_learning",
@@ -386,6 +385,7 @@ func TestBuildMetaToolsWithRuntimes_Parity(t *testing.T) {
 		"import_skill",
 		"learning_stats",
 		"learning_cleanup",
+		"execute_settlement",
 		"execute_escrow_recommendation",
 	}
 

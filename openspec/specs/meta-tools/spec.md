@@ -153,3 +153,15 @@ The meta tools surface SHALL provide an `apply_settlement_progression` tool that
 - **WHEN** `apply_settlement_progression` is invoked with `transaction_receipt_id`, `outcome`, and optional `reason` or `partial_hint`
 - **THEN** it SHALL evaluate the request through the settlement progression service
 - **AND** it SHALL return canonical transaction-level settlement progression state
+
+### Requirement: Actual settlement execution meta tool
+The meta tools surface SHALL provide an `execute_settlement` tool that executes direct final settlement from canonical settlement progression state.
+
+#### Scenario: Actual settlement execution tool available
+- **WHEN** the meta tools are built with a receipts store and settlement runtime
+- **THEN** `execute_settlement` SHALL be available
+
+#### Scenario: Actual settlement execution tool executes direct settlement
+- **WHEN** `execute_settlement` is invoked with `transaction_receipt_id`
+- **THEN** it SHALL evaluate the request through the settlement execution service
+- **AND** it SHALL return canonical transaction-level execution result including settlement progression state

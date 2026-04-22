@@ -95,3 +95,11 @@ The `docs/architecture/index.md` page SHALL include a quick link to `settlement-
 - **WHEN** a user reads `docs/architecture/index.md`
 - **THEN** they SHALL find the Settlement Progression entry linking to `settlement-progression.md`
 - **AND** the entry SHALL describe the slice as transaction-level settlement progression bounded by current implementation limits
+
+### Requirement: Architecture landing page links the actual settlement execution slice
+The `docs/architecture/index.md` page SHALL include a quick link to `actual-settlement-execution.md` and a short summary that frames it as the first direct settlement execution slice for `knowledge exchange v1`.
+
+#### Scenario: Actual settlement execution appears in architecture landing page
+- **WHEN** a user reads `docs/architecture/index.md`
+- **THEN** they SHALL find the Actual Settlement Execution entry linking to `actual-settlement-execution.md`
+- **AND** the entry SHALL describe the slice as direct settlement execution bounded by current implementation limits

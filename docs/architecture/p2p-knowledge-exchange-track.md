@@ -45,6 +45,8 @@ The first transaction-oriented runtime design slice is now documented in `docs/a
 
 The first settlement progression slice is now landed as well: transaction-level progression state, release-outcome mapping, review-needed handling, current-submission-gated progression writes, and the receipts-backed `apply_settlement_progression` tool are now in place. Progression updates also append to the current submission receipt event trail. `dispute-ready` remains a model-only follow-on state, and the remaining work is actual settlement execution, partial-settlement rules, and dispute engine completion.
 
+The first direct actual settlement execution slice is now landed too: `execute_settlement` resolves canonical amount context from the transaction receipt, requires the current submission and `approved-for-settlement` state, reuses the direct payment runtime, and closes settlement progression to `settled` on success. The remaining work is partial settlement execution, escrow lifecycle completion, and dispute engine completion.
+
 ## In Scope
 
 - pseudonymous but cryptographically continuous identities,
@@ -86,5 +88,6 @@ The first settlement progression slice is now landed as well: transaction-level 
 1. `identity / trust / reputation` detailed audit is now landed; the follow-on work is `reputation v2`, stronger trust-entry contracts, and runtime integration
 2. `pricing / negotiation / settlement` detailed audit is now landed; the follow-on work is runtime integration, settlement execution, and escrow lifecycle completion
 3. exportability policy follow-on work (the first source-primary slice has landed; the remaining gaps are richer rules, override/dispute handling, and receipt unification)
-4. `settlement progression` first slice is now landed; the follow-on work is actual settlement execution, partial settlement rules, and dispute engine completion
-5. the first transaction-oriented runtime design slice, now documented in `docs/architecture/knowledge-exchange-runtime.md`; follow-on work is runtime implementation and broader progression handling
+4. `settlement progression` first slice is now landed; the follow-on work is partial settlement rules, dispute engine completion, and deeper disagreement handling
+5. `actual settlement execution` first slice is now landed; the follow-on work is partial settlement execution, escrow lifecycle completion, and dispute engine completion
+6. the first transaction-oriented runtime design slice, now documented in `docs/architecture/knowledge-exchange-runtime.md`; follow-on work is runtime implementation and broader progression handling

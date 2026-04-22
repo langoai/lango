@@ -236,3 +236,18 @@ The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the 
 - **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
 - **THEN** they SHALL find settlement progression described as a landed first slice
 - **AND** the remaining work SHALL be described as actual settlement execution, partial-settlement rules, and dispute engine completion
+
+### Requirement: Actual settlement execution page describes the first direct execution slice
+The `docs/architecture/actual-settlement-execution.md` page SHALL describe the first direct settlement execution slice for `knowledge exchange v1`, including what currently ships and the current limits of the slice.
+
+#### Scenario: Actual settlement execution page shows the bounded slice
+- **WHEN** a user reads `docs/architecture/actual-settlement-execution.md`
+- **THEN** they SHALL find sections describing the current execution slice, what ships, canonical gate, and current limits
+
+### Requirement: P2P knowledge exchange track reflects landed actual settlement execution
+The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the actual settlement execution first slice as landed work and list the remaining work as partial settlement execution, escrow lifecycle completion, and dispute engine completion.
+
+#### Scenario: Track page points to the landed actual settlement execution slice
+- **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
+- **THEN** they SHALL find actual settlement execution described as a landed first slice
+- **AND** the remaining work SHALL be described as partial settlement execution, escrow lifecycle completion, and dispute engine completion
