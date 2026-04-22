@@ -181,7 +181,7 @@ func TestServiceExecute_ExecutesRuntimeAndReportsSettledTarget(t *testing.T) {
 	require.Equal(t, "sub-1", store.lastSubmissionID)
 
 	require.Equal(t, 1, store.markSettledCalls)
-	require.Equal(t, CloseoutRequest{
+	require.Equal(t, receipts.SettlementCloseoutRequest{
 		TransactionReceiptID: "tx-1",
 		SubmissionReceiptID:  "sub-1",
 		ResolvedAmount:       "0.50",
@@ -232,7 +232,7 @@ func TestServiceExecute_RuntimeFailureReturnsFailureShape(t *testing.T) {
 	require.Equal(t, 1, store.recordFailureCalls)
 	require.Equal(t, "tx-1", store.lastTransactionID)
 	require.Equal(t, "sub-1", store.lastSubmissionID)
-	require.Equal(t, FailureRecordRequest{
+	require.Equal(t, receipts.SettlementFailureRequest{
 		TransactionReceiptID: "tx-1",
 		SubmissionReceiptID:  "sub-1",
 		ResolvedAmount:       "0.50",
@@ -300,8 +300,8 @@ type fakeReceiptStore struct {
 	calls              int
 	markSettledCalls   int
 	recordFailureCalls int
-	lastCloseout       CloseoutRequest
-	lastFailure        FailureRecordRequest
+	lastCloseout       receipts.SettlementCloseoutRequest
+	lastFailure        receipts.SettlementFailureRequest
 }
 
 func (f *fakeReceiptStore) GetTransactionReceipt(_ context.Context, transactionReceiptID string) (receipts.TransactionReceipt, error) {
@@ -321,7 +321,7 @@ func (f *fakeReceiptStore) GetSubmissionReceipt(_ context.Context, submissionRec
 	return f.submission, nil, nil
 }
 
-func (f *fakeReceiptStore) MarkSettlementSettled(_ context.Context, req CloseoutRequest) (receipts.TransactionReceipt, error) {
+func (f *fakeReceiptStore) MarkSettlementSettled(_ context.Context, req receipts.SettlementCloseoutRequest) (receipts.TransactionReceipt, error) {
 	f.markSettledCalls++
 	f.lastCloseout = req
 	if f.markSettledErr != nil {
@@ -333,7 +333,7 @@ func (f *fakeReceiptStore) MarkSettlementSettled(_ context.Context, req Closeout
 	return f.markSettledResult, nil
 }
 
-func (f *fakeReceiptStore) RecordSettlementFailure(_ context.Context, req FailureRecordRequest) error {
+func (f *fakeReceiptStore) RecordSettlementFailure(_ context.Context, req receipts.SettlementFailureRequest) error {
 	f.recordFailureCalls++
 	f.lastFailure = req
 	return f.recordFailureErr

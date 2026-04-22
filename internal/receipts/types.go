@@ -103,6 +103,7 @@ const (
 	EventEscrowExecutionFunded      EventType = "escrow_execution_funded"
 	EventEscrowExecutionFailed      EventType = "escrow_execution_failed"
 	EventSettlementUpdated          EventType = "settlement_updated"
+	EventSettlementExecutionFailed  EventType = "settlement_execution_failed"
 	EventEscalated                  EventType = "escalated"
 	EventDisputed                   EventType = "disputed"
 )
@@ -169,4 +170,18 @@ type TransactionReceipt struct {
 	EscrowExecutionStatus           EscrowExecutionStatus           `json:"escrow_execution_status,omitempty"`
 	EscrowReference                 string                          `json:"escrow_reference,omitempty"`
 	EscrowExecutionInput            *EscrowExecutionInput           `json:"escrow_execution_input,omitempty"`
+}
+
+type SettlementCloseoutRequest struct {
+	TransactionReceiptID string `json:"transaction_receipt_id"`
+	SubmissionReceiptID  string `json:"submission_receipt_id"`
+	ResolvedAmount       string `json:"resolved_amount"`
+	RuntimeReference     string `json:"runtime_reference,omitempty"`
+}
+
+type SettlementFailureRequest struct {
+	TransactionReceiptID string `json:"transaction_receipt_id"`
+	SubmissionReceiptID  string `json:"submission_receipt_id"`
+	ResolvedAmount       string `json:"resolved_amount,omitempty"`
+	Reason               string `json:"reason"`
 }

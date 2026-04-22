@@ -13,8 +13,8 @@ import (
 type receiptStore interface {
 	GetTransactionReceipt(context.Context, string) (receipts.TransactionReceipt, error)
 	GetSubmissionReceipt(context.Context, string) (receipts.SubmissionReceipt, []receipts.ReceiptEvent, error)
-	MarkSettlementSettled(context.Context, closeoutRequest) (receipts.TransactionReceipt, error)
-	RecordSettlementFailure(context.Context, failureRequest) error
+	MarkSettlementSettled(context.Context, receipts.SettlementCloseoutRequest) (receipts.TransactionReceipt, error)
+	RecordSettlementFailure(context.Context, receipts.SettlementFailureRequest) error
 }
 
 type directPaymentRuntime interface {
@@ -93,7 +93,7 @@ func (s *Service) Execute(ctx context.Context, req ExecuteRequest) (Result, erro
 				Message: err.Error(),
 			},
 		}
-		failure := failureRequest{
+		failure := receipts.SettlementFailureRequest{
 			TransactionReceiptID: transaction.TransactionReceiptID,
 			SubmissionReceiptID:  submissionReceiptID,
 			ResolvedAmount:       resolvedAmount,
@@ -105,7 +105,7 @@ func (s *Service) Execute(ctx context.Context, req ExecuteRequest) (Result, erro
 		return result, &ExecutionError{Kind: FailureKindExecutionFailed, Message: err.Error(), Err: err}
 	}
 
-	updated, err := s.store.MarkSettlementSettled(ctx, closeoutRequest{
+	updated, err := s.store.MarkSettlementSettled(ctx, receipts.SettlementCloseoutRequest{
 		TransactionReceiptID: transaction.TransactionReceiptID,
 		SubmissionReceiptID:  submissionReceiptID,
 		ResolvedAmount:       resolvedAmount,

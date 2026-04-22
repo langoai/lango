@@ -412,6 +412,129 @@ func TestApplySettlementProgression_AppendsDisputeEventToCurrentSubmission(t *te
 	require.Equal(t, "dispute opened", events[2].Reason)
 }
 
+func TestMarkSettlementSettled_ClosesApprovedProgression(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	submission, tx := createSubmittedTransaction(t, store, ctx, "deal-settle-closeout")
+
+	_, err := store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, SettlementProgressionApprovedForSettlement, SettlementProgressionReasonCodeApprove, "approved", "")
+	require.NoError(t, err)
+
+	updated, err := store.MarkSettlementSettled(ctx, SettlementCloseoutRequest{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		SubmissionReceiptID:  submission.SubmissionReceiptID,
+		ResolvedAmount:       "0.50",
+		RuntimeReference:     "settlement-tx-123",
+	})
+	require.NoError(t, err)
+	require.Equal(t, SettlementProgressionSettled, updated.SettlementProgressionStatus)
+	require.Equal(t, SettlementSettled, updated.CanonicalSettlementStatus)
+}
+
+func TestMarkSettlementSettled_AppendsSettlementExecutionTrail(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	submission, tx := createSubmittedTransaction(t, store, ctx, "deal-settle-closeout-trail")
+
+	_, err := store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, SettlementProgressionApprovedForSettlement, SettlementProgressionReasonCodeApprove, "approved", "")
+	require.NoError(t, err)
+
+	_, err = store.MarkSettlementSettled(ctx, SettlementCloseoutRequest{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		SubmissionReceiptID:  submission.SubmissionReceiptID,
+		ResolvedAmount:       "0.50",
+		RuntimeReference:     "settlement-tx-123",
+	})
+	require.NoError(t, err)
+
+	_, events, err := store.GetSubmissionReceipt(ctx, submission.SubmissionReceiptID)
+	require.NoError(t, err)
+	require.Len(t, events, 2)
+	last := events[len(events)-1]
+	require.Equal(t, EventSettlementUpdated, last.Type)
+	require.Equal(t, "settlement_execution", last.Source)
+	require.Equal(t, "settled", last.Subtype)
+	require.Equal(t, "settlement-tx-123", last.Reason)
+}
+
+func TestRecordSettlementFailure_DoesNotMutateProgression(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	submission, tx := createSubmittedTransaction(t, store, ctx, "deal-settle-failure")
+
+	_, err := store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, SettlementProgressionApprovedForSettlement, SettlementProgressionReasonCodeApprove, "approved", "")
+	require.NoError(t, err)
+
+	err = store.RecordSettlementFailure(ctx, SettlementFailureRequest{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		SubmissionReceiptID:  submission.SubmissionReceiptID,
+		ResolvedAmount:       "0.50",
+		Reason:               "rpc timeout",
+	})
+	require.NoError(t, err)
+
+	stored, err := store.GetTransactionReceipt(ctx, tx.TransactionReceiptID)
+	require.NoError(t, err)
+	require.Equal(t, SettlementProgressionApprovedForSettlement, stored.SettlementProgressionStatus)
+	require.Equal(t, SettlementPending, stored.CanonicalSettlementStatus)
+}
+
+func TestRecordSettlementFailure_AppendsFailureTrail(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	submission, tx := createSubmittedTransaction(t, store, ctx, "deal-settle-failure-trail")
+
+	_, err := store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, SettlementProgressionApprovedForSettlement, SettlementProgressionReasonCodeApprove, "approved", "")
+	require.NoError(t, err)
+
+	err = store.RecordSettlementFailure(ctx, SettlementFailureRequest{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		SubmissionReceiptID:  submission.SubmissionReceiptID,
+		ResolvedAmount:       "0.50",
+		Reason:               "rpc timeout",
+	})
+	require.NoError(t, err)
+
+	_, events, err := store.GetSubmissionReceipt(ctx, submission.SubmissionReceiptID)
+	require.NoError(t, err)
+	require.Len(t, events, 2)
+	last := events[len(events)-1]
+	require.Equal(t, EventSettlementExecutionFailed, last.Type)
+	require.Equal(t, "settlement_execution", last.Source)
+	require.Equal(t, "failed", last.Subtype)
+	require.Equal(t, "rpc timeout", last.Reason)
+}
+
+func TestRecordSettlementFailure_RejectsFailureAfterSettlementCloseout(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	submission, tx := createSubmittedTransaction(t, store, ctx, "deal-settle-failure-after-closeout")
+
+	_, err := store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, SettlementProgressionApprovedForSettlement, SettlementProgressionReasonCodeApprove, "approved", "")
+	require.NoError(t, err)
+
+	_, err = store.MarkSettlementSettled(ctx, SettlementCloseoutRequest{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		SubmissionReceiptID:  submission.SubmissionReceiptID,
+		ResolvedAmount:       "0.50",
+		RuntimeReference:     "settlement-tx-123",
+	})
+	require.NoError(t, err)
+
+	err = store.RecordSettlementFailure(ctx, SettlementFailureRequest{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		SubmissionReceiptID:  submission.SubmissionReceiptID,
+		ResolvedAmount:       "0.50",
+		Reason:               "rpc timeout",
+	})
+	require.ErrorIs(t, err, ErrInvalidSettlementProgressionState)
+}
+
 func TestApplyKnowledgeExchangeRuntimeProgression_RejectsNonexistentSubmissionPointer(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()

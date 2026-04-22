@@ -195,6 +195,79 @@ func (s *Store) ApplySettlementProgression(_ context.Context, transactionReceipt
 	return cloneTransactionReceipt(tx), nil
 }
 
+func (s *Store) MarkSettlementSettled(_ context.Context, req SettlementCloseoutRequest) (TransactionReceipt, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	transaction, ok := s.transactions[req.TransactionReceiptID]
+	if !ok {
+		return TransactionReceipt{}, ErrTransactionReceiptNotFound
+	}
+	submission, ok := s.submissions[req.SubmissionReceiptID]
+	if !ok {
+		return TransactionReceipt{}, ErrSubmissionReceiptNotFound
+	}
+	if submission.TransactionReceiptID != req.TransactionReceiptID {
+		return TransactionReceipt{}, fmt.Errorf("%w: submission does not belong to transaction", ErrSubmissionReceiptNotFound)
+	}
+	if transaction.CurrentSubmissionReceiptID != req.SubmissionReceiptID {
+		return TransactionReceipt{}, fmt.Errorf("%w: submission is not current for transaction", ErrInvalidSettlementProgressionState)
+	}
+	if transaction.SettlementProgressionStatus != SettlementProgressionApprovedForSettlement {
+		return TransactionReceipt{}, fmt.Errorf("%w: settlement must be approved-for-settlement before closeout", ErrInvalidSettlementProgressionState)
+	}
+
+	transaction.SettlementProgressionStatus = SettlementProgressionSettled
+	transaction.CanonicalSettlementStatus = SettlementSettled
+	transaction.SettlementProgressionReasonCode = SettlementProgressionReasonCodeApprove
+	transaction.SettlementProgressionReason = "settlement executed"
+	transaction.DisputeReady = false
+	s.transactions[req.TransactionReceiptID] = transaction
+
+	s.events[req.SubmissionReceiptID] = append(s.events[req.SubmissionReceiptID], ReceiptEvent{
+		SubmissionReceiptID: req.SubmissionReceiptID,
+		Source:              "settlement_execution",
+		Subtype:             "settled",
+		Reason:              req.RuntimeReference,
+		Type:                EventSettlementUpdated,
+	})
+
+	return cloneTransactionReceipt(transaction), nil
+}
+
+func (s *Store) RecordSettlementFailure(_ context.Context, req SettlementFailureRequest) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	transaction, ok := s.transactions[req.TransactionReceiptID]
+	if !ok {
+		return ErrTransactionReceiptNotFound
+	}
+	submission, ok := s.submissions[req.SubmissionReceiptID]
+	if !ok {
+		return ErrSubmissionReceiptNotFound
+	}
+	if submission.TransactionReceiptID != req.TransactionReceiptID {
+		return fmt.Errorf("%w: submission does not belong to transaction", ErrSubmissionReceiptNotFound)
+	}
+	if transaction.CurrentSubmissionReceiptID != req.SubmissionReceiptID {
+		return fmt.Errorf("%w: submission is not current for transaction", ErrInvalidSettlementProgressionState)
+	}
+	if transaction.SettlementProgressionStatus != SettlementProgressionApprovedForSettlement {
+		return fmt.Errorf("%w: settlement must remain approved-for-settlement before recording failure", ErrInvalidSettlementProgressionState)
+	}
+
+	s.events[req.SubmissionReceiptID] = append(s.events[req.SubmissionReceiptID], ReceiptEvent{
+		SubmissionReceiptID: req.SubmissionReceiptID,
+		Source:              "settlement_execution",
+		Subtype:             "failed",
+		Reason:              req.Reason,
+		Type:                EventSettlementExecutionFailed,
+	})
+
+	return nil
+}
+
 func (s *Store) ApplyKnowledgeExchangeRuntimeProgression(_ context.Context, transactionReceiptID string, next KnowledgeExchangeRuntimeStatus, submissionReceiptID string) (TransactionReceipt, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -469,6 +542,7 @@ func validateEventType(eventType EventType) error {
 		EventEscrowExecutionFunded,
 		EventEscrowExecutionFailed,
 		EventSettlementUpdated,
+		EventSettlementExecutionFailed,
 		EventEscalated,
 		EventDisputed:
 		return nil
