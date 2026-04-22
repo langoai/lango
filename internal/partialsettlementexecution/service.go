@@ -223,6 +223,9 @@ func calculateRemainingAmount(totalAmount, executedAmount string) (string, error
 	if executed.Cmp(total) > 0 {
 		return "", fmt.Errorf("executed amount %s exceeds total amount %s", executedAmount, totalAmount)
 	}
+	if executed.Cmp(total) == 0 {
+		return "", fmt.Errorf("executed amount %s must leave a positive remaining amount from total %s", executedAmount, totalAmount)
+	}
 
 	remaining := new(big.Int).Sub(total, executed)
 	return finance.FormatUSDC(remaining), nil

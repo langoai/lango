@@ -101,27 +101,42 @@ func TestServiceExecute_DeniesWhenPartialHintIsMissing(t *testing.T) {
 func TestServiceExecute_DeniesWhenPartialHintIsInvalid(t *testing.T) {
 	t.Parallel()
 
-	store := &fakeReceiptStore{
-		transaction: receipts.TransactionReceipt{
-			TransactionReceiptID:        "tx-1",
-			CurrentSubmissionReceiptID:  "sub-1",
-			PriceContext:                "quote:1.00-usdc",
-			PartialSettlementHint:       "settle:forty%",
-			SettlementProgressionStatus: receipts.SettlementProgressionApprovedForSettlement,
-		},
-		submission: receipts.SubmissionReceipt{
-			SubmissionReceiptID:  "sub-1",
-			TransactionReceiptID: "tx-1",
-		},
+	cases := []struct {
+		name        string
+		price       string
+		partialHint string
+	}{
+		{name: "bad format", price: "quote:1.00-usdc", partialHint: "settle:forty%"},
+		{name: "matches total", price: "quote:1.00-usdc", partialHint: "settle:1.00-usdc"},
 	}
-	runtime := &fakeDirectPaymentRuntime{}
-	svc := NewService(store, runtime)
 
-	result, err := svc.Execute(context.Background(), Request{TransactionReceiptID: "tx-1"})
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			store := &fakeReceiptStore{
+				transaction: receipts.TransactionReceipt{
+					TransactionReceiptID:        "tx-1",
+					CurrentSubmissionReceiptID:  "sub-1",
+					PriceContext:                tc.price,
+					PartialSettlementHint:       tc.partialHint,
+					SettlementProgressionStatus: receipts.SettlementProgressionApprovedForSettlement,
+				},
+				submission: receipts.SubmissionReceipt{
+					SubmissionReceiptID:  "sub-1",
+					TransactionReceiptID: "tx-1",
+				},
+			}
+			runtime := &fakeDirectPaymentRuntime{}
+			svc := NewService(store, runtime)
 
-	require.Error(t, err)
-	assertExecutionError(t, err, FailureKindDenied, DenyReasonPartialHintInvalid)
-	require.Equal(t, StatusDenied, result.Status)
+			result, err := svc.Execute(context.Background(), Request{TransactionReceiptID: "tx-1"})
+
+			require.Error(t, err)
+			assertExecutionError(t, err, FailureKindDenied, DenyReasonPartialHintInvalid)
+			require.Equal(t, StatusDenied, result.Status)
+			require.Equal(t, 0, runtime.calls)
+		})
+	}
 }
 
 func TestServiceExecute_DeniesWhenPartialHintAmountIsNotPositive(t *testing.T) {
