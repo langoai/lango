@@ -196,7 +196,15 @@ func (s *Store) ApplySettlementProgression(_ context.Context, transactionReceipt
 	return cloneTransactionReceipt(tx), nil
 }
 
-func (s *Store) MarkSettlementSettled(_ context.Context, req SettlementCloseoutRequest) (TransactionReceipt, error) {
+func (s *Store) MarkSettlementSettled(ctx context.Context, req SettlementCloseoutRequest) (TransactionReceipt, error) {
+	return s.markTransactionSettled(ctx, req, "settlement_execution", "settlement executed")
+}
+
+func (s *Store) MarkEscrowReleaseSettled(ctx context.Context, req SettlementCloseoutRequest) (TransactionReceipt, error) {
+	return s.markTransactionSettled(ctx, req, "escrow_release", "escrow release executed")
+}
+
+func (s *Store) markTransactionSettled(_ context.Context, req SettlementCloseoutRequest, source string, progressionReason string) (TransactionReceipt, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -221,13 +229,13 @@ func (s *Store) MarkSettlementSettled(_ context.Context, req SettlementCloseoutR
 	transaction.SettlementProgressionStatus = SettlementProgressionSettled
 	transaction.CanonicalSettlementStatus = SettlementSettled
 	transaction.SettlementProgressionReasonCode = SettlementProgressionReasonCodeApprove
-	transaction.SettlementProgressionReason = "settlement executed"
+	transaction.SettlementProgressionReason = progressionReason
 	transaction.DisputeReady = false
 	s.transactions[req.TransactionReceiptID] = transaction
 
 	s.events[req.SubmissionReceiptID] = append(s.events[req.SubmissionReceiptID], ReceiptEvent{
 		SubmissionReceiptID: req.SubmissionReceiptID,
-		Source:              "settlement_execution",
+		Source:              source,
 		Subtype:             "settled",
 		Reason:              req.RuntimeReference,
 		Type:                EventSettlementUpdated,
@@ -236,7 +244,15 @@ func (s *Store) MarkSettlementSettled(_ context.Context, req SettlementCloseoutR
 	return cloneTransactionReceipt(transaction), nil
 }
 
-func (s *Store) RecordSettlementFailure(_ context.Context, req SettlementFailureRequest) error {
+func (s *Store) RecordSettlementFailure(ctx context.Context, req SettlementFailureRequest) error {
+	return s.recordTransactionFailure(ctx, req, "settlement_execution")
+}
+
+func (s *Store) RecordEscrowReleaseFailure(ctx context.Context, req SettlementFailureRequest) error {
+	return s.recordTransactionFailure(ctx, req, "escrow_release")
+}
+
+func (s *Store) recordTransactionFailure(_ context.Context, req SettlementFailureRequest, source string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -260,7 +276,7 @@ func (s *Store) RecordSettlementFailure(_ context.Context, req SettlementFailure
 
 	s.events[req.SubmissionReceiptID] = append(s.events[req.SubmissionReceiptID], ReceiptEvent{
 		SubmissionReceiptID: req.SubmissionReceiptID,
-		Source:              "settlement_execution",
+		Source:              source,
 		Subtype:             "failed",
 		Reason:              req.Reason,
 		Type:                EventSettlementExecutionFailed,

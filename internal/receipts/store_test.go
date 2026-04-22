@@ -459,6 +459,53 @@ func TestMarkSettlementSettled_AppendsSettlementExecutionTrail(t *testing.T) {
 	require.Equal(t, "settlement-tx-123", last.Reason)
 }
 
+func TestMarkEscrowReleaseSettled_ClosesApprovedProgression(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	submission, tx := createSubmittedTransaction(t, store, ctx, "deal-escrow-release-closeout")
+
+	_, err := store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, SettlementProgressionApprovedForSettlement, SettlementProgressionReasonCodeApprove, "approved", "")
+	require.NoError(t, err)
+
+	updated, err := store.MarkEscrowReleaseSettled(ctx, SettlementCloseoutRequest{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		SubmissionReceiptID:  submission.SubmissionReceiptID,
+		ResolvedAmount:       "0.50",
+		RuntimeReference:     "escrow-release-tx-123",
+	})
+	require.NoError(t, err)
+	require.Equal(t, SettlementProgressionSettled, updated.SettlementProgressionStatus)
+	require.Equal(t, SettlementSettled, updated.CanonicalSettlementStatus)
+}
+
+func TestMarkEscrowReleaseSettled_AppendsEscrowReleaseSuccessEvidence(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	submission, tx := createSubmittedTransaction(t, store, ctx, "deal-escrow-release-trail")
+
+	_, err := store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, SettlementProgressionApprovedForSettlement, SettlementProgressionReasonCodeApprove, "approved", "")
+	require.NoError(t, err)
+
+	_, err = store.MarkEscrowReleaseSettled(ctx, SettlementCloseoutRequest{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		SubmissionReceiptID:  submission.SubmissionReceiptID,
+		ResolvedAmount:       "0.50",
+		RuntimeReference:     "escrow-release-tx-123",
+	})
+	require.NoError(t, err)
+
+	_, events, err := store.GetSubmissionReceipt(ctx, submission.SubmissionReceiptID)
+	require.NoError(t, err)
+	require.Len(t, events, 2)
+	last := events[len(events)-1]
+	require.Equal(t, EventSettlementUpdated, last.Type)
+	require.Equal(t, "escrow_release", last.Source)
+	require.Equal(t, "settled", last.Subtype)
+	require.Equal(t, "escrow-release-tx-123", last.Reason)
+}
+
 func TestRecordSettlementFailure_DoesNotMutateProgression(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
@@ -505,6 +552,56 @@ func TestRecordSettlementFailure_AppendsFailureTrail(t *testing.T) {
 	last := events[len(events)-1]
 	require.Equal(t, EventSettlementExecutionFailed, last.Type)
 	require.Equal(t, "settlement_execution", last.Source)
+	require.Equal(t, "failed", last.Subtype)
+	require.Equal(t, "rpc timeout", last.Reason)
+}
+
+func TestRecordEscrowReleaseFailure_DoesNotMutateProgression(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	submission, tx := createSubmittedTransaction(t, store, ctx, "deal-escrow-release-failure")
+
+	_, err := store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, SettlementProgressionApprovedForSettlement, SettlementProgressionReasonCodeApprove, "approved", "")
+	require.NoError(t, err)
+
+	err = store.RecordEscrowReleaseFailure(ctx, SettlementFailureRequest{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		SubmissionReceiptID:  submission.SubmissionReceiptID,
+		ResolvedAmount:       "0.50",
+		Reason:               "rpc timeout",
+	})
+	require.NoError(t, err)
+
+	stored, err := store.GetTransactionReceipt(ctx, tx.TransactionReceiptID)
+	require.NoError(t, err)
+	require.Equal(t, SettlementProgressionApprovedForSettlement, stored.SettlementProgressionStatus)
+	require.Equal(t, SettlementPending, stored.CanonicalSettlementStatus)
+}
+
+func TestRecordEscrowReleaseFailure_AppendsFailureTrail(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	submission, tx := createSubmittedTransaction(t, store, ctx, "deal-escrow-release-failure-trail")
+
+	_, err := store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, SettlementProgressionApprovedForSettlement, SettlementProgressionReasonCodeApprove, "approved", "")
+	require.NoError(t, err)
+
+	err = store.RecordEscrowReleaseFailure(ctx, SettlementFailureRequest{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		SubmissionReceiptID:  submission.SubmissionReceiptID,
+		ResolvedAmount:       "0.50",
+		Reason:               "rpc timeout",
+	})
+	require.NoError(t, err)
+
+	_, events, err := store.GetSubmissionReceipt(ctx, submission.SubmissionReceiptID)
+	require.NoError(t, err)
+	require.Len(t, events, 2)
+	last := events[len(events)-1]
+	require.Equal(t, EventSettlementExecutionFailed, last.Type)
+	require.Equal(t, "escrow_release", last.Source)
 	require.Equal(t, "failed", last.Subtype)
 	require.Equal(t, "rpc timeout", last.Reason)
 }
