@@ -233,6 +233,12 @@ The meta tools surface SHALL provide an `adjudicate_escrow_dispute` tool that re
 - **AND** it SHALL, after adjudication succeeds, invoke the matching release or refund executor inline
 - **AND** it SHALL return both the adjudication result and the nested execution result when available
 
+#### Scenario: Adjudication tool may enqueue background execution
+- **WHEN** `adjudicate_escrow_dispute` is invoked with `background_execute=true`
+- **THEN** it SHALL preserve adjudication as the canonical write layer
+- **AND** it SHALL enqueue the matching release or refund follow-up onto the background task substrate
+- **AND** it SHALL return both the adjudication result and a background dispatch receipt
+
 ### Requirement: Escrow release and refund meta tools enforce canonical adjudication
 The meta tools surface SHALL enforce canonical adjudication on the existing escrow release and refund execution tools.
 

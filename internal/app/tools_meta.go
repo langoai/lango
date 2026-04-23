@@ -13,6 +13,8 @@ import (
 
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/approvalflow"
+	"github.com/langoai/lango/internal/automation"
+	"github.com/langoai/lango/internal/background"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/disputehold"
 	"github.com/langoai/lango/internal/economy/escrow"
@@ -65,6 +67,10 @@ func buildMetaToolsWithEscrow(
 	return buildMetaToolsWithRuntimes(store, engine, registry, skillCfg, cfg, receiptStore, escrowRuntime, nil, nil, escrowDisputeHoldRuntime, escrowReleaseRuntime, escrowRefundRuntime)
 }
 
+type adjudicateEscrowDisputeBackgroundDispatcher interface {
+	Submit(context.Context, string, background.Origin) (string, error)
+}
+
 func buildMetaToolsWithRuntimes(
 	store *knowledge.Store,
 	engine *learning.Engine,
@@ -78,11 +84,16 @@ func buildMetaToolsWithRuntimes(
 	escrowDisputeHoldRuntime escrowDisputeHoldExecutionRuntime,
 	escrowReleaseRuntime escrowReleaseExecutionRuntime,
 	escrowRefundRuntime escrowRefundExecutionRuntime,
+	backgroundDispatchers ...adjudicateEscrowDisputeBackgroundDispatcher,
 ) []*agent.Tool {
 	exportabilityEnabled := exportabilityPolicyEnabled(cfg)
 	effectivePartialRuntime := partialSettlementRuntime
 	if effectivePartialRuntime == nil && settlementRuntime != nil {
 		effectivePartialRuntime = settlementPartialSettlementRuntime{runtime: settlementRuntime}
+	}
+	var backgroundDispatcher adjudicateEscrowDisputeBackgroundDispatcher
+	if len(backgroundDispatchers) > 0 {
+		backgroundDispatcher = backgroundDispatchers[0]
 	}
 
 	tools := []*agent.Tool{
@@ -305,7 +316,7 @@ func buildMetaToolsWithRuntimes(
 		newDisputeReadyReceiptTool(receiptStore),
 		newOpenKnowledgeExchangeTransactionTool(receiptStore),
 		newSelectKnowledgeExchangePathTool(receiptStore),
-		newAdjudicateEscrowDisputeTool(store, receiptStore, escrowReleaseRuntime, escrowRefundRuntime),
+		newAdjudicateEscrowDisputeTool(store, receiptStore, escrowReleaseRuntime, escrowRefundRuntime, backgroundDispatcher),
 		{
 			Name:        "approve_upfront_payment",
 			Description: "Evaluate an upfront payment request and update the linked transaction receipt with canonical payment approval state",
@@ -1514,6 +1525,7 @@ func newAdjudicateEscrowDisputeTool(
 	receiptStore *receipts.Store,
 	escrowReleaseRuntime escrowReleaseExecutionRuntime,
 	escrowRefundRuntime escrowRefundExecutionRuntime,
+	backgroundDispatcher adjudicateEscrowDisputeBackgroundDispatcher,
 ) *agent.Tool {
 	return &agent.Tool{
 		Name:        "adjudicate_escrow_dispute",
@@ -1532,8 +1544,9 @@ func newAdjudicateEscrowDisputeTool(
 					"description": "Canonical adjudication decision after dispute hold",
 					"enum":        []string{"release", "refund"},
 				},
-				"reason":       map[string]interface{}{"type": "string", "description": "Optional adjudication reason"},
-				"auto_execute": map[string]interface{}{"type": "boolean", "description": "When true, execute the adjudicated release or refund branch inline after adjudication succeeds"},
+				"reason":             map[string]interface{}{"type": "string", "description": "Optional adjudication reason"},
+				"auto_execute":       map[string]interface{}{"type": "boolean", "description": "When true, execute the adjudicated release or refund branch inline after adjudication succeeds"},
+				"background_execute": map[string]interface{}{"type": "boolean", "description": "When true, enqueue post-adjudication execution as a background dispatch after adjudication succeeds"},
 			},
 			"required": []string{"transaction_receipt_id", "outcome"},
 		},
@@ -1551,6 +1564,10 @@ func newAdjudicateEscrowDisputeTool(
 				return nil, err
 			}
 			autoExecute := toolparam.OptionalBool(params, "auto_execute", false)
+			backgroundExecute := toolparam.OptionalBool(params, "background_execute", false)
+			if autoExecute && backgroundExecute {
+				return nil, fmt.Errorf("auto_execute and background_execute are mutually exclusive")
+			}
 
 			result, err := escrowadjudication.NewService(receiptStore).Adjudicate(ctx, escrowadjudication.AdjudicateRequest{
 				TransactionReceiptID: strings.TrimSpace(transactionReceiptID),
@@ -1578,6 +1595,40 @@ func newAdjudicateEscrowDisputeTool(
 			}
 
 			receipt := newAdjudicateEscrowDisputeReceipt(result)
+			if backgroundExecute {
+				if backgroundDispatcher == nil {
+					return receipt, fmt.Errorf("background manager is not configured")
+				}
+
+				dispatchReference, err := backgroundDispatcher.Submit(ctx, buildAdjudicateEscrowDisputeBackgroundPrompt(result), background.Origin{
+					Channel: automation.DetectChannelFromContext(ctx),
+					Session: session.SessionKeyFromContext(ctx),
+				})
+				if err != nil {
+					return receipt, fmt.Errorf("submit background execution: %w", err)
+				}
+
+				dispatchReceipt := newAdjudicateEscrowDisputeBackgroundDispatchReceipt(result, dispatchReference)
+				receipt.BackgroundDispatchReceipt = dispatchReceipt
+				if store != nil {
+					if err := store.SaveAuditLog(ctx, knowledge.AuditEntry{
+						Action: "escrow_dispute_background_dispatch",
+						Actor:  "agent",
+						Target: result.TransactionReceiptID,
+						Details: map[string]interface{}{
+							"transaction_receipt_id": result.TransactionReceiptID,
+							"submission_receipt_id":  result.SubmissionReceiptID,
+							"escrow_reference":       result.EscrowReference,
+							"outcome":                string(result.Outcome),
+							"dispatch_reference":     dispatchReceipt.DispatchReference,
+							"status":                 dispatchReceipt.Status,
+						},
+					}); err != nil {
+						return receipt, fmt.Errorf("save escrow dispute background dispatch audit log: %w", err)
+					}
+				}
+				return receipt, nil
+			}
 			if !autoExecute {
 				return receipt, nil
 			}
@@ -2043,12 +2094,13 @@ type applySettlementProgressionReceipt struct {
 }
 
 type adjudicateEscrowDisputeReceipt struct {
-	TransactionReceiptID        string                                   `json:"transaction_receipt_id"`
-	SubmissionReceiptID         string                                   `json:"submission_receipt_id,omitempty"`
-	SettlementProgressionStatus string                                   `json:"settlement_progression_status"`
-	EscrowReference             string                                   `json:"escrow_reference,omitempty"`
-	Outcome                     string                                   `json:"outcome,omitempty"`
-	Execution                   *adjudicateEscrowDisputeExecutionReceipt `json:"execution,omitempty"`
+	TransactionReceiptID        string                                            `json:"transaction_receipt_id"`
+	SubmissionReceiptID         string                                            `json:"submission_receipt_id,omitempty"`
+	SettlementProgressionStatus string                                            `json:"settlement_progression_status"`
+	EscrowReference             string                                            `json:"escrow_reference,omitempty"`
+	Outcome                     string                                            `json:"outcome,omitempty"`
+	Execution                   *adjudicateEscrowDisputeExecutionReceipt          `json:"execution,omitempty"`
+	BackgroundDispatchReceipt   *adjudicateEscrowDisputeBackgroundDispatchReceipt `json:"background_dispatch_receipt,omitempty"`
 }
 
 type adjudicateEscrowDisputeExecutionReceipt struct {
@@ -2057,6 +2109,15 @@ type adjudicateEscrowDisputeExecutionReceipt struct {
 	SettlementProgressionStatus string `json:"settlement_progression_status,omitempty"`
 	ResolvedAmount              string `json:"resolved_amount,omitempty"`
 	RuntimeReference            string `json:"runtime_reference,omitempty"`
+}
+
+type adjudicateEscrowDisputeBackgroundDispatchReceipt struct {
+	Status               string `json:"status"`
+	TransactionReceiptID string `json:"transaction_receipt_id"`
+	SubmissionReceiptID  string `json:"submission_receipt_id,omitempty"`
+	EscrowReference      string `json:"escrow_reference,omitempty"`
+	Outcome              string `json:"outcome,omitempty"`
+	DispatchReference    string `json:"dispatch_reference,omitempty"`
 }
 
 type executeSettlementReceipt struct {
@@ -2149,6 +2210,34 @@ func newAdjudicateEscrowDisputeReceipt(result escrowadjudication.Result) adjudic
 		EscrowReference:             result.EscrowReference,
 		Outcome:                     string(result.Outcome),
 	}
+}
+
+func newAdjudicateEscrowDisputeBackgroundDispatchReceipt(result escrowadjudication.Result, dispatchReference string) *adjudicateEscrowDisputeBackgroundDispatchReceipt {
+	return &adjudicateEscrowDisputeBackgroundDispatchReceipt{
+		Status:               "queued",
+		TransactionReceiptID: result.TransactionReceiptID,
+		SubmissionReceiptID:  result.SubmissionReceiptID,
+		EscrowReference:      result.EscrowReference,
+		Outcome:              string(result.Outcome),
+		DispatchReference:    dispatchReference,
+	}
+}
+
+func buildAdjudicateEscrowDisputeBackgroundPrompt(result escrowadjudication.Result) string {
+	toolName := "release_escrow_settlement"
+	switch result.Outcome {
+	case escrowadjudication.OutcomeRefund:
+		toolName = "refund_escrow_settlement"
+	}
+
+	return fmt.Sprintf(
+		"Execute the adjudicated escrow %s branch for transaction_receipt_id=%s.\nUse %s to perform the branch as a background follow-up.\nThe canonical adjudication is already recorded for submission_receipt_id=%s and escrow_reference=%s.\nDo not re-adjudicate.",
+		result.Outcome,
+		result.TransactionReceiptID,
+		toolName,
+		result.SubmissionReceiptID,
+		result.EscrowReference,
+	)
 }
 
 func newAdjudicationNestedExecutionReceiptFromRelease(result escrowrelease.Result) *adjudicateEscrowDisputeExecutionReceipt {

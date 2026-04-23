@@ -3,17 +3,50 @@ package app
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/langoai/lango/internal/agent"
+	"github.com/langoai/lango/internal/background"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/escrowrefund"
 	"github.com/langoai/lango/internal/escrowrelease"
 	"github.com/langoai/lango/internal/receipts"
+	"github.com/langoai/lango/internal/session"
 )
+
+type fakeAdjudicationBackgroundDispatcher struct {
+	mu     sync.Mutex
+	taskID string
+	prompt string
+	origin background.Origin
+	err    error
+	calls  int
+}
+
+func (f *fakeAdjudicationBackgroundDispatcher) Submit(_ context.Context, prompt string, origin background.Origin) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls++
+	f.prompt = prompt
+	f.origin = origin
+	if f.err != nil {
+		return "", f.err
+	}
+	if f.taskID == "" {
+		f.taskID = "task-bg-dispatch-123"
+	}
+	return f.taskID, nil
+}
+
+func (f *fakeAdjudicationBackgroundDispatcher) snapshot() (calls int, prompt string, origin background.Origin) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.calls, f.prompt, f.origin
+}
 
 func TestBuildMetaTools_IncludesAdjudicateEscrowDispute(t *testing.T) {
 	tool := findTool(buildMetaTools(nil, nil, nil, config.SkillConfig{}, nil, receipts.NewStore()), "adjudicate_escrow_dispute")
@@ -27,12 +60,127 @@ func TestBuildMetaTools_IncludesAdjudicateEscrowDispute(t *testing.T) {
 	_, hasTransactionReceiptID := props["transaction_receipt_id"]
 	_, hasOutcome := props["outcome"]
 	_, hasAutoExecute := props["auto_execute"]
+	_, hasBackgroundExecute := props["background_execute"]
 	assert.True(t, hasTransactionReceiptID)
 	assert.True(t, hasOutcome)
 	assert.True(t, hasAutoExecute)
+	assert.True(t, hasBackgroundExecute)
 
 	required, _ := tool.Parameters["required"].([]string)
 	assert.Equal(t, []string{"transaction_receipt_id", "outcome"}, required)
+}
+
+func TestAdjudicateEscrowDispute_BackgroundExecuteReturnsDispatchReceipt(t *testing.T) {
+	t.Parallel()
+
+	ctx := session.WithSessionKey(context.Background(), "telegram:chat-123:user-456")
+	cases := []struct {
+		name    string
+		outcome string
+	}{
+		{
+			name:    "release",
+			outcome: "release",
+		},
+		{
+			name:    "refund",
+			outcome: "refund",
+		},
+	}
+
+	for _, tt := range cases {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			store := receipts.NewStore()
+			tx := createSubmittedTransaction(t, store, ctx, "deal-escrow-adjudication-background-"+tt.name)
+
+			bindDisputeHoldEscrowExecutionInput(t, store, ctx, tx)
+			_, err := store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, tx.CurrentSubmissionReceiptID, receipts.EscrowExecutionStatusCreated, "", receipts.EventEscrowExecutionCreated, "")
+			require.NoError(t, err)
+			_, err = store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, tx.CurrentSubmissionReceiptID, receipts.EscrowExecutionStatusFunded, "escrow-123", receipts.EventEscrowExecutionFunded, "")
+			require.NoError(t, err)
+			_, err = store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, receipts.SettlementProgressionReviewNeeded, receipts.SettlementProgressionReasonCodeReject, "review needed", "")
+			require.NoError(t, err)
+			_, err = store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, receipts.SettlementProgressionDisputeReady, receipts.SettlementProgressionReasonCodeEscalate, "dispute ready", "")
+			require.NoError(t, err)
+			err = store.RecordEscrowDisputeHoldSuccess(ctx, receipts.EscrowDisputeHoldEvidenceRequest{
+				TransactionReceiptID: tx.TransactionReceiptID,
+				SubmissionReceiptID:  tx.CurrentSubmissionReceiptID,
+				EscrowReference:      "escrow-123",
+				RuntimeReference:     "hold-123",
+			})
+			require.NoError(t, err)
+
+			dispatcher := &fakeAdjudicationBackgroundDispatcher{taskID: "task-bg-dispatch-123"}
+			tool := findTool(buildMetaToolsWithRuntimes(nil, nil, nil, config.SkillConfig{}, nil, store, nil, nil, nil, nil, nil, nil, dispatcher), "adjudicate_escrow_dispute")
+			require.NotNil(t, tool)
+
+			got, err := tool.Handler(ctx, map[string]interface{}{
+				"transaction_receipt_id": tx.TransactionReceiptID,
+				"outcome":                tt.outcome,
+				"background_execute":     true,
+			})
+			require.NoError(t, err)
+
+			payload, ok := got.(adjudicateEscrowDisputeReceipt)
+			require.True(t, ok)
+			assert.Equal(t, tt.outcome, payload.Outcome)
+			require.NotNil(t, payload.BackgroundDispatchReceipt)
+			assert.Nil(t, payload.Execution)
+			assert.Equal(t, "queued", payload.BackgroundDispatchReceipt.Status)
+			assert.Equal(t, tx.TransactionReceiptID, payload.BackgroundDispatchReceipt.TransactionReceiptID)
+			assert.Equal(t, tx.CurrentSubmissionReceiptID, payload.BackgroundDispatchReceipt.SubmissionReceiptID)
+			assert.Equal(t, "escrow-123", payload.BackgroundDispatchReceipt.EscrowReference)
+			assert.Equal(t, tt.outcome, payload.BackgroundDispatchReceipt.Outcome)
+			assert.Equal(t, "task-bg-dispatch-123", payload.BackgroundDispatchReceipt.DispatchReference)
+			calls, prompt, origin := dispatcher.snapshot()
+			assert.Equal(t, 1, calls)
+			assert.Contains(t, prompt, "transaction_receipt_id="+tx.TransactionReceiptID)
+			if tt.outcome == "release" {
+				assert.Contains(t, prompt, "release_escrow_settlement")
+			} else {
+				assert.Contains(t, prompt, "refund_escrow_settlement")
+			}
+			assert.Equal(t, "telegram:chat-123", origin.Channel)
+			assert.Equal(t, "telegram:chat-123:user-456", origin.Session)
+		})
+	}
+}
+
+func TestAdjudicateEscrowDispute_RejectsMutuallyExclusiveExecutionModes(t *testing.T) {
+	t.Parallel()
+
+	store := receipts.NewStore()
+	tx := createSubmittedTransaction(t, store, context.Background(), "deal-escrow-adjudication-mode-conflict")
+
+	bindDisputeHoldEscrowExecutionInput(t, store, context.Background(), tx)
+	_, err := store.ApplyEscrowExecutionProgress(context.Background(), tx.TransactionReceiptID, tx.CurrentSubmissionReceiptID, receipts.EscrowExecutionStatusCreated, "", receipts.EventEscrowExecutionCreated, "")
+	require.NoError(t, err)
+	_, err = store.ApplyEscrowExecutionProgress(context.Background(), tx.TransactionReceiptID, tx.CurrentSubmissionReceiptID, receipts.EscrowExecutionStatusFunded, "escrow-123", receipts.EventEscrowExecutionFunded, "")
+	require.NoError(t, err)
+	_, err = store.ApplySettlementProgression(context.Background(), tx.TransactionReceiptID, receipts.SettlementProgressionReviewNeeded, receipts.SettlementProgressionReasonCodeReject, "review needed", "")
+	require.NoError(t, err)
+	_, err = store.ApplySettlementProgression(context.Background(), tx.TransactionReceiptID, receipts.SettlementProgressionDisputeReady, receipts.SettlementProgressionReasonCodeEscalate, "dispute ready", "")
+	require.NoError(t, err)
+	err = store.RecordEscrowDisputeHoldSuccess(context.Background(), receipts.EscrowDisputeHoldEvidenceRequest{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		SubmissionReceiptID:  tx.CurrentSubmissionReceiptID,
+		EscrowReference:      "escrow-123",
+		RuntimeReference:     "hold-123",
+	})
+	require.NoError(t, err)
+
+	tool := findTool(buildMetaTools(nil, nil, nil, config.SkillConfig{}, nil, store), "adjudicate_escrow_dispute")
+	require.NotNil(t, tool)
+
+	_, err = tool.Handler(context.Background(), map[string]interface{}{
+		"transaction_receipt_id": tx.TransactionReceiptID,
+		"outcome":                "release",
+		"auto_execute":           true,
+		"background_execute":     true,
+	})
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "mutually exclusive")
 }
 
 func TestAdjudicateEscrowDispute_DisputeHeldFundedPathReturnsCanonicalReceipt(t *testing.T) {

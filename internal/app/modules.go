@@ -268,7 +268,7 @@ func (m *intelligenceModule) Provides() []appinit.Provides {
 	return []appinit.Provides{appinit.ProvidesKnowledge, appinit.ProvidesMemory, appinit.ProvidesGraph, appinit.ProvidesLibrarian, appinit.ProvidesSkills}
 }
 func (m *intelligenceModule) DependsOn() []appinit.Provides {
-	return []appinit.Provides{appinit.ProvidesSessionStore, appinit.ProvidesSupervisor, appinit.ProvidesEconomy}
+	return []appinit.Provides{appinit.ProvidesSessionStore, appinit.ProvidesSupervisor, appinit.ProvidesEconomy, appinit.ProvidesAutomation}
 }
 func (m *intelligenceModule) Enabled() bool { return true } // always enabled — subsystems check their own config
 
@@ -351,12 +351,18 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 			settlementRuntime = paymentSettlementRuntime{service: pcv.service}
 			partialSettlementRuntime = paymentPartialSettlementRuntime{service: pcv.service}
 		}
+		var adjudicationBackgroundDispatcher adjudicateEscrowDisputeBackgroundDispatcher
+		if av, ok := r.Resolve(appinit.ProvidesAutomation).(*automationValues); ok && av != nil {
+			if bg, ok := av.BackgroundManager.(*background.Manager); ok && bg != nil {
+				adjudicationBackgroundDispatcher = bg
+			}
+		}
 		if econc, ok := r.Resolve(appinit.ProvidesEconomy).(*economyComponents); ok && econc != nil && econc.escrowEngine != nil {
 			escrowDisputeHoldRuntime = engineEscrowDisputeHoldRuntime{engine: econc.escrowEngine}
 			escrowReleaseRuntime = engineEscrowReleaseRuntime{engine: econc.escrowEngine}
 			escrowRefundRuntime = engineEscrowRefundRuntime{engine: econc.escrowEngine}
 		}
-		metaTools := buildMetaToolsWithRuntimes(kc.store, kc.engine, skillReg, cfg.Skill, cfg, receiptStore, escrowRuntime, settlementRuntime, partialSettlementRuntime, escrowDisputeHoldRuntime, escrowReleaseRuntime, escrowRefundRuntime)
+		metaTools := buildMetaToolsWithRuntimes(kc.store, kc.engine, skillReg, cfg.Skill, cfg, receiptStore, escrowRuntime, settlementRuntime, partialSettlementRuntime, escrowDisputeHoldRuntime, escrowReleaseRuntime, escrowRefundRuntime, adjudicationBackgroundDispatcher)
 		tools = append(tools, metaTools...)
 		entries = append(entries, appinit.CatalogEntry{Category: "meta", Description: "Knowledge, learning, and skill management", ConfigKey: "knowledge.enabled", Enabled: true, Tools: metaTools})
 	} else {

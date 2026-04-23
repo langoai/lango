@@ -59,6 +59,8 @@ The first adjudication-aware release/refund execution gating slice is now landed
 
 The first automatic post-adjudication execution slice is now landed too: `adjudicate_escrow_dispute` accepts optional `auto_execute=true`, keeps adjudication as the canonical write layer, and may inline the matching release or refund executor while still reusing the same executor gates. The remaining work is background execution, retry orchestration, automatic execution as policy default, and broader dispute engine integration.
 
+The first background post-adjudication execution slice is now landed too: `adjudicate_escrow_dispute` accepts optional `background_execute=true`, enqueues the canonical release or refund follow-up onto the existing background task substrate, and returns a dispatch receipt while leaving actual execution asynchronous. The remaining work is retry orchestration, dead-letter handling, dedicated status observation, and policy-driven defaults.
+
 ## In Scope
 
 - pseudonymous but cryptographically continuous identities,
@@ -109,4 +111,5 @@ The first automatic post-adjudication execution slice is now landed too: `adjudi
 9. `release vs refund adjudication` first slice is now landed; the follow-on work is adjudication-aware release/refund execution, keep-hold or re-escalation states, and broader dispute engine integration
 10. `adjudication-aware release/refund execution gating` first slice is now landed; the follow-on work is automatic post-adjudication execution, keep-hold or re-escalation states, and broader dispute engine integration
 11. `automatic post-adjudication execution` first slice is now landed; the follow-on work is background execution, retry orchestration, automatic execution as policy default, and broader dispute engine integration
-12. the first transaction-oriented runtime design slice, now documented in `docs/architecture/knowledge-exchange-runtime.md`; follow-on work is runtime implementation and broader progression handling
+12. `background post-adjudication execution` first slice is now landed; the follow-on work is retry orchestration, dead-letter handling, dedicated status observation, and policy-driven defaults
+13. the first transaction-oriented runtime design slice, now documented in `docs/architecture/knowledge-exchange-runtime.md`; follow-on work is runtime implementation and broader progression handling

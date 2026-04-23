@@ -356,3 +356,18 @@ The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the 
 - **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
 - **THEN** they SHALL find automatic post-adjudication execution described as a landed first slice
 - **AND** the remaining work SHALL be described as background execution, retry orchestration, automatic execution as policy default, and broader dispute engine integration
+
+### Requirement: Background post-adjudication execution page describes the first async dispatch slice
+The `docs/architecture/background-post-adjudication-execution.md` page SHALL describe the first background post-adjudication execution slice for `knowledge exchange v1`, including what currently ships and the current limits of the slice.
+
+#### Scenario: Background post-adjudication execution page shows the bounded slice
+- **WHEN** a user reads `docs/architecture/background-post-adjudication-execution.md`
+- **THEN** they SHALL find sections describing the current background dispatch slice, what currently ships, and current limits
+
+### Requirement: P2P knowledge exchange track reflects landed background post-adjudication execution
+The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the background post-adjudication execution first slice as landed work and list the remaining work as retry orchestration, dead-letter handling, dedicated status observation, and policy-driven defaults.
+
+#### Scenario: Track page points to the landed background slice
+- **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
+- **THEN** they SHALL find background post-adjudication execution described as a landed first slice
+- **AND** the remaining work SHALL be described as retry orchestration, dead-letter handling, dedicated status observation, and policy-driven defaults

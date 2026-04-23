@@ -159,3 +159,11 @@ The `docs/architecture/index.md` page SHALL include a quick link to `automatic-p
 - **WHEN** a user reads `docs/architecture/index.md`
 - **THEN** they SHALL find the Automatic Post-Adjudication Execution entry linking to `automatic-post-adjudication-execution.md`
 - **AND** the entry SHALL describe the slice as inline post-adjudication orchestration bounded by current implementation limits
+
+### Requirement: Architecture landing page links background post-adjudication execution
+The `docs/architecture/index.md` page SHALL include a quick link to `background-post-adjudication-execution.md` and a short summary that frames it as the first async convenience slice after escrow adjudication.
+
+#### Scenario: Background post-adjudication execution appears in architecture landing page
+- **WHEN** a user reads `docs/architecture/index.md`
+- **THEN** they SHALL find the Background Post-Adjudication Execution entry linking to `background-post-adjudication-execution.md`
+- **AND** the entry SHALL describe the slice as async post-adjudication orchestration bounded by current implementation limits

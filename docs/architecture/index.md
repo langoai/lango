@@ -112,6 +112,12 @@ This section describes the internal architecture of Lango, a Go-based AI agent b
 
     The first inline convenience slice that lets escrow adjudication optionally execute the selected release or refund path immediately while preserving existing executor gates.
 
+-   :material-timer-cog-outline: **[Background Post-Adjudication Execution](background-post-adjudication-execution.md)**
+
+    ---
+
+    The first async convenience slice that lets escrow adjudication enqueue the selected release or refund path onto the existing background task substrate.
+
 -   :material-cash-fast: **[P2P Knowledge Exchange Track](p2p-knowledge-exchange-track.md)**
 
     ---
