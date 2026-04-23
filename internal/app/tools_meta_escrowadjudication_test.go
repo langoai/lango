@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -9,6 +10,8 @@ import (
 
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/escrowrefund"
+	"github.com/langoai/lango/internal/escrowrelease"
 	"github.com/langoai/lango/internal/receipts"
 )
 
@@ -23,8 +26,10 @@ func TestBuildMetaTools_IncludesAdjudicateEscrowDispute(t *testing.T) {
 	props, _ := tool.Parameters["properties"].(map[string]interface{})
 	_, hasTransactionReceiptID := props["transaction_receipt_id"]
 	_, hasOutcome := props["outcome"]
+	_, hasAutoExecute := props["auto_execute"]
 	assert.True(t, hasTransactionReceiptID)
 	assert.True(t, hasOutcome)
+	assert.True(t, hasAutoExecute)
 
 	required, _ := tool.Parameters["required"].([]string)
 	assert.Equal(t, []string{"transaction_receipt_id", "outcome"}, required)
@@ -151,4 +156,139 @@ func TestAdjudicateEscrowDispute_RejectsWrongStateOrOutcome(t *testing.T) {
 			assert.ErrorContains(t, err, tt.wantErrMsg)
 		})
 	}
+}
+
+func TestAdjudicateEscrowDispute_AutoExecuteReleaseReturnsNestedExecutionResult(t *testing.T) {
+	t.Parallel()
+
+	store := receipts.NewStore()
+	ctx := context.Background()
+	tx := createSubmittedTransaction(t, store, ctx, "deal-escrow-adjudication-auto-release")
+
+	bindDisputeHoldEscrowExecutionInput(t, store, ctx, tx)
+	_, err := store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, tx.CurrentSubmissionReceiptID, receipts.EscrowExecutionStatusCreated, "", receipts.EventEscrowExecutionCreated, "")
+	require.NoError(t, err)
+	_, err = store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, tx.CurrentSubmissionReceiptID, receipts.EscrowExecutionStatusFunded, "escrow-123", receipts.EventEscrowExecutionFunded, "")
+	require.NoError(t, err)
+	_, err = store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, receipts.SettlementProgressionReviewNeeded, receipts.SettlementProgressionReasonCodeReject, "review needed", "")
+	require.NoError(t, err)
+	_, err = store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, receipts.SettlementProgressionDisputeReady, receipts.SettlementProgressionReasonCodeEscalate, "dispute ready", "")
+	require.NoError(t, err)
+	err = store.RecordEscrowDisputeHoldSuccess(ctx, receipts.EscrowDisputeHoldEvidenceRequest{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		SubmissionReceiptID:  tx.CurrentSubmissionReceiptID,
+		EscrowReference:      "escrow-123",
+		RuntimeReference:     "hold-123",
+	})
+	require.NoError(t, err)
+
+	tool := findTool(buildMetaToolsWithRuntimes(nil, nil, nil, config.SkillConfig{}, nil, store, nil, nil, nil, nil, &fakeEscrowReleaseRuntime{}, nil), "adjudicate_escrow_dispute")
+	require.NotNil(t, tool)
+
+	got, err := tool.Handler(ctx, map[string]interface{}{
+		"transaction_receipt_id": tx.TransactionReceiptID,
+		"outcome":                "release",
+		"auto_execute":           true,
+	})
+	require.NoError(t, err)
+
+	payload, ok := got.(adjudicateEscrowDisputeReceipt)
+	require.True(t, ok)
+	require.NotNil(t, payload.Execution)
+	assert.Equal(t, "release", payload.Execution.Branch)
+	assert.Equal(t, string(escrowrelease.StatusSettledTarget), payload.Execution.Status)
+	assert.Equal(t, string(receipts.SettlementProgressionSettled), payload.Execution.SettlementProgressionStatus)
+	assert.Equal(t, "0.50", payload.Execution.ResolvedAmount)
+	assert.Equal(t, "escrow-release-tx-123", payload.Execution.RuntimeReference)
+}
+
+func TestAdjudicateEscrowDispute_AutoExecuteRefundReturnsNestedExecutionResult(t *testing.T) {
+	t.Parallel()
+
+	store := receipts.NewStore()
+	ctx := context.Background()
+	tx := createSubmittedTransaction(t, store, ctx, "deal-escrow-adjudication-auto-refund")
+
+	bindDisputeHoldEscrowExecutionInput(t, store, ctx, tx)
+	_, err := store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, tx.CurrentSubmissionReceiptID, receipts.EscrowExecutionStatusCreated, "", receipts.EventEscrowExecutionCreated, "")
+	require.NoError(t, err)
+	_, err = store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, tx.CurrentSubmissionReceiptID, receipts.EscrowExecutionStatusFunded, "escrow-123", receipts.EventEscrowExecutionFunded, "")
+	require.NoError(t, err)
+	_, err = store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, receipts.SettlementProgressionReviewNeeded, receipts.SettlementProgressionReasonCodeReject, "review needed", "")
+	require.NoError(t, err)
+	_, err = store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, receipts.SettlementProgressionDisputeReady, receipts.SettlementProgressionReasonCodeEscalate, "dispute ready", "")
+	require.NoError(t, err)
+	err = store.RecordEscrowDisputeHoldSuccess(ctx, receipts.EscrowDisputeHoldEvidenceRequest{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		SubmissionReceiptID:  tx.CurrentSubmissionReceiptID,
+		EscrowReference:      "escrow-123",
+		RuntimeReference:     "hold-123",
+	})
+	require.NoError(t, err)
+
+	tool := findTool(buildMetaToolsWithRuntimes(nil, nil, nil, config.SkillConfig{}, nil, store, nil, nil, nil, nil, nil, &fakeEscrowRefundRuntime{}), "adjudicate_escrow_dispute")
+	require.NotNil(t, tool)
+
+	got, err := tool.Handler(ctx, map[string]interface{}{
+		"transaction_receipt_id": tx.TransactionReceiptID,
+		"outcome":                "refund",
+		"auto_execute":           true,
+	})
+	require.NoError(t, err)
+
+	payload, ok := got.(adjudicateEscrowDisputeReceipt)
+	require.True(t, ok)
+	require.NotNil(t, payload.Execution)
+	assert.Equal(t, "refund", payload.Execution.Branch)
+	assert.Equal(t, string(escrowrefund.StatusRefundExecuted), payload.Execution.Status)
+	assert.Equal(t, string(receipts.SettlementProgressionReviewNeeded), payload.Execution.SettlementProgressionStatus)
+	assert.Equal(t, "0.50", payload.Execution.ResolvedAmount)
+	assert.Equal(t, "refund-tx-123", payload.Execution.RuntimeReference)
+}
+
+func TestAdjudicateEscrowDispute_AutoExecuteFailureStillReturnsAdjudicationReceipt(t *testing.T) {
+	t.Parallel()
+
+	store := receipts.NewStore()
+	ctx := context.Background()
+	tx := createSubmittedTransaction(t, store, ctx, "deal-escrow-adjudication-auto-release-failure")
+
+	bindDisputeHoldEscrowExecutionInput(t, store, ctx, tx)
+	_, err := store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, tx.CurrentSubmissionReceiptID, receipts.EscrowExecutionStatusCreated, "", receipts.EventEscrowExecutionCreated, "")
+	require.NoError(t, err)
+	_, err = store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, tx.CurrentSubmissionReceiptID, receipts.EscrowExecutionStatusFunded, "escrow-123", receipts.EventEscrowExecutionFunded, "")
+	require.NoError(t, err)
+	_, err = store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, receipts.SettlementProgressionReviewNeeded, receipts.SettlementProgressionReasonCodeReject, "review needed", "")
+	require.NoError(t, err)
+	_, err = store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, receipts.SettlementProgressionDisputeReady, receipts.SettlementProgressionReasonCodeEscalate, "dispute ready", "")
+	require.NoError(t, err)
+	err = store.RecordEscrowDisputeHoldSuccess(ctx, receipts.EscrowDisputeHoldEvidenceRequest{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		SubmissionReceiptID:  tx.CurrentSubmissionReceiptID,
+		EscrowReference:      "escrow-123",
+		RuntimeReference:     "hold-123",
+	})
+	require.NoError(t, err)
+
+	tool := findTool(buildMetaToolsWithRuntimes(nil, nil, nil, config.SkillConfig{}, nil, store, nil, nil, nil, nil, &fakeEscrowReleaseRuntime{err: errors.New("release failed")}, nil), "adjudicate_escrow_dispute")
+	require.NotNil(t, tool)
+
+	got, err := tool.Handler(ctx, map[string]interface{}{
+		"transaction_receipt_id": tx.TransactionReceiptID,
+		"outcome":                "release",
+		"auto_execute":           true,
+	})
+	require.Error(t, err)
+
+	payload, ok := got.(adjudicateEscrowDisputeReceipt)
+	require.True(t, ok)
+	assert.Equal(t, "release", payload.Outcome)
+	require.NotNil(t, payload.Execution)
+	assert.Equal(t, "release", payload.Execution.Branch)
+	assert.Equal(t, string(escrowrelease.StatusFailed), payload.Execution.Status)
+
+	updated, getErr := store.GetTransactionReceipt(ctx, tx.TransactionReceiptID)
+	require.NoError(t, getErr)
+	assert.Equal(t, receipts.EscrowAdjudicationRelease, updated.EscrowAdjudication)
+	assert.Equal(t, receipts.SettlementProgressionApprovedForSettlement, updated.SettlementProgressionStatus)
 }

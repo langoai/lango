@@ -341,3 +341,18 @@ The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the 
 - **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
 - **THEN** they SHALL find adjudication-aware release/refund execution gating described as a landed first slice
 - **AND** the remaining work SHALL be described as automatic post-adjudication execution, keep-hold or re-escalation states, and broader dispute engine integration
+
+### Requirement: Automatic post-adjudication execution page describes the first inline orchestration slice
+The `docs/architecture/automatic-post-adjudication-execution.md` page SHALL describe the first inline convenience slice after escrow adjudication, including what currently ships and the current limits of the slice.
+
+#### Scenario: Automatic post-adjudication execution page shows the bounded slice
+- **WHEN** a user reads `docs/architecture/automatic-post-adjudication-execution.md`
+- **THEN** they SHALL find sections describing the current auto-execution slice, what currently ships, and current limits
+
+### Requirement: P2P knowledge exchange track reflects landed automatic post-adjudication execution
+The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the automatic post-adjudication execution first slice as landed work and list the remaining work as background execution, retry orchestration, automatic execution as policy default, and broader dispute engine integration.
+
+#### Scenario: Track page points to the landed auto-execution slice
+- **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
+- **THEN** they SHALL find automatic post-adjudication execution described as a landed first slice
+- **AND** the remaining work SHALL be described as background execution, retry orchestration, automatic execution as policy default, and broader dispute engine integration

@@ -151,3 +151,11 @@ The `docs/architecture/index.md` page SHALL include a quick link to `adjudicatio
 - **WHEN** a user reads `docs/architecture/index.md`
 - **THEN** they SHALL find the Adjudication-Aware Release/Refund Execution Gating entry linking to `adjudication-aware-release-refund-execution-gating.md`
 - **AND** the entry SHALL describe the slice as release/refund execution gating bounded by current implementation limits
+
+### Requirement: Architecture landing page links automatic post-adjudication execution
+The `docs/architecture/index.md` page SHALL include a quick link to `automatic-post-adjudication-execution.md` and a short summary that frames it as the first inline convenience slice after escrow adjudication.
+
+#### Scenario: Automatic post-adjudication execution appears in architecture landing page
+- **WHEN** a user reads `docs/architecture/index.md`
+- **THEN** they SHALL find the Automatic Post-Adjudication Execution entry linking to `automatic-post-adjudication-execution.md`
+- **AND** the entry SHALL describe the slice as inline post-adjudication orchestration bounded by current implementation limits

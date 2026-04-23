@@ -106,6 +106,12 @@ This section describes the internal architecture of Lango, a Go-based AI agent b
 
     The first slice that connects canonical escrow adjudication to the existing release and refund executors with explicit branch gating and one-way safety rules.
 
+-   :material-lightning-bolt: **[Automatic Post-Adjudication Execution](automatic-post-adjudication-execution.md)**
+
+    ---
+
+    The first inline convenience slice that lets escrow adjudication optionally execute the selected release or refund path immediately while preserving existing executor gates.
+
 -   :material-cash-fast: **[P2P Knowledge Exchange Track](p2p-knowledge-exchange-track.md)**
 
     ---

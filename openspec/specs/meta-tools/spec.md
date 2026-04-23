@@ -227,6 +227,12 @@ The meta tools surface SHALL provide an `adjudicate_escrow_dispute` tool that re
 - **AND** it SHALL atomically record the adjudication field and the corresponding settlement progression transition
 - **AND** it SHALL return canonical transaction-level adjudication result including settlement progression state, escrow reference, and outcome
 
+#### Scenario: Adjudication tool may inline nested execution
+- **WHEN** `adjudicate_escrow_dispute` is invoked with `auto_execute=true`
+- **THEN** it SHALL preserve adjudication as the canonical write layer
+- **AND** it SHALL, after adjudication succeeds, invoke the matching release or refund executor inline
+- **AND** it SHALL return both the adjudication result and the nested execution result when available
+
 ### Requirement: Escrow release and refund meta tools enforce canonical adjudication
 The meta tools surface SHALL enforce canonical adjudication on the existing escrow release and refund execution tools.
 

@@ -305,7 +305,7 @@ func buildMetaToolsWithRuntimes(
 		newDisputeReadyReceiptTool(receiptStore),
 		newOpenKnowledgeExchangeTransactionTool(receiptStore),
 		newSelectKnowledgeExchangePathTool(receiptStore),
-		newAdjudicateEscrowDisputeTool(store, receiptStore),
+		newAdjudicateEscrowDisputeTool(store, receiptStore, escrowReleaseRuntime, escrowRefundRuntime),
 		{
 			Name:        "approve_upfront_payment",
 			Description: "Evaluate an upfront payment request and update the linked transaction receipt with canonical payment approval state",
@@ -1509,7 +1509,12 @@ func newApplySettlementProgressionTool(receiptStore *receipts.Store) *agent.Tool
 	}
 }
 
-func newAdjudicateEscrowDisputeTool(store *knowledge.Store, receiptStore *receipts.Store) *agent.Tool {
+func newAdjudicateEscrowDisputeTool(
+	store *knowledge.Store,
+	receiptStore *receipts.Store,
+	escrowReleaseRuntime escrowReleaseExecutionRuntime,
+	escrowRefundRuntime escrowRefundExecutionRuntime,
+) *agent.Tool {
 	return &agent.Tool{
 		Name:        "adjudicate_escrow_dispute",
 		Description: "Record a canonical release-or-refund adjudication decision for a funded dispute-ready escrow after dispute hold",
@@ -1527,7 +1532,8 @@ func newAdjudicateEscrowDisputeTool(store *knowledge.Store, receiptStore *receip
 					"description": "Canonical adjudication decision after dispute hold",
 					"enum":        []string{"release", "refund"},
 				},
-				"reason": map[string]interface{}{"type": "string", "description": "Optional adjudication reason"},
+				"reason":       map[string]interface{}{"type": "string", "description": "Optional adjudication reason"},
+				"auto_execute": map[string]interface{}{"type": "boolean", "description": "When true, execute the adjudicated release or refund branch inline after adjudication succeeds"},
 			},
 			"required": []string{"transaction_receipt_id", "outcome"},
 		},
@@ -1544,6 +1550,7 @@ func newAdjudicateEscrowDisputeTool(store *knowledge.Store, receiptStore *receip
 			if err != nil {
 				return nil, err
 			}
+			autoExecute := toolparam.OptionalBool(params, "auto_execute", false)
 
 			result, err := escrowadjudication.NewService(receiptStore).Adjudicate(ctx, escrowadjudication.AdjudicateRequest{
 				TransactionReceiptID: strings.TrimSpace(transactionReceiptID),
@@ -1570,7 +1577,39 @@ func newAdjudicateEscrowDisputeTool(store *knowledge.Store, receiptStore *receip
 				}
 			}
 
-			return newAdjudicateEscrowDisputeReceipt(result), nil
+			receipt := newAdjudicateEscrowDisputeReceipt(result)
+			if !autoExecute {
+				return receipt, nil
+			}
+
+			switch result.Outcome {
+			case escrowadjudication.OutcomeRelease:
+				if escrowReleaseRuntime == nil {
+					return nil, fmt.Errorf("escrow release runtime is not configured")
+				}
+				executionResult, err := escrowrelease.NewService(receiptStore, escrowReleaseRuntime).Execute(ctx, escrowrelease.ExecuteRequest{
+					TransactionReceiptID: result.TransactionReceiptID,
+				})
+				receipt.Execution = newAdjudicationNestedExecutionReceiptFromRelease(executionResult)
+				if err != nil {
+					return receipt, err
+				}
+			case escrowadjudication.OutcomeRefund:
+				if escrowRefundRuntime == nil {
+					return nil, fmt.Errorf("escrow refund runtime is not configured")
+				}
+				executionResult, err := escrowrefund.NewService(receiptStore, escrowRefundRuntime).Execute(ctx, escrowrefund.ExecuteRequest{
+					TransactionReceiptID: result.TransactionReceiptID,
+				})
+				receipt.Execution = newAdjudicationNestedExecutionReceiptFromRefund(executionResult)
+				if err != nil {
+					return receipt, err
+				}
+			default:
+				return nil, fmt.Errorf("unsupported adjudication outcome %q", result.Outcome)
+			}
+
+			return receipt, nil
 		},
 	}
 }
@@ -2004,11 +2043,20 @@ type applySettlementProgressionReceipt struct {
 }
 
 type adjudicateEscrowDisputeReceipt struct {
-	TransactionReceiptID        string `json:"transaction_receipt_id"`
-	SubmissionReceiptID         string `json:"submission_receipt_id,omitempty"`
-	SettlementProgressionStatus string `json:"settlement_progression_status"`
-	EscrowReference             string `json:"escrow_reference,omitempty"`
-	Outcome                     string `json:"outcome,omitempty"`
+	TransactionReceiptID        string                                   `json:"transaction_receipt_id"`
+	SubmissionReceiptID         string                                   `json:"submission_receipt_id,omitempty"`
+	SettlementProgressionStatus string                                   `json:"settlement_progression_status"`
+	EscrowReference             string                                   `json:"escrow_reference,omitempty"`
+	Outcome                     string                                   `json:"outcome,omitempty"`
+	Execution                   *adjudicateEscrowDisputeExecutionReceipt `json:"execution,omitempty"`
+}
+
+type adjudicateEscrowDisputeExecutionReceipt struct {
+	Branch                      string `json:"branch"`
+	Status                      string `json:"status"`
+	SettlementProgressionStatus string `json:"settlement_progression_status,omitempty"`
+	ResolvedAmount              string `json:"resolved_amount,omitempty"`
+	RuntimeReference            string `json:"runtime_reference,omitempty"`
 }
 
 type executeSettlementReceipt struct {
@@ -2100,6 +2148,26 @@ func newAdjudicateEscrowDisputeReceipt(result escrowadjudication.Result) adjudic
 		SettlementProgressionStatus: string(result.SettlementProgressionStatus),
 		EscrowReference:             result.EscrowReference,
 		Outcome:                     string(result.Outcome),
+	}
+}
+
+func newAdjudicationNestedExecutionReceiptFromRelease(result escrowrelease.Result) *adjudicateEscrowDisputeExecutionReceipt {
+	return &adjudicateEscrowDisputeExecutionReceipt{
+		Branch:                      "release",
+		Status:                      string(result.Status),
+		SettlementProgressionStatus: string(result.SettlementProgressionStatus),
+		ResolvedAmount:              result.ResolvedAmount,
+		RuntimeReference:            result.RuntimeReference,
+	}
+}
+
+func newAdjudicationNestedExecutionReceiptFromRefund(result escrowrefund.Result) *adjudicateEscrowDisputeExecutionReceipt {
+	return &adjudicateEscrowDisputeExecutionReceipt{
+		Branch:                      "refund",
+		Status:                      string(result.Status),
+		SettlementProgressionStatus: string(result.SettlementProgressionStatus),
+		ResolvedAmount:              result.ResolvedAmount,
+		RuntimeReference:            result.RuntimeReference,
 	}
 }
 
