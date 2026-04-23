@@ -130,6 +130,12 @@ This section describes the internal architecture of Lango, a Go-based AI agent b
 
     The first operator-facing replay slice for dead-lettered post-adjudication execution, reusing canonical adjudication and the existing background dispatch path.
 
+-   :material-format-list-bulleted-square: **[Dead-Letter Browsing / Status Observation](dead-letter-browsing-status-observation.md)**
+
+    ---
+
+    The first read-only operator visibility slice for the current dead-letter backlog and per-transaction post-adjudication execution status.
+
 -   :material-cash-fast: **[P2P Knowledge Exchange Track](p2p-knowledge-exchange-track.md)**
 
     ---

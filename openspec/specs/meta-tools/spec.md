@@ -255,6 +255,17 @@ The meta tools surface SHALL provide a `retry_post_adjudication_execution` tool 
 - **WHEN** `retry_post_adjudication_execution` succeeds
 - **THEN** it SHALL return the canonical adjudication snapshot and the new background dispatch receipt
 
+### Requirement: Dead-letter browsing and status observation tools
+The meta tools surface SHALL provide read-only visibility into dead-lettered post-adjudication execution.
+
+#### Scenario: Dead-letter backlog tool available
+- **WHEN** the meta tools are built with a receipts store
+- **THEN** `list_dead_lettered_post_adjudication_executions` SHALL be available
+
+#### Scenario: Post-adjudication status tool available
+- **WHEN** the meta tools are built with a receipts store
+- **THEN** `get_post_adjudication_execution_status` SHALL be available
+
 ### Requirement: Escrow release and refund meta tools enforce canonical adjudication
 The meta tools surface SHALL enforce canonical adjudication on the existing escrow release and refund execution tools.
 

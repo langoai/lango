@@ -401,3 +401,18 @@ The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the 
 - **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
 - **THEN** they SHALL find operator replay / manual retry described as a landed first slice
 - **AND** the remaining work SHALL be described as dead-letter browsing UI, policy-driven replay controls, generic replay substrate design, and broader dispute engine integration
+
+### Requirement: Dead-letter browsing / status observation page describes the first read-only visibility slice
+The `docs/architecture/dead-letter-browsing-status-observation.md` page SHALL describe the first dead-letter browsing / status observation slice for post-adjudication execution, including what currently ships and the current limits of the slice.
+
+#### Scenario: Dead-letter browsing / status observation page shows the bounded slice
+- **WHEN** a user reads `docs/architecture/dead-letter-browsing-status-observation.md`
+- **THEN** they SHALL find sections describing the current read-only visibility slice, what currently ships, and current limits
+
+### Requirement: P2P knowledge exchange track reflects landed dead-letter browsing / status observation
+The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the dead-letter browsing / status observation first slice as landed work and list the remaining work as richer filtering, raw background-task bridges, and higher-level cockpit or CLI surfaces.
+
+#### Scenario: Track page points to the landed status slice
+- **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
+- **THEN** they SHALL find dead-letter browsing / status observation described as a landed first slice
+- **AND** the remaining work SHALL be described as richer filtering, raw background-task bridges, and higher-level cockpit or CLI surfaces

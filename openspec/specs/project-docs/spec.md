@@ -183,3 +183,11 @@ The `docs/architecture/index.md` page SHALL include a quick link to `operator-re
 - **WHEN** a user reads `docs/architecture/index.md`
 - **THEN** they SHALL find the Operator Replay / Manual Retry entry linking to `operator-replay-manual-retry.md`
 - **AND** the entry SHALL describe the slice as operator replay bounded by current implementation limits
+
+### Requirement: Architecture landing page links dead-letter browsing / status observation
+The `docs/architecture/index.md` page SHALL include a quick link to `dead-letter-browsing-status-observation.md` and a short summary that frames it as the first read-only operator visibility slice for post-adjudication dead letters.
+
+#### Scenario: Dead-letter browsing / status observation appears in architecture landing page
+- **WHEN** a user reads `docs/architecture/index.md`
+- **THEN** they SHALL find the Dead-Letter Browsing / Status Observation entry linking to `dead-letter-browsing-status-observation.md`
+- **AND** the entry SHALL describe the slice as read-only dead-letter visibility bounded by current implementation limits

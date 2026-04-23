@@ -32,6 +32,7 @@ import (
 	"github.com/langoai/lango/internal/payment"
 	"github.com/langoai/lango/internal/paymentapproval"
 	"github.com/langoai/lango/internal/postadjudicationreplay"
+	"github.com/langoai/lango/internal/postadjudicationstatus"
 	"github.com/langoai/lango/internal/receipts"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/settlementexecution"
@@ -1061,6 +1062,12 @@ func buildMetaToolsWithRuntimes(
 		},
 	}
 
+	if listDeadLettersTool := newListDeadLetteredPostAdjudicationExecutionsTool(receiptStore); listDeadLettersTool != nil {
+		tools = append(tools, listDeadLettersTool)
+	}
+	if getPostAdjudicationStatusTool := newGetPostAdjudicationExecutionStatusTool(receiptStore); getPostAdjudicationStatusTool != nil {
+		tools = append(tools, getPostAdjudicationStatusTool)
+	}
 	if replayTool := newRetryPostAdjudicationExecutionTool(receiptStore, backgroundDispatcher); replayTool != nil {
 		tools = append(tools, replayTool)
 	}
@@ -1691,6 +1698,78 @@ func newAdjudicateEscrowDisputeTool(
 			}
 
 			return receipt, nil
+		},
+	}
+}
+
+func newListDeadLetteredPostAdjudicationExecutionsTool(receiptStore *receipts.Store) *agent.Tool {
+	if receiptStore == nil {
+		return nil
+	}
+
+	return &agent.Tool{
+		Name:        "list_dead_lettered_post_adjudication_executions",
+		Description: "List transactions currently in dead-lettered post-adjudication execution state",
+		SafetyLevel: agent.SafetyLevelSafe,
+		Capability: agent.ToolCapability{
+			Category:        "knowledge",
+			Activity:        agent.ActivityQuery,
+			ReadOnly:        true,
+			ConcurrencySafe: true,
+		},
+		Parameters: map[string]interface{}{
+			"type":       "object",
+			"properties": map[string]interface{}{},
+		},
+		Handler: func(ctx context.Context, _ map[string]interface{}) (interface{}, error) {
+			entries, err := postadjudicationstatus.NewService(receiptStore).ListCurrentDeadLetters(ctx)
+			if err != nil {
+				return nil, err
+			}
+			return map[string]interface{}{
+				"entries": entries,
+				"count":   len(entries),
+			}, nil
+		},
+	}
+}
+
+func newGetPostAdjudicationExecutionStatusTool(receiptStore *receipts.Store) *agent.Tool {
+	if receiptStore == nil {
+		return nil
+	}
+
+	return &agent.Tool{
+		Name:        "get_post_adjudication_execution_status",
+		Description: "Get the current canonical snapshot and latest retry/dead-letter summary for a post-adjudication execution transaction",
+		SafetyLevel: agent.SafetyLevelSafe,
+		Capability: agent.ToolCapability{
+			Category:        "knowledge",
+			Activity:        agent.ActivityQuery,
+			ReadOnly:        true,
+			ConcurrencySafe: true,
+		},
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"transaction_receipt_id": map[string]interface{}{"type": "string", "description": "Transaction receipt identifier to inspect"},
+			},
+			"required": []string{"transaction_receipt_id"},
+		},
+		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+			transactionReceiptID, err := toolparam.RequireString(params, "transaction_receipt_id")
+			if err != nil {
+				return nil, err
+			}
+			transactionReceiptID = strings.TrimSpace(transactionReceiptID)
+			if transactionReceiptID == "" {
+				return nil, &toolparam.ErrMissingParam{Name: "transaction_receipt_id"}
+			}
+			result, err := postadjudicationstatus.NewService(receiptStore).GetTransactionStatus(ctx, transactionReceiptID)
+			if err != nil {
+				return nil, err
+			}
+			return result, nil
 		},
 	}
 }

@@ -994,6 +994,17 @@ func (s *Store) GetTransactionReceipt(_ context.Context, transactionReceiptID st
 	return cloneTransactionReceipt(transaction), nil
 }
 
+func (s *Store) ListTransactionReceipts(_ context.Context) ([]TransactionReceipt, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	receiptsList := make([]TransactionReceipt, 0, len(s.transactions))
+	for _, transaction := range s.transactions {
+		receiptsList = append(receiptsList, cloneTransactionReceipt(transaction))
+	}
+	return receiptsList, nil
+}
+
 func (s *Store) appendPaymentExecutionEvent(_ context.Context, submissionReceiptID string, eventType EventType, reason string, subtype string) error {
 	if err := validateEventType(eventType); err != nil {
 		return err
