@@ -124,6 +124,12 @@ This section describes the internal architecture of Lango, a Go-based AI agent b
 
     The first retry slice for background post-adjudication execution, adding bounded exponential backoff and terminal dead-letter failure without changing canonical adjudication.
 
+-   :material-restore-alert: **[Operator Replay / Manual Retry](operator-replay-manual-retry.md)**
+
+    ---
+
+    The first operator-facing replay slice for dead-lettered post-adjudication execution, reusing canonical adjudication and the existing background dispatch path.
+
 -   :material-cash-fast: **[P2P Knowledge Exchange Track](p2p-knowledge-exchange-track.md)**
 
     ---

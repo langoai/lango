@@ -246,6 +246,12 @@ type PostAdjudicationDeadLetterRequest struct {
 	Reason               string                     `json:"reason"`
 }
 
+type ManualRetryRequestedRequest struct {
+	TransactionReceiptID string                     `json:"transaction_receipt_id"`
+	Outcome              EscrowAdjudicationDecision `json:"outcome"`
+	Reason               string                     `json:"reason,omitempty"`
+}
+
 type PartialSettlementCloseoutRequest struct {
 	TransactionReceiptID string `json:"transaction_receipt_id"`
 	SubmissionReceiptID  string `json:"submission_receipt_id"`

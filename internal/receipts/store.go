@@ -593,6 +593,40 @@ func (s *Store) RecordPostAdjudicationDeadLetter(_ context.Context, req PostAdju
 	return nil
 }
 
+func (s *Store) RecordManualRetryRequested(_ context.Context, req ManualRetryRequestedRequest) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	transaction, ok := s.transactions[req.TransactionReceiptID]
+	if !ok {
+		return ErrTransactionReceiptNotFound
+	}
+	submissionReceiptID := transaction.CurrentSubmissionReceiptID
+	submission, ok := s.submissions[submissionReceiptID]
+	if !ok {
+		return ErrSubmissionReceiptNotFound
+	}
+	if submission.TransactionReceiptID != req.TransactionReceiptID {
+		return fmt.Errorf("%w: submission does not belong to transaction", ErrSubmissionReceiptNotFound)
+	}
+	if transaction.EscrowAdjudication != req.Outcome {
+		return fmt.Errorf("%w: escrow adjudication does not match replay outcome", ErrInvalidSettlementProgressionState)
+	}
+
+	reason := strings.TrimSpace(req.Reason)
+	if reason == "" {
+		reason = string(req.Outcome)
+	}
+	s.events[submissionReceiptID] = append(s.events[submissionReceiptID], ReceiptEvent{
+		SubmissionReceiptID: submissionReceiptID,
+		Source:              "post_adjudication_retry",
+		Subtype:             "manual-retry-requested",
+		Reason:              reason,
+		Type:                EventSettlementUpdated,
+	})
+	return nil
+}
+
 func (s *Store) recordTransactionFailure(_ context.Context, req SettlementFailureRequest, source string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

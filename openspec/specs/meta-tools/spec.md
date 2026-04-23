@@ -244,6 +244,17 @@ The meta tools surface SHALL provide an `adjudicate_escrow_dispute` tool that re
 - **THEN** the post-adjudication path SHALL retry up to three times with exponential backoff
 - **AND** exhausted retries SHALL produce terminal dead-letter evidence without changing canonical adjudication
 
+### Requirement: Operator replay tool
+The meta tools surface SHALL provide a `retry_post_adjudication_execution` tool that replays dead-lettered post-adjudication execution through the existing background dispatch path.
+
+#### Scenario: Replay tool available
+- **WHEN** the meta tools are built with receipts and background dispatch support
+- **THEN** `retry_post_adjudication_execution` SHALL be available
+
+#### Scenario: Replay tool returns adjudication snapshot and dispatch receipt
+- **WHEN** `retry_post_adjudication_execution` succeeds
+- **THEN** it SHALL return the canonical adjudication snapshot and the new background dispatch receipt
+
 ### Requirement: Escrow release and refund meta tools enforce canonical adjudication
 The meta tools surface SHALL enforce canonical adjudication on the existing escrow release and refund execution tools.
 

@@ -175,3 +175,11 @@ The `docs/architecture/index.md` page SHALL include a quick link to `retry-dead-
 - **WHEN** a user reads `docs/architecture/index.md`
 - **THEN** they SHALL find the Retry / Dead-Letter Handling entry linking to `retry-dead-letter-handling.md`
 - **AND** the entry SHALL describe the slice as bounded retry and terminal dead-letter handling bounded by current implementation limits
+
+### Requirement: Architecture landing page links operator replay / manual retry
+The `docs/architecture/index.md` page SHALL include a quick link to `operator-replay-manual-retry.md` and a short summary that frames it as the first operator-facing replay slice for dead-lettered post-adjudication execution.
+
+#### Scenario: Operator replay / manual retry appears in architecture landing page
+- **WHEN** a user reads `docs/architecture/index.md`
+- **THEN** they SHALL find the Operator Replay / Manual Retry entry linking to `operator-replay-manual-retry.md`
+- **AND** the entry SHALL describe the slice as operator replay bounded by current implementation limits

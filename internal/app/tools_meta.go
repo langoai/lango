@@ -31,6 +31,7 @@ import (
 	"github.com/langoai/lango/internal/partialsettlementexecution"
 	"github.com/langoai/lango/internal/payment"
 	"github.com/langoai/lango/internal/paymentapproval"
+	"github.com/langoai/lango/internal/postadjudicationreplay"
 	"github.com/langoai/lango/internal/receipts"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/settlementexecution"
@@ -69,6 +70,31 @@ func buildMetaToolsWithEscrow(
 
 type adjudicateEscrowDisputeBackgroundDispatcher interface {
 	Submit(context.Context, string, background.Origin) (string, error)
+}
+
+type replayDispatcherAdapter struct {
+	dispatcher adjudicateEscrowDisputeBackgroundDispatcher
+}
+
+func (a replayDispatcherAdapter) Dispatch(ctx context.Context, req postadjudicationreplay.BackgroundDispatchRequest) (postadjudicationreplay.BackgroundDispatchReceipt, error) {
+	if a.dispatcher == nil {
+		return postadjudicationreplay.BackgroundDispatchReceipt{}, fmt.Errorf("background manager is not configured")
+	}
+	dispatchReference, err := a.dispatcher.Submit(ctx, req.Prompt, background.Origin{
+		Channel: automation.DetectChannelFromContext(ctx),
+		Session: session.SessionKeyFromContext(ctx),
+	})
+	if err != nil {
+		return postadjudicationreplay.BackgroundDispatchReceipt{}, err
+	}
+	return postadjudicationreplay.BackgroundDispatchReceipt{
+		Status:               "queued",
+		TransactionReceiptID: req.TransactionReceiptID,
+		SubmissionReceiptID:  req.SubmissionReceiptID,
+		EscrowReference:      req.EscrowReference,
+		Outcome:              string(req.Outcome),
+		DispatchReference:    dispatchReference,
+	}, nil
 }
 
 func buildMetaToolsWithRuntimes(
@@ -1035,6 +1061,10 @@ func buildMetaToolsWithRuntimes(
 		},
 	}
 
+	if replayTool := newRetryPostAdjudicationExecutionTool(receiptStore, backgroundDispatcher); replayTool != nil {
+		tools = append(tools, replayTool)
+	}
+
 	if settlementTool := newExecuteSettlementTool(receiptStore, settlementRuntime); settlementTool != nil {
 		tools = append(tools, settlementTool)
 	}
@@ -1665,6 +1695,51 @@ func newAdjudicateEscrowDisputeTool(
 	}
 }
 
+func newRetryPostAdjudicationExecutionTool(receiptStore *receipts.Store, backgroundDispatcher adjudicateEscrowDisputeBackgroundDispatcher) *agent.Tool {
+	if receiptStore == nil {
+		return nil
+	}
+
+	return &agent.Tool{
+		Name:        "retry_post_adjudication_execution",
+		Description: "Replay a dead-lettered post-adjudication execution by creating a new background dispatch from canonical adjudication state",
+		SafetyLevel: agent.SafetyLevelDangerous,
+		Capability: agent.ToolCapability{
+			Category: "knowledge",
+			Activity: agent.ActivityWrite,
+		},
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"transaction_receipt_id": map[string]interface{}{"type": "string", "description": "Transaction receipt identifier whose dead-lettered post-adjudication execution should be replayed"},
+			},
+			"required": []string{"transaction_receipt_id"},
+		},
+		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+			if backgroundDispatcher == nil {
+				return nil, fmt.Errorf("background manager is not configured")
+			}
+			transactionReceiptID, err := toolparam.RequireString(params, "transaction_receipt_id")
+			if err != nil {
+				return nil, err
+			}
+			transactionReceiptID = strings.TrimSpace(transactionReceiptID)
+			if transactionReceiptID == "" {
+				return nil, &toolparam.ErrMissingParam{Name: "transaction_receipt_id"}
+			}
+
+			result, err := postadjudicationreplay.NewService(receiptStore, replayDispatcherAdapter{dispatcher: backgroundDispatcher}).Replay(ctx, postadjudicationreplay.Request{
+				TransactionReceiptID: transactionReceiptID,
+			})
+			if err != nil {
+				return nil, err
+			}
+
+			return newRetryPostAdjudicationExecutionReceipt(result), nil
+		},
+	}
+}
+
 type settlementExecutionRuntime interface {
 	ExecuteSettlement(context.Context, settlementexecution.DirectPaymentRequest) (settlementexecution.DirectPaymentResult, error)
 }
@@ -2120,6 +2195,19 @@ type adjudicateEscrowDisputeBackgroundDispatchReceipt struct {
 	DispatchReference    string `json:"dispatch_reference,omitempty"`
 }
 
+type retryPostAdjudicationExecutionReceipt struct {
+	TransactionReceiptID string                                `json:"transaction_receipt_id"`
+	SubmissionReceiptID  string                                `json:"submission_receipt_id,omitempty"`
+	EscrowReference      string                                `json:"escrow_reference,omitempty"`
+	Outcome              string                                `json:"outcome,omitempty"`
+	Dispatch             *retryPostAdjudicationDispatchReceipt `json:"dispatch,omitempty"`
+}
+
+type retryPostAdjudicationDispatchReceipt struct {
+	Status            string `json:"status"`
+	DispatchReference string `json:"dispatch_reference,omitempty"`
+}
+
 type executeSettlementReceipt struct {
 	TransactionReceiptID        string `json:"transaction_receipt_id"`
 	SubmissionReceiptID         string `json:"submission_receipt_id,omitempty"`
@@ -2221,6 +2309,22 @@ func newAdjudicateEscrowDisputeBackgroundDispatchReceipt(result escrowadjudicati
 		Outcome:              string(result.Outcome),
 		DispatchReference:    dispatchReference,
 	}
+}
+
+func newRetryPostAdjudicationExecutionReceipt(result postadjudicationreplay.Result) retryPostAdjudicationExecutionReceipt {
+	receipt := retryPostAdjudicationExecutionReceipt{
+		TransactionReceiptID: result.CanonicalAdjudication.TransactionReceipt.TransactionReceiptID,
+		SubmissionReceiptID:  result.CanonicalAdjudication.SubmissionReceipt.SubmissionReceiptID,
+		EscrowReference:      result.CanonicalAdjudication.TransactionReceipt.EscrowReference,
+		Outcome:              string(result.CanonicalAdjudication.TransactionReceipt.EscrowAdjudication),
+	}
+	if result.BackgroundDispatchReceipt != nil {
+		receipt.Dispatch = &retryPostAdjudicationDispatchReceipt{
+			Status:            result.BackgroundDispatchReceipt.Status,
+			DispatchReference: result.BackgroundDispatchReceipt.DispatchReference,
+		}
+	}
+	return receipt
 }
 
 func buildAdjudicateEscrowDisputeBackgroundPrompt(result escrowadjudication.Result) string {

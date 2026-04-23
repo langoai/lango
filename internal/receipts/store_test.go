@@ -1205,6 +1205,73 @@ func TestRecordPostAdjudicationDeadLetter_AppendsTerminalFailureWithoutMutatingS
 	require.Equal(t, EventSettlementExecutionFailed, last.Type)
 }
 
+func TestRecordManualRetryRequested_AppendsEvidenceWithoutMutatingState(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	submission, tx := createSubmittedTransaction(t, store, ctx, "deal-manual-retry-requested")
+	_, err := store.BindEscrowExecutionInput(ctx, tx.TransactionReceiptID, submission.SubmissionReceiptID, EscrowExecutionInput{
+		BuyerDID:  "did:lango:buyer",
+		SellerDID: "did:lango:seller",
+		Amount:    "0.50",
+		Reason:    "manual retry test",
+		Milestones: []EscrowMilestoneInput{
+			{Description: "deliverable", Amount: "0.50"},
+		},
+	})
+	require.NoError(t, err)
+	_, err = store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, submission.SubmissionReceiptID, EscrowExecutionStatusPending, "", EventEscrowExecutionStarted, "")
+	require.NoError(t, err)
+	_, err = store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, submission.SubmissionReceiptID, EscrowExecutionStatusCreated, "", EventEscrowExecutionCreated, "")
+	require.NoError(t, err)
+	_, err = store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, submission.SubmissionReceiptID, EscrowExecutionStatusFunded, "escrow-123", EventEscrowExecutionFunded, "")
+	require.NoError(t, err)
+	_, err = store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, SettlementProgressionReviewNeeded, SettlementProgressionReasonCodeReject, "review needed", "")
+	require.NoError(t, err)
+	_, err = store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, SettlementProgressionDisputeReady, SettlementProgressionReasonCodeEscalate, "dispute ready", "")
+	require.NoError(t, err)
+	err = store.RecordEscrowDisputeHoldSuccess(ctx, EscrowDisputeHoldEvidenceRequest{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		SubmissionReceiptID:  submission.SubmissionReceiptID,
+		EscrowReference:      "escrow-123",
+		RuntimeReference:     "hold-123",
+	})
+	require.NoError(t, err)
+	_, err = store.ApplyEscrowAdjudication(ctx, EscrowAdjudicationRequest{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		SubmissionReceiptID:  submission.SubmissionReceiptID,
+		EscrowReference:      "escrow-123",
+		Outcome:              EscrowAdjudicationRefund,
+		Reason:               "refund adjudicated",
+	})
+	require.NoError(t, err)
+	err = store.RecordPostAdjudicationDeadLetter(ctx, PostAdjudicationDeadLetterRequest{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		Outcome:              EscrowAdjudicationRefund,
+		AttemptCount:         4,
+		Reason:               "worker failed repeatedly",
+	})
+	require.NoError(t, err)
+
+	err = store.RecordManualRetryRequested(ctx, ManualRetryRequestedRequest{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		Outcome:              EscrowAdjudicationRefund,
+	})
+	require.NoError(t, err)
+
+	updated, err := store.GetTransactionReceipt(ctx, tx.TransactionReceiptID)
+	require.NoError(t, err)
+	require.Equal(t, EscrowAdjudicationRefund, updated.EscrowAdjudication)
+	require.Equal(t, SettlementProgressionReviewNeeded, updated.SettlementProgressionStatus)
+
+	_, events, err := store.GetSubmissionReceipt(ctx, submission.SubmissionReceiptID)
+	require.NoError(t, err)
+	last := events[len(events)-1]
+	require.Equal(t, "post_adjudication_retry", last.Source)
+	require.Equal(t, "manual-retry-requested", last.Subtype)
+	require.Equal(t, EventSettlementUpdated, last.Type)
+}
+
 func TestRecordSettlementFailure_RejectsFailureAfterSettlementCloseout(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
