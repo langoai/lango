@@ -281,3 +281,18 @@ The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the 
 - **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
 - **THEN** they SHALL find escrow release described as a landed first slice
 - **AND** the remaining work SHALL be described as refund, dispute-linked escrow handling, and milestone-aware release
+
+### Requirement: Escrow refund page describes the first funded refund slice
+The `docs/architecture/escrow-refund.md` page SHALL describe the first escrow refund slice for `knowledge exchange v1`, including what currently ships and the current limits of the slice.
+
+#### Scenario: Escrow refund page shows the bounded slice
+- **WHEN** a user reads `docs/architecture/escrow-refund.md`
+- **THEN** they SHALL find sections describing the current escrow refund slice, what currently ships, and current limits
+
+### Requirement: P2P knowledge exchange track reflects landed escrow refund
+The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the escrow refund first slice as landed work and list the remaining work as refund terminal-state design, dispute-linked refund branching, and release-after-refund safety rules.
+
+#### Scenario: Track page points to the landed escrow refund slice
+- **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
+- **THEN** they SHALL find escrow refund described as a landed first slice
+- **AND** the remaining work SHALL be described as refund terminal-state design, dispute-linked refund branching, and release-after-refund safety rules

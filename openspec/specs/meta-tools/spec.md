@@ -189,3 +189,15 @@ The meta tools surface SHALL provide a `release_escrow_settlement` tool that exe
 - **WHEN** `release_escrow_settlement` is invoked with `transaction_receipt_id`
 - **THEN** it SHALL evaluate the request through the escrow release service
 - **AND** it SHALL return canonical transaction-level execution result including settlement progression state, resolved amount, and runtime reference
+
+### Requirement: Escrow refund meta tool
+The meta tools surface SHALL provide a `refund_escrow_settlement` tool that executes funded escrow refund from canonical review-needed settlement state.
+
+#### Scenario: Escrow refund tool available
+- **WHEN** the meta tools are built with a receipts store and escrow refund runtime
+- **THEN** `refund_escrow_settlement` SHALL be available
+
+#### Scenario: Escrow refund tool executes funded refund
+- **WHEN** `refund_escrow_settlement` is invoked with `transaction_receipt_id`
+- **THEN** it SHALL evaluate the request through the escrow refund service
+- **AND** it SHALL return canonical transaction-level execution result including settlement progression state, resolved amount, and runtime reference

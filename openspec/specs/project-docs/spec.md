@@ -119,3 +119,11 @@ The `docs/architecture/index.md` page SHALL include a quick link to `escrow-rele
 - **WHEN** a user reads `docs/architecture/index.md`
 - **THEN** they SHALL find the Escrow Release entry linking to `escrow-release.md`
 - **AND** the entry SHALL describe the slice as funded-escrow release bounded by current implementation limits
+
+### Requirement: Architecture landing page links the escrow refund slice
+The `docs/architecture/index.md` page SHALL include a quick link to `escrow-refund.md` and a short summary that frames it as the first funded-escrow refund slice for `knowledge exchange v1`.
+
+#### Scenario: Escrow refund appears in architecture landing page
+- **WHEN** a user reads `docs/architecture/index.md`
+- **THEN** they SHALL find the Escrow Refund entry linking to `escrow-refund.md`
+- **AND** the entry SHALL describe the slice as funded-escrow refund bounded by current implementation limits

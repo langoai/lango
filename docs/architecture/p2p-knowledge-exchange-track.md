@@ -49,6 +49,8 @@ The first direct actual settlement execution slice is now landed too: `execute_s
 
 The first escrow release slice is now landed too: `release_escrow_settlement` requires `escrow_execution_status = funded` plus `approved-for-settlement`, reuses the escrow runtime, and closes settlement progression to `settled` on success. The remaining work is refund, dispute-linked escrow handling, and milestone-aware release.
 
+The first escrow refund slice is now landed too: `refund_escrow_settlement` requires `escrow_execution_status = funded` plus `review-needed`, reuses the escrow runtime, and records refund execution evidence while keeping settlement progression unchanged. The remaining work is refund terminal-state design, dispute-linked refund branching, and release-after-refund safety rules.
+
 ## In Scope
 
 - pseudonymous but cryptographically continuous identities,
@@ -89,9 +91,10 @@ The first escrow release slice is now landed too: `release_escrow_settlement` re
 ## Required Follow-On Plans
 
 1. `identity / trust / reputation` detailed audit is now landed; the follow-on work is `reputation v2`, stronger trust-entry contracts, and runtime integration
-2. `pricing / negotiation / settlement` detailed audit is now landed; the follow-on work is runtime integration, escrow refund/dispute completion, and broader dispute completion
+2. `pricing / negotiation / settlement` detailed audit is now landed; the follow-on work is runtime integration, refund terminal-state design, and broader dispute completion
 3. exportability policy follow-on work (the first source-primary slice has landed; the remaining gaps are richer rules, override/dispute handling, and receipt unification)
 4. `settlement progression` first slice is now landed; the follow-on work is partial settlement rules, dispute engine completion, and deeper disagreement handling
-5. `actual settlement execution` first slice is now landed; `partial settlement execution` first slice is now landed too; the follow-on work is refund, dispute-linked escrow handling, and deeper settlement orchestration
+5. `actual settlement execution` first slice is now landed; `partial settlement execution` first slice is now landed too; the follow-on work is dispute-linked escrow handling and deeper settlement orchestration
 6. `escrow release` first slice is now landed; the follow-on work is refund, dispute-linked escrow handling, and milestone-aware release
-7. the first transaction-oriented runtime design slice, now documented in `docs/architecture/knowledge-exchange-runtime.md`; follow-on work is runtime implementation and broader progression handling
+7. `escrow refund` first slice is now landed; the follow-on work is refund terminal-state design, dispute-linked refund branching, and release-after-refund safety rules
+8. the first transaction-oriented runtime design slice, now documented in `docs/architecture/knowledge-exchange-runtime.md`; follow-on work is runtime implementation and broader progression handling

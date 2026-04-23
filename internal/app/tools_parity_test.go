@@ -350,6 +350,7 @@ func TestBuildMetaToolsWithEscrow_Parity(t *testing.T) {
 		"learning_stats",
 		"learning_cleanup",
 		"release_escrow_settlement",
+		"refund_escrow_settlement",
 		"execute_escrow_recommendation",
 	}
 

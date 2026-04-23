@@ -82,6 +82,12 @@ This section describes the internal architecture of Lango, a Go-based AI agent b
 
     The first funded-escrow release slice for `knowledge exchange v1`, connecting funded escrow and approved settlement state to real release execution with explicit current limits.
 
+-   :material-cash-refund: **[Escrow Refund](escrow-refund.md)**
+
+    ---
+
+    The first funded-escrow refund slice for `knowledge exchange v1`, connecting review-path funded escrow to refund execution with explicit current limits.
+
 -   :material-cash-fast: **[P2P Knowledge Exchange Track](p2p-knowledge-exchange-track.md)**
 
     ---
