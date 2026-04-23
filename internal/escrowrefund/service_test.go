@@ -107,6 +107,81 @@ func TestServiceExecute_DeniesWhenProgressionIsNotReviewNeeded(t *testing.T) {
 	require.Equal(t, 0, runtime.calls)
 }
 
+func TestServiceExecute_DeniesWhenAdjudicationIsMissing(t *testing.T) {
+	t.Parallel()
+
+	store := &fakeReceiptStore{
+		transaction: receipts.TransactionReceipt{
+			TransactionReceiptID:        "tx-1",
+			CurrentSubmissionReceiptID:  "sub-1",
+			EscrowExecutionStatus:       receipts.EscrowExecutionStatusFunded,
+			SettlementProgressionStatus: receipts.SettlementProgressionReviewNeeded,
+			PriceContext:                "quote:1.00-usdc",
+		},
+		submission: receipts.SubmissionReceipt{
+			SubmissionReceiptID:  "sub-1",
+			TransactionReceiptID: "tx-1",
+		},
+	}
+	svc := NewService(store, &fakeRefundRuntime{})
+
+	result, err := svc.Execute(context.Background(), Request{TransactionReceiptID: "tx-1"})
+
+	require.Error(t, err)
+	assertExecutionError(t, err, FailureKindDenied, DenyReasonAdjudicationMissing)
+	require.Equal(t, StatusDenied, result.Status)
+}
+
+func TestServiceExecute_DeniesWhenAdjudicationMismatchesOrOppositeEvidenceExists(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name         string
+		adjudication receipts.EscrowAdjudicationDecision
+		events       []receipts.ReceiptEvent
+	}{
+		{
+			name:         "mismatch",
+			adjudication: receipts.EscrowAdjudicationRelease,
+		},
+		{
+			name:         "opposite evidence",
+			adjudication: receipts.EscrowAdjudicationRefund,
+			events: []receipts.ReceiptEvent{
+				{Source: "escrow_release", Subtype: "settled", Type: receipts.EventSettlementUpdated},
+			},
+		},
+	}
+
+	for _, tt := range cases {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			store := &fakeReceiptStore{
+				transaction: receipts.TransactionReceipt{
+					TransactionReceiptID:        "tx-1",
+					CurrentSubmissionReceiptID:  "sub-1",
+					EscrowExecutionStatus:       receipts.EscrowExecutionStatusFunded,
+					SettlementProgressionStatus: receipts.SettlementProgressionReviewNeeded,
+					EscrowAdjudication:          tt.adjudication,
+					PriceContext:                "quote:1.00-usdc",
+				},
+				submission: receipts.SubmissionReceipt{
+					SubmissionReceiptID:  "sub-1",
+					TransactionReceiptID: "tx-1",
+				},
+				events: tt.events,
+			}
+			svc := NewService(store, &fakeRefundRuntime{})
+
+			result, err := svc.Execute(context.Background(), Request{TransactionReceiptID: "tx-1"})
+
+			require.Error(t, err)
+			assertExecutionError(t, err, FailureKindDenied, DenyReasonAdjudicationMismatch)
+			require.Equal(t, StatusDenied, result.Status)
+		})
+	}
+}
+
 func TestServiceExecute_DeniesWhenAmountCannotBeResolved(t *testing.T) {
 	t.Parallel()
 
@@ -116,6 +191,7 @@ func TestServiceExecute_DeniesWhenAmountCannotBeResolved(t *testing.T) {
 			CurrentSubmissionReceiptID:  "sub-1",
 			EscrowExecutionStatus:       receipts.EscrowExecutionStatusFunded,
 			SettlementProgressionStatus: receipts.SettlementProgressionReviewNeeded,
+			EscrowAdjudication:          receipts.EscrowAdjudicationRefund,
 			PriceContext:                "quote:abc-usdc",
 		},
 		submission: receipts.SubmissionReceipt{
@@ -144,6 +220,7 @@ func TestServiceExecute_ExecutesRuntimeAndReturnsRefundExecutedShape(t *testing.
 			CurrentSubmissionReceiptID:  "sub-1",
 			EscrowExecutionStatus:       receipts.EscrowExecutionStatusFunded,
 			SettlementProgressionStatus: receipts.SettlementProgressionReviewNeeded,
+			EscrowAdjudication:          receipts.EscrowAdjudicationRefund,
 			EscrowReference:             "escrow-123",
 			PriceContext:                "quote:1.00-usdc",
 		},
@@ -189,6 +266,7 @@ func TestServiceExecute_RuntimeFailureReturnsFailureShape(t *testing.T) {
 			CurrentSubmissionReceiptID:  "sub-1",
 			EscrowExecutionStatus:       receipts.EscrowExecutionStatusFunded,
 			SettlementProgressionStatus: receipts.SettlementProgressionReviewNeeded,
+			EscrowAdjudication:          receipts.EscrowAdjudicationRefund,
 			EscrowReference:             "escrow-123",
 			PriceContext:                "quote:1.00-usdc",
 		},
@@ -232,6 +310,7 @@ func assertExecutionError(t *testing.T, err error, wantKind FailureKind, wantRea
 type fakeReceiptStore struct {
 	transaction        receipts.TransactionReceipt
 	submission         receipts.SubmissionReceipt
+	events             []receipts.ReceiptEvent
 	getTransactionErr  error
 	getSubmissionErr   error
 	recordSuccessErr   error
@@ -253,7 +332,7 @@ func (f *fakeReceiptStore) GetSubmissionReceipt(context.Context, string) (receip
 	if f.getSubmissionErr != nil {
 		return receipts.SubmissionReceipt{}, nil, f.getSubmissionErr
 	}
-	return f.submission, nil, nil
+	return f.submission, f.events, nil
 }
 
 func (f *fakeReceiptStore) RecordEscrowRefundSuccess(_ context.Context, req receipts.EscrowRefundEvidenceRequest) error {

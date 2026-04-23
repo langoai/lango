@@ -143,3 +143,11 @@ The `docs/architecture/index.md` page SHALL include a quick link to `release-vs-
 - **WHEN** a user reads `docs/architecture/index.md`
 - **THEN** they SHALL find the Release vs Refund Adjudication entry linking to `release-vs-refund-adjudication.md`
 - **AND** the entry SHALL describe the slice as canonical post-hold branching bounded by current implementation limits
+
+### Requirement: Architecture landing page links adjudication-aware release/refund execution gating
+The `docs/architecture/index.md` page SHALL include a quick link to `adjudication-aware-release-refund-execution-gating.md` and a short summary that frames it as the first slice that connects canonical escrow adjudication to release/refund execution gating.
+
+#### Scenario: Adjudication-aware execution gating appears in architecture landing page
+- **WHEN** a user reads `docs/architecture/index.md`
+- **THEN** they SHALL find the Adjudication-Aware Release/Refund Execution Gating entry linking to `adjudication-aware-release-refund-execution-gating.md`
+- **AND** the entry SHALL describe the slice as release/refund execution gating bounded by current implementation limits

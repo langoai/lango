@@ -934,9 +934,9 @@ func TestApplyEscrowAdjudication_SetsDecisionWithoutMutatingState(t *testing.T) 
 	})
 	require.NoError(t, err)
 	require.Equal(t, EscrowExecutionStatusFunded, updated.EscrowExecutionStatus)
-	require.Equal(t, SettlementProgressionDisputeReady, updated.SettlementProgressionStatus)
+	require.Equal(t, SettlementProgressionApprovedForSettlement, updated.SettlementProgressionStatus)
 	require.Equal(t, EscrowAdjudicationRelease, updated.EscrowAdjudication)
-	require.True(t, updated.DisputeReady)
+	require.False(t, updated.DisputeReady)
 }
 
 func TestApplyEscrowAdjudication_AppendsDecisionTrail(t *testing.T) {
@@ -984,7 +984,7 @@ func TestApplyEscrowAdjudication_AppendsDecisionTrail(t *testing.T) {
 
 	_, events, err := store.GetSubmissionReceipt(ctx, submission.SubmissionReceiptID)
 	require.NoError(t, err)
-	require.Len(t, events, 8)
+	require.Len(t, events, 9)
 	last := events[len(events)-1]
 	require.Equal(t, EventSettlementUpdated, last.Type)
 	require.Equal(t, "escrow_adjudication", last.Source)

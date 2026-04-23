@@ -100,6 +100,12 @@ This section describes the internal architecture of Lango, a Go-based AI agent b
 
     The first post-hold adjudication slice for `knowledge exchange v1`, recording canonical release-vs-refund branching without yet executing either path.
 
+-   :material-shield-sync: **[Adjudication-Aware Release/Refund Execution Gating](adjudication-aware-release-refund-execution-gating.md)**
+
+    ---
+
+    The first slice that connects canonical escrow adjudication to the existing release and refund executors with explicit branch gating and one-way safety rules.
+
 -   :material-cash-fast: **[P2P Knowledge Exchange Track](p2p-knowledge-exchange-track.md)**
 
     ---

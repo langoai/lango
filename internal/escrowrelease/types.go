@@ -9,6 +9,8 @@ const (
 	DenyReasonNoCurrentSubmission      DenyReason = "no_current_submission"
 	DenyReasonEscrowNotFunded          DenyReason = "escrow_not_funded"
 	DenyReasonNotApprovedForSettlement DenyReason = "not_approved_for_settlement"
+	DenyReasonAdjudicationMissing      DenyReason = "adjudication_missing"
+	DenyReasonAdjudicationMismatch     DenyReason = "adjudication_mismatch"
 	DenyReasonAmountUnresolved         DenyReason = "amount_unresolved"
 )
 

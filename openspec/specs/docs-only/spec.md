@@ -326,3 +326,18 @@ The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the 
 - **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
 - **THEN** they SHALL find release-vs-refund adjudication described as a landed first slice
 - **AND** the remaining work SHALL be described as adjudication-aware release/refund execution, keep-hold or re-escalation states, and broader dispute engine integration
+
+### Requirement: Adjudication-aware release/refund execution gating page describes the first executor-contract slice
+The `docs/architecture/adjudication-aware-release-refund-execution-gating.md` page SHALL describe the first slice that connects canonical escrow adjudication to release/refund execution gating, including what currently ships and the current limits of the slice.
+
+#### Scenario: Adjudication-aware execution gating page shows the bounded slice
+- **WHEN** a user reads `docs/architecture/adjudication-aware-release-refund-execution-gating.md`
+- **THEN** they SHALL find sections describing the current execution-gating slice, what currently ships, and current limits
+
+### Requirement: P2P knowledge exchange track reflects landed adjudication-aware release/refund execution gating
+The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the adjudication-aware release/refund execution gating first slice as landed work and list the remaining work as automatic post-adjudication execution, keep-hold or re-escalation states, and broader dispute engine integration.
+
+#### Scenario: Track page points to the landed adjudication-aware gating slice
+- **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
+- **THEN** they SHALL find adjudication-aware release/refund execution gating described as a landed first slice
+- **AND** the remaining work SHALL be described as automatic post-adjudication execution, keep-hold or re-escalation states, and broader dispute engine integration

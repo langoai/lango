@@ -5,11 +5,13 @@ import "github.com/langoai/lango/internal/receipts"
 type DenyReason string
 
 const (
-	DenyReasonMissingReceipt      DenyReason = "missing_receipt"
-	DenyReasonNoCurrentSubmission DenyReason = "no_current_submission"
-	DenyReasonEscrowNotFunded     DenyReason = "escrow_not_funded"
-	DenyReasonNotReviewNeeded     DenyReason = "not_review_needed"
-	DenyReasonAmountUnresolved    DenyReason = "amount_unresolved"
+	DenyReasonMissingReceipt       DenyReason = "missing_receipt"
+	DenyReasonNoCurrentSubmission  DenyReason = "no_current_submission"
+	DenyReasonEscrowNotFunded      DenyReason = "escrow_not_funded"
+	DenyReasonNotReviewNeeded      DenyReason = "not_review_needed"
+	DenyReasonAdjudicationMissing  DenyReason = "adjudication_missing"
+	DenyReasonAdjudicationMismatch DenyReason = "adjudication_mismatch"
+	DenyReasonAmountUnresolved     DenyReason = "amount_unresolved"
 )
 
 type FailureKind string

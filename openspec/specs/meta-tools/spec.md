@@ -224,4 +224,18 @@ The meta tools surface SHALL provide an `adjudicate_escrow_dispute` tool that re
 #### Scenario: Adjudication tool records release or refund branch
 - **WHEN** `adjudicate_escrow_dispute` is invoked with `transaction_receipt_id` and `outcome`
 - **THEN** it SHALL evaluate the request through the escrow adjudication service
+- **AND** it SHALL atomically record the adjudication field and the corresponding settlement progression transition
 - **AND** it SHALL return canonical transaction-level adjudication result including settlement progression state, escrow reference, and outcome
+
+### Requirement: Escrow release and refund meta tools enforce canonical adjudication
+The meta tools surface SHALL enforce canonical adjudication on the existing escrow release and refund execution tools.
+
+#### Scenario: Release tool requires matching adjudication
+- **WHEN** `release_escrow_settlement` is invoked
+- **THEN** it SHALL require `escrow_adjudication = release`
+- **AND** it SHALL deny execution when adjudication is missing or mismatched
+
+#### Scenario: Refund tool requires matching adjudication
+- **WHEN** `refund_escrow_settlement` is invoked
+- **THEN** it SHALL require `escrow_adjudication = refund`
+- **AND** it SHALL deny execution when adjudication is missing or mismatched

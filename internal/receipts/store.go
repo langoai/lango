@@ -447,13 +447,47 @@ func (s *Store) ApplyEscrowAdjudication(_ context.Context, req EscrowAdjudicatio
 		return TransactionReceipt{}, fmt.Errorf("%w: dispute hold evidence is required before adjudication", ErrInvalidSettlementProgressionState)
 	}
 
+	var next SettlementProgressionStatus
+	var reasonCode SettlementProgressionReasonCode
+	var progressionReason string
+	switch req.Outcome {
+	case EscrowAdjudicationRelease:
+		next = SettlementProgressionApprovedForSettlement
+		reasonCode = SettlementProgressionReasonCodeApprove
+		progressionReason = "escrow adjudicated for release"
+	case EscrowAdjudicationRefund:
+		next = SettlementProgressionReviewNeeded
+		reasonCode = SettlementProgressionReasonCodeReject
+		progressionReason = "escrow adjudicated for refund"
+	default:
+		return TransactionReceipt{}, fmt.Errorf("%w: invalid escrow adjudication outcome", ErrInvalidSettlementProgressionState)
+	}
+	if err := validateSettlementProgressionTransition(transaction.SettlementProgressionStatus, next); err != nil {
+		return TransactionReceipt{}, err
+	}
+	if err := validateSettlementProgressionReasonCode(next, reasonCode); err != nil {
+		return TransactionReceipt{}, err
+	}
+
 	transaction.EscrowAdjudication = req.Outcome
+	transaction.SettlementProgressionStatus = next
+	transaction.CanonicalSettlementStatus = canonicalSettlementStatusForProgression(next)
+	transaction.SettlementProgressionReasonCode = reasonCode
+	transaction.SettlementProgressionReason = progressionReason
+	transaction.DisputeReady = next == SettlementProgressionDisputeReady
 	s.transactions[req.TransactionReceiptID] = transaction
 
 	reason := strings.TrimSpace(req.Reason)
 	if reason == "" {
 		reason = string(req.Outcome)
 	}
+	s.events[req.SubmissionReceiptID] = append(s.events[req.SubmissionReceiptID], ReceiptEvent{
+		SubmissionReceiptID: req.SubmissionReceiptID,
+		Source:              "settlement_progression",
+		Subtype:             string(next),
+		Reason:              progressionReason,
+		Type:                EventSettlementUpdated,
+	})
 	s.events[req.SubmissionReceiptID] = append(s.events[req.SubmissionReceiptID], ReceiptEvent{
 		SubmissionReceiptID: req.SubmissionReceiptID,
 		Source:              "escrow_adjudication",
@@ -1050,6 +1084,10 @@ func validateSettlementProgressionTransition(current, next SettlementProgression
 		}
 	case SettlementProgressionPartiallySettled:
 		if next == SettlementProgressionSettled || next == SettlementProgressionReviewNeeded || next == SettlementProgressionDisputeReady {
+			return nil
+		}
+	case SettlementProgressionDisputeReady:
+		if next == SettlementProgressionApprovedForSettlement || next == SettlementProgressionReviewNeeded {
 			return nil
 		}
 	}

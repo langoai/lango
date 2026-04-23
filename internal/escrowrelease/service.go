@@ -55,7 +55,8 @@ func (s *Service) Execute(ctx context.Context, req ExecuteRequest) (Result, erro
 		return deniedResult(transaction.TransactionReceiptID, "", transaction.SettlementProgressionStatus, DenyReasonNoCurrentSubmission)
 	}
 
-	submission, _, err := s.store.GetSubmissionReceipt(ctx, submissionReceiptID)
+	var events []receipts.ReceiptEvent
+	submission, events, err := s.store.GetSubmissionReceipt(ctx, submissionReceiptID)
 	if err != nil {
 		if errors.Is(err, receipts.ErrSubmissionReceiptNotFound) {
 			return deniedResult(transaction.TransactionReceiptID, submissionReceiptID, transaction.SettlementProgressionStatus, DenyReasonNoCurrentSubmission)
@@ -72,6 +73,15 @@ func (s *Service) Execute(ctx context.Context, req ExecuteRequest) (Result, erro
 
 	if transaction.SettlementProgressionStatus != receipts.SettlementProgressionApprovedForSettlement {
 		return deniedResult(transaction.TransactionReceiptID, submissionReceiptID, transaction.SettlementProgressionStatus, DenyReasonNotApprovedForSettlement)
+	}
+	if transaction.EscrowAdjudication == "" {
+		return deniedResult(transaction.TransactionReceiptID, submissionReceiptID, transaction.SettlementProgressionStatus, DenyReasonAdjudicationMissing)
+	}
+	if transaction.EscrowAdjudication != receipts.EscrowAdjudicationRelease {
+		return deniedResult(transaction.TransactionReceiptID, submissionReceiptID, transaction.SettlementProgressionStatus, DenyReasonAdjudicationMismatch)
+	}
+	if hasOppositeRefundEvidence(events) {
+		return deniedResult(transaction.TransactionReceiptID, submissionReceiptID, transaction.SettlementProgressionStatus, DenyReasonAdjudicationMismatch)
 	}
 
 	resolvedAmount, err := resolveAmountFromTransactionContext(transaction.PriceContext)
@@ -127,6 +137,15 @@ func (s *Service) Execute(ctx context.Context, req ExecuteRequest) (Result, erro
 		ResolvedAmount:              resolvedAmount,
 		RuntimeReference:            runtimeResult.Reference,
 	}, nil
+}
+
+func hasOppositeRefundEvidence(events []receipts.ReceiptEvent) bool {
+	for _, event := range events {
+		if event.Source == "escrow_refund" && event.Subtype == "refunded" {
+			return true
+		}
+	}
+	return false
 }
 
 func deniedResult(transactionReceiptID, submissionReceiptID string, status receipts.SettlementProgressionStatus, reason DenyReason) (Result, error) {

@@ -43,6 +43,26 @@ func bindReleaseEscrowExecutionInput(t *testing.T, store *receipts.Store, ctx co
 	require.NoError(t, err)
 }
 
+func adjudicateReleaseEscrow(t *testing.T, store *receipts.Store, ctx context.Context, tx receipts.TransactionReceipt) {
+	t.Helper()
+
+	err := store.RecordEscrowDisputeHoldSuccess(ctx, receipts.EscrowDisputeHoldEvidenceRequest{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		SubmissionReceiptID:  tx.CurrentSubmissionReceiptID,
+		EscrowReference:      "escrow-123",
+		RuntimeReference:     "hold-123",
+	})
+	require.NoError(t, err)
+	_, err = store.ApplyEscrowAdjudication(ctx, receipts.EscrowAdjudicationRequest{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		SubmissionReceiptID:  tx.CurrentSubmissionReceiptID,
+		EscrowReference:      "escrow-123",
+		Outcome:              receipts.EscrowAdjudicationRelease,
+		Reason:               "release adjudicated",
+	})
+	require.NoError(t, err)
+}
+
 func TestBuildMetaTools_IncludesReleaseEscrowSettlement(t *testing.T) {
 	tools := buildMetaToolsWithRuntimes(nil, nil, nil, config.SkillConfig{}, nil, receipts.NewStore(), nil, nil, nil, nil, &fakeEscrowReleaseRuntime{}, nil)
 	tool := findTool(tools, "release_escrow_settlement")
@@ -91,8 +111,11 @@ func TestReleaseEscrowSettlement_FundedApprovedPathReturnsCanonicalReceipt(t *te
 	require.NoError(t, err)
 	_, err = store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, tx.CurrentSubmissionReceiptID, receipts.EscrowExecutionStatusFunded, "escrow-123", receipts.EventEscrowExecutionFunded, "")
 	require.NoError(t, err)
-	_, err = store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, receipts.SettlementProgressionApprovedForSettlement, receipts.SettlementProgressionReasonCodeApprove, "approved", "")
+	_, err = store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, receipts.SettlementProgressionReviewNeeded, receipts.SettlementProgressionReasonCodeReject, "review needed", "")
 	require.NoError(t, err)
+	_, err = store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, receipts.SettlementProgressionDisputeReady, receipts.SettlementProgressionReasonCodeEscalate, "dispute ready", "")
+	require.NoError(t, err)
+	adjudicateReleaseEscrow(t, store, ctx, tx)
 
 	tool := findTool(buildMetaToolsWithRuntimes(nil, nil, nil, config.SkillConfig{}, nil, store, nil, nil, nil, nil, runtime, nil), "release_escrow_settlement")
 	require.NotNil(t, tool)
@@ -185,8 +208,11 @@ func TestReleaseEscrowSettlement_PropagatesRuntimeFailure(t *testing.T) {
 	require.NoError(t, err)
 	_, err = store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, tx.CurrentSubmissionReceiptID, receipts.EscrowExecutionStatusFunded, "escrow-123", receipts.EventEscrowExecutionFunded, "")
 	require.NoError(t, err)
-	_, err = store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, receipts.SettlementProgressionApprovedForSettlement, receipts.SettlementProgressionReasonCodeApprove, "approved", "")
+	_, err = store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, receipts.SettlementProgressionReviewNeeded, receipts.SettlementProgressionReasonCodeReject, "review needed", "")
 	require.NoError(t, err)
+	_, err = store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, receipts.SettlementProgressionDisputeReady, receipts.SettlementProgressionReasonCodeEscalate, "dispute ready", "")
+	require.NoError(t, err)
+	adjudicateReleaseEscrow(t, store, ctx, tx)
 
 	tool := findTool(buildMetaToolsWithRuntimes(nil, nil, nil, config.SkillConfig{}, nil, store, nil, nil, nil, nil, &fakeEscrowReleaseRuntime{err: errors.New("release failed")}, nil), "release_escrow_settlement")
 	require.NotNil(t, tool)

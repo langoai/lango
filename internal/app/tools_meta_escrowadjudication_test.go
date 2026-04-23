@@ -68,7 +68,7 @@ func TestAdjudicateEscrowDispute_DisputeHeldFundedPathReturnsCanonicalReceipt(t 
 	require.True(t, ok)
 	assert.Equal(t, tx.TransactionReceiptID, payload.TransactionReceiptID)
 	assert.Equal(t, tx.CurrentSubmissionReceiptID, payload.SubmissionReceiptID)
-	assert.Equal(t, string(receipts.SettlementProgressionDisputeReady), payload.SettlementProgressionStatus)
+	assert.Equal(t, string(receipts.SettlementProgressionApprovedForSettlement), payload.SettlementProgressionStatus)
 	assert.Equal(t, "escrow-123", payload.EscrowReference)
 	assert.Equal(t, "release", payload.Outcome)
 }
