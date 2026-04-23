@@ -349,6 +349,7 @@ func TestBuildMetaToolsWithEscrow_Parity(t *testing.T) {
 		"import_skill",
 		"learning_stats",
 		"learning_cleanup",
+		"hold_escrow_for_dispute",
 		"release_escrow_settlement",
 		"refund_escrow_settlement",
 		"execute_escrow_recommendation",
@@ -367,9 +368,10 @@ func TestBuildMetaToolsWithRuntimes_Parity(t *testing.T) {
 	escrowEngine := escrow.NewEngine(escrow.NewMemoryStore(), escrow.NoopSettler{}, escrow.DefaultEngineConfig())
 	settlementRuntime := &fakeSettlementExecutionRuntime{}
 	partialSettlementRuntime := &fakePartialSettlementExecutionRuntime{}
+	escrowDisputeHoldRuntime := &fakeDisputeHoldRuntime{}
 	escrowReleaseRuntime := &fakeEscrowReleaseRuntime{}
 	escrowRefundRuntime := &fakeEscrowRefundRuntime{}
-	tools := buildMetaToolsWithRuntimes(nil, nil, nil, config.SkillConfig{}, nil, receiptStore, escrowEngine, settlementRuntime, partialSettlementRuntime, escrowReleaseRuntime, escrowRefundRuntime)
+	tools := buildMetaToolsWithRuntimes(nil, nil, nil, config.SkillConfig{}, nil, receiptStore, escrowEngine, settlementRuntime, partialSettlementRuntime, escrowDisputeHoldRuntime, escrowReleaseRuntime, escrowRefundRuntime)
 
 	wantNames := []string{
 		"save_knowledge",
@@ -392,6 +394,7 @@ func TestBuildMetaToolsWithRuntimes_Parity(t *testing.T) {
 		"learning_cleanup",
 		"execute_settlement",
 		"execute_partial_settlement",
+		"hold_escrow_for_dispute",
 		"release_escrow_settlement",
 		"refund_escrow_settlement",
 		"execute_escrow_recommendation",

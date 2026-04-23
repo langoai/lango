@@ -28,7 +28,7 @@ func (f *fakeSettlementExecutionRuntime) ExecuteSettlement(_ context.Context, re
 }
 
 func TestBuildMetaTools_IncludesExecuteSettlement(t *testing.T) {
-	tools := buildMetaToolsWithRuntimes(nil, nil, nil, config.SkillConfig{}, nil, receipts.NewStore(), nil, &fakeSettlementExecutionRuntime{}, nil, nil, nil)
+	tools := buildMetaToolsWithRuntimes(nil, nil, nil, config.SkillConfig{}, nil, receipts.NewStore(), nil, &fakeSettlementExecutionRuntime{}, nil, nil, nil, nil)
 	tool := findTool(tools, "execute_settlement")
 	require.NotNil(t, tool)
 
@@ -60,7 +60,7 @@ func TestExecuteSettlement_ApprovedPathReturnsCanonicalReceipt(t *testing.T) {
 	_, err := store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, receipts.SettlementProgressionApprovedForSettlement, receipts.SettlementProgressionReasonCodeApprove, "approved", "")
 	require.NoError(t, err)
 
-	tool := findTool(buildMetaToolsWithRuntimes(nil, nil, nil, config.SkillConfig{}, nil, store, nil, runtime, nil, nil, nil), "execute_settlement")
+	tool := findTool(buildMetaToolsWithRuntimes(nil, nil, nil, config.SkillConfig{}, nil, store, nil, runtime, nil, nil, nil, nil), "execute_settlement")
 	require.NotNil(t, tool)
 
 	got, err := tool.Handler(ctx, map[string]interface{}{
@@ -90,7 +90,7 @@ func TestExecuteSettlement_RejectsWhenProgressionIsNotApprovedForSettlement(t *t
 	ctx := context.Background()
 	tx := createSubmittedTransaction(t, store, ctx, "deal-execute-settlement-review-needed")
 
-	tool := findTool(buildMetaToolsWithRuntimes(nil, nil, nil, config.SkillConfig{}, nil, store, nil, &fakeSettlementExecutionRuntime{}, nil, nil, nil), "execute_settlement")
+	tool := findTool(buildMetaToolsWithRuntimes(nil, nil, nil, config.SkillConfig{}, nil, store, nil, &fakeSettlementExecutionRuntime{}, nil, nil, nil, nil), "execute_settlement")
 	require.NotNil(t, tool)
 
 	_, err := tool.Handler(ctx, map[string]interface{}{
@@ -109,7 +109,7 @@ func TestExecuteSettlement_PropagatesRuntimeFailure(t *testing.T) {
 	_, err := store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, receipts.SettlementProgressionApprovedForSettlement, receipts.SettlementProgressionReasonCodeApprove, "approved", "")
 	require.NoError(t, err)
 
-	tool := findTool(buildMetaToolsWithRuntimes(nil, nil, nil, config.SkillConfig{}, nil, store, nil, &fakeSettlementExecutionRuntime{err: errors.New("rpc timeout")}, nil, nil, nil), "execute_settlement")
+	tool := findTool(buildMetaToolsWithRuntimes(nil, nil, nil, config.SkillConfig{}, nil, store, nil, &fakeSettlementExecutionRuntime{err: errors.New("rpc timeout")}, nil, nil, nil, nil), "execute_settlement")
 	require.NotNil(t, tool)
 
 	_, err = tool.Handler(ctx, map[string]interface{}{

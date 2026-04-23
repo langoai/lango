@@ -127,3 +127,11 @@ The `docs/architecture/index.md` page SHALL include a quick link to `escrow-refu
 - **WHEN** a user reads `docs/architecture/index.md`
 - **THEN** they SHALL find the Escrow Refund entry linking to `escrow-refund.md`
 - **AND** the entry SHALL describe the slice as funded-escrow refund bounded by current implementation limits
+
+### Requirement: Architecture landing page links the dispute hold slice
+The `docs/architecture/index.md` page SHALL include a quick link to `dispute-hold.md` and a short summary that frames it as the first dispute-linked escrow hold slice for `knowledge exchange v1`.
+
+#### Scenario: Dispute hold appears in architecture landing page
+- **WHEN** a user reads `docs/architecture/index.md`
+- **THEN** they SHALL find the Dispute Hold entry linking to `dispute-hold.md`
+- **AND** the entry SHALL describe the slice as funded dispute-ready escrow hold bounded by current implementation limits

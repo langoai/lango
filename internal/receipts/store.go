@@ -288,6 +288,49 @@ func (s *Store) RecordEscrowRefundSuccess(_ context.Context, req EscrowRefundEvi
 	return nil
 }
 
+func (s *Store) RecordEscrowDisputeHoldSuccess(_ context.Context, req EscrowDisputeHoldEvidenceRequest) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	transaction, ok := s.transactions[req.TransactionReceiptID]
+	if !ok {
+		return ErrTransactionReceiptNotFound
+	}
+	submission, ok := s.submissions[req.SubmissionReceiptID]
+	if !ok {
+		return ErrSubmissionReceiptNotFound
+	}
+	if submission.TransactionReceiptID != req.TransactionReceiptID {
+		return fmt.Errorf("%w: submission does not belong to transaction", ErrSubmissionReceiptNotFound)
+	}
+	if transaction.CurrentSubmissionReceiptID != req.SubmissionReceiptID {
+		return fmt.Errorf("%w: submission is not current for transaction", ErrInvalidSettlementProgressionState)
+	}
+	if transaction.EscrowExecutionStatus != EscrowExecutionStatusFunded {
+		return fmt.Errorf("%w: escrow must remain funded before recording dispute hold success", ErrInvalidSettlementProgressionState)
+	}
+	if transaction.SettlementProgressionStatus != SettlementProgressionDisputeReady {
+		return fmt.Errorf("%w: settlement must remain dispute-ready before recording dispute hold success", ErrInvalidSettlementProgressionState)
+	}
+	if transaction.EscrowReference != req.EscrowReference {
+		return fmt.Errorf("%w: escrow reference does not match transaction", ErrInvalidSettlementProgressionState)
+	}
+
+	reason := req.RuntimeReference
+	if strings.TrimSpace(reason) == "" {
+		reason = req.EscrowReference
+	}
+	s.events[req.SubmissionReceiptID] = append(s.events[req.SubmissionReceiptID], ReceiptEvent{
+		SubmissionReceiptID: req.SubmissionReceiptID,
+		Source:              "dispute_hold",
+		Subtype:             "held",
+		Reason:              reason,
+		Type:                EventSettlementUpdated,
+	})
+
+	return nil
+}
+
 func (s *Store) RecordEscrowRefundFailure(ctx context.Context, req SettlementFailureRequest) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -313,6 +356,45 @@ func (s *Store) RecordEscrowRefundFailure(ctx context.Context, req SettlementFai
 	s.events[req.SubmissionReceiptID] = append(s.events[req.SubmissionReceiptID], ReceiptEvent{
 		SubmissionReceiptID: req.SubmissionReceiptID,
 		Source:              "escrow_refund",
+		Subtype:             "failed",
+		Reason:              req.Reason,
+		Type:                EventSettlementExecutionFailed,
+	})
+
+	return nil
+}
+
+func (s *Store) RecordEscrowDisputeHoldFailure(_ context.Context, req EscrowDisputeHoldFailureRequest) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	transaction, ok := s.transactions[req.TransactionReceiptID]
+	if !ok {
+		return ErrTransactionReceiptNotFound
+	}
+	submission, ok := s.submissions[req.SubmissionReceiptID]
+	if !ok {
+		return ErrSubmissionReceiptNotFound
+	}
+	if submission.TransactionReceiptID != req.TransactionReceiptID {
+		return fmt.Errorf("%w: submission does not belong to transaction", ErrSubmissionReceiptNotFound)
+	}
+	if transaction.CurrentSubmissionReceiptID != req.SubmissionReceiptID {
+		return fmt.Errorf("%w: submission is not current for transaction", ErrInvalidSettlementProgressionState)
+	}
+	if transaction.EscrowExecutionStatus != EscrowExecutionStatusFunded {
+		return fmt.Errorf("%w: escrow must remain funded before recording dispute hold failure", ErrInvalidSettlementProgressionState)
+	}
+	if transaction.SettlementProgressionStatus != SettlementProgressionDisputeReady {
+		return fmt.Errorf("%w: settlement must remain dispute-ready before recording dispute hold failure", ErrInvalidSettlementProgressionState)
+	}
+	if transaction.EscrowReference != req.EscrowReference {
+		return fmt.Errorf("%w: escrow reference does not match transaction", ErrInvalidSettlementProgressionState)
+	}
+
+	s.events[req.SubmissionReceiptID] = append(s.events[req.SubmissionReceiptID], ReceiptEvent{
+		SubmissionReceiptID: req.SubmissionReceiptID,
+		Source:              "dispute_hold",
 		Subtype:             "failed",
 		Reason:              req.Reason,
 		Type:                EventSettlementExecutionFailed,

@@ -201,3 +201,15 @@ The meta tools surface SHALL provide a `refund_escrow_settlement` tool that exec
 - **WHEN** `refund_escrow_settlement` is invoked with `transaction_receipt_id`
 - **THEN** it SHALL evaluate the request through the escrow refund service
 - **AND** it SHALL return canonical transaction-level execution result including settlement progression state, resolved amount, and runtime reference
+
+### Requirement: Dispute hold meta tool
+The meta tools surface SHALL provide a `hold_escrow_for_dispute` tool that records dispute hold evidence for funded escrow from canonical dispute-ready settlement state.
+
+#### Scenario: Dispute hold tool available
+- **WHEN** the meta tools are built with a receipts store and dispute hold runtime
+- **THEN** `hold_escrow_for_dispute` SHALL be available
+
+#### Scenario: Dispute hold tool records funded dispute hold
+- **WHEN** `hold_escrow_for_dispute` is invoked with `transaction_receipt_id`
+- **THEN** it SHALL evaluate the request through the dispute hold service
+- **AND** it SHALL return canonical transaction-level execution result including settlement progression state, escrow reference, and runtime reference

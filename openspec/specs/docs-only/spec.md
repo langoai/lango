@@ -296,3 +296,18 @@ The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the 
 - **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
 - **THEN** they SHALL find escrow refund described as a landed first slice
 - **AND** the remaining work SHALL be described as refund terminal-state design, dispute-linked refund branching, and release-after-refund safety rules
+
+### Requirement: Dispute hold page describes the first funded dispute hold slice
+The `docs/architecture/dispute-hold.md` page SHALL describe the first dispute hold slice for `knowledge exchange v1`, including what currently ships and the current limits of the slice.
+
+#### Scenario: Dispute hold page shows the bounded slice
+- **WHEN** a user reads `docs/architecture/dispute-hold.md`
+- **THEN** they SHALL find sections describing the current dispute hold slice, what currently ships, and current limits
+
+### Requirement: P2P knowledge exchange track reflects landed dispute hold
+The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the dispute hold first slice as landed work and list the remaining work as release-vs-refund adjudication, explicit held-state design, and dispute engine integration.
+
+#### Scenario: Track page points to the landed dispute hold slice
+- **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
+- **THEN** they SHALL find dispute hold described as a landed first slice
+- **AND** the remaining work SHALL be described as release-vs-refund adjudication, explicit held-state design, and dispute engine integration

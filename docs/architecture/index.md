@@ -88,6 +88,12 @@ This section describes the internal architecture of Lango, a Go-based AI agent b
 
     The first funded-escrow refund slice for `knowledge exchange v1`, connecting review-path funded escrow to refund execution with explicit current limits.
 
+-   :material-hand-back-right-outline: **[Dispute Hold](dispute-hold.md)**
+
+    ---
+
+    The first dispute-linked escrow hold slice for `knowledge exchange v1`, recording hold evidence for funded dispute-ready escrow with explicit current limits.
+
 -   :material-cash-fast: **[P2P Knowledge Exchange Track](p2p-knowledge-exchange-track.md)**
 
     ---

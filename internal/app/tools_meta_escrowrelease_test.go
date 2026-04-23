@@ -44,7 +44,7 @@ func bindReleaseEscrowExecutionInput(t *testing.T, store *receipts.Store, ctx co
 }
 
 func TestBuildMetaTools_IncludesReleaseEscrowSettlement(t *testing.T) {
-	tools := buildMetaToolsWithRuntimes(nil, nil, nil, config.SkillConfig{}, nil, receipts.NewStore(), nil, nil, nil, &fakeEscrowReleaseRuntime{}, nil)
+	tools := buildMetaToolsWithRuntimes(nil, nil, nil, config.SkillConfig{}, nil, receipts.NewStore(), nil, nil, nil, nil, &fakeEscrowReleaseRuntime{}, nil)
 	tool := findTool(tools, "release_escrow_settlement")
 	require.NotNil(t, tool)
 
@@ -73,6 +73,7 @@ func TestBuildMetaTools_OmitsReleaseEscrowSettlementWithoutRuntime(t *testing.T)
 		nil,
 		nil,
 		nil,
+		nil,
 	)
 	require.Nil(t, findTool(tools, "release_escrow_settlement"))
 }
@@ -93,7 +94,7 @@ func TestReleaseEscrowSettlement_FundedApprovedPathReturnsCanonicalReceipt(t *te
 	_, err = store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, receipts.SettlementProgressionApprovedForSettlement, receipts.SettlementProgressionReasonCodeApprove, "approved", "")
 	require.NoError(t, err)
 
-	tool := findTool(buildMetaToolsWithRuntimes(nil, nil, nil, config.SkillConfig{}, nil, store, nil, nil, nil, runtime, nil), "release_escrow_settlement")
+	tool := findTool(buildMetaToolsWithRuntimes(nil, nil, nil, config.SkillConfig{}, nil, store, nil, nil, nil, nil, runtime, nil), "release_escrow_settlement")
 	require.NotNil(t, tool)
 
 	got, err := tool.Handler(ctx, map[string]interface{}{
@@ -160,7 +161,7 @@ func TestReleaseEscrowSettlement_RejectsWhenEscrowOrSettlementStateIsWrong(t *te
 			tx := createSubmittedTransaction(t, store, ctx, "deal-release-escrow-"+tt.name)
 			tt.setup(t, store, ctx, tx)
 
-			tool := findTool(buildMetaToolsWithRuntimes(nil, nil, nil, config.SkillConfig{}, nil, store, nil, nil, nil, &fakeEscrowReleaseRuntime{}, nil), "release_escrow_settlement")
+			tool := findTool(buildMetaToolsWithRuntimes(nil, nil, nil, config.SkillConfig{}, nil, store, nil, nil, nil, nil, &fakeEscrowReleaseRuntime{}, nil), "release_escrow_settlement")
 			require.NotNil(t, tool)
 
 			_, err := tool.Handler(ctx, map[string]interface{}{
@@ -187,7 +188,7 @@ func TestReleaseEscrowSettlement_PropagatesRuntimeFailure(t *testing.T) {
 	_, err = store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, receipts.SettlementProgressionApprovedForSettlement, receipts.SettlementProgressionReasonCodeApprove, "approved", "")
 	require.NoError(t, err)
 
-	tool := findTool(buildMetaToolsWithRuntimes(nil, nil, nil, config.SkillConfig{}, nil, store, nil, nil, nil, &fakeEscrowReleaseRuntime{err: errors.New("release failed")}, nil), "release_escrow_settlement")
+	tool := findTool(buildMetaToolsWithRuntimes(nil, nil, nil, config.SkillConfig{}, nil, store, nil, nil, nil, nil, &fakeEscrowReleaseRuntime{err: errors.New("release failed")}, nil), "release_escrow_settlement")
 	require.NotNil(t, tool)
 
 	_, err = tool.Handler(ctx, map[string]interface{}{

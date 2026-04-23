@@ -27,7 +27,7 @@ func (f *fakePartialSettlementExecutionRuntime) ExecuteSettlement(_ context.Cont
 }
 
 func TestBuildMetaTools_IncludesExecutePartialSettlement(t *testing.T) {
-	tools := buildMetaToolsWithRuntimes(nil, nil, nil, config.SkillConfig{}, nil, receipts.NewStore(), nil, nil, &fakePartialSettlementExecutionRuntime{}, nil, nil)
+	tools := buildMetaToolsWithRuntimes(nil, nil, nil, config.SkillConfig{}, nil, receipts.NewStore(), nil, nil, &fakePartialSettlementExecutionRuntime{}, nil, nil, nil)
 	tool := findTool(tools, "execute_partial_settlement")
 	require.NotNil(t, tool)
 
@@ -59,7 +59,7 @@ func TestExecutePartialSettlement_ApprovedPathReturnsCanonicalReceipt(t *testing
 	_, err := store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, receipts.SettlementProgressionApprovedForSettlement, receipts.SettlementProgressionReasonCodeApprove, "approved", "settle:0.40-usdc")
 	require.NoError(t, err)
 
-	tool := findTool(buildMetaToolsWithRuntimes(nil, nil, nil, config.SkillConfig{}, nil, store, nil, nil, runtime, nil, nil), "execute_partial_settlement")
+	tool := findTool(buildMetaToolsWithRuntimes(nil, nil, nil, config.SkillConfig{}, nil, store, nil, nil, runtime, nil, nil, nil), "execute_partial_settlement")
 	require.NotNil(t, tool)
 
 	got, err := tool.Handler(ctx, map[string]interface{}{
@@ -113,7 +113,7 @@ func TestExecutePartialSettlement_RejectsMissingOrInvalidPartialHint(t *testing.
 			_, err := store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, receipts.SettlementProgressionApprovedForSettlement, receipts.SettlementProgressionReasonCodeApprove, "approved", tt.partialHint)
 			require.NoError(t, err)
 
-			tool := findTool(buildMetaToolsWithRuntimes(nil, nil, nil, config.SkillConfig{}, nil, store, nil, nil, &fakePartialSettlementExecutionRuntime{}, nil, nil), "execute_partial_settlement")
+			tool := findTool(buildMetaToolsWithRuntimes(nil, nil, nil, config.SkillConfig{}, nil, store, nil, nil, &fakePartialSettlementExecutionRuntime{}, nil, nil, nil), "execute_partial_settlement")
 			require.NotNil(t, tool)
 
 			_, err = tool.Handler(ctx, map[string]interface{}{

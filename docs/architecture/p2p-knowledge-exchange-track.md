@@ -51,6 +51,8 @@ The first escrow release slice is now landed too: `release_escrow_settlement` re
 
 The first escrow refund slice is now landed too: `refund_escrow_settlement` requires `escrow_execution_status = funded` plus `review-needed`, reuses the escrow runtime, and records refund execution evidence while keeping settlement progression unchanged. The remaining work is refund terminal-state design, dispute-linked refund branching, and release-after-refund safety rules.
 
+The first dispute hold slice is now landed too: `hold_escrow_for_dispute` requires `escrow_execution_status = funded` plus `dispute-ready`, records hold success or failure evidence, and keeps canonical escrow and settlement progression state unchanged. The remaining work is release-vs-refund adjudication, explicit held-state design, and dispute engine integration.
+
 ## In Scope
 
 - pseudonymous but cryptographically continuous identities,
@@ -97,4 +99,5 @@ The first escrow refund slice is now landed too: `refund_escrow_settlement` requ
 5. `actual settlement execution` first slice is now landed; `partial settlement execution` first slice is now landed too; the follow-on work is dispute-linked escrow handling and deeper settlement orchestration
 6. `escrow release` first slice is now landed; the follow-on work is refund, dispute-linked escrow handling, and milestone-aware release
 7. `escrow refund` first slice is now landed; the follow-on work is refund terminal-state design, dispute-linked refund branching, and release-after-refund safety rules
-8. the first transaction-oriented runtime design slice, now documented in `docs/architecture/knowledge-exchange-runtime.md`; follow-on work is runtime implementation and broader progression handling
+8. `dispute hold` first slice is now landed; the follow-on work is release-vs-refund adjudication, explicit held-state design, and dispute engine integration
+9. the first transaction-oriented runtime design slice, now documented in `docs/architecture/knowledge-exchange-runtime.md`; follow-on work is runtime implementation and broader progression handling

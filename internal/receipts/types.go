@@ -192,6 +192,20 @@ type EscrowRefundEvidenceRequest struct {
 	RuntimeReference     string `json:"runtime_reference,omitempty"`
 }
 
+type EscrowDisputeHoldEvidenceRequest struct {
+	TransactionReceiptID string `json:"transaction_receipt_id"`
+	SubmissionReceiptID  string `json:"submission_receipt_id"`
+	EscrowReference      string `json:"escrow_reference"`
+	RuntimeReference     string `json:"runtime_reference,omitempty"`
+}
+
+type EscrowDisputeHoldFailureRequest struct {
+	TransactionReceiptID string `json:"transaction_receipt_id"`
+	SubmissionReceiptID  string `json:"submission_receipt_id"`
+	EscrowReference      string `json:"escrow_reference"`
+	Reason               string `json:"reason"`
+}
+
 type PartialSettlementCloseoutRequest struct {
 	TransactionReceiptID string `json:"transaction_receipt_id"`
 	SubmissionReceiptID  string `json:"submission_receipt_id"`
