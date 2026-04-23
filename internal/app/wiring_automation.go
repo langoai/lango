@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/langoai/lango/internal/background"
 	"github.com/langoai/lango/internal/config"
 	cronpkg "github.com/langoai/lango/internal/cron"
+	"github.com/langoai/lango/internal/receipts"
 	"github.com/langoai/lango/internal/runledger"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/turnrunner"
@@ -90,7 +92,7 @@ func initCron(cfg *config.Config, store session.Store, app *App) *cronpkg.Schedu
 }
 
 // initBackground creates the background task manager if enabled.
-func initBackground(cfg *config.Config, app *App) *background.Manager {
+func initBackground(cfg *config.Config, app *App, receiptStore *receipts.Store) *background.Manager {
 	if !cfg.Background.Enabled {
 		logger().Info("background tasks disabled")
 		return nil
@@ -111,6 +113,37 @@ func initBackground(cfg *config.Config, app *App) *background.Manager {
 	}
 
 	mgr := background.NewManager(runner, notify, maxTasks, taskTimeout, logger())
+	mgr.WithRetryKeyDeriver(func(prompt string, _ background.Origin) string {
+		return parsePostAdjudicationRetryKey(prompt)
+	})
+	if receiptStore != nil {
+		mgr.WithRetryHook(func(ctx context.Context, snap background.TaskSnapshot, exhausted bool, resubmit func()) {
+			transactionReceiptID, outcome, ok := parseRetryKeyParts(snap.RetryKey)
+			if !ok {
+				return
+			}
+			if exhausted {
+				if err := receiptStore.RecordPostAdjudicationDeadLetter(ctx, receipts.PostAdjudicationDeadLetterRequest{
+					TransactionReceiptID: transactionReceiptID,
+					Outcome:              outcome,
+					AttemptCount:         snap.AttemptCount,
+					Reason:               snap.Error,
+				}); err != nil {
+					logger().Warnw("post-adjudication dead-letter evidence failed", "taskID", snap.ID, "error", err)
+				}
+				return
+			}
+			if err := receiptStore.RecordPostAdjudicationRetryScheduled(ctx, receipts.PostAdjudicationRetryScheduledRequest{
+				TransactionReceiptID: transactionReceiptID,
+				Outcome:              outcome,
+				AttemptCount:         snap.AttemptCount,
+				NextRetryAt:          snap.NextRetryAt,
+			}); err != nil {
+				logger().Warnw("post-adjudication retry evidence failed", "taskID", snap.ID, "error", err)
+			}
+			resubmit()
+		})
+	}
 	if app.RunLedgerStore != nil && cfg.RunLedger.Enabled && cfg.RunLedger.WriteThrough {
 		mgr.WithProjection(runledger.NewBackgroundWriteThrough(
 			app.RunLedgerStore,
@@ -124,6 +157,45 @@ func initBackground(cfg *config.Config, app *App) *background.Manager {
 	)
 
 	return mgr
+}
+
+func parsePostAdjudicationRetryKey(prompt string) string {
+	transactionReceiptID := ""
+	switch {
+	case strings.Contains(prompt, "release_escrow_settlement"):
+		if idx := strings.Index(prompt, "transaction_receipt_id="); idx >= 0 {
+			fields := strings.Fields(strings.TrimSpace(prompt[idx+len("transaction_receipt_id="):]))
+			if len(fields) > 0 {
+				transactionReceiptID = fields[0]
+			}
+		}
+		if transactionReceiptID != "" {
+			return transactionReceiptID + ":" + string(receipts.EscrowAdjudicationRelease)
+		}
+	case strings.Contains(prompt, "refund_escrow_settlement"):
+		if idx := strings.Index(prompt, "transaction_receipt_id="); idx >= 0 {
+			fields := strings.Fields(strings.TrimSpace(prompt[idx+len("transaction_receipt_id="):]))
+			if len(fields) > 0 {
+				transactionReceiptID = fields[0]
+			}
+		}
+		if transactionReceiptID != "" {
+			return transactionReceiptID + ":" + string(receipts.EscrowAdjudicationRefund)
+		}
+	}
+	return ""
+}
+
+func parseRetryKeyParts(retryKey string) (string, receipts.EscrowAdjudicationDecision, bool) {
+	parts := strings.SplitN(strings.TrimSpace(retryKey), ":", 2)
+	if len(parts) != 2 || parts[0] == "" {
+		return "", "", false
+	}
+	outcome := receipts.EscrowAdjudicationDecision(parts[1])
+	if outcome != receipts.EscrowAdjudicationRelease && outcome != receipts.EscrowAdjudicationRefund {
+		return "", "", false
+	}
+	return parts[0], outcome, true
 }
 
 // initWorkflow creates the workflow engine if enabled.

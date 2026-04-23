@@ -167,3 +167,11 @@ The `docs/architecture/index.md` page SHALL include a quick link to `background-
 - **WHEN** a user reads `docs/architecture/index.md`
 - **THEN** they SHALL find the Background Post-Adjudication Execution entry linking to `background-post-adjudication-execution.md`
 - **AND** the entry SHALL describe the slice as async post-adjudication orchestration bounded by current implementation limits
+
+### Requirement: Architecture landing page links retry / dead-letter handling
+The `docs/architecture/index.md` page SHALL include a quick link to `retry-dead-letter-handling.md` and a short summary that frames it as the first retry / dead-letter slice for background post-adjudication execution.
+
+#### Scenario: Retry / dead-letter handling appears in architecture landing page
+- **WHEN** a user reads `docs/architecture/index.md`
+- **THEN** they SHALL find the Retry / Dead-Letter Handling entry linking to `retry-dead-letter-handling.md`
+- **AND** the entry SHALL describe the slice as bounded retry and terminal dead-letter handling bounded by current implementation limits

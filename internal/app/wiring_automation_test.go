@@ -19,17 +19,19 @@ import (
 // Used to test branches that require EntStore and should return nil otherwise.
 type stubSessionStore struct{}
 
-func (s *stubSessionStore) Create(_ *session.Session) error              { return nil }
-func (s *stubSessionStore) Get(_ string) (*session.Session, error)       { return nil, nil }
-func (s *stubSessionStore) Update(_ *session.Session) error              { return nil }
-func (s *stubSessionStore) Delete(_ string) error                        { return nil }
+func (s *stubSessionStore) Create(_ *session.Session) error                 { return nil }
+func (s *stubSessionStore) Get(_ string) (*session.Session, error)          { return nil, nil }
+func (s *stubSessionStore) Update(_ *session.Session) error                 { return nil }
+func (s *stubSessionStore) Delete(_ string) error                           { return nil }
 func (s *stubSessionStore) AppendMessage(_ string, _ session.Message) error { return nil }
-func (s *stubSessionStore) AnnotateTimeout(_ string, _ string) error     { return nil }
-func (s *stubSessionStore) End(_ string) error                           { return nil }
-func (s *stubSessionStore) Close() error                                 { return nil }
-func (s *stubSessionStore) GetSalt(_ string) ([]byte, error)             { return nil, nil }
-func (s *stubSessionStore) SetSalt(_ string, _ []byte) error                              { return nil }
-func (s *stubSessionStore) ListSessions(_ context.Context) ([]session.SessionSummary, error) { return nil, nil }
+func (s *stubSessionStore) AnnotateTimeout(_ string, _ string) error        { return nil }
+func (s *stubSessionStore) End(_ string) error                              { return nil }
+func (s *stubSessionStore) Close() error                                    { return nil }
+func (s *stubSessionStore) GetSalt(_ string) ([]byte, error)                { return nil, nil }
+func (s *stubSessionStore) SetSalt(_ string, _ []byte) error                { return nil }
+func (s *stubSessionStore) ListSessions(_ context.Context) ([]session.SessionSummary, error) {
+	return nil, nil
+}
 
 // --- initCron ---
 
@@ -53,10 +55,10 @@ func TestInitCron_NonEntStoreReturnsNil(t *testing.T) {
 
 func TestInitCron_DisabledBranch_TableDriven(t *testing.T) {
 	tests := []struct {
-		give        string
-		giveCronOn  bool
-		giveStore   session.Store
-		wantNil     bool
+		give       string
+		giveCronOn bool
+		giveStore  session.Store
+		wantNil    bool
 	}{
 		{
 			give:       "disabled config returns nil",
@@ -94,16 +96,16 @@ func TestInitBackground_DisabledReturnsNil(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Background.Enabled = false
 
-	result := initBackground(cfg, &App{Config: cfg})
+	result := initBackground(cfg, &App{Config: cfg}, nil)
 
 	assert.Nil(t, result, "expected nil manager when background is disabled")
 }
 
 func TestInitBackground_DisabledBranch_TableDriven(t *testing.T) {
 	tests := []struct {
-		give     string
-		giveOn   bool
-		wantNil  bool
+		give    string
+		giveOn  bool
+		wantNil bool
 	}{
 		{
 			give:    "disabled returns nil",
@@ -117,7 +119,7 @@ func TestInitBackground_DisabledBranch_TableDriven(t *testing.T) {
 			cfg := config.DefaultConfig()
 			cfg.Background.Enabled = tt.giveOn
 
-			result := initBackground(cfg, &App{Config: cfg})
+			result := initBackground(cfg, &App{Config: cfg}, nil)
 
 			if tt.wantNil {
 				assert.Nil(t, result)
@@ -150,10 +152,10 @@ func TestInitWorkflow_NonEntStoreReturnsNil(t *testing.T) {
 
 func TestInitWorkflow_DisabledBranch_TableDriven(t *testing.T) {
 	tests := []struct {
-		give          string
+		give           string
 		giveWorkflowOn bool
-		giveStore     session.Store
-		wantNil       bool
+		giveStore      session.Store
+		wantNil        bool
 	}{
 		{
 			give:           "disabled config returns nil",

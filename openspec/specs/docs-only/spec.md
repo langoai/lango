@@ -371,3 +371,18 @@ The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the 
 - **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
 - **THEN** they SHALL find background post-adjudication execution described as a landed first slice
 - **AND** the remaining work SHALL be described as retry orchestration, dead-letter handling, dedicated status observation, and policy-driven defaults
+
+### Requirement: Retry / dead-letter handling page describes the first bounded retry slice
+The `docs/architecture/retry-dead-letter-handling.md` page SHALL describe the first retry / dead-letter slice for background post-adjudication execution, including what currently ships and the current limits of the slice.
+
+#### Scenario: Retry / dead-letter handling page shows the bounded slice
+- **WHEN** a user reads `docs/architecture/retry-dead-letter-handling.md`
+- **THEN** they SHALL find sections describing the current retry/dead-letter slice, what currently ships, and current limits
+
+### Requirement: P2P knowledge exchange track reflects landed retry / dead-letter handling
+The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the retry / dead-letter handling first slice as landed work and list the remaining work as operator replay, generic async retry policy, dead-letter browsing, and policy-driven backoff tuning.
+
+#### Scenario: Track page points to the landed retry slice
+- **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
+- **THEN** they SHALL find retry / dead-letter handling described as a landed first slice
+- **AND** the remaining work SHALL be described as operator replay, generic async retry policy, dead-letter browsing, and policy-driven backoff tuning

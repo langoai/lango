@@ -239,6 +239,11 @@ The meta tools surface SHALL provide an `adjudicate_escrow_dispute` tool that re
 - **AND** it SHALL enqueue the matching release or refund follow-up onto the background task substrate
 - **AND** it SHALL return both the adjudication result and a background dispatch receipt
 
+#### Scenario: Background post-adjudication execution uses bounded retry
+- **WHEN** background post-adjudication execution fails
+- **THEN** the post-adjudication path SHALL retry up to three times with exponential backoff
+- **AND** exhausted retries SHALL produce terminal dead-letter evidence without changing canonical adjudication
+
 ### Requirement: Escrow release and refund meta tools enforce canonical adjudication
 The meta tools surface SHALL enforce canonical adjudication on the existing escrow release and refund execution tools.
 

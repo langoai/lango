@@ -23,6 +23,11 @@ const automationPrefix = "[Automated Task — Execute the following task using t
 // retained in memory. When exceeded, the oldest terminal task is evicted.
 const maxTerminalTasks = 500
 
+const (
+	maxRetryAttempts = 3
+	retryBaseDelay   = 25 * time.Millisecond
+)
+
 // AgentRunner executes agent prompts.
 type AgentRunner interface {
 	Run(ctx context.Context, sessionKey string, prompt string) (string, error)
@@ -35,6 +40,14 @@ type Projection interface {
 	SyncTask(ctx context.Context, snap TaskSnapshot) error
 }
 
+// RetryHook is invoked after a failed task is either eligible for resubmission
+// or has exhausted its retry budget. The manager computes the backoff and
+// provides a callback for resubmitting the same task after the delay elapses.
+type RetryHook func(ctx context.Context, snap TaskSnapshot, exhausted bool, resubmit func())
+
+// RetryKeyDeriver derives an optional canonical retry identity for a task.
+type RetryKeyDeriver func(prompt string, origin Origin) string
+
 // Origin identifies where a background task was initiated from.
 type Origin struct {
 	Channel string `json:"channel"`
@@ -43,16 +56,18 @@ type Origin struct {
 
 // Manager handles lifecycle management of background tasks.
 type Manager struct {
-	tasks       map[string]*Task
-	mu          sync.RWMutex
-	wg          sync.WaitGroup
-	maxTasks    int
-	taskTimeout time.Duration
-	runner      AgentRunner
-	notify      *Notification
-	projection  Projection
-	sem         chan struct{} // concurrency limiter
-	logger      *zap.SugaredLogger
+	tasks           map[string]*Task
+	mu              sync.RWMutex
+	wg              sync.WaitGroup
+	maxTasks        int
+	taskTimeout     time.Duration
+	runner          AgentRunner
+	notify          *Notification
+	projection      Projection
+	retryHook       RetryHook
+	retryKeyDeriver RetryKeyDeriver
+	sem             chan struct{} // concurrency limiter
+	logger          *zap.SugaredLogger
 }
 
 // NewManager creates a new background task Manager.
@@ -80,6 +95,18 @@ func NewManager(runner AgentRunner, notify *Notification, maxTasks int, taskTime
 // WithProjection configures an optional projection hook for task lifecycle mirroring.
 func (m *Manager) WithProjection(projection Projection) *Manager {
 	m.projection = projection
+	return m
+}
+
+// WithRetryHook configures an optional retry callback for failed work.
+func (m *Manager) WithRetryHook(hook RetryHook) *Manager {
+	m.retryHook = hook
+	return m
+}
+
+// WithRetryKeyDeriver configures an optional retry-key derivation hook.
+func (m *Manager) WithRetryKeyDeriver(deriver RetryKeyDeriver) *Manager {
+	m.retryKeyDeriver = deriver
 	return m
 }
 
@@ -112,6 +139,9 @@ func (m *Manager) Submit(ctx context.Context, prompt string, origin Origin) (str
 		OriginChannel: origin.Channel,
 		OriginSession: origin.Session,
 		cancelFn:      cancelFn,
+	}
+	if m.retryKeyDeriver != nil {
+		task.RetryKey = m.retryKeyDeriver(prompt, origin)
 	}
 	m.tasks[id] = task
 	m.mu.Unlock()
@@ -251,8 +281,16 @@ func (m *Manager) execute(ctx context.Context, task *Task) {
 
 	if err != nil {
 		task.Fail(err.Error())
-		m.syncProjection(types.DetachContext(ctx), task)
-		m.logger.Warnw("task failed", "taskID", task.ID, "error", err)
+		if m.scheduleRetry(types.DetachContext(ctx), task) {
+			m.syncProjection(types.DetachContext(ctx), task)
+			m.logger.Infow("task retry scheduled", "taskID", task.ID, "attempt", task.Snapshot().AttemptCount, "nextRetryAt", task.Snapshot().NextRetryAt)
+		} else {
+			if m.retryHook != nil {
+				m.retryHook(types.DetachContext(ctx), task.Snapshot(), true, func() {})
+			}
+			m.syncProjection(types.DetachContext(ctx), task)
+			m.logger.Warnw("task failed", "taskID", task.ID, "error", err)
+		}
 	} else {
 		task.Complete(result)
 		m.syncProjection(types.DetachContext(ctx), task)
@@ -319,6 +357,94 @@ func (m *Manager) syncProjection(ctx context.Context, task *Task) {
 	if err := m.projection.SyncTask(ctx, task.Snapshot()); err != nil {
 		m.logger.Warnw("background projection sync failed", "taskID", task.ID, "error", err)
 	}
+}
+
+func (m *Manager) scheduleRetry(ctx context.Context, task *Task) bool {
+	if m.retryHook == nil {
+		return false
+	}
+
+	snap := task.Snapshot()
+	if snap.AttemptCount == 0 || snap.AttemptCount > maxRetryAttempts {
+		return false
+	}
+
+	delay := retryDelayForAttempt(snap.AttemptCount)
+	nextRetryAt := time.Now().Add(delay)
+	task.ScheduleRetry(nextRetryAt)
+
+	taskID := task.ID
+	expectedAttempt := snap.AttemptCount
+
+	m.wg.Add(1)
+	go func() {
+		defer m.wg.Done()
+
+		timer := time.NewTimer(delay)
+		defer timer.Stop()
+
+		select {
+		case <-timer.C:
+		case <-ctx.Done():
+			return
+		}
+
+		m.mu.RLock()
+		currentTask, ok := m.tasks[taskID]
+		m.mu.RUnlock()
+		if !ok {
+			return
+		}
+
+		currentSnap := currentTask.Snapshot()
+		if currentSnap.Status == Cancelled || currentSnap.AttemptCount != expectedAttempt {
+			return
+		}
+
+		var once sync.Once
+		m.retryHook(ctx, currentSnap, false, func() {
+			once.Do(func() {
+				m.resubmit(currentTask, ctx)
+			})
+		})
+	}()
+
+	return true
+}
+
+func (m *Manager) resubmit(task *Task, ctx context.Context) {
+	if task == nil {
+		return
+	}
+
+	taskCtx, cancelFn := context.WithTimeout(types.DetachContext(ctx), m.taskTimeout)
+
+	task.mu.Lock()
+	if task.Status == Cancelled {
+		task.mu.Unlock()
+		cancelFn()
+		return
+	}
+	task.cancelFn = cancelFn
+	task.mu.Unlock()
+
+	m.wg.Add(1)
+	go func() {
+		defer m.wg.Done()
+		m.execute(taskCtx, task)
+	}()
+}
+
+func retryDelayForAttempt(attempt int) time.Duration {
+	if attempt <= 0 {
+		return retryBaseDelay
+	}
+
+	delay := retryBaseDelay
+	for i := 1; i < attempt; i++ {
+		delay *= 2
+	}
+	return delay
 }
 
 // evictTerminalTasksLocked removes the oldest terminal tasks when the count

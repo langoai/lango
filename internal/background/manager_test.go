@@ -25,6 +25,42 @@ func (m *mockRunner) Run(_ context.Context, _ string, _ string) (string, error) 
 	return m.result, m.err
 }
 
+type sequenceRunner struct {
+	mu        sync.Mutex
+	responses []runnerResponse
+	calls     int
+}
+
+type runnerResponse struct {
+	result string
+	err    error
+}
+
+func (r *sequenceRunner) Run(_ context.Context, _ string, _ string) (string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	idx := r.calls
+	r.calls++
+
+	if len(r.responses) == 0 {
+		return "", nil
+	}
+	if idx >= len(r.responses) {
+		resp := r.responses[len(r.responses)-1]
+		return resp.result, resp.err
+	}
+
+	resp := r.responses[idx]
+	return resp.result, resp.err
+}
+
+func (r *sequenceRunner) Calls() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.calls
+}
+
 type mockProjection struct {
 	mu         sync.Mutex
 	id         string
@@ -183,6 +219,148 @@ func TestManager_Submit_RunnerError(t *testing.T) {
 	snap, err := mgr.Status(id)
 	require.NoError(t, err)
 	assert.Equal(t, Failed, snap.Status)
+}
+
+func TestManager_Status_PreservesRetryMetadata(t *testing.T) {
+	mgr := NewManager(&mockRunner{}, nil, 5, time.Minute, testLogger())
+
+	nextRetryAt := time.Now().Add(2 * time.Minute).Truncate(time.Millisecond)
+	task := &Task{
+		ID:           "task-retry-meta",
+		Status:       Failed,
+		RetryKey:     "receipt-123:release",
+		AttemptCount: 2,
+		NextRetryAt:  nextRetryAt,
+	}
+	mgr.tasks[task.ID] = task
+
+	snap, err := mgr.Status(task.ID)
+	require.NoError(t, err)
+	assert.Equal(t, task.RetryKey, snap.RetryKey)
+	assert.Equal(t, task.AttemptCount, snap.AttemptCount)
+	assert.True(t, snap.NextRetryAt.Equal(nextRetryAt))
+}
+
+func TestManager_RetryHook_ResubmitsWithExponentialBackoff(t *testing.T) {
+	runner := &sequenceRunner{
+		responses: []runnerResponse{
+			{err: fmt.Errorf("attempt 1 failed")},
+			{err: fmt.Errorf("attempt 2 failed")},
+			{result: "ok"},
+		},
+	}
+
+	var (
+		mu    sync.Mutex
+		snaps []TaskSnapshot
+	)
+	hook := func(_ context.Context, snap TaskSnapshot, exhausted bool, retry func()) {
+		assert.False(t, exhausted)
+		mu.Lock()
+		snaps = append(snaps, snap)
+		mu.Unlock()
+		retry()
+	}
+
+	mgr := NewManager(runner, nil, 5, time.Minute, testLogger()).
+		WithRetryHook(hook)
+
+	id, err := mgr.Submit(context.Background(), "retry me", Origin{Channel: "test"})
+	require.NoError(t, err)
+
+	require.Eventually(t, func() bool {
+		return runner.Calls() == 3
+	}, 2*time.Second, 10*time.Millisecond)
+
+	require.Eventually(t, func() bool {
+		snap, err := mgr.Status(id)
+		if err != nil {
+			return false
+		}
+		return snap.Status == Done
+	}, 2*time.Second, 10*time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.Len(t, snaps, 2)
+	assert.Equal(t, 1, snaps[0].AttemptCount)
+	assert.Equal(t, 2, snaps[1].AttemptCount)
+	assert.False(t, snaps[0].NextRetryAt.IsZero())
+	assert.False(t, snaps[1].NextRetryAt.IsZero())
+	assert.True(t, snaps[1].NextRetryAt.After(snaps[0].NextRetryAt))
+	assert.Greater(t, snaps[0].NextRetryAt.Sub(snaps[0].StartedAt), 0*time.Millisecond)
+	assert.Greater(t, snaps[1].NextRetryAt.Sub(snaps[1].StartedAt), snaps[0].NextRetryAt.Sub(snaps[0].StartedAt))
+}
+
+func TestManager_RetryHook_StopsAfterExhaustion(t *testing.T) {
+	runner := &sequenceRunner{
+		responses: []runnerResponse{
+			{err: fmt.Errorf("attempt 1 failed")},
+			{err: fmt.Errorf("attempt 2 failed")},
+			{err: fmt.Errorf("attempt 3 failed")},
+			{err: fmt.Errorf("attempt 4 failed")},
+		},
+	}
+
+	var (
+		mu    sync.Mutex
+		snaps []TaskSnapshot
+	)
+	hook := func(_ context.Context, snap TaskSnapshot, exhausted bool, retry func()) {
+		mu.Lock()
+		snaps = append(snaps, snap)
+		mu.Unlock()
+		if !exhausted {
+			retry()
+		}
+	}
+
+	mgr := NewManager(runner, nil, 5, time.Minute, testLogger()).
+		WithRetryHook(hook)
+
+	id, err := mgr.Submit(context.Background(), "retry exhaustion", Origin{Channel: "test"})
+	require.NoError(t, err)
+
+	require.Eventually(t, func() bool {
+		return runner.Calls() == 4
+	}, 2*time.Second, 10*time.Millisecond)
+
+	require.Eventually(t, func() bool {
+		snap, err := mgr.Status(id)
+		if err != nil {
+			return false
+		}
+		return snap.Status == Failed && snap.AttemptCount == 4
+	}, 2*time.Second, 10*time.Millisecond)
+
+	snap, err := mgr.Status(id)
+	require.NoError(t, err)
+	assert.Equal(t, Failed, snap.Status)
+	assert.Equal(t, 4, snap.AttemptCount)
+	assert.True(t, snap.NextRetryAt.IsZero())
+	assert.NotEmpty(t, snap.Error)
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.Len(t, snaps, 4)
+	assert.Equal(t, 1, snaps[0].AttemptCount)
+	assert.Equal(t, 2, snaps[1].AttemptCount)
+	assert.Equal(t, 3, snaps[2].AttemptCount)
+	assert.Equal(t, 4, snaps[3].AttemptCount)
+}
+
+func TestManager_Submit_UsesRetryKeyDeriver(t *testing.T) {
+	mgr := NewManager(&mockRunner{}, nil, 5, time.Minute, testLogger()).
+		WithRetryKeyDeriver(func(prompt string, _ Origin) string {
+			return "derived:" + prompt
+		})
+
+	id, err := mgr.Submit(context.Background(), "retry me", Origin{Channel: "test"})
+	require.NoError(t, err)
+
+	snap, err := mgr.Status(id)
+	require.NoError(t, err)
+	assert.Equal(t, "derived:retry me", snap.RetryKey)
 }
 
 func TestStatus_Valid(t *testing.T) {

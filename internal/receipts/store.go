@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/langoai/lango/internal/finance"
@@ -529,6 +530,66 @@ func (s *Store) RecordEscrowAdjudicationFailure(_ context.Context, req EscrowAdj
 		Type:                EventSettlementExecutionFailed,
 	})
 
+	return nil
+}
+
+func (s *Store) RecordPostAdjudicationRetryScheduled(_ context.Context, req PostAdjudicationRetryScheduledRequest) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	transaction, ok := s.transactions[req.TransactionReceiptID]
+	if !ok {
+		return ErrTransactionReceiptNotFound
+	}
+	submissionReceiptID := transaction.CurrentSubmissionReceiptID
+	submission, ok := s.submissions[submissionReceiptID]
+	if !ok {
+		return ErrSubmissionReceiptNotFound
+	}
+	if submission.TransactionReceiptID != req.TransactionReceiptID {
+		return fmt.Errorf("%w: submission does not belong to transaction", ErrSubmissionReceiptNotFound)
+	}
+	if transaction.EscrowAdjudication != req.Outcome {
+		return fmt.Errorf("%w: escrow adjudication does not match retry outcome", ErrInvalidSettlementProgressionState)
+	}
+
+	s.events[submissionReceiptID] = append(s.events[submissionReceiptID], ReceiptEvent{
+		SubmissionReceiptID: submissionReceiptID,
+		Source:              "post_adjudication_retry",
+		Subtype:             "retry-scheduled",
+		Reason:              fmt.Sprintf("attempt=%d next_retry_at=%s outcome=%s", req.AttemptCount, req.NextRetryAt.UTC().Format(time.RFC3339), req.Outcome),
+		Type:                EventSettlementUpdated,
+	})
+	return nil
+}
+
+func (s *Store) RecordPostAdjudicationDeadLetter(_ context.Context, req PostAdjudicationDeadLetterRequest) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	transaction, ok := s.transactions[req.TransactionReceiptID]
+	if !ok {
+		return ErrTransactionReceiptNotFound
+	}
+	submissionReceiptID := transaction.CurrentSubmissionReceiptID
+	submission, ok := s.submissions[submissionReceiptID]
+	if !ok {
+		return ErrSubmissionReceiptNotFound
+	}
+	if submission.TransactionReceiptID != req.TransactionReceiptID {
+		return fmt.Errorf("%w: submission does not belong to transaction", ErrSubmissionReceiptNotFound)
+	}
+	if transaction.EscrowAdjudication != req.Outcome {
+		return fmt.Errorf("%w: escrow adjudication does not match dead-letter outcome", ErrInvalidSettlementProgressionState)
+	}
+
+	s.events[submissionReceiptID] = append(s.events[submissionReceiptID], ReceiptEvent{
+		SubmissionReceiptID: submissionReceiptID,
+		Source:              "post_adjudication_retry",
+		Subtype:             "dead-lettered",
+		Reason:              fmt.Sprintf("attempt=%d outcome=%s reason=%s", req.AttemptCount, req.Outcome, req.Reason),
+		Type:                EventSettlementExecutionFailed,
+	})
 	return nil
 }
 

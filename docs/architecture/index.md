@@ -118,6 +118,12 @@ This section describes the internal architecture of Lango, a Go-based AI agent b
 
     The first async convenience slice that lets escrow adjudication enqueue the selected release or refund path onto the existing background task substrate.
 
+-   :material-refresh-alert: **[Retry / Dead-Letter Handling](retry-dead-letter-handling.md)**
+
+    ---
+
+    The first retry slice for background post-adjudication execution, adding bounded exponential backoff and terminal dead-letter failure without changing canonical adjudication.
+
 -   :material-cash-fast: **[P2P Knowledge Exchange Track](p2p-knowledge-exchange-track.md)**
 
     ---

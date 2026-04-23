@@ -61,6 +61,8 @@ The first automatic post-adjudication execution slice is now landed too: `adjudi
 
 The first background post-adjudication execution slice is now landed too: `adjudicate_escrow_dispute` accepts optional `background_execute=true`, enqueues the canonical release or refund follow-up onto the existing background task substrate, and returns a dispatch receipt while leaving actual execution asynchronous. The remaining work is retry orchestration, dead-letter handling, dedicated status observation, and policy-driven defaults.
 
+The first retry / dead-letter slice is now landed too: background post-adjudication execution now retries up to `3` times with exponential backoff, tracks retry metadata on background tasks, and appends retry scheduled / dead-lettered evidence without changing canonical adjudication. The remaining work is operator replay, generic async retry policy, dead-letter browsing, and policy-driven backoff tuning.
+
 ## In Scope
 
 - pseudonymous but cryptographically continuous identities,
@@ -112,4 +114,5 @@ The first background post-adjudication execution slice is now landed too: `adjud
 10. `adjudication-aware release/refund execution gating` first slice is now landed; the follow-on work is automatic post-adjudication execution, keep-hold or re-escalation states, and broader dispute engine integration
 11. `automatic post-adjudication execution` first slice is now landed; the follow-on work is background execution, retry orchestration, automatic execution as policy default, and broader dispute engine integration
 12. `background post-adjudication execution` first slice is now landed; the follow-on work is retry orchestration, dead-letter handling, dedicated status observation, and policy-driven defaults
-13. the first transaction-oriented runtime design slice, now documented in `docs/architecture/knowledge-exchange-runtime.md`; follow-on work is runtime implementation and broader progression handling
+13. `retry / dead-letter handling` first slice is now landed; the follow-on work is operator replay, generic async retry policy, dead-letter browsing, and policy-driven backoff tuning
+14. the first transaction-oriented runtime design slice, now documented in `docs/architecture/knowledge-exchange-runtime.md`; follow-on work is runtime implementation and broader progression handling

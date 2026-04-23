@@ -1,6 +1,9 @@
 package receipts
 
-import "errors"
+import (
+	"errors"
+	"time"
+)
 
 var (
 	ErrSubmissionReceiptNotFound            = errors.New("submission receipt not found")
@@ -227,6 +230,20 @@ type EscrowAdjudicationFailureRequest struct {
 	SubmissionReceiptID  string `json:"submission_receipt_id"`
 	EscrowReference      string `json:"escrow_reference"`
 	Reason               string `json:"reason"`
+}
+
+type PostAdjudicationRetryScheduledRequest struct {
+	TransactionReceiptID string                     `json:"transaction_receipt_id"`
+	Outcome              EscrowAdjudicationDecision `json:"outcome"`
+	AttemptCount         int                        `json:"attempt_count"`
+	NextRetryAt          time.Time                  `json:"next_retry_at"`
+}
+
+type PostAdjudicationDeadLetterRequest struct {
+	TransactionReceiptID string                     `json:"transaction_receipt_id"`
+	Outcome              EscrowAdjudicationDecision `json:"outcome"`
+	AttemptCount         int                        `json:"attempt_count"`
+	Reason               string                     `json:"reason"`
 }
 
 type PartialSettlementCloseoutRequest struct {

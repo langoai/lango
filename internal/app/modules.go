@@ -564,7 +564,7 @@ func (m *automationModule) Init(ctx context.Context, r appinit.Resolver) (*appin
 		logger().Info("cron tools registered")
 	}
 
-	bg := initBackground(cfg, m.app)
+	bg := initBackground(cfg, m.app, fv.ReceiptStore)
 	if bg != nil {
 		bgTools := background.BuildTools(bg, cfg.Background.DefaultDeliverTo)
 		tools = append(tools, bgTools...)
