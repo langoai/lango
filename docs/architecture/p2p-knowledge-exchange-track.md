@@ -53,6 +53,8 @@ The first escrow refund slice is now landed too: `refund_escrow_settlement` requ
 
 The first dispute hold slice is now landed too: `hold_escrow_for_dispute` requires `escrow_execution_status = funded` plus `dispute-ready`, records hold success or failure evidence, and keeps canonical escrow and settlement progression state unchanged. The remaining work is release-vs-refund adjudication, explicit held-state design, and dispute engine integration.
 
+The first release-vs-refund adjudication slice is now landed too: `adjudicate_escrow_dispute` requires `escrow_execution_status = funded` plus `dispute-ready` and prior hold evidence, records canonical release-vs-refund branching on the transaction receipt, and leaves execution to the existing release/refund tools. The remaining work is adjudication-aware execution gating, keep-hold or re-escalation states, and broader dispute engine integration.
+
 ## In Scope
 
 - pseudonymous but cryptographically continuous identities,
@@ -100,4 +102,5 @@ The first dispute hold slice is now landed too: `hold_escrow_for_dispute` requir
 6. `escrow release` first slice is now landed; the follow-on work is refund, dispute-linked escrow handling, and milestone-aware release
 7. `escrow refund` first slice is now landed; the follow-on work is refund terminal-state design, dispute-linked refund branching, and release-after-refund safety rules
 8. `dispute hold` first slice is now landed; the follow-on work is release-vs-refund adjudication, explicit held-state design, and dispute engine integration
-9. the first transaction-oriented runtime design slice, now documented in `docs/architecture/knowledge-exchange-runtime.md`; follow-on work is runtime implementation and broader progression handling
+9. `release vs refund adjudication` first slice is now landed; the follow-on work is adjudication-aware release/refund execution, keep-hold or re-escalation states, and broader dispute engine integration
+10. the first transaction-oriented runtime design slice, now documented in `docs/architecture/knowledge-exchange-runtime.md`; follow-on work is runtime implementation and broader progression handling

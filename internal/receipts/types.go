@@ -42,6 +42,13 @@ const (
 	EscrowExecutionStatusFailed  EscrowExecutionStatus = "failed"
 )
 
+type EscrowAdjudicationDecision string
+
+const (
+	EscrowAdjudicationRelease EscrowAdjudicationDecision = "release"
+	EscrowAdjudicationRefund  EscrowAdjudicationDecision = "refund"
+)
+
 type PaymentApprovalStatus string
 
 const (
@@ -169,6 +176,7 @@ type TransactionReceipt struct {
 	CanonicalSettlementHint         string                          `json:"canonical_settlement_hint,omitempty"`
 	EscrowExecutionStatus           EscrowExecutionStatus           `json:"escrow_execution_status,omitempty"`
 	EscrowReference                 string                          `json:"escrow_reference,omitempty"`
+	EscrowAdjudication              EscrowAdjudicationDecision      `json:"escrow_adjudication,omitempty"`
 	EscrowExecutionInput            *EscrowExecutionInput           `json:"escrow_execution_input,omitempty"`
 }
 
@@ -200,6 +208,21 @@ type EscrowDisputeHoldEvidenceRequest struct {
 }
 
 type EscrowDisputeHoldFailureRequest struct {
+	TransactionReceiptID string `json:"transaction_receipt_id"`
+	SubmissionReceiptID  string `json:"submission_receipt_id"`
+	EscrowReference      string `json:"escrow_reference"`
+	Reason               string `json:"reason"`
+}
+
+type EscrowAdjudicationRequest struct {
+	TransactionReceiptID string                     `json:"transaction_receipt_id"`
+	SubmissionReceiptID  string                     `json:"submission_receipt_id"`
+	EscrowReference      string                     `json:"escrow_reference"`
+	Outcome              EscrowAdjudicationDecision `json:"outcome"`
+	Reason               string                     `json:"reason,omitempty"`
+}
+
+type EscrowAdjudicationFailureRequest struct {
 	TransactionReceiptID string `json:"transaction_receipt_id"`
 	SubmissionReceiptID  string `json:"submission_receipt_id"`
 	EscrowReference      string `json:"escrow_reference"`

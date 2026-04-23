@@ -84,6 +84,7 @@ func (s *Store) CreateSubmissionReceipt(_ context.Context, in CreateSubmissionIn
 	transaction.CurrentSubmissionReceiptID = submissionReceiptID
 	transaction.EscrowExecutionStatus = ""
 	transaction.EscrowReference = ""
+	transaction.EscrowAdjudication = ""
 	transaction.EscrowExecutionInput = nil
 	s.transactions[txReceiptID] = transaction
 
@@ -135,6 +136,7 @@ func (s *Store) OpenKnowledgeExchangeTransaction(_ context.Context, in OpenTrans
 		tx.CanonicalSettlementHint = existing.CanonicalSettlementHint
 		tx.EscrowExecutionStatus = existing.EscrowExecutionStatus
 		tx.EscrowReference = existing.EscrowReference
+		tx.EscrowAdjudication = existing.EscrowAdjudication
 		tx.EscrowExecutionInput = cloneEscrowExecutionInput(existing.EscrowExecutionInput)
 	}
 
@@ -395,6 +397,99 @@ func (s *Store) RecordEscrowDisputeHoldFailure(_ context.Context, req EscrowDisp
 	s.events[req.SubmissionReceiptID] = append(s.events[req.SubmissionReceiptID], ReceiptEvent{
 		SubmissionReceiptID: req.SubmissionReceiptID,
 		Source:              "dispute_hold",
+		Subtype:             "failed",
+		Reason:              req.Reason,
+		Type:                EventSettlementExecutionFailed,
+	})
+
+	return nil
+}
+
+func (s *Store) ApplyEscrowAdjudication(_ context.Context, req EscrowAdjudicationRequest) (TransactionReceipt, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	transaction, ok := s.transactions[req.TransactionReceiptID]
+	if !ok {
+		return TransactionReceipt{}, ErrTransactionReceiptNotFound
+	}
+	submission, ok := s.submissions[req.SubmissionReceiptID]
+	if !ok {
+		return TransactionReceipt{}, ErrSubmissionReceiptNotFound
+	}
+	if submission.TransactionReceiptID != req.TransactionReceiptID {
+		return TransactionReceipt{}, fmt.Errorf("%w: submission does not belong to transaction", ErrSubmissionReceiptNotFound)
+	}
+	if transaction.CurrentSubmissionReceiptID != req.SubmissionReceiptID {
+		return TransactionReceipt{}, fmt.Errorf("%w: submission is not current for transaction", ErrInvalidSettlementProgressionState)
+	}
+	if transaction.EscrowExecutionStatus != EscrowExecutionStatusFunded {
+		return TransactionReceipt{}, fmt.Errorf("%w: escrow must remain funded before adjudication", ErrInvalidSettlementProgressionState)
+	}
+	if transaction.SettlementProgressionStatus != SettlementProgressionDisputeReady {
+		return TransactionReceipt{}, fmt.Errorf("%w: settlement must remain dispute-ready before adjudication", ErrInvalidSettlementProgressionState)
+	}
+	if transaction.EscrowReference != req.EscrowReference {
+		return TransactionReceipt{}, fmt.Errorf("%w: escrow reference does not match transaction", ErrInvalidSettlementProgressionState)
+	}
+	if req.Outcome != EscrowAdjudicationRelease && req.Outcome != EscrowAdjudicationRefund {
+		return TransactionReceipt{}, fmt.Errorf("%w: invalid escrow adjudication outcome", ErrInvalidSettlementProgressionState)
+	}
+
+	held := false
+	for _, event := range s.events[req.SubmissionReceiptID] {
+		if event.Source == "dispute_hold" && event.Subtype == "held" {
+			held = true
+			break
+		}
+	}
+	if !held {
+		return TransactionReceipt{}, fmt.Errorf("%w: dispute hold evidence is required before adjudication", ErrInvalidSettlementProgressionState)
+	}
+
+	transaction.EscrowAdjudication = req.Outcome
+	s.transactions[req.TransactionReceiptID] = transaction
+
+	reason := strings.TrimSpace(req.Reason)
+	if reason == "" {
+		reason = string(req.Outcome)
+	}
+	s.events[req.SubmissionReceiptID] = append(s.events[req.SubmissionReceiptID], ReceiptEvent{
+		SubmissionReceiptID: req.SubmissionReceiptID,
+		Source:              "escrow_adjudication",
+		Subtype:             string(req.Outcome),
+		Reason:              reason,
+		Type:                EventSettlementUpdated,
+	})
+
+	return cloneTransactionReceipt(transaction), nil
+}
+
+func (s *Store) RecordEscrowAdjudicationFailure(_ context.Context, req EscrowAdjudicationFailureRequest) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	transaction, ok := s.transactions[req.TransactionReceiptID]
+	if !ok {
+		return ErrTransactionReceiptNotFound
+	}
+	submission, ok := s.submissions[req.SubmissionReceiptID]
+	if !ok {
+		return ErrSubmissionReceiptNotFound
+	}
+	if submission.TransactionReceiptID != req.TransactionReceiptID {
+		return fmt.Errorf("%w: submission does not belong to transaction", ErrSubmissionReceiptNotFound)
+	}
+	if transaction.CurrentSubmissionReceiptID != req.SubmissionReceiptID {
+		return fmt.Errorf("%w: submission is not current for transaction", ErrInvalidSettlementProgressionState)
+	}
+	if transaction.EscrowReference != "" && req.EscrowReference != "" && transaction.EscrowReference != req.EscrowReference {
+		return fmt.Errorf("%w: escrow reference does not match transaction", ErrInvalidSettlementProgressionState)
+	}
+
+	s.events[req.SubmissionReceiptID] = append(s.events[req.SubmissionReceiptID], ReceiptEvent{
+		SubmissionReceiptID: req.SubmissionReceiptID,
+		Source:              "escrow_adjudication",
 		Subtype:             "failed",
 		Reason:              req.Reason,
 		Type:                EventSettlementExecutionFailed,

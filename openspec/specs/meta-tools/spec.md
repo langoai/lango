@@ -213,3 +213,15 @@ The meta tools surface SHALL provide a `hold_escrow_for_dispute` tool that recor
 - **WHEN** `hold_escrow_for_dispute` is invoked with `transaction_receipt_id`
 - **THEN** it SHALL evaluate the request through the dispute hold service
 - **AND** it SHALL return canonical transaction-level execution result including settlement progression state, escrow reference, and runtime reference
+
+### Requirement: Release vs refund adjudication meta tool
+The meta tools surface SHALL provide an `adjudicate_escrow_dispute` tool that records the first canonical release-vs-refund branch after dispute hold.
+
+#### Scenario: Adjudication tool available
+- **WHEN** the meta tools are built with a receipts store
+- **THEN** `adjudicate_escrow_dispute` SHALL be available
+
+#### Scenario: Adjudication tool records release or refund branch
+- **WHEN** `adjudicate_escrow_dispute` is invoked with `transaction_receipt_id` and `outcome`
+- **THEN** it SHALL evaluate the request through the escrow adjudication service
+- **AND** it SHALL return canonical transaction-level adjudication result including settlement progression state, escrow reference, and outcome

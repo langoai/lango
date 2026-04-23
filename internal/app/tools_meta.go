@@ -18,6 +18,7 @@ import (
 	"github.com/langoai/lango/internal/economy/escrow"
 	entknowledge "github.com/langoai/lango/internal/ent/knowledge"
 	entlearning "github.com/langoai/lango/internal/ent/learning"
+	"github.com/langoai/lango/internal/escrowadjudication"
 	"github.com/langoai/lango/internal/escrowexecution"
 	"github.com/langoai/lango/internal/escrowrefund"
 	"github.com/langoai/lango/internal/escrowrelease"
@@ -304,6 +305,7 @@ func buildMetaToolsWithRuntimes(
 		newDisputeReadyReceiptTool(receiptStore),
 		newOpenKnowledgeExchangeTransactionTool(receiptStore),
 		newSelectKnowledgeExchangePathTool(receiptStore),
+		newAdjudicateEscrowDisputeTool(store, receiptStore),
 		{
 			Name:        "approve_upfront_payment",
 			Description: "Evaluate an upfront payment request and update the linked transaction receipt with canonical payment approval state",
@@ -1507,6 +1509,72 @@ func newApplySettlementProgressionTool(receiptStore *receipts.Store) *agent.Tool
 	}
 }
 
+func newAdjudicateEscrowDisputeTool(store *knowledge.Store, receiptStore *receipts.Store) *agent.Tool {
+	return &agent.Tool{
+		Name:        "adjudicate_escrow_dispute",
+		Description: "Record a canonical release-or-refund adjudication decision for a funded dispute-ready escrow after dispute hold",
+		SafetyLevel: agent.SafetyLevelDangerous,
+		Capability: agent.ToolCapability{
+			Category: "knowledge",
+			Activity: agent.ActivityWrite,
+		},
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"transaction_receipt_id": map[string]interface{}{"type": "string", "description": "Funded dispute-ready transaction receipt identifier to adjudicate"},
+				"outcome": map[string]interface{}{
+					"type":        "string",
+					"description": "Canonical adjudication decision after dispute hold",
+					"enum":        []string{"release", "refund"},
+				},
+				"reason": map[string]interface{}{"type": "string", "description": "Optional adjudication reason"},
+			},
+			"required": []string{"transaction_receipt_id", "outcome"},
+		},
+		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+			if receiptStore == nil {
+				return nil, fmt.Errorf("receipts store dependency is not configured")
+			}
+
+			transactionReceiptID, err := toolparam.RequireString(params, "transaction_receipt_id")
+			if err != nil {
+				return nil, err
+			}
+			outcome, err := toolparam.RequireString(params, "outcome")
+			if err != nil {
+				return nil, err
+			}
+
+			result, err := escrowadjudication.NewService(receiptStore).Adjudicate(ctx, escrowadjudication.AdjudicateRequest{
+				TransactionReceiptID: strings.TrimSpace(transactionReceiptID),
+				Outcome:              escrowadjudication.Outcome(strings.TrimSpace(outcome)),
+				Reason:               toolparam.OptionalString(params, "reason", ""),
+			})
+			if err != nil {
+				return nil, err
+			}
+
+			if store != nil {
+				if err := store.SaveAuditLog(ctx, knowledge.AuditEntry{
+					Action: "escrow_dispute_adjudication",
+					Actor:  "agent",
+					Target: result.TransactionReceiptID,
+					Details: map[string]interface{}{
+						"transaction_receipt_id": result.TransactionReceiptID,
+						"submission_receipt_id":  result.SubmissionReceiptID,
+						"escrow_reference":       result.EscrowReference,
+						"outcome":                string(result.Outcome),
+					},
+				}); err != nil {
+					return nil, fmt.Errorf("save escrow dispute adjudication audit log: %w", err)
+				}
+			}
+
+			return newAdjudicateEscrowDisputeReceipt(result), nil
+		},
+	}
+}
+
 type settlementExecutionRuntime interface {
 	ExecuteSettlement(context.Context, settlementexecution.DirectPaymentRequest) (settlementexecution.DirectPaymentResult, error)
 }
@@ -1935,6 +2003,14 @@ type applySettlementProgressionReceipt struct {
 	PartialHint                     string `json:"partial_hint,omitempty"`
 }
 
+type adjudicateEscrowDisputeReceipt struct {
+	TransactionReceiptID        string `json:"transaction_receipt_id"`
+	SubmissionReceiptID         string `json:"submission_receipt_id,omitempty"`
+	SettlementProgressionStatus string `json:"settlement_progression_status"`
+	EscrowReference             string `json:"escrow_reference,omitempty"`
+	Outcome                     string `json:"outcome,omitempty"`
+}
+
 type executeSettlementReceipt struct {
 	TransactionReceiptID        string `json:"transaction_receipt_id"`
 	SubmissionReceiptID         string `json:"submission_receipt_id,omitempty"`
@@ -2014,6 +2090,16 @@ func newApplySettlementProgressionReceipt(result settlementprogression.ApplyRele
 		SettlementProgressionReasonCode: string(result.Transaction.SettlementProgressionReasonCode),
 		SettlementProgressionReason:     result.Transaction.SettlementProgressionReason,
 		PartialHint:                     result.Transaction.PartialSettlementHint,
+	}
+}
+
+func newAdjudicateEscrowDisputeReceipt(result escrowadjudication.Result) adjudicateEscrowDisputeReceipt {
+	return adjudicateEscrowDisputeReceipt{
+		TransactionReceiptID:        result.TransactionReceiptID,
+		SubmissionReceiptID:         result.SubmissionReceiptID,
+		SettlementProgressionStatus: string(result.SettlementProgressionStatus),
+		EscrowReference:             result.EscrowReference,
+		Outcome:                     string(result.Outcome),
 	}
 }
 

@@ -891,6 +891,194 @@ func TestRecordEscrowDisputeHoldFailure_AppendsFailureTrail(t *testing.T) {
 	require.Equal(t, "hold failed", last.Reason)
 }
 
+func TestApplyEscrowAdjudication_SetsDecisionWithoutMutatingState(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	submission, tx := createSubmittedTransaction(t, store, ctx, "deal-escrow-adjudication")
+
+	_, err := store.BindEscrowExecutionInput(ctx, tx.TransactionReceiptID, submission.SubmissionReceiptID, EscrowExecutionInput{
+		BuyerDID:  "did:lango:buyer",
+		SellerDID: "did:lango:seller",
+		Amount:    "0.50",
+		Reason:    "escrow adjudication test",
+		Milestones: []EscrowMilestoneInput{
+			{Description: "deliverable", Amount: "0.50"},
+		},
+	})
+	require.NoError(t, err)
+	_, err = store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, submission.SubmissionReceiptID, EscrowExecutionStatusPending, "", EventEscrowExecutionStarted, "")
+	require.NoError(t, err)
+	_, err = store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, submission.SubmissionReceiptID, EscrowExecutionStatusCreated, "", EventEscrowExecutionCreated, "")
+	require.NoError(t, err)
+	_, err = store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, submission.SubmissionReceiptID, EscrowExecutionStatusFunded, "escrow-123", EventEscrowExecutionFunded, "")
+	require.NoError(t, err)
+	_, err = store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, SettlementProgressionReviewNeeded, SettlementProgressionReasonCodeReject, "review needed", "")
+	require.NoError(t, err)
+	_, err = store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, SettlementProgressionDisputeReady, SettlementProgressionReasonCodeEscalate, "dispute ready", "")
+	require.NoError(t, err)
+	err = store.RecordEscrowDisputeHoldSuccess(ctx, EscrowDisputeHoldEvidenceRequest{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		SubmissionReceiptID:  submission.SubmissionReceiptID,
+		EscrowReference:      "escrow-123",
+		RuntimeReference:     "hold-123",
+	})
+	require.NoError(t, err)
+
+	updated, err := store.ApplyEscrowAdjudication(ctx, EscrowAdjudicationRequest{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		SubmissionReceiptID:  submission.SubmissionReceiptID,
+		EscrowReference:      "escrow-123",
+		Outcome:              EscrowAdjudicationRelease,
+		Reason:               "fulfilled after review",
+	})
+	require.NoError(t, err)
+	require.Equal(t, EscrowExecutionStatusFunded, updated.EscrowExecutionStatus)
+	require.Equal(t, SettlementProgressionDisputeReady, updated.SettlementProgressionStatus)
+	require.Equal(t, EscrowAdjudicationRelease, updated.EscrowAdjudication)
+	require.True(t, updated.DisputeReady)
+}
+
+func TestApplyEscrowAdjudication_AppendsDecisionTrail(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	submission, tx := createSubmittedTransaction(t, store, ctx, "deal-escrow-adjudication-trail")
+
+	_, err := store.BindEscrowExecutionInput(ctx, tx.TransactionReceiptID, submission.SubmissionReceiptID, EscrowExecutionInput{
+		BuyerDID:  "did:lango:buyer",
+		SellerDID: "did:lango:seller",
+		Amount:    "0.50",
+		Reason:    "escrow adjudication test",
+		Milestones: []EscrowMilestoneInput{
+			{Description: "deliverable", Amount: "0.50"},
+		},
+	})
+	require.NoError(t, err)
+	_, err = store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, submission.SubmissionReceiptID, EscrowExecutionStatusPending, "", EventEscrowExecutionStarted, "")
+	require.NoError(t, err)
+	_, err = store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, submission.SubmissionReceiptID, EscrowExecutionStatusCreated, "", EventEscrowExecutionCreated, "")
+	require.NoError(t, err)
+	_, err = store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, submission.SubmissionReceiptID, EscrowExecutionStatusFunded, "escrow-123", EventEscrowExecutionFunded, "")
+	require.NoError(t, err)
+	_, err = store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, SettlementProgressionReviewNeeded, SettlementProgressionReasonCodeReject, "review needed", "")
+	require.NoError(t, err)
+	_, err = store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, SettlementProgressionDisputeReady, SettlementProgressionReasonCodeEscalate, "dispute ready", "")
+	require.NoError(t, err)
+	err = store.RecordEscrowDisputeHoldSuccess(ctx, EscrowDisputeHoldEvidenceRequest{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		SubmissionReceiptID:  submission.SubmissionReceiptID,
+		EscrowReference:      "escrow-123",
+		RuntimeReference:     "hold-123",
+	})
+	require.NoError(t, err)
+
+	_, err = store.ApplyEscrowAdjudication(ctx, EscrowAdjudicationRequest{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		SubmissionReceiptID:  submission.SubmissionReceiptID,
+		EscrowReference:      "escrow-123",
+		Outcome:              EscrowAdjudicationRefund,
+		Reason:               "refund approved",
+	})
+	require.NoError(t, err)
+
+	_, events, err := store.GetSubmissionReceipt(ctx, submission.SubmissionReceiptID)
+	require.NoError(t, err)
+	require.Len(t, events, 8)
+	last := events[len(events)-1]
+	require.Equal(t, EventSettlementUpdated, last.Type)
+	require.Equal(t, "escrow_adjudication", last.Source)
+	require.Equal(t, "refund", last.Subtype)
+	require.Equal(t, "refund approved", last.Reason)
+}
+
+func TestApplyEscrowAdjudication_RejectsWhenHoldEvidenceMissing(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	submission, tx := createSubmittedTransaction(t, store, ctx, "deal-escrow-adjudication-no-hold")
+
+	_, err := store.BindEscrowExecutionInput(ctx, tx.TransactionReceiptID, submission.SubmissionReceiptID, EscrowExecutionInput{
+		BuyerDID:  "did:lango:buyer",
+		SellerDID: "did:lango:seller",
+		Amount:    "0.50",
+		Reason:    "escrow adjudication test",
+		Milestones: []EscrowMilestoneInput{
+			{Description: "deliverable", Amount: "0.50"},
+		},
+	})
+	require.NoError(t, err)
+	_, err = store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, submission.SubmissionReceiptID, EscrowExecutionStatusPending, "", EventEscrowExecutionStarted, "")
+	require.NoError(t, err)
+	_, err = store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, submission.SubmissionReceiptID, EscrowExecutionStatusCreated, "", EventEscrowExecutionCreated, "")
+	require.NoError(t, err)
+	_, err = store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, submission.SubmissionReceiptID, EscrowExecutionStatusFunded, "escrow-123", EventEscrowExecutionFunded, "")
+	require.NoError(t, err)
+	_, err = store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, SettlementProgressionReviewNeeded, SettlementProgressionReasonCodeReject, "review needed", "")
+	require.NoError(t, err)
+	_, err = store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, SettlementProgressionDisputeReady, SettlementProgressionReasonCodeEscalate, "dispute ready", "")
+	require.NoError(t, err)
+
+	_, err = store.ApplyEscrowAdjudication(ctx, EscrowAdjudicationRequest{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		SubmissionReceiptID:  submission.SubmissionReceiptID,
+		EscrowReference:      "escrow-123",
+		Outcome:              EscrowAdjudicationRelease,
+	})
+	require.ErrorIs(t, err, ErrInvalidSettlementProgressionState)
+}
+
+func TestRecordEscrowAdjudicationFailure_AppendsFailureTrail(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	submission, tx := createSubmittedTransaction(t, store, ctx, "deal-escrow-adjudication-failure")
+
+	_, err := store.BindEscrowExecutionInput(ctx, tx.TransactionReceiptID, submission.SubmissionReceiptID, EscrowExecutionInput{
+		BuyerDID:  "did:lango:buyer",
+		SellerDID: "did:lango:seller",
+		Amount:    "0.50",
+		Reason:    "escrow adjudication test",
+		Milestones: []EscrowMilestoneInput{
+			{Description: "deliverable", Amount: "0.50"},
+		},
+	})
+	require.NoError(t, err)
+	_, err = store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, submission.SubmissionReceiptID, EscrowExecutionStatusPending, "", EventEscrowExecutionStarted, "")
+	require.NoError(t, err)
+	_, err = store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, submission.SubmissionReceiptID, EscrowExecutionStatusCreated, "", EventEscrowExecutionCreated, "")
+	require.NoError(t, err)
+	_, err = store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, submission.SubmissionReceiptID, EscrowExecutionStatusFunded, "escrow-123", EventEscrowExecutionFunded, "")
+	require.NoError(t, err)
+	_, err = store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, SettlementProgressionReviewNeeded, SettlementProgressionReasonCodeReject, "review needed", "")
+	require.NoError(t, err)
+	_, err = store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, SettlementProgressionDisputeReady, SettlementProgressionReasonCodeEscalate, "dispute ready", "")
+	require.NoError(t, err)
+
+	err = store.RecordEscrowAdjudicationFailure(ctx, EscrowAdjudicationFailureRequest{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		SubmissionReceiptID:  submission.SubmissionReceiptID,
+		EscrowReference:      "escrow-123",
+		Reason:               "hold evidence missing",
+	})
+	require.NoError(t, err)
+
+	updated, err := store.GetTransactionReceipt(ctx, tx.TransactionReceiptID)
+	require.NoError(t, err)
+	require.Equal(t, EscrowExecutionStatusFunded, updated.EscrowExecutionStatus)
+	require.Equal(t, SettlementProgressionDisputeReady, updated.SettlementProgressionStatus)
+	require.Empty(t, updated.EscrowAdjudication)
+
+	_, events, err := store.GetSubmissionReceipt(ctx, submission.SubmissionReceiptID)
+	require.NoError(t, err)
+	require.Len(t, events, 7)
+	last := events[len(events)-1]
+	require.Equal(t, EventSettlementExecutionFailed, last.Type)
+	require.Equal(t, "escrow_adjudication", last.Source)
+	require.Equal(t, "failed", last.Subtype)
+	require.Equal(t, "hold evidence missing", last.Reason)
+}
+
 func TestRecordSettlementFailure_RejectsFailureAfterSettlementCloseout(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()

@@ -311,3 +311,18 @@ The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the 
 - **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
 - **THEN** they SHALL find dispute hold described as a landed first slice
 - **AND** the remaining work SHALL be described as release-vs-refund adjudication, explicit held-state design, and dispute engine integration
+
+### Requirement: Release-vs-refund adjudication page describes the first post-hold branching slice
+The `docs/architecture/release-vs-refund-adjudication.md` page SHALL describe the first post-hold release-vs-refund adjudication slice for `knowledge exchange v1`, including what currently ships and the current limits of the slice.
+
+#### Scenario: Adjudication page shows the bounded slice
+- **WHEN** a user reads `docs/architecture/release-vs-refund-adjudication.md`
+- **THEN** they SHALL find sections describing the current adjudication slice, what currently ships, and current limits
+
+### Requirement: P2P knowledge exchange track reflects landed release-vs-refund adjudication
+The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the release-vs-refund adjudication first slice as landed work and list the remaining work as adjudication-aware release/refund execution, keep-hold or re-escalation states, and broader dispute engine integration.
+
+#### Scenario: Track page points to the landed adjudication slice
+- **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
+- **THEN** they SHALL find release-vs-refund adjudication described as a landed first slice
+- **AND** the remaining work SHALL be described as adjudication-aware release/refund execution, keep-hold or re-escalation states, and broader dispute engine integration

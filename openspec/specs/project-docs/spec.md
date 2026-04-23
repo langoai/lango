@@ -135,3 +135,11 @@ The `docs/architecture/index.md` page SHALL include a quick link to `dispute-hol
 - **WHEN** a user reads `docs/architecture/index.md`
 - **THEN** they SHALL find the Dispute Hold entry linking to `dispute-hold.md`
 - **AND** the entry SHALL describe the slice as funded dispute-ready escrow hold bounded by current implementation limits
+
+### Requirement: Architecture landing page links the release-vs-refund adjudication slice
+The `docs/architecture/index.md` page SHALL include a quick link to `release-vs-refund-adjudication.md` and a short summary that frames it as the first post-hold release-vs-refund adjudication slice for `knowledge exchange v1`.
+
+#### Scenario: Release-vs-refund adjudication appears in architecture landing page
+- **WHEN** a user reads `docs/architecture/index.md`
+- **THEN** they SHALL find the Release vs Refund Adjudication entry linking to `release-vs-refund-adjudication.md`
+- **AND** the entry SHALL describe the slice as canonical post-hold branching bounded by current implementation limits
