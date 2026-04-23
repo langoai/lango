@@ -314,7 +314,7 @@ func (f *fakeReplayStore) GetSubmissionReceipt(_ context.Context, submissionRece
 	return f.submission, append([]receipts.ReceiptEvent(nil), f.events...), nil
 }
 
-func (f *fakeReplayStore) RecordManualRetryRequested(_ context.Context, req receipts.ManualRetryRequestedRequest) error {
+func (f *fakeReplayStore) RecordManualRetryRequested(ctx context.Context, req receipts.ManualRetryRequestedRequest) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -323,12 +323,16 @@ func (f *fakeReplayStore) RecordManualRetryRequested(_ context.Context, req rece
 	if f.recordRetryErr != nil {
 		return f.recordRetryErr
 	}
+	reason := req.Reason
+	if actor := strings.TrimSpace(ctxkeys.PrincipalFromContext(ctx)); actor != "" {
+		reason = "actor=" + actor + " reason=" + reason
+	}
 	f.events = append(f.events, receipts.ReceiptEvent{
 		SubmissionReceiptID: f.submission.SubmissionReceiptID,
 		Source:              "post_adjudication_retry",
 		Subtype:             "manual-retry-requested",
 		Type:                receipts.EventSettlementUpdated,
-		Reason:              req.Reason,
+		Reason:              reason,
 	})
 	return nil
 }

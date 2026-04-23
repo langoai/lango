@@ -11,6 +11,7 @@ import (
 
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/ctxkeys"
 	"github.com/langoai/lango/internal/postadjudicationstatus"
 	"github.com/langoai/lango/internal/receipts"
 )
@@ -23,6 +24,11 @@ func TestBuildMetaTools_IncludesPostAdjudicationStatus(t *testing.T) {
 	assert.Equal(t, "knowledge", listTool.Capability.Category)
 	assert.Equal(t, agent.ActivityQuery, listTool.Capability.Activity)
 	assert.True(t, listTool.Capability.ReadOnly)
+	listProps, ok := listTool.Parameters["properties"].(map[string]interface{})
+	require.True(t, ok)
+	assert.Contains(t, listProps, "manual_replay_actor")
+	assert.Contains(t, listProps, "dead_lettered_after")
+	assert.Contains(t, listProps, "dead_lettered_before")
 
 	detailTool := findTool(tools, "get_post_adjudication_execution_status")
 	require.NotNil(t, detailTool)
@@ -136,19 +142,24 @@ func TestListDeadLetteredPostAdjudicationExecutions_AppliesFiltersAndPagination(
 	store := receipts.NewStore()
 	ctx := context.Background()
 
-	releaseHigh := makeDeadLetterStatusFixture(t, store, ctx, "status-release-high", receipts.EscrowAdjudicationRelease, 5, "dispatch-release-high")
+	windowStart := time.Now().UTC().Add(-time.Minute)
+	releaseHigh := makeDeadLetterStatusFixture(t, store, ctxkeys.WithPrincipal(ctx, "operator:alice"), "status-release-high", receipts.EscrowAdjudicationRelease, 5, "dispatch-release-high")
 	makeDeadLetterStatusFixture(t, store, ctx, "status-release-low", receipts.EscrowAdjudicationRelease, 2, "dispatch-release-low")
 	refundHigh := makeDeadLetterStatusFixture(t, store, ctx, "status-refund-high", receipts.EscrowAdjudicationRefund, 4, "dispatch-refund-high")
+	windowEnd := time.Now().UTC().Add(time.Minute)
 
 	tool := findTool(buildMetaTools(nil, nil, nil, config.SkillConfig{}, nil, store), "list_dead_lettered_post_adjudication_executions")
 	require.NotNil(t, tool)
 
 	got, err := tool.Handler(ctx, map[string]interface{}{
-		"adjudication":      "release",
-		"retry_attempt_min": float64(4),
-		"query":             releaseHigh.TransactionReceiptID[:8],
-		"offset":            float64(0),
-		"limit":             float64(1),
+		"adjudication":         "release",
+		"retry_attempt_min":    float64(4),
+		"query":                releaseHigh.TransactionReceiptID[:8],
+		"manual_replay_actor":  "operator:alice",
+		"dead_lettered_after":  windowStart.Format(time.RFC3339),
+		"dead_lettered_before": windowEnd.Format(time.RFC3339),
+		"offset":               float64(0),
+		"limit":                float64(1),
 	})
 	require.NoError(t, err)
 
@@ -163,6 +174,8 @@ func TestListDeadLetteredPostAdjudicationExecutions_AppliesFiltersAndPagination(
 	require.Len(t, entries, 1)
 	assert.Equal(t, releaseHigh.TransactionReceiptID, entries[0].TransactionReceiptID)
 	assert.Equal(t, 5, entries[0].LatestRetryAttempt)
+	assert.Equal(t, "operator:alice", entries[0].LatestManualReplayActor)
+	assert.NotEmpty(t, entries[0].LatestDeadLetteredAt)
 
 	got, err = tool.Handler(ctx, map[string]interface{}{
 		"offset": float64(1),
@@ -300,6 +313,14 @@ func makeDeadLetterStatusFixture(
 		NextRetryAt:          time.Now().UTC().Add(time.Minute),
 	})
 	require.NoError(t, err)
+	if actor := ctxkeys.PrincipalFromContext(ctx); actor != "" {
+		err = store.RecordManualRetryRequested(ctx, receipts.ManualRetryRequestedRequest{
+			TransactionReceiptID: tx.TransactionReceiptID,
+			Outcome:              outcome,
+			Reason:               "manual retry requested",
+		})
+		require.NoError(t, err)
+	}
 	err = store.RecordPostAdjudicationDeadLetter(ctx, receipts.PostAdjudicationDeadLetterRequest{
 		TransactionReceiptID: tx.TransactionReceiptID,
 		Outcome:              outcome,

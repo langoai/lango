@@ -98,7 +98,7 @@ func (s *Service) Replay(ctx context.Context, req Request) (Result, error) {
 		SubmissionReceiptID: submissionReceiptID,
 		Source:              "post_adjudication_retry",
 		Subtype:             "manual-retry-requested",
-		Reason:              "manual retry requested",
+		Reason:              fmt.Sprintf("actor=%s reason=%s", actor, "manual retry requested"),
 		Type:                receipts.EventSettlementUpdated,
 	})
 

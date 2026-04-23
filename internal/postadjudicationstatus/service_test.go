@@ -127,6 +127,7 @@ func TestServiceListCurrentDeadLetters_ExtractsFocusedFields(t *testing.T) {
 		CanonicalApprovalStatus: receipts.ApprovalApproved,
 	}
 	store.events["sub-1"] = []receipts.ReceiptEvent{
+		manualRetryEvent("sub-1", "operator:alice"),
 		{
 			SubmissionReceiptID: "sub-1",
 			Source:              "post_adjudication_retry",
@@ -139,7 +140,7 @@ func TestServiceListCurrentDeadLetters_ExtractsFocusedFields(t *testing.T) {
 			Source:              "post_adjudication_retry",
 			Subtype:             "dead-lettered",
 			Type:                receipts.EventSettlementExecutionFailed,
-			Reason:              "attempt=4 outcome=refund dispatch_reference=dispatch-final-123 reason=worker exhausted after 4 attempts",
+			Reason:              "attempt=4 outcome=refund dispatch_reference=dispatch-final-123 dead_lettered_at=2026-04-23T11:45:00Z reason=worker exhausted after 4 attempts",
 		},
 	}
 
@@ -152,6 +153,8 @@ func TestServiceListCurrentDeadLetters_ExtractsFocusedFields(t *testing.T) {
 	assert.Equal(t, "sub-1", got[0].SubmissionReceiptID)
 	assert.Equal(t, string(receipts.EscrowAdjudicationRefund), got[0].Adjudication)
 	assert.Equal(t, "worker exhausted after 4 attempts", got[0].LatestDeadLetterReason)
+	assert.Equal(t, "2026-04-23T11:45:00Z", got[0].LatestDeadLetteredAt)
+	assert.Equal(t, "operator:alice", got[0].LatestManualReplayActor)
 	assert.Equal(t, 4, got[0].LatestRetryAttempt)
 	assert.Equal(t, "dispatch-final-123", got[0].LatestDispatchReference)
 }
@@ -180,6 +183,7 @@ func TestServiceGetTransactionStatus_ReturnsCanonicalSnapshotAndSummary(t *testi
 		CanonicalApprovalStatus: receipts.ApprovalApproved,
 	}
 	store.events["sub-1"] = []receipts.ReceiptEvent{
+		manualRetryEvent("sub-1", "operator:alice"),
 		{
 			SubmissionReceiptID: "sub-1",
 			Source:              "post_adjudication_retry",
@@ -192,7 +196,7 @@ func TestServiceGetTransactionStatus_ReturnsCanonicalSnapshotAndSummary(t *testi
 			Source:              "post_adjudication_retry",
 			Subtype:             "dead-lettered",
 			Type:                receipts.EventSettlementExecutionFailed,
-			Reason:              "attempt=3 outcome=release dispatch_reference=dispatch-456 reason=terminal worker failure",
+			Reason:              "attempt=3 outcome=release dispatch_reference=dispatch-456 dead_lettered_at=2026-04-23T10:30:00Z reason=terminal worker failure",
 		},
 	}
 
@@ -205,6 +209,8 @@ func TestServiceGetTransactionStatus_ReturnsCanonicalSnapshotAndSummary(t *testi
 	require.Equal(t, store.events["sub-1"], got.CanonicalSnapshot.SubmissionEvents)
 	assert.Equal(t, 3, got.RetryDeadLetterSummary.LatestRetryAttempt)
 	assert.Equal(t, "terminal worker failure", got.RetryDeadLetterSummary.LatestDeadLetterReason)
+	assert.Equal(t, "2026-04-23T10:30:00Z", got.RetryDeadLetterSummary.LatestDeadLetteredAt)
+	assert.Equal(t, "operator:alice", got.RetryDeadLetterSummary.LatestManualReplayActor)
 	assert.Equal(t, "dispatch-456", got.RetryDeadLetterSummary.LatestDispatchReference)
 }
 
@@ -286,6 +292,48 @@ func TestServiceListCurrentDeadLettersPage_FiltersByOutcomeAttemptAndQuery(t *te
 			assert.Equal(t, tc.opts.Limit, got.Limit)
 		})
 	}
+}
+
+func TestServiceListCurrentDeadLettersPage_FiltersByManualReplayActorAndDeadLetterWindow(t *testing.T) {
+	t.Parallel()
+
+	store := newFakeStatusStore()
+	store.transactions = []receipts.TransactionReceipt{
+		makeDeadLetterTransaction("tx-a", "sub-a", receipts.EscrowAdjudicationRelease),
+		makeDeadLetterTransaction("tx-b", "sub-b", receipts.EscrowAdjudicationRelease),
+		makeDeadLetterTransaction("tx-c", "sub-c", receipts.EscrowAdjudicationRefund),
+	}
+	store.submissions["sub-a"] = receipts.SubmissionReceipt{SubmissionReceiptID: "sub-a", TransactionReceiptID: "tx-a"}
+	store.submissions["sub-b"] = receipts.SubmissionReceipt{SubmissionReceiptID: "sub-b", TransactionReceiptID: "tx-b"}
+	store.submissions["sub-c"] = receipts.SubmissionReceipt{SubmissionReceiptID: "sub-c", TransactionReceiptID: "tx-c"}
+	store.events["sub-a"] = []receipts.ReceiptEvent{
+		manualRetryEvent("sub-a", "operator:alice"),
+		deadLetterEventAt("sub-a", 5, "dispatch-a", "2026-04-23T09:15:00Z"),
+	}
+	store.events["sub-b"] = []receipts.ReceiptEvent{
+		manualRetryEvent("sub-b", "operator:bob"),
+		deadLetterEventAt("sub-b", 4, "dispatch-b", "2026-04-23T11:15:00Z"),
+	}
+	store.events["sub-c"] = []receipts.ReceiptEvent{
+		manualRetryEvent("sub-c", "operator:alice"),
+		deadLetterEventAt("sub-c", 3, "dispatch-c", "2026-04-23T12:30:00Z"),
+	}
+
+	svc := NewService(store)
+
+	got, err := svc.ListCurrentDeadLettersPage(context.Background(), DeadLetterListOptions{
+		Adjudication:       string(receipts.EscrowAdjudicationRelease),
+		ManualReplayActor:  "operator:bob",
+		DeadLetteredAfter:  "2026-04-23T10:00:00Z",
+		DeadLetteredBefore: "2026-04-23T12:00:00Z",
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, got.Total)
+	require.Equal(t, 1, got.Count)
+	require.Len(t, got.Items, 1)
+	assert.Equal(t, "tx-b", got.Items[0].TransactionReceiptID)
+	assert.Equal(t, "2026-04-23T11:15:00Z", got.Items[0].LatestDeadLetteredAt)
+	assert.Equal(t, "operator:bob", got.Items[0].LatestManualReplayActor)
 }
 
 func TestServiceListCurrentDeadLettersPage_ReturnsPaginationMetadata(t *testing.T) {
@@ -514,6 +562,26 @@ func deadLetterEvent(submissionID string, attempt int, dispatchReference string)
 		Subtype:             "dead-lettered",
 		Type:                receipts.EventSettlementExecutionFailed,
 		Reason:              "attempt=" + strconv.Itoa(attempt) + " outcome=release dispatch_reference=" + dispatchReference + " reason=worker exhausted",
+	}
+}
+
+func deadLetterEventAt(submissionID string, attempt int, dispatchReference string, deadLetteredAt string) receipts.ReceiptEvent {
+	return receipts.ReceiptEvent{
+		SubmissionReceiptID: submissionID,
+		Source:              "post_adjudication_retry",
+		Subtype:             "dead-lettered",
+		Type:                receipts.EventSettlementExecutionFailed,
+		Reason:              "attempt=" + strconv.Itoa(attempt) + " outcome=release dispatch_reference=" + dispatchReference + " dead_lettered_at=" + deadLetteredAt + " reason=worker exhausted",
+	}
+}
+
+func manualRetryEvent(submissionID string, actor string) receipts.ReceiptEvent {
+	return receipts.ReceiptEvent{
+		SubmissionReceiptID: submissionID,
+		Source:              "post_adjudication_retry",
+		Subtype:             "manual-retry-requested",
+		Type:                receipts.EventSettlementUpdated,
+		Reason:              "actor=" + actor + " reason=manual retry requested",
 	}
 }
 

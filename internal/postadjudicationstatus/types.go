@@ -19,6 +19,8 @@ type DeadLetterBacklogEntry struct {
 	IsDeadLettered          bool   `json:"is_dead_lettered"`
 	CanRetry                bool   `json:"can_retry"`
 	LatestDeadLetterReason  string `json:"latest_dead_letter_reason,omitempty"`
+	LatestDeadLetteredAt    string `json:"latest_dead_lettered_at,omitempty"`
+	LatestManualReplayActor string `json:"latest_manual_replay_actor,omitempty"`
 	LatestRetryAttempt      int    `json:"latest_retry_attempt,omitempty"`
 	LatestDispatchReference string `json:"latest_dispatch_reference,omitempty"`
 }
@@ -32,18 +34,23 @@ type CanonicalSnapshot struct {
 type RetryDeadLetterSummary struct {
 	HasDeadLetter           bool   `json:"has_dead_letter"`
 	LatestDeadLetterReason  string `json:"latest_dead_letter_reason,omitempty"`
+	LatestDeadLetteredAt    string `json:"latest_dead_lettered_at,omitempty"`
+	LatestManualReplayActor string `json:"latest_manual_replay_actor,omitempty"`
 	LatestRetryAttempt      int    `json:"latest_retry_attempt,omitempty"`
 	LatestDispatchReference string `json:"latest_dispatch_reference,omitempty"`
 	LatestStatusSubtype     string `json:"latest_status_subtype,omitempty"`
 }
 
 type DeadLetterListOptions struct {
-	Adjudication    string
-	RetryAttemptMin int
-	RetryAttemptMax int
-	Query           string
-	Offset          int
-	Limit           int
+	Adjudication       string
+	RetryAttemptMin    int
+	RetryAttemptMax    int
+	Query              string
+	ManualReplayActor  string
+	DeadLetteredAfter  string
+	DeadLetteredBefore string
+	Offset             int
+	Limit              int
 }
 
 type DeadLetterListPage struct {

@@ -19,8 +19,12 @@ The slice is intentionally narrow:
   - `adjudication` filter
   - `retry_attempt_min` / `retry_attempt_max` filters
   - `query` over transaction and submission receipt IDs
+  - `manual_replay_actor` filter
+  - `dead_lettered_after` / `dead_lettered_before` filters
   - `offset` / `limit` pagination
   - `count` / `total` / `offset` / `limit` response metadata
+  - `latest_dead_lettered_at`
+  - `latest_manual_replay_actor`
 - `get_post_adjudication_execution_status(transaction_receipt_id)`
   - current canonical snapshot
   - latest retry / dead-letter summary
@@ -41,6 +45,6 @@ This slice does not yet include:
 - generic dead-letter browsing for all background tasks
 - raw background task snapshots
 - full event history dump
-- actor or time-range filters
 - alternate sort modes
 - cockpit / CLI presentation surfaces
+- richer detail-surface actor/time summaries

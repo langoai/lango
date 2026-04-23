@@ -427,12 +427,13 @@ The `docs/architecture/dead-letter-browsing-status-observation.md` page SHALL de
 #### Scenario: Dead-letter browsing page describes filtering and detail hints
 - **WHEN** a user reads `docs/architecture/dead-letter-browsing-status-observation.md`
 - **THEN** they SHALL find filtering and pagination described for the backlog list
+- **AND** they SHALL find actor/time-based list filters described
 - **AND** they SHALL find detail navigation hints described for per-transaction status
 
 ### Requirement: P2P knowledge exchange track reflects landed dead-letter browsing / status observation
-The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe dead-letter browsing / status observation as landed work with richer filtering and pagination, and list the remaining work as actor/time-based filters, raw background-task bridges, and higher-level cockpit or CLI surfaces.
+The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe dead-letter browsing / status observation as landed work with actor/time-based filters, and list the remaining work as richer reason/dispatch filters, raw background-task bridges, and higher-level cockpit or CLI surfaces.
 
 #### Scenario: Track page points to the landed status slice
 - **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
 - **THEN** they SHALL find dead-letter browsing / status observation described as a landed first slice
-- **AND** the remaining work SHALL be described as actor/time-based filters, raw background-task bridges, and higher-level cockpit or CLI surfaces
+- **AND** the remaining work SHALL be described as richer reason/dispatch filters, raw background-task bridges, and higher-level cockpit or CLI surfaces

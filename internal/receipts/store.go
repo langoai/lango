@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/langoai/lango/internal/ctxkeys"
 	"github.com/langoai/lango/internal/finance"
 	"github.com/langoai/lango/internal/paymentapproval"
 )
@@ -587,13 +588,13 @@ func (s *Store) RecordPostAdjudicationDeadLetter(_ context.Context, req PostAdju
 		SubmissionReceiptID: submissionReceiptID,
 		Source:              "post_adjudication_retry",
 		Subtype:             "dead-lettered",
-		Reason:              fmt.Sprintf("attempt=%d outcome=%s reason=%s", req.AttemptCount, req.Outcome, req.Reason),
+		Reason:              fmt.Sprintf("attempt=%d outcome=%s dead_lettered_at=%s reason=%s", req.AttemptCount, req.Outcome, time.Now().UTC().Format(time.RFC3339), req.Reason),
 		Type:                EventSettlementExecutionFailed,
 	})
 	return nil
 }
 
-func (s *Store) RecordManualRetryRequested(_ context.Context, req ManualRetryRequestedRequest) error {
+func (s *Store) RecordManualRetryRequested(ctx context.Context, req ManualRetryRequestedRequest) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -616,6 +617,9 @@ func (s *Store) RecordManualRetryRequested(_ context.Context, req ManualRetryReq
 	reason := strings.TrimSpace(req.Reason)
 	if reason == "" {
 		reason = string(req.Outcome)
+	}
+	if actor := strings.TrimSpace(ctxkeys.PrincipalFromContext(ctx)); actor != "" {
+		reason = fmt.Sprintf("actor=%s reason=%s", actor, reason)
 	}
 	s.events[submissionReceiptID] = append(s.events[submissionReceiptID], ReceiptEvent{
 		SubmissionReceiptID: submissionReceiptID,

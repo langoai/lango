@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/langoai/lango/internal/receipts"
 )
@@ -155,6 +156,8 @@ func (s *Service) deadLetterEntryForTransaction(ctx context.Context, transaction
 		IsDeadLettered:          isDeadLettered,
 		CanRetry:                canRetry,
 		LatestDeadLetterReason:  summary.LatestDeadLetterReason,
+		LatestDeadLetteredAt:    summary.LatestDeadLetteredAt,
+		LatestManualReplayActor: summary.LatestManualReplayActor,
 		LatestRetryAttempt:      summary.LatestRetryAttempt,
 		LatestDispatchReference: summary.LatestDispatchReference,
 	}, true, nil
@@ -196,11 +199,17 @@ func summarizeEvents(events []receipts.ReceiptEvent) eventSummary {
 		if parsed.LatestDispatchReference != "" {
 			summary.LatestDispatchReference = parsed.LatestDispatchReference
 		}
+		if event.Subtype == "manual-retry-requested" && parsed.LatestManualReplayActor != "" {
+			summary.LatestManualReplayActor = parsed.LatestManualReplayActor
+		}
 		summary.LatestStatusSubtype = event.Subtype
 		if event.Subtype == "dead-lettered" {
 			summary.HasDeadLetter = true
 			if parsed.LatestDeadLetterReason != "" {
 				summary.LatestDeadLetterReason = parsed.LatestDeadLetterReason
+			}
+			if parsed.LatestDeadLetteredAt != "" {
+				summary.LatestDeadLetteredAt = parsed.LatestDeadLetteredAt
 			}
 			continue
 		}
@@ -236,6 +245,12 @@ func parseEventSummary(event receipts.ReceiptEvent) eventSummary {
 			}
 		case "dispatch_reference":
 			summary.LatestDispatchReference = value
+		case "actor":
+			summary.LatestManualReplayActor = value
+		case "dead_lettered_at":
+			if deadLetteredAt, err := time.Parse(time.RFC3339, value); err == nil {
+				summary.LatestDeadLetteredAt = deadLetteredAt.UTC().Format(time.RFC3339)
+			}
 		}
 	}
 
@@ -259,6 +274,29 @@ func matchesDeadLetterFilters(entry DeadLetterBacklogEntry, opts DeadLetterListO
 			return false
 		}
 	}
+	if actor := strings.TrimSpace(opts.ManualReplayActor); actor != "" && !strings.EqualFold(entry.LatestManualReplayActor, actor) {
+		return false
+	}
+	if after := strings.TrimSpace(opts.DeadLetteredAfter); after != "" {
+		afterTime, ok := parseRFC3339(after)
+		if !ok {
+			return false
+		}
+		entryTime, ok := parseRFC3339(entry.LatestDeadLetteredAt)
+		if !ok || entryTime.Before(afterTime) {
+			return false
+		}
+	}
+	if before := strings.TrimSpace(opts.DeadLetteredBefore); before != "" {
+		beforeTime, ok := parseRFC3339(before)
+		if !ok {
+			return false
+		}
+		entryTime, ok := parseRFC3339(entry.LatestDeadLetteredAt)
+		if !ok || entryTime.After(beforeTime) {
+			return false
+		}
+	}
 	return true
 }
 
@@ -267,4 +305,12 @@ func detailNavigationHints(transaction receipts.TransactionReceipt, summary Retr
 	isDeadLettered := summary.HasDeadLetter
 	canRetry := isDeadLettered && adjudication != "" && strings.TrimSpace(transaction.CurrentSubmissionReceiptID) != ""
 	return isDeadLettered, canRetry, adjudication
+}
+
+func parseRFC3339(value string) (time.Time, bool) {
+	parsed, err := time.Parse(time.RFC3339, strings.TrimSpace(value))
+	if err != nil {
+		return time.Time{}, false
+	}
+	return parsed.UTC(), true
 }

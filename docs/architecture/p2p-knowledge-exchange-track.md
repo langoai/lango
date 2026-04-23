@@ -67,7 +67,7 @@ The first operator replay / manual retry slice is now landed too: `retry_post_ad
 
 The first policy-driven replay controls slice is now landed too: replay now resolves the current actor from runtime context, applies config-backed allowlists for overall replay plus outcome-specific replay, and fails closed when actor resolution or authorization fails. The remaining work is richer policy classes, policy editing surfaces, per-transaction snapshots, and amount-tier replay controls.
 
-The dead-letter browsing / status observation slice now includes richer filtering and pagination too: operators can filter the current dead-lettered post-adjudication backlog by adjudication outcome, retry-attempt range, and receipt-ID query, page through the current backlog, and inspect canonical snapshot plus retry/dead-letter hints for a given transaction. The remaining work is actor/time-based filters, raw background-task bridges, and higher-level cockpit or CLI surfaces.
+The dead-letter browsing / status observation slice now includes actor/time-based filters too: operators can filter the current dead-lettered post-adjudication backlog by adjudication outcome, retry-attempt range, receipt-ID query, latest manual replay actor, and latest dead-letter time window, page through the current backlog, and inspect canonical snapshot plus retry/dead-letter hints for a given transaction. The remaining work is richer reason/dispatch filters, raw background-task bridges, and higher-level cockpit or CLI surfaces.
 
 ## In Scope
 
@@ -123,5 +123,5 @@ The dead-letter browsing / status observation slice now includes richer filterin
 13. `retry / dead-letter handling` first slice is now landed; the follow-on work is operator replay, generic async retry policy, dead-letter browsing, and policy-driven backoff tuning
 14. `operator replay / manual retry` first slice is now landed; the follow-on work is dead-letter browsing UI, policy-driven replay controls, generic replay substrate design, and broader dispute engine integration
 15. `policy-driven replay controls` first slice is now landed; the follow-on work is richer policy classes, policy editing surfaces, per-transaction snapshots, and amount-tier replay controls
-16. `dead-letter browsing / status observation` slice now includes richer filtering and pagination; the follow-on work is actor/time-based filters, raw background-task bridges, and higher-level cockpit or CLI surfaces
+16. `dead-letter browsing / status observation` slice now includes actor/time-based filters; the follow-on work is richer reason/dispatch filters, raw background-task bridges, and higher-level cockpit or CLI surfaces
 17. the first transaction-oriented runtime design slice, now documented in `docs/architecture/knowledge-exchange-runtime.md`; follow-on work is runtime implementation and broader progression handling

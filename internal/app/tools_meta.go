@@ -1720,22 +1720,28 @@ func newListDeadLetteredPostAdjudicationExecutionsTool(receiptStore *receipts.St
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
-				"adjudication":      map[string]interface{}{"type": "string", "description": "Optional adjudication outcome filter (release or refund)"},
-				"retry_attempt_min": map[string]interface{}{"type": "integer", "description": "Optional minimum retry attempt filter"},
-				"retry_attempt_max": map[string]interface{}{"type": "integer", "description": "Optional maximum retry attempt filter"},
-				"query":             map[string]interface{}{"type": "string", "description": "Optional substring filter for transaction or submission receipt IDs"},
-				"offset":            map[string]interface{}{"type": "integer", "description": "Optional zero-based pagination offset"},
-				"limit":             map[string]interface{}{"type": "integer", "description": "Optional pagination limit"},
+				"adjudication":         map[string]interface{}{"type": "string", "description": "Optional adjudication outcome filter (release or refund)"},
+				"retry_attempt_min":    map[string]interface{}{"type": "integer", "description": "Optional minimum retry attempt filter"},
+				"retry_attempt_max":    map[string]interface{}{"type": "integer", "description": "Optional maximum retry attempt filter"},
+				"query":                map[string]interface{}{"type": "string", "description": "Optional substring filter for transaction or submission receipt IDs"},
+				"manual_replay_actor":  map[string]interface{}{"type": "string", "description": "Optional latest manual replay actor filter"},
+				"dead_lettered_after":  map[string]interface{}{"type": "string", "description": "Optional RFC3339 lower bound for latest dead-letter timestamp"},
+				"dead_lettered_before": map[string]interface{}{"type": "string", "description": "Optional RFC3339 upper bound for latest dead-letter timestamp"},
+				"offset":               map[string]interface{}{"type": "integer", "description": "Optional zero-based pagination offset"},
+				"limit":                map[string]interface{}{"type": "integer", "description": "Optional pagination limit"},
 			},
 		},
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
 			page, err := postadjudicationstatus.NewService(receiptStore).ListCurrentDeadLettersPage(ctx, postadjudicationstatus.DeadLetterListOptions{
-				Adjudication:    toolparam.OptionalString(params, "adjudication", ""),
-				RetryAttemptMin: toolparam.OptionalInt(params, "retry_attempt_min", 0),
-				RetryAttemptMax: toolparam.OptionalInt(params, "retry_attempt_max", 0),
-				Query:           toolparam.OptionalString(params, "query", ""),
-				Offset:          toolparam.OptionalInt(params, "offset", 0),
-				Limit:           toolparam.OptionalInt(params, "limit", 0),
+				Adjudication:       toolparam.OptionalString(params, "adjudication", ""),
+				RetryAttemptMin:    toolparam.OptionalInt(params, "retry_attempt_min", 0),
+				RetryAttemptMax:    toolparam.OptionalInt(params, "retry_attempt_max", 0),
+				Query:              toolparam.OptionalString(params, "query", ""),
+				ManualReplayActor:  toolparam.OptionalString(params, "manual_replay_actor", ""),
+				DeadLetteredAfter:  toolparam.OptionalString(params, "dead_lettered_after", ""),
+				DeadLetteredBefore: toolparam.OptionalString(params, "dead_lettered_before", ""),
+				Offset:             toolparam.OptionalInt(params, "offset", 0),
+				Limit:              toolparam.OptionalInt(params, "limit", 0),
 			})
 			if err != nil {
 				return nil, err
