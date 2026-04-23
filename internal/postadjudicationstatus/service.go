@@ -20,22 +20,33 @@ func NewService(store receiptStore) *Service {
 }
 
 func (s *Service) ListCurrentDeadLetters(ctx context.Context) ([]DeadLetterBacklogEntry, error) {
+	page, err := s.ListCurrentDeadLettersPage(ctx, DeadLetterListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return append([]DeadLetterBacklogEntry(nil), page.Items...), nil
+}
+
+func (s *Service) ListCurrentDeadLettersPage(ctx context.Context, opts DeadLetterListOptions) (DeadLetterListPage, error) {
 	if s == nil || s.store == nil {
-		return nil, fmt.Errorf("receipt store is required")
+		return DeadLetterListPage{}, fmt.Errorf("receipt store is required")
 	}
 
 	transactions, err := s.store.ListTransactionReceipts(ctx)
 	if err != nil {
-		return nil, err
+		return DeadLetterListPage{}, err
 	}
 
 	entries := make([]DeadLetterBacklogEntry, 0, len(transactions))
 	for _, transaction := range transactions {
 		entry, ok, err := s.deadLetterEntryForTransaction(ctx, transaction)
 		if err != nil {
-			return nil, err
+			return DeadLetterListPage{}, err
 		}
 		if !ok {
+			continue
+		}
+		if !matchesDeadLetterFilters(entry, opts) {
 			continue
 		}
 		entries = append(entries, entry)
@@ -48,7 +59,32 @@ func (s *Service) ListCurrentDeadLetters(ctx context.Context) ([]DeadLetterBackl
 		return entries[i].TransactionReceiptID < entries[j].TransactionReceiptID
 	})
 
-	return entries, nil
+	offset := opts.Offset
+	if offset < 0 {
+		offset = 0
+	}
+	if offset > len(entries) {
+		offset = len(entries)
+	}
+
+	limit := opts.Limit
+	if limit < 0 {
+		limit = 0
+	}
+
+	end := len(entries)
+	if limit > 0 && offset+limit < end {
+		end = offset + limit
+	}
+	pageItems := entries[offset:end]
+
+	return DeadLetterListPage{
+		Items:  append([]DeadLetterBacklogEntry(nil), pageItems...),
+		Total:  len(entries),
+		Count:  len(pageItems),
+		Offset: offset,
+		Limit:  limit,
+	}, nil
 }
 
 func (s *Service) GetTransactionStatus(ctx context.Context, transactionReceiptID string) (TransactionStatus, error) {
@@ -75,6 +111,7 @@ func (s *Service) GetTransactionStatus(ctx context.Context, transactionReceiptID
 	}
 
 	summary := summarizeEvents(events)
+	isDeadLettered, canRetry, adjudication := detailNavigationHints(transaction, summary)
 	return TransactionStatus{
 		CanonicalSnapshot: CanonicalSnapshot{
 			TransactionReceipt: transaction,
@@ -82,6 +119,9 @@ func (s *Service) GetTransactionStatus(ctx context.Context, transactionReceiptID
 			SubmissionEvents:   append([]receipts.ReceiptEvent(nil), events...),
 		},
 		RetryDeadLetterSummary: summary,
+		IsDeadLettered:         isDeadLettered,
+		CanRetry:               canRetry,
+		Adjudication:           adjudication,
 	}, nil
 }
 
@@ -106,11 +146,14 @@ func (s *Service) deadLetterEntryForTransaction(ctx context.Context, transaction
 	if !summary.HasDeadLetter {
 		return DeadLetterBacklogEntry{}, false, nil
 	}
+	isDeadLettered, canRetry, adjudication := detailNavigationHints(transaction, summary)
 
 	return DeadLetterBacklogEntry{
 		TransactionReceiptID:    transaction.TransactionReceiptID,
 		SubmissionReceiptID:     submissionReceiptID,
-		Adjudication:            string(transaction.EscrowAdjudication),
+		Adjudication:            adjudication,
+		IsDeadLettered:          isDeadLettered,
+		CanRetry:                canRetry,
 		LatestDeadLetterReason:  summary.LatestDeadLetterReason,
 		LatestRetryAttempt:      summary.LatestRetryAttempt,
 		LatestDispatchReference: summary.LatestDispatchReference,
@@ -197,4 +240,31 @@ func parseEventSummary(event receipts.ReceiptEvent) eventSummary {
 	}
 
 	return summary
+}
+
+func matchesDeadLetterFilters(entry DeadLetterBacklogEntry, opts DeadLetterListOptions) bool {
+	if adjudication := strings.TrimSpace(opts.Adjudication); adjudication != "" && !strings.EqualFold(entry.Adjudication, adjudication) {
+		return false
+	}
+	if opts.RetryAttemptMin > 0 && entry.LatestRetryAttempt < opts.RetryAttemptMin {
+		return false
+	}
+	if opts.RetryAttemptMax > 0 && entry.LatestRetryAttempt > opts.RetryAttemptMax {
+		return false
+	}
+	if query := strings.TrimSpace(opts.Query); query != "" {
+		needle := strings.ToLower(query)
+		haystack := strings.ToLower(entry.TransactionReceiptID + " " + entry.SubmissionReceiptID)
+		if !strings.Contains(haystack, needle) {
+			return false
+		}
+	}
+	return true
+}
+
+func detailNavigationHints(transaction receipts.TransactionReceipt, summary RetryDeadLetterSummary) (bool, bool, string) {
+	adjudication := string(transaction.EscrowAdjudication)
+	isDeadLettered := summary.HasDeadLetter
+	canRetry := isDeadLettered && adjudication != "" && strings.TrimSpace(transaction.CurrentSubmissionReceiptID) != ""
+	return isDeadLettered, canRetry, adjudication
 }

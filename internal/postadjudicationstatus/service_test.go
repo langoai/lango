@@ -2,6 +2,7 @@ package postadjudicationstatus
 
 import (
 	"context"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -220,6 +221,131 @@ func TestServiceGetTransactionStatus_ReturnsMissingTransactionFailure(t *testing
 	assert.Equal(t, TransactionStatus{}, got)
 }
 
+func TestServiceListCurrentDeadLettersPage_FiltersByOutcomeAttemptAndQuery(t *testing.T) {
+	t.Parallel()
+
+	store := newFakeStatusStore()
+	store.transactions = []receipts.TransactionReceipt{
+		makeDeadLetterTransaction("tx-a", "sub-a", receipts.EscrowAdjudicationRelease),
+		makeDeadLetterTransaction("tx-b", "sub-b", receipts.EscrowAdjudicationRefund),
+		makeDeadLetterTransaction("tx-c", "sub-c", receipts.EscrowAdjudicationRelease),
+		makeDeadLetterTransaction("tx-d", "sub-d", receipts.EscrowAdjudicationRelease),
+	}
+	store.submissions["sub-a"] = receipts.SubmissionReceipt{SubmissionReceiptID: "sub-a", TransactionReceiptID: "tx-a"}
+	store.submissions["sub-b"] = receipts.SubmissionReceipt{SubmissionReceiptID: "sub-b", TransactionReceiptID: "tx-b"}
+	store.submissions["sub-c"] = receipts.SubmissionReceipt{SubmissionReceiptID: "sub-c", TransactionReceiptID: "tx-c"}
+	store.submissions["sub-d"] = receipts.SubmissionReceipt{SubmissionReceiptID: "sub-d", TransactionReceiptID: "tx-d"}
+	store.events["sub-a"] = []receipts.ReceiptEvent{deadLetterEvent("sub-a", 6, "dispatch-a")}
+	store.events["sub-b"] = []receipts.ReceiptEvent{deadLetterEvent("sub-b", 5, "dispatch-b")}
+	store.events["sub-c"] = []receipts.ReceiptEvent{deadLetterEvent("sub-c", 4, "dispatch-c")}
+	store.events["sub-d"] = []receipts.ReceiptEvent{deadLetterEvent("sub-d", 2, "dispatch-d")}
+
+	svc := NewService(store)
+
+	tests := []struct {
+		name string
+		opts DeadLetterListOptions
+		want []string
+	}{
+		{
+			name: "transaction id query",
+			opts: DeadLetterListOptions{
+				Adjudication:    string(receipts.EscrowAdjudicationRelease),
+				RetryAttemptMin: 6,
+				RetryAttemptMax: 6,
+				Query:           "tx-a",
+			},
+			want: []string{"tx-a"},
+		},
+		{
+			name: "submission id query",
+			opts: DeadLetterListOptions{
+				Adjudication:    string(receipts.EscrowAdjudicationRelease),
+				RetryAttemptMin: 4,
+				RetryAttemptMax: 4,
+				Query:           "sub-c",
+			},
+			want: []string{"tx-c"},
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := svc.ListCurrentDeadLettersPage(context.Background(), tc.opts)
+			require.NoError(t, err)
+			require.Equal(t, len(tc.want), got.Count)
+			require.Equal(t, len(tc.want), len(got.Items))
+			for i, want := range tc.want {
+				assert.Equal(t, want, got.Items[i].TransactionReceiptID)
+			}
+			assert.Equal(t, len(tc.want), got.Total)
+			assert.Equal(t, tc.opts.Offset, got.Offset)
+			assert.Equal(t, tc.opts.Limit, got.Limit)
+		})
+	}
+}
+
+func TestServiceListCurrentDeadLettersPage_ReturnsPaginationMetadata(t *testing.T) {
+	t.Parallel()
+
+	store := newFakeStatusStore()
+	store.transactions = []receipts.TransactionReceipt{
+		makeDeadLetterTransaction("tx-a", "sub-a", receipts.EscrowAdjudicationRelease),
+		makeDeadLetterTransaction("tx-b", "sub-b", receipts.EscrowAdjudicationRefund),
+		makeDeadLetterTransaction("tx-c", "sub-c", receipts.EscrowAdjudicationRelease),
+		makeDeadLetterTransaction("tx-d", "sub-d", receipts.EscrowAdjudicationRelease),
+	}
+	store.submissions["sub-a"] = receipts.SubmissionReceipt{SubmissionReceiptID: "sub-a", TransactionReceiptID: "tx-a"}
+	store.submissions["sub-b"] = receipts.SubmissionReceipt{SubmissionReceiptID: "sub-b", TransactionReceiptID: "tx-b"}
+	store.submissions["sub-c"] = receipts.SubmissionReceipt{SubmissionReceiptID: "sub-c", TransactionReceiptID: "tx-c"}
+	store.submissions["sub-d"] = receipts.SubmissionReceipt{SubmissionReceiptID: "sub-d", TransactionReceiptID: "tx-d"}
+	store.events["sub-a"] = []receipts.ReceiptEvent{deadLetterEvent("sub-a", 6, "dispatch-a")}
+	store.events["sub-b"] = []receipts.ReceiptEvent{deadLetterEvent("sub-b", 5, "dispatch-b")}
+	store.events["sub-c"] = []receipts.ReceiptEvent{deadLetterEvent("sub-c", 4, "dispatch-c")}
+	store.events["sub-d"] = []receipts.ReceiptEvent{deadLetterEvent("sub-d", 2, "dispatch-d")}
+
+	svc := NewService(store)
+
+	got, err := svc.ListCurrentDeadLettersPage(context.Background(), DeadLetterListOptions{
+		Offset: 1,
+		Limit:  2,
+	})
+	require.NoError(t, err)
+	require.Equal(t, 4, got.Total)
+	require.Equal(t, 2, got.Count)
+	require.Equal(t, 1, got.Offset)
+	require.Equal(t, 2, got.Limit)
+	require.Len(t, got.Items, 2)
+	assert.Equal(t, "tx-b", got.Items[0].TransactionReceiptID)
+	assert.Equal(t, "tx-c", got.Items[1].TransactionReceiptID)
+}
+
+func TestServiceGetTransactionStatus_IncludesNavigationHints(t *testing.T) {
+	t.Parallel()
+
+	store := newFakeStatusStore()
+	store.transactionByID["tx-1"] = makeDeadLetterTransaction("tx-1", "sub-1", receipts.EscrowAdjudicationRelease)
+	store.submissions["sub-1"] = receipts.SubmissionReceipt{
+		SubmissionReceiptID:  "sub-1",
+		TransactionReceiptID: "tx-1",
+	}
+	store.events["sub-1"] = []receipts.ReceiptEvent{
+		deadLetterEvent("sub-1", 3, "dispatch-1"),
+	}
+
+	svc := NewService(store)
+
+	got, err := svc.GetTransactionStatus(context.Background(), "tx-1")
+	require.NoError(t, err)
+	assert.True(t, got.IsDeadLettered)
+	assert.True(t, got.CanRetry)
+	assert.Equal(t, string(receipts.EscrowAdjudicationRelease), got.Adjudication)
+	assert.True(t, got.RetryDeadLetterSummary.HasDeadLetter)
+}
+
 type fakeStatusStore struct {
 	mu sync.Mutex
 
@@ -367,6 +493,29 @@ func (f *fakeStatusStore) CurrentEvents(submissionID string) []receipts.ReceiptE
 }
 
 var _ receiptStore = (*fakeStatusStore)(nil)
+
+func makeDeadLetterTransaction(transactionID, submissionID string, adjudication receipts.EscrowAdjudicationDecision) receipts.TransactionReceipt {
+	return receipts.TransactionReceipt{
+		TransactionReceiptID:           transactionID,
+		CurrentSubmissionReceiptID:     submissionID,
+		EscrowAdjudication:             adjudication,
+		CurrentPaymentApprovalStatus:   receipts.PaymentApprovalApproved,
+		CanonicalSettlementStatus:      receipts.SettlementSettled,
+		CanonicalApprovalStatus:        receipts.ApprovalApproved,
+		SettlementProgressionStatus:    receipts.SettlementProgressionDisputeReady,
+		KnowledgeExchangeRuntimeStatus: receipts.RuntimeStatusDisputeReady,
+	}
+}
+
+func deadLetterEvent(submissionID string, attempt int, dispatchReference string) receipts.ReceiptEvent {
+	return receipts.ReceiptEvent{
+		SubmissionReceiptID: submissionID,
+		Source:              "post_adjudication_retry",
+		Subtype:             "dead-lettered",
+		Type:                receipts.EventSettlementExecutionFailed,
+		Reason:              "attempt=" + strconv.Itoa(attempt) + " outcome=release dispatch_reference=" + dispatchReference + " reason=worker exhausted",
+	}
+}
 
 func TestLatestDeadLetterEventParsing(t *testing.T) {
 	t.Parallel()

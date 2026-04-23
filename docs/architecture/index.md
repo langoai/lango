@@ -140,7 +140,7 @@ This section describes the internal architecture of Lango, a Go-based AI agent b
 
     ---
 
-    The first read-only operator visibility slice for the current dead-letter backlog and per-transaction post-adjudication execution status.
+    The first read-only operator visibility slice for filtered dead-letter backlog browsing and per-transaction post-adjudication execution status.
 
 -   :material-cash-fast: **[P2P Knowledge Exchange Track](p2p-knowledge-exchange-track.md)**
 

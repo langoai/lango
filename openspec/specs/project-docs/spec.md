@@ -193,9 +193,9 @@ The `docs/architecture/index.md` page SHALL include a quick link to `policy-driv
 - **AND** the entry SHALL describe the slice as replay authorization bounded by current implementation limits
 
 ### Requirement: Architecture landing page links dead-letter browsing / status observation
-The `docs/architecture/index.md` page SHALL include a quick link to `dead-letter-browsing-status-observation.md` and a short summary that frames it as the first read-only operator visibility slice for post-adjudication dead letters.
+The `docs/architecture/index.md` page SHALL include a quick link to `dead-letter-browsing-status-observation.md` and a short summary that frames it as the first read-only operator visibility slice for filtered post-adjudication dead-letter browsing.
 
 #### Scenario: Dead-letter browsing / status observation appears in architecture landing page
 - **WHEN** a user reads `docs/architecture/index.md`
 - **THEN** they SHALL find the Dead-Letter Browsing / Status Observation entry linking to `dead-letter-browsing-status-observation.md`
-- **AND** the entry SHALL describe the slice as read-only dead-letter visibility bounded by current implementation limits
+- **AND** the entry SHALL describe the slice as read-only filtered dead-letter visibility bounded by current implementation limits

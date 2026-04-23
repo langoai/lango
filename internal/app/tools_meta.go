@@ -1718,17 +1718,34 @@ func newListDeadLetteredPostAdjudicationExecutionsTool(receiptStore *receipts.St
 			ConcurrencySafe: true,
 		},
 		Parameters: map[string]interface{}{
-			"type":       "object",
-			"properties": map[string]interface{}{},
+			"type": "object",
+			"properties": map[string]interface{}{
+				"adjudication":      map[string]interface{}{"type": "string", "description": "Optional adjudication outcome filter (release or refund)"},
+				"retry_attempt_min": map[string]interface{}{"type": "integer", "description": "Optional minimum retry attempt filter"},
+				"retry_attempt_max": map[string]interface{}{"type": "integer", "description": "Optional maximum retry attempt filter"},
+				"query":             map[string]interface{}{"type": "string", "description": "Optional substring filter for transaction or submission receipt IDs"},
+				"offset":            map[string]interface{}{"type": "integer", "description": "Optional zero-based pagination offset"},
+				"limit":             map[string]interface{}{"type": "integer", "description": "Optional pagination limit"},
+			},
 		},
-		Handler: func(ctx context.Context, _ map[string]interface{}) (interface{}, error) {
-			entries, err := postadjudicationstatus.NewService(receiptStore).ListCurrentDeadLetters(ctx)
+		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+			page, err := postadjudicationstatus.NewService(receiptStore).ListCurrentDeadLettersPage(ctx, postadjudicationstatus.DeadLetterListOptions{
+				Adjudication:    toolparam.OptionalString(params, "adjudication", ""),
+				RetryAttemptMin: toolparam.OptionalInt(params, "retry_attempt_min", 0),
+				RetryAttemptMax: toolparam.OptionalInt(params, "retry_attempt_max", 0),
+				Query:           toolparam.OptionalString(params, "query", ""),
+				Offset:          toolparam.OptionalInt(params, "offset", 0),
+				Limit:           toolparam.OptionalInt(params, "limit", 0),
+			})
 			if err != nil {
 				return nil, err
 			}
 			return map[string]interface{}{
-				"entries": entries,
-				"count":   len(entries),
+				"entries": page.Items,
+				"count":   page.Count,
+				"total":   page.Total,
+				"offset":  page.Offset,
+				"limit":   page.Limit,
 			}, nil
 		},
 	}

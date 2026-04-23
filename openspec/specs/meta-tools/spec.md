@@ -271,6 +271,17 @@ The meta tools surface SHALL provide read-only visibility into dead-lettered pos
 - **WHEN** the meta tools are built with a receipts store
 - **THEN** `get_post_adjudication_execution_status` SHALL be available
 
+#### Scenario: Dead-letter backlog tool supports filtering and pagination
+- **WHEN** `list_dead_lettered_post_adjudication_executions` is invoked
+- **THEN** it SHALL accept `adjudication`, `retry_attempt_min`, `retry_attempt_max`, `query`, `offset`, and `limit`
+- **AND** it SHALL return `entries`, `count`, `total`, `offset`, and `limit`
+
+#### Scenario: Post-adjudication status tool returns navigation hints
+- **WHEN** `get_post_adjudication_execution_status` succeeds
+- **THEN** it SHALL return the current canonical snapshot
+- **AND** it SHALL return the latest retry / dead-letter summary
+- **AND** it SHALL return `is_dead_lettered`, `can_retry`, and `adjudication`
+
 ### Requirement: Escrow release and refund meta tools enforce canonical adjudication
 The meta tools surface SHALL enforce canonical adjudication on the existing escrow release and refund execution tools.
 
