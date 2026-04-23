@@ -252,6 +252,75 @@ func (s *Store) RecordEscrowReleaseFailure(ctx context.Context, req SettlementFa
 	return s.recordTransactionFailure(ctx, req, "escrow_release")
 }
 
+func (s *Store) RecordEscrowRefundSuccess(_ context.Context, req EscrowRefundEvidenceRequest) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	transaction, ok := s.transactions[req.TransactionReceiptID]
+	if !ok {
+		return ErrTransactionReceiptNotFound
+	}
+	submission, ok := s.submissions[req.SubmissionReceiptID]
+	if !ok {
+		return ErrSubmissionReceiptNotFound
+	}
+	if submission.TransactionReceiptID != req.TransactionReceiptID {
+		return fmt.Errorf("%w: submission does not belong to transaction", ErrSubmissionReceiptNotFound)
+	}
+	if transaction.CurrentSubmissionReceiptID != req.SubmissionReceiptID {
+		return fmt.Errorf("%w: submission is not current for transaction", ErrInvalidSettlementProgressionState)
+	}
+	if transaction.EscrowExecutionStatus != EscrowExecutionStatusFunded {
+		return fmt.Errorf("%w: escrow must remain funded before recording escrow refund success", ErrInvalidSettlementProgressionState)
+	}
+	if transaction.SettlementProgressionStatus != SettlementProgressionReviewNeeded {
+		return fmt.Errorf("%w: settlement must remain review-needed before recording escrow refund success", ErrInvalidSettlementProgressionState)
+	}
+
+	s.events[req.SubmissionReceiptID] = append(s.events[req.SubmissionReceiptID], ReceiptEvent{
+		SubmissionReceiptID: req.SubmissionReceiptID,
+		Source:              "escrow_refund",
+		Subtype:             "refunded",
+		Reason:              req.RuntimeReference,
+		Type:                EventSettlementUpdated,
+	})
+
+	return nil
+}
+
+func (s *Store) RecordEscrowRefundFailure(ctx context.Context, req SettlementFailureRequest) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	transaction, ok := s.transactions[req.TransactionReceiptID]
+	if !ok {
+		return ErrTransactionReceiptNotFound
+	}
+	submission, ok := s.submissions[req.SubmissionReceiptID]
+	if !ok {
+		return ErrSubmissionReceiptNotFound
+	}
+	if submission.TransactionReceiptID != req.TransactionReceiptID {
+		return fmt.Errorf("%w: submission does not belong to transaction", ErrSubmissionReceiptNotFound)
+	}
+	if transaction.CurrentSubmissionReceiptID != req.SubmissionReceiptID {
+		return fmt.Errorf("%w: submission is not current for transaction", ErrInvalidSettlementProgressionState)
+	}
+	if transaction.SettlementProgressionStatus != SettlementProgressionReviewNeeded {
+		return fmt.Errorf("%w: settlement must remain review-needed before recording escrow refund failure", ErrInvalidSettlementProgressionState)
+	}
+
+	s.events[req.SubmissionReceiptID] = append(s.events[req.SubmissionReceiptID], ReceiptEvent{
+		SubmissionReceiptID: req.SubmissionReceiptID,
+		Source:              "escrow_refund",
+		Subtype:             "failed",
+		Reason:              req.Reason,
+		Type:                EventSettlementExecutionFailed,
+	})
+
+	return nil
+}
+
 func (s *Store) recordTransactionFailure(_ context.Context, req SettlementFailureRequest, source string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

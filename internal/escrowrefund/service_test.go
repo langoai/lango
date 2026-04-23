@@ -165,6 +165,13 @@ func TestServiceExecute_ExecutesRuntimeAndReturnsRefundExecutedShape(t *testing.
 	require.Equal(t, "1.00", result.ResolvedAmount)
 	require.Equal(t, "refund-tx-123", result.RuntimeReference)
 	require.Equal(t, 1, runtime.calls)
+	require.Equal(t, 1, store.recordSuccessCalls)
+	require.Equal(t, 0, store.recordFailureCalls)
+	require.Equal(t, receipts.EscrowRefundEvidenceRequest{
+		TransactionReceiptID: "tx-1",
+		SubmissionReceiptID:  "sub-1",
+		RuntimeReference:     "refund-tx-123",
+	}, store.lastSuccess)
 	require.Equal(t, RefundRequest{
 		TransactionReceiptID: "tx-1",
 		SubmissionReceiptID:  "sub-1",
@@ -203,6 +210,14 @@ func TestServiceExecute_RuntimeFailureReturnsFailureShape(t *testing.T) {
 	require.NotNil(t, result.Failure)
 	require.Equal(t, FailureKindExecutionFailed, result.Failure.Kind)
 	require.Equal(t, 1, runtime.calls)
+	require.Equal(t, 0, store.recordSuccessCalls)
+	require.Equal(t, 1, store.recordFailureCalls)
+	require.Equal(t, receipts.SettlementFailureRequest{
+		TransactionReceiptID: "tx-1",
+		SubmissionReceiptID:  "sub-1",
+		ResolvedAmount:       "1.00",
+		Reason:               "escrow refund failed",
+	}, store.lastFailure)
 }
 
 func assertExecutionError(t *testing.T, err error, wantKind FailureKind, wantReason DenyReason) {
@@ -215,10 +230,16 @@ func assertExecutionError(t *testing.T, err error, wantKind FailureKind, wantRea
 }
 
 type fakeReceiptStore struct {
-	transaction       receipts.TransactionReceipt
-	submission        receipts.SubmissionReceipt
-	getTransactionErr error
-	getSubmissionErr  error
+	transaction        receipts.TransactionReceipt
+	submission         receipts.SubmissionReceipt
+	getTransactionErr  error
+	getSubmissionErr   error
+	recordSuccessErr   error
+	recordFailureErr   error
+	recordSuccessCalls int
+	recordFailureCalls int
+	lastSuccess        receipts.EscrowRefundEvidenceRequest
+	lastFailure        receipts.SettlementFailureRequest
 }
 
 func (f *fakeReceiptStore) GetTransactionReceipt(context.Context, string) (receipts.TransactionReceipt, error) {
@@ -233,6 +254,18 @@ func (f *fakeReceiptStore) GetSubmissionReceipt(context.Context, string) (receip
 		return receipts.SubmissionReceipt{}, nil, f.getSubmissionErr
 	}
 	return f.submission, nil, nil
+}
+
+func (f *fakeReceiptStore) RecordEscrowRefundSuccess(_ context.Context, req receipts.EscrowRefundEvidenceRequest) error {
+	f.recordSuccessCalls++
+	f.lastSuccess = req
+	return f.recordSuccessErr
+}
+
+func (f *fakeReceiptStore) RecordEscrowRefundFailure(_ context.Context, req receipts.SettlementFailureRequest) error {
+	f.recordFailureCalls++
+	f.lastFailure = req
+	return f.recordFailureErr
 }
 
 type fakeRefundRuntime struct {

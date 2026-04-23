@@ -606,6 +606,115 @@ func TestRecordEscrowReleaseFailure_AppendsFailureTrail(t *testing.T) {
 	require.Equal(t, "rpc timeout", last.Reason)
 }
 
+func TestRecordEscrowRefundSuccess_AppendsRefundTrail(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	submission, tx := createSubmittedTransaction(t, store, ctx, "deal-escrow-refund-success-trail")
+
+	_, err := store.BindEscrowExecutionInput(ctx, tx.TransactionReceiptID, submission.SubmissionReceiptID, EscrowExecutionInput{
+		BuyerDID:  "did:lango:buyer",
+		SellerDID: "did:lango:seller",
+		Amount:    "0.50",
+		Reason:    "escrow refund test",
+		Milestones: []EscrowMilestoneInput{
+			{Description: "deliverable", Amount: "0.50"},
+		},
+	})
+	require.NoError(t, err)
+	_, err = store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, submission.SubmissionReceiptID, EscrowExecutionStatusPending, "", EventEscrowExecutionStarted, "")
+	require.NoError(t, err)
+	_, err = store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, submission.SubmissionReceiptID, EscrowExecutionStatusCreated, "", EventEscrowExecutionCreated, "")
+	require.NoError(t, err)
+	_, err = store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, submission.SubmissionReceiptID, EscrowExecutionStatusFunded, "escrow-123", EventEscrowExecutionFunded, "")
+	require.NoError(t, err)
+	_, err = store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, SettlementProgressionReviewNeeded, SettlementProgressionReasonCodeReject, "refund review", "")
+	require.NoError(t, err)
+
+	err = store.RecordEscrowRefundSuccess(ctx, EscrowRefundEvidenceRequest{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		SubmissionReceiptID:  submission.SubmissionReceiptID,
+		RuntimeReference:     "refund-tx-123",
+	})
+	require.NoError(t, err)
+
+	_, events, err := store.GetSubmissionReceipt(ctx, submission.SubmissionReceiptID)
+	require.NoError(t, err)
+	require.Len(t, events, 5)
+	last := events[len(events)-1]
+	require.Equal(t, EventSettlementUpdated, last.Type)
+	require.Equal(t, "escrow_refund", last.Source)
+	require.Equal(t, "refunded", last.Subtype)
+	require.Equal(t, "refund-tx-123", last.Reason)
+}
+
+func TestRecordEscrowRefundSuccess_RejectsWrongState(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	submission, tx := createSubmittedTransaction(t, store, ctx, "deal-escrow-refund-success-invalid")
+
+	_, err := store.BindEscrowExecutionInput(ctx, tx.TransactionReceiptID, submission.SubmissionReceiptID, EscrowExecutionInput{
+		BuyerDID:  "did:lango:buyer",
+		SellerDID: "did:lango:seller",
+		Amount:    "0.50",
+		Reason:    "escrow refund test",
+		Milestones: []EscrowMilestoneInput{
+			{Description: "deliverable", Amount: "0.50"},
+		},
+	})
+	require.NoError(t, err)
+	_, err = store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, submission.SubmissionReceiptID, EscrowExecutionStatusPending, "", EventEscrowExecutionStarted, "")
+	require.NoError(t, err)
+	_, err = store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, submission.SubmissionReceiptID, EscrowExecutionStatusCreated, "", EventEscrowExecutionCreated, "")
+	require.NoError(t, err)
+	_, err = store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, submission.SubmissionReceiptID, EscrowExecutionStatusFunded, "escrow-123", EventEscrowExecutionFunded, "")
+	require.NoError(t, err)
+	_, err = store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, SettlementProgressionApprovedForSettlement, SettlementProgressionReasonCodeApprove, "approved", "")
+	require.NoError(t, err)
+
+	err = store.RecordEscrowRefundSuccess(ctx, EscrowRefundEvidenceRequest{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		SubmissionReceiptID:  submission.SubmissionReceiptID,
+		RuntimeReference:     "refund-tx-123",
+	})
+	require.ErrorIs(t, err, ErrInvalidSettlementProgressionState)
+}
+
+func TestRecordEscrowRefundFailure_RejectsWrongState(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	submission, tx := createSubmittedTransaction(t, store, ctx, "deal-escrow-refund-failure-invalid")
+
+	_, err := store.BindEscrowExecutionInput(ctx, tx.TransactionReceiptID, submission.SubmissionReceiptID, EscrowExecutionInput{
+		BuyerDID:  "did:lango:buyer",
+		SellerDID: "did:lango:seller",
+		Amount:    "0.50",
+		Reason:    "escrow refund test",
+		Milestones: []EscrowMilestoneInput{
+			{Description: "deliverable", Amount: "0.50"},
+		},
+	})
+	require.NoError(t, err)
+	_, err = store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, submission.SubmissionReceiptID, EscrowExecutionStatusPending, "", EventEscrowExecutionStarted, "")
+	require.NoError(t, err)
+	_, err = store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, submission.SubmissionReceiptID, EscrowExecutionStatusCreated, "", EventEscrowExecutionCreated, "")
+	require.NoError(t, err)
+	_, err = store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, submission.SubmissionReceiptID, EscrowExecutionStatusFunded, "escrow-123", EventEscrowExecutionFunded, "")
+	require.NoError(t, err)
+	_, err = store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, SettlementProgressionApprovedForSettlement, SettlementProgressionReasonCodeApprove, "approved", "")
+	require.NoError(t, err)
+
+	err = store.RecordEscrowRefundFailure(ctx, SettlementFailureRequest{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		SubmissionReceiptID:  submission.SubmissionReceiptID,
+		ResolvedAmount:       "0.50",
+		Reason:               "refund failed",
+	})
+	require.ErrorIs(t, err, ErrInvalidSettlementProgressionState)
+}
+
 func TestRecordSettlementFailure_RejectsFailureAfterSettlementCloseout(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()

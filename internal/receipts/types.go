@@ -186,6 +186,12 @@ type SettlementFailureRequest struct {
 	Reason               string `json:"reason"`
 }
 
+type EscrowRefundEvidenceRequest struct {
+	TransactionReceiptID string `json:"transaction_receipt_id"`
+	SubmissionReceiptID  string `json:"submission_receipt_id"`
+	RuntimeReference     string `json:"runtime_reference,omitempty"`
+}
+
 type PartialSettlementCloseoutRequest struct {
 	TransactionReceiptID string `json:"transaction_receipt_id"`
 	SubmissionReceiptID  string `json:"submission_receipt_id"`

@@ -13,6 +13,8 @@ import (
 type receiptStore interface {
 	GetTransactionReceipt(context.Context, string) (receipts.TransactionReceipt, error)
 	GetSubmissionReceipt(context.Context, string) (receipts.SubmissionReceipt, []receipts.ReceiptEvent, error)
+	RecordEscrowRefundSuccess(context.Context, receipts.EscrowRefundEvidenceRequest) error
+	RecordEscrowRefundFailure(context.Context, receipts.SettlementFailureRequest) error
 }
 
 type refundRuntime interface {
@@ -95,7 +97,24 @@ func (s *Service) Execute(ctx context.Context, req ExecuteRequest) (Result, erro
 				Message: err.Error(),
 			},
 		}
+		failure := receipts.SettlementFailureRequest{
+			TransactionReceiptID: transaction.TransactionReceiptID,
+			SubmissionReceiptID:  submissionReceiptID,
+			ResolvedAmount:       resolvedAmount,
+			Reason:               err.Error(),
+		}
+		if recordErr := s.store.RecordEscrowRefundFailure(ctx, failure); recordErr != nil {
+			return result, fmt.Errorf("record escrow refund failure: %w", recordErr)
+		}
 		return result, &ExecutionError{Kind: FailureKindExecutionFailed, Message: err.Error(), Err: err}
+	}
+
+	if err := s.store.RecordEscrowRefundSuccess(ctx, receipts.EscrowRefundEvidenceRequest{
+		TransactionReceiptID: transaction.TransactionReceiptID,
+		SubmissionReceiptID:  submissionReceiptID,
+		RuntimeReference:     runtimeResult.Reference,
+	}); err != nil {
+		return Result{}, fmt.Errorf("record escrow refund success: %w", err)
 	}
 
 	return Result{
