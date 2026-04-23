@@ -177,6 +177,16 @@ func TestDefaultConfig_Alerting(t *testing.T) {
 	assert.Equal(t, 5, cfg.Alerting.RecoveryRetries)
 }
 
+func TestDefaultConfig_Replay(t *testing.T) {
+	t.Parallel()
+
+	cfg := DefaultConfig()
+
+	assert.Empty(t, cfg.Replay.AllowedActors)
+	assert.Empty(t, cfg.Replay.ReleaseAllowedActors)
+	assert.Empty(t, cfg.Replay.RefundAllowedActors)
+}
+
 func TestValidate_ValidLogLevels(t *testing.T) {
 	t.Parallel()
 

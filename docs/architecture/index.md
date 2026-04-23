@@ -130,6 +130,12 @@ This section describes the internal architecture of Lango, a Go-based AI agent b
 
     The first operator-facing replay slice for dead-lettered post-adjudication execution, reusing canonical adjudication and the existing background dispatch path.
 
+-   :material-account-lock-open-outline: **[Policy-Driven Replay Controls](policy-driven-replay-controls.md)**
+
+    ---
+
+    The first authorization slice for replay, adding actor- and outcome-aware allowlists on top of the canonical replay gate.
+
 -   :material-format-list-bulleted-square: **[Dead-Letter Browsing / Status Observation](dead-letter-browsing-status-observation.md)**
 
     ---

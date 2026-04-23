@@ -9,11 +9,20 @@ import (
 
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/ctxkeys"
 	"github.com/langoai/lango/internal/receipts"
 )
 
+func replayToolConfig() *config.Config {
+	cfg := config.DefaultConfig()
+	cfg.Replay.AllowedActors = []string{"operator:alice", "operator:bob"}
+	cfg.Replay.ReleaseAllowedActors = []string{"operator:alice"}
+	cfg.Replay.RefundAllowedActors = []string{"operator:alice", "operator:bob"}
+	return cfg
+}
+
 func TestBuildMetaTools_IncludesRetryPostAdjudicationExecution(t *testing.T) {
-	tool := findTool(buildMetaToolsWithRuntimes(nil, nil, nil, config.SkillConfig{}, nil, receipts.NewStore(), nil, nil, nil, nil, nil, nil, &fakeAdjudicationBackgroundDispatcher{}), "retry_post_adjudication_execution")
+	tool := findTool(buildMetaToolsWithRuntimes(nil, nil, nil, config.SkillConfig{}, replayToolConfig(), receipts.NewStore(), nil, nil, nil, nil, nil, nil, &fakeAdjudicationBackgroundDispatcher{}), "retry_post_adjudication_execution")
 	require.NotNil(t, tool)
 
 	assert.Equal(t, "knowledge", tool.Capability.Category)
@@ -32,7 +41,7 @@ func TestRetryPostAdjudicationExecution_SuccessReturnsDispatchReceipt(t *testing
 	t.Parallel()
 
 	store := receipts.NewStore()
-	ctx := context.Background()
+	ctx := ctxkeys.WithPrincipal(context.Background(), "operator:alice")
 	tx := createSubmittedTransaction(t, store, ctx, "deal-post-adjudication-replay")
 
 	bindDisputeHoldEscrowExecutionInput(t, store, ctx, tx)
@@ -68,7 +77,7 @@ func TestRetryPostAdjudicationExecution_SuccessReturnsDispatchReceipt(t *testing
 	require.NoError(t, err)
 
 	dispatcher := &fakeAdjudicationBackgroundDispatcher{taskID: "task-replay-123"}
-	tool := findTool(buildMetaToolsWithRuntimes(nil, nil, nil, config.SkillConfig{}, nil, store, nil, nil, nil, nil, nil, nil, dispatcher), "retry_post_adjudication_execution")
+	tool := findTool(buildMetaToolsWithRuntimes(nil, nil, nil, config.SkillConfig{}, replayToolConfig(), store, nil, nil, nil, nil, nil, nil, dispatcher), "retry_post_adjudication_execution")
 	require.NotNil(t, tool)
 
 	got, err := tool.Handler(ctx, map[string]interface{}{
@@ -91,7 +100,7 @@ func TestRetryPostAdjudicationExecution_FailsWhenDeadLetterEvidenceMissing(t *te
 	t.Parallel()
 
 	store := receipts.NewStore()
-	ctx := context.Background()
+	ctx := ctxkeys.WithPrincipal(context.Background(), "operator:alice")
 	tx := createSubmittedTransaction(t, store, ctx, "deal-post-adjudication-replay-missing")
 
 	bindDisputeHoldEscrowExecutionInput(t, store, ctx, tx)
@@ -119,7 +128,7 @@ func TestRetryPostAdjudicationExecution_FailsWhenDeadLetterEvidenceMissing(t *te
 	})
 	require.NoError(t, err)
 
-	tool := findTool(buildMetaToolsWithRuntimes(nil, nil, nil, config.SkillConfig{}, nil, store, nil, nil, nil, nil, nil, nil, &fakeAdjudicationBackgroundDispatcher{}), "retry_post_adjudication_execution")
+	tool := findTool(buildMetaToolsWithRuntimes(nil, nil, nil, config.SkillConfig{}, replayToolConfig(), store, nil, nil, nil, nil, nil, nil, &fakeAdjudicationBackgroundDispatcher{}), "retry_post_adjudication_execution")
 	require.NotNil(t, tool)
 
 	_, err = tool.Handler(ctx, map[string]interface{}{

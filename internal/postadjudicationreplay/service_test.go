@@ -10,15 +10,126 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/ctxkeys"
 	"github.com/langoai/lango/internal/receipts"
 )
+
+func replayPolicy() ReplayPolicy {
+	return ReplayPolicyFromConfig(&config.Config{
+		Replay: config.ReplayConfig{
+			AllowedActors:        []string{"operator:alice", "operator:bob"},
+			ReleaseAllowedActors: []string{"operator:alice"},
+			RefundAllowedActors:  []string{"operator:alice", "operator:bob"},
+		},
+	})
+}
+
+func TestServiceReplay_DeniesWhenActorIsUnresolved(t *testing.T) {
+	t.Parallel()
+
+	store := newReplayStore()
+	dispatcher := &fakeReplayDispatcher{}
+	svc := NewService(store, dispatcher, replayPolicy())
+
+	result, err := svc.Replay(context.Background(), Request{TransactionReceiptID: store.transaction.TransactionReceiptID})
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrActorUnresolved)
+	require.Equal(t, Result{}, result)
+	assert.Equal(t, 0, store.manualRetryCalls)
+	assert.Equal(t, 0, dispatcher.calls)
+}
+
+func TestServiceReplay_DeniesWhenActorIsResolvedButNotAllowed(t *testing.T) {
+	t.Parallel()
+
+	store := newReplayStore()
+	dispatcher := &fakeReplayDispatcher{}
+	svc := NewService(store, dispatcher, replayPolicy())
+
+	ctx := ctxkeys.WithPrincipal(context.Background(), "operator:bob")
+	result, err := svc.Replay(ctx, Request{TransactionReceiptID: store.transaction.TransactionReceiptID})
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrReplayNotAllowed)
+	require.Equal(t, Result{}, result)
+	assert.Equal(t, 0, store.manualRetryCalls)
+	assert.Equal(t, 0, dispatcher.calls)
+}
+
+func TestServiceReplay_AllowsActorForReleaseOutcome(t *testing.T) {
+	t.Parallel()
+
+	store := newReplayStore()
+	dispatcher := &fakeReplayDispatcher{
+		receipt: BackgroundDispatchReceipt{
+			Status:               "queued",
+			DispatchReference:    "dispatch-123",
+			TransactionReceiptID: store.transaction.TransactionReceiptID,
+			SubmissionReceiptID:  store.submission.SubmissionReceiptID,
+			EscrowReference:      store.transaction.EscrowReference,
+			Outcome:              string(store.transaction.EscrowAdjudication),
+		},
+	}
+	svc := NewService(store, dispatcher, replayPolicy())
+
+	ctx := ctxkeys.WithPrincipal(context.Background(), "operator:alice")
+	result, err := svc.Replay(ctx, Request{TransactionReceiptID: store.transaction.TransactionReceiptID})
+
+	require.NoError(t, err)
+	require.Equal(t, store.transaction, result.CanonicalAdjudication.TransactionReceipt)
+	require.Equal(t, store.submission, result.CanonicalAdjudication.SubmissionReceipt)
+	require.Equal(t, store.events, result.CanonicalAdjudication.SubmissionEvents)
+	require.NotNil(t, result.BackgroundDispatchReceipt)
+	assert.Equal(t, "queued", result.BackgroundDispatchReceipt.Status)
+	assert.Equal(t, "dispatch-123", result.BackgroundDispatchReceipt.DispatchReference)
+	assert.Equal(t, store.transaction.TransactionReceiptID, result.BackgroundDispatchReceipt.TransactionReceiptID)
+	assert.Equal(t, store.submission.SubmissionReceiptID, result.BackgroundDispatchReceipt.SubmissionReceiptID)
+	assert.Equal(t, store.transaction.EscrowReference, result.BackgroundDispatchReceipt.EscrowReference)
+	assert.Equal(t, string(store.transaction.EscrowAdjudication), result.BackgroundDispatchReceipt.Outcome)
+	assert.Equal(t, 1, store.manualRetryCalls)
+	assert.Equal(t, 1, dispatcher.calls)
+	assert.True(t, strings.Contains(dispatcher.lastRequest.Prompt, "release_escrow_settlement"))
+	assert.True(t, strings.Contains(dispatcher.lastRequest.Prompt, store.transaction.TransactionReceiptID))
+}
+
+func TestServiceReplay_AllowsActorForRefundOutcome(t *testing.T) {
+	t.Parallel()
+
+	store := newReplayStore()
+	store.transaction.EscrowAdjudication = receipts.EscrowAdjudicationRefund
+	dispatcher := &fakeReplayDispatcher{
+		receipt: BackgroundDispatchReceipt{
+			Status:               "queued",
+			DispatchReference:    "dispatch-456",
+			TransactionReceiptID: store.transaction.TransactionReceiptID,
+			SubmissionReceiptID:  store.submission.SubmissionReceiptID,
+			EscrowReference:      store.transaction.EscrowReference,
+			Outcome:              string(store.transaction.EscrowAdjudication),
+		},
+	}
+	svc := NewService(store, dispatcher, replayPolicy())
+
+	ctx := ctxkeys.WithPrincipal(context.Background(), "operator:bob")
+	result, err := svc.Replay(ctx, Request{TransactionReceiptID: store.transaction.TransactionReceiptID})
+
+	require.NoError(t, err)
+	require.Equal(t, receipts.EscrowAdjudicationRefund, result.CanonicalAdjudication.TransactionReceipt.EscrowAdjudication)
+	require.NotNil(t, result.BackgroundDispatchReceipt)
+	assert.Equal(t, "dispatch-456", result.BackgroundDispatchReceipt.DispatchReference)
+	assert.Equal(t, string(receipts.EscrowAdjudicationRefund), result.BackgroundDispatchReceipt.Outcome)
+	assert.Equal(t, 1, store.manualRetryCalls)
+	assert.Equal(t, 1, dispatcher.calls)
+	assert.True(t, strings.Contains(dispatcher.lastRequest.Prompt, "refund_escrow_settlement"))
+}
 
 func TestServiceReplay_DeniesMissingTransactionReceipt(t *testing.T) {
 	t.Parallel()
 
 	store := &fakeReplayStore{getTransactionErr: receipts.ErrTransactionReceiptNotFound}
 	dispatcher := &fakeReplayDispatcher{}
-	svc := NewService(store, dispatcher)
+	svc := NewService(store, dispatcher, replayPolicy())
 
 	result, err := svc.Replay(context.Background(), Request{TransactionReceiptID: "missing"})
 
@@ -35,9 +146,10 @@ func TestServiceReplay_DeniesWhenDeadLetterEvidenceIsMissing(t *testing.T) {
 	store := newReplayStore()
 	store.events = nil
 	dispatcher := &fakeReplayDispatcher{}
-	svc := NewService(store, dispatcher)
+	svc := NewService(store, dispatcher, replayPolicy())
 
-	result, err := svc.Replay(context.Background(), Request{TransactionReceiptID: store.transaction.TransactionReceiptID})
+	ctx := ctxkeys.WithPrincipal(context.Background(), "operator:alice")
+	result, err := svc.Replay(ctx, Request{TransactionReceiptID: store.transaction.TransactionReceiptID})
 
 	require.Error(t, err)
 	assert.ErrorIs(t, err, ErrDeadLetterEvidenceMissing)
@@ -61,9 +173,10 @@ func TestServiceReplay_DeniesWhenCanonicalAdjudicationIsMissing(t *testing.T) {
 		},
 	}
 	dispatcher := &fakeReplayDispatcher{}
-	svc := NewService(store, dispatcher)
+	svc := NewService(store, dispatcher, replayPolicy())
 
-	result, err := svc.Replay(context.Background(), Request{TransactionReceiptID: store.transaction.TransactionReceiptID})
+	ctx := ctxkeys.WithPrincipal(context.Background(), "operator:alice")
+	result, err := svc.Replay(ctx, Request{TransactionReceiptID: store.transaction.TransactionReceiptID})
 
 	require.Error(t, err)
 	assert.ErrorIs(t, err, ErrCanonicalAdjudicationMissing)
@@ -86,9 +199,10 @@ func TestServiceReplay_SuccessReturnsCanonicalAdjudicationSnapshotAndDispatchRec
 			Outcome:              string(store.transaction.EscrowAdjudication),
 		},
 	}
-	svc := NewService(store, dispatcher)
+	svc := NewService(store, dispatcher, replayPolicy())
 
-	result, err := svc.Replay(context.Background(), Request{TransactionReceiptID: store.transaction.TransactionReceiptID})
+	ctx := ctxkeys.WithPrincipal(context.Background(), "operator:alice")
+	result, err := svc.Replay(ctx, Request{TransactionReceiptID: store.transaction.TransactionReceiptID})
 
 	require.NoError(t, err)
 	require.Equal(t, store.transaction, result.CanonicalAdjudication.TransactionReceipt)
@@ -113,9 +227,10 @@ func TestServiceReplay_FailureKeepsCanonicalStateUnchanged(t *testing.T) {
 	store := newReplayStore()
 	original := store.transaction
 	dispatcher := &fakeReplayDispatcher{err: errors.New("dispatch failed")}
-	svc := NewService(store, dispatcher)
+	svc := NewService(store, dispatcher, replayPolicy())
 
-	result, err := svc.Replay(context.Background(), Request{TransactionReceiptID: store.transaction.TransactionReceiptID})
+	ctx := ctxkeys.WithPrincipal(context.Background(), "operator:alice")
+	result, err := svc.Replay(ctx, Request{TransactionReceiptID: store.transaction.TransactionReceiptID})
 
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "dispatch failed")

@@ -10,6 +10,7 @@ The slice is intentionally narrow:
 
 - only dead-lettered post-adjudication execution can be replayed
 - replay requires canonical adjudication to still be present
+- replay also requires policy authorization for the current actor and outcome
 - replay reuses the existing background post-adjudication dispatch path
 - prior dead-letter evidence is preserved
 - `manual-retry-requested` evidence is appended

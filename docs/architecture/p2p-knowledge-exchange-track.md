@@ -65,6 +65,8 @@ The first retry / dead-letter slice is now landed too: background post-adjudicat
 
 The first operator replay / manual retry slice is now landed too: `retry_post_adjudication_execution` requires dead-letter evidence plus canonical adjudication, appends `manual-retry-requested` evidence, and creates a fresh background post-adjudication dispatch without clearing prior dead-letter evidence. The remaining work is dead-letter browsing UI, policy-driven replay controls, generic replay substrate design, and broader dispute engine integration.
 
+The first policy-driven replay controls slice is now landed too: replay now resolves the current actor from runtime context, applies config-backed allowlists for overall replay plus outcome-specific replay, and fails closed when actor resolution or authorization fails. The remaining work is richer policy classes, policy editing surfaces, per-transaction snapshots, and amount-tier replay controls.
+
 The first dead-letter browsing / status observation slice is now landed too: operators can list the current dead-lettered post-adjudication backlog and inspect the canonical snapshot plus latest retry/dead-letter summary for a given transaction. The remaining work is richer filtering, raw background-task bridges, and higher-level cockpit or CLI surfaces.
 
 ## In Scope
@@ -120,5 +122,6 @@ The first dead-letter browsing / status observation slice is now landed too: ope
 12. `background post-adjudication execution` first slice is now landed; the follow-on work is retry orchestration, dead-letter handling, dedicated status observation, and policy-driven defaults
 13. `retry / dead-letter handling` first slice is now landed; the follow-on work is operator replay, generic async retry policy, dead-letter browsing, and policy-driven backoff tuning
 14. `operator replay / manual retry` first slice is now landed; the follow-on work is dead-letter browsing UI, policy-driven replay controls, generic replay substrate design, and broader dispute engine integration
-15. `dead-letter browsing / status observation` first slice is now landed; the follow-on work is richer filtering, raw background-task bridges, and higher-level cockpit or CLI surfaces
-16. the first transaction-oriented runtime design slice, now documented in `docs/architecture/knowledge-exchange-runtime.md`; follow-on work is runtime implementation and broader progression handling
+15. `policy-driven replay controls` first slice is now landed; the follow-on work is richer policy classes, policy editing surfaces, per-transaction snapshots, and amount-tier replay controls
+16. `dead-letter browsing / status observation` first slice is now landed; the follow-on work is richer filtering, raw background-task bridges, and higher-level cockpit or CLI surfaces
+17. the first transaction-oriented runtime design slice, now documented in `docs/architecture/knowledge-exchange-runtime.md`; follow-on work is runtime implementation and broader progression handling

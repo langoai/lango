@@ -143,6 +143,11 @@ func DefaultConfig() *Config {
 			DefaultTimeout:     10 * time.Minute,
 			StateDir:           "~/.lango/workflows/",
 		},
+		Replay: ReplayConfig{
+			AllowedActors:        []string{},
+			ReleaseAllowedActors: []string{},
+			RefundAllowedActors:  []string{},
+		},
 		Context: ContextConfig{
 			Allocation: ContextAllocationConfig{
 				Knowledge:  0.30,

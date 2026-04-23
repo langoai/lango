@@ -1068,7 +1068,7 @@ func buildMetaToolsWithRuntimes(
 	if getPostAdjudicationStatusTool := newGetPostAdjudicationExecutionStatusTool(receiptStore); getPostAdjudicationStatusTool != nil {
 		tools = append(tools, getPostAdjudicationStatusTool)
 	}
-	if replayTool := newRetryPostAdjudicationExecutionTool(receiptStore, backgroundDispatcher); replayTool != nil {
+	if replayTool := newRetryPostAdjudicationExecutionTool(cfg, receiptStore, backgroundDispatcher); replayTool != nil {
 		tools = append(tools, replayTool)
 	}
 
@@ -1774,7 +1774,7 @@ func newGetPostAdjudicationExecutionStatusTool(receiptStore *receipts.Store) *ag
 	}
 }
 
-func newRetryPostAdjudicationExecutionTool(receiptStore *receipts.Store, backgroundDispatcher adjudicateEscrowDisputeBackgroundDispatcher) *agent.Tool {
+func newRetryPostAdjudicationExecutionTool(cfg *config.Config, receiptStore *receipts.Store, backgroundDispatcher adjudicateEscrowDisputeBackgroundDispatcher) *agent.Tool {
 	if receiptStore == nil {
 		return nil
 	}
@@ -1807,7 +1807,11 @@ func newRetryPostAdjudicationExecutionTool(receiptStore *receipts.Store, backgro
 				return nil, &toolparam.ErrMissingParam{Name: "transaction_receipt_id"}
 			}
 
-			result, err := postadjudicationreplay.NewService(receiptStore, replayDispatcherAdapter{dispatcher: backgroundDispatcher}).Replay(ctx, postadjudicationreplay.Request{
+			result, err := postadjudicationreplay.NewService(
+				receiptStore,
+				replayDispatcherAdapter{dispatcher: backgroundDispatcher},
+				postadjudicationreplay.ReplayPolicyFromConfig(cfg),
+			).Replay(ctx, postadjudicationreplay.Request{
 				TransactionReceiptID: transactionReceiptID,
 			})
 			if err != nil {

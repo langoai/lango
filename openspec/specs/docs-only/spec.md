@@ -402,6 +402,21 @@ The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the 
 - **THEN** they SHALL find operator replay / manual retry described as a landed first slice
 - **AND** the remaining work SHALL be described as dead-letter browsing UI, policy-driven replay controls, generic replay substrate design, and broader dispute engine integration
 
+### Requirement: Policy-driven replay controls page describes the first replay authorization slice
+The `docs/architecture/policy-driven-replay-controls.md` page SHALL describe the first policy-driven replay controls slice for post-adjudication replay, including what currently ships and the current limits of the slice.
+
+#### Scenario: Policy-driven replay controls page shows the bounded slice
+- **WHEN** a user reads `docs/architecture/policy-driven-replay-controls.md`
+- **THEN** they SHALL find sections describing the current replay-authorization slice, what currently ships, and current limits
+
+### Requirement: P2P knowledge exchange track reflects landed policy-driven replay controls
+The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the policy-driven replay controls first slice as landed work and list the remaining work as richer policy classes, policy editing surfaces, per-transaction snapshots, and amount-tier replay controls.
+
+#### Scenario: Track page points to the landed replay-policy slice
+- **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
+- **THEN** they SHALL find policy-driven replay controls described as a landed first slice
+- **AND** the remaining work SHALL be described as richer policy classes, policy editing surfaces, per-transaction snapshots, and amount-tier replay controls
+
 ### Requirement: Dead-letter browsing / status observation page describes the first read-only visibility slice
 The `docs/architecture/dead-letter-browsing-status-observation.md` page SHALL describe the first dead-letter browsing / status observation slice for post-adjudication execution, including what currently ships and the current limits of the slice.
 

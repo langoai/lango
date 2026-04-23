@@ -6,18 +6,25 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/langoai/lango/internal/ctxkeys"
 	"github.com/langoai/lango/internal/receipts"
 )
 
 type Service struct {
 	store      receiptStore
 	dispatcher dispatcher
+	policy     ReplayPolicy
 }
 
-func NewService(store receiptStore, dispatcher dispatcher) *Service {
+func NewService(store receiptStore, dispatcher dispatcher, policy ...ReplayPolicy) *Service {
+	resolved := ReplayPolicy{}
+	if len(policy) > 0 {
+		resolved = policy[0]
+	}
 	return &Service{
 		store:      store,
 		dispatcher: dispatcher,
+		policy:     resolved,
 	}
 }
 
@@ -63,6 +70,14 @@ func (s *Service) Replay(ctx context.Context, req Request) (Result, error) {
 	if transaction.EscrowAdjudication != receipts.EscrowAdjudicationRelease &&
 		transaction.EscrowAdjudication != receipts.EscrowAdjudicationRefund {
 		return Result{}, ErrCanonicalAdjudicationMissing
+	}
+
+	actor := strings.TrimSpace(ctxkeys.PrincipalFromContext(ctx))
+	if actor == "" {
+		return Result{}, ErrActorUnresolved
+	}
+	if !replayAllowedForOutcome(actor, transaction.EscrowAdjudication, s.policy) {
+		return Result{}, ErrReplayNotAllowed
 	}
 
 	canonical := CanonicalAdjudicationSnapshot{
@@ -124,6 +139,30 @@ func buildBackgroundDispatchPrompt(transaction receipts.TransactionReceipt, subm
 func hasDeadLetterEvidence(events []receipts.ReceiptEvent) bool {
 	for _, event := range events {
 		if event.Source == "post_adjudication_retry" && event.Subtype == "dead-lettered" {
+			return true
+		}
+	}
+	return false
+}
+
+func replayAllowedForOutcome(actor string, outcome receipts.EscrowAdjudicationDecision, policy ReplayPolicy) bool {
+	if !containsActor(policy.AllowedActors, actor) {
+		return false
+	}
+
+	switch outcome {
+	case receipts.EscrowAdjudicationRelease:
+		return containsActor(policy.ReleaseAllowedActors, actor)
+	case receipts.EscrowAdjudicationRefund:
+		return containsActor(policy.RefundAllowedActors, actor)
+	default:
+		return false
+	}
+}
+
+func containsActor(actors []string, actor string) bool {
+	for _, candidate := range actors {
+		if candidate == actor {
 			return true
 		}
 	}

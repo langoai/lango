@@ -84,6 +84,9 @@ type Config struct {
 	// Workflow engine configuration
 	Workflow WorkflowConfig `mapstructure:"workflow" json:"workflow"`
 
+	// Replay configuration (operator replay authorization)
+	Replay ReplayConfig `mapstructure:"replay" json:"replay"`
+
 	// Skill configuration (file-based skills)
 	Skill SkillConfig `mapstructure:"skill" json:"skill"`
 
@@ -575,6 +578,12 @@ type BrowserToolConfig struct {
 
 	// Session timeout
 	SessionTimeout time.Duration `mapstructure:"sessionTimeout" json:"sessionTimeout"`
+}
+
+type ReplayConfig struct {
+	AllowedActors        []string `mapstructure:"allowed_actors" json:"allowed_actors"`
+	ReleaseAllowedActors []string `mapstructure:"release_allowed_actors" json:"release_allowed_actors"`
+	RefundAllowedActors  []string `mapstructure:"refund_allowed_actors" json:"refund_allowed_actors"`
 }
 
 // AlertingConfig defines operational alerting thresholds and delivery settings.

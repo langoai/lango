@@ -184,6 +184,14 @@ The `docs/architecture/index.md` page SHALL include a quick link to `operator-re
 - **THEN** they SHALL find the Operator Replay / Manual Retry entry linking to `operator-replay-manual-retry.md`
 - **AND** the entry SHALL describe the slice as operator replay bounded by current implementation limits
 
+### Requirement: Architecture landing page links policy-driven replay controls
+The `docs/architecture/index.md` page SHALL include a quick link to `policy-driven-replay-controls.md` and a short summary that frames it as the first authorization slice for replay.
+
+#### Scenario: Policy-driven replay controls appears in architecture landing page
+- **WHEN** a user reads `docs/architecture/index.md`
+- **THEN** they SHALL find the Policy-Driven Replay Controls entry linking to `policy-driven-replay-controls.md`
+- **AND** the entry SHALL describe the slice as replay authorization bounded by current implementation limits
+
 ### Requirement: Architecture landing page links dead-letter browsing / status observation
 The `docs/architecture/index.md` page SHALL include a quick link to `dead-letter-browsing-status-observation.md` and a short summary that frames it as the first read-only operator visibility slice for post-adjudication dead letters.
 

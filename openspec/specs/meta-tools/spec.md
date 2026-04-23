@@ -255,6 +255,11 @@ The meta tools surface SHALL provide a `retry_post_adjudication_execution` tool 
 - **WHEN** `retry_post_adjudication_execution` succeeds
 - **THEN** it SHALL return the canonical adjudication snapshot and the new background dispatch receipt
 
+#### Scenario: Replay tool enforces actor-based policy
+- **WHEN** `retry_post_adjudication_execution` is invoked
+- **THEN** it SHALL fail closed when actor resolution fails
+- **AND** it SHALL fail closed when the actor is not allowed for the current replay outcome
+
 ### Requirement: Dead-letter browsing and status observation tools
 The meta tools surface SHALL provide read-only visibility into dead-lettered post-adjudication execution.
 

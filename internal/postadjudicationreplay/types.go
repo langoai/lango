@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/receipts"
 )
 
@@ -12,6 +13,8 @@ var (
 	ErrCurrentSubmissionMissing     = errors.New("current submission missing")
 	ErrDeadLetterEvidenceMissing    = errors.New("dead-letter evidence missing")
 	ErrCanonicalAdjudicationMissing = errors.New("canonical adjudication missing")
+	ErrActorUnresolved              = errors.New("actor_unresolved")
+	ErrReplayNotAllowed             = errors.New("replay_not_allowed")
 )
 
 type Request struct {
@@ -54,4 +57,21 @@ type receiptStore interface {
 
 type dispatcher interface {
 	Dispatch(context.Context, BackgroundDispatchRequest) (BackgroundDispatchReceipt, error)
+}
+
+type ReplayPolicy struct {
+	AllowedActors        []string
+	ReleaseAllowedActors []string
+	RefundAllowedActors  []string
+}
+
+func ReplayPolicyFromConfig(cfg *config.Config) ReplayPolicy {
+	if cfg == nil {
+		return ReplayPolicy{}
+	}
+	return ReplayPolicy{
+		AllowedActors:        append([]string(nil), cfg.Replay.AllowedActors...),
+		ReleaseAllowedActors: append([]string(nil), cfg.Replay.ReleaseAllowedActors...),
+		RefundAllowedActors:  append([]string(nil), cfg.Replay.RefundAllowedActors...),
+	}
 }
