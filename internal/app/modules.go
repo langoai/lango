@@ -345,14 +345,16 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 		var settlementRuntime settlementExecutionRuntime
 		var partialSettlementRuntime partialSettlementExecutionRuntime
 		var escrowReleaseRuntime escrowReleaseExecutionRuntime
+		var escrowRefundRuntime escrowRefundExecutionRuntime
 		if pcv, ok := r.Resolve(appinit.ProvidesPayment).(*paymentComponents); ok && pcv != nil && pcv.service != nil {
 			settlementRuntime = paymentSettlementRuntime{service: pcv.service}
 			partialSettlementRuntime = paymentPartialSettlementRuntime{service: pcv.service}
 		}
 		if econc, ok := r.Resolve(appinit.ProvidesEconomy).(*economyComponents); ok && econc != nil && econc.escrowEngine != nil {
 			escrowReleaseRuntime = engineEscrowReleaseRuntime{engine: econc.escrowEngine}
+			escrowRefundRuntime = engineEscrowRefundRuntime{engine: econc.escrowEngine}
 		}
-		metaTools := buildMetaToolsWithRuntimes(kc.store, kc.engine, skillReg, cfg.Skill, cfg, receiptStore, escrowRuntime, settlementRuntime, partialSettlementRuntime, escrowReleaseRuntime)
+		metaTools := buildMetaToolsWithRuntimes(kc.store, kc.engine, skillReg, cfg.Skill, cfg, receiptStore, escrowRuntime, settlementRuntime, partialSettlementRuntime, escrowReleaseRuntime, escrowRefundRuntime)
 		tools = append(tools, metaTools...)
 		entries = append(entries, appinit.CatalogEntry{Category: "meta", Description: "Knowledge, learning, and skill management", ConfigKey: "knowledge.enabled", Enabled: true, Tools: metaTools})
 	} else {

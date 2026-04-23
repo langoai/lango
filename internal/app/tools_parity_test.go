@@ -367,7 +367,8 @@ func TestBuildMetaToolsWithRuntimes_Parity(t *testing.T) {
 	settlementRuntime := &fakeSettlementExecutionRuntime{}
 	partialSettlementRuntime := &fakePartialSettlementExecutionRuntime{}
 	escrowReleaseRuntime := &fakeEscrowReleaseRuntime{}
-	tools := buildMetaToolsWithRuntimes(nil, nil, nil, config.SkillConfig{}, nil, receiptStore, escrowEngine, settlementRuntime, partialSettlementRuntime, escrowReleaseRuntime)
+	escrowRefundRuntime := &fakeEscrowRefundRuntime{}
+	tools := buildMetaToolsWithRuntimes(nil, nil, nil, config.SkillConfig{}, nil, receiptStore, escrowEngine, settlementRuntime, partialSettlementRuntime, escrowReleaseRuntime, escrowRefundRuntime)
 
 	wantNames := []string{
 		"save_knowledge",
@@ -391,6 +392,7 @@ func TestBuildMetaToolsWithRuntimes_Parity(t *testing.T) {
 		"execute_settlement",
 		"execute_partial_settlement",
 		"release_escrow_settlement",
+		"refund_escrow_settlement",
 		"execute_escrow_recommendation",
 	}
 
