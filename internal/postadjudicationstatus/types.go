@@ -24,6 +24,7 @@ type DeadLetterBacklogEntry struct {
 	LatestManualReplayAt      string   `json:"latest_manual_replay_at,omitempty"`
 	LatestStatusSubtype       string   `json:"latest_status_subtype,omitempty"`
 	LatestStatusSubtypeFamily string   `json:"latest_status_subtype_family,omitempty"`
+	DominantFamily            string   `json:"dominant_family,omitempty"`
 	AnyMatchFamilies          []string `json:"any_match_families,omitempty"`
 	ManualRetryCount          int      `json:"manual_retry_count,omitempty"`
 	TotalRetryCount           int      `json:"total_retry_count,omitempty"`
@@ -49,6 +50,7 @@ type RetryDeadLetterSummary struct {
 	LatestDispatchReference   string   `json:"latest_dispatch_reference,omitempty"`
 	LatestStatusSubtype       string   `json:"latest_status_subtype,omitempty"`
 	LatestStatusSubtypeFamily string   `json:"latest_status_subtype_family,omitempty"`
+	DominantFamily            string   `json:"dominant_family,omitempty"`
 	AnyMatchFamilies          []string `json:"any_match_families,omitempty"`
 }
 
@@ -68,6 +70,7 @@ type DeadLetterListOptions struct {
 	TotalRetryCountMin        int
 	TotalRetryCountMax        int
 	LatestStatusSubtypeFamily string
+	DominantFamily            string
 	AnyMatchFamily            string
 	SortBy                    string
 	Offset                    int

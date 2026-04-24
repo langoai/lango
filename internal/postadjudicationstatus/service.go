@@ -156,6 +156,7 @@ func (s *Service) deadLetterEntryForTransaction(ctx context.Context, transaction
 		LatestManualReplayAt:      summary.LatestManualReplayAt,
 		LatestStatusSubtype:       summary.LatestStatusSubtype,
 		LatestStatusSubtypeFamily: summary.LatestStatusSubtypeFamily,
+		DominantFamily:            summary.DominantFamily,
 		AnyMatchFamilies:          append([]string(nil), summary.AnyMatchFamilies...),
 		ManualRetryCount:          summary.ManualRetryCount,
 		TotalRetryCount:           summary.TotalRetryCount,
@@ -189,6 +190,8 @@ type eventSummary = RetryDeadLetterSummary
 func summarizeEvents(events []receipts.ReceiptEvent) eventSummary {
 	var summary eventSummary
 	familySet := make(map[string]struct{})
+	familyCounts := make(map[string]int)
+	latestRelevantFamily := ""
 	for _, event := range events {
 		if event.Source != "post_adjudication_retry" {
 			continue
@@ -198,6 +201,8 @@ func summarizeEvents(events []receipts.ReceiptEvent) eventSummary {
 			summary.TotalRetryCount++
 			summary.LatestStatusSubtypeFamily = family
 			familySet[family] = struct{}{}
+			familyCounts[family]++
+			latestRelevantFamily = family
 		}
 
 		parsed := parseEventSummary(event)
@@ -229,6 +234,7 @@ func summarizeEvents(events []receipts.ReceiptEvent) eventSummary {
 		}
 		summary.HasDeadLetter = false
 	}
+	summary.DominantFamily = dominantFamily(familyCounts, latestRelevantFamily)
 	summary.AnyMatchFamilies = anyMatchFamilies(familySet)
 
 	return summary
@@ -342,6 +348,9 @@ func matchesDeadLetterFilters(entry DeadLetterBacklogEntry, opts DeadLetterListO
 	if opts.TotalRetryCountMax > 0 && entry.TotalRetryCount > opts.TotalRetryCountMax {
 		return false
 	}
+	if dominantFamily := strings.TrimSpace(opts.DominantFamily); dominantFamily != "" && entry.DominantFamily != dominantFamily {
+		return false
+	}
 	if anyMatchFamily := strings.TrimSpace(opts.AnyMatchFamily); anyMatchFamily != "" && !containsFamily(entry.AnyMatchFamilies, anyMatchFamily) {
 		return false
 	}
@@ -424,6 +433,36 @@ func anyMatchFamilies(families map[string]struct{}) []string {
 	}
 	sort.Strings(values)
 	return values
+}
+
+func dominantFamily(familyCounts map[string]int, latestRelevantFamily string) string {
+	if len(familyCounts) == 0 {
+		return ""
+	}
+
+	maxCount := 0
+	candidates := make([]string, 0, len(familyCounts))
+	for family, count := range familyCounts {
+		switch {
+		case count > maxCount:
+			maxCount = count
+			candidates = []string{family}
+		case count == maxCount:
+			candidates = append(candidates, family)
+		}
+	}
+
+	if len(candidates) == 1 {
+		return candidates[0]
+	}
+	for _, family := range candidates {
+		if family == latestRelevantFamily {
+			return family
+		}
+	}
+
+	sort.Strings(candidates)
+	return candidates[0]
 }
 
 func containsFamily(families []string, want string) bool {
