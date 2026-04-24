@@ -47,6 +47,7 @@ type DeadLetterListOptions struct {
 	Adjudication              string
 	LatestStatusSubtype       string
 	LatestStatusSubtypeFamily string
+	AnyMatchFamily            string
 	ManualReplayActor         string
 	DeadLetteredAfter         string
 	DeadLetteredBefore        string
@@ -96,6 +97,10 @@ func (b *DeadLetterToolBridge) List(ctx context.Context, opts DeadLetterListOpti
 	switch strings.TrimSpace(opts.LatestStatusSubtypeFamily) {
 	case "retry", "manual-retry", "dead-letter":
 		params["latest_status_subtype_family"] = strings.TrimSpace(opts.LatestStatusSubtypeFamily)
+	}
+	switch strings.TrimSpace(opts.AnyMatchFamily) {
+	case "retry", "manual-retry", "dead-letter":
+		params["any_match_family"] = strings.TrimSpace(opts.AnyMatchFamily)
 	}
 	if actor := strings.TrimSpace(opts.ManualReplayActor); actor != "" {
 		params["manual_replay_actor"] = actor

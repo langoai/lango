@@ -70,6 +70,7 @@ func TestDeadLetterToolBridge_ListAndDetail(t *testing.T) {
 				assert.Equal(t, "release", params["adjudication"])
 				assert.Equal(t, "manual-retry-requested", params["latest_status_subtype"])
 				assert.Equal(t, "manual-retry", params["latest_status_subtype_family"])
+				assert.Equal(t, "dead-letter", params["any_match_family"])
 				assert.Equal(t, "operator:alice", params["manual_replay_actor"])
 				assert.Equal(t, "2026-04-24T11:00:00Z", params["dead_lettered_after"])
 				assert.Equal(t, "2026-04-24T13:00:00Z", params["dead_lettered_before"])
@@ -95,6 +96,7 @@ func TestDeadLetterToolBridge_ListAndDetail(t *testing.T) {
 		Adjudication:              "release",
 		LatestStatusSubtype:       "manual-retry-requested",
 		LatestStatusSubtypeFamily: "manual-retry",
+		AnyMatchFamily:            "dead-letter",
 		ManualReplayActor:         "operator:alice",
 		DeadLetteredAfter:         "2026-04-24T11:00:00Z",
 		DeadLetteredBefore:        "2026-04-24T13:00:00Z",
@@ -155,6 +157,8 @@ func TestDeadLetterToolBridge_ListOmitsAdjudicationWhenAll(t *testing.T) {
 				assert.False(t, hasSubtype)
 				_, hasFamily := params["latest_status_subtype_family"]
 				assert.False(t, hasFamily)
+				_, hasAnyMatchFamily := params["any_match_family"]
+				assert.False(t, hasAnyMatchFamily)
 				_, hasActor := params["manual_replay_actor"]
 				assert.False(t, hasActor)
 				_, hasAfter := params["dead_lettered_after"]
@@ -180,6 +184,7 @@ func TestDeadLetterToolBridge_ListOmitsAdjudicationWhenAll(t *testing.T) {
 		Adjudication:              "all",
 		LatestStatusSubtype:       "all",
 		LatestStatusSubtypeFamily: "all",
+		AnyMatchFamily:            "all",
 		ManualReplayActor:         "",
 		DeadLetteredAfter:         "",
 		DeadLetteredBefore:        "",

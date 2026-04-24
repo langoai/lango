@@ -88,6 +88,9 @@ The slice is intentionally narrow:
     - first `r` enters inline confirm state
     - second `r` executes replay
     - `Esc`, selection change, and filter apply clear confirm state
+    - while replay is in flight, `Retry action` renders `running...`
+    - duplicate retry triggers are blocked while replay is running
+    - replay failure surfaces the backend error string and returns the action to idle
     - replay success refreshes backlog and selected detail
 
 ## Current Limits
@@ -99,5 +102,4 @@ This slice does not yet include:
 - full event history dump
 - richer detail-surface actor/time summaries
 - selection preservation after filter changes
-- richer loading/failure recovery feedback
 - higher-level CLI surfaces
