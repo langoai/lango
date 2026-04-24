@@ -157,6 +157,7 @@ func TestServiceListCurrentDeadLetters_ExtractsFocusedFields(t *testing.T) {
 	assert.Equal(t, "operator:alice", got[0].LatestManualReplayActor)
 	assert.Equal(t, "dead-lettered", got[0].LatestStatusSubtype)
 	assert.Equal(t, "dead-letter", got[0].LatestStatusSubtypeFamily)
+	assert.Equal(t, []string{"dead-letter", "manual-retry", "retry"}, got[0].AnyMatchFamilies)
 	assert.Equal(t, 3, got[0].TotalRetryCount)
 	assert.Equal(t, 4, got[0].LatestRetryAttempt)
 	assert.Equal(t, "dispatch-final-123", got[0].LatestDispatchReference)
@@ -218,6 +219,7 @@ func TestServiceGetTransactionStatus_ReturnsCanonicalSnapshotAndSummary(t *testi
 	assert.Equal(t, "dispatch-456", got.RetryDeadLetterSummary.LatestDispatchReference)
 	assert.Equal(t, "dead-lettered", got.RetryDeadLetterSummary.LatestStatusSubtype)
 	assert.Equal(t, "dead-letter", got.RetryDeadLetterSummary.LatestStatusSubtypeFamily)
+	assert.Equal(t, []string{"dead-letter", "manual-retry", "retry"}, got.RetryDeadLetterSummary.AnyMatchFamilies)
 }
 
 func TestServiceGetTransactionStatus_ReturnsMissingTransactionFailure(t *testing.T) {
@@ -480,6 +482,49 @@ func TestServiceListCurrentDeadLettersPage_FiltersByTotalRetryCountAndSubtypeFam
 	assert.Equal(t, "tx-a", got.Items[0].TransactionReceiptID)
 	assert.Equal(t, 3, got.Items[0].TotalRetryCount)
 	assert.Equal(t, "dead-letter", got.Items[0].LatestStatusSubtypeFamily)
+}
+
+func TestServiceListCurrentDeadLettersPage_FiltersByAnyMatchFamily(t *testing.T) {
+	t.Parallel()
+
+	store := newFakeStatusStore()
+	store.transactions = []receipts.TransactionReceipt{
+		makeDeadLetterTransaction("tx-a", "sub-a", receipts.EscrowAdjudicationRelease),
+		makeDeadLetterTransaction("tx-b", "sub-b", receipts.EscrowAdjudicationRelease),
+		makeDeadLetterTransaction("tx-c", "sub-c", receipts.EscrowAdjudicationRefund),
+	}
+	store.submissions["sub-a"] = receipts.SubmissionReceipt{SubmissionReceiptID: "sub-a", TransactionReceiptID: "tx-a"}
+	store.submissions["sub-b"] = receipts.SubmissionReceipt{SubmissionReceiptID: "sub-b", TransactionReceiptID: "tx-b"}
+	store.submissions["sub-c"] = receipts.SubmissionReceipt{SubmissionReceiptID: "sub-c", TransactionReceiptID: "tx-c"}
+	store.events["sub-a"] = []receipts.ReceiptEvent{
+		manualRetryEventAt("sub-a", "operator:alice", "2026-04-23T08:15:00Z"),
+		deadLetterEventAt("sub-a", 5, "dispatch-a", "2026-04-23T10:15:00Z"),
+	}
+	store.events["sub-b"] = []receipts.ReceiptEvent{
+		{
+			SubmissionReceiptID: "sub-b",
+			Source:              "post_adjudication_retry",
+			Subtype:             "retry-scheduled",
+			Type:                receipts.EventSettlementUpdated,
+			Reason:              "attempt=2 outcome=release dispatch_reference=dispatch-b next_retry_at=2026-04-23T09:15:00Z",
+		},
+		deadLetterEventAt("sub-b", 4, "dispatch-b", "2026-04-23T11:15:00Z"),
+	}
+	store.events["sub-c"] = []receipts.ReceiptEvent{
+		deadLetterEventAt("sub-c", 3, "dispatch-c", "2026-04-23T12:15:00Z"),
+	}
+
+	svc := NewService(store)
+
+	got, err := svc.ListCurrentDeadLettersPage(context.Background(), DeadLetterListOptions{
+		AnyMatchFamily: "manual-retry",
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, got.Total)
+	require.Equal(t, 1, got.Count)
+	require.Len(t, got.Items, 1)
+	assert.Equal(t, "tx-a", got.Items[0].TransactionReceiptID)
+	assert.Equal(t, []string{"dead-letter", "manual-retry"}, got.Items[0].AnyMatchFamilies)
 }
 
 func TestServiceListCurrentDeadLettersPage_SortsBySelectedMode(t *testing.T) {
@@ -814,6 +859,7 @@ func TestSummaryIsEmptyWithoutDeadLetterEvidence(t *testing.T) {
 	require.Equal(t, "dispatch-1", summary.LatestDispatchReference)
 	require.Equal(t, "retry-scheduled", summary.LatestStatusSubtype)
 	require.Equal(t, "retry", summary.LatestStatusSubtypeFamily)
+	require.Equal(t, []string{"retry"}, summary.AnyMatchFamilies)
 }
 
 func TestSummaryIgnoresUnrelatedEvents(t *testing.T) {
@@ -928,6 +974,7 @@ func TestManualRetryParsingAndCountAreStable(t *testing.T) {
 	require.Equal(t, "operator:alice", summary.LatestManualReplayActor)
 	require.Equal(t, "dead-lettered", summary.LatestStatusSubtype)
 	require.Equal(t, "dead-letter", summary.LatestStatusSubtypeFamily)
+	require.Equal(t, []string{"dead-letter", "manual-retry"}, summary.AnyMatchFamilies)
 }
 
 var _ interface {

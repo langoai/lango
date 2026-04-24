@@ -156,6 +156,7 @@ func (s *Service) deadLetterEntryForTransaction(ctx context.Context, transaction
 		LatestManualReplayAt:      summary.LatestManualReplayAt,
 		LatestStatusSubtype:       summary.LatestStatusSubtype,
 		LatestStatusSubtypeFamily: summary.LatestStatusSubtypeFamily,
+		AnyMatchFamilies:          append([]string(nil), summary.AnyMatchFamilies...),
 		ManualRetryCount:          summary.ManualRetryCount,
 		TotalRetryCount:           summary.TotalRetryCount,
 		LatestRetryAttempt:        summary.LatestRetryAttempt,
@@ -187,6 +188,7 @@ type eventSummary = RetryDeadLetterSummary
 
 func summarizeEvents(events []receipts.ReceiptEvent) eventSummary {
 	var summary eventSummary
+	familySet := make(map[string]struct{})
 	for _, event := range events {
 		if event.Source != "post_adjudication_retry" {
 			continue
@@ -195,6 +197,7 @@ func summarizeEvents(events []receipts.ReceiptEvent) eventSummary {
 		if family != "" {
 			summary.TotalRetryCount++
 			summary.LatestStatusSubtypeFamily = family
+			familySet[family] = struct{}{}
 		}
 
 		parsed := parseEventSummary(event)
@@ -226,6 +229,7 @@ func summarizeEvents(events []receipts.ReceiptEvent) eventSummary {
 		}
 		summary.HasDeadLetter = false
 	}
+	summary.AnyMatchFamilies = anyMatchFamilies(familySet)
 
 	return summary
 }
@@ -338,6 +342,9 @@ func matchesDeadLetterFilters(entry DeadLetterBacklogEntry, opts DeadLetterListO
 	if opts.TotalRetryCountMax > 0 && entry.TotalRetryCount > opts.TotalRetryCountMax {
 		return false
 	}
+	if anyMatchFamily := strings.TrimSpace(opts.AnyMatchFamily); anyMatchFamily != "" && !containsFamily(entry.AnyMatchFamilies, anyMatchFamily) {
+		return false
+	}
 	return true
 }
 
@@ -404,4 +411,26 @@ func subtypeFamily(subtype string) string {
 	default:
 		return ""
 	}
+}
+
+func anyMatchFamilies(families map[string]struct{}) []string {
+	if len(families) == 0 {
+		return nil
+	}
+
+	values := make([]string, 0, len(families))
+	for family := range families {
+		values = append(values, family)
+	}
+	sort.Strings(values)
+	return values
+}
+
+func containsFamily(families []string, want string) bool {
+	for _, family := range families {
+		if strings.EqualFold(family, want) {
+			return true
+		}
+	}
+	return false
 }

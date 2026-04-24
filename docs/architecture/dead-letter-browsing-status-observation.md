@@ -27,6 +27,7 @@ The slice is intentionally narrow:
   - `manual_retry_count_min` / `manual_retry_count_max` filters
   - `total_retry_count_min` / `total_retry_count_max` filters
   - `latest_status_subtype_family` filter
+  - `any_match_family` filter
   - `sort_by`
   - `offset` / `limit` pagination
   - `count` / `total` / `offset` / `limit` response metadata
@@ -37,6 +38,7 @@ The slice is intentionally narrow:
   - `manual_retry_count`
   - `total_retry_count`
   - `latest_status_subtype_family`
+  - `any_match_families`
 - `get_post_adjudication_execution_status(transaction_receipt_id)`
   - current canonical snapshot
   - latest retry / dead-letter summary
@@ -63,3 +65,4 @@ This slice does not yet include:
 - multi-column sort
 - dominant or any-match family grouping
 - cross-submission retry aggregation
+- dominant family

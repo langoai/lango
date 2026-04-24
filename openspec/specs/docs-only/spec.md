@@ -431,10 +431,11 @@ The `docs/architecture/dead-letter-browsing-status-observation.md` page SHALL de
 - **AND** they SHALL find dead-letter reason and dispatch-reference filters described
 - **AND** they SHALL find subtype/count filters and alternate sort modes described
 - **AND** they SHALL find total retry-count and subtype-family filters described
+- **AND** they SHALL find any-match family grouping described
 - **AND** they SHALL find detail navigation hints described for per-transaction status
 
 ### Requirement: P2P knowledge exchange track reflects landed dead-letter browsing / status observation
-The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe dead-letter browsing / status observation as landed work with total retry-count and subtype-family filters, and list the remaining work as dominant-family or cross-submission lifecycle grouping, raw background-task bridges, and higher-level cockpit or CLI surfaces.
+The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe dead-letter browsing / status observation as landed work with any-match family grouping, and list the remaining work as dominant-family or cross-submission lifecycle grouping, raw background-task bridges, and higher-level cockpit or CLI surfaces.
 
 #### Scenario: Track page points to the landed status slice
 - **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
