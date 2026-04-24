@@ -14,6 +14,7 @@ import (
 
 type Service struct {
 	store receiptStore
+	tasks backgroundTaskReader
 }
 
 type transactionGlobalAggregation struct {
@@ -26,7 +27,15 @@ type submissionReceiptLister interface {
 }
 
 func NewService(store receiptStore) *Service {
-	return &Service{store: store}
+	svc := &Service{store: store}
+	if reader, ok := store.(backgroundTaskReader); ok {
+		svc.tasks = reader
+	}
+	return svc
+}
+
+func NewServiceWithBackgroundTaskReader(store receiptStore, reader backgroundTaskReader) *Service {
+	return &Service{store: store, tasks: reader}
 }
 
 func (s *Service) ListCurrentDeadLetters(ctx context.Context) ([]DeadLetterBacklogEntry, error) {
@@ -117,6 +126,10 @@ func (s *Service) GetTransactionStatus(ctx context.Context, transactionReceiptID
 
 	summary := summarizeEvents(events)
 	isDeadLettered, canRetry, adjudication := detailNavigationHints(transaction, summary)
+	latestBackgroundTask, err := s.latestBackgroundTask(ctx, transaction)
+	if err != nil {
+		return TransactionStatus{}, err
+	}
 	return TransactionStatus{
 		CanonicalSnapshot: CanonicalSnapshot{
 			TransactionReceipt: transaction,
@@ -124,10 +137,52 @@ func (s *Service) GetTransactionStatus(ctx context.Context, transactionReceiptID
 			SubmissionEvents:   append([]receipts.ReceiptEvent(nil), events...),
 		},
 		RetryDeadLetterSummary: summary,
+		LatestBackgroundTask:   latestBackgroundTask,
 		IsDeadLettered:         isDeadLettered,
 		CanRetry:               canRetry,
 		Adjudication:           adjudication,
 	}, nil
+}
+
+func (s *Service) latestBackgroundTask(ctx context.Context, transaction receipts.TransactionReceipt) (*BackgroundTaskBridge, error) {
+	if s.tasks == nil {
+		return nil, nil
+	}
+
+	retryKey := backgroundRetryKey(transaction)
+	if retryKey == "" {
+		return nil, nil
+	}
+
+	snapshots, err := s.tasks.ListTaskSnapshots(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var latest *BackgroundTaskSnapshot
+	for i := range snapshots {
+		snapshot := snapshots[i]
+		if strings.TrimSpace(snapshot.RetryKey) != retryKey {
+			continue
+		}
+		if latest == nil || backgroundTaskSnapshotIsNewer(snapshot, *latest) {
+			candidate := snapshot
+			latest = &candidate
+		}
+	}
+	if latest == nil {
+		return nil, nil
+	}
+
+	bridge := &BackgroundTaskBridge{
+		TaskID:       latest.TaskID,
+		Status:       latest.Status,
+		AttemptCount: latest.AttemptCount,
+	}
+	if !latest.NextRetryAt.IsZero() {
+		bridge.NextRetryAt = latest.NextRetryAt.UTC().Format(time.RFC3339)
+	}
+	return bridge, nil
 }
 
 func (s *Service) deadLetterEntryForTransaction(ctx context.Context, transaction receipts.TransactionReceipt) (DeadLetterBacklogEntry, bool, error) {
@@ -488,6 +543,43 @@ func detailNavigationHints(transaction receipts.TransactionReceipt, summary Retr
 	isDeadLettered := summary.HasDeadLetter
 	canRetry := isDeadLettered && adjudication != "" && strings.TrimSpace(transaction.CurrentSubmissionReceiptID) != ""
 	return isDeadLettered, canRetry, adjudication
+}
+
+func backgroundRetryKey(transaction receipts.TransactionReceipt) string {
+	transactionReceiptID := strings.TrimSpace(transaction.TransactionReceiptID)
+	if transactionReceiptID == "" {
+		return ""
+	}
+
+	switch transaction.EscrowAdjudication {
+	case receipts.EscrowAdjudicationRelease, receipts.EscrowAdjudicationRefund:
+		return transactionReceiptID + ":" + string(transaction.EscrowAdjudication)
+	default:
+		return ""
+	}
+}
+
+func backgroundTaskSnapshotIsNewer(left, right BackgroundTaskSnapshot) bool {
+	leftAt := backgroundTaskSnapshotRecency(left)
+	rightAt := backgroundTaskSnapshotRecency(right)
+	if !leftAt.Equal(rightAt) {
+		return leftAt.After(rightAt)
+	}
+	if left.AttemptCount != right.AttemptCount {
+		return left.AttemptCount > right.AttemptCount
+	}
+	return left.TaskID > right.TaskID
+}
+
+func backgroundTaskSnapshotRecency(snapshot BackgroundTaskSnapshot) time.Time {
+	latest := snapshot.StartedAt
+	if snapshot.CompletedAt.After(latest) {
+		latest = snapshot.CompletedAt
+	}
+	if snapshot.NextRetryAt.After(latest) {
+		latest = snapshot.NextRetryAt
+	}
+	return latest
 }
 
 func parseRFC3339(value string) (time.Time, bool) {

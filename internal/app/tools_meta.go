@@ -71,6 +71,31 @@ func buildMetaToolsWithEscrow(
 
 type adjudicateEscrowDisputeBackgroundDispatcher interface {
 	Submit(context.Context, string, background.Origin) (string, error)
+	List() []background.TaskSnapshot
+}
+
+type postAdjudicationStatusBackgroundTaskReader struct {
+	dispatcher adjudicateEscrowDisputeBackgroundDispatcher
+}
+
+func (r postAdjudicationStatusBackgroundTaskReader) ListTaskSnapshots(_ context.Context) ([]postadjudicationstatus.BackgroundTaskSnapshot, error) {
+	if r.dispatcher == nil {
+		return nil, nil
+	}
+	raw := r.dispatcher.List()
+	out := make([]postadjudicationstatus.BackgroundTaskSnapshot, 0, len(raw))
+	for _, snap := range raw {
+		out = append(out, postadjudicationstatus.BackgroundTaskSnapshot{
+			TaskID:       snap.ID,
+			Status:       snap.StatusText,
+			RetryKey:     snap.RetryKey,
+			AttemptCount: snap.AttemptCount,
+			NextRetryAt:  snap.NextRetryAt,
+			StartedAt:    snap.StartedAt,
+			CompletedAt:  snap.CompletedAt,
+		})
+	}
+	return out, nil
 }
 
 type replayDispatcherAdapter struct {
@@ -1065,7 +1090,7 @@ func buildMetaToolsWithRuntimes(
 	if listDeadLettersTool := newListDeadLetteredPostAdjudicationExecutionsTool(receiptStore); listDeadLettersTool != nil {
 		tools = append(tools, listDeadLettersTool)
 	}
-	if getPostAdjudicationStatusTool := newGetPostAdjudicationExecutionStatusTool(receiptStore); getPostAdjudicationStatusTool != nil {
+	if getPostAdjudicationStatusTool := newGetPostAdjudicationExecutionStatusTool(receiptStore, backgroundDispatcher); getPostAdjudicationStatusTool != nil {
 		tools = append(tools, getPostAdjudicationStatusTool)
 	}
 	if replayTool := newRetryPostAdjudicationExecutionTool(cfg, receiptStore, backgroundDispatcher); replayTool != nil {
@@ -1829,7 +1854,7 @@ func newListDeadLetteredPostAdjudicationExecutionsTool(receiptStore *receipts.St
 	}
 }
 
-func newGetPostAdjudicationExecutionStatusTool(receiptStore *receipts.Store) *agent.Tool {
+func newGetPostAdjudicationExecutionStatusTool(receiptStore *receipts.Store, backgroundDispatcher adjudicateEscrowDisputeBackgroundDispatcher) *agent.Tool {
 	if receiptStore == nil {
 		return nil
 	}
@@ -1860,7 +1885,11 @@ func newGetPostAdjudicationExecutionStatusTool(receiptStore *receipts.Store) *ag
 			if transactionReceiptID == "" {
 				return nil, &toolparam.ErrMissingParam{Name: "transaction_receipt_id"}
 			}
-			result, err := postadjudicationstatus.NewService(receiptStore).GetTransactionStatus(ctx, transactionReceiptID)
+			service := postadjudicationstatus.NewServiceWithBackgroundTaskReader(
+				receiptStore,
+				postAdjudicationStatusBackgroundTaskReader{dispatcher: backgroundDispatcher},
+			)
+			result, err := service.GetTransactionStatus(ctx, transactionReceiptID)
 			if err != nil {
 				return nil, err
 			}

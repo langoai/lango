@@ -281,6 +281,7 @@ The meta tools surface SHALL provide read-only visibility into dead-lettered pos
 - **WHEN** `get_post_adjudication_execution_status` succeeds
 - **THEN** it SHALL return the current canonical snapshot
 - **AND** it SHALL return the latest retry / dead-letter summary
+- **AND** it SHALL return an optional `latest_background_task` with `task_id`, `status`, `attempt_count`, and `next_retry_at`
 - **AND** it SHALL return `is_dead_lettered`, `can_retry`, and `adjudication`
 
 ### Requirement: Escrow release and refund meta tools enforce canonical adjudication

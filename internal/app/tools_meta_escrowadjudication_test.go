@@ -21,6 +21,7 @@ import (
 type fakeAdjudicationBackgroundDispatcher struct {
 	mu     sync.Mutex
 	taskID string
+	tasks  []background.TaskSnapshot
 	prompt string
 	origin background.Origin
 	err    error
@@ -46,6 +47,14 @@ func (f *fakeAdjudicationBackgroundDispatcher) snapshot() (calls int, prompt str
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.calls, f.prompt, f.origin
+}
+
+func (f *fakeAdjudicationBackgroundDispatcher) List() []background.TaskSnapshot {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]background.TaskSnapshot, len(f.tasks))
+	copy(out, f.tasks)
+	return out
 }
 
 func TestBuildMetaTools_IncludesAdjudicateEscrowDispute(t *testing.T) {

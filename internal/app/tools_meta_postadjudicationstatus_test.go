@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/langoai/lango/internal/agent"
+	"github.com/langoai/lango/internal/background"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/ctxkeys"
 	"github.com/langoai/lango/internal/postadjudicationstatus"
@@ -519,6 +520,84 @@ func TestGetPostAdjudicationExecutionStatus_ReturnsCanonicalSnapshotAndSummary(t
 	assert.True(t, status.IsDeadLettered)
 	assert.True(t, status.CanRetry)
 	assert.Equal(t, string(receipts.EscrowAdjudicationRelease), status.Adjudication)
+	assert.Nil(t, status.LatestBackgroundTask)
+}
+
+func TestGetPostAdjudicationExecutionStatus_IncludesLatestBackgroundTask(t *testing.T) {
+	t.Parallel()
+
+	store := receipts.NewStore()
+	ctx := context.Background()
+	tx := createSubmittedTransaction(t, store, ctx, "deal-status-detail-background")
+	bindDisputeHoldEscrowExecutionInput(t, store, ctx, tx)
+	_, err := store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, tx.CurrentSubmissionReceiptID, receipts.EscrowExecutionStatusCreated, "", receipts.EventEscrowExecutionCreated, "")
+	require.NoError(t, err)
+	_, err = store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, tx.CurrentSubmissionReceiptID, receipts.EscrowExecutionStatusFunded, "escrow-123", receipts.EventEscrowExecutionFunded, "")
+	require.NoError(t, err)
+	_, err = store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, receipts.SettlementProgressionReviewNeeded, receipts.SettlementProgressionReasonCodeReject, "review needed", "")
+	require.NoError(t, err)
+	_, err = store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, receipts.SettlementProgressionDisputeReady, receipts.SettlementProgressionReasonCodeEscalate, "dispute ready", "")
+	require.NoError(t, err)
+	err = store.RecordEscrowDisputeHoldSuccess(ctx, receipts.EscrowDisputeHoldEvidenceRequest{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		SubmissionReceiptID:  tx.CurrentSubmissionReceiptID,
+		EscrowReference:      "escrow-123",
+		RuntimeReference:     "hold-123",
+	})
+	require.NoError(t, err)
+	_, err = store.ApplyEscrowAdjudication(ctx, receipts.EscrowAdjudicationRequest{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		SubmissionReceiptID:  tx.CurrentSubmissionReceiptID,
+		EscrowReference:      "escrow-123",
+		Outcome:              receipts.EscrowAdjudicationRelease,
+		Reason:               "release adjudicated",
+	})
+	require.NoError(t, err)
+	err = store.RecordPostAdjudicationDeadLetter(ctx, receipts.PostAdjudicationDeadLetterRequest{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		Outcome:              receipts.EscrowAdjudicationRelease,
+		AttemptCount:         3,
+		Reason:               "terminal worker failure",
+	})
+	require.NoError(t, err)
+
+	dispatcher := &fakeAdjudicationBackgroundDispatcher{
+		tasks: []background.TaskSnapshot{
+			{
+				ID:           "task-other",
+				StatusText:   "failed",
+				RetryKey:     tx.TransactionReceiptID + ":refund",
+				AttemptCount: 4,
+				CompletedAt:  time.Date(2026, time.April, 24, 10, 0, 0, 0, time.UTC),
+			},
+			{
+				ID:           "task-latest",
+				StatusText:   "running",
+				RetryKey:     tx.TransactionReceiptID + ":release",
+				AttemptCount: 2,
+				NextRetryAt:  time.Date(2026, time.April, 24, 12, 30, 0, 0, time.UTC),
+				StartedAt:    time.Date(2026, time.April, 24, 12, 0, 0, 0, time.UTC),
+			},
+		},
+	}
+
+	tool := findTool(buildMetaToolsWithRuntimes(nil, nil, nil, config.SkillConfig{}, nil, store, nil, nil, nil, nil, nil, nil, dispatcher), "get_post_adjudication_execution_status")
+	require.NotNil(t, tool)
+
+	got, err := tool.Handler(ctx, map[string]interface{}{
+		"transaction_receipt_id": tx.TransactionReceiptID,
+	})
+	require.NoError(t, err)
+
+	status, ok := got.(postadjudicationstatus.TransactionStatus)
+	require.True(t, ok)
+	require.NotNil(t, status.LatestBackgroundTask)
+	assert.Equal(t, &postadjudicationstatus.BackgroundTaskBridge{
+		TaskID:       "task-latest",
+		Status:       "running",
+		AttemptCount: 2,
+		NextRetryAt:  "2026-04-24T12:30:00Z",
+	}, status.LatestBackgroundTask)
 }
 
 func decodeDeadLetterEntriesFromPayload(t *testing.T, value interface{}) []postadjudicationstatus.DeadLetterBacklogEntry {

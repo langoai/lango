@@ -3,6 +3,7 @@ package postadjudicationstatus
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/langoai/lango/internal/receipts"
 )
@@ -103,13 +104,35 @@ type DeadLetterListPage struct {
 type TransactionStatus struct {
 	CanonicalSnapshot      CanonicalSnapshot      `json:"canonical_snapshot"`
 	RetryDeadLetterSummary RetryDeadLetterSummary `json:"retry_dead_letter_summary"`
+	LatestBackgroundTask   *BackgroundTaskBridge  `json:"latest_background_task,omitempty"`
 	IsDeadLettered         bool                   `json:"is_dead_lettered"`
 	CanRetry               bool                   `json:"can_retry"`
 	Adjudication           string                 `json:"adjudication"`
+}
+
+type BackgroundTaskBridge struct {
+	TaskID       string `json:"task_id"`
+	Status       string `json:"status"`
+	AttemptCount int    `json:"attempt_count"`
+	NextRetryAt  string `json:"next_retry_at,omitempty"`
+}
+
+type BackgroundTaskSnapshot struct {
+	TaskID       string
+	Status       string
+	RetryKey     string
+	AttemptCount int
+	NextRetryAt  time.Time
+	StartedAt    time.Time
+	CompletedAt  time.Time
 }
 
 type receiptStore interface {
 	ListTransactionReceipts(context.Context) ([]receipts.TransactionReceipt, error)
 	GetTransactionReceipt(context.Context, string) (receipts.TransactionReceipt, error)
 	GetSubmissionReceipt(context.Context, string) (receipts.SubmissionReceipt, []receipts.ReceiptEvent, error)
+}
+
+type backgroundTaskReader interface {
+	ListTaskSnapshots(context.Context) ([]BackgroundTaskSnapshot, error)
 }

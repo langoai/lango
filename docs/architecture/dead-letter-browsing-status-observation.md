@@ -51,6 +51,11 @@ The slice is intentionally narrow:
 - `get_post_adjudication_execution_status(transaction_receipt_id)`
   - current canonical snapshot
   - latest retry / dead-letter summary
+  - optional `latest_background_task`
+    - `task_id`
+    - `status`
+    - `attempt_count`
+    - `next_retry_at`
   - lightweight navigation hints:
     - `is_dead_lettered`
     - `can_retry`
@@ -66,7 +71,6 @@ This slice does not yet include:
 
 - replay / repair actions
 - generic dead-letter browsing for all background tasks
-- raw background task snapshots
 - full event history dump
 - cockpit / CLI presentation surfaces
 - richer detail-surface actor/time summaries

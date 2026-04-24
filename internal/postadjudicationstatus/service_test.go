@@ -225,6 +225,159 @@ func TestServiceGetTransactionStatus_ReturnsCanonicalSnapshotAndSummary(t *testi
 	assert.Equal(t, []string{"dead-letter", "manual-retry", "retry"}, got.RetryDeadLetterSummary.AnyMatchFamilies)
 }
 
+func TestServiceGetTransactionStatus_IncludesLatestMatchingBackgroundTask(t *testing.T) {
+	t.Parallel()
+
+	store := newFakeStatusStore()
+	store.transactionByID["tx-1"] = receipts.TransactionReceipt{
+		TransactionReceiptID:           "tx-1",
+		CurrentSubmissionReceiptID:     "sub-1",
+		EscrowAdjudication:             receipts.EscrowAdjudicationRelease,
+		CurrentPaymentApprovalStatus:   receipts.PaymentApprovalApproved,
+		CanonicalSettlementStatus:      receipts.SettlementSettled,
+		CanonicalApprovalStatus:        receipts.ApprovalApproved,
+		SettlementProgressionStatus:    receipts.SettlementProgressionDisputeReady,
+		KnowledgeExchangeRuntimeStatus: receipts.RuntimeStatusDisputeReady,
+	}
+	store.submissions["sub-1"] = receipts.SubmissionReceipt{
+		SubmissionReceiptID:  "sub-1",
+		TransactionReceiptID: "tx-1",
+	}
+	store.events["sub-1"] = []receipts.ReceiptEvent{
+		deadLetterEvent("sub-1", 3, "dispatch-1"),
+	}
+	store.tasks = []BackgroundTaskSnapshot{
+		{
+			TaskID:       "task-refund",
+			Status:       "failed",
+			RetryKey:     "tx-1:refund",
+			AttemptCount: 4,
+			CompletedAt:  time.Date(2026, time.April, 24, 9, 0, 0, 0, time.UTC),
+		},
+		{
+			TaskID:       "task-old",
+			Status:       "failed",
+			RetryKey:     "tx-1:release",
+			AttemptCount: 1,
+			CompletedAt:  time.Date(2026, time.April, 24, 8, 0, 0, 0, time.UTC),
+		},
+		{
+			TaskID:       "task-latest",
+			Status:       "pending",
+			RetryKey:     "tx-1:release",
+			AttemptCount: 2,
+			NextRetryAt:  time.Date(2026, time.April, 24, 11, 30, 0, 0, time.UTC),
+			CompletedAt:  time.Date(2026, time.April, 24, 10, 0, 0, 0, time.UTC),
+		},
+	}
+
+	svc := NewService(store)
+
+	got, err := svc.GetTransactionStatus(context.Background(), "tx-1")
+	require.NoError(t, err)
+	require.NotNil(t, got.LatestBackgroundTask)
+	assert.Equal(t, &BackgroundTaskBridge{
+		TaskID:       "task-latest",
+		Status:       "pending",
+		AttemptCount: 2,
+		NextRetryAt:  "2026-04-24T11:30:00Z",
+	}, got.LatestBackgroundTask)
+}
+
+func TestServiceGetTransactionStatus_IgnoresUnrelatedBackgroundTasks(t *testing.T) {
+	t.Parallel()
+
+	store := newFakeStatusStore()
+	store.transactionByID["tx-1"] = receipts.TransactionReceipt{
+		TransactionReceiptID:           "tx-1",
+		CurrentSubmissionReceiptID:     "sub-1",
+		EscrowAdjudication:             receipts.EscrowAdjudicationRefund,
+		CurrentPaymentApprovalStatus:   receipts.PaymentApprovalApproved,
+		CanonicalSettlementStatus:      receipts.SettlementSettled,
+		CanonicalApprovalStatus:        receipts.ApprovalApproved,
+		SettlementProgressionStatus:    receipts.SettlementProgressionDisputeReady,
+		KnowledgeExchangeRuntimeStatus: receipts.RuntimeStatusDisputeReady,
+	}
+	store.submissions["sub-1"] = receipts.SubmissionReceipt{
+		SubmissionReceiptID:  "sub-1",
+		TransactionReceiptID: "tx-1",
+	}
+	store.events["sub-1"] = []receipts.ReceiptEvent{
+		deadLetterEvent("sub-1", 2, "dispatch-1"),
+	}
+	store.tasks = []BackgroundTaskSnapshot{
+		{
+			TaskID:       "task-other-transaction",
+			Status:       "failed",
+			RetryKey:     "tx-2:refund",
+			AttemptCount: 3,
+			CompletedAt:  time.Date(2026, time.April, 24, 12, 0, 0, 0, time.UTC),
+		},
+		{
+			TaskID:       "task-other-outcome",
+			Status:       "running",
+			RetryKey:     "tx-1:release",
+			AttemptCount: 1,
+			StartedAt:    time.Date(2026, time.April, 24, 12, 30, 0, 0, time.UTC),
+		},
+		{
+			TaskID:       "task-match",
+			Status:       "failed",
+			RetryKey:     "tx-1:refund",
+			AttemptCount: 2,
+			CompletedAt:  time.Date(2026, time.April, 24, 13, 0, 0, 0, time.UTC),
+		},
+	}
+
+	svc := NewService(store)
+
+	got, err := svc.GetTransactionStatus(context.Background(), "tx-1")
+	require.NoError(t, err)
+	require.NotNil(t, got.LatestBackgroundTask)
+	assert.Equal(t, "task-match", got.LatestBackgroundTask.TaskID)
+	assert.Equal(t, "failed", got.LatestBackgroundTask.Status)
+	assert.Equal(t, 2, got.LatestBackgroundTask.AttemptCount)
+	assert.Empty(t, got.LatestBackgroundTask.NextRetryAt)
+}
+
+func TestServiceGetTransactionStatus_ReturnsNilLatestBackgroundTaskWhenNoTaskMatches(t *testing.T) {
+	t.Parallel()
+
+	store := newFakeStatusStore()
+	store.transactionByID["tx-1"] = receipts.TransactionReceipt{
+		TransactionReceiptID:           "tx-1",
+		CurrentSubmissionReceiptID:     "sub-1",
+		EscrowAdjudication:             receipts.EscrowAdjudicationRelease,
+		CurrentPaymentApprovalStatus:   receipts.PaymentApprovalApproved,
+		CanonicalSettlementStatus:      receipts.SettlementSettled,
+		CanonicalApprovalStatus:        receipts.ApprovalApproved,
+		SettlementProgressionStatus:    receipts.SettlementProgressionDisputeReady,
+		KnowledgeExchangeRuntimeStatus: receipts.RuntimeStatusDisputeReady,
+	}
+	store.submissions["sub-1"] = receipts.SubmissionReceipt{
+		SubmissionReceiptID:  "sub-1",
+		TransactionReceiptID: "tx-1",
+	}
+	store.events["sub-1"] = []receipts.ReceiptEvent{
+		deadLetterEvent("sub-1", 2, "dispatch-1"),
+	}
+	store.tasks = []BackgroundTaskSnapshot{
+		{
+			TaskID:       "task-other",
+			Status:       "failed",
+			RetryKey:     "tx-2:refund",
+			AttemptCount: 5,
+			CompletedAt:  time.Date(2026, time.April, 24, 14, 0, 0, 0, time.UTC),
+		},
+	}
+
+	svc := NewService(store)
+
+	got, err := svc.GetTransactionStatus(context.Background(), "tx-1")
+	require.NoError(t, err)
+	assert.Nil(t, got.LatestBackgroundTask)
+}
+
 func TestServiceGetTransactionStatus_ReturnsMissingTransactionFailure(t *testing.T) {
 	t.Parallel()
 
@@ -830,6 +983,7 @@ type fakeStatusStore struct {
 	transactionByID   map[string]receipts.TransactionReceipt
 	submissions       map[string]receipts.SubmissionReceipt
 	events            map[string][]receipts.ReceiptEvent
+	tasks             []BackgroundTaskSnapshot
 	getTransactionErr error
 	getSubmissionErr  error
 }
@@ -892,6 +1046,13 @@ func (f *fakeStatusStore) ListSubmissionReceipts(context.Context) ([]receipts.Su
 		return items[i].SubmissionReceiptID < items[j].SubmissionReceiptID
 	})
 	return items, nil
+}
+
+func (f *fakeStatusStore) ListTaskSnapshots(context.Context) ([]BackgroundTaskSnapshot, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return append([]BackgroundTaskSnapshot(nil), f.tasks...), nil
 }
 
 func (f *fakeStatusStore) SetTransaction(transaction receipts.TransactionReceipt) {
@@ -984,6 +1145,7 @@ func (f *fakeStatusStore) CurrentEvents(submissionID string) []receipts.ReceiptE
 }
 
 var _ receiptStore = (*fakeStatusStore)(nil)
+var _ backgroundTaskReader = (*fakeStatusStore)(nil)
 
 func makeDeadLetterTransaction(transactionID, submissionID string, adjudication receipts.EscrowAdjudicationDecision) receipts.TransactionReceipt {
 	return receipts.TransactionReceipt{
