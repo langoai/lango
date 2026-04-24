@@ -336,6 +336,61 @@ func TestServiceListCurrentDeadLettersPage_FiltersByManualReplayActorAndDeadLett
 	assert.Equal(t, "operator:bob", got.Items[0].LatestManualReplayActor)
 }
 
+func TestServiceListCurrentDeadLettersPage_FiltersByReasonAndDispatchReference(t *testing.T) {
+	t.Parallel()
+
+	store := newFakeStatusStore()
+	store.transactions = []receipts.TransactionReceipt{
+		makeDeadLetterTransaction("tx-a", "sub-a", receipts.EscrowAdjudicationRelease),
+		makeDeadLetterTransaction("tx-b", "sub-b", receipts.EscrowAdjudicationRelease),
+		makeDeadLetterTransaction("tx-c", "sub-c", receipts.EscrowAdjudicationRefund),
+	}
+	store.submissions["sub-a"] = receipts.SubmissionReceipt{SubmissionReceiptID: "sub-a", TransactionReceiptID: "tx-a"}
+	store.submissions["sub-b"] = receipts.SubmissionReceipt{SubmissionReceiptID: "sub-b", TransactionReceiptID: "tx-b"}
+	store.submissions["sub-c"] = receipts.SubmissionReceipt{SubmissionReceiptID: "sub-c", TransactionReceiptID: "tx-c"}
+	store.events["sub-a"] = []receipts.ReceiptEvent{
+		{
+			SubmissionReceiptID: "sub-a",
+			Source:              "post_adjudication_retry",
+			Subtype:             "dead-lettered",
+			Type:                receipts.EventSettlementExecutionFailed,
+			Reason:              "attempt=5 outcome=release dispatch_reference=dispatch-a dead_lettered_at=2026-04-23T09:15:00Z reason=Worker exhausted after release path",
+		},
+	}
+	store.events["sub-b"] = []receipts.ReceiptEvent{
+		{
+			SubmissionReceiptID: "sub-b",
+			Source:              "post_adjudication_retry",
+			Subtype:             "dead-lettered",
+			Type:                receipts.EventSettlementExecutionFailed,
+			Reason:              "attempt=4 outcome=release dispatch_reference=dispatch-b dead_lettered_at=2026-04-23T10:15:00Z reason=terminal worker failure",
+		},
+	}
+	store.events["sub-c"] = []receipts.ReceiptEvent{
+		{
+			SubmissionReceiptID: "sub-c",
+			Source:              "post_adjudication_retry",
+			Subtype:             "dead-lettered",
+			Type:                receipts.EventSettlementExecutionFailed,
+			Reason:              "attempt=3 outcome=refund dispatch_reference=dispatch-c dead_lettered_at=2026-04-23T11:15:00Z reason=worker exhausted on refund path",
+		},
+	}
+
+	svc := NewService(store)
+
+	got, err := svc.ListCurrentDeadLettersPage(context.Background(), DeadLetterListOptions{
+		DeadLetterReasonQuery:   "release PATH",
+		LatestDispatchReference: "dispatch-a",
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, got.Total)
+	require.Equal(t, 1, got.Count)
+	require.Len(t, got.Items, 1)
+	assert.Equal(t, "tx-a", got.Items[0].TransactionReceiptID)
+	assert.Equal(t, "Worker exhausted after release path", got.Items[0].LatestDeadLetterReason)
+	assert.Equal(t, "dispatch-a", got.Items[0].LatestDispatchReference)
+}
+
 func TestServiceListCurrentDeadLettersPage_ReturnsPaginationMetadata(t *testing.T) {
 	t.Parallel()
 

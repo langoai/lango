@@ -138,6 +138,7 @@ func initBackground(cfg *config.Config, app *App, receiptStore *receipts.Store) 
 				Outcome:              outcome,
 				AttemptCount:         snap.AttemptCount,
 				NextRetryAt:          snap.NextRetryAt,
+				DispatchReference:    snap.ID,
 			}); err != nil {
 				logger().Warnw("post-adjudication retry evidence failed", "taskID", snap.ID, "error", err)
 			}

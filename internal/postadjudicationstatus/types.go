@@ -42,15 +42,17 @@ type RetryDeadLetterSummary struct {
 }
 
 type DeadLetterListOptions struct {
-	Adjudication       string
-	RetryAttemptMin    int
-	RetryAttemptMax    int
-	Query              string
-	ManualReplayActor  string
-	DeadLetteredAfter  string
-	DeadLetteredBefore string
-	Offset             int
-	Limit              int
+	Adjudication            string
+	RetryAttemptMin         int
+	RetryAttemptMax         int
+	Query                   string
+	ManualReplayActor       string
+	DeadLetteredAfter       string
+	DeadLetteredBefore      string
+	DeadLetterReasonQuery   string
+	LatestDispatchReference string
+	Offset                  int
+	Limit                   int
 }
 
 type DeadLetterListPage struct {

@@ -21,6 +21,8 @@ The slice is intentionally narrow:
   - `query` over transaction and submission receipt IDs
   - `manual_replay_actor` filter
   - `dead_lettered_after` / `dead_lettered_before` filters
+  - `dead_letter_reason_query` filter
+  - `latest_dispatch_reference` exact-match filter
   - `offset` / `limit` pagination
   - `count` / `total` / `offset` / `limit` response metadata
   - `latest_dead_lettered_at`
@@ -48,3 +50,4 @@ This slice does not yet include:
 - alternate sort modes
 - cockpit / CLI presentation surfaces
 - richer detail-surface actor/time summaries
+- replay-count and subtype filters

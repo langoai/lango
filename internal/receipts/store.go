@@ -558,10 +558,22 @@ func (s *Store) RecordPostAdjudicationRetryScheduled(_ context.Context, req Post
 		SubmissionReceiptID: submissionReceiptID,
 		Source:              "post_adjudication_retry",
 		Subtype:             "retry-scheduled",
-		Reason:              fmt.Sprintf("attempt=%d next_retry_at=%s outcome=%s", req.AttemptCount, req.NextRetryAt.UTC().Format(time.RFC3339), req.Outcome),
+		Reason:              buildPostAdjudicationRetryScheduledReason(req),
 		Type:                EventSettlementUpdated,
 	})
 	return nil
+}
+
+func buildPostAdjudicationRetryScheduledReason(req PostAdjudicationRetryScheduledRequest) string {
+	parts := []string{
+		fmt.Sprintf("attempt=%d", req.AttemptCount),
+		fmt.Sprintf("next_retry_at=%s", req.NextRetryAt.UTC().Format(time.RFC3339)),
+		fmt.Sprintf("outcome=%s", req.Outcome),
+	}
+	if dispatchReference := strings.TrimSpace(req.DispatchReference); dispatchReference != "" {
+		parts = append(parts, fmt.Sprintf("dispatch_reference=%s", dispatchReference))
+	}
+	return strings.Join(parts, " ")
 }
 
 func (s *Store) RecordPostAdjudicationDeadLetter(_ context.Context, req PostAdjudicationDeadLetterRequest) error {

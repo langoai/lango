@@ -297,6 +297,14 @@ func matchesDeadLetterFilters(entry DeadLetterBacklogEntry, opts DeadLetterListO
 			return false
 		}
 	}
+	if reasonQuery := strings.TrimSpace(opts.DeadLetterReasonQuery); reasonQuery != "" {
+		if !strings.Contains(strings.ToLower(entry.LatestDeadLetterReason), strings.ToLower(reasonQuery)) {
+			return false
+		}
+	}
+	if dispatchReference := strings.TrimSpace(opts.LatestDispatchReference); dispatchReference != "" && entry.LatestDispatchReference != dispatchReference {
+		return false
+	}
 	return true
 }
 

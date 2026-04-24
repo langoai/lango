@@ -237,6 +237,7 @@ type PostAdjudicationRetryScheduledRequest struct {
 	Outcome              EscrowAdjudicationDecision `json:"outcome"`
 	AttemptCount         int                        `json:"attempt_count"`
 	NextRetryAt          time.Time                  `json:"next_retry_at"`
+	DispatchReference    string                     `json:"dispatch_reference,omitempty"`
 }
 
 type PostAdjudicationDeadLetterRequest struct {

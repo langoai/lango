@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"strconv"
 	"testing"
 	"time"
 
@@ -29,6 +30,10 @@ func TestBuildMetaTools_IncludesPostAdjudicationStatus(t *testing.T) {
 	assert.Contains(t, listProps, "manual_replay_actor")
 	assert.Contains(t, listProps, "dead_lettered_after")
 	assert.Contains(t, listProps, "dead_lettered_before")
+	assert.Contains(t, listProps, "dead_letter_reason_query")
+	assert.Contains(t, listProps, "latest_dispatch_reference")
+	assert.Contains(t, listProps, "dead_letter_reason_query")
+	assert.Contains(t, listProps, "latest_dispatch_reference")
 
 	detailTool := findTool(tools, "get_post_adjudication_execution_status")
 	require.NotNil(t, detailTool)
@@ -142,24 +147,20 @@ func TestListDeadLetteredPostAdjudicationExecutions_AppliesFiltersAndPagination(
 	store := receipts.NewStore()
 	ctx := context.Background()
 
-	windowStart := time.Now().UTC().Add(-time.Minute)
 	releaseHigh := makeDeadLetterStatusFixture(t, store, ctxkeys.WithPrincipal(ctx, "operator:alice"), "status-release-high", receipts.EscrowAdjudicationRelease, 5, "dispatch-release-high")
 	makeDeadLetterStatusFixture(t, store, ctx, "status-release-low", receipts.EscrowAdjudicationRelease, 2, "dispatch-release-low")
 	refundHigh := makeDeadLetterStatusFixture(t, store, ctx, "status-refund-high", receipts.EscrowAdjudicationRefund, 4, "dispatch-refund-high")
-	windowEnd := time.Now().UTC().Add(time.Minute)
 
 	tool := findTool(buildMetaTools(nil, nil, nil, config.SkillConfig{}, nil, store), "list_dead_lettered_post_adjudication_executions")
 	require.NotNil(t, tool)
 
 	got, err := tool.Handler(ctx, map[string]interface{}{
-		"adjudication":         "release",
-		"retry_attempt_min":    float64(4),
-		"query":                releaseHigh.TransactionReceiptID[:8],
-		"manual_replay_actor":  "operator:alice",
-		"dead_lettered_after":  windowStart.Format(time.RFC3339),
-		"dead_lettered_before": windowEnd.Format(time.RFC3339),
-		"offset":               float64(0),
-		"limit":                float64(1),
+		"adjudication":             "release",
+		"retry_attempt_min":        float64(4),
+		"query":                    releaseHigh.TransactionReceiptID[:8],
+		"dead_letter_reason_query": "release path",
+		"offset":                   float64(0),
+		"limit":                    float64(1),
 	})
 	require.NoError(t, err)
 
@@ -174,8 +175,26 @@ func TestListDeadLetteredPostAdjudicationExecutions_AppliesFiltersAndPagination(
 	require.Len(t, entries, 1)
 	assert.Equal(t, releaseHigh.TransactionReceiptID, entries[0].TransactionReceiptID)
 	assert.Equal(t, 5, entries[0].LatestRetryAttempt)
-	assert.Equal(t, "operator:alice", entries[0].LatestManualReplayActor)
-	assert.NotEmpty(t, entries[0].LatestDeadLetteredAt)
+	assert.Contains(t, entries[0].LatestDeadLetterReason, "release path")
+
+	got, err = tool.Handler(ctx, map[string]interface{}{
+		"adjudication":              "release",
+		"retry_attempt_min":         float64(4),
+		"query":                     releaseHigh.TransactionReceiptID[:8],
+		"dead_letter_reason_query":  "release path",
+		"latest_dispatch_reference": "dispatch-release-high",
+	})
+	require.NoError(t, err)
+
+	payload, ok = got.(map[string]interface{})
+	require.True(t, ok)
+	assert.Equal(t, 1, payload["count"])
+	assert.Equal(t, 1, payload["total"])
+
+	entries = decodeDeadLetterEntriesFromPayload(t, payload["entries"])
+	require.Len(t, entries, 1)
+	assert.Equal(t, releaseHigh.TransactionReceiptID, entries[0].TransactionReceiptID)
+	assert.Equal(t, "dispatch-release-high", entries[0].LatestDispatchReference)
 
 	got, err = tool.Handler(ctx, map[string]interface{}{
 		"offset": float64(1),
@@ -276,7 +295,7 @@ func makeDeadLetterStatusFixture(
 	label string,
 	outcome receipts.EscrowAdjudicationDecision,
 	attempt int,
-	_ string,
+	dispatchReference string,
 ) receipts.TransactionReceipt {
 	t.Helper()
 
@@ -311,6 +330,7 @@ func makeDeadLetterStatusFixture(
 		Outcome:              outcome,
 		AttemptCount:         attempt - 1,
 		NextRetryAt:          time.Now().UTC().Add(time.Minute),
+		DispatchReference:    dispatchReference,
 	})
 	require.NoError(t, err)
 	if actor := ctxkeys.PrincipalFromContext(ctx); actor != "" {
@@ -325,7 +345,7 @@ func makeDeadLetterStatusFixture(
 		TransactionReceiptID: tx.TransactionReceiptID,
 		Outcome:              outcome,
 		AttemptCount:         attempt,
-		Reason:               "worker exhausted",
+		Reason:               "worker exhausted after " + strconv.Itoa(attempt) + " attempts on " + string(outcome) + " path",
 	})
 	require.NoError(t, err)
 	return tx
