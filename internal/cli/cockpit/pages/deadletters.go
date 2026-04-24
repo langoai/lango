@@ -53,9 +53,19 @@ const (
 	deadLetterAdjudicationRefund  deadLetterAdjudicationFilter = "refund"
 )
 
+type deadLetterSubtypeFilter string
+
+const (
+	deadLetterSubtypeAll                  deadLetterSubtypeFilter = "all"
+	deadLetterSubtypeRetryScheduled       deadLetterSubtypeFilter = "retry-scheduled"
+	deadLetterSubtypeManualRetryRequested deadLetterSubtypeFilter = "manual-retry-requested"
+	deadLetterSubtypeDeadLettered         deadLetterSubtypeFilter = "dead-lettered"
+)
+
 type DeadLetterListOptions struct {
-	Query        string
-	Adjudication string
+	Query               string
+	Adjudication        string
+	LatestStatusSubtype string
 }
 
 // DeadLetterListFn loads the current dead-letter backlog rows for the cockpit table.
@@ -81,6 +91,8 @@ type DeadLettersPage struct {
 	appliedQuery        string
 	adjudicationDraft   deadLetterAdjudicationFilter
 	appliedAdjudication deadLetterAdjudicationFilter
+	subtypeDraft        deadLetterSubtypeFilter
+	appliedSubtype      deadLetterSubtypeFilter
 	width, height       int
 	statusMsg           string
 	retryConfirmID      string
@@ -97,6 +109,8 @@ func NewDeadLettersPage(listFn DeadLetterListFn, detailFn DeadLetterDetailFn, re
 		retryFn:             retryFn,
 		adjudicationDraft:   deadLetterAdjudicationAll,
 		appliedAdjudication: deadLetterAdjudicationAll,
+		subtypeDraft:        deadLetterSubtypeAll,
+		appliedSubtype:      deadLetterSubtypeAll,
 		appliedQuery:        "",
 		queryDraft:          "",
 	}
@@ -109,6 +123,7 @@ func (p *DeadLettersPage) ShortHelp() []key.Binding {
 		key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", "up")),
 		key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", "down")),
 		key.NewBinding(key.WithKeys("left", "right"), key.WithHelp("←/→", "adj")),
+		key.NewBinding(key.WithKeys("[", "]"), key.WithHelp("[/]", "subtype")),
 		key.NewBinding(key.WithKeys("backspace"), key.WithHelp("⌫", "query")),
 		key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "apply")),
 	}
@@ -195,6 +210,7 @@ func (p *DeadLettersPage) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			p.retryConfirmID = ""
 			p.appliedQuery = strings.TrimSpace(p.queryDraft)
 			p.appliedAdjudication = p.adjudicationDraft
+			p.appliedSubtype = p.subtypeDraft
 			p.detail = nil
 			p.detailErr = nil
 			return p, p.loadBacklog()
@@ -217,6 +233,12 @@ func (p *DeadLettersPage) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "right":
 			p.retryConfirmID = ""
 			p.adjudicationDraft = p.adjudicationDraft.next()
+		case "[":
+			p.retryConfirmID = ""
+			p.subtypeDraft = p.subtypeDraft.prev()
+		case "]":
+			p.retryConfirmID = ""
+			p.subtypeDraft = p.subtypeDraft.next()
 		case "backspace":
 			p.retryConfirmID = ""
 			if p.queryDraft != "" {
@@ -287,7 +309,8 @@ func (p *DeadLettersPage) renderFilterBar() string {
 		labelStyle.Render("Filters"),
 		valueStyle.Render(fmt.Sprintf("Query: %s", query)),
 		valueStyle.Render(fmt.Sprintf("Adjudication: %s", p.adjudicationDraft)),
-		hintStyle.Render("Type query, use ←/→ to change adjudication, Enter to apply"),
+		valueStyle.Render(fmt.Sprintf("Latest subtype: %s", p.subtypeDraft)),
+		hintStyle.Render("Type query, use ←/→ for adjudication, [/] for subtype, Enter to apply"),
 	)
 }
 
@@ -422,6 +445,9 @@ func (p *DeadLettersPage) loadBacklogWithSelection(selectedID string, preserveSe
 	if p.appliedAdjudication != deadLetterAdjudicationAll {
 		opts.Adjudication = string(p.appliedAdjudication)
 	}
+	if p.appliedSubtype != deadLetterSubtypeAll {
+		opts.LatestStatusSubtype = string(p.appliedSubtype)
+	}
 	return func() tea.Msg {
 		if listFn == nil {
 			return deadLettersLoadedMsg{err: fmt.Errorf("dead-letter list function not configured")}
@@ -493,6 +519,32 @@ func (f deadLetterAdjudicationFilter) prev() deadLetterAdjudicationFilter {
 	}
 }
 
+func (f deadLetterSubtypeFilter) next() deadLetterSubtypeFilter {
+	switch f {
+	case deadLetterSubtypeRetryScheduled:
+		return deadLetterSubtypeManualRetryRequested
+	case deadLetterSubtypeManualRetryRequested:
+		return deadLetterSubtypeDeadLettered
+	case deadLetterSubtypeDeadLettered:
+		return deadLetterSubtypeAll
+	default:
+		return deadLetterSubtypeRetryScheduled
+	}
+}
+
+func (f deadLetterSubtypeFilter) prev() deadLetterSubtypeFilter {
+	switch f {
+	case deadLetterSubtypeDeadLettered:
+		return deadLetterSubtypeManualRetryRequested
+	case deadLetterSubtypeManualRetryRequested:
+		return deadLetterSubtypeRetryScheduled
+	case deadLetterSubtypeRetryScheduled:
+		return deadLetterSubtypeAll
+	default:
+		return deadLetterSubtypeDeadLettered
+	}
+}
+
 func isDeadLetterQueryInput(msg tea.KeyMsg) bool {
 	if len(msg.Runes) == 0 {
 		return false
@@ -506,7 +558,9 @@ func isDeadLetterQueryInput(msg tea.KeyMsg) bool {
 }
 
 func (p *DeadLettersPage) hasAppliedFilters() bool {
-	return strings.TrimSpace(p.appliedQuery) != "" || p.appliedAdjudication != deadLetterAdjudicationAll
+	return strings.TrimSpace(p.appliedQuery) != "" ||
+		p.appliedAdjudication != deadLetterAdjudicationAll ||
+		p.appliedSubtype != deadLetterSubtypeAll
 }
 
 func (p *DeadLettersPage) canRetrySelected() bool {

@@ -72,6 +72,7 @@ The slice is intentionally narrow:
   - thin filter bar
     - `query`
     - `adjudication`
+    - `latest_status_subtype`
     - `Enter` apply
     - first-row reset after reload
   - detail-pane `Retry` action
@@ -93,7 +94,7 @@ This slice does not yet include:
 - full event history dump
 - richer detail-surface actor/time summaries
 - actor/time cockpit filters
-- family/subtype cockpit filters
+- family cockpit filters
 - selection preservation after filter changes
 - richer loading/failure recovery feedback
 - higher-level CLI surfaces

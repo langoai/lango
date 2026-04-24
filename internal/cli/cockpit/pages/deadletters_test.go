@@ -33,6 +33,9 @@ func (m *mockDeadLetterListFn) call(_ context.Context, opts DeadLetterListOption
 		if adjudication := strings.TrimSpace(opts.Adjudication); adjudication != "" && !strings.EqualFold(item.Adjudication, adjudication) {
 			continue
 		}
+		if subtype := strings.TrimSpace(opts.LatestStatusSubtype); subtype != "" && !strings.EqualFold(item.LatestStatusSubtype, subtype) {
+			continue
+		}
 		if query != "" {
 			tx := strings.ToLower(item.TransactionReceiptID)
 			sub := strings.ToLower(item.SubmissionReceiptID)
@@ -80,15 +83,15 @@ func TestDeadLettersPage_Title(t *testing.T) {
 func TestDeadLettersPage_ShortHelp(t *testing.T) {
 	page := NewDeadLettersPage(nil, nil)
 	bindings := page.ShortHelp()
-	require.Len(t, bindings, 5)
+	require.Len(t, bindings, 6)
 }
 
 func TestDeadLettersPage_ShortHelpIncludesRetryWhenEnabled(t *testing.T) {
 	page := NewDeadLettersPage(nil, nil, (&mockDeadLetterRetryFn{}).call)
 	page.detail = &postadjudicationstatus.TransactionStatus{CanRetry: true}
 	bindings := page.ShortHelp()
-	require.Len(t, bindings, 6)
-	assert.Equal(t, "r", bindings[5].Keys()[0])
+	require.Len(t, bindings, 7)
+	assert.Equal(t, "r", bindings[6].Keys()[0])
 }
 
 func TestDeadLettersPage_ShortHelpShowsConfirmWhenPending(t *testing.T) {
@@ -98,8 +101,8 @@ func TestDeadLettersPage_ShortHelpShowsConfirmWhenPending(t *testing.T) {
 	page.retryConfirmID = "tx-1"
 
 	bindings := page.ShortHelp()
-	require.Len(t, bindings, 6)
-	assert.Equal(t, "confirm", bindings[5].Help().Desc)
+	require.Len(t, bindings, 7)
+	assert.Equal(t, "confirm", bindings[6].Help().Desc)
 }
 
 func TestDeadLettersPage_ActivateLoadsBacklogAndDetail(t *testing.T) {
@@ -190,8 +193,8 @@ func TestDeadLettersPage_SelectionLoadsNextDetail(t *testing.T) {
 func TestDeadLettersPage_ApplyFiltersReloadsAndResetsSelection(t *testing.T) {
 	listFn := &mockDeadLetterListFn{
 		items: []postadjudicationstatus.DeadLetterBacklogEntry{
-			{TransactionReceiptID: "tx-2", SubmissionReceiptID: "sub-2", Adjudication: "release", LatestRetryAttempt: 4, LatestDeadLetterReason: "release failed", IsDeadLettered: true, CanRetry: true},
-			{TransactionReceiptID: "tx-3", SubmissionReceiptID: "sub-3", Adjudication: "release", LatestRetryAttempt: 2, LatestDeadLetterReason: "release failed again", IsDeadLettered: true, CanRetry: true},
+			{TransactionReceiptID: "tx-2", SubmissionReceiptID: "sub-2", Adjudication: "release", LatestStatusSubtype: "manual-retry-requested", LatestRetryAttempt: 4, LatestDeadLetterReason: "release failed", IsDeadLettered: true, CanRetry: true},
+			{TransactionReceiptID: "tx-3", SubmissionReceiptID: "sub-3", Adjudication: "release", LatestStatusSubtype: "dead-lettered", LatestRetryAttempt: 2, LatestDeadLetterReason: "release failed again", IsDeadLettered: true, CanRetry: true},
 		},
 	}
 	detailFn := &mockDeadLetterDetailFn{
@@ -214,6 +217,8 @@ func TestDeadLettersPage_ApplyFiltersReloadsAndResetsSelection(t *testing.T) {
 		{Type: tea.KeyRunes, Runes: []rune("-")},
 		{Type: tea.KeyRunes, Runes: []rune("2")},
 		{Type: tea.KeyRight},
+		{Type: tea.KeyRunes, Runes: []rune("]")},
+		{Type: tea.KeyRunes, Runes: []rune("]")},
 	} {
 		updated, _ = page.Update(keyMsg)
 		page = updated.(*DeadLettersPage)
@@ -224,12 +229,13 @@ func TestDeadLettersPage_ApplyFiltersReloadsAndResetsSelection(t *testing.T) {
 	require.NotNil(t, reloadCmd)
 	assert.Equal(t, "tx-2", page.appliedQuery)
 	assert.Equal(t, deadLetterAdjudicationRelease, page.appliedAdjudication)
+	assert.Equal(t, deadLetterSubtypeManualRetryRequested, page.appliedSubtype)
 	assert.Equal(t, 1, listFn.called)
 
 	updated, detailCmd = page.Update(reloadCmd())
 	page = updated.(*DeadLettersPage)
 	require.NotNil(t, detailCmd)
-	assert.Equal(t, DeadLetterListOptions{Query: "tx-2", Adjudication: "release"}, listFn.lastOptions)
+	assert.Equal(t, DeadLetterListOptions{Query: "tx-2", Adjudication: "release", LatestStatusSubtype: "manual-retry-requested"}, listFn.lastOptions)
 	assert.Equal(t, 0, page.cursor)
 	assert.Equal(t, "tx-2", page.selectedID)
 
@@ -353,6 +359,7 @@ func TestDeadLettersPage_ViewIncludesBackgroundTaskWhenPresent(t *testing.T) {
 	assert.Contains(t, view, "Task status: retrying")
 	assert.Contains(t, view, "Query: all")
 	assert.Contains(t, view, "Adjudication: all")
+	assert.Contains(t, view, "Latest subtype: all")
 	assert.Contains(t, view, "Retry action: enabled (press r)")
 }
 

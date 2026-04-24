@@ -68,6 +68,7 @@ func TestDeadLetterToolBridge_ListAndDetail(t *testing.T) {
 			Handler: func(_ context.Context, params map[string]interface{}) (interface{}, error) {
 				assert.Equal(t, "tx-1", params["query"])
 				assert.Equal(t, "release", params["adjudication"])
+				assert.Equal(t, "manual-retry-requested", params["latest_status_subtype"])
 				return map[string]interface{}{
 					"entries": wantEntries,
 					"count":   1,
@@ -86,8 +87,9 @@ func TestDeadLetterToolBridge_ListAndDetail(t *testing.T) {
 
 	bridge := NewDeadLetterToolBridge(catalog)
 	gotEntries, err := bridge.List(context.Background(), DeadLetterListOptions{
-		Query:        "tx-1",
-		Adjudication: "release",
+		Query:               "tx-1",
+		Adjudication:        "release",
+		LatestStatusSubtype: "manual-retry-requested",
 	})
 	require.NoError(t, err)
 	assert.Equal(t, wantEntries, gotEntries)
@@ -141,6 +143,8 @@ func TestDeadLetterToolBridge_ListOmitsAdjudicationWhenAll(t *testing.T) {
 				assert.Equal(t, "needle", params["query"])
 				_, hasAdjudication := params["adjudication"]
 				assert.False(t, hasAdjudication)
+				_, hasSubtype := params["latest_status_subtype"]
+				assert.False(t, hasSubtype)
 				return map[string]interface{}{
 					"entries": []postadjudicationstatus.DeadLetterBacklogEntry{},
 				}, nil
@@ -156,8 +160,9 @@ func TestDeadLetterToolBridge_ListOmitsAdjudicationWhenAll(t *testing.T) {
 
 	bridge := NewDeadLetterToolBridge(catalog)
 	_, err := bridge.List(context.Background(), DeadLetterListOptions{
-		Query:        "needle",
-		Adjudication: "all",
+		Query:               "needle",
+		Adjudication:        "all",
+		LatestStatusSubtype: "all",
 	})
 	require.NoError(t, err)
 }
