@@ -74,6 +74,7 @@ The slice is intentionally narrow:
     - `adjudication`
     - `latest_status_subtype`
     - `latest_status_subtype_family`
+    - `any_match_family`
     - `manual_replay_actor`
     - `dead_lettered_after`
     - `dead_lettered_before`
@@ -97,7 +98,6 @@ This slice does not yet include:
 - generic dead-letter browsing for all background tasks
 - full event history dump
 - richer detail-surface actor/time summaries
-- `any_match_family` cockpit filtering
 - selection preservation after filter changes
 - richer loading/failure recovery feedback
 - higher-level CLI surfaces

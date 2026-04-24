@@ -442,12 +442,13 @@ The `docs/architecture/dead-letter-browsing-status-observation.md` page SHALL de
 - **AND** they SHALL find cockpit subtype filtering described
 - **AND** they SHALL find cockpit actor/time filtering described
 - **AND** they SHALL find cockpit latest-family filtering described
+- **AND** they SHALL find cockpit any-match-family filtering described
 - **AND** they SHALL find the cockpit detail-pane `Retry` action described
 - **AND** they SHALL find inline confirm and success-refresh recovery UX described
 - **AND** they SHALL find detail navigation hints described for per-transaction status
 
 ### Requirement: P2P knowledge exchange track reflects landed dead-letter browsing / status observation
-The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe dead-letter browsing / status observation as landed work with transaction-global dominant family, compact per-submission breakdown, a thin raw background-task bridge on the detail view, a cockpit dead-letter read surface, a thin cockpit filter bar, cockpit subtype filtering, cockpit latest-family filtering, cockpit actor/time filtering, a cockpit `Retry` action, and confirm/refresh recovery UX, and list the remaining work as richer cockpit filters beyond latest family, richer loading/failure recovery feedback, and higher-level CLI surfaces.
+The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe dead-letter browsing / status observation as landed work with transaction-global dominant family, compact per-submission breakdown, a thin raw background-task bridge on the detail view, a cockpit dead-letter read surface, a thin cockpit filter bar, cockpit subtype filtering, cockpit latest-family filtering, cockpit any-match-family filtering, cockpit actor/time filtering, a cockpit `Retry` action, and confirm/refresh recovery UX, and list the remaining work as richer cockpit filters beyond latest/any-match family, richer loading/failure recovery feedback, and higher-level CLI surfaces.
 
 #### Scenario: Track page points to the landed status slice
 - **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
@@ -459,6 +460,7 @@ The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe dead
 - **AND** they SHALL find cockpit subtype filtering described as landed work
 - **AND** they SHALL find cockpit actor/time filtering described as landed work
 - **AND** they SHALL find cockpit latest-family filtering described as landed work
+- **AND** they SHALL find cockpit any-match-family filtering described as landed work
 - **AND** they SHALL find the cockpit `Retry` action described as landed work
 - **AND** they SHALL find confirm/refresh recovery UX described as landed work
-- **AND** the remaining work SHALL be described as richer cockpit filters beyond latest family, richer loading/failure recovery feedback, and higher-level CLI surfaces
+- **AND** the remaining work SHALL be described as richer cockpit filters beyond latest/any-match family, richer loading/failure recovery feedback, and higher-level CLI surfaces
