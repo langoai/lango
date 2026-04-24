@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/langoai/lango/internal/paymentapproval"
@@ -1498,6 +1499,33 @@ func TestCreateSubmissionReceipt_UpdatesCurrentPointerOnSecondSubmission(t *test
 	require.NoError(t, err)
 	require.Equal(t, "memo-b", got.ArtifactLabel)
 	require.Empty(t, events)
+}
+
+func TestListSubmissionReceipts_ReturnsAllSubmissionsAcrossTransactionHistory(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	first, tx, err := store.CreateSubmissionReceipt(ctx, CreateSubmissionInput{
+		TransactionID:       "tx-list-submissions",
+		ArtifactLabel:       "memo-a",
+		PayloadHash:         "hash-a",
+		SourceLineageDigest: "lineage-a",
+	})
+	require.NoError(t, err)
+
+	second, nextTx, err := store.CreateSubmissionReceipt(ctx, CreateSubmissionInput{
+		TransactionID:       "tx-list-submissions",
+		ArtifactLabel:       "memo-b",
+		PayloadHash:         "hash-b",
+		SourceLineageDigest: "lineage-b",
+	})
+	require.NoError(t, err)
+	require.Equal(t, tx.TransactionReceiptID, nextTx.TransactionReceiptID)
+
+	got, err := store.ListSubmissionReceipts(ctx)
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	assert.ElementsMatch(t, []SubmissionReceipt{first, second}, got)
 }
 
 func TestCreateSubmissionReceipt_ResetsEscrowExecutionMetadataOnCurrentSubmissionChange(t *testing.T) {

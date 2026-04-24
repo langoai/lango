@@ -435,12 +435,14 @@ The `docs/architecture/dead-letter-browsing-status-observation.md` page SHALL de
 - **AND** they SHALL find dominant family described
 - **AND** they SHALL find transaction-global retry count and family grouping described
 - **AND** they SHALL find transaction-global dominant family described
+- **AND** they SHALL find compact per-submission breakdown described
 - **AND** they SHALL find detail navigation hints described for per-transaction status
 
 ### Requirement: P2P knowledge exchange track reflects landed dead-letter browsing / status observation
-The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe dead-letter browsing / status observation as landed work with transaction-global dominant family, and list the remaining work as per-submission breakdown, raw background-task bridges, and higher-level cockpit or CLI surfaces.
+The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe dead-letter browsing / status observation as landed work with transaction-global dominant family plus compact per-submission breakdown, and list the remaining work as raw background-task bridges and higher-level cockpit or CLI surfaces.
 
 #### Scenario: Track page points to the landed status slice
 - **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
 - **THEN** they SHALL find dead-letter browsing / status observation described as a landed first slice
-- **AND** the remaining work SHALL be described as per-submission breakdown, raw background-task bridges, and higher-level cockpit or CLI surfaces
+- **AND** they SHALL find compact per-submission breakdown described as landed work
+- **AND** the remaining work SHALL be described as raw background-task bridges and higher-level cockpit or CLI surfaces

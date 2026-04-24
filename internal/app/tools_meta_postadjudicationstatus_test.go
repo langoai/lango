@@ -340,6 +340,124 @@ func TestListDeadLetteredPostAdjudicationExecutions_AppliesFiltersAndPagination(
 	assert.Equal(t, refundHigh.TransactionReceiptID, entries[0].TransactionReceiptID)
 }
 
+func TestListDeadLetteredPostAdjudicationExecutions_IncludesSubmissionBreakdown(t *testing.T) {
+	t.Parallel()
+
+	store := receipts.NewStore()
+	ctx := context.Background()
+
+	tx := createSubmittedTransaction(t, store, ctxkeys.WithPrincipal(ctx, "operator:alice"), "status-breakdown")
+	firstSubmissionID := tx.CurrentSubmissionReceiptID
+
+	bindDisputeHoldEscrowExecutionInput(t, store, ctx, tx)
+	_, err := store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, firstSubmissionID, receipts.EscrowExecutionStatusCreated, "", receipts.EventEscrowExecutionCreated, "")
+	require.NoError(t, err)
+	_, err = store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, firstSubmissionID, receipts.EscrowExecutionStatusFunded, "escrow-status-breakdown-1", receipts.EventEscrowExecutionFunded, "")
+	require.NoError(t, err)
+	_, err = store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, receipts.SettlementProgressionReviewNeeded, receipts.SettlementProgressionReasonCodeReject, "review needed", "")
+	require.NoError(t, err)
+	_, err = store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, receipts.SettlementProgressionDisputeReady, receipts.SettlementProgressionReasonCodeEscalate, "dispute ready", "")
+	require.NoError(t, err)
+	err = store.RecordEscrowDisputeHoldSuccess(ctx, receipts.EscrowDisputeHoldEvidenceRequest{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		SubmissionReceiptID:  firstSubmissionID,
+		EscrowReference:      "escrow-status-breakdown-1",
+		RuntimeReference:     "hold-status-breakdown-1",
+	})
+	require.NoError(t, err)
+	_, err = store.ApplyEscrowAdjudication(ctx, receipts.EscrowAdjudicationRequest{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		SubmissionReceiptID:  firstSubmissionID,
+		EscrowReference:      "escrow-status-breakdown-1",
+		Outcome:              receipts.EscrowAdjudicationRefund,
+		Reason:               "historical refund adjudicated",
+	})
+	require.NoError(t, err)
+	err = store.RecordPostAdjudicationRetryScheduled(ctx, receipts.PostAdjudicationRetryScheduledRequest{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		Outcome:              receipts.EscrowAdjudicationRefund,
+		AttemptCount:         1,
+		NextRetryAt:          time.Now().UTC().Add(time.Minute),
+		DispatchReference:    "dispatch-status-breakdown-history",
+	})
+	require.NoError(t, err)
+	err = store.RecordManualRetryRequested(ctx, receipts.ManualRetryRequestedRequest{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		Outcome:              receipts.EscrowAdjudicationRefund,
+		Reason:               "manual retry requested",
+	})
+	require.NoError(t, err)
+
+	secondSubmission, latestTx, err := store.CreateSubmissionReceipt(ctx, receipts.CreateSubmissionInput{
+		TransactionID:       "status-breakdown",
+		ArtifactLabel:       "artifact-status-breakdown-2",
+		PayloadHash:         "hash-status-breakdown-2",
+		SourceLineageDigest: "lineage-status-breakdown-2",
+	})
+	require.NoError(t, err)
+	require.NotEqual(t, firstSubmissionID, secondSubmission.SubmissionReceiptID)
+	require.Equal(t, secondSubmission.SubmissionReceiptID, latestTx.CurrentSubmissionReceiptID)
+
+	bindDisputeHoldEscrowExecutionInput(t, store, ctx, latestTx)
+	_, err = store.ApplyEscrowExecutionProgress(ctx, latestTx.TransactionReceiptID, secondSubmission.SubmissionReceiptID, receipts.EscrowExecutionStatusCreated, "", receipts.EventEscrowExecutionCreated, "")
+	require.NoError(t, err)
+	_, err = store.ApplyEscrowExecutionProgress(ctx, latestTx.TransactionReceiptID, secondSubmission.SubmissionReceiptID, receipts.EscrowExecutionStatusFunded, "escrow-status-breakdown-2", receipts.EventEscrowExecutionFunded, "")
+	require.NoError(t, err)
+	_, err = store.ApplySettlementProgression(ctx, latestTx.TransactionReceiptID, receipts.SettlementProgressionReviewNeeded, receipts.SettlementProgressionReasonCodeReject, "review needed", "")
+	require.NoError(t, err)
+	_, err = store.ApplySettlementProgression(ctx, latestTx.TransactionReceiptID, receipts.SettlementProgressionDisputeReady, receipts.SettlementProgressionReasonCodeEscalate, "dispute ready", "")
+	require.NoError(t, err)
+	err = store.RecordEscrowDisputeHoldSuccess(ctx, receipts.EscrowDisputeHoldEvidenceRequest{
+		TransactionReceiptID: latestTx.TransactionReceiptID,
+		SubmissionReceiptID:  secondSubmission.SubmissionReceiptID,
+		EscrowReference:      "escrow-status-breakdown-2",
+		RuntimeReference:     "hold-status-breakdown-2",
+	})
+	require.NoError(t, err)
+	_, err = store.ApplyEscrowAdjudication(ctx, receipts.EscrowAdjudicationRequest{
+		TransactionReceiptID: latestTx.TransactionReceiptID,
+		SubmissionReceiptID:  secondSubmission.SubmissionReceiptID,
+		EscrowReference:      "escrow-status-breakdown-2",
+		Outcome:              receipts.EscrowAdjudicationRefund,
+		Reason:               "current refund adjudicated",
+	})
+	require.NoError(t, err)
+	err = store.RecordPostAdjudicationDeadLetter(ctx, receipts.PostAdjudicationDeadLetterRequest{
+		TransactionReceiptID: latestTx.TransactionReceiptID,
+		Outcome:              receipts.EscrowAdjudicationRefund,
+		AttemptCount:         3,
+		Reason:               "worker exhausted after 3 attempts on refund path",
+	})
+	require.NoError(t, err)
+
+	tool := findTool(buildMetaTools(nil, nil, nil, config.SkillConfig{}, nil, store), "list_dead_lettered_post_adjudication_executions")
+	require.NotNil(t, tool)
+
+	got, err := tool.Handler(ctx, map[string]interface{}{
+		"query": latestTx.TransactionReceiptID,
+	})
+	require.NoError(t, err)
+
+	payload, ok := got.(map[string]interface{})
+	require.True(t, ok)
+
+	entries := decodeDeadLetterEntriesFromPayload(t, payload["entries"])
+	require.Len(t, entries, 1)
+	assert.Equal(t, latestTx.TransactionReceiptID, entries[0].TransactionReceiptID)
+	assert.Equal(t, []postadjudicationstatus.SubmissionBreakdownItem{
+		{
+			SubmissionReceiptID: firstSubmissionID,
+			RetryCount:          2,
+			AnyMatchFamilies:    []string{"manual-retry", "retry"},
+		},
+		{
+			SubmissionReceiptID: secondSubmission.SubmissionReceiptID,
+			RetryCount:          1,
+			AnyMatchFamilies:    []string{"dead-letter"},
+		},
+	}, entries[0].SubmissionBreakdown)
+}
+
 func TestGetPostAdjudicationExecutionStatus_ReturnsCanonicalSnapshotAndSummary(t *testing.T) {
 	t.Parallel()
 

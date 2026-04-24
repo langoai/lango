@@ -1022,6 +1022,17 @@ func (s *Store) ListTransactionReceipts(_ context.Context) ([]TransactionReceipt
 	return receiptsList, nil
 }
 
+func (s *Store) ListSubmissionReceipts(_ context.Context) ([]SubmissionReceipt, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	receiptsList := make([]SubmissionReceipt, 0, len(s.submissions))
+	for _, submission := range s.submissions {
+		receiptsList = append(receiptsList, submission)
+	}
+	return receiptsList, nil
+}
+
 func (s *Store) appendPaymentExecutionEvent(_ context.Context, submissionReceiptID string, eventType EventType, reason string, subtype string) error {
 	if err := validateEventType(eventType); err != nil {
 		return err

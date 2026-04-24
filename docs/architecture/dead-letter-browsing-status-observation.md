@@ -44,6 +44,7 @@ The slice is intentionally narrow:
   - `transaction_global_total_retry_count`
   - `transaction_global_any_match_families`
   - `transaction_global_dominant_family`
+  - `submission_breakdown`
   - `latest_status_subtype_family`
   - `any_match_families`
   - `dominant_family`
@@ -71,7 +72,4 @@ This slice does not yet include:
 - richer detail-surface actor/time summaries
 - custom sort order
 - multi-column sort
-- cross-submission retry aggregation
-- dominant family
 - family count maps / weighted dominance
-- per-submission breakdown
