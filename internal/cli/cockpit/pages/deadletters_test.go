@@ -527,6 +527,13 @@ func TestDeadLettersPage_RetrySelectedShowsSuccessMessage(t *testing.T) {
 	updated, retryCmd = page.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
 	page = updated.(*DeadLettersPage)
 	require.NotNil(t, retryCmd)
+	assert.Contains(t, page.View(), "Retry action: running...")
+
+	updated, duplicateCmd := page.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
+	page = updated.(*DeadLettersPage)
+	assert.Nil(t, duplicateCmd)
+	assert.Empty(t, retryFn.calls)
+	assert.Contains(t, page.View(), "Retry action: running...")
 
 	updated, refreshCmd := page.Update(retryCmd())
 	page = updated.(*DeadLettersPage)
@@ -582,6 +589,12 @@ func TestDeadLettersPage_RetrySelectedShowsFailureMessage(t *testing.T) {
 	updated, retryCmd = page.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
 	page = updated.(*DeadLettersPage)
 	require.NotNil(t, retryCmd)
+	assert.Contains(t, page.View(), "Retry action: running...")
+
+	updated, duplicateCmd := page.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
+	page = updated.(*DeadLettersPage)
+	assert.Nil(t, duplicateCmd)
+	assert.Empty(t, retryFn.calls)
 
 	updated, refreshCmd := page.Update(retryCmd())
 	page = updated.(*DeadLettersPage)
@@ -591,6 +604,7 @@ func TestDeadLettersPage_RetrySelectedShowsFailureMessage(t *testing.T) {
 	require.NotNil(t, page.detail)
 	assert.Equal(t, "tx-1", page.detail.CanonicalSnapshot.TransactionReceipt.TransactionReceiptID)
 	assert.Equal(t, 1, listFn.called)
+	assert.Contains(t, page.View(), "Retry action: enabled (press r)")
 }
 
 func TestDeadLettersPage_RetryIgnoredWhenDetailIsNotRetryable(t *testing.T) {

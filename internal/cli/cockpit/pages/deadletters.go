@@ -130,6 +130,7 @@ type DeadLettersPage struct {
 	width, height             int
 	statusMsg                 string
 	retryConfirmID            string
+	retryRunningID            string
 }
 
 func NewDeadLettersPage(listFn DeadLetterListFn, detailFn DeadLetterDetailFn, retryFns ...DeadLetterRetryFn) *DeadLettersPage {
@@ -173,8 +174,12 @@ func (p *DeadLettersPage) ShortHelp() []key.Binding {
 		help := "retry"
 		if p.retryConfirmActive() {
 			help = "confirm"
+		} else if p.retryRunningActive() {
+			help = "running"
 		}
-		bindings = append(bindings, key.NewBinding(key.WithKeys("r"), key.WithHelp("r", help)))
+		if !p.retryRunning() {
+			bindings = append(bindings, key.NewBinding(key.WithKeys("r"), key.WithHelp("r", help)))
+		}
 	}
 	return bindings
 }
@@ -201,6 +206,7 @@ func (p *DeadLettersPage) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			p.detail = nil
 			p.detailErr = nil
 			p.retryConfirmID = ""
+			p.retryRunningID = ""
 			return p, nil
 		}
 
@@ -211,6 +217,7 @@ func (p *DeadLettersPage) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			p.cursor = 0
 			p.selectedID = ""
 			p.detail = nil
+			p.retryRunningID = ""
 			return p, nil
 		}
 		p.cursor = 0
@@ -238,6 +245,9 @@ func (p *DeadLettersPage) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		p.detail = &status
 	case deadLetterRetryResultMsg:
 		p.retryConfirmID = ""
+		if p.retryRunningID == msg.transactionID {
+			p.retryRunningID = ""
+		}
 		if msg.err != nil {
 			p.statusMsg = "Retry failed: " + msg.err.Error()
 			return p, nil
@@ -281,8 +291,12 @@ func (p *DeadLettersPage) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			p.retryConfirmID = ""
 			return p, nil
 		case "r":
+			if p.retryRunning() {
+				return p, nil
+			}
 			if p.retryConfirmActive() {
 				p.retryConfirmID = ""
+				p.retryRunningID = p.selectedID
 				return p, p.retrySelected()
 			}
 			if !p.canRetrySelected() {
@@ -499,7 +513,9 @@ func (p *DeadLettersPage) renderDetailPane() string {
 	retryState := "disabled"
 	if p.canRetrySelected() {
 		retryState = "enabled (press r)"
-		if p.retryConfirmActive() {
+		if p.retryRunningActive() {
+			retryState = "running..."
+		} else if p.retryConfirmActive() {
 			retryState = "confirm (press r again)"
 		}
 	}
@@ -747,6 +763,14 @@ func (p *DeadLettersPage) canRetrySelected() bool {
 
 func (p *DeadLettersPage) retryConfirmActive() bool {
 	return p.canRetrySelected() && p.retryConfirmID != "" && p.retryConfirmID == p.selectedID
+}
+
+func (p *DeadLettersPage) retryRunning() bool {
+	return p.retryRunningID != ""
+}
+
+func (p *DeadLettersPage) retryRunningActive() bool {
+	return p.canRetrySelected() && p.retryRunningID != "" && p.retryRunningID == p.selectedID
 }
 
 func deadLetterStatusLabel(entry postadjudicationstatus.DeadLetterBacklogEntry) string {
