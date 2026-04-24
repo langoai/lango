@@ -273,9 +273,9 @@ The meta tools surface SHALL provide read-only visibility into dead-lettered pos
 
 #### Scenario: Dead-letter backlog tool supports filtering and pagination
 - **WHEN** `list_dead_lettered_post_adjudication_executions` is invoked
-- **THEN** it SHALL accept `adjudication`, `retry_attempt_min`, `retry_attempt_max`, `query`, `manual_replay_actor`, `dead_lettered_after`, `dead_lettered_before`, `dead_letter_reason_query`, `latest_dispatch_reference`, `offset`, and `limit`
+- **THEN** it SHALL accept `adjudication`, `retry_attempt_min`, `retry_attempt_max`, `query`, `manual_replay_actor`, `dead_lettered_after`, `dead_lettered_before`, `dead_letter_reason_query`, `latest_dispatch_reference`, `latest_status_subtype`, `manual_retry_count_min`, `manual_retry_count_max`, `sort_by`, `offset`, and `limit`
 - **AND** it SHALL return `entries`, `count`, `total`, `offset`, and `limit`
-- **AND** each entry SHALL expose `latest_dead_lettered_at` and `latest_manual_replay_actor`
+- **AND** each entry SHALL expose `latest_dead_lettered_at`, `latest_manual_replay_actor`, `latest_manual_replay_at`, `latest_status_subtype`, and `manual_retry_count`
 
 #### Scenario: Post-adjudication status tool returns navigation hints
 - **WHEN** `get_post_adjudication_execution_status` succeeds

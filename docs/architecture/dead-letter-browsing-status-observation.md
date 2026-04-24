@@ -23,10 +23,16 @@ The slice is intentionally narrow:
   - `dead_lettered_after` / `dead_lettered_before` filters
   - `dead_letter_reason_query` filter
   - `latest_dispatch_reference` exact-match filter
+  - `latest_status_subtype` filter
+  - `manual_retry_count_min` / `manual_retry_count_max` filters
+  - `sort_by`
   - `offset` / `limit` pagination
   - `count` / `total` / `offset` / `limit` response metadata
   - `latest_dead_lettered_at`
   - `latest_manual_replay_actor`
+  - `latest_manual_replay_at`
+  - `latest_status_subtype`
+  - `manual_retry_count`
 - `get_post_adjudication_execution_status(transaction_receipt_id)`
   - current canonical snapshot
   - latest retry / dead-letter summary
@@ -47,7 +53,8 @@ This slice does not yet include:
 - generic dead-letter browsing for all background tasks
 - raw background task snapshots
 - full event history dump
-- alternate sort modes
 - cockpit / CLI presentation surfaces
 - richer detail-surface actor/time summaries
-- replay-count and subtype filters
+- custom sort order
+- multi-column sort
+- subtype families and total retry count filters

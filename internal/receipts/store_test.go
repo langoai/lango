@@ -1270,6 +1270,7 @@ func TestRecordManualRetryRequested_AppendsEvidenceWithoutMutatingState(t *testi
 	require.Equal(t, "post_adjudication_retry", last.Source)
 	require.Equal(t, "manual-retry-requested", last.Subtype)
 	require.Equal(t, EventSettlementUpdated, last.Type)
+	require.Contains(t, last.Reason, "manual_replay_at=")
 }
 
 func TestRecordSettlementFailure_RejectsFailureAfterSettlementCloseout(t *testing.T) {

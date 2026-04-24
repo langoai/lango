@@ -53,12 +53,7 @@ func (s *Service) ListCurrentDeadLettersPage(ctx context.Context, opts DeadLette
 		entries = append(entries, entry)
 	}
 
-	sort.Slice(entries, func(i, j int) bool {
-		if entries[i].LatestRetryAttempt != entries[j].LatestRetryAttempt {
-			return entries[i].LatestRetryAttempt > entries[j].LatestRetryAttempt
-		}
-		return entries[i].TransactionReceiptID < entries[j].TransactionReceiptID
-	})
+	sortDeadLetterEntries(entries, opts.SortBy)
 
 	offset := opts.Offset
 	if offset < 0 {
@@ -158,6 +153,9 @@ func (s *Service) deadLetterEntryForTransaction(ctx context.Context, transaction
 		LatestDeadLetterReason:  summary.LatestDeadLetterReason,
 		LatestDeadLetteredAt:    summary.LatestDeadLetteredAt,
 		LatestManualReplayActor: summary.LatestManualReplayActor,
+		LatestManualReplayAt:    summary.LatestManualReplayAt,
+		LatestStatusSubtype:     summary.LatestStatusSubtype,
+		ManualRetryCount:        summary.ManualRetryCount,
 		LatestRetryAttempt:      summary.LatestRetryAttempt,
 		LatestDispatchReference: summary.LatestDispatchReference,
 	}, true, nil
@@ -199,8 +197,14 @@ func summarizeEvents(events []receipts.ReceiptEvent) eventSummary {
 		if parsed.LatestDispatchReference != "" {
 			summary.LatestDispatchReference = parsed.LatestDispatchReference
 		}
-		if event.Subtype == "manual-retry-requested" && parsed.LatestManualReplayActor != "" {
-			summary.LatestManualReplayActor = parsed.LatestManualReplayActor
+		if event.Subtype == "manual-retry-requested" {
+			summary.ManualRetryCount++
+			if parsed.LatestManualReplayActor != "" {
+				summary.LatestManualReplayActor = parsed.LatestManualReplayActor
+			}
+			if parsed.LatestManualReplayAt != "" {
+				summary.LatestManualReplayAt = parsed.LatestManualReplayAt
+			}
 		}
 		summary.LatestStatusSubtype = event.Subtype
 		if event.Subtype == "dead-lettered" {
@@ -247,6 +251,10 @@ func parseEventSummary(event receipts.ReceiptEvent) eventSummary {
 			summary.LatestDispatchReference = value
 		case "actor":
 			summary.LatestManualReplayActor = value
+		case "manual_replay_at":
+			if manualReplayAt, err := time.Parse(time.RFC3339, value); err == nil {
+				summary.LatestManualReplayAt = manualReplayAt.UTC().Format(time.RFC3339)
+			}
 		case "dead_lettered_at":
 			if deadLetteredAt, err := time.Parse(time.RFC3339, value); err == nil {
 				summary.LatestDeadLetteredAt = deadLetteredAt.UTC().Format(time.RFC3339)
@@ -305,6 +313,15 @@ func matchesDeadLetterFilters(entry DeadLetterBacklogEntry, opts DeadLetterListO
 	if dispatchReference := strings.TrimSpace(opts.LatestDispatchReference); dispatchReference != "" && entry.LatestDispatchReference != dispatchReference {
 		return false
 	}
+	if latestStatusSubtype := strings.TrimSpace(opts.LatestStatusSubtype); latestStatusSubtype != "" && entry.LatestStatusSubtype != latestStatusSubtype {
+		return false
+	}
+	if opts.ManualRetryCountMin > 0 && entry.ManualRetryCount < opts.ManualRetryCountMin {
+		return false
+	}
+	if opts.ManualRetryCountMax > 0 && entry.ManualRetryCount > opts.ManualRetryCountMax {
+		return false
+	}
 	return true
 }
 
@@ -321,4 +338,41 @@ func parseRFC3339(value string) (time.Time, bool) {
 		return time.Time{}, false
 	}
 	return parsed.UTC(), true
+}
+
+func sortDeadLetterEntries(entries []DeadLetterBacklogEntry, sortBy string) {
+	sort.Slice(entries, func(i, j int) bool {
+		left := entries[i]
+		right := entries[j]
+
+		switch strings.TrimSpace(sortBy) {
+		case "latest_dead_lettered_at":
+			leftTime, leftOK := parseRFC3339(left.LatestDeadLetteredAt)
+			rightTime, rightOK := parseRFC3339(right.LatestDeadLetteredAt)
+			if leftOK && rightOK && !leftTime.Equal(rightTime) {
+				return leftTime.After(rightTime)
+			}
+			if leftOK != rightOK {
+				return leftOK
+			}
+		case "latest_manual_replay_at":
+			leftTime, leftOK := parseRFC3339(left.LatestManualReplayAt)
+			rightTime, rightOK := parseRFC3339(right.LatestManualReplayAt)
+			if leftOK && rightOK && !leftTime.Equal(rightTime) {
+				return leftTime.After(rightTime)
+			}
+			if leftOK != rightOK {
+				return leftOK
+			}
+		default:
+			if left.LatestRetryAttempt != right.LatestRetryAttempt {
+				return left.LatestRetryAttempt > right.LatestRetryAttempt
+			}
+		}
+
+		if left.LatestRetryAttempt != right.LatestRetryAttempt {
+			return left.LatestRetryAttempt > right.LatestRetryAttempt
+		}
+		return left.TransactionReceiptID < right.TransactionReceiptID
+	})
 }

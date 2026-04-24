@@ -391,6 +391,96 @@ func TestServiceListCurrentDeadLettersPage_FiltersByReasonAndDispatchReference(t
 	assert.Equal(t, "dispatch-a", got.Items[0].LatestDispatchReference)
 }
 
+func TestServiceListCurrentDeadLettersPage_FiltersBySubtypeAndManualRetryCount(t *testing.T) {
+	t.Parallel()
+
+	store := newFakeStatusStore()
+	store.transactions = []receipts.TransactionReceipt{
+		makeDeadLetterTransaction("tx-a", "sub-a", receipts.EscrowAdjudicationRelease),
+		makeDeadLetterTransaction("tx-b", "sub-b", receipts.EscrowAdjudicationRelease),
+		makeDeadLetterTransaction("tx-c", "sub-c", receipts.EscrowAdjudicationRefund),
+	}
+	store.submissions["sub-a"] = receipts.SubmissionReceipt{SubmissionReceiptID: "sub-a", TransactionReceiptID: "tx-a"}
+	store.submissions["sub-b"] = receipts.SubmissionReceipt{SubmissionReceiptID: "sub-b", TransactionReceiptID: "tx-b"}
+	store.submissions["sub-c"] = receipts.SubmissionReceipt{SubmissionReceiptID: "sub-c", TransactionReceiptID: "tx-c"}
+	store.events["sub-a"] = []receipts.ReceiptEvent{
+		manualRetryEventAt("sub-a", "operator:alice", "2026-04-23T08:15:00Z"),
+		manualRetryEventAt("sub-a", "operator:alice", "2026-04-23T09:15:00Z"),
+		deadLetterEventAt("sub-a", 5, "dispatch-a", "2026-04-23T10:15:00Z"),
+	}
+	store.events["sub-b"] = []receipts.ReceiptEvent{
+		manualRetryEventAt("sub-b", "operator:bob", "2026-04-23T08:45:00Z"),
+		deadLetterEventAt("sub-b", 4, "dispatch-b", "2026-04-23T09:45:00Z"),
+	}
+	store.events["sub-c"] = []receipts.ReceiptEvent{
+		deadLetterEventAt("sub-c", 3, "dispatch-c", "2026-04-23T11:15:00Z"),
+	}
+
+	svc := NewService(store)
+
+	got, err := svc.ListCurrentDeadLettersPage(context.Background(), DeadLetterListOptions{
+		LatestStatusSubtype: "dead-lettered",
+		ManualRetryCountMin: 2,
+		ManualRetryCountMax: 2,
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, got.Total)
+	require.Equal(t, 1, got.Count)
+	require.Len(t, got.Items, 1)
+	assert.Equal(t, "tx-a", got.Items[0].TransactionReceiptID)
+	assert.Equal(t, 2, got.Items[0].ManualRetryCount)
+	assert.Equal(t, "2026-04-23T09:15:00Z", got.Items[0].LatestManualReplayAt)
+	assert.Equal(t, "dead-lettered", got.Items[0].LatestStatusSubtype)
+}
+
+func TestServiceListCurrentDeadLettersPage_SortsBySelectedMode(t *testing.T) {
+	t.Parallel()
+
+	store := newFakeStatusStore()
+	store.transactions = []receipts.TransactionReceipt{
+		makeDeadLetterTransaction("tx-a", "sub-a", receipts.EscrowAdjudicationRelease),
+		makeDeadLetterTransaction("tx-b", "sub-b", receipts.EscrowAdjudicationRelease),
+		makeDeadLetterTransaction("tx-c", "sub-c", receipts.EscrowAdjudicationRefund),
+	}
+	store.submissions["sub-a"] = receipts.SubmissionReceipt{SubmissionReceiptID: "sub-a", TransactionReceiptID: "tx-a"}
+	store.submissions["sub-b"] = receipts.SubmissionReceipt{SubmissionReceiptID: "sub-b", TransactionReceiptID: "tx-b"}
+	store.submissions["sub-c"] = receipts.SubmissionReceipt{SubmissionReceiptID: "sub-c", TransactionReceiptID: "tx-c"}
+	store.events["sub-a"] = []receipts.ReceiptEvent{
+		manualRetryEventAt("sub-a", "operator:alice", "2026-04-23T07:00:00Z"),
+		deadLetterEventAt("sub-a", 5, "dispatch-a", "2026-04-23T08:00:00Z"),
+	}
+	store.events["sub-b"] = []receipts.ReceiptEvent{
+		manualRetryEventAt("sub-b", "operator:bob", "2026-04-23T10:00:00Z"),
+		deadLetterEventAt("sub-b", 3, "dispatch-b", "2026-04-23T09:00:00Z"),
+	}
+	store.events["sub-c"] = []receipts.ReceiptEvent{
+		deadLetterEventAt("sub-c", 4, "dispatch-c", "2026-04-23T11:00:00Z"),
+	}
+
+	svc := NewService(store)
+
+	t.Run("latest_dead_lettered_at", func(t *testing.T) {
+		got, err := svc.ListCurrentDeadLettersPage(context.Background(), DeadLetterListOptions{SortBy: "latest_dead_lettered_at"})
+		require.NoError(t, err)
+		require.Len(t, got.Items, 3)
+		assert.Equal(t, []string{"tx-c", "tx-b", "tx-a"}, []string{got.Items[0].TransactionReceiptID, got.Items[1].TransactionReceiptID, got.Items[2].TransactionReceiptID})
+	})
+
+	t.Run("latest_retry_attempt", func(t *testing.T) {
+		got, err := svc.ListCurrentDeadLettersPage(context.Background(), DeadLetterListOptions{SortBy: "latest_retry_attempt"})
+		require.NoError(t, err)
+		require.Len(t, got.Items, 3)
+		assert.Equal(t, []string{"tx-a", "tx-c", "tx-b"}, []string{got.Items[0].TransactionReceiptID, got.Items[1].TransactionReceiptID, got.Items[2].TransactionReceiptID})
+	})
+
+	t.Run("latest_manual_replay_at", func(t *testing.T) {
+		got, err := svc.ListCurrentDeadLettersPage(context.Background(), DeadLetterListOptions{SortBy: "latest_manual_replay_at"})
+		require.NoError(t, err)
+		require.Len(t, got.Items, 3)
+		assert.Equal(t, []string{"tx-b", "tx-a", "tx-c"}, []string{got.Items[0].TransactionReceiptID, got.Items[1].TransactionReceiptID, got.Items[2].TransactionReceiptID})
+	})
+}
+
 func TestServiceListCurrentDeadLettersPage_ReturnsPaginationMetadata(t *testing.T) {
 	t.Parallel()
 
@@ -631,12 +721,20 @@ func deadLetterEventAt(submissionID string, attempt int, dispatchReference strin
 }
 
 func manualRetryEvent(submissionID string, actor string) receipts.ReceiptEvent {
+	return manualRetryEventAt(submissionID, actor, "")
+}
+
+func manualRetryEventAt(submissionID string, actor string, replayAt string) receipts.ReceiptEvent {
+	reason := "actor=" + actor + " reason=manual retry requested"
+	if replayAt != "" {
+		reason = "actor=" + actor + " manual_replay_at=" + replayAt + " reason=manual retry requested"
+	}
 	return receipts.ReceiptEvent{
 		SubmissionReceiptID: submissionID,
 		Source:              "post_adjudication_retry",
 		Subtype:             "manual-retry-requested",
 		Type:                receipts.EventSettlementUpdated,
-		Reason:              "actor=" + actor + " reason=manual retry requested",
+		Reason:              reason,
 	}
 }
 
@@ -664,6 +762,7 @@ func TestSummaryIsEmptyWithoutDeadLetterEvidence(t *testing.T) {
 	require.False(t, summary.HasDeadLetter)
 	require.Equal(t, 2, summary.LatestRetryAttempt)
 	require.Equal(t, "dispatch-1", summary.LatestDispatchReference)
+	require.Equal(t, "retry-scheduled", summary.LatestStatusSubtype)
 }
 
 func TestSummaryIgnoresUnrelatedEvents(t *testing.T) {
@@ -757,6 +856,20 @@ func TestDeadLetterTimestampParsingIsStable(t *testing.T) {
 	})
 	require.Equal(t, 5, summary.LatestRetryAttempt)
 	require.Equal(t, "dispatch-5", summary.LatestDispatchReference)
+}
+
+func TestManualRetryParsingAndCountAreStable(t *testing.T) {
+	t.Parallel()
+
+	summary := summarizeEvents([]receipts.ReceiptEvent{
+		manualRetryEventAt("sub-1", "operator:alice", "2026-04-23T09:00:00Z"),
+		manualRetryEventAt("sub-1", "operator:alice", "2026-04-23T10:00:00Z"),
+		deadLetterEventAt("sub-1", 4, "dispatch-4", "2026-04-23T11:00:00Z"),
+	})
+	require.Equal(t, 2, summary.ManualRetryCount)
+	require.Equal(t, "2026-04-23T10:00:00Z", summary.LatestManualReplayAt)
+	require.Equal(t, "operator:alice", summary.LatestManualReplayActor)
+	require.Equal(t, "dead-lettered", summary.LatestStatusSubtype)
 }
 
 var _ interface {

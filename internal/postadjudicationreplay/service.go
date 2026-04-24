@@ -94,13 +94,10 @@ func (s *Service) Replay(ctx context.Context, req Request) (Result, error) {
 		return Result{CanonicalAdjudication: canonical}, fmt.Errorf("record manual retry requested: %w", err)
 	}
 
-	canonical.SubmissionEvents = append(canonical.SubmissionEvents, receipts.ReceiptEvent{
-		SubmissionReceiptID: submissionReceiptID,
-		Source:              "post_adjudication_retry",
-		Subtype:             "manual-retry-requested",
-		Reason:              fmt.Sprintf("actor=%s reason=%s", actor, "manual retry requested"),
-		Type:                receipts.EventSettlementUpdated,
-	})
+	_, refreshedEvents, err := s.store.GetSubmissionReceipt(ctx, submissionReceiptID)
+	if err == nil {
+		canonical.SubmissionEvents = append([]receipts.ReceiptEvent(nil), refreshedEvents...)
+	}
 
 	dispatchReceipt, err := s.dispatcher.Dispatch(ctx, BackgroundDispatchRequest{
 		TransactionReceiptID: transaction.TransactionReceiptID,

@@ -429,12 +429,13 @@ The `docs/architecture/dead-letter-browsing-status-observation.md` page SHALL de
 - **THEN** they SHALL find filtering and pagination described for the backlog list
 - **AND** they SHALL find actor/time-based list filters described
 - **AND** they SHALL find dead-letter reason and dispatch-reference filters described
+- **AND** they SHALL find subtype/count filters and alternate sort modes described
 - **AND** they SHALL find detail navigation hints described for per-transaction status
 
 ### Requirement: P2P knowledge exchange track reflects landed dead-letter browsing / status observation
-The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe dead-letter browsing / status observation as landed work with reason/dispatch filters, and list the remaining work as replay-count or subtype filters, raw background-task bridges, and higher-level cockpit or CLI surfaces.
+The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe dead-letter browsing / status observation as landed work with replay-count/subtype filters and alternate sort modes, and list the remaining work as total retry-count or subtype-family filters, raw background-task bridges, and higher-level cockpit or CLI surfaces.
 
 #### Scenario: Track page points to the landed status slice
 - **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
 - **THEN** they SHALL find dead-letter browsing / status observation described as a landed first slice
-- **AND** the remaining work SHALL be described as replay-count or subtype filters, raw background-task bridges, and higher-level cockpit or CLI surfaces
+- **AND** the remaining work SHALL be described as total retry-count or subtype-family filters, raw background-task bridges, and higher-level cockpit or CLI surfaces

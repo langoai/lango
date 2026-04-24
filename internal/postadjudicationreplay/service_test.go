@@ -325,7 +325,7 @@ func (f *fakeReplayStore) RecordManualRetryRequested(ctx context.Context, req re
 	}
 	reason := req.Reason
 	if actor := strings.TrimSpace(ctxkeys.PrincipalFromContext(ctx)); actor != "" {
-		reason = "actor=" + actor + " reason=" + reason
+		reason = "actor=" + actor + " manual_replay_at=2026-04-24T00:00:00Z reason=" + reason
 	}
 	f.events = append(f.events, receipts.ReceiptEvent{
 		SubmissionReceiptID: f.submission.SubmissionReceiptID,

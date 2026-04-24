@@ -1732,6 +1732,22 @@ func newListDeadLetteredPostAdjudicationExecutionsTool(receiptStore *receipts.St
 					"type":        "string",
 					"description": "Optional exact-match filter for the latest dispatch reference",
 				},
+				"latest_status_subtype": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional exact-match filter for the latest retry/dead-letter subtype",
+				},
+				"manual_retry_count_min": map[string]interface{}{
+					"type":        "integer",
+					"description": "Optional lower bound for manual retry count",
+				},
+				"manual_retry_count_max": map[string]interface{}{
+					"type":        "integer",
+					"description": "Optional upper bound for manual retry count",
+				},
+				"sort_by": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional sort mode: latest_dead_lettered_at, latest_retry_attempt, or latest_manual_replay_at",
+				},
 				"offset": map[string]interface{}{"type": "integer", "description": "Optional zero-based pagination offset"},
 				"limit":  map[string]interface{}{"type": "integer", "description": "Optional pagination limit"},
 			},
@@ -1747,6 +1763,10 @@ func newListDeadLetteredPostAdjudicationExecutionsTool(receiptStore *receipts.St
 				DeadLetteredBefore:      toolparam.OptionalString(params, "dead_lettered_before", ""),
 				DeadLetterReasonQuery:   toolparam.OptionalString(params, "dead_letter_reason_query", ""),
 				LatestDispatchReference: toolparam.OptionalString(params, "latest_dispatch_reference", ""),
+				LatestStatusSubtype:     toolparam.OptionalString(params, "latest_status_subtype", ""),
+				ManualRetryCountMin:     toolparam.OptionalInt(params, "manual_retry_count_min", 0),
+				ManualRetryCountMax:     toolparam.OptionalInt(params, "manual_retry_count_max", 0),
+				SortBy:                  toolparam.OptionalString(params, "sort_by", ""),
 				Offset:                  toolparam.OptionalInt(params, "offset", 0),
 				Limit:                   toolparam.OptionalInt(params, "limit", 0),
 			})

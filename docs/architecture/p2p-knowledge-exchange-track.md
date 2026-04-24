@@ -67,7 +67,7 @@ The first operator replay / manual retry slice is now landed too: `retry_post_ad
 
 The first policy-driven replay controls slice is now landed too: replay now resolves the current actor from runtime context, applies config-backed allowlists for overall replay plus outcome-specific replay, and fails closed when actor resolution or authorization fails. The remaining work is richer policy classes, policy editing surfaces, per-transaction snapshots, and amount-tier replay controls.
 
-The dead-letter browsing / status observation slice now includes reason/dispatch filters too: operators can filter the current dead-lettered post-adjudication backlog by adjudication outcome, retry-attempt range, receipt-ID query, latest manual replay actor, latest dead-letter time window, dead-letter reason substring, and latest dispatch reference, page through the current backlog, and inspect canonical snapshot plus retry/dead-letter hints for a given transaction. The remaining work is replay-count or subtype filters, raw background-task bridges, and higher-level cockpit or CLI surfaces.
+The dead-letter browsing / status observation slice now includes replay-count/subtype filters and alternate sort modes too: operators can filter the current dead-lettered post-adjudication backlog by adjudication outcome, retry-attempt range, receipt-ID query, latest manual replay actor, latest dead-letter time window, dead-letter reason substring, latest dispatch reference, latest status subtype, and manual replay count range, and they can sort by latest dead-letter time, latest retry attempt, or latest manual replay time. The remaining work is total retry-count or subtype-family filters, raw background-task bridges, and higher-level cockpit or CLI surfaces.
 
 ## In Scope
 

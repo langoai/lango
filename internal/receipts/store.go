@@ -630,8 +630,9 @@ func (s *Store) RecordManualRetryRequested(ctx context.Context, req ManualRetryR
 	if reason == "" {
 		reason = string(req.Outcome)
 	}
+	reason = fmt.Sprintf("manual_replay_at=%s reason=%s", time.Now().UTC().Format(time.RFC3339), reason)
 	if actor := strings.TrimSpace(ctxkeys.PrincipalFromContext(ctx)); actor != "" {
-		reason = fmt.Sprintf("actor=%s reason=%s", actor, reason)
+		reason = fmt.Sprintf("actor=%s %s", actor, reason)
 	}
 	s.events[submissionReceiptID] = append(s.events[submissionReceiptID], ReceiptEvent{
 		SubmissionReceiptID: submissionReceiptID,

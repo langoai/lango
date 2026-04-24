@@ -21,6 +21,9 @@ type DeadLetterBacklogEntry struct {
 	LatestDeadLetterReason  string `json:"latest_dead_letter_reason,omitempty"`
 	LatestDeadLetteredAt    string `json:"latest_dead_lettered_at,omitempty"`
 	LatestManualReplayActor string `json:"latest_manual_replay_actor,omitempty"`
+	LatestManualReplayAt    string `json:"latest_manual_replay_at,omitempty"`
+	LatestStatusSubtype     string `json:"latest_status_subtype,omitempty"`
+	ManualRetryCount        int    `json:"manual_retry_count,omitempty"`
 	LatestRetryAttempt      int    `json:"latest_retry_attempt,omitempty"`
 	LatestDispatchReference string `json:"latest_dispatch_reference,omitempty"`
 }
@@ -36,6 +39,8 @@ type RetryDeadLetterSummary struct {
 	LatestDeadLetterReason  string `json:"latest_dead_letter_reason,omitempty"`
 	LatestDeadLetteredAt    string `json:"latest_dead_lettered_at,omitempty"`
 	LatestManualReplayActor string `json:"latest_manual_replay_actor,omitempty"`
+	LatestManualReplayAt    string `json:"latest_manual_replay_at,omitempty"`
+	ManualRetryCount        int    `json:"manual_retry_count,omitempty"`
 	LatestRetryAttempt      int    `json:"latest_retry_attempt,omitempty"`
 	LatestDispatchReference string `json:"latest_dispatch_reference,omitempty"`
 	LatestStatusSubtype     string `json:"latest_status_subtype,omitempty"`
@@ -51,6 +56,10 @@ type DeadLetterListOptions struct {
 	DeadLetteredBefore      string
 	DeadLetterReasonQuery   string
 	LatestDispatchReference string
+	LatestStatusSubtype     string
+	ManualRetryCountMin     int
+	ManualRetryCountMax     int
+	SortBy                  string
 	Offset                  int
 	Limit                   int
 }
