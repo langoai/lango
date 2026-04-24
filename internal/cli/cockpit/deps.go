@@ -60,6 +60,14 @@ func (b *DeadLetterToolBridge) Ready() bool {
 	return hasList && hasDetail
 }
 
+func (b *DeadLetterToolBridge) CanRetry() bool {
+	if b == nil || b.catalog == nil {
+		return false
+	}
+	_, hasRetry := b.catalog.Get("retry_post_adjudication_execution")
+	return hasRetry
+}
+
 func (b *DeadLetterToolBridge) List(ctx context.Context, opts DeadLetterListOptions) ([]postadjudicationstatus.DeadLetterBacklogEntry, error) {
 	if b == nil || b.catalog == nil {
 		return nil, fmt.Errorf("dead-letter tool catalog is not configured")
@@ -126,4 +134,18 @@ func (b *DeadLetterToolBridge) Detail(ctx context.Context, transactionReceiptID 
 		return postadjudicationstatus.TransactionStatus{}, err
 	}
 	return statusDecoded, nil
+}
+
+func (b *DeadLetterToolBridge) Retry(ctx context.Context, transactionReceiptID string) error {
+	if b == nil || b.catalog == nil {
+		return fmt.Errorf("dead-letter tool catalog is not configured")
+	}
+	entry, ok := b.catalog.Get("retry_post_adjudication_execution")
+	if !ok || entry.Tool == nil || entry.Tool.Handler == nil {
+		return fmt.Errorf("dead-letter retry tool is not available")
+	}
+	_, err := entry.Tool.Handler(ctx, map[string]interface{}{
+		"transaction_receipt_id": transactionReceiptID,
+	})
+	return err
 }

@@ -3,7 +3,6 @@ package pages
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"strings"
 	"unicode"
 
@@ -39,6 +38,11 @@ type deadLetterDetailLoadedMsg struct {
 	err           error
 }
 
+type deadLetterRetryResultMsg struct {
+	transactionID string
+	err           error
+}
+
 type deadLetterAdjudicationFilter string
 
 const (
@@ -53,13 +57,17 @@ type DeadLetterListOptions struct {
 }
 
 // DeadLetterListFn loads the current dead-letter backlog rows for the cockpit table.
+type DeadLetterListFn func(ctx context.Context, opts DeadLetterListOptions) ([]postadjudicationstatus.DeadLetterBacklogEntry, error)
+
 // DeadLetterDetailFn loads the selected transaction detail for the cockpit pane.
 type DeadLetterDetailFn func(ctx context.Context, transactionReceiptID string) (postadjudicationstatus.TransactionStatus, error)
+type DeadLetterRetryFn func(ctx context.Context, transactionReceiptID string) error
 
 // DeadLettersPage renders a read-only master-detail surface for post-adjudication dead letters.
 type DeadLettersPage struct {
-	listFn   any
+	listFn   DeadLetterListFn
 	detailFn DeadLetterDetailFn
+	retryFn  DeadLetterRetryFn
 
 	items               []postadjudicationstatus.DeadLetterBacklogEntry
 	cursor              int
@@ -72,12 +80,18 @@ type DeadLettersPage struct {
 	adjudicationDraft   deadLetterAdjudicationFilter
 	appliedAdjudication deadLetterAdjudicationFilter
 	width, height       int
+	statusMsg           string
 }
 
-func NewDeadLettersPage(listFn any, detailFn DeadLetterDetailFn) *DeadLettersPage {
+func NewDeadLettersPage(listFn DeadLetterListFn, detailFn DeadLetterDetailFn, retryFns ...DeadLetterRetryFn) *DeadLettersPage {
+	var retryFn DeadLetterRetryFn
+	if len(retryFns) > 0 {
+		retryFn = retryFns[0]
+	}
 	return &DeadLettersPage{
 		listFn:              listFn,
 		detailFn:            detailFn,
+		retryFn:             retryFn,
 		adjudicationDraft:   deadLetterAdjudicationAll,
 		appliedAdjudication: deadLetterAdjudicationAll,
 		appliedQuery:        "",
@@ -88,13 +102,17 @@ func NewDeadLettersPage(listFn any, detailFn DeadLetterDetailFn) *DeadLettersPag
 func (p *DeadLettersPage) Title() string { return "Dead Letters" }
 
 func (p *DeadLettersPage) ShortHelp() []key.Binding {
-	return []key.Binding{
+	bindings := []key.Binding{
 		key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", "up")),
 		key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", "down")),
 		key.NewBinding(key.WithKeys("left", "right"), key.WithHelp("←/→", "adj")),
 		key.NewBinding(key.WithKeys("backspace"), key.WithHelp("⌫", "query")),
 		key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "apply")),
 	}
+	if p.canRetrySelected() {
+		bindings = append(bindings, key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "retry")))
+	}
+	return bindings
 }
 
 func (p *DeadLettersPage) Init() tea.Cmd { return nil }
@@ -143,7 +161,15 @@ func (p *DeadLettersPage) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		status := msg.status
 		p.detail = &status
+	case deadLetterRetryResultMsg:
+		if msg.err != nil {
+			p.statusMsg = "Retry failed: " + msg.err.Error()
+			return p, nil
+		}
+		p.statusMsg = "Retry requested: " + msg.transactionID
+		return p, nil
 	case tea.KeyMsg:
+		p.statusMsg = ""
 		switch msg.String() {
 		case "enter":
 			p.appliedQuery = strings.TrimSpace(p.queryDraft)
@@ -151,6 +177,8 @@ func (p *DeadLettersPage) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			p.detail = nil
 			p.detailErr = nil
 			return p, p.loadBacklog()
+		case "r":
+			return p, p.retrySelected()
 		case "left":
 			p.adjudicationDraft = p.adjudicationDraft.prev()
 		case "right":
@@ -197,7 +225,12 @@ func (p *DeadLettersPage) View() string {
 	filterBar := p.renderFilterBar()
 	table := p.renderTable()
 	detail := p.renderDetailPane()
-	content := lipgloss.JoinVertical(lipgloss.Left, title, divider, "", filterBar, "", table, "", detail)
+	parts := []string{title, divider, "", filterBar, "", table, "", detail}
+	if strings.TrimSpace(p.statusMsg) != "" {
+		status := lipgloss.NewStyle().Foreground(theme.Accent).Render(p.statusMsg)
+		parts = append(parts, "", status)
+	}
+	content := lipgloss.JoinVertical(lipgloss.Left, parts...)
 	return lipgloss.NewStyle().Padding(1, 2).Render(content)
 }
 
@@ -316,6 +349,11 @@ func (p *DeadLettersPage) renderDetailPane() string {
 	} else {
 		lines = append(lines, "Background task: n/a")
 	}
+	retryState := "disabled"
+	if p.canRetrySelected() {
+		retryState = "enabled (press r)"
+	}
+	lines = append(lines, fmt.Sprintf("Retry action: %s", retryState))
 
 	minLines := deadLettersDetailMinLines
 	if len(lines) < minLines {
@@ -340,7 +378,10 @@ func (p *DeadLettersPage) loadBacklog() tea.Cmd {
 		opts.Adjudication = string(p.appliedAdjudication)
 	}
 	return func() tea.Msg {
-		items, err := invokeDeadLetterList(listFn, context.Background(), opts)
+		if listFn == nil {
+			return deadLettersLoadedMsg{err: fmt.Errorf("dead-letter list function not configured")}
+		}
+		items, err := listFn(context.Background(), opts)
 		return deadLettersLoadedMsg{items: items, err: err}
 	}
 }
@@ -361,6 +402,18 @@ func (p *DeadLettersPage) loadSelectedDetail() tea.Cmd {
 			status:        status,
 			err:           err,
 		}
+	}
+}
+
+func (p *DeadLettersPage) retrySelected() tea.Cmd {
+	if p.retryFn == nil || !p.canRetrySelected() {
+		return nil
+	}
+	transactionID := p.selectedID
+	retryFn := p.retryFn
+	return func() tea.Msg {
+		err := retryFn(context.Background(), transactionID)
+		return deadLetterRetryResultMsg{transactionID: transactionID, err: err}
 	}
 }
 
@@ -402,39 +455,8 @@ func (p *DeadLettersPage) hasAppliedFilters() bool {
 	return strings.TrimSpace(p.appliedQuery) != "" || p.appliedAdjudication != deadLetterAdjudicationAll
 }
 
-func invokeDeadLetterList(listFn any, ctx context.Context, opts DeadLetterListOptions) ([]postadjudicationstatus.DeadLetterBacklogEntry, error) {
-	if listFn == nil {
-		return nil, fmt.Errorf("dead-letter list function not configured")
-	}
-	fnValue := reflect.ValueOf(listFn)
-	if fnValue.Kind() != reflect.Func {
-		return nil, fmt.Errorf("dead-letter list function is invalid")
-	}
-	fnType := fnValue.Type()
-	if fnType.NumIn() != 2 || fnType.NumOut() != 2 {
-		return nil, fmt.Errorf("dead-letter list function signature is invalid")
-	}
-
-	optsValue := reflect.New(fnType.In(1)).Elem()
-	if field := optsValue.FieldByName("Query"); field.IsValid() && field.CanSet() && field.Kind() == reflect.String {
-		field.SetString(opts.Query)
-	}
-	if field := optsValue.FieldByName("Adjudication"); field.IsValid() && field.CanSet() && field.Kind() == reflect.String {
-		field.SetString(opts.Adjudication)
-	}
-
-	results := fnValue.Call([]reflect.Value{reflect.ValueOf(ctx), optsValue})
-	if errValue := results[1]; !errValue.IsNil() {
-		if err, ok := errValue.Interface().(error); ok {
-			return nil, err
-		}
-		return nil, fmt.Errorf("dead-letter list function returned invalid error")
-	}
-	items, ok := results[0].Interface().([]postadjudicationstatus.DeadLetterBacklogEntry)
-	if !ok {
-		return nil, fmt.Errorf("dead-letter list function returned invalid items")
-	}
-	return items, nil
+func (p *DeadLettersPage) canRetrySelected() bool {
+	return p.retryFn != nil && p.detail != nil && p.detail.CanRetry
 }
 
 func deadLetterStatusLabel(entry postadjudicationstatus.DeadLetterBacklogEntry) string {

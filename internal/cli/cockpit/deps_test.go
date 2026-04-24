@@ -32,6 +32,14 @@ func TestDeadLetterToolBridge_ReadyRequiresBothTools(t *testing.T) {
 		}},
 	})
 	assert.True(t, bridge.Ready())
+	assert.False(t, bridge.CanRetry())
+
+	catalog.Register("knowledge", []*agent.Tool{
+		{Name: "retry_post_adjudication_execution", Handler: func(context.Context, map[string]interface{}) (interface{}, error) {
+			return map[string]interface{}{"status": "queued"}, nil
+		}},
+	})
+	assert.True(t, bridge.CanRetry())
 }
 
 func TestDeadLetterToolBridge_ListAndDetail(t *testing.T) {
@@ -87,6 +95,40 @@ func TestDeadLetterToolBridge_ListAndDetail(t *testing.T) {
 	gotDetail, err := bridge.Detail(context.Background(), "tx-1")
 	require.NoError(t, err)
 	assert.Equal(t, wantDetail, gotDetail)
+}
+
+func TestDeadLetterToolBridge_Retry(t *testing.T) {
+	catalog := toolcatalog.New()
+	catalog.RegisterCategory(toolcatalog.Category{Name: "knowledge", Enabled: true})
+
+	called := false
+	catalog.Register("knowledge", []*agent.Tool{
+		{
+			Name: "list_dead_lettered_post_adjudication_executions",
+			Handler: func(context.Context, map[string]interface{}) (interface{}, error) {
+				return map[string]interface{}{"entries": []postadjudicationstatus.DeadLetterBacklogEntry{}}, nil
+			},
+		},
+		{
+			Name: "get_post_adjudication_execution_status",
+			Handler: func(context.Context, map[string]interface{}) (interface{}, error) {
+				return postadjudicationstatus.TransactionStatus{}, nil
+			},
+		},
+		{
+			Name: "retry_post_adjudication_execution",
+			Handler: func(_ context.Context, params map[string]interface{}) (interface{}, error) {
+				called = true
+				require.Equal(t, "tx-7", params["transaction_receipt_id"])
+				return map[string]interface{}{"status": "queued"}, nil
+			},
+		},
+	})
+
+	bridge := NewDeadLetterToolBridge(catalog)
+	require.True(t, bridge.CanRetry())
+	require.NoError(t, bridge.Retry(context.Background(), "tx-7"))
+	assert.True(t, called)
 }
 
 func TestDeadLetterToolBridge_ListOmitsAdjudicationWhenAll(t *testing.T) {

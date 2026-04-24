@@ -58,6 +58,7 @@ import (
 	cliworkflow "github.com/langoai/lango/internal/cli/workflow"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/logging"
+	"github.com/langoai/lango/internal/postadjudicationstatus"
 	"github.com/langoai/lango/internal/sandbox"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/storagebroker"
@@ -746,8 +747,18 @@ func runCockpit(initialMode string) error {
 		model.RegisterPage(cockpit.PageTasks, pages.NewTasksPage(nil, nil))
 	}
 	if deadLetterBridge := cockpit.NewDeadLetterToolBridge(application.ToolCatalog); deadLetterBridge.Ready() {
+		var retryFn pages.DeadLetterRetryFn
+		if deadLetterBridge.CanRetry() {
+			retryFn = deadLetterBridge.Retry
+		}
+		listFn := func(ctx context.Context, opts pages.DeadLetterListOptions) ([]postadjudicationstatus.DeadLetterBacklogEntry, error) {
+			return deadLetterBridge.List(ctx, cockpit.DeadLetterListOptions{
+				Query:        opts.Query,
+				Adjudication: opts.Adjudication,
+			})
+		}
 		model.RegisterPage(cockpit.PageDeadLetters,
-			pages.NewDeadLettersPage(deadLetterBridge.List, deadLetterBridge.Detail))
+			pages.NewDeadLettersPage(listFn, deadLetterBridge.Detail, retryFn))
 	}
 	model.RegisterPage(cockpit.PageApprovals,
 		pages.NewApprovalsPage(application.ApprovalHistory, application.GrantStore))

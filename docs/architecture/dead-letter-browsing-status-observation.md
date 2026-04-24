@@ -74,6 +74,11 @@ The slice is intentionally narrow:
     - `adjudication`
     - `Enter` apply
     - first-row reset after reload
+  - detail-pane `Retry` action
+    - reuses `retry_post_adjudication_execution`
+    - enabled only when `can_retry = true`
+    - `r` key binding
+    - success/failure status message only
 
 ## Current Limits
 
@@ -86,4 +91,5 @@ This slice does not yet include:
 - actor/time cockpit filters
 - family/subtype cockpit filters
 - selection preservation after filter changes
+- confirm prompts and auto refresh after replay
 - higher-level CLI surfaces
