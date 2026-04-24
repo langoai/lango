@@ -1,0 +1,224 @@
+package pages
+
+import (
+	"context"
+	"errors"
+	"testing"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/langoai/lango/internal/postadjudicationstatus"
+	"github.com/langoai/lango/internal/receipts"
+)
+
+type mockDeadLetterListFn struct {
+	items  []postadjudicationstatus.DeadLetterBacklogEntry
+	err    error
+	called int
+}
+
+func (m *mockDeadLetterListFn) call(_ context.Context) ([]postadjudicationstatus.DeadLetterBacklogEntry, error) {
+	m.called++
+	return append([]postadjudicationstatus.DeadLetterBacklogEntry(nil), m.items...), m.err
+}
+
+type mockDeadLetterDetailFn struct {
+	statusByID map[string]postadjudicationstatus.TransactionStatus
+	errByID    map[string]error
+	calls      []string
+}
+
+func (m *mockDeadLetterDetailFn) call(_ context.Context, transactionReceiptID string) (postadjudicationstatus.TransactionStatus, error) {
+	m.calls = append(m.calls, transactionReceiptID)
+	if err, ok := m.errByID[transactionReceiptID]; ok {
+		return postadjudicationstatus.TransactionStatus{}, err
+	}
+	return m.statusByID[transactionReceiptID], nil
+}
+
+func TestDeadLettersPage_Title(t *testing.T) {
+	page := NewDeadLettersPage(nil, nil)
+	assert.Equal(t, "Dead Letters", page.Title())
+}
+
+func TestDeadLettersPage_ShortHelp(t *testing.T) {
+	page := NewDeadLettersPage(nil, nil)
+	bindings := page.ShortHelp()
+	require.Len(t, bindings, 2)
+}
+
+func TestDeadLettersPage_ActivateLoadsBacklogAndDetail(t *testing.T) {
+	listFn := &mockDeadLetterListFn{
+		items: []postadjudicationstatus.DeadLetterBacklogEntry{
+			{
+				TransactionReceiptID:   "tx-1",
+				SubmissionReceiptID:    "sub-1",
+				Adjudication:           string(receipts.EscrowAdjudicationRelease),
+				LatestRetryAttempt:     3,
+				LatestDeadLetterReason: "worker exhausted",
+				IsDeadLettered:         true,
+				CanRetry:               true,
+			},
+		},
+	}
+	detailFn := &mockDeadLetterDetailFn{
+		statusByID: map[string]postadjudicationstatus.TransactionStatus{
+			"tx-1": {
+				CanonicalSnapshot: postadjudicationstatus.CanonicalSnapshot{
+					TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-1"},
+					SubmissionReceipt:  receipts.SubmissionReceipt{SubmissionReceiptID: "sub-1"},
+				},
+				RetryDeadLetterSummary: postadjudicationstatus.RetryDeadLetterSummary{
+					LatestDeadLetterReason:  "worker exhausted",
+					LatestRetryAttempt:      3,
+					LatestDispatchReference: "dispatch-1",
+				},
+				IsDeadLettered: true,
+				CanRetry:       true,
+				Adjudication:   string(receipts.EscrowAdjudicationRelease),
+			},
+		},
+	}
+
+	page := NewDeadLettersPage(listFn.call, detailFn.call)
+	cmd := page.Activate()
+	require.NotNil(t, cmd)
+
+	msg := cmd()
+	updated, detailCmd := page.Update(msg)
+	page = updated.(*DeadLettersPage)
+
+	require.Len(t, page.items, 1)
+	assert.Equal(t, "tx-1", page.selectedID)
+	require.NotNil(t, detailCmd)
+
+	detailMsg := detailCmd()
+	updated, _ = page.Update(detailMsg)
+	page = updated.(*DeadLettersPage)
+
+	require.NotNil(t, page.detail)
+	assert.Equal(t, "tx-1", page.detail.CanonicalSnapshot.TransactionReceipt.TransactionReceiptID)
+	assert.Equal(t, []string{"tx-1"}, detailFn.calls)
+}
+
+func TestDeadLettersPage_SelectionLoadsNextDetail(t *testing.T) {
+	listFn := &mockDeadLetterListFn{
+		items: []postadjudicationstatus.DeadLetterBacklogEntry{
+			{TransactionReceiptID: "tx-1", SubmissionReceiptID: "sub-1", Adjudication: "release", LatestRetryAttempt: 2, LatestDeadLetterReason: "release failed", IsDeadLettered: true, CanRetry: true},
+			{TransactionReceiptID: "tx-2", SubmissionReceiptID: "sub-2", Adjudication: "refund", LatestRetryAttempt: 4, LatestDeadLetterReason: "refund failed", IsDeadLettered: true, CanRetry: true},
+		},
+	}
+	detailFn := &mockDeadLetterDetailFn{
+		statusByID: map[string]postadjudicationstatus.TransactionStatus{
+			"tx-1": {CanonicalSnapshot: postadjudicationstatus.CanonicalSnapshot{TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-1"}, SubmissionReceipt: receipts.SubmissionReceipt{SubmissionReceiptID: "sub-1"}}, Adjudication: "release"},
+			"tx-2": {CanonicalSnapshot: postadjudicationstatus.CanonicalSnapshot{TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-2"}, SubmissionReceipt: receipts.SubmissionReceipt{SubmissionReceiptID: "sub-2"}}, Adjudication: "refund"},
+		},
+	}
+
+	page := NewDeadLettersPage(listFn.call, detailFn.call)
+	updated, detailCmd := page.Update(page.Activate()())
+	page = updated.(*DeadLettersPage)
+	require.NotNil(t, detailCmd)
+	updated, _ = page.Update(detailCmd())
+	page = updated.(*DeadLettersPage)
+
+	updated, detailCmd = page.Update(tea.KeyMsg{Type: tea.KeyDown})
+	page = updated.(*DeadLettersPage)
+	assert.Equal(t, 1, page.cursor)
+	assert.Equal(t, "tx-2", page.selectedID)
+	require.NotNil(t, detailCmd)
+
+	updated, _ = page.Update(detailCmd())
+	page = updated.(*DeadLettersPage)
+	require.NotNil(t, page.detail)
+	assert.Equal(t, "tx-2", page.detail.CanonicalSnapshot.TransactionReceipt.TransactionReceiptID)
+	assert.Equal(t, []string{"tx-1", "tx-2"}, detailFn.calls)
+}
+
+func TestDeadLettersPage_NoBacklogDoesNotLoadDetail(t *testing.T) {
+	listFn := &mockDeadLetterListFn{}
+	detailFn := &mockDeadLetterDetailFn{statusByID: map[string]postadjudicationstatus.TransactionStatus{}}
+
+	page := NewDeadLettersPage(listFn.call, detailFn.call)
+	updated, detailCmd := page.Update(page.Activate()())
+	page = updated.(*DeadLettersPage)
+
+	assert.Empty(t, page.items)
+	assert.Nil(t, detailCmd)
+	assert.Nil(t, page.detail)
+	assert.Empty(t, detailFn.calls)
+	assert.Contains(t, page.View(), "No current dead-letter backlog.")
+}
+
+func TestDeadLettersPage_ShowsLoadErrors(t *testing.T) {
+	page := NewDeadLettersPage((&mockDeadLetterListFn{err: errors.New("boom")}).call, nil)
+	updated, _ := page.Update(page.Activate()())
+	page = updated.(*DeadLettersPage)
+	assert.Contains(t, page.View(), "Failed to load dead letters")
+}
+
+func TestDeadLettersPage_ShowsDetailErrors(t *testing.T) {
+	listFn := &mockDeadLetterListFn{
+		items: []postadjudicationstatus.DeadLetterBacklogEntry{
+			{TransactionReceiptID: "tx-1", SubmissionReceiptID: "sub-1", Adjudication: "release", LatestRetryAttempt: 2, LatestDeadLetterReason: "failed", IsDeadLettered: true, CanRetry: true},
+		},
+	}
+	detailFn := &mockDeadLetterDetailFn{
+		statusByID: map[string]postadjudicationstatus.TransactionStatus{},
+		errByID:    map[string]error{"tx-1": errors.New("detail exploded")},
+	}
+
+	page := NewDeadLettersPage(listFn.call, detailFn.call)
+	updated, detailCmd := page.Update(page.Activate()())
+	page = updated.(*DeadLettersPage)
+	require.NotNil(t, detailCmd)
+
+	updated, _ = page.Update(detailCmd())
+	page = updated.(*DeadLettersPage)
+	assert.Contains(t, page.View(), "Failed to load detail")
+}
+
+func TestDeadLettersPage_ViewIncludesBackgroundTaskWhenPresent(t *testing.T) {
+	listFn := &mockDeadLetterListFn{
+		items: []postadjudicationstatus.DeadLetterBacklogEntry{
+			{TransactionReceiptID: "tx-1", SubmissionReceiptID: "sub-1", Adjudication: "release", LatestRetryAttempt: 3, LatestDeadLetterReason: "terminal failure", IsDeadLettered: true, CanRetry: true},
+		},
+	}
+	detailFn := &mockDeadLetterDetailFn{
+		statusByID: map[string]postadjudicationstatus.TransactionStatus{
+			"tx-1": {
+				CanonicalSnapshot: postadjudicationstatus.CanonicalSnapshot{
+					TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-1"},
+					SubmissionReceipt:  receipts.SubmissionReceipt{SubmissionReceiptID: "sub-1"},
+				},
+				RetryDeadLetterSummary: postadjudicationstatus.RetryDeadLetterSummary{
+					LatestDeadLetterReason:  "terminal failure",
+					LatestRetryAttempt:      3,
+					LatestDispatchReference: "dispatch-9",
+				},
+				LatestBackgroundTask: &postadjudicationstatus.BackgroundTaskBridge{
+					TaskID:       "task-9",
+					Status:       "retrying",
+					AttemptCount: 2,
+					NextRetryAt:  "2026-04-24T12:30:00Z",
+				},
+				IsDeadLettered: true,
+				CanRetry:       true,
+				Adjudication:   "release",
+			},
+		},
+	}
+
+	page := NewDeadLettersPage(listFn.call, detailFn.call)
+	updated, detailCmd := page.Update(page.Activate()())
+	page = updated.(*DeadLettersPage)
+	require.NotNil(t, detailCmd)
+	updated, _ = page.Update(detailCmd())
+	page = updated.(*DeadLettersPage)
+
+	view := page.View()
+	assert.Contains(t, view, "Background task: task-9")
+	assert.Contains(t, view, "Task status: retrying")
+}

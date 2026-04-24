@@ -64,6 +64,11 @@ The slice is intentionally narrow:
   - `transaction receipt`
   - `current submission receipt`
   - `submission receipt trail`
+- cockpit read surface
+  - dead-letter backlog table
+  - selected transaction detail pane
+  - selection-driven detail refresh
+  - reuses the existing list/detail status surfaces
 
 ## Current Limits
 
@@ -72,7 +77,6 @@ This slice does not yet include:
 - replay / repair actions
 - generic dead-letter browsing for all background tasks
 - full event history dump
-- cockpit / CLI presentation surfaces
 - richer detail-surface actor/time summaries
 - custom sort order
 - multi-column sort

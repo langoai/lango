@@ -1,0 +1,85 @@
+package cockpit
+
+import (
+	"context"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/langoai/lango/internal/agent"
+	"github.com/langoai/lango/internal/postadjudicationstatus"
+	"github.com/langoai/lango/internal/receipts"
+	"github.com/langoai/lango/internal/toolcatalog"
+)
+
+func TestDeadLetterToolBridge_ReadyRequiresBothTools(t *testing.T) {
+	catalog := toolcatalog.New()
+	bridge := NewDeadLetterToolBridge(catalog)
+	assert.False(t, bridge.Ready())
+
+	catalog.RegisterCategory(toolcatalog.Category{Name: "knowledge", Enabled: true})
+	catalog.Register("knowledge", []*agent.Tool{
+		{Name: "list_dead_lettered_post_adjudication_executions", Handler: func(context.Context, map[string]interface{}) (interface{}, error) {
+			return map[string]interface{}{"entries": []postadjudicationstatus.DeadLetterBacklogEntry{}}, nil
+		}},
+	})
+	assert.False(t, bridge.Ready())
+
+	catalog.Register("knowledge", []*agent.Tool{
+		{Name: "get_post_adjudication_execution_status", Handler: func(context.Context, map[string]interface{}) (interface{}, error) {
+			return postadjudicationstatus.TransactionStatus{}, nil
+		}},
+	})
+	assert.True(t, bridge.Ready())
+}
+
+func TestDeadLetterToolBridge_ListAndDetail(t *testing.T) {
+	catalog := toolcatalog.New()
+	catalog.RegisterCategory(toolcatalog.Category{Name: "knowledge", Enabled: true})
+
+	wantEntries := []postadjudicationstatus.DeadLetterBacklogEntry{
+		{
+			TransactionReceiptID: "tx-1",
+			SubmissionReceiptID:  "sub-1",
+			Adjudication:         "release",
+			LatestRetryAttempt:   3,
+		},
+	}
+	wantDetail := postadjudicationstatus.TransactionStatus{
+		CanonicalSnapshot: postadjudicationstatus.CanonicalSnapshot{
+			TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-1"},
+			SubmissionReceipt:  receipts.SubmissionReceipt{SubmissionReceiptID: "sub-1"},
+		},
+		Adjudication: "release",
+	}
+
+	catalog.Register("knowledge", []*agent.Tool{
+		{
+			Name: "list_dead_lettered_post_adjudication_executions",
+			Handler: func(context.Context, map[string]interface{}) (interface{}, error) {
+				return map[string]interface{}{
+					"entries": wantEntries,
+					"count":   1,
+					"total":   1,
+				}, nil
+			},
+		},
+		{
+			Name: "get_post_adjudication_execution_status",
+			Handler: func(_ context.Context, params map[string]interface{}) (interface{}, error) {
+				require.Equal(t, "tx-1", params["transaction_receipt_id"])
+				return wantDetail, nil
+			},
+		},
+	})
+
+	bridge := NewDeadLetterToolBridge(catalog)
+	gotEntries, err := bridge.List(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, wantEntries, gotEntries)
+
+	gotDetail, err := bridge.Detail(context.Background(), "tx-1")
+	require.NoError(t, err)
+	assert.Equal(t, wantDetail, gotDetail)
+}

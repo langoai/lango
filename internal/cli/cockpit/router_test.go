@@ -16,6 +16,7 @@ func TestPageIDString(t *testing.T) {
 		{give: PageSettings, want: "settings"},
 		{give: PageTools, want: "tools"},
 		{give: PageStatus, want: "status"},
+		{give: PageDeadLetters, want: "dead-letters"},
 		{give: PageID(99), want: "unknown"},
 	}
 	for _, tt := range tests {
@@ -37,6 +38,7 @@ func TestPageIDFromString(t *testing.T) {
 		{give: "settings", want: PageSettings},
 		{give: "tools", want: PageTools},
 		{give: "status", want: PageStatus},
+		{give: "dead-letters", want: PageDeadLetters},
 		{give: "unknown-value", want: PageChat},
 	}
 	for _, tt := range tests {
@@ -51,7 +53,7 @@ func TestPageIDFromString(t *testing.T) {
 
 func TestAllPageMetas_Count(t *testing.T) {
 	metas := AllPageMetas()
-	assert.Len(t, metas, 7, "AllPageMetas should return exactly 7 items (Chat + 6 pages)")
+	assert.Len(t, metas, 8, "AllPageMetas should return exactly 8 items (Chat + 7 pages)")
 }
 
 func TestAllPageMetas_AllPageIDsCovered(t *testing.T) {
@@ -64,7 +66,7 @@ func TestAllPageMetas_AllPageIDsCovered(t *testing.T) {
 	// Every non-Chat PageID must have an entry.
 	nonChatPages := []PageID{
 		PageSettings, PageTools, PageStatus,
-		PageSessions, PageTasks, PageApprovals,
+		PageSessions, PageTasks, PageDeadLetters, PageApprovals,
 	}
 	for _, pid := range nonChatPages {
 		assert.True(t, metaIDs[pid.String()],

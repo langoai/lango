@@ -745,6 +745,10 @@ func runCockpit(initialMode string) error {
 	} else {
 		model.RegisterPage(cockpit.PageTasks, pages.NewTasksPage(nil, nil))
 	}
+	if deadLetterBridge := cockpit.NewDeadLetterToolBridge(application.ToolCatalog); deadLetterBridge.Ready() {
+		model.RegisterPage(cockpit.PageDeadLetters,
+			pages.NewDeadLettersPage(deadLetterBridge.List, deadLetterBridge.Detail))
+	}
 	model.RegisterPage(cockpit.PageApprovals,
 		pages.NewApprovalsPage(application.ApprovalHistory, application.GrantStore))
 

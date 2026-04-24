@@ -1,12 +1,17 @@
 package cockpit
 
 import (
+	"context"
+	"encoding/json"
+	"fmt"
+
 	"github.com/langoai/lango/internal/app"
 	"github.com/langoai/lango/internal/approval"
 	"github.com/langoai/lango/internal/background"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/observability"
+	"github.com/langoai/lango/internal/postadjudicationstatus"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/storage"
 	"github.com/langoai/lango/internal/toolcatalog"
@@ -30,4 +35,81 @@ type Deps struct {
 	EventBus          *eventbus.Bus          // optional, enables channel event subscription
 	ApprovalHistory   *approval.HistoryStore // optional, approval decision history
 	GrantStore        *approval.GrantStore   // optional, persistent session grants
+}
+
+type DeadLetterToolBridge struct {
+	catalog *toolcatalog.Catalog
+}
+
+func NewDeadLetterToolBridge(catalog *toolcatalog.Catalog) *DeadLetterToolBridge {
+	return &DeadLetterToolBridge{catalog: catalog}
+}
+
+func (b *DeadLetterToolBridge) Ready() bool {
+	if b == nil || b.catalog == nil {
+		return false
+	}
+	_, hasList := b.catalog.Get("list_dead_lettered_post_adjudication_executions")
+	_, hasDetail := b.catalog.Get("get_post_adjudication_execution_status")
+	return hasList && hasDetail
+}
+
+func (b *DeadLetterToolBridge) List(ctx context.Context) ([]postadjudicationstatus.DeadLetterBacklogEntry, error) {
+	if b == nil || b.catalog == nil {
+		return nil, fmt.Errorf("dead-letter tool catalog is not configured")
+	}
+	entry, ok := b.catalog.Get("list_dead_lettered_post_adjudication_executions")
+	if !ok || entry.Tool == nil || entry.Tool.Handler == nil {
+		return nil, fmt.Errorf("dead-letter backlog tool is not available")
+	}
+	raw, err := entry.Tool.Handler(ctx, map[string]interface{}{})
+	if err != nil {
+		return nil, err
+	}
+	payload, ok := raw.(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("dead-letter backlog tool returned invalid payload")
+	}
+	entriesRaw, ok := payload["entries"]
+	if !ok {
+		return nil, fmt.Errorf("dead-letter backlog tool returned no entries")
+	}
+	data, err := json.Marshal(entriesRaw)
+	if err != nil {
+		return nil, err
+	}
+	var entries []postadjudicationstatus.DeadLetterBacklogEntry
+	if err := json.Unmarshal(data, &entries); err != nil {
+		return nil, err
+	}
+	return entries, nil
+}
+
+func (b *DeadLetterToolBridge) Detail(ctx context.Context, transactionReceiptID string) (postadjudicationstatus.TransactionStatus, error) {
+	if b == nil || b.catalog == nil {
+		return postadjudicationstatus.TransactionStatus{}, fmt.Errorf("dead-letter tool catalog is not configured")
+	}
+	entry, ok := b.catalog.Get("get_post_adjudication_execution_status")
+	if !ok || entry.Tool == nil || entry.Tool.Handler == nil {
+		return postadjudicationstatus.TransactionStatus{}, fmt.Errorf("dead-letter detail tool is not available")
+	}
+	raw, err := entry.Tool.Handler(ctx, map[string]interface{}{
+		"transaction_receipt_id": transactionReceiptID,
+	})
+	if err != nil {
+		return postadjudicationstatus.TransactionStatus{}, err
+	}
+	status, ok := raw.(postadjudicationstatus.TransactionStatus)
+	if ok {
+		return status, nil
+	}
+	data, err := json.Marshal(raw)
+	if err != nil {
+		return postadjudicationstatus.TransactionStatus{}, err
+	}
+	var statusDecoded postadjudicationstatus.TransactionStatus
+	if err := json.Unmarshal(data, &statusDecoded); err != nil {
+		return postadjudicationstatus.TransactionStatus{}, err
+	}
+	return statusDecoded, nil
 }
