@@ -32,6 +32,7 @@ func (m *mockDeadLetterListFn) call(_ context.Context, opts DeadLetterListOption
 	query := strings.ToLower(strings.TrimSpace(opts.Query))
 	actor := strings.TrimSpace(opts.ManualReplayActor)
 	family := strings.TrimSpace(opts.LatestStatusSubtypeFamily)
+	anyMatchFamily := strings.TrimSpace(opts.AnyMatchFamily)
 	after := parseDeadLetterTime(strings.TrimSpace(opts.DeadLetteredAfter))
 	before := parseDeadLetterTime(strings.TrimSpace(opts.DeadLetteredBefore))
 	for _, item := range m.items {
@@ -42,6 +43,9 @@ func (m *mockDeadLetterListFn) call(_ context.Context, opts DeadLetterListOption
 			continue
 		}
 		if family != "" && !strings.EqualFold(item.LatestStatusSubtypeFamily, family) {
+			continue
+		}
+		if anyMatchFamily != "" && !containsFamily(item.AnyMatchFamilies, anyMatchFamily) {
 			continue
 		}
 		if actor != "" && !strings.EqualFold(item.LatestManualReplayActor, actor) {
@@ -69,6 +73,15 @@ func (m *mockDeadLetterListFn) call(_ context.Context, opts DeadLetterListOption
 		filtered = append(filtered, item)
 	}
 	return filtered, nil
+}
+
+func containsFamily(families []string, want string) bool {
+	for _, family := range families {
+		if strings.EqualFold(strings.TrimSpace(family), strings.TrimSpace(want)) {
+			return true
+		}
+	}
+	return false
 }
 
 func parseDeadLetterTime(value string) time.Time {
@@ -117,15 +130,15 @@ func TestDeadLettersPage_Title(t *testing.T) {
 func TestDeadLettersPage_ShortHelp(t *testing.T) {
 	page := NewDeadLettersPage(nil, nil)
 	bindings := page.ShortHelp()
-	require.Len(t, bindings, 8)
+	require.Len(t, bindings, 9)
 }
 
 func TestDeadLettersPage_ShortHelpIncludesRetryWhenEnabled(t *testing.T) {
 	page := NewDeadLettersPage(nil, nil, (&mockDeadLetterRetryFn{}).call)
 	page.detail = &postadjudicationstatus.TransactionStatus{CanRetry: true}
 	bindings := page.ShortHelp()
-	require.Len(t, bindings, 9)
-	assert.Equal(t, "r", bindings[8].Keys()[0])
+	require.Len(t, bindings, 10)
+	assert.Equal(t, "r", bindings[9].Keys()[0])
 }
 
 func TestDeadLettersPage_ShortHelpShowsConfirmWhenPending(t *testing.T) {
@@ -135,8 +148,8 @@ func TestDeadLettersPage_ShortHelpShowsConfirmWhenPending(t *testing.T) {
 	page.retryConfirmID = "tx-1"
 
 	bindings := page.ShortHelp()
-	require.Len(t, bindings, 9)
-	assert.Equal(t, "confirm", bindings[8].Help().Desc)
+	require.Len(t, bindings, 10)
+	assert.Equal(t, "confirm", bindings[9].Help().Desc)
 }
 
 func TestDeadLettersPage_ActivateLoadsBacklogAndDetail(t *testing.T) {
@@ -228,8 +241,8 @@ func TestDeadLettersPage_ApplyFiltersReloadsAndResetsSelection(t *testing.T) {
 	listFn := &mockDeadLetterListFn{
 		items: []postadjudicationstatus.DeadLetterBacklogEntry{
 			{TransactionReceiptID: "tx-2", SubmissionReceiptID: "sub-2", Adjudication: "release", LatestStatusSubtype: "manual-retry-requested", LatestRetryAttempt: 4, LatestDeadLetterReason: "release failed", IsDeadLettered: true, CanRetry: true},
-			{TransactionReceiptID: "tx-3", SubmissionReceiptID: "sub-3", Adjudication: "release", LatestStatusSubtype: "dead-lettered", LatestStatusSubtypeFamily: "dead-letter", LatestRetryAttempt: 2, LatestDeadLetterReason: "release failed again", LatestManualReplayActor: "operator:bob", LatestDeadLetteredAt: "2026-04-24T10:00:00Z", IsDeadLettered: true, CanRetry: true},
-			{TransactionReceiptID: "tx-2", SubmissionReceiptID: "sub-2", Adjudication: "release", LatestStatusSubtype: "manual-retry-requested", LatestStatusSubtypeFamily: "manual-retry", LatestManualReplayActor: "operator:alice", LatestDeadLetteredAt: "2026-04-24T12:00:00Z", LatestRetryAttempt: 4, LatestDeadLetterReason: "release failed", IsDeadLettered: true, CanRetry: true},
+			{TransactionReceiptID: "tx-3", SubmissionReceiptID: "sub-3", Adjudication: "release", LatestStatusSubtype: "dead-lettered", LatestStatusSubtypeFamily: "dead-letter", AnyMatchFamilies: []string{"dead-letter"}, LatestRetryAttempt: 2, LatestDeadLetterReason: "release failed again", LatestManualReplayActor: "operator:bob", LatestDeadLetteredAt: "2026-04-24T10:00:00Z", IsDeadLettered: true, CanRetry: true},
+			{TransactionReceiptID: "tx-2", SubmissionReceiptID: "sub-2", Adjudication: "release", LatestStatusSubtype: "manual-retry-requested", LatestStatusSubtypeFamily: "manual-retry", AnyMatchFamilies: []string{"manual-retry", "retry"}, LatestManualReplayActor: "operator:alice", LatestDeadLetteredAt: "2026-04-24T12:00:00Z", LatestRetryAttempt: 4, LatestDeadLetterReason: "release failed", IsDeadLettered: true, CanRetry: true},
 		},
 	}
 	detailFn := &mockDeadLetterDetailFn{
@@ -313,6 +326,7 @@ func TestDeadLettersPage_ApplyFiltersReloadsAndResetsSelection(t *testing.T) {
 		{Type: tea.KeyRunes, Runes: []rune("]")},
 		{Type: tea.KeyRunes, Runes: []rune(".")},
 		{Type: tea.KeyRunes, Runes: []rune(".")},
+		{Type: tea.KeyRunes, Runes: []rune("/")},
 	} {
 		updated, _ = page.Update(keyMsg)
 		page = updated.(*DeadLettersPage)
@@ -328,6 +342,7 @@ func TestDeadLettersPage_ApplyFiltersReloadsAndResetsSelection(t *testing.T) {
 	assert.Equal(t, deadLetterAdjudicationRelease, page.appliedAdjudication)
 	assert.Equal(t, deadLetterSubtypeManualRetryRequested, page.appliedSubtype)
 	assert.Equal(t, deadLetterFamilyManualRetry, page.appliedFamily)
+	assert.Equal(t, deadLetterFamilyRetry, page.appliedAnyMatchFamily)
 	assert.Equal(t, 1, listFn.called)
 
 	updated, detailCmd = page.Update(reloadCmd())
@@ -338,6 +353,7 @@ func TestDeadLettersPage_ApplyFiltersReloadsAndResetsSelection(t *testing.T) {
 		Adjudication:              "release",
 		LatestStatusSubtype:       "manual-retry-requested",
 		LatestStatusSubtypeFamily: "manual-retry",
+		AnyMatchFamily:            "retry",
 		ManualReplayActor:         "operator:alice",
 		DeadLetteredAfter:         "2026-04-24T11:00:00Z",
 		DeadLetteredBefore:        "2026-04-24T12:30:00Z",
@@ -470,6 +486,7 @@ func TestDeadLettersPage_ViewIncludesBackgroundTaskWhenPresent(t *testing.T) {
 	assert.Contains(t, view, "Adjudication: all")
 	assert.Contains(t, view, "Latest subtype: all")
 	assert.Contains(t, view, "Latest family: all")
+	assert.Contains(t, view, "Any-match family: all")
 	assert.Contains(t, view, "Retry action: enabled (press r)")
 }
 

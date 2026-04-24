@@ -85,6 +85,7 @@ type DeadLetterListOptions struct {
 	Adjudication              string
 	LatestStatusSubtype       string
 	LatestStatusSubtypeFamily string
+	AnyMatchFamily            string
 	ManualReplayActor         string
 	DeadLetteredAfter         string
 	DeadLetteredBefore        string
@@ -124,6 +125,8 @@ type DeadLettersPage struct {
 	appliedSubtype            deadLetterSubtypeFilter
 	familyDraft               deadLetterFamilyFilter
 	appliedFamily             deadLetterFamilyFilter
+	anyMatchFamilyDraft       deadLetterFamilyFilter
+	appliedAnyMatchFamily     deadLetterFamilyFilter
 	width, height             int
 	statusMsg                 string
 	retryConfirmID            string
@@ -135,18 +138,20 @@ func NewDeadLettersPage(listFn DeadLetterListFn, detailFn DeadLetterDetailFn, re
 		retryFn = retryFns[0]
 	}
 	return &DeadLettersPage{
-		listFn:              listFn,
-		detailFn:            detailFn,
-		retryFn:             retryFn,
-		activeTextField:     deadLetterTextFieldQuery,
-		adjudicationDraft:   deadLetterAdjudicationAll,
-		appliedAdjudication: deadLetterAdjudicationAll,
-		subtypeDraft:        deadLetterSubtypeAll,
-		appliedSubtype:      deadLetterSubtypeAll,
-		familyDraft:         deadLetterFamilyAll,
-		appliedFamily:       deadLetterFamilyAll,
-		appliedQuery:        "",
-		queryDraft:          "",
+		listFn:                listFn,
+		detailFn:              detailFn,
+		retryFn:               retryFn,
+		activeTextField:       deadLetterTextFieldQuery,
+		adjudicationDraft:     deadLetterAdjudicationAll,
+		appliedAdjudication:   deadLetterAdjudicationAll,
+		subtypeDraft:          deadLetterSubtypeAll,
+		appliedSubtype:        deadLetterSubtypeAll,
+		familyDraft:           deadLetterFamilyAll,
+		appliedFamily:         deadLetterFamilyAll,
+		anyMatchFamilyDraft:   deadLetterFamilyAll,
+		appliedAnyMatchFamily: deadLetterFamilyAll,
+		appliedQuery:          "",
+		queryDraft:            "",
 	}
 }
 
@@ -160,6 +165,7 @@ func (p *DeadLettersPage) ShortHelp() []key.Binding {
 		key.NewBinding(key.WithKeys("left", "right"), key.WithHelp("←/→", "adj")),
 		key.NewBinding(key.WithKeys("[", "]"), key.WithHelp("[/]", "subtype")),
 		key.NewBinding(key.WithKeys(",", "."), key.WithHelp(",/.", "family")),
+		key.NewBinding(key.WithKeys(";", "/"), key.WithHelp(";/", "any")),
 		key.NewBinding(key.WithKeys("backspace"), key.WithHelp("⌫", "query")),
 		key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "apply")),
 	}
@@ -246,7 +252,9 @@ func (p *DeadLettersPage) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			msg.String() != "[" &&
 			msg.String() != "]" &&
 			msg.String() != "," &&
-			msg.String() != "." {
+			msg.String() != "." &&
+			msg.String() != ";" &&
+			msg.String() != "/" {
 			p.retryConfirmID = ""
 			p.appendToActiveField(msg.String())
 			return p, nil
@@ -261,6 +269,7 @@ func (p *DeadLettersPage) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			p.appliedAdjudication = p.adjudicationDraft
 			p.appliedSubtype = p.subtypeDraft
 			p.appliedFamily = p.familyDraft
+			p.appliedAnyMatchFamily = p.anyMatchFamilyDraft
 			p.detail = nil
 			p.detailErr = nil
 			return p, p.loadBacklog()
@@ -299,6 +308,12 @@ func (p *DeadLettersPage) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case ".":
 			p.retryConfirmID = ""
 			p.familyDraft = p.familyDraft.next()
+		case ";":
+			p.retryConfirmID = ""
+			p.anyMatchFamilyDraft = p.anyMatchFamilyDraft.prev()
+		case "/":
+			p.retryConfirmID = ""
+			p.anyMatchFamilyDraft = p.anyMatchFamilyDraft.next()
 		case "backspace":
 			p.retryConfirmID = ""
 			p.backspaceActiveField()
@@ -366,7 +381,8 @@ func (p *DeadLettersPage) renderFilterBar() string {
 		lipgloss.NewStyle().Foreground(theme.TextPrimary).Render(fmt.Sprintf("Adjudication: %s", p.adjudicationDraft)),
 		lipgloss.NewStyle().Foreground(theme.TextPrimary).Render(fmt.Sprintf("Latest subtype: %s", p.subtypeDraft)),
 		lipgloss.NewStyle().Foreground(theme.TextPrimary).Render(fmt.Sprintf("Latest family: %s", p.familyDraft)),
-		hintStyle.Render("Tab fields, type text, use ←/→ for adjudication, [/] for subtype, ,/. for family, Enter to apply"),
+		lipgloss.NewStyle().Foreground(theme.TextPrimary).Render(fmt.Sprintf("Any-match family: %s", p.anyMatchFamilyDraft)),
+		hintStyle.Render("Tab fields, type text, use ←/→ for adjudication, [/] for subtype, ,/. for family, ;/ for any-match, Enter to apply"),
 	)
 }
 
@@ -520,6 +536,9 @@ func (p *DeadLettersPage) loadBacklogWithSelection(selectedID string, preserveSe
 	}
 	if p.appliedFamily != deadLetterFamilyAll {
 		opts.LatestStatusSubtypeFamily = string(p.appliedFamily)
+	}
+	if p.appliedAnyMatchFamily != deadLetterFamilyAll {
+		opts.AnyMatchFamily = string(p.appliedAnyMatchFamily)
 	}
 	if p.appliedManualReplayActor != "" {
 		opts.ManualReplayActor = p.appliedManualReplayActor
@@ -685,7 +704,8 @@ func (p *DeadLettersPage) hasAppliedFilters() bool {
 		strings.TrimSpace(p.appliedDeadLetteredBefore) != "" ||
 		p.appliedAdjudication != deadLetterAdjudicationAll ||
 		p.appliedSubtype != deadLetterSubtypeAll ||
-		p.appliedFamily != deadLetterFamilyAll
+		p.appliedFamily != deadLetterFamilyAll ||
+		p.appliedAnyMatchFamily != deadLetterFamilyAll
 }
 
 func (p *DeadLettersPage) appendToActiveField(value string) {
