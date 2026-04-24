@@ -170,6 +170,7 @@ func (s *Service) deadLetterEntryForTransaction(ctx context.Context, transaction
 		TotalRetryCount:                   summary.TotalRetryCount,
 		TransactionGlobalTotalRetryCount:  transactionGlobal.TotalRetryCount,
 		TransactionGlobalAnyMatchFamilies: append([]string(nil), transactionGlobal.AnyMatchFamilies...),
+		TransactionGlobalDominantFamily:   transactionGlobal.TransactionGlobalDominantFamily,
 		LatestRetryAttempt:                summary.LatestRetryAttempt,
 		LatestDispatchReference:           summary.LatestDispatchReference,
 	}, true, nil
@@ -200,9 +201,19 @@ func (s *Service) transactionGlobalRetrySummary(ctx context.Context, transaction
 	if err != nil {
 		return RetryDeadLetterSummary{}, err
 	}
+	sort.SliceStable(submissions, func(i, j int) bool {
+		leftIsCurrent := submissions[i].SubmissionReceiptID == transaction.CurrentSubmissionReceiptID
+		rightIsCurrent := submissions[j].SubmissionReceiptID == transaction.CurrentSubmissionReceiptID
+		if leftIsCurrent != rightIsCurrent {
+			return !leftIsCurrent && rightIsCurrent
+		}
+		return submissions[i].SubmissionReceiptID < submissions[j].SubmissionReceiptID
+	})
 
 	familySet := make(map[string]struct{})
+	familyCounts := make(map[string]int)
 	totalRetryCount := 0
+	latestRelevantFamily := ""
 	for _, submission := range submissions {
 		_, events, err := s.store.GetSubmissionReceipt(ctx, submission.SubmissionReceiptID)
 		if err != nil {
@@ -217,11 +228,23 @@ func (s *Service) transactionGlobalRetrySummary(ctx context.Context, transaction
 		for _, family := range summary.AnyMatchFamilies {
 			familySet[family] = struct{}{}
 		}
+		for _, event := range events {
+			if event.Source != "post_adjudication_retry" {
+				continue
+			}
+			family := subtypeFamily(event.Subtype)
+			if family == "" {
+				continue
+			}
+			familyCounts[family]++
+			latestRelevantFamily = family
+		}
 	}
 
 	return RetryDeadLetterSummary{
-		TotalRetryCount:  totalRetryCount,
-		AnyMatchFamilies: anyMatchFamilies(familySet),
+		TotalRetryCount:                 totalRetryCount,
+		AnyMatchFamilies:                anyMatchFamilies(familySet),
+		TransactionGlobalDominantFamily: dominantFamily(familyCounts, latestRelevantFamily),
 	}, nil
 }
 
@@ -431,6 +454,9 @@ func matchesDeadLetterFilters(entry DeadLetterBacklogEntry, opts DeadLetterListO
 		return false
 	}
 	if anyGlobalFamily := strings.TrimSpace(opts.TransactionGlobalAnyMatchFamily); anyGlobalFamily != "" && !containsFamily(entry.TransactionGlobalAnyMatchFamilies, anyGlobalFamily) {
+		return false
+	}
+	if dominantGlobalFamily := strings.TrimSpace(opts.TransactionGlobalDominantFamily); dominantGlobalFamily != "" && entry.TransactionGlobalDominantFamily != dominantGlobalFamily {
 		return false
 	}
 	if dominantFamily := strings.TrimSpace(opts.DominantFamily); dominantFamily != "" && entry.DominantFamily != dominantFamily {

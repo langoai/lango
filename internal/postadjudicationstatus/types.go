@@ -30,6 +30,7 @@ type DeadLetterBacklogEntry struct {
 	TotalRetryCount                   int      `json:"total_retry_count,omitempty"`
 	TransactionGlobalTotalRetryCount  int      `json:"transaction_global_total_retry_count,omitempty"`
 	TransactionGlobalAnyMatchFamilies []string `json:"transaction_global_any_match_families,omitempty"`
+	TransactionGlobalDominantFamily   string   `json:"transaction_global_dominant_family,omitempty"`
 	LatestRetryAttempt                int      `json:"latest_retry_attempt,omitempty"`
 	LatestDispatchReference           string   `json:"latest_dispatch_reference,omitempty"`
 }
@@ -41,19 +42,20 @@ type CanonicalSnapshot struct {
 }
 
 type RetryDeadLetterSummary struct {
-	HasDeadLetter             bool     `json:"has_dead_letter"`
-	LatestDeadLetterReason    string   `json:"latest_dead_letter_reason,omitempty"`
-	LatestDeadLetteredAt      string   `json:"latest_dead_lettered_at,omitempty"`
-	LatestManualReplayActor   string   `json:"latest_manual_replay_actor,omitempty"`
-	LatestManualReplayAt      string   `json:"latest_manual_replay_at,omitempty"`
-	ManualRetryCount          int      `json:"manual_retry_count,omitempty"`
-	TotalRetryCount           int      `json:"total_retry_count,omitempty"`
-	LatestRetryAttempt        int      `json:"latest_retry_attempt,omitempty"`
-	LatestDispatchReference   string   `json:"latest_dispatch_reference,omitempty"`
-	LatestStatusSubtype       string   `json:"latest_status_subtype,omitempty"`
-	LatestStatusSubtypeFamily string   `json:"latest_status_subtype_family,omitempty"`
-	DominantFamily            string   `json:"dominant_family,omitempty"`
-	AnyMatchFamilies          []string `json:"any_match_families,omitempty"`
+	HasDeadLetter                   bool     `json:"has_dead_letter"`
+	LatestDeadLetterReason          string   `json:"latest_dead_letter_reason,omitempty"`
+	LatestDeadLetteredAt            string   `json:"latest_dead_lettered_at,omitempty"`
+	LatestManualReplayActor         string   `json:"latest_manual_replay_actor,omitempty"`
+	LatestManualReplayAt            string   `json:"latest_manual_replay_at,omitempty"`
+	ManualRetryCount                int      `json:"manual_retry_count,omitempty"`
+	TotalRetryCount                 int      `json:"total_retry_count,omitempty"`
+	LatestRetryAttempt              int      `json:"latest_retry_attempt,omitempty"`
+	LatestDispatchReference         string   `json:"latest_dispatch_reference,omitempty"`
+	LatestStatusSubtype             string   `json:"latest_status_subtype,omitempty"`
+	LatestStatusSubtypeFamily       string   `json:"latest_status_subtype_family,omitempty"`
+	DominantFamily                  string   `json:"dominant_family,omitempty"`
+	AnyMatchFamilies                []string `json:"any_match_families,omitempty"`
+	TransactionGlobalDominantFamily string   `json:"transaction_global_dominant_family,omitempty"`
 }
 
 type DeadLetterListOptions struct {
@@ -74,6 +76,7 @@ type DeadLetterListOptions struct {
 	TransactionGlobalTotalRetryCountMin int
 	TransactionGlobalTotalRetryCountMax int
 	TransactionGlobalAnyMatchFamily     string
+	TransactionGlobalDominantFamily     string
 	LatestStatusSubtypeFamily           string
 	DominantFamily                      string
 	AnyMatchFamily                      string

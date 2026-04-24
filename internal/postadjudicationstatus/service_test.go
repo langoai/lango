@@ -623,6 +623,85 @@ func TestServiceListCurrentDeadLettersPage_FiltersByTransactionGlobalRetryAggreg
 	assert.Equal(t, "tx-a", got.Items[0].TransactionReceiptID)
 	assert.Equal(t, 3, got.Items[0].TransactionGlobalTotalRetryCount)
 	assert.Equal(t, []string{"dead-letter", "manual-retry", "retry"}, got.Items[0].TransactionGlobalAnyMatchFamilies)
+	assert.Equal(t, "dead-letter", got.Items[0].TransactionGlobalDominantFamily)
+}
+
+func TestServiceListCurrentDeadLettersPage_FiltersByTransactionGlobalDominantFamily(t *testing.T) {
+	t.Parallel()
+
+	store := newFakeStatusStore()
+	store.transactions = []receipts.TransactionReceipt{
+		makeDeadLetterTransaction("tx-a", "sub-a-current", receipts.EscrowAdjudicationRelease),
+		makeDeadLetterTransaction("tx-b", "sub-b-current", receipts.EscrowAdjudicationRefund),
+	}
+	store.submissions["sub-a-current"] = receipts.SubmissionReceipt{SubmissionReceiptID: "sub-a-current", TransactionReceiptID: "tx-a"}
+	store.submissions["sub-a-history"] = receipts.SubmissionReceipt{SubmissionReceiptID: "sub-a-history", TransactionReceiptID: "tx-a"}
+	store.submissions["sub-b-current"] = receipts.SubmissionReceipt{SubmissionReceiptID: "sub-b-current", TransactionReceiptID: "tx-b"}
+	store.submissions["sub-b-history"] = receipts.SubmissionReceipt{SubmissionReceiptID: "sub-b-history", TransactionReceiptID: "tx-b"}
+	store.events["sub-a-current"] = []receipts.ReceiptEvent{
+		deadLetterEventAt("sub-a-current", 5, "dispatch-a-current", "2026-04-24T12:15:00Z"),
+	}
+	store.events["sub-a-history"] = []receipts.ReceiptEvent{
+		manualRetryEventAt("sub-a-history", "operator:alice", "2026-04-24T09:15:00Z"),
+		manualRetryEventAt("sub-a-history", "operator:alice", "2026-04-24T10:15:00Z"),
+	}
+	store.events["sub-b-current"] = []receipts.ReceiptEvent{
+		deadLetterEventAt("sub-b-current", 4, "dispatch-b-current", "2026-04-24T13:15:00Z"),
+	}
+	store.events["sub-b-history"] = []receipts.ReceiptEvent{
+		{
+			SubmissionReceiptID: "sub-b-history",
+			Source:              "post_adjudication_retry",
+			Subtype:             "retry-scheduled",
+			Type:                receipts.EventSettlementUpdated,
+			Reason:              "attempt=2 outcome=refund dispatch_reference=dispatch-b-history next_retry_at=2026-04-24T10:15:00Z",
+		},
+	}
+
+	svc := NewService(store)
+
+	got, err := svc.ListCurrentDeadLettersPage(context.Background(), DeadLetterListOptions{
+		TransactionGlobalDominantFamily: "manual-retry",
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, got.Total)
+	require.Equal(t, 1, got.Count)
+	require.Len(t, got.Items, 1)
+	assert.Equal(t, "tx-a", got.Items[0].TransactionReceiptID)
+	assert.Equal(t, "manual-retry", got.Items[0].TransactionGlobalDominantFamily)
+}
+
+func TestServiceListCurrentDeadLettersPage_TransactionGlobalDominantFamilyBreaksTiesByLatestRelevantEvent(t *testing.T) {
+	t.Parallel()
+
+	store := newFakeStatusStore()
+	store.transactions = []receipts.TransactionReceipt{
+		makeDeadLetterTransaction("tx-a", "sub-a-current", receipts.EscrowAdjudicationRelease),
+	}
+	store.submissions["sub-a-current"] = receipts.SubmissionReceipt{SubmissionReceiptID: "sub-a-current", TransactionReceiptID: "tx-a"}
+	store.submissions["sub-a-history"] = receipts.SubmissionReceipt{SubmissionReceiptID: "sub-a-history", TransactionReceiptID: "tx-a"}
+	store.events["sub-a-history"] = []receipts.ReceiptEvent{
+		manualRetryEventAt("sub-a-history", "operator:alice", "2026-04-24T08:15:00Z"),
+		{
+			SubmissionReceiptID: "sub-a-history",
+			Source:              "post_adjudication_retry",
+			Subtype:             "retry-scheduled",
+			Type:                receipts.EventSettlementUpdated,
+			Reason:              "attempt=2 outcome=release dispatch_reference=dispatch-a-history next_retry_at=2026-04-24T09:15:00Z",
+		},
+	}
+	store.events["sub-a-current"] = []receipts.ReceiptEvent{
+		deadLetterEventAt("sub-a-current", 4, "dispatch-a-current", "2026-04-24T11:15:00Z"),
+	}
+
+	svc := NewService(store)
+
+	got, err := svc.ListCurrentDeadLettersPage(context.Background(), DeadLetterListOptions{})
+	require.NoError(t, err)
+	require.Equal(t, 1, got.Total)
+	require.Equal(t, 1, got.Count)
+	require.Len(t, got.Items, 1)
+	assert.Equal(t, "dead-letter", got.Items[0].TransactionGlobalDominantFamily)
 }
 
 func TestServiceListCurrentDeadLettersPage_SortsBySelectedMode(t *testing.T) {
