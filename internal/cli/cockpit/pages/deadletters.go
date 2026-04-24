@@ -62,10 +62,22 @@ const (
 	deadLetterSubtypeDeadLettered         deadLetterSubtypeFilter = "dead-lettered"
 )
 
+type deadLetterTextField int
+
+const (
+	deadLetterTextFieldQuery deadLetterTextField = iota
+	deadLetterTextFieldManualReplayActor
+	deadLetterTextFieldDeadLetteredAfter
+	deadLetterTextFieldDeadLetteredBefore
+)
+
 type DeadLetterListOptions struct {
 	Query               string
 	Adjudication        string
 	LatestStatusSubtype string
+	ManualReplayActor   string
+	DeadLetteredAfter   string
+	DeadLetteredBefore  string
 }
 
 // DeadLetterListFn loads the current dead-letter backlog rows for the cockpit table.
@@ -81,21 +93,28 @@ type DeadLettersPage struct {
 	detailFn DeadLetterDetailFn
 	retryFn  DeadLetterRetryFn
 
-	items               []postadjudicationstatus.DeadLetterBacklogEntry
-	cursor              int
-	selectedID          string
-	detail              *postadjudicationstatus.TransactionStatus
-	loadErr             error
-	detailErr           error
-	queryDraft          string
-	appliedQuery        string
-	adjudicationDraft   deadLetterAdjudicationFilter
-	appliedAdjudication deadLetterAdjudicationFilter
-	subtypeDraft        deadLetterSubtypeFilter
-	appliedSubtype      deadLetterSubtypeFilter
-	width, height       int
-	statusMsg           string
-	retryConfirmID      string
+	items                     []postadjudicationstatus.DeadLetterBacklogEntry
+	cursor                    int
+	selectedID                string
+	detail                    *postadjudicationstatus.TransactionStatus
+	loadErr                   error
+	detailErr                 error
+	activeTextField           deadLetterTextField
+	queryDraft                string
+	appliedQuery              string
+	manualReplayActorDraft    string
+	appliedManualReplayActor  string
+	deadLetteredAfterDraft    string
+	appliedDeadLetteredAfter  string
+	deadLetteredBeforeDraft   string
+	appliedDeadLetteredBefore string
+	adjudicationDraft         deadLetterAdjudicationFilter
+	appliedAdjudication       deadLetterAdjudicationFilter
+	subtypeDraft              deadLetterSubtypeFilter
+	appliedSubtype            deadLetterSubtypeFilter
+	width, height             int
+	statusMsg                 string
+	retryConfirmID            string
 }
 
 func NewDeadLettersPage(listFn DeadLetterListFn, detailFn DeadLetterDetailFn, retryFns ...DeadLetterRetryFn) *DeadLettersPage {
@@ -107,6 +126,7 @@ func NewDeadLettersPage(listFn DeadLetterListFn, detailFn DeadLetterDetailFn, re
 		listFn:              listFn,
 		detailFn:            detailFn,
 		retryFn:             retryFn,
+		activeTextField:     deadLetterTextFieldQuery,
 		adjudicationDraft:   deadLetterAdjudicationAll,
 		appliedAdjudication: deadLetterAdjudicationAll,
 		subtypeDraft:        deadLetterSubtypeAll,
@@ -122,6 +142,7 @@ func (p *DeadLettersPage) ShortHelp() []key.Binding {
 	bindings := []key.Binding{
 		key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", "up")),
 		key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", "down")),
+		key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "field")),
 		key.NewBinding(key.WithKeys("left", "right"), key.WithHelp("←/→", "adj")),
 		key.NewBinding(key.WithKeys("[", "]"), key.WithHelp("[/]", "subtype")),
 		key.NewBinding(key.WithKeys("backspace"), key.WithHelp("⌫", "query")),
@@ -205,15 +226,30 @@ func (p *DeadLettersPage) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return p, p.refreshAfterRetry(msg.transactionID)
 	case tea.KeyMsg:
 		p.statusMsg = ""
+		if p.activeTextField != deadLetterTextFieldQuery &&
+			isDeadLetterQueryInput(msg) &&
+			msg.String() != "[" &&
+			msg.String() != "]" {
+			p.retryConfirmID = ""
+			p.appendToActiveField(msg.String())
+			return p, nil
+		}
 		switch msg.String() {
 		case "enter":
 			p.retryConfirmID = ""
 			p.appliedQuery = strings.TrimSpace(p.queryDraft)
+			p.appliedManualReplayActor = strings.TrimSpace(p.manualReplayActorDraft)
+			p.appliedDeadLetteredAfter = strings.TrimSpace(p.deadLetteredAfterDraft)
+			p.appliedDeadLetteredBefore = strings.TrimSpace(p.deadLetteredBeforeDraft)
 			p.appliedAdjudication = p.adjudicationDraft
 			p.appliedSubtype = p.subtypeDraft
 			p.detail = nil
 			p.detailErr = nil
 			return p, p.loadBacklog()
+		case "tab":
+			p.retryConfirmID = ""
+			p.activeTextField = p.activeTextField.next()
+			return p, nil
 		case "esc":
 			p.retryConfirmID = ""
 			return p, nil
@@ -241,9 +277,7 @@ func (p *DeadLettersPage) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			p.subtypeDraft = p.subtypeDraft.next()
 		case "backspace":
 			p.retryConfirmID = ""
-			if p.queryDraft != "" {
-				p.queryDraft = p.queryDraft[:len(p.queryDraft)-1]
-			}
+			p.backspaceActiveField()
 		case "up", "k":
 			if p.cursor > 0 {
 				p.retryConfirmID = ""
@@ -265,7 +299,7 @@ func (p *DeadLettersPage) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		default:
 			if isDeadLetterQueryInput(msg) {
 				p.retryConfirmID = ""
-				p.queryDraft += msg.String()
+				p.appendToActiveField(msg.String())
 			}
 		}
 	}
@@ -296,22 +330,33 @@ func (p *DeadLettersPage) View() string {
 
 func (p *DeadLettersPage) renderFilterBar() string {
 	labelStyle := lipgloss.NewStyle().Foreground(theme.TextTertiary).Bold(true)
-	valueStyle := lipgloss.NewStyle().Foreground(theme.TextPrimary)
 	hintStyle := lipgloss.NewStyle().Foreground(theme.Muted)
-
-	query := p.queryDraft
-	if strings.TrimSpace(query) == "" {
-		query = "all"
-	}
 
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
 		labelStyle.Render("Filters"),
-		valueStyle.Render(fmt.Sprintf("Query: %s", query)),
-		valueStyle.Render(fmt.Sprintf("Adjudication: %s", p.adjudicationDraft)),
-		valueStyle.Render(fmt.Sprintf("Latest subtype: %s", p.subtypeDraft)),
-		hintStyle.Render("Type query, use ←/→ for adjudication, [/] for subtype, Enter to apply"),
+		p.renderFilterLine("Query", p.queryDraft, p.activeTextField == deadLetterTextFieldQuery),
+		p.renderFilterLine("Manual replay actor", p.manualReplayActorDraft, p.activeTextField == deadLetterTextFieldManualReplayActor),
+		p.renderFilterLine("Dead-lettered after", p.deadLetteredAfterDraft, p.activeTextField == deadLetterTextFieldDeadLetteredAfter),
+		p.renderFilterLine("Dead-lettered before", p.deadLetteredBeforeDraft, p.activeTextField == deadLetterTextFieldDeadLetteredBefore),
+		lipgloss.NewStyle().Foreground(theme.TextPrimary).Render(fmt.Sprintf("Adjudication: %s", p.adjudicationDraft)),
+		lipgloss.NewStyle().Foreground(theme.TextPrimary).Render(fmt.Sprintf("Latest subtype: %s", p.subtypeDraft)),
+		hintStyle.Render("Tab fields, type text, use ←/→ for adjudication, [/] for subtype, Enter to apply"),
 	)
+}
+
+func (p *DeadLettersPage) renderFilterLine(label string, value string, active bool) string {
+	style := lipgloss.NewStyle().Foreground(theme.TextPrimary)
+	prefix := "  "
+	if active {
+		style = style.Foreground(theme.Accent).Bold(true)
+		prefix = "> "
+	}
+	displayValue := strings.TrimSpace(value)
+	if displayValue == "" {
+		displayValue = "all"
+	}
+	return style.Render(fmt.Sprintf("%s%s: %s", prefix, label, displayValue))
 }
 
 func (p *DeadLettersPage) renderTable() string {
@@ -448,6 +493,15 @@ func (p *DeadLettersPage) loadBacklogWithSelection(selectedID string, preserveSe
 	if p.appliedSubtype != deadLetterSubtypeAll {
 		opts.LatestStatusSubtype = string(p.appliedSubtype)
 	}
+	if p.appliedManualReplayActor != "" {
+		opts.ManualReplayActor = p.appliedManualReplayActor
+	}
+	if p.appliedDeadLetteredAfter != "" {
+		opts.DeadLetteredAfter = p.appliedDeadLetteredAfter
+	}
+	if p.appliedDeadLetteredBefore != "" {
+		opts.DeadLetteredBefore = p.appliedDeadLetteredBefore
+	}
 	return func() tea.Msg {
 		if listFn == nil {
 			return deadLettersLoadedMsg{err: fmt.Errorf("dead-letter list function not configured")}
@@ -545,6 +599,19 @@ func (f deadLetterSubtypeFilter) prev() deadLetterSubtypeFilter {
 	}
 }
 
+func (f deadLetterTextField) next() deadLetterTextField {
+	switch f {
+	case deadLetterTextFieldManualReplayActor:
+		return deadLetterTextFieldDeadLetteredAfter
+	case deadLetterTextFieldDeadLetteredAfter:
+		return deadLetterTextFieldDeadLetteredBefore
+	case deadLetterTextFieldDeadLetteredBefore:
+		return deadLetterTextFieldQuery
+	default:
+		return deadLetterTextFieldManualReplayActor
+	}
+}
+
 func isDeadLetterQueryInput(msg tea.KeyMsg) bool {
 	if len(msg.Runes) == 0 {
 		return false
@@ -559,8 +626,44 @@ func isDeadLetterQueryInput(msg tea.KeyMsg) bool {
 
 func (p *DeadLettersPage) hasAppliedFilters() bool {
 	return strings.TrimSpace(p.appliedQuery) != "" ||
+		strings.TrimSpace(p.appliedManualReplayActor) != "" ||
+		strings.TrimSpace(p.appliedDeadLetteredAfter) != "" ||
+		strings.TrimSpace(p.appliedDeadLetteredBefore) != "" ||
 		p.appliedAdjudication != deadLetterAdjudicationAll ||
 		p.appliedSubtype != deadLetterSubtypeAll
+}
+
+func (p *DeadLettersPage) appendToActiveField(value string) {
+	switch p.activeTextField {
+	case deadLetterTextFieldManualReplayActor:
+		p.manualReplayActorDraft += value
+	case deadLetterTextFieldDeadLetteredAfter:
+		p.deadLetteredAfterDraft += value
+	case deadLetterTextFieldDeadLetteredBefore:
+		p.deadLetteredBeforeDraft += value
+	default:
+		p.queryDraft += value
+	}
+}
+
+func (p *DeadLettersPage) backspaceActiveField() {
+	switch p.activeTextField {
+	case deadLetterTextFieldManualReplayActor:
+		p.manualReplayActorDraft = trimLastByte(p.manualReplayActorDraft)
+	case deadLetterTextFieldDeadLetteredAfter:
+		p.deadLetteredAfterDraft = trimLastByte(p.deadLetteredAfterDraft)
+	case deadLetterTextFieldDeadLetteredBefore:
+		p.deadLetteredBeforeDraft = trimLastByte(p.deadLetteredBeforeDraft)
+	default:
+		p.queryDraft = trimLastByte(p.queryDraft)
+	}
+}
+
+func trimLastByte(value string) string {
+	if value == "" {
+		return ""
+	}
+	return value[:len(value)-1]
 }
 
 func (p *DeadLettersPage) canRetrySelected() bool {

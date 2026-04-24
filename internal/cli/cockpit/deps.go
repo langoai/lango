@@ -46,6 +46,9 @@ type DeadLetterListOptions struct {
 	Query               string
 	Adjudication        string
 	LatestStatusSubtype string
+	ManualReplayActor   string
+	DeadLetteredAfter   string
+	DeadLetteredBefore  string
 }
 
 func NewDeadLetterToolBridge(catalog *toolcatalog.Catalog) *DeadLetterToolBridge {
@@ -88,6 +91,15 @@ func (b *DeadLetterToolBridge) List(ctx context.Context, opts DeadLetterListOpti
 	switch strings.TrimSpace(opts.LatestStatusSubtype) {
 	case "retry-scheduled", "manual-retry-requested", "dead-lettered":
 		params["latest_status_subtype"] = strings.TrimSpace(opts.LatestStatusSubtype)
+	}
+	if actor := strings.TrimSpace(opts.ManualReplayActor); actor != "" {
+		params["manual_replay_actor"] = actor
+	}
+	if after := strings.TrimSpace(opts.DeadLetteredAfter); after != "" {
+		params["dead_lettered_after"] = after
+	}
+	if before := strings.TrimSpace(opts.DeadLetteredBefore); before != "" {
+		params["dead_lettered_before"] = before
 	}
 	raw, err := entry.Tool.Handler(ctx, params)
 	if err != nil {

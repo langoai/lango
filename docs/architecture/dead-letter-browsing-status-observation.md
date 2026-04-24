@@ -73,6 +73,9 @@ The slice is intentionally narrow:
     - `query`
     - `adjudication`
     - `latest_status_subtype`
+    - `manual_replay_actor`
+    - `dead_lettered_after`
+    - `dead_lettered_before`
     - `Enter` apply
     - first-row reset after reload
   - detail-pane `Retry` action
@@ -93,7 +96,6 @@ This slice does not yet include:
 - generic dead-letter browsing for all background tasks
 - full event history dump
 - richer detail-surface actor/time summaries
-- actor/time cockpit filters
 - family cockpit filters
 - selection preservation after filter changes
 - richer loading/failure recovery feedback
