@@ -155,6 +155,9 @@ func TestServiceListCurrentDeadLetters_ExtractsFocusedFields(t *testing.T) {
 	assert.Equal(t, "worker exhausted after 4 attempts", got[0].LatestDeadLetterReason)
 	assert.Equal(t, "2026-04-23T11:45:00Z", got[0].LatestDeadLetteredAt)
 	assert.Equal(t, "operator:alice", got[0].LatestManualReplayActor)
+	assert.Equal(t, "dead-lettered", got[0].LatestStatusSubtype)
+	assert.Equal(t, "dead-letter", got[0].LatestStatusSubtypeFamily)
+	assert.Equal(t, 3, got[0].TotalRetryCount)
 	assert.Equal(t, 4, got[0].LatestRetryAttempt)
 	assert.Equal(t, "dispatch-final-123", got[0].LatestDispatchReference)
 }
@@ -211,7 +214,10 @@ func TestServiceGetTransactionStatus_ReturnsCanonicalSnapshotAndSummary(t *testi
 	assert.Equal(t, "terminal worker failure", got.RetryDeadLetterSummary.LatestDeadLetterReason)
 	assert.Equal(t, "2026-04-23T10:30:00Z", got.RetryDeadLetterSummary.LatestDeadLetteredAt)
 	assert.Equal(t, "operator:alice", got.RetryDeadLetterSummary.LatestManualReplayActor)
+	assert.Equal(t, 3, got.RetryDeadLetterSummary.TotalRetryCount)
 	assert.Equal(t, "dispatch-456", got.RetryDeadLetterSummary.LatestDispatchReference)
+	assert.Equal(t, "dead-lettered", got.RetryDeadLetterSummary.LatestStatusSubtype)
+	assert.Equal(t, "dead-letter", got.RetryDeadLetterSummary.LatestStatusSubtypeFamily)
 }
 
 func TestServiceGetTransactionStatus_ReturnsMissingTransactionFailure(t *testing.T) {
@@ -429,8 +435,51 @@ func TestServiceListCurrentDeadLettersPage_FiltersBySubtypeAndManualRetryCount(t
 	require.Len(t, got.Items, 1)
 	assert.Equal(t, "tx-a", got.Items[0].TransactionReceiptID)
 	assert.Equal(t, 2, got.Items[0].ManualRetryCount)
+	assert.Equal(t, 3, got.Items[0].TotalRetryCount)
 	assert.Equal(t, "2026-04-23T09:15:00Z", got.Items[0].LatestManualReplayAt)
 	assert.Equal(t, "dead-lettered", got.Items[0].LatestStatusSubtype)
+	assert.Equal(t, "dead-letter", got.Items[0].LatestStatusSubtypeFamily)
+}
+
+func TestServiceListCurrentDeadLettersPage_FiltersByTotalRetryCountAndSubtypeFamily(t *testing.T) {
+	t.Parallel()
+
+	store := newFakeStatusStore()
+	store.transactions = []receipts.TransactionReceipt{
+		makeDeadLetterTransaction("tx-a", "sub-a", receipts.EscrowAdjudicationRelease),
+		makeDeadLetterTransaction("tx-b", "sub-b", receipts.EscrowAdjudicationRelease),
+		makeDeadLetterTransaction("tx-c", "sub-c", receipts.EscrowAdjudicationRefund),
+	}
+	store.submissions["sub-a"] = receipts.SubmissionReceipt{SubmissionReceiptID: "sub-a", TransactionReceiptID: "tx-a"}
+	store.submissions["sub-b"] = receipts.SubmissionReceipt{SubmissionReceiptID: "sub-b", TransactionReceiptID: "tx-b"}
+	store.submissions["sub-c"] = receipts.SubmissionReceipt{SubmissionReceiptID: "sub-c", TransactionReceiptID: "tx-c"}
+	store.events["sub-a"] = []receipts.ReceiptEvent{
+		manualRetryEventAt("sub-a", "operator:alice", "2026-04-23T08:15:00Z"),
+		manualRetryEventAt("sub-a", "operator:alice", "2026-04-23T09:15:00Z"),
+		deadLetterEventAt("sub-a", 5, "dispatch-a", "2026-04-23T10:15:00Z"),
+	}
+	store.events["sub-b"] = []receipts.ReceiptEvent{
+		manualRetryEventAt("sub-b", "operator:bob", "2026-04-23T08:45:00Z"),
+		deadLetterEventAt("sub-b", 4, "dispatch-b", "2026-04-23T09:45:00Z"),
+	}
+	store.events["sub-c"] = []receipts.ReceiptEvent{
+		deadLetterEventAt("sub-c", 3, "dispatch-c", "2026-04-23T11:15:00Z"),
+	}
+
+	svc := NewService(store)
+
+	got, err := svc.ListCurrentDeadLettersPage(context.Background(), DeadLetterListOptions{
+		TotalRetryCountMin:        3,
+		TotalRetryCountMax:        3,
+		LatestStatusSubtypeFamily: "dead-letter",
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, got.Total)
+	require.Equal(t, 1, got.Count)
+	require.Len(t, got.Items, 1)
+	assert.Equal(t, "tx-a", got.Items[0].TransactionReceiptID)
+	assert.Equal(t, 3, got.Items[0].TotalRetryCount)
+	assert.Equal(t, "dead-letter", got.Items[0].LatestStatusSubtypeFamily)
 }
 
 func TestServiceListCurrentDeadLettersPage_SortsBySelectedMode(t *testing.T) {
@@ -760,9 +809,11 @@ func TestSummaryIsEmptyWithoutDeadLetterEvidence(t *testing.T) {
 		},
 	})
 	require.False(t, summary.HasDeadLetter)
+	require.Equal(t, 1, summary.TotalRetryCount)
 	require.Equal(t, 2, summary.LatestRetryAttempt)
 	require.Equal(t, "dispatch-1", summary.LatestDispatchReference)
 	require.Equal(t, "retry-scheduled", summary.LatestStatusSubtype)
+	require.Equal(t, "retry", summary.LatestStatusSubtypeFamily)
 }
 
 func TestSummaryIgnoresUnrelatedEvents(t *testing.T) {
@@ -797,9 +848,11 @@ func TestSummaryKeepsLastDeadLetterReason(t *testing.T) {
 		},
 	})
 	require.True(t, summary.HasDeadLetter)
+	require.Equal(t, 2, summary.TotalRetryCount)
 	require.Equal(t, 4, summary.LatestRetryAttempt)
 	require.Equal(t, "dispatch-2", summary.LatestDispatchReference)
 	require.Equal(t, "second failure", summary.LatestDeadLetterReason)
+	require.Equal(t, "dead-letter", summary.LatestStatusSubtypeFamily)
 }
 
 func TestParseEventSummaryHandlesMissingStructuredData(t *testing.T) {
@@ -838,9 +891,11 @@ func TestSummarizeEventsPrefersLatestRelevantEvent(t *testing.T) {
 		},
 	})
 	require.True(t, summary.HasDeadLetter)
+	require.Equal(t, 2, summary.TotalRetryCount)
 	require.Equal(t, 2, summary.LatestRetryAttempt)
 	require.Equal(t, "dispatch-2", summary.LatestDispatchReference)
 	require.Equal(t, "failed permanently", summary.LatestDeadLetterReason)
+	require.Equal(t, "dead-letter", summary.LatestStatusSubtypeFamily)
 }
 
 func TestDeadLetterTimestampParsingIsStable(t *testing.T) {
@@ -854,6 +909,7 @@ func TestDeadLetterTimestampParsingIsStable(t *testing.T) {
 			Reason:  "attempt=5 outcome=release dispatch_reference=dispatch-5 next_retry_at=" + when.Format(time.RFC3339),
 		},
 	})
+	require.Equal(t, 1, summary.TotalRetryCount)
 	require.Equal(t, 5, summary.LatestRetryAttempt)
 	require.Equal(t, "dispatch-5", summary.LatestDispatchReference)
 }
@@ -867,9 +923,11 @@ func TestManualRetryParsingAndCountAreStable(t *testing.T) {
 		deadLetterEventAt("sub-1", 4, "dispatch-4", "2026-04-23T11:00:00Z"),
 	})
 	require.Equal(t, 2, summary.ManualRetryCount)
+	require.Equal(t, 3, summary.TotalRetryCount)
 	require.Equal(t, "2026-04-23T10:00:00Z", summary.LatestManualReplayAt)
 	require.Equal(t, "operator:alice", summary.LatestManualReplayActor)
 	require.Equal(t, "dead-lettered", summary.LatestStatusSubtype)
+	require.Equal(t, "dead-letter", summary.LatestStatusSubtypeFamily)
 }
 
 var _ interface {

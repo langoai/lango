@@ -1744,6 +1744,18 @@ func newListDeadLetteredPostAdjudicationExecutionsTool(receiptStore *receipts.St
 					"type":        "integer",
 					"description": "Optional upper bound for manual retry count",
 				},
+				"total_retry_count_min": map[string]interface{}{
+					"type":        "integer",
+					"description": "Optional lower bound for total retry count",
+				},
+				"total_retry_count_max": map[string]interface{}{
+					"type":        "integer",
+					"description": "Optional upper bound for total retry count",
+				},
+				"latest_status_subtype_family": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional exact-match filter for the family of the latest retry/dead-letter subtype",
+				},
 				"sort_by": map[string]interface{}{
 					"type":        "string",
 					"description": "Optional sort mode: latest_dead_lettered_at, latest_retry_attempt, or latest_manual_replay_at",
@@ -1754,21 +1766,24 @@ func newListDeadLetteredPostAdjudicationExecutionsTool(receiptStore *receipts.St
 		},
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
 			page, err := postadjudicationstatus.NewService(receiptStore).ListCurrentDeadLettersPage(ctx, postadjudicationstatus.DeadLetterListOptions{
-				Adjudication:            toolparam.OptionalString(params, "adjudication", ""),
-				RetryAttemptMin:         toolparam.OptionalInt(params, "retry_attempt_min", 0),
-				RetryAttemptMax:         toolparam.OptionalInt(params, "retry_attempt_max", 0),
-				Query:                   toolparam.OptionalString(params, "query", ""),
-				ManualReplayActor:       toolparam.OptionalString(params, "manual_replay_actor", ""),
-				DeadLetteredAfter:       toolparam.OptionalString(params, "dead_lettered_after", ""),
-				DeadLetteredBefore:      toolparam.OptionalString(params, "dead_lettered_before", ""),
-				DeadLetterReasonQuery:   toolparam.OptionalString(params, "dead_letter_reason_query", ""),
-				LatestDispatchReference: toolparam.OptionalString(params, "latest_dispatch_reference", ""),
-				LatestStatusSubtype:     toolparam.OptionalString(params, "latest_status_subtype", ""),
-				ManualRetryCountMin:     toolparam.OptionalInt(params, "manual_retry_count_min", 0),
-				ManualRetryCountMax:     toolparam.OptionalInt(params, "manual_retry_count_max", 0),
-				SortBy:                  toolparam.OptionalString(params, "sort_by", ""),
-				Offset:                  toolparam.OptionalInt(params, "offset", 0),
-				Limit:                   toolparam.OptionalInt(params, "limit", 0),
+				Adjudication:              toolparam.OptionalString(params, "adjudication", ""),
+				RetryAttemptMin:           toolparam.OptionalInt(params, "retry_attempt_min", 0),
+				RetryAttemptMax:           toolparam.OptionalInt(params, "retry_attempt_max", 0),
+				Query:                     toolparam.OptionalString(params, "query", ""),
+				ManualReplayActor:         toolparam.OptionalString(params, "manual_replay_actor", ""),
+				DeadLetteredAfter:         toolparam.OptionalString(params, "dead_lettered_after", ""),
+				DeadLetteredBefore:        toolparam.OptionalString(params, "dead_lettered_before", ""),
+				DeadLetterReasonQuery:     toolparam.OptionalString(params, "dead_letter_reason_query", ""),
+				LatestDispatchReference:   toolparam.OptionalString(params, "latest_dispatch_reference", ""),
+				LatestStatusSubtype:       toolparam.OptionalString(params, "latest_status_subtype", ""),
+				ManualRetryCountMin:       toolparam.OptionalInt(params, "manual_retry_count_min", 0),
+				ManualRetryCountMax:       toolparam.OptionalInt(params, "manual_retry_count_max", 0),
+				TotalRetryCountMin:        toolparam.OptionalInt(params, "total_retry_count_min", 0),
+				TotalRetryCountMax:        toolparam.OptionalInt(params, "total_retry_count_max", 0),
+				LatestStatusSubtypeFamily: toolparam.OptionalString(params, "latest_status_subtype_family", ""),
+				SortBy:                    toolparam.OptionalString(params, "sort_by", ""),
+				Offset:                    toolparam.OptionalInt(params, "offset", 0),
+				Limit:                     toolparam.OptionalInt(params, "limit", 0),
 			})
 			if err != nil {
 				return nil, err

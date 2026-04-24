@@ -145,19 +145,21 @@ func (s *Service) deadLetterEntryForTransaction(ctx context.Context, transaction
 	isDeadLettered, canRetry, adjudication := detailNavigationHints(transaction, summary)
 
 	return DeadLetterBacklogEntry{
-		TransactionReceiptID:    transaction.TransactionReceiptID,
-		SubmissionReceiptID:     submissionReceiptID,
-		Adjudication:            adjudication,
-		IsDeadLettered:          isDeadLettered,
-		CanRetry:                canRetry,
-		LatestDeadLetterReason:  summary.LatestDeadLetterReason,
-		LatestDeadLetteredAt:    summary.LatestDeadLetteredAt,
-		LatestManualReplayActor: summary.LatestManualReplayActor,
-		LatestManualReplayAt:    summary.LatestManualReplayAt,
-		LatestStatusSubtype:     summary.LatestStatusSubtype,
-		ManualRetryCount:        summary.ManualRetryCount,
-		LatestRetryAttempt:      summary.LatestRetryAttempt,
-		LatestDispatchReference: summary.LatestDispatchReference,
+		TransactionReceiptID:      transaction.TransactionReceiptID,
+		SubmissionReceiptID:       submissionReceiptID,
+		Adjudication:              adjudication,
+		IsDeadLettered:            isDeadLettered,
+		CanRetry:                  canRetry,
+		LatestDeadLetterReason:    summary.LatestDeadLetterReason,
+		LatestDeadLetteredAt:      summary.LatestDeadLetteredAt,
+		LatestManualReplayActor:   summary.LatestManualReplayActor,
+		LatestManualReplayAt:      summary.LatestManualReplayAt,
+		LatestStatusSubtype:       summary.LatestStatusSubtype,
+		LatestStatusSubtypeFamily: summary.LatestStatusSubtypeFamily,
+		ManualRetryCount:          summary.ManualRetryCount,
+		TotalRetryCount:           summary.TotalRetryCount,
+		LatestRetryAttempt:        summary.LatestRetryAttempt,
+		LatestDispatchReference:   summary.LatestDispatchReference,
 	}, true, nil
 }
 
@@ -188,6 +190,11 @@ func summarizeEvents(events []receipts.ReceiptEvent) eventSummary {
 	for _, event := range events {
 		if event.Source != "post_adjudication_retry" {
 			continue
+		}
+		family := subtypeFamily(event.Subtype)
+		if family != "" {
+			summary.TotalRetryCount++
+			summary.LatestStatusSubtypeFamily = family
 		}
 
 		parsed := parseEventSummary(event)
@@ -316,10 +323,19 @@ func matchesDeadLetterFilters(entry DeadLetterBacklogEntry, opts DeadLetterListO
 	if latestStatusSubtype := strings.TrimSpace(opts.LatestStatusSubtype); latestStatusSubtype != "" && entry.LatestStatusSubtype != latestStatusSubtype {
 		return false
 	}
+	if latestStatusSubtypeFamily := strings.TrimSpace(opts.LatestStatusSubtypeFamily); latestStatusSubtypeFamily != "" && entry.LatestStatusSubtypeFamily != latestStatusSubtypeFamily {
+		return false
+	}
 	if opts.ManualRetryCountMin > 0 && entry.ManualRetryCount < opts.ManualRetryCountMin {
 		return false
 	}
 	if opts.ManualRetryCountMax > 0 && entry.ManualRetryCount > opts.ManualRetryCountMax {
+		return false
+	}
+	if opts.TotalRetryCountMin > 0 && entry.TotalRetryCount < opts.TotalRetryCountMin {
+		return false
+	}
+	if opts.TotalRetryCountMax > 0 && entry.TotalRetryCount > opts.TotalRetryCountMax {
 		return false
 	}
 	return true
@@ -375,4 +391,17 @@ func sortDeadLetterEntries(entries []DeadLetterBacklogEntry, sortBy string) {
 		}
 		return left.TransactionReceiptID < right.TransactionReceiptID
 	})
+}
+
+func subtypeFamily(subtype string) string {
+	switch strings.TrimSpace(subtype) {
+	case "retry-scheduled":
+		return "retry"
+	case "manual-retry-requested":
+		return "manual-retry"
+	case "dead-lettered":
+		return "dead-letter"
+	default:
+		return ""
+	}
 }
