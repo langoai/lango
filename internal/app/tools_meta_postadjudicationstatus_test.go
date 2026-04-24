@@ -32,8 +32,6 @@ func TestBuildMetaTools_IncludesPostAdjudicationStatus(t *testing.T) {
 	assert.Contains(t, listProps, "dead_lettered_before")
 	assert.Contains(t, listProps, "dead_letter_reason_query")
 	assert.Contains(t, listProps, "latest_dispatch_reference")
-	assert.Contains(t, listProps, "dead_letter_reason_query")
-	assert.Contains(t, listProps, "latest_dispatch_reference")
 
 	detailTool := findTool(tools, "get_post_adjudication_execution_status")
 	require.NotNil(t, detailTool)
