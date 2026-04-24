@@ -37,6 +37,9 @@ func TestBuildMetaTools_IncludesPostAdjudicationStatus(t *testing.T) {
 	assert.Contains(t, listProps, "manual_retry_count_max")
 	assert.Contains(t, listProps, "total_retry_count_min")
 	assert.Contains(t, listProps, "total_retry_count_max")
+	assert.Contains(t, listProps, "transaction_global_total_retry_count_min")
+	assert.Contains(t, listProps, "transaction_global_total_retry_count_max")
+	assert.Contains(t, listProps, "transaction_global_any_match_family")
 	assert.Contains(t, listProps, "latest_status_subtype_family")
 	assert.Contains(t, listProps, "any_match_family")
 	assert.Contains(t, listProps, "dominant_family")
@@ -248,6 +251,26 @@ func TestListDeadLetteredPostAdjudicationExecutions_AppliesFiltersAndPagination(
 	assert.Equal(t, "dead-letter", entries[0].LatestStatusSubtypeFamily)
 	assert.ElementsMatch(t, []string{"retry", "manual-retry", "dead-letter"}, entries[0].AnyMatchFamilies)
 	assert.Equal(t, "dead-letter", entries[0].DominantFamily)
+
+	got, err = tool.Handler(ctx, map[string]interface{}{
+		"adjudication": "release",
+		"query":        releaseHigh.TransactionReceiptID[:8],
+		"transaction_global_total_retry_count_min": float64(3),
+		"transaction_global_total_retry_count_max": float64(3),
+		"transaction_global_any_match_family":      "manual-retry",
+	})
+	require.NoError(t, err)
+
+	payload, ok = got.(map[string]interface{})
+	require.True(t, ok)
+	assert.Equal(t, 1, payload["count"])
+	assert.Equal(t, 1, payload["total"])
+
+	entries = decodeDeadLetterEntriesFromPayload(t, payload["entries"])
+	require.Len(t, entries, 1)
+	assert.Equal(t, releaseHigh.TransactionReceiptID, entries[0].TransactionReceiptID)
+	assert.Equal(t, 3, entries[0].TransactionGlobalTotalRetryCount)
+	assert.ElementsMatch(t, []string{"dead-letter", "manual-retry", "retry"}, entries[0].TransactionGlobalAnyMatchFamilies)
 
 	got, err = tool.Handler(ctx, map[string]interface{}{
 		"any_match_family": "manual-retry",

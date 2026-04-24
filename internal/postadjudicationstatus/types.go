@@ -13,23 +13,25 @@ var (
 )
 
 type DeadLetterBacklogEntry struct {
-	TransactionReceiptID      string   `json:"transaction_receipt_id"`
-	SubmissionReceiptID       string   `json:"submission_receipt_id"`
-	Adjudication              string   `json:"adjudication"`
-	IsDeadLettered            bool     `json:"is_dead_lettered"`
-	CanRetry                  bool     `json:"can_retry"`
-	LatestDeadLetterReason    string   `json:"latest_dead_letter_reason,omitempty"`
-	LatestDeadLetteredAt      string   `json:"latest_dead_lettered_at,omitempty"`
-	LatestManualReplayActor   string   `json:"latest_manual_replay_actor,omitempty"`
-	LatestManualReplayAt      string   `json:"latest_manual_replay_at,omitempty"`
-	LatestStatusSubtype       string   `json:"latest_status_subtype,omitempty"`
-	LatestStatusSubtypeFamily string   `json:"latest_status_subtype_family,omitempty"`
-	DominantFamily            string   `json:"dominant_family,omitempty"`
-	AnyMatchFamilies          []string `json:"any_match_families,omitempty"`
-	ManualRetryCount          int      `json:"manual_retry_count,omitempty"`
-	TotalRetryCount           int      `json:"total_retry_count,omitempty"`
-	LatestRetryAttempt        int      `json:"latest_retry_attempt,omitempty"`
-	LatestDispatchReference   string   `json:"latest_dispatch_reference,omitempty"`
+	TransactionReceiptID              string   `json:"transaction_receipt_id"`
+	SubmissionReceiptID               string   `json:"submission_receipt_id"`
+	Adjudication                      string   `json:"adjudication"`
+	IsDeadLettered                    bool     `json:"is_dead_lettered"`
+	CanRetry                          bool     `json:"can_retry"`
+	LatestDeadLetterReason            string   `json:"latest_dead_letter_reason,omitempty"`
+	LatestDeadLetteredAt              string   `json:"latest_dead_lettered_at,omitempty"`
+	LatestManualReplayActor           string   `json:"latest_manual_replay_actor,omitempty"`
+	LatestManualReplayAt              string   `json:"latest_manual_replay_at,omitempty"`
+	LatestStatusSubtype               string   `json:"latest_status_subtype,omitempty"`
+	LatestStatusSubtypeFamily         string   `json:"latest_status_subtype_family,omitempty"`
+	DominantFamily                    string   `json:"dominant_family,omitempty"`
+	AnyMatchFamilies                  []string `json:"any_match_families,omitempty"`
+	ManualRetryCount                  int      `json:"manual_retry_count,omitempty"`
+	TotalRetryCount                   int      `json:"total_retry_count,omitempty"`
+	TransactionGlobalTotalRetryCount  int      `json:"transaction_global_total_retry_count,omitempty"`
+	TransactionGlobalAnyMatchFamilies []string `json:"transaction_global_any_match_families,omitempty"`
+	LatestRetryAttempt                int      `json:"latest_retry_attempt,omitempty"`
+	LatestDispatchReference           string   `json:"latest_dispatch_reference,omitempty"`
 }
 
 type CanonicalSnapshot struct {
@@ -55,26 +57,29 @@ type RetryDeadLetterSummary struct {
 }
 
 type DeadLetterListOptions struct {
-	Adjudication              string
-	RetryAttemptMin           int
-	RetryAttemptMax           int
-	Query                     string
-	ManualReplayActor         string
-	DeadLetteredAfter         string
-	DeadLetteredBefore        string
-	DeadLetterReasonQuery     string
-	LatestDispatchReference   string
-	LatestStatusSubtype       string
-	ManualRetryCountMin       int
-	ManualRetryCountMax       int
-	TotalRetryCountMin        int
-	TotalRetryCountMax        int
-	LatestStatusSubtypeFamily string
-	DominantFamily            string
-	AnyMatchFamily            string
-	SortBy                    string
-	Offset                    int
-	Limit                     int
+	Adjudication                        string
+	RetryAttemptMin                     int
+	RetryAttemptMax                     int
+	Query                               string
+	ManualReplayActor                   string
+	DeadLetteredAfter                   string
+	DeadLetteredBefore                  string
+	DeadLetterReasonQuery               string
+	LatestDispatchReference             string
+	LatestStatusSubtype                 string
+	ManualRetryCountMin                 int
+	ManualRetryCountMax                 int
+	TotalRetryCountMin                  int
+	TotalRetryCountMax                  int
+	TransactionGlobalTotalRetryCountMin int
+	TransactionGlobalTotalRetryCountMax int
+	TransactionGlobalAnyMatchFamily     string
+	LatestStatusSubtypeFamily           string
+	DominantFamily                      string
+	AnyMatchFamily                      string
+	SortBy                              string
+	Offset                              int
+	Limit                               int
 }
 
 type DeadLetterListPage struct {

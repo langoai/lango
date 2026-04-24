@@ -26,6 +26,8 @@ The slice is intentionally narrow:
   - `latest_status_subtype` filter
   - `manual_retry_count_min` / `manual_retry_count_max` filters
   - `total_retry_count_min` / `total_retry_count_max` filters
+  - `transaction_global_total_retry_count_min` / `transaction_global_total_retry_count_max` filters
+  - `transaction_global_any_match_family` filter
   - `latest_status_subtype_family` filter
   - `any_match_family` filter
   - `dominant_family` filter
@@ -38,6 +40,8 @@ The slice is intentionally narrow:
   - `latest_status_subtype`
   - `manual_retry_count`
   - `total_retry_count`
+  - `transaction_global_total_retry_count`
+  - `transaction_global_any_match_families`
   - `latest_status_subtype_family`
   - `any_match_families`
   - `dominant_family`
@@ -68,3 +72,4 @@ This slice does not yet include:
 - cross-submission retry aggregation
 - dominant family
 - family count maps / weighted dominance
+- transaction-global dominant family

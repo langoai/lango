@@ -273,9 +273,9 @@ The meta tools surface SHALL provide read-only visibility into dead-lettered pos
 
 #### Scenario: Dead-letter backlog tool supports filtering and pagination
 - **WHEN** `list_dead_lettered_post_adjudication_executions` is invoked
-- **THEN** it SHALL accept `adjudication`, `retry_attempt_min`, `retry_attempt_max`, `query`, `manual_replay_actor`, `dead_lettered_after`, `dead_lettered_before`, `dead_letter_reason_query`, `latest_dispatch_reference`, `latest_status_subtype`, `manual_retry_count_min`, `manual_retry_count_max`, `total_retry_count_min`, `total_retry_count_max`, `latest_status_subtype_family`, `any_match_family`, `dominant_family`, `sort_by`, `offset`, and `limit`
+- **THEN** it SHALL accept `adjudication`, `retry_attempt_min`, `retry_attempt_max`, `query`, `manual_replay_actor`, `dead_lettered_after`, `dead_lettered_before`, `dead_letter_reason_query`, `latest_dispatch_reference`, `latest_status_subtype`, `manual_retry_count_min`, `manual_retry_count_max`, `total_retry_count_min`, `total_retry_count_max`, `transaction_global_total_retry_count_min`, `transaction_global_total_retry_count_max`, `transaction_global_any_match_family`, `latest_status_subtype_family`, `any_match_family`, `dominant_family`, `sort_by`, `offset`, and `limit`
 - **AND** it SHALL return `entries`, `count`, `total`, `offset`, and `limit`
-- **AND** each entry SHALL expose `latest_dead_lettered_at`, `latest_manual_replay_actor`, `latest_manual_replay_at`, `latest_status_subtype`, `manual_retry_count`, `total_retry_count`, `latest_status_subtype_family`, `any_match_families`, and `dominant_family`
+- **AND** each entry SHALL expose `latest_dead_lettered_at`, `latest_manual_replay_actor`, `latest_manual_replay_at`, `latest_status_subtype`, `manual_retry_count`, `total_retry_count`, `transaction_global_total_retry_count`, `transaction_global_any_match_families`, `latest_status_subtype_family`, `any_match_families`, and `dominant_family`
 
 #### Scenario: Post-adjudication status tool returns navigation hints
 - **WHEN** `get_post_adjudication_execution_status` succeeds

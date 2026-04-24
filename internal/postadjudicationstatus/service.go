@@ -16,6 +16,10 @@ type Service struct {
 	store receiptStore
 }
 
+type submissionReceiptLister interface {
+	ListSubmissionReceipts(context.Context) ([]receipts.SubmissionReceipt, error)
+}
+
 func NewService(store receiptStore) *Service {
 	return &Service{store: store}
 }
@@ -142,26 +146,32 @@ func (s *Service) deadLetterEntryForTransaction(ctx context.Context, transaction
 	if !summary.HasDeadLetter {
 		return DeadLetterBacklogEntry{}, false, nil
 	}
+	transactionGlobal, err := s.transactionGlobalRetrySummary(ctx, transaction)
+	if err != nil {
+		return DeadLetterBacklogEntry{}, false, err
+	}
 	isDeadLettered, canRetry, adjudication := detailNavigationHints(transaction, summary)
 
 	return DeadLetterBacklogEntry{
-		TransactionReceiptID:      transaction.TransactionReceiptID,
-		SubmissionReceiptID:       submissionReceiptID,
-		Adjudication:              adjudication,
-		IsDeadLettered:            isDeadLettered,
-		CanRetry:                  canRetry,
-		LatestDeadLetterReason:    summary.LatestDeadLetterReason,
-		LatestDeadLetteredAt:      summary.LatestDeadLetteredAt,
-		LatestManualReplayActor:   summary.LatestManualReplayActor,
-		LatestManualReplayAt:      summary.LatestManualReplayAt,
-		LatestStatusSubtype:       summary.LatestStatusSubtype,
-		LatestStatusSubtypeFamily: summary.LatestStatusSubtypeFamily,
-		DominantFamily:            summary.DominantFamily,
-		AnyMatchFamilies:          append([]string(nil), summary.AnyMatchFamilies...),
-		ManualRetryCount:          summary.ManualRetryCount,
-		TotalRetryCount:           summary.TotalRetryCount,
-		LatestRetryAttempt:        summary.LatestRetryAttempt,
-		LatestDispatchReference:   summary.LatestDispatchReference,
+		TransactionReceiptID:              transaction.TransactionReceiptID,
+		SubmissionReceiptID:               submissionReceiptID,
+		Adjudication:                      adjudication,
+		IsDeadLettered:                    isDeadLettered,
+		CanRetry:                          canRetry,
+		LatestDeadLetterReason:            summary.LatestDeadLetterReason,
+		LatestDeadLetteredAt:              summary.LatestDeadLetteredAt,
+		LatestManualReplayActor:           summary.LatestManualReplayActor,
+		LatestManualReplayAt:              summary.LatestManualReplayAt,
+		LatestStatusSubtype:               summary.LatestStatusSubtype,
+		LatestStatusSubtypeFamily:         summary.LatestStatusSubtypeFamily,
+		DominantFamily:                    summary.DominantFamily,
+		AnyMatchFamilies:                  append([]string(nil), summary.AnyMatchFamilies...),
+		ManualRetryCount:                  summary.ManualRetryCount,
+		TotalRetryCount:                   summary.TotalRetryCount,
+		TransactionGlobalTotalRetryCount:  transactionGlobal.TotalRetryCount,
+		TransactionGlobalAnyMatchFamilies: append([]string(nil), transactionGlobal.AnyMatchFamilies...),
+		LatestRetryAttempt:                summary.LatestRetryAttempt,
+		LatestDispatchReference:           summary.LatestDispatchReference,
 	}, true, nil
 }
 
@@ -183,6 +193,72 @@ func (s *Service) currentCanonicalSnapshot(ctx context.Context, transaction rece
 	}
 
 	return submission, events, nil
+}
+
+func (s *Service) transactionGlobalRetrySummary(ctx context.Context, transaction receipts.TransactionReceipt) (RetryDeadLetterSummary, error) {
+	submissions, err := s.submissionReceiptsForTransaction(ctx, transaction)
+	if err != nil {
+		return RetryDeadLetterSummary{}, err
+	}
+
+	familySet := make(map[string]struct{})
+	totalRetryCount := 0
+	for _, submission := range submissions {
+		_, events, err := s.store.GetSubmissionReceipt(ctx, submission.SubmissionReceiptID)
+		if err != nil {
+			if errors.Is(err, receipts.ErrSubmissionReceiptNotFound) {
+				continue
+			}
+			return RetryDeadLetterSummary{}, err
+		}
+
+		summary := summarizeEvents(events)
+		totalRetryCount += summary.TotalRetryCount
+		for _, family := range summary.AnyMatchFamilies {
+			familySet[family] = struct{}{}
+		}
+	}
+
+	return RetryDeadLetterSummary{
+		TotalRetryCount:  totalRetryCount,
+		AnyMatchFamilies: anyMatchFamilies(familySet),
+	}, nil
+}
+
+func (s *Service) submissionReceiptsForTransaction(ctx context.Context, transaction receipts.TransactionReceipt) ([]receipts.SubmissionReceipt, error) {
+	if lister, ok := s.store.(submissionReceiptLister); ok {
+		submissions, err := lister.ListSubmissionReceipts(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		filtered := make([]receipts.SubmissionReceipt, 0, len(submissions))
+		for _, submission := range submissions {
+			if submission.TransactionReceiptID != transaction.TransactionReceiptID {
+				continue
+			}
+			filtered = append(filtered, submission)
+		}
+		return filtered, nil
+	}
+
+	submissionReceiptID := strings.TrimSpace(transaction.CurrentSubmissionReceiptID)
+	if submissionReceiptID == "" {
+		return nil, nil
+	}
+
+	submission, _, err := s.store.GetSubmissionReceipt(ctx, submissionReceiptID)
+	if err != nil {
+		if errors.Is(err, receipts.ErrSubmissionReceiptNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if submission.TransactionReceiptID != transaction.TransactionReceiptID {
+		return nil, nil
+	}
+
+	return []receipts.SubmissionReceipt{submission}, nil
 }
 
 type eventSummary = RetryDeadLetterSummary
@@ -346,6 +422,15 @@ func matchesDeadLetterFilters(entry DeadLetterBacklogEntry, opts DeadLetterListO
 		return false
 	}
 	if opts.TotalRetryCountMax > 0 && entry.TotalRetryCount > opts.TotalRetryCountMax {
+		return false
+	}
+	if opts.TransactionGlobalTotalRetryCountMin > 0 && entry.TransactionGlobalTotalRetryCount < opts.TransactionGlobalTotalRetryCountMin {
+		return false
+	}
+	if opts.TransactionGlobalTotalRetryCountMax > 0 && entry.TransactionGlobalTotalRetryCount > opts.TransactionGlobalTotalRetryCountMax {
+		return false
+	}
+	if anyGlobalFamily := strings.TrimSpace(opts.TransactionGlobalAnyMatchFamily); anyGlobalFamily != "" && !containsFamily(entry.TransactionGlobalAnyMatchFamilies, anyGlobalFamily) {
 		return false
 	}
 	if dominantFamily := strings.TrimSpace(opts.DominantFamily); dominantFamily != "" && entry.DominantFamily != dominantFamily {
