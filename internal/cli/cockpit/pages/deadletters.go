@@ -28,8 +28,10 @@ const (
 )
 
 type deadLettersLoadedMsg struct {
-	items []postadjudicationstatus.DeadLetterBacklogEntry
-	err   error
+	items             []postadjudicationstatus.DeadLetterBacklogEntry
+	err               error
+	preserveSelection bool
+	selectedID        string
 }
 
 type deadLetterDetailLoadedMsg struct {
@@ -81,6 +83,7 @@ type DeadLettersPage struct {
 	appliedAdjudication deadLetterAdjudicationFilter
 	width, height       int
 	statusMsg           string
+	retryConfirmID      string
 }
 
 func NewDeadLettersPage(listFn DeadLetterListFn, detailFn DeadLetterDetailFn, retryFns ...DeadLetterRetryFn) *DeadLettersPage {
@@ -110,7 +113,11 @@ func (p *DeadLettersPage) ShortHelp() []key.Binding {
 		key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "apply")),
 	}
 	if p.canRetrySelected() {
-		bindings = append(bindings, key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "retry")))
+		help := "retry"
+		if p.retryConfirmActive() {
+			help = "confirm"
+		}
+		bindings = append(bindings, key.NewBinding(key.WithKeys("r"), key.WithHelp("r", help)))
 	}
 	return bindings
 }
@@ -136,18 +143,29 @@ func (p *DeadLettersPage) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			p.selectedID = ""
 			p.detail = nil
 			p.detailErr = nil
+			p.retryConfirmID = ""
 			return p, nil
 		}
 
 		p.items = append([]postadjudicationstatus.DeadLetterBacklogEntry(nil), msg.items...)
-		p.cursor = 0
 		p.detailErr = nil
+		p.retryConfirmID = ""
 		if len(p.items) == 0 {
+			p.cursor = 0
 			p.selectedID = ""
 			p.detail = nil
 			return p, nil
 		}
-		p.selectedID = p.items[0].TransactionReceiptID
+		p.cursor = 0
+		if msg.preserveSelection && msg.selectedID != "" {
+			for i, item := range p.items {
+				if item.TransactionReceiptID == msg.selectedID {
+					p.cursor = i
+					break
+				}
+			}
+		}
+		p.selectedID = p.items[p.cursor].TransactionReceiptID
 		p.detail = nil
 		return p, p.loadSelectedDetail()
 	case deadLetterDetailLoadedMsg:
@@ -162,33 +180,51 @@ func (p *DeadLettersPage) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		status := msg.status
 		p.detail = &status
 	case deadLetterRetryResultMsg:
+		p.retryConfirmID = ""
 		if msg.err != nil {
 			p.statusMsg = "Retry failed: " + msg.err.Error()
 			return p, nil
 		}
 		p.statusMsg = "Retry requested: " + msg.transactionID
-		return p, nil
+		p.detailErr = nil
+		return p, p.refreshAfterRetry(msg.transactionID)
 	case tea.KeyMsg:
 		p.statusMsg = ""
 		switch msg.String() {
 		case "enter":
+			p.retryConfirmID = ""
 			p.appliedQuery = strings.TrimSpace(p.queryDraft)
 			p.appliedAdjudication = p.adjudicationDraft
 			p.detail = nil
 			p.detailErr = nil
 			return p, p.loadBacklog()
+		case "esc":
+			p.retryConfirmID = ""
+			return p, nil
 		case "r":
-			return p, p.retrySelected()
+			if p.retryConfirmActive() {
+				p.retryConfirmID = ""
+				return p, p.retrySelected()
+			}
+			if !p.canRetrySelected() {
+				return p, nil
+			}
+			p.retryConfirmID = p.selectedID
+			return p, nil
 		case "left":
+			p.retryConfirmID = ""
 			p.adjudicationDraft = p.adjudicationDraft.prev()
 		case "right":
+			p.retryConfirmID = ""
 			p.adjudicationDraft = p.adjudicationDraft.next()
 		case "backspace":
+			p.retryConfirmID = ""
 			if p.queryDraft != "" {
 				p.queryDraft = p.queryDraft[:len(p.queryDraft)-1]
 			}
 		case "up", "k":
 			if p.cursor > 0 {
+				p.retryConfirmID = ""
 				p.cursor--
 				p.selectedID = p.items[p.cursor].TransactionReceiptID
 				p.detailErr = nil
@@ -197,6 +233,7 @@ func (p *DeadLettersPage) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "down", "j":
 			if p.cursor < len(p.items)-1 {
+				p.retryConfirmID = ""
 				p.cursor++
 				p.selectedID = p.items[p.cursor].TransactionReceiptID
 				p.detailErr = nil
@@ -205,6 +242,7 @@ func (p *DeadLettersPage) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		default:
 			if isDeadLetterQueryInput(msg) {
+				p.retryConfirmID = ""
 				p.queryDraft += msg.String()
 			}
 		}
@@ -352,6 +390,9 @@ func (p *DeadLettersPage) renderDetailPane() string {
 	retryState := "disabled"
 	if p.canRetrySelected() {
 		retryState = "enabled (press r)"
+		if p.retryConfirmActive() {
+			retryState = "confirm (press r again)"
+		}
 	}
 	lines = append(lines, fmt.Sprintf("Retry action: %s", retryState))
 
@@ -370,6 +411,10 @@ func (p *DeadLettersPage) renderDetailPane() string {
 }
 
 func (p *DeadLettersPage) loadBacklog() tea.Cmd {
+	return p.loadBacklogWithSelection("", false)
+}
+
+func (p *DeadLettersPage) loadBacklogWithSelection(selectedID string, preserveSelection bool) tea.Cmd {
 	listFn := p.listFn
 	opts := DeadLetterListOptions{
 		Query: p.appliedQuery,
@@ -382,7 +427,12 @@ func (p *DeadLettersPage) loadBacklog() tea.Cmd {
 			return deadLettersLoadedMsg{err: fmt.Errorf("dead-letter list function not configured")}
 		}
 		items, err := listFn(context.Background(), opts)
-		return deadLettersLoadedMsg{items: items, err: err}
+		return deadLettersLoadedMsg{
+			items:             items,
+			err:               err,
+			preserveSelection: preserveSelection,
+			selectedID:        selectedID,
+		}
 	}
 }
 
@@ -415,6 +465,10 @@ func (p *DeadLettersPage) retrySelected() tea.Cmd {
 		err := retryFn(context.Background(), transactionID)
 		return deadLetterRetryResultMsg{transactionID: transactionID, err: err}
 	}
+}
+
+func (p *DeadLettersPage) refreshAfterRetry(transactionID string) tea.Cmd {
+	return p.loadBacklogWithSelection(transactionID, true)
 }
 
 func (f deadLetterAdjudicationFilter) next() deadLetterAdjudicationFilter {
@@ -457,6 +511,10 @@ func (p *DeadLettersPage) hasAppliedFilters() bool {
 
 func (p *DeadLettersPage) canRetrySelected() bool {
 	return p.retryFn != nil && p.detail != nil && p.detail.CanRetry
+}
+
+func (p *DeadLettersPage) retryConfirmActive() bool {
+	return p.canRetrySelected() && p.retryConfirmID != "" && p.retryConfirmID == p.selectedID
 }
 
 func deadLetterStatusLabel(entry postadjudicationstatus.DeadLetterBacklogEntry) string {

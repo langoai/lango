@@ -91,6 +91,17 @@ func TestDeadLettersPage_ShortHelpIncludesRetryWhenEnabled(t *testing.T) {
 	assert.Equal(t, "r", bindings[5].Keys()[0])
 }
 
+func TestDeadLettersPage_ShortHelpShowsConfirmWhenPending(t *testing.T) {
+	page := NewDeadLettersPage(nil, nil, (&mockDeadLetterRetryFn{}).call)
+	page.selectedID = "tx-1"
+	page.detail = &postadjudicationstatus.TransactionStatus{CanRetry: true}
+	page.retryConfirmID = "tx-1"
+
+	bindings := page.ShortHelp()
+	require.Len(t, bindings, 6)
+	assert.Equal(t, "confirm", bindings[5].Help().Desc)
+}
+
 func TestDeadLettersPage_ActivateLoadsBacklogAndDetail(t *testing.T) {
 	listFn := &mockDeadLetterListFn{
 		items: []postadjudicationstatus.DeadLetterBacklogEntry{
@@ -375,12 +386,31 @@ func TestDeadLettersPage_RetrySelectedShowsSuccessMessage(t *testing.T) {
 
 	updated, retryCmd := page.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
 	page = updated.(*DeadLettersPage)
+	assert.Nil(t, retryCmd)
+	assert.Empty(t, retryFn.calls)
+	assert.Contains(t, page.View(), "Retry action: confirm (press r again)")
+
+	updated, retryCmd = page.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
+	page = updated.(*DeadLettersPage)
 	require.NotNil(t, retryCmd)
 
-	updated, _ = page.Update(retryCmd())
+	updated, refreshCmd := page.Update(retryCmd())
 	page = updated.(*DeadLettersPage)
 	assert.Equal(t, []string{"tx-1"}, retryFn.calls)
+	require.NotNil(t, refreshCmd)
 	assert.Contains(t, page.View(), "Retry requested: tx-1")
+	assert.Empty(t, page.retryConfirmID)
+
+	updated, detailCmd = page.Update(refreshCmd())
+	page = updated.(*DeadLettersPage)
+	require.NotNil(t, detailCmd)
+
+	updated, _ = page.Update(detailCmd())
+	page = updated.(*DeadLettersPage)
+	require.NotNil(t, page.detail)
+	assert.Equal(t, "tx-1", page.detail.CanonicalSnapshot.TransactionReceipt.TransactionReceiptID)
+	assert.Equal(t, 2, listFn.called)
+	assert.Equal(t, []string{"tx-1", "tx-1"}, detailFn.calls)
 }
 
 func TestDeadLettersPage_RetrySelectedShowsFailureMessage(t *testing.T) {
@@ -413,12 +443,20 @@ func TestDeadLettersPage_RetrySelectedShowsFailureMessage(t *testing.T) {
 
 	updated, retryCmd := page.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
 	page = updated.(*DeadLettersPage)
+	assert.Nil(t, retryCmd)
+
+	updated, retryCmd = page.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
+	page = updated.(*DeadLettersPage)
 	require.NotNil(t, retryCmd)
 
-	updated, _ = page.Update(retryCmd())
+	updated, refreshCmd := page.Update(retryCmd())
 	page = updated.(*DeadLettersPage)
+	assert.Nil(t, refreshCmd)
 	assert.Equal(t, []string{"tx-1"}, retryFn.calls)
 	assert.Contains(t, page.View(), "Retry failed: policy denied")
+	require.NotNil(t, page.detail)
+	assert.Equal(t, "tx-1", page.detail.CanonicalSnapshot.TransactionReceipt.TransactionReceiptID)
+	assert.Equal(t, 1, listFn.called)
 }
 
 func TestDeadLettersPage_RetryIgnoredWhenDetailIsNotRetryable(t *testing.T) {
@@ -454,4 +492,131 @@ func TestDeadLettersPage_RetryIgnoredWhenDetailIsNotRetryable(t *testing.T) {
 	assert.Nil(t, retryCmd)
 	assert.Empty(t, retryFn.calls)
 	assert.Contains(t, page.View(), "Retry action: disabled")
+}
+
+func TestDeadLettersPage_RetryConfirmClearsOnEscape(t *testing.T) {
+	listFn := &mockDeadLetterListFn{
+		items: []postadjudicationstatus.DeadLetterBacklogEntry{
+			{TransactionReceiptID: "tx-1", SubmissionReceiptID: "sub-1", Adjudication: "release", LatestRetryAttempt: 3, LatestDeadLetterReason: "terminal failure", IsDeadLettered: true, CanRetry: true},
+		},
+	}
+	detailFn := &mockDeadLetterDetailFn{
+		statusByID: map[string]postadjudicationstatus.TransactionStatus{
+			"tx-1": {
+				CanonicalSnapshot: postadjudicationstatus.CanonicalSnapshot{
+					TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-1"},
+					SubmissionReceipt:  receipts.SubmissionReceipt{SubmissionReceiptID: "sub-1"},
+				},
+				IsDeadLettered: true,
+				CanRetry:       true,
+				Adjudication:   "release",
+			},
+		},
+	}
+
+	page := NewDeadLettersPage(listFn.call, detailFn.call, (&mockDeadLetterRetryFn{}).call)
+	updated, detailCmd := page.Update(page.Activate()())
+	page = updated.(*DeadLettersPage)
+	updated, _ = page.Update(detailCmd())
+	page = updated.(*DeadLettersPage)
+
+	updated, _ = page.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
+	page = updated.(*DeadLettersPage)
+	assert.True(t, page.retryConfirmActive())
+
+	updated, _ = page.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	page = updated.(*DeadLettersPage)
+	assert.False(t, page.retryConfirmActive())
+	assert.Contains(t, page.View(), "Retry action: enabled (press r)")
+}
+
+func TestDeadLettersPage_RetryConfirmClearsOnSelectionChange(t *testing.T) {
+	listFn := &mockDeadLetterListFn{
+		items: []postadjudicationstatus.DeadLetterBacklogEntry{
+			{TransactionReceiptID: "tx-1", SubmissionReceiptID: "sub-1", Adjudication: "release", LatestRetryAttempt: 3, LatestDeadLetterReason: "terminal failure", IsDeadLettered: true, CanRetry: true},
+			{TransactionReceiptID: "tx-2", SubmissionReceiptID: "sub-2", Adjudication: "refund", LatestRetryAttempt: 1, LatestDeadLetterReason: "other failure", IsDeadLettered: true, CanRetry: true},
+		},
+	}
+	detailFn := &mockDeadLetterDetailFn{
+		statusByID: map[string]postadjudicationstatus.TransactionStatus{
+			"tx-1": {
+				CanonicalSnapshot: postadjudicationstatus.CanonicalSnapshot{
+					TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-1"},
+					SubmissionReceipt:  receipts.SubmissionReceipt{SubmissionReceiptID: "sub-1"},
+				},
+				IsDeadLettered: true,
+				CanRetry:       true,
+				Adjudication:   "release",
+			},
+			"tx-2": {
+				CanonicalSnapshot: postadjudicationstatus.CanonicalSnapshot{
+					TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-2"},
+					SubmissionReceipt:  receipts.SubmissionReceipt{SubmissionReceiptID: "sub-2"},
+				},
+				IsDeadLettered: true,
+				CanRetry:       true,
+				Adjudication:   "refund",
+			},
+		},
+	}
+
+	page := NewDeadLettersPage(listFn.call, detailFn.call, (&mockDeadLetterRetryFn{}).call)
+	updated, detailCmd := page.Update(page.Activate()())
+	page = updated.(*DeadLettersPage)
+	updated, _ = page.Update(detailCmd())
+	page = updated.(*DeadLettersPage)
+
+	updated, _ = page.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
+	page = updated.(*DeadLettersPage)
+	assert.True(t, page.retryConfirmActive())
+
+	updated, detailCmd = page.Update(tea.KeyMsg{Type: tea.KeyDown})
+	page = updated.(*DeadLettersPage)
+	require.NotNil(t, detailCmd)
+	assert.False(t, page.retryConfirmActive())
+	assert.Equal(t, "tx-2", page.selectedID)
+}
+
+func TestDeadLettersPage_RetryConfirmClearsOnFilterApply(t *testing.T) {
+	listFn := &mockDeadLetterListFn{
+		items: []postadjudicationstatus.DeadLetterBacklogEntry{
+			{TransactionReceiptID: "tx-1", SubmissionReceiptID: "sub-1", Adjudication: "release", LatestRetryAttempt: 3, LatestDeadLetterReason: "terminal failure", IsDeadLettered: true, CanRetry: true},
+		},
+	}
+	detailFn := &mockDeadLetterDetailFn{
+		statusByID: map[string]postadjudicationstatus.TransactionStatus{
+			"tx-1": {
+				CanonicalSnapshot: postadjudicationstatus.CanonicalSnapshot{
+					TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-1"},
+					SubmissionReceipt:  receipts.SubmissionReceipt{SubmissionReceiptID: "sub-1"},
+				},
+				IsDeadLettered: true,
+				CanRetry:       true,
+				Adjudication:   "release",
+			},
+		},
+	}
+
+	page := NewDeadLettersPage(listFn.call, detailFn.call, (&mockDeadLetterRetryFn{}).call)
+	updated, detailCmd := page.Update(page.Activate()())
+	page = updated.(*DeadLettersPage)
+	updated, _ = page.Update(detailCmd())
+	page = updated.(*DeadLettersPage)
+
+	updated, _ = page.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
+	page = updated.(*DeadLettersPage)
+	assert.True(t, page.retryConfirmActive())
+
+	updated, _ = page.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+	page = updated.(*DeadLettersPage)
+	assert.False(t, page.retryConfirmActive())
+
+	updated, _ = page.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
+	page = updated.(*DeadLettersPage)
+	assert.True(t, page.retryConfirmActive())
+
+	updated, reloadCmd := page.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	page = updated.(*DeadLettersPage)
+	require.NotNil(t, reloadCmd)
+	assert.False(t, page.retryConfirmActive())
 }

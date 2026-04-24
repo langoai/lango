@@ -79,6 +79,10 @@ The slice is intentionally narrow:
     - enabled only when `can_retry = true`
     - `r` key binding
     - success/failure status message only
+    - first `r` enters inline confirm state
+    - second `r` executes replay
+    - `Esc`, selection change, and filter apply clear confirm state
+    - replay success refreshes backlog and selected detail
 
 ## Current Limits
 
@@ -91,5 +95,5 @@ This slice does not yet include:
 - actor/time cockpit filters
 - family/subtype cockpit filters
 - selection preservation after filter changes
-- confirm prompts and auto refresh after replay
+- richer loading/failure recovery feedback
 - higher-level CLI surfaces

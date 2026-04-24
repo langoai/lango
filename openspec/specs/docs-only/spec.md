@@ -440,10 +440,11 @@ The `docs/architecture/dead-letter-browsing-status-observation.md` page SHALL de
 - **AND** they SHALL find the cockpit dead-letter master-detail read surface described
 - **AND** they SHALL find the thin cockpit filter bar described
 - **AND** they SHALL find the cockpit detail-pane `Retry` action described
+- **AND** they SHALL find inline confirm and success-refresh recovery UX described
 - **AND** they SHALL find detail navigation hints described for per-transaction status
 
 ### Requirement: P2P knowledge exchange track reflects landed dead-letter browsing / status observation
-The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe dead-letter browsing / status observation as landed work with transaction-global dominant family, compact per-submission breakdown, a thin raw background-task bridge on the detail view, a cockpit dead-letter read surface, a thin cockpit filter bar, and a cockpit `Retry` action, and list the remaining work as richer cockpit filters, confirm/refresh recovery UX, and higher-level CLI surfaces.
+The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe dead-letter browsing / status observation as landed work with transaction-global dominant family, compact per-submission breakdown, a thin raw background-task bridge on the detail view, a cockpit dead-letter read surface, a thin cockpit filter bar, a cockpit `Retry` action, and confirm/refresh recovery UX, and list the remaining work as richer cockpit filters, richer loading/failure recovery feedback, and higher-level CLI surfaces.
 
 #### Scenario: Track page points to the landed status slice
 - **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
@@ -453,4 +454,5 @@ The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe dead
 - **AND** they SHALL find the cockpit dead-letter read surface described as landed work
 - **AND** they SHALL find the thin cockpit filter bar described as landed work
 - **AND** they SHALL find the cockpit `Retry` action described as landed work
-- **AND** the remaining work SHALL be described as richer cockpit filters, confirm/refresh recovery UX, and higher-level CLI surfaces
+- **AND** they SHALL find confirm/refresh recovery UX described as landed work
+- **AND** the remaining work SHALL be described as richer cockpit filters, richer loading/failure recovery feedback, and higher-level CLI surfaces
