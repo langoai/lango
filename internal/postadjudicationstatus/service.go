@@ -16,6 +16,11 @@ type Service struct {
 	store receiptStore
 }
 
+type transactionGlobalAggregation struct {
+	RetryDeadLetterSummary
+	SubmissionBreakdown []SubmissionBreakdownItem
+}
+
 type submissionReceiptLister interface {
 	ListSubmissionReceipts(context.Context) ([]receipts.SubmissionReceipt, error)
 }
@@ -146,7 +151,7 @@ func (s *Service) deadLetterEntryForTransaction(ctx context.Context, transaction
 	if !summary.HasDeadLetter {
 		return DeadLetterBacklogEntry{}, false, nil
 	}
-	transactionGlobal, err := s.transactionGlobalRetrySummary(ctx, transaction)
+	transactionGlobal, err := s.transactionGlobalRetryAggregation(ctx, transaction)
 	if err != nil {
 		return DeadLetterBacklogEntry{}, false, err
 	}
@@ -155,6 +160,7 @@ func (s *Service) deadLetterEntryForTransaction(ctx context.Context, transaction
 	return DeadLetterBacklogEntry{
 		TransactionReceiptID:              transaction.TransactionReceiptID,
 		SubmissionReceiptID:               submissionReceiptID,
+		SubmissionBreakdown:               append([]SubmissionBreakdownItem(nil), transactionGlobal.SubmissionBreakdown...),
 		Adjudication:                      adjudication,
 		IsDeadLettered:                    isDeadLettered,
 		CanRetry:                          canRetry,
@@ -196,10 +202,10 @@ func (s *Service) currentCanonicalSnapshot(ctx context.Context, transaction rece
 	return submission, events, nil
 }
 
-func (s *Service) transactionGlobalRetrySummary(ctx context.Context, transaction receipts.TransactionReceipt) (RetryDeadLetterSummary, error) {
+func (s *Service) transactionGlobalRetryAggregation(ctx context.Context, transaction receipts.TransactionReceipt) (transactionGlobalAggregation, error) {
 	submissions, err := s.submissionReceiptsForTransaction(ctx, transaction)
 	if err != nil {
-		return RetryDeadLetterSummary{}, err
+		return transactionGlobalAggregation{}, err
 	}
 	sort.SliceStable(submissions, func(i, j int) bool {
 		leftIsCurrent := submissions[i].SubmissionReceiptID == transaction.CurrentSubmissionReceiptID
@@ -214,13 +220,14 @@ func (s *Service) transactionGlobalRetrySummary(ctx context.Context, transaction
 	familyCounts := make(map[string]int)
 	totalRetryCount := 0
 	latestRelevantFamily := ""
+	breakdown := make([]SubmissionBreakdownItem, 0, len(submissions))
 	for _, submission := range submissions {
 		_, events, err := s.store.GetSubmissionReceipt(ctx, submission.SubmissionReceiptID)
 		if err != nil {
 			if errors.Is(err, receipts.ErrSubmissionReceiptNotFound) {
 				continue
 			}
-			return RetryDeadLetterSummary{}, err
+			return transactionGlobalAggregation{}, err
 		}
 
 		summary := summarizeEvents(events)
@@ -239,12 +246,20 @@ func (s *Service) transactionGlobalRetrySummary(ctx context.Context, transaction
 			familyCounts[family]++
 			latestRelevantFamily = family
 		}
+		breakdown = append(breakdown, SubmissionBreakdownItem{
+			SubmissionReceiptID: submission.SubmissionReceiptID,
+			RetryCount:          summary.TotalRetryCount,
+			AnyMatchFamilies:    append([]string(nil), summary.AnyMatchFamilies...),
+		})
 	}
 
-	return RetryDeadLetterSummary{
-		TotalRetryCount:                 totalRetryCount,
-		AnyMatchFamilies:                anyMatchFamilies(familySet),
-		TransactionGlobalDominantFamily: dominantFamily(familyCounts, latestRelevantFamily),
+	return transactionGlobalAggregation{
+		RetryDeadLetterSummary: RetryDeadLetterSummary{
+			TotalRetryCount:                 totalRetryCount,
+			AnyMatchFamilies:                anyMatchFamilies(familySet),
+			TransactionGlobalDominantFamily: dominantFamily(familyCounts, latestRelevantFamily),
+		},
+		SubmissionBreakdown: breakdown,
 	}, nil
 }
 

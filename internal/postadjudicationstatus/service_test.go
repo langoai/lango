@@ -624,6 +624,19 @@ func TestServiceListCurrentDeadLettersPage_FiltersByTransactionGlobalRetryAggreg
 	assert.Equal(t, 3, got.Items[0].TransactionGlobalTotalRetryCount)
 	assert.Equal(t, []string{"dead-letter", "manual-retry", "retry"}, got.Items[0].TransactionGlobalAnyMatchFamilies)
 	assert.Equal(t, "dead-letter", got.Items[0].TransactionGlobalDominantFamily)
+	require.Len(t, got.Items[0].SubmissionBreakdown, 2)
+	assert.Equal(t, []SubmissionBreakdownItem{
+		{
+			SubmissionReceiptID: "sub-a-history",
+			RetryCount:          2,
+			AnyMatchFamilies:    []string{"manual-retry", "retry"},
+		},
+		{
+			SubmissionReceiptID: "sub-a-current",
+			RetryCount:          1,
+			AnyMatchFamilies:    []string{"dead-letter"},
+		},
+	}, got.Items[0].SubmissionBreakdown)
 }
 
 func TestServiceListCurrentDeadLettersPage_FiltersByTransactionGlobalDominantFamily(t *testing.T) {

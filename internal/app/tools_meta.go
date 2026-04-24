@@ -1764,6 +1764,10 @@ func newListDeadLetteredPostAdjudicationExecutionsTool(receiptStore *receipts.St
 					"type":        "string",
 					"description": "Optional membership filter for any retry/dead-letter family observed across all submissions in the transaction",
 				},
+				"transaction_global_dominant_family": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional exact-match filter for the dominant retry/dead-letter family observed across all submissions in the transaction",
+				},
 				"latest_status_subtype_family": map[string]interface{}{
 					"type":        "string",
 					"description": "Optional exact-match filter for the family of the latest retry/dead-letter subtype",
@@ -1803,6 +1807,7 @@ func newListDeadLetteredPostAdjudicationExecutionsTool(receiptStore *receipts.St
 				TransactionGlobalTotalRetryCountMin: toolparam.OptionalInt(params, "transaction_global_total_retry_count_min", 0),
 				TransactionGlobalTotalRetryCountMax: toolparam.OptionalInt(params, "transaction_global_total_retry_count_max", 0),
 				TransactionGlobalAnyMatchFamily:     toolparam.OptionalString(params, "transaction_global_any_match_family", ""),
+				TransactionGlobalDominantFamily:     toolparam.OptionalString(params, "transaction_global_dominant_family", ""),
 				LatestStatusSubtypeFamily:           toolparam.OptionalString(params, "latest_status_subtype_family", ""),
 				AnyMatchFamily:                      toolparam.OptionalString(params, "any_match_family", ""),
 				DominantFamily:                      toolparam.OptionalString(params, "dominant_family", ""),
