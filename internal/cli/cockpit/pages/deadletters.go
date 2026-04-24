@@ -3,7 +3,9 @@ package pages
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strings"
+	"unicode"
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
@@ -37,30 +39,49 @@ type deadLetterDetailLoadedMsg struct {
 	err           error
 }
 
-// DeadLetterListFn loads the current dead-letter backlog rows for the cockpit table.
-type DeadLetterListFn func(ctx context.Context) ([]postadjudicationstatus.DeadLetterBacklogEntry, error)
+type deadLetterAdjudicationFilter string
 
+const (
+	deadLetterAdjudicationAll     deadLetterAdjudicationFilter = "all"
+	deadLetterAdjudicationRelease deadLetterAdjudicationFilter = "release"
+	deadLetterAdjudicationRefund  deadLetterAdjudicationFilter = "refund"
+)
+
+type DeadLetterListOptions struct {
+	Query        string
+	Adjudication string
+}
+
+// DeadLetterListFn loads the current dead-letter backlog rows for the cockpit table.
 // DeadLetterDetailFn loads the selected transaction detail for the cockpit pane.
 type DeadLetterDetailFn func(ctx context.Context, transactionReceiptID string) (postadjudicationstatus.TransactionStatus, error)
 
 // DeadLettersPage renders a read-only master-detail surface for post-adjudication dead letters.
 type DeadLettersPage struct {
-	listFn   DeadLetterListFn
+	listFn   any
 	detailFn DeadLetterDetailFn
 
-	items         []postadjudicationstatus.DeadLetterBacklogEntry
-	cursor        int
-	selectedID    string
-	detail        *postadjudicationstatus.TransactionStatus
-	loadErr       error
-	detailErr     error
-	width, height int
+	items               []postadjudicationstatus.DeadLetterBacklogEntry
+	cursor              int
+	selectedID          string
+	detail              *postadjudicationstatus.TransactionStatus
+	loadErr             error
+	detailErr           error
+	queryDraft          string
+	appliedQuery        string
+	adjudicationDraft   deadLetterAdjudicationFilter
+	appliedAdjudication deadLetterAdjudicationFilter
+	width, height       int
 }
 
-func NewDeadLettersPage(listFn DeadLetterListFn, detailFn DeadLetterDetailFn) *DeadLettersPage {
+func NewDeadLettersPage(listFn any, detailFn DeadLetterDetailFn) *DeadLettersPage {
 	return &DeadLettersPage{
-		listFn:   listFn,
-		detailFn: detailFn,
+		listFn:              listFn,
+		detailFn:            detailFn,
+		adjudicationDraft:   deadLetterAdjudicationAll,
+		appliedAdjudication: deadLetterAdjudicationAll,
+		appliedQuery:        "",
+		queryDraft:          "",
 	}
 }
 
@@ -70,6 +91,9 @@ func (p *DeadLettersPage) ShortHelp() []key.Binding {
 	return []key.Binding{
 		key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", "up")),
 		key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", "down")),
+		key.NewBinding(key.WithKeys("left", "right"), key.WithHelp("←/→", "adj")),
+		key.NewBinding(key.WithKeys("backspace"), key.WithHelp("⌫", "query")),
+		key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "apply")),
 	}
 }
 
@@ -98,18 +122,15 @@ func (p *DeadLettersPage) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		p.items = append([]postadjudicationstatus.DeadLetterBacklogEntry(nil), msg.items...)
+		p.cursor = 0
+		p.detailErr = nil
 		if len(p.items) == 0 {
-			p.cursor = 0
 			p.selectedID = ""
 			p.detail = nil
-			p.detailErr = nil
 			return p, nil
 		}
-		if p.cursor >= len(p.items) {
-			p.cursor = len(p.items) - 1
-		}
-		p.selectedID = p.items[p.cursor].TransactionReceiptID
-		p.detailErr = nil
+		p.selectedID = p.items[0].TransactionReceiptID
+		p.detail = nil
 		return p, p.loadSelectedDetail()
 	case deadLetterDetailLoadedMsg:
 		if msg.transactionID != p.selectedID {
@@ -124,6 +145,20 @@ func (p *DeadLettersPage) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		p.detail = &status
 	case tea.KeyMsg:
 		switch msg.String() {
+		case "enter":
+			p.appliedQuery = strings.TrimSpace(p.queryDraft)
+			p.appliedAdjudication = p.adjudicationDraft
+			p.detail = nil
+			p.detailErr = nil
+			return p, p.loadBacklog()
+		case "left":
+			p.adjudicationDraft = p.adjudicationDraft.prev()
+		case "right":
+			p.adjudicationDraft = p.adjudicationDraft.next()
+		case "backspace":
+			if p.queryDraft != "" {
+				p.queryDraft = p.queryDraft[:len(p.queryDraft)-1]
+			}
 		case "up", "k":
 			if p.cursor > 0 {
 				p.cursor--
@@ -140,6 +175,10 @@ func (p *DeadLettersPage) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				p.detail = nil
 				return p, p.loadSelectedDetail()
 			}
+		default:
+			if isDeadLetterQueryInput(msg) {
+				p.queryDraft += msg.String()
+			}
 		}
 	}
 	return p, nil
@@ -155,10 +194,30 @@ func (p *DeadLettersPage) View() string {
 		Foreground(theme.BorderDefault).
 		Render(strings.Repeat("─", max(p.width-4, 48)))
 
+	filterBar := p.renderFilterBar()
 	table := p.renderTable()
 	detail := p.renderDetailPane()
-	content := lipgloss.JoinVertical(lipgloss.Left, title, divider, "", table, "", detail)
+	content := lipgloss.JoinVertical(lipgloss.Left, title, divider, "", filterBar, "", table, "", detail)
 	return lipgloss.NewStyle().Padding(1, 2).Render(content)
+}
+
+func (p *DeadLettersPage) renderFilterBar() string {
+	labelStyle := lipgloss.NewStyle().Foreground(theme.TextTertiary).Bold(true)
+	valueStyle := lipgloss.NewStyle().Foreground(theme.TextPrimary)
+	hintStyle := lipgloss.NewStyle().Foreground(theme.Muted)
+
+	query := p.queryDraft
+	if strings.TrimSpace(query) == "" {
+		query = "all"
+	}
+
+	return lipgloss.JoinVertical(
+		lipgloss.Left,
+		labelStyle.Render("Filters"),
+		valueStyle.Render(fmt.Sprintf("Query: %s", query)),
+		valueStyle.Render(fmt.Sprintf("Adjudication: %s", p.adjudicationDraft)),
+		hintStyle.Render("Type query, use ←/→ to change adjudication, Enter to apply"),
+	)
 }
 
 func (p *DeadLettersPage) renderTable() string {
@@ -166,6 +225,9 @@ func (p *DeadLettersPage) renderTable() string {
 		return lipgloss.NewStyle().Foreground(theme.Error).Render(fmt.Sprintf("Failed to load dead letters: %v", p.loadErr))
 	}
 	if len(p.items) == 0 {
+		if p.hasAppliedFilters() {
+			return lipgloss.NewStyle().Foreground(theme.Muted).Render("No dead-letter backlog matches the current filters.")
+		}
 		return lipgloss.NewStyle().Foreground(theme.Muted).Render("No current dead-letter backlog.")
 	}
 
@@ -271,11 +333,14 @@ func (p *DeadLettersPage) renderDetailPane() string {
 
 func (p *DeadLettersPage) loadBacklog() tea.Cmd {
 	listFn := p.listFn
+	opts := DeadLetterListOptions{
+		Query: p.appliedQuery,
+	}
+	if p.appliedAdjudication != deadLetterAdjudicationAll {
+		opts.Adjudication = string(p.appliedAdjudication)
+	}
 	return func() tea.Msg {
-		if listFn == nil {
-			return deadLettersLoadedMsg{err: fmt.Errorf("dead-letter list function not configured")}
-		}
-		items, err := listFn(context.Background())
+		items, err := invokeDeadLetterList(listFn, context.Background(), opts)
 		return deadLettersLoadedMsg{items: items, err: err}
 	}
 }
@@ -297,6 +362,79 @@ func (p *DeadLettersPage) loadSelectedDetail() tea.Cmd {
 			err:           err,
 		}
 	}
+}
+
+func (f deadLetterAdjudicationFilter) next() deadLetterAdjudicationFilter {
+	switch f {
+	case deadLetterAdjudicationRelease:
+		return deadLetterAdjudicationRefund
+	case deadLetterAdjudicationRefund:
+		return deadLetterAdjudicationAll
+	default:
+		return deadLetterAdjudicationRelease
+	}
+}
+
+func (f deadLetterAdjudicationFilter) prev() deadLetterAdjudicationFilter {
+	switch f {
+	case deadLetterAdjudicationRefund:
+		return deadLetterAdjudicationRelease
+	case deadLetterAdjudicationRelease:
+		return deadLetterAdjudicationAll
+	default:
+		return deadLetterAdjudicationRefund
+	}
+}
+
+func isDeadLetterQueryInput(msg tea.KeyMsg) bool {
+	if len(msg.Runes) == 0 {
+		return false
+	}
+	for _, r := range msg.Runes {
+		if unicode.IsControl(r) {
+			return false
+		}
+	}
+	return true
+}
+
+func (p *DeadLettersPage) hasAppliedFilters() bool {
+	return strings.TrimSpace(p.appliedQuery) != "" || p.appliedAdjudication != deadLetterAdjudicationAll
+}
+
+func invokeDeadLetterList(listFn any, ctx context.Context, opts DeadLetterListOptions) ([]postadjudicationstatus.DeadLetterBacklogEntry, error) {
+	if listFn == nil {
+		return nil, fmt.Errorf("dead-letter list function not configured")
+	}
+	fnValue := reflect.ValueOf(listFn)
+	if fnValue.Kind() != reflect.Func {
+		return nil, fmt.Errorf("dead-letter list function is invalid")
+	}
+	fnType := fnValue.Type()
+	if fnType.NumIn() != 2 || fnType.NumOut() != 2 {
+		return nil, fmt.Errorf("dead-letter list function signature is invalid")
+	}
+
+	optsValue := reflect.New(fnType.In(1)).Elem()
+	if field := optsValue.FieldByName("Query"); field.IsValid() && field.CanSet() && field.Kind() == reflect.String {
+		field.SetString(opts.Query)
+	}
+	if field := optsValue.FieldByName("Adjudication"); field.IsValid() && field.CanSet() && field.Kind() == reflect.String {
+		field.SetString(opts.Adjudication)
+	}
+
+	results := fnValue.Call([]reflect.Value{reflect.ValueOf(ctx), optsValue})
+	if errValue := results[1]; !errValue.IsNil() {
+		if err, ok := errValue.Interface().(error); ok {
+			return nil, err
+		}
+		return nil, fmt.Errorf("dead-letter list function returned invalid error")
+	}
+	items, ok := results[0].Interface().([]postadjudicationstatus.DeadLetterBacklogEntry)
+	if !ok {
+		return nil, fmt.Errorf("dead-letter list function returned invalid items")
+	}
+	return items, nil
 }
 
 func deadLetterStatusLabel(entry postadjudicationstatus.DeadLetterBacklogEntry) string {

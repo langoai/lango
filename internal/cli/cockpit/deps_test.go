@@ -57,7 +57,9 @@ func TestDeadLetterToolBridge_ListAndDetail(t *testing.T) {
 	catalog.Register("knowledge", []*agent.Tool{
 		{
 			Name: "list_dead_lettered_post_adjudication_executions",
-			Handler: func(context.Context, map[string]interface{}) (interface{}, error) {
+			Handler: func(_ context.Context, params map[string]interface{}) (interface{}, error) {
+				assert.Equal(t, "tx-1", params["query"])
+				assert.Equal(t, "release", params["adjudication"])
 				return map[string]interface{}{
 					"entries": wantEntries,
 					"count":   1,
@@ -75,11 +77,45 @@ func TestDeadLetterToolBridge_ListAndDetail(t *testing.T) {
 	})
 
 	bridge := NewDeadLetterToolBridge(catalog)
-	gotEntries, err := bridge.List(context.Background())
+	gotEntries, err := bridge.List(context.Background(), DeadLetterListOptions{
+		Query:        "tx-1",
+		Adjudication: "release",
+	})
 	require.NoError(t, err)
 	assert.Equal(t, wantEntries, gotEntries)
 
 	gotDetail, err := bridge.Detail(context.Background(), "tx-1")
 	require.NoError(t, err)
 	assert.Equal(t, wantDetail, gotDetail)
+}
+
+func TestDeadLetterToolBridge_ListOmitsAdjudicationWhenAll(t *testing.T) {
+	catalog := toolcatalog.New()
+	catalog.RegisterCategory(toolcatalog.Category{Name: "knowledge", Enabled: true})
+	catalog.Register("knowledge", []*agent.Tool{
+		{
+			Name: "list_dead_lettered_post_adjudication_executions",
+			Handler: func(_ context.Context, params map[string]interface{}) (interface{}, error) {
+				assert.Equal(t, "needle", params["query"])
+				_, hasAdjudication := params["adjudication"]
+				assert.False(t, hasAdjudication)
+				return map[string]interface{}{
+					"entries": []postadjudicationstatus.DeadLetterBacklogEntry{},
+				}, nil
+			},
+		},
+		{
+			Name: "get_post_adjudication_execution_status",
+			Handler: func(context.Context, map[string]interface{}) (interface{}, error) {
+				return postadjudicationstatus.TransactionStatus{}, nil
+			},
+		},
+	})
+
+	bridge := NewDeadLetterToolBridge(catalog)
+	_, err := bridge.List(context.Background(), DeadLetterListOptions{
+		Query:        "needle",
+		Adjudication: "all",
+	})
+	require.NoError(t, err)
 }

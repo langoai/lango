@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/langoai/lango/internal/app"
 	"github.com/langoai/lango/internal/approval"
@@ -41,6 +42,11 @@ type DeadLetterToolBridge struct {
 	catalog *toolcatalog.Catalog
 }
 
+type DeadLetterListOptions struct {
+	Query        string
+	Adjudication string
+}
+
 func NewDeadLetterToolBridge(catalog *toolcatalog.Catalog) *DeadLetterToolBridge {
 	return &DeadLetterToolBridge{catalog: catalog}
 }
@@ -54,7 +60,7 @@ func (b *DeadLetterToolBridge) Ready() bool {
 	return hasList && hasDetail
 }
 
-func (b *DeadLetterToolBridge) List(ctx context.Context) ([]postadjudicationstatus.DeadLetterBacklogEntry, error) {
+func (b *DeadLetterToolBridge) List(ctx context.Context, opts DeadLetterListOptions) ([]postadjudicationstatus.DeadLetterBacklogEntry, error) {
 	if b == nil || b.catalog == nil {
 		return nil, fmt.Errorf("dead-letter tool catalog is not configured")
 	}
@@ -62,7 +68,15 @@ func (b *DeadLetterToolBridge) List(ctx context.Context) ([]postadjudicationstat
 	if !ok || entry.Tool == nil || entry.Tool.Handler == nil {
 		return nil, fmt.Errorf("dead-letter backlog tool is not available")
 	}
-	raw, err := entry.Tool.Handler(ctx, map[string]interface{}{})
+	params := map[string]interface{}{}
+	if query := strings.TrimSpace(opts.Query); query != "" {
+		params["query"] = query
+	}
+	switch strings.TrimSpace(opts.Adjudication) {
+	case "release", "refund":
+		params["adjudication"] = strings.TrimSpace(opts.Adjudication)
+	}
+	raw, err := entry.Tool.Handler(ctx, params)
 	if err != nil {
 		return nil, err
 	}

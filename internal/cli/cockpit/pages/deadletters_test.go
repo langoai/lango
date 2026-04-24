@@ -3,6 +3,7 @@ package pages
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -14,14 +15,34 @@ import (
 )
 
 type mockDeadLetterListFn struct {
-	items  []postadjudicationstatus.DeadLetterBacklogEntry
-	err    error
-	called int
+	items       []postadjudicationstatus.DeadLetterBacklogEntry
+	err         error
+	called      int
+	lastOptions DeadLetterListOptions
 }
 
-func (m *mockDeadLetterListFn) call(_ context.Context) ([]postadjudicationstatus.DeadLetterBacklogEntry, error) {
+func (m *mockDeadLetterListFn) call(_ context.Context, opts DeadLetterListOptions) ([]postadjudicationstatus.DeadLetterBacklogEntry, error) {
 	m.called++
-	return append([]postadjudicationstatus.DeadLetterBacklogEntry(nil), m.items...), m.err
+	m.lastOptions = opts
+	if m.err != nil {
+		return nil, m.err
+	}
+	filtered := make([]postadjudicationstatus.DeadLetterBacklogEntry, 0, len(m.items))
+	query := strings.ToLower(strings.TrimSpace(opts.Query))
+	for _, item := range m.items {
+		if adjudication := strings.TrimSpace(opts.Adjudication); adjudication != "" && !strings.EqualFold(item.Adjudication, adjudication) {
+			continue
+		}
+		if query != "" {
+			tx := strings.ToLower(item.TransactionReceiptID)
+			sub := strings.ToLower(item.SubmissionReceiptID)
+			if !strings.Contains(tx, query) && !strings.Contains(sub, query) {
+				continue
+			}
+		}
+		filtered = append(filtered, item)
+	}
+	return filtered, nil
 }
 
 type mockDeadLetterDetailFn struct {
@@ -46,7 +67,7 @@ func TestDeadLettersPage_Title(t *testing.T) {
 func TestDeadLettersPage_ShortHelp(t *testing.T) {
 	page := NewDeadLettersPage(nil, nil)
 	bindings := page.ShortHelp()
-	require.Len(t, bindings, 2)
+	require.Len(t, bindings, 5)
 }
 
 func TestDeadLettersPage_ActivateLoadsBacklogAndDetail(t *testing.T) {
@@ -86,18 +107,15 @@ func TestDeadLettersPage_ActivateLoadsBacklogAndDetail(t *testing.T) {
 	cmd := page.Activate()
 	require.NotNil(t, cmd)
 
-	msg := cmd()
-	updated, detailCmd := page.Update(msg)
+	updated, detailCmd := page.Update(cmd())
 	page = updated.(*DeadLettersPage)
-
 	require.Len(t, page.items, 1)
 	assert.Equal(t, "tx-1", page.selectedID)
 	require.NotNil(t, detailCmd)
+	assert.Equal(t, DeadLetterListOptions{}, listFn.lastOptions)
 
-	detailMsg := detailCmd()
-	updated, _ = page.Update(detailMsg)
+	updated, _ = page.Update(detailCmd())
 	page = updated.(*DeadLettersPage)
-
 	require.NotNil(t, page.detail)
 	assert.Equal(t, "tx-1", page.detail.CanonicalSnapshot.TransactionReceipt.TransactionReceiptID)
 	assert.Equal(t, []string{"tx-1"}, detailFn.calls)
@@ -135,6 +153,86 @@ func TestDeadLettersPage_SelectionLoadsNextDetail(t *testing.T) {
 	require.NotNil(t, page.detail)
 	assert.Equal(t, "tx-2", page.detail.CanonicalSnapshot.TransactionReceipt.TransactionReceiptID)
 	assert.Equal(t, []string{"tx-1", "tx-2"}, detailFn.calls)
+}
+
+func TestDeadLettersPage_ApplyFiltersReloadsAndResetsSelection(t *testing.T) {
+	listFn := &mockDeadLetterListFn{
+		items: []postadjudicationstatus.DeadLetterBacklogEntry{
+			{TransactionReceiptID: "tx-2", SubmissionReceiptID: "sub-2", Adjudication: "release", LatestRetryAttempt: 4, LatestDeadLetterReason: "release failed", IsDeadLettered: true, CanRetry: true},
+			{TransactionReceiptID: "tx-3", SubmissionReceiptID: "sub-3", Adjudication: "release", LatestRetryAttempt: 2, LatestDeadLetterReason: "release failed again", IsDeadLettered: true, CanRetry: true},
+		},
+	}
+	detailFn := &mockDeadLetterDetailFn{
+		statusByID: map[string]postadjudicationstatus.TransactionStatus{
+			"tx-2": {CanonicalSnapshot: postadjudicationstatus.CanonicalSnapshot{TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-2"}, SubmissionReceipt: receipts.SubmissionReceipt{SubmissionReceiptID: "sub-2"}}, Adjudication: "release"},
+			"tx-3": {CanonicalSnapshot: postadjudicationstatus.CanonicalSnapshot{TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-3"}, SubmissionReceipt: receipts.SubmissionReceipt{SubmissionReceiptID: "sub-3"}}, Adjudication: "release"},
+		},
+	}
+
+	page := NewDeadLettersPage(listFn.call, detailFn.call)
+	updated, detailCmd := page.Update(page.Activate()())
+	page = updated.(*DeadLettersPage)
+	require.NotNil(t, detailCmd)
+	updated, _ = page.Update(detailCmd())
+	page = updated.(*DeadLettersPage)
+
+	for _, keyMsg := range []tea.KeyMsg{
+		{Type: tea.KeyRunes, Runes: []rune("t")},
+		{Type: tea.KeyRunes, Runes: []rune("x")},
+		{Type: tea.KeyRunes, Runes: []rune("-")},
+		{Type: tea.KeyRunes, Runes: []rune("2")},
+		{Type: tea.KeyRight},
+	} {
+		updated, _ = page.Update(keyMsg)
+		page = updated.(*DeadLettersPage)
+	}
+
+	updated, reloadCmd := page.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	page = updated.(*DeadLettersPage)
+	require.NotNil(t, reloadCmd)
+	assert.Equal(t, "tx-2", page.appliedQuery)
+	assert.Equal(t, deadLetterAdjudicationRelease, page.appliedAdjudication)
+	assert.Equal(t, 1, listFn.called)
+
+	updated, detailCmd = page.Update(reloadCmd())
+	page = updated.(*DeadLettersPage)
+	require.NotNil(t, detailCmd)
+	assert.Equal(t, DeadLetterListOptions{Query: "tx-2", Adjudication: "release"}, listFn.lastOptions)
+	assert.Equal(t, 0, page.cursor)
+	assert.Equal(t, "tx-2", page.selectedID)
+
+	updated, _ = page.Update(detailCmd())
+	page = updated.(*DeadLettersPage)
+	require.NotNil(t, page.detail)
+	assert.Equal(t, "tx-2", page.detail.CanonicalSnapshot.TransactionReceipt.TransactionReceiptID)
+}
+
+func TestDeadLettersPage_EmptyFilteredResultClearsDetail(t *testing.T) {
+	listFn := &mockDeadLetterListFn{}
+	detailFn := &mockDeadLetterDetailFn{statusByID: map[string]postadjudicationstatus.TransactionStatus{}}
+
+	page := NewDeadLettersPage(listFn.call, detailFn.call)
+	for _, keyMsg := range []tea.KeyMsg{
+		{Type: tea.KeyRunes, Runes: []rune("n")},
+		{Type: tea.KeyRunes, Runes: []rune("o")},
+		{Type: tea.KeyRunes, Runes: []rune("n")},
+		{Type: tea.KeyRunes, Runes: []rune("e")},
+	} {
+		updated, _ := page.Update(keyMsg)
+		page = updated.(*DeadLettersPage)
+	}
+	updated, reloadCmd := page.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	page = updated.(*DeadLettersPage)
+	assert.Equal(t, "none", page.appliedQuery)
+	require.NotNil(t, reloadCmd)
+
+	updated, detailCmd := page.Update(reloadCmd())
+	page = updated.(*DeadLettersPage)
+	assert.Nil(t, detailCmd)
+	assert.Empty(t, page.items)
+	assert.Nil(t, page.detail)
+	assert.Equal(t, DeadLetterListOptions{Query: "none"}, listFn.lastOptions)
+	assert.Contains(t, page.View(), "No dead-letter backlog matches the current filters.")
 }
 
 func TestDeadLettersPage_NoBacklogDoesNotLoadDetail(t *testing.T) {
@@ -221,4 +319,6 @@ func TestDeadLettersPage_ViewIncludesBackgroundTaskWhenPresent(t *testing.T) {
 	view := page.View()
 	assert.Contains(t, view, "Background task: task-9")
 	assert.Contains(t, view, "Task status: retrying")
+	assert.Contains(t, view, "Query: all")
+	assert.Contains(t, view, "Adjudication: all")
 }

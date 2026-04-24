@@ -69,6 +69,11 @@ The slice is intentionally narrow:
   - selected transaction detail pane
   - selection-driven detail refresh
   - reuses the existing list/detail status surfaces
+  - thin filter bar
+    - `query`
+    - `adjudication`
+    - `Enter` apply
+    - first-row reset after reload
 
 ## Current Limits
 
@@ -78,6 +83,7 @@ This slice does not yet include:
 - generic dead-letter browsing for all background tasks
 - full event history dump
 - richer detail-surface actor/time summaries
-- custom sort order
-- multi-column sort
-- family count maps / weighted dominance
+- actor/time cockpit filters
+- family/subtype cockpit filters
+- selection preservation after filter changes
+- higher-level CLI surfaces
