@@ -81,6 +81,7 @@ The slice is intentionally narrow:
     - `dead_letter_reason_query`
     - `latest_dispatch_reference`
     - `Enter` apply
+    - `Ctrl+R` full reset
     - first-row reset after reload
   - detail-pane `Retry` action
     - reuses `retry_post_adjudication_execution`
@@ -94,6 +95,8 @@ The slice is intentionally narrow:
     - duplicate retry triggers are blocked while replay is running
     - replay failure surfaces the backend error string and returns the action to idle
     - replay success refreshes backlog and selected detail
+    - `Ctrl+R` clears filter draft/applied state and retry confirm state, then reloads backlog/detail
+    - `Ctrl+R` is ignored while retry is running
 
 ## Current Limits
 

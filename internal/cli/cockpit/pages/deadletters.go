@@ -177,6 +177,7 @@ func (p *DeadLettersPage) ShortHelp() []key.Binding {
 		key.NewBinding(key.WithKeys(";", "/"), key.WithHelp(";/", "any")),
 		key.NewBinding(key.WithKeys("backspace"), key.WithHelp("⌫", "query")),
 		key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "apply")),
+		key.NewBinding(key.WithKeys("ctrl+r"), key.WithHelp("ctrl+r", "reset")),
 	}
 	if p.canRetrySelected() {
 		help := "retry"
@@ -290,6 +291,14 @@ func (p *DeadLettersPage) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			p.appliedSubtype = p.subtypeDraft
 			p.appliedFamily = p.familyDraft
 			p.appliedAnyMatchFamily = p.anyMatchFamilyDraft
+			p.detail = nil
+			p.detailErr = nil
+			return p, p.loadBacklog()
+		case "ctrl+r":
+			if p.retryRunning() {
+				return p, nil
+			}
+			p.resetFilters()
 			p.detail = nil
 			p.detailErr = nil
 			return p, p.loadBacklog()
@@ -408,7 +417,7 @@ func (p *DeadLettersPage) renderFilterBar() string {
 		lipgloss.NewStyle().Foreground(theme.TextPrimary).Render(fmt.Sprintf("Latest subtype: %s", p.subtypeDraft)),
 		lipgloss.NewStyle().Foreground(theme.TextPrimary).Render(fmt.Sprintf("Latest family: %s", p.familyDraft)),
 		lipgloss.NewStyle().Foreground(theme.TextPrimary).Render(fmt.Sprintf("Any-match family: %s", p.anyMatchFamilyDraft)),
-		hintStyle.Render("Tab fields, type text, use ←/→ for adjudication, [/] for subtype, ,/. for family, ;/ for any-match, Enter to apply"),
+		hintStyle.Render("Tab fields, type text, use ←/→ for adjudication, [/] for subtype, ,/. for family, ;/ for any-match, Enter to apply, Ctrl+R to reset"),
 	)
 }
 
@@ -780,6 +789,31 @@ func (p *DeadLettersPage) backspaceActiveField() {
 	default:
 		p.queryDraft = trimLastByte(p.queryDraft)
 	}
+}
+
+func (p *DeadLettersPage) resetFilters() {
+	p.queryDraft = ""
+	p.appliedQuery = ""
+	p.manualReplayActorDraft = ""
+	p.appliedManualReplayActor = ""
+	p.deadLetteredAfterDraft = ""
+	p.appliedDeadLetteredAfter = ""
+	p.deadLetteredBeforeDraft = ""
+	p.appliedDeadLetteredBefore = ""
+	p.deadLetterReasonQueryDraft = ""
+	p.appliedDeadLetterReasonQuery = ""
+	p.latestDispatchReferenceDraft = ""
+	p.appliedLatestDispatchReference = ""
+	p.adjudicationDraft = deadLetterAdjudicationAll
+	p.appliedAdjudication = deadLetterAdjudicationAll
+	p.subtypeDraft = deadLetterSubtypeAll
+	p.appliedSubtype = deadLetterSubtypeAll
+	p.familyDraft = deadLetterFamilyAll
+	p.appliedFamily = deadLetterFamilyAll
+	p.anyMatchFamilyDraft = deadLetterFamilyAll
+	p.appliedAnyMatchFamily = deadLetterFamilyAll
+	p.activeTextField = deadLetterTextFieldQuery
+	p.retryConfirmID = ""
 }
 
 func trimLastByte(value string) string {

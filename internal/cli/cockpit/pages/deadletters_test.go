@@ -138,15 +138,15 @@ func TestDeadLettersPage_Title(t *testing.T) {
 func TestDeadLettersPage_ShortHelp(t *testing.T) {
 	page := NewDeadLettersPage(nil, nil)
 	bindings := page.ShortHelp()
-	require.Len(t, bindings, 9)
+	require.Len(t, bindings, 10)
 }
 
 func TestDeadLettersPage_ShortHelpIncludesRetryWhenEnabled(t *testing.T) {
 	page := NewDeadLettersPage(nil, nil, (&mockDeadLetterRetryFn{}).call)
 	page.detail = &postadjudicationstatus.TransactionStatus{CanRetry: true}
 	bindings := page.ShortHelp()
-	require.Len(t, bindings, 10)
-	assert.Equal(t, "r", bindings[9].Keys()[0])
+	require.Len(t, bindings, 11)
+	assert.Equal(t, "r", bindings[10].Keys()[0])
 }
 
 func TestDeadLettersPage_ShortHelpShowsConfirmWhenPending(t *testing.T) {
@@ -156,8 +156,8 @@ func TestDeadLettersPage_ShortHelpShowsConfirmWhenPending(t *testing.T) {
 	page.retryConfirmID = "tx-1"
 
 	bindings := page.ShortHelp()
-	require.Len(t, bindings, 10)
-	assert.Equal(t, "confirm", bindings[9].Help().Desc)
+	require.Len(t, bindings, 11)
+	assert.Equal(t, "confirm", bindings[10].Help().Desc)
 }
 
 func TestDeadLettersPage_ActivateLoadsBacklogAndDetail(t *testing.T) {
@@ -799,4 +799,233 @@ func TestDeadLettersPage_RetryConfirmClearsOnFilterApply(t *testing.T) {
 	page = updated.(*DeadLettersPage)
 	require.NotNil(t, reloadCmd)
 	assert.False(t, page.retryConfirmActive())
+}
+
+func TestDeadLettersPage_ResetShortcutClearsDraftAppliedAndReloads(t *testing.T) {
+	listFn := &mockDeadLetterListFn{
+		items: []postadjudicationstatus.DeadLetterBacklogEntry{
+			{TransactionReceiptID: "tx-2", SubmissionReceiptID: "sub-2", Adjudication: "release", LatestStatusSubtype: "manual-retry-requested", LatestStatusSubtypeFamily: "manual-retry", AnyMatchFamilies: []string{"manual-retry", "retry"}, LatestDispatchReference: "dispatch-2", LatestManualReplayActor: "operator:alice", LatestDeadLetteredAt: "2026-04-24T12:00:00Z", LatestRetryAttempt: 4, LatestDeadLetterReason: "release failed", IsDeadLettered: true, CanRetry: true},
+			{TransactionReceiptID: "tx-3", SubmissionReceiptID: "sub-3", Adjudication: "refund", LatestStatusSubtype: "dead-lettered", LatestStatusSubtypeFamily: "dead-letter", AnyMatchFamilies: []string{"dead-letter"}, LatestDispatchReference: "dispatch-3", LatestManualReplayActor: "operator:bob", LatestDeadLetteredAt: "2026-04-24T10:00:00Z", LatestRetryAttempt: 2, LatestDeadLetterReason: "refund failed", IsDeadLettered: true, CanRetry: true},
+		},
+	}
+	detailFn := &mockDeadLetterDetailFn{
+		statusByID: map[string]postadjudicationstatus.TransactionStatus{
+			"tx-2": {CanonicalSnapshot: postadjudicationstatus.CanonicalSnapshot{TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-2"}, SubmissionReceipt: receipts.SubmissionReceipt{SubmissionReceiptID: "sub-2"}}, CanRetry: true, Adjudication: "release", IsDeadLettered: true},
+			"tx-3": {CanonicalSnapshot: postadjudicationstatus.CanonicalSnapshot{TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-3"}, SubmissionReceipt: receipts.SubmissionReceipt{SubmissionReceiptID: "sub-3"}}, CanRetry: true, Adjudication: "refund", IsDeadLettered: true},
+		},
+	}
+
+	page := NewDeadLettersPage(listFn.call, detailFn.call, (&mockDeadLetterRetryFn{}).call)
+	updated, detailCmd := page.Update(page.Activate()())
+	page = updated.(*DeadLettersPage)
+	require.NotNil(t, detailCmd)
+	updated, _ = page.Update(detailCmd())
+	page = updated.(*DeadLettersPage)
+
+	for _, keyMsg := range []tea.KeyMsg{
+		{Type: tea.KeyRunes, Runes: []rune("t")},
+		{Type: tea.KeyRunes, Runes: []rune("x")},
+		{Type: tea.KeyRunes, Runes: []rune("-")},
+		{Type: tea.KeyRunes, Runes: []rune("2")},
+		{Type: tea.KeyTab},
+		{Type: tea.KeyRunes, Runes: []rune("o")},
+		{Type: tea.KeyRunes, Runes: []rune("p")},
+		{Type: tea.KeyRunes, Runes: []rune("1")},
+		{Type: tea.KeyTab},
+		{Type: tea.KeyRunes, Runes: []rune("2")},
+		{Type: tea.KeyRunes, Runes: []rune("0")},
+		{Type: tea.KeyRunes, Runes: []rune("2")},
+		{Type: tea.KeyRunes, Runes: []rune("6")},
+		{Type: tea.KeyRunes, Runes: []rune("-")},
+		{Type: tea.KeyRunes, Runes: []rune("0")},
+		{Type: tea.KeyRunes, Runes: []rune("4")},
+		{Type: tea.KeyRunes, Runes: []rune("-")},
+		{Type: tea.KeyRunes, Runes: []rune("2")},
+		{Type: tea.KeyRunes, Runes: []rune("4")},
+		{Type: tea.KeyRunes, Runes: []rune("T")},
+		{Type: tea.KeyRunes, Runes: []rune("1")},
+		{Type: tea.KeyRunes, Runes: []rune("0")},
+		{Type: tea.KeyRunes, Runes: []rune(":")},
+		{Type: tea.KeyRunes, Runes: []rune("0")},
+		{Type: tea.KeyRunes, Runes: []rune("0")},
+		{Type: tea.KeyRunes, Runes: []rune(":")},
+		{Type: tea.KeyRunes, Runes: []rune("0")},
+		{Type: tea.KeyRunes, Runes: []rune("0")},
+		{Type: tea.KeyRunes, Runes: []rune("Z")},
+		{Type: tea.KeyTab},
+		{Type: tea.KeyRunes, Runes: []rune("2")},
+		{Type: tea.KeyRunes, Runes: []rune("0")},
+		{Type: tea.KeyRunes, Runes: []rune("2")},
+		{Type: tea.KeyRunes, Runes: []rune("6")},
+		{Type: tea.KeyRunes, Runes: []rune("-")},
+		{Type: tea.KeyRunes, Runes: []rune("0")},
+		{Type: tea.KeyRunes, Runes: []rune("4")},
+		{Type: tea.KeyRunes, Runes: []rune("-")},
+		{Type: tea.KeyRunes, Runes: []rune("2")},
+		{Type: tea.KeyRunes, Runes: []rune("4")},
+		{Type: tea.KeyRunes, Runes: []rune("T")},
+		{Type: tea.KeyRunes, Runes: []rune("1")},
+		{Type: tea.KeyRunes, Runes: []rune("1")},
+		{Type: tea.KeyRunes, Runes: []rune(":")},
+		{Type: tea.KeyRunes, Runes: []rune("0")},
+		{Type: tea.KeyRunes, Runes: []rune("0")},
+		{Type: tea.KeyRunes, Runes: []rune(":")},
+		{Type: tea.KeyRunes, Runes: []rune("0")},
+		{Type: tea.KeyRunes, Runes: []rune("0")},
+		{Type: tea.KeyRunes, Runes: []rune("Z")},
+		{Type: tea.KeyTab},
+		{Type: tea.KeyRunes, Runes: []rune("f")},
+		{Type: tea.KeyRunes, Runes: []rune("a")},
+		{Type: tea.KeyRunes, Runes: []rune("i")},
+		{Type: tea.KeyRunes, Runes: []rune("l")},
+		{Type: tea.KeyTab},
+		{Type: tea.KeyRunes, Runes: []rune("d")},
+		{Type: tea.KeyRunes, Runes: []rune("i")},
+		{Type: tea.KeyRunes, Runes: []rune("s")},
+		{Type: tea.KeyRight},
+		{Type: tea.KeyRunes, Runes: []rune("]")},
+		{Type: tea.KeyRunes, Runes: []rune(".")},
+		{Type: tea.KeyRunes, Runes: []rune("/")},
+	} {
+		updated, _ = page.Update(keyMsg)
+		page = updated.(*DeadLettersPage)
+	}
+
+	updated, reloadCmd := page.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	page = updated.(*DeadLettersPage)
+	require.NotNil(t, reloadCmd)
+	updated, detailCmd = page.Update(reloadCmd())
+	page = updated.(*DeadLettersPage)
+	if detailCmd != nil {
+		updated, _ = page.Update(detailCmd())
+		page = updated.(*DeadLettersPage)
+	}
+
+	assert.NotEmpty(t, page.appliedQuery)
+	assert.NotEmpty(t, page.appliedManualReplayActor)
+	assert.NotEmpty(t, page.appliedDeadLetteredAfter)
+	assert.NotEmpty(t, page.appliedDeadLetteredBefore)
+	assert.NotEmpty(t, page.appliedDeadLetterReasonQuery)
+	assert.NotEmpty(t, page.appliedLatestDispatchReference)
+	assert.NotEqual(t, deadLetterAdjudicationAll, page.appliedAdjudication)
+	assert.NotEqual(t, deadLetterSubtypeAll, page.appliedSubtype)
+	assert.NotEqual(t, deadLetterFamilyAll, page.appliedFamily)
+	assert.NotEqual(t, deadLetterFamilyAll, page.appliedAnyMatchFamily)
+
+	updated, resetCmd := page.Update(tea.KeyMsg{Type: tea.KeyCtrlR})
+	page = updated.(*DeadLettersPage)
+	require.NotNil(t, resetCmd)
+	assert.Equal(t, deadLetterTextFieldQuery, page.activeTextField)
+	assert.Empty(t, page.queryDraft)
+	assert.Empty(t, page.manualReplayActorDraft)
+	assert.Empty(t, page.deadLetteredAfterDraft)
+	assert.Empty(t, page.deadLetteredBeforeDraft)
+	assert.Empty(t, page.deadLetterReasonQueryDraft)
+	assert.Empty(t, page.latestDispatchReferenceDraft)
+	assert.Empty(t, page.appliedQuery)
+	assert.Empty(t, page.appliedManualReplayActor)
+	assert.Empty(t, page.appliedDeadLetteredAfter)
+	assert.Empty(t, page.appliedDeadLetteredBefore)
+	assert.Empty(t, page.appliedDeadLetterReasonQuery)
+	assert.Empty(t, page.appliedLatestDispatchReference)
+	assert.Equal(t, deadLetterAdjudicationAll, page.appliedAdjudication)
+	assert.Equal(t, deadLetterSubtypeAll, page.appliedSubtype)
+	assert.Equal(t, deadLetterFamilyAll, page.appliedFamily)
+	assert.Equal(t, deadLetterFamilyAll, page.appliedAnyMatchFamily)
+
+	updated, detailCmd = page.Update(resetCmd())
+	page = updated.(*DeadLettersPage)
+	require.NotNil(t, detailCmd)
+	assert.Equal(t, DeadLetterListOptions{}, listFn.lastOptions)
+	assert.Equal(t, 0, page.cursor)
+	assert.Equal(t, "tx-2", page.selectedID)
+
+	updated, _ = page.Update(detailCmd())
+	page = updated.(*DeadLettersPage)
+	require.NotNil(t, page.detail)
+	assert.Equal(t, "tx-2", page.detail.CanonicalSnapshot.TransactionReceipt.TransactionReceiptID)
+}
+
+func TestDeadLettersPage_ResetShortcutClearsRetryConfirmState(t *testing.T) {
+	listFn := &mockDeadLetterListFn{
+		items: []postadjudicationstatus.DeadLetterBacklogEntry{
+			{TransactionReceiptID: "tx-1", SubmissionReceiptID: "sub-1", Adjudication: "release", LatestRetryAttempt: 3, LatestDeadLetterReason: "terminal failure", IsDeadLettered: true, CanRetry: true},
+		},
+	}
+	detailFn := &mockDeadLetterDetailFn{
+		statusByID: map[string]postadjudicationstatus.TransactionStatus{
+			"tx-1": {
+				CanonicalSnapshot: postadjudicationstatus.CanonicalSnapshot{
+					TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-1"},
+					SubmissionReceipt:  receipts.SubmissionReceipt{SubmissionReceiptID: "sub-1"},
+				},
+				IsDeadLettered: true,
+				CanRetry:       true,
+				Adjudication:   "release",
+			},
+		},
+	}
+
+	page := NewDeadLettersPage(listFn.call, detailFn.call, (&mockDeadLetterRetryFn{}).call)
+	updated, detailCmd := page.Update(page.Activate()())
+	page = updated.(*DeadLettersPage)
+	updated, _ = page.Update(detailCmd())
+	page = updated.(*DeadLettersPage)
+
+	updated, _ = page.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
+	page = updated.(*DeadLettersPage)
+	require.True(t, page.retryConfirmActive())
+
+	updated, resetCmd := page.Update(tea.KeyMsg{Type: tea.KeyCtrlR})
+	page = updated.(*DeadLettersPage)
+	require.NotNil(t, resetCmd)
+	assert.False(t, page.retryConfirmActive())
+}
+
+func TestDeadLettersPage_ResetShortcutIgnoredWhileRetryRunning(t *testing.T) {
+	listFn := &mockDeadLetterListFn{
+		items: []postadjudicationstatus.DeadLetterBacklogEntry{
+			{TransactionReceiptID: "tx-1", SubmissionReceiptID: "sub-1", Adjudication: "release", LatestRetryAttempt: 3, LatestDeadLetterReason: "terminal failure", IsDeadLettered: true, CanRetry: true},
+		},
+	}
+	detailFn := &mockDeadLetterDetailFn{
+		statusByID: map[string]postadjudicationstatus.TransactionStatus{
+			"tx-1": {
+				CanonicalSnapshot: postadjudicationstatus.CanonicalSnapshot{
+					TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-1"},
+					SubmissionReceipt:  receipts.SubmissionReceipt{SubmissionReceiptID: "sub-1"},
+				},
+				IsDeadLettered: true,
+				CanRetry:       true,
+				Adjudication:   "release",
+			},
+		},
+	}
+	retryFn := &mockDeadLetterRetryFn{}
+
+	page := NewDeadLettersPage(listFn.call, detailFn.call, retryFn.call)
+	updated, detailCmd := page.Update(page.Activate()())
+	page = updated.(*DeadLettersPage)
+	updated, _ = page.Update(detailCmd())
+	page = updated.(*DeadLettersPage)
+
+	updated, _ = page.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
+	page = updated.(*DeadLettersPage)
+	updated, retryCmd := page.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
+	page = updated.(*DeadLettersPage)
+	require.NotNil(t, retryCmd)
+	require.True(t, page.retryRunning())
+
+	page.queryDraft = "stale"
+	page.appliedQuery = "stale"
+	page.retryConfirmID = "tx-1"
+
+	updated, resetCmd := page.Update(tea.KeyMsg{Type: tea.KeyCtrlR})
+	page = updated.(*DeadLettersPage)
+	assert.Nil(t, resetCmd)
+	assert.Equal(t, "stale", page.queryDraft)
+	assert.Equal(t, "stale", page.appliedQuery)
+	assert.Equal(t, "tx-1", page.retryConfirmID)
+	assert.True(t, page.retryRunning())
+	assert.Equal(t, 1, listFn.called)
 }
