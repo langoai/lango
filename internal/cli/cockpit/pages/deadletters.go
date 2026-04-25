@@ -263,7 +263,7 @@ func (p *DeadLettersPage) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		p.statusMsg = "Retry requested: " + msg.transactionID
 		p.detailErr = nil
-		return p, p.refreshAfterRetry(msg.transactionID)
+		return p, p.refreshAfterRetry()
 	case tea.KeyMsg:
 		p.statusMsg = ""
 		if p.activeTextField != deadLetterTextFieldQuery &&
@@ -280,6 +280,7 @@ func (p *DeadLettersPage) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		switch msg.String() {
 		case "enter":
+			selectedID := p.selectedID
 			p.retryConfirmID = ""
 			p.appliedQuery = strings.TrimSpace(p.queryDraft)
 			p.appliedManualReplayActor = strings.TrimSpace(p.manualReplayActorDraft)
@@ -293,15 +294,16 @@ func (p *DeadLettersPage) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			p.appliedAnyMatchFamily = p.anyMatchFamilyDraft
 			p.detail = nil
 			p.detailErr = nil
-			return p, p.loadBacklog()
+			return p, p.reloadBacklogPreservingSelection(selectedID)
 		case "ctrl+r":
 			if p.retryRunning() {
 				return p, nil
 			}
+			selectedID := p.selectedID
 			p.resetFilters()
 			p.detail = nil
 			p.detailErr = nil
-			return p, p.loadBacklog()
+			return p, p.reloadBacklogPreservingSelection(selectedID)
 		case "tab":
 			p.retryConfirmID = ""
 			p.activeTextField = p.activeTextField.next()
@@ -560,6 +562,13 @@ func (p *DeadLettersPage) loadBacklog() tea.Cmd {
 	return p.loadBacklogWithSelection("", false)
 }
 
+func (p *DeadLettersPage) reloadBacklogPreservingSelection(selectedID string) tea.Cmd {
+	if strings.TrimSpace(selectedID) == "" {
+		return p.loadBacklog()
+	}
+	return p.loadBacklogWithSelection(selectedID, true)
+}
+
 func (p *DeadLettersPage) loadBacklogWithSelection(selectedID string, preserveSelection bool) tea.Cmd {
 	listFn := p.listFn
 	opts := DeadLetterListOptions{
@@ -637,8 +646,8 @@ func (p *DeadLettersPage) retrySelected() tea.Cmd {
 	}
 }
 
-func (p *DeadLettersPage) refreshAfterRetry(transactionID string) tea.Cmd {
-	return p.loadBacklogWithSelection(transactionID, true)
+func (p *DeadLettersPage) refreshAfterRetry() tea.Cmd {
+	return p.reloadBacklogPreservingSelection(p.selectedID)
 }
 
 func (f deadLetterAdjudicationFilter) next() deadLetterAdjudicationFilter {

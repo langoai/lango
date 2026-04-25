@@ -130,6 +130,39 @@ func (m *mockDeadLetterRetryFn) call(_ context.Context, transactionReceiptID str
 	return nil
 }
 
+type sequenceDeadLetterListFn struct {
+	results     [][]postadjudicationstatus.DeadLetterBacklogEntry
+	errs        []error
+	called      int
+	lastOptions DeadLetterListOptions
+}
+
+func (m *sequenceDeadLetterListFn) call(_ context.Context, opts DeadLetterListOptions) ([]postadjudicationstatus.DeadLetterBacklogEntry, error) {
+	m.called++
+	m.lastOptions = opts
+
+	idx := m.called - 1
+	if idx >= len(m.results) {
+		idx = len(m.results) - 1
+	}
+	if idx < 0 {
+		idx = 0
+	}
+
+	if len(m.errs) > 0 {
+		errIdx := m.called - 1
+		if errIdx >= len(m.errs) {
+			errIdx = len(m.errs) - 1
+		}
+		if errIdx >= 0 && m.errs[errIdx] != nil {
+			return nil, m.errs[errIdx]
+		}
+	}
+
+	items := m.results[idx]
+	return append([]postadjudicationstatus.DeadLetterBacklogEntry(nil), items...), nil
+}
+
 func TestDeadLettersPage_Title(t *testing.T) {
 	page := NewDeadLettersPage(nil, nil)
 	assert.Equal(t, "Dead Letters", page.Title())
@@ -395,6 +428,144 @@ func TestDeadLettersPage_ApplyFiltersReloadsAndResetsSelection(t *testing.T) {
 	page = updated.(*DeadLettersPage)
 	require.NotNil(t, page.detail)
 	assert.Equal(t, "tx-2", page.detail.CanonicalSnapshot.TransactionReceipt.TransactionReceiptID)
+}
+
+func TestDeadLettersPage_ApplyFiltersPreservesSelectionWhenPresent(t *testing.T) {
+	listFn := &mockDeadLetterListFn{
+		items: []postadjudicationstatus.DeadLetterBacklogEntry{
+			{TransactionReceiptID: "tx-1", SubmissionReceiptID: "sub-1", Adjudication: "release", LatestManualReplayActor: "operator:bob", IsDeadLettered: true, CanRetry: true},
+			{TransactionReceiptID: "tx-2", SubmissionReceiptID: "sub-2", Adjudication: "release", LatestManualReplayActor: "operator:alice", IsDeadLettered: true, CanRetry: true},
+			{TransactionReceiptID: "tx-3", SubmissionReceiptID: "sub-3", Adjudication: "refund", LatestManualReplayActor: "operator:alice", IsDeadLettered: true, CanRetry: true},
+		},
+	}
+	detailFn := &mockDeadLetterDetailFn{
+		statusByID: map[string]postadjudicationstatus.TransactionStatus{
+			"tx-1": {CanonicalSnapshot: postadjudicationstatus.CanonicalSnapshot{TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-1"}, SubmissionReceipt: receipts.SubmissionReceipt{SubmissionReceiptID: "sub-1"}}, CanRetry: true},
+			"tx-2": {CanonicalSnapshot: postadjudicationstatus.CanonicalSnapshot{TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-2"}, SubmissionReceipt: receipts.SubmissionReceipt{SubmissionReceiptID: "sub-2"}}, CanRetry: true},
+			"tx-3": {CanonicalSnapshot: postadjudicationstatus.CanonicalSnapshot{TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-3"}, SubmissionReceipt: receipts.SubmissionReceipt{SubmissionReceiptID: "sub-3"}}, CanRetry: true},
+		},
+	}
+
+	page := NewDeadLettersPage(listFn.call, detailFn.call, (&mockDeadLetterRetryFn{}).call)
+	updated, detailCmd := page.Update(page.Activate()())
+	page = updated.(*DeadLettersPage)
+	updated, _ = page.Update(detailCmd())
+	page = updated.(*DeadLettersPage)
+
+	updated, detailCmd = page.Update(tea.KeyMsg{Type: tea.KeyDown})
+	page = updated.(*DeadLettersPage)
+	updated, _ = page.Update(detailCmd())
+	page = updated.(*DeadLettersPage)
+
+	updated, detailCmd = page.Update(tea.KeyMsg{Type: tea.KeyDown})
+	page = updated.(*DeadLettersPage)
+	updated, _ = page.Update(detailCmd())
+	page = updated.(*DeadLettersPage)
+	require.Equal(t, "tx-3", page.selectedID)
+
+	for _, keyMsg := range []tea.KeyMsg{
+		{Type: tea.KeyTab},
+		{Type: tea.KeyRunes, Runes: []rune("o")},
+		{Type: tea.KeyRunes, Runes: []rune("p")},
+		{Type: tea.KeyRunes, Runes: []rune("e")},
+		{Type: tea.KeyRunes, Runes: []rune("r")},
+		{Type: tea.KeyRunes, Runes: []rune("a")},
+		{Type: tea.KeyRunes, Runes: []rune("t")},
+		{Type: tea.KeyRunes, Runes: []rune("o")},
+		{Type: tea.KeyRunes, Runes: []rune("r")},
+		{Type: tea.KeyRunes, Runes: []rune(":")},
+		{Type: tea.KeyRunes, Runes: []rune("a")},
+		{Type: tea.KeyRunes, Runes: []rune("l")},
+		{Type: tea.KeyRunes, Runes: []rune("i")},
+		{Type: tea.KeyRunes, Runes: []rune("c")},
+		{Type: tea.KeyRunes, Runes: []rune("e")},
+	} {
+		updated, _ = page.Update(keyMsg)
+		page = updated.(*DeadLettersPage)
+	}
+
+	updated, reloadCmd := page.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	page = updated.(*DeadLettersPage)
+	require.NotNil(t, reloadCmd)
+
+	updated, detailCmd = page.Update(reloadCmd())
+	page = updated.(*DeadLettersPage)
+	require.NotNil(t, detailCmd)
+	assert.Equal(t, "tx-3", page.selectedID)
+	assert.Equal(t, 1, page.cursor)
+
+	updated, _ = page.Update(detailCmd())
+	page = updated.(*DeadLettersPage)
+	require.NotNil(t, page.detail)
+	assert.Equal(t, "tx-3", page.detail.CanonicalSnapshot.TransactionReceipt.TransactionReceiptID)
+}
+
+func TestDeadLettersPage_ApplyFiltersFallsBackToFirstRowWhenSelectionDisappears(t *testing.T) {
+	listFn := &mockDeadLetterListFn{
+		items: []postadjudicationstatus.DeadLetterBacklogEntry{
+			{TransactionReceiptID: "tx-1", SubmissionReceiptID: "sub-1", Adjudication: "release", LatestManualReplayActor: "operator:bob", IsDeadLettered: true, CanRetry: true},
+			{TransactionReceiptID: "tx-2", SubmissionReceiptID: "sub-2", Adjudication: "release", LatestManualReplayActor: "operator:alice", IsDeadLettered: true, CanRetry: true},
+			{TransactionReceiptID: "tx-3", SubmissionReceiptID: "sub-3", Adjudication: "refund", LatestManualReplayActor: "operator:alice", IsDeadLettered: true, CanRetry: true},
+		},
+	}
+	detailFn := &mockDeadLetterDetailFn{
+		statusByID: map[string]postadjudicationstatus.TransactionStatus{
+			"tx-1": {CanonicalSnapshot: postadjudicationstatus.CanonicalSnapshot{TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-1"}, SubmissionReceipt: receipts.SubmissionReceipt{SubmissionReceiptID: "sub-1"}}, CanRetry: true},
+			"tx-2": {CanonicalSnapshot: postadjudicationstatus.CanonicalSnapshot{TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-2"}, SubmissionReceipt: receipts.SubmissionReceipt{SubmissionReceiptID: "sub-2"}}, CanRetry: true},
+			"tx-3": {CanonicalSnapshot: postadjudicationstatus.CanonicalSnapshot{TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-3"}, SubmissionReceipt: receipts.SubmissionReceipt{SubmissionReceiptID: "sub-3"}}, CanRetry: true},
+		},
+	}
+
+	page := NewDeadLettersPage(listFn.call, detailFn.call, (&mockDeadLetterRetryFn{}).call)
+	updated, detailCmd := page.Update(page.Activate()())
+	page = updated.(*DeadLettersPage)
+	updated, _ = page.Update(detailCmd())
+	page = updated.(*DeadLettersPage)
+
+	updated, detailCmd = page.Update(tea.KeyMsg{Type: tea.KeyDown})
+	page = updated.(*DeadLettersPage)
+	updated, _ = page.Update(detailCmd())
+	page = updated.(*DeadLettersPage)
+
+	updated, detailCmd = page.Update(tea.KeyMsg{Type: tea.KeyDown})
+	page = updated.(*DeadLettersPage)
+	updated, _ = page.Update(detailCmd())
+	page = updated.(*DeadLettersPage)
+	require.Equal(t, "tx-3", page.selectedID)
+
+	for _, keyMsg := range []tea.KeyMsg{
+		{Type: tea.KeyTab},
+		{Type: tea.KeyRunes, Runes: []rune("o")},
+		{Type: tea.KeyRunes, Runes: []rune("p")},
+		{Type: tea.KeyRunes, Runes: []rune("e")},
+		{Type: tea.KeyRunes, Runes: []rune("r")},
+		{Type: tea.KeyRunes, Runes: []rune("a")},
+		{Type: tea.KeyRunes, Runes: []rune("t")},
+		{Type: tea.KeyRunes, Runes: []rune("o")},
+		{Type: tea.KeyRunes, Runes: []rune("r")},
+		{Type: tea.KeyRunes, Runes: []rune(":")},
+		{Type: tea.KeyRunes, Runes: []rune("b")},
+		{Type: tea.KeyRunes, Runes: []rune("o")},
+		{Type: tea.KeyRunes, Runes: []rune("b")},
+	} {
+		updated, _ = page.Update(keyMsg)
+		page = updated.(*DeadLettersPage)
+	}
+
+	updated, reloadCmd := page.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	page = updated.(*DeadLettersPage)
+	require.NotNil(t, reloadCmd)
+
+	updated, detailCmd = page.Update(reloadCmd())
+	page = updated.(*DeadLettersPage)
+	require.NotNil(t, detailCmd)
+	assert.Equal(t, "tx-1", page.selectedID)
+	assert.Equal(t, 0, page.cursor)
+
+	updated, _ = page.Update(detailCmd())
+	page = updated.(*DeadLettersPage)
+	require.NotNil(t, page.detail)
+	assert.Equal(t, "tx-1", page.detail.CanonicalSnapshot.TransactionReceipt.TransactionReceiptID)
 }
 
 func TestDeadLettersPage_EmptyFilteredResultClearsDetail(t *testing.T) {
@@ -1028,4 +1199,194 @@ func TestDeadLettersPage_ResetShortcutIgnoredWhileRetryRunning(t *testing.T) {
 	assert.Equal(t, "tx-1", page.retryConfirmID)
 	assert.True(t, page.retryRunning())
 	assert.Equal(t, 1, listFn.called)
+}
+
+func TestDeadLettersPage_ResetShortcutPreservesSelectionWhenPresent(t *testing.T) {
+	listFn := &mockDeadLetterListFn{
+		items: []postadjudicationstatus.DeadLetterBacklogEntry{
+			{TransactionReceiptID: "tx-1", SubmissionReceiptID: "sub-1", Adjudication: "release", LatestManualReplayActor: "operator:bob", IsDeadLettered: true, CanRetry: true},
+			{TransactionReceiptID: "tx-2", SubmissionReceiptID: "sub-2", Adjudication: "release", LatestManualReplayActor: "operator:alice", IsDeadLettered: true, CanRetry: true},
+			{TransactionReceiptID: "tx-3", SubmissionReceiptID: "sub-3", Adjudication: "refund", LatestManualReplayActor: "operator:alice", IsDeadLettered: true, CanRetry: true},
+		},
+	}
+	detailFn := &mockDeadLetterDetailFn{
+		statusByID: map[string]postadjudicationstatus.TransactionStatus{
+			"tx-1": {CanonicalSnapshot: postadjudicationstatus.CanonicalSnapshot{TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-1"}, SubmissionReceipt: receipts.SubmissionReceipt{SubmissionReceiptID: "sub-1"}}, CanRetry: true},
+			"tx-2": {CanonicalSnapshot: postadjudicationstatus.CanonicalSnapshot{TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-2"}, SubmissionReceipt: receipts.SubmissionReceipt{SubmissionReceiptID: "sub-2"}}, CanRetry: true},
+			"tx-3": {CanonicalSnapshot: postadjudicationstatus.CanonicalSnapshot{TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-3"}, SubmissionReceipt: receipts.SubmissionReceipt{SubmissionReceiptID: "sub-3"}}, CanRetry: true},
+		},
+	}
+
+	page := NewDeadLettersPage(listFn.call, detailFn.call, (&mockDeadLetterRetryFn{}).call)
+	updated, detailCmd := page.Update(page.Activate()())
+	page = updated.(*DeadLettersPage)
+	updated, _ = page.Update(detailCmd())
+	page = updated.(*DeadLettersPage)
+
+	updated, detailCmd = page.Update(tea.KeyMsg{Type: tea.KeyDown})
+	page = updated.(*DeadLettersPage)
+	updated, _ = page.Update(detailCmd())
+	page = updated.(*DeadLettersPage)
+	require.Equal(t, "tx-2", page.selectedID)
+
+	for _, keyMsg := range []tea.KeyMsg{
+		{Type: tea.KeyTab},
+		{Type: tea.KeyRunes, Runes: []rune("o")},
+		{Type: tea.KeyRunes, Runes: []rune("p")},
+		{Type: tea.KeyRunes, Runes: []rune("e")},
+		{Type: tea.KeyRunes, Runes: []rune("r")},
+		{Type: tea.KeyRunes, Runes: []rune("a")},
+		{Type: tea.KeyRunes, Runes: []rune("t")},
+		{Type: tea.KeyRunes, Runes: []rune("o")},
+		{Type: tea.KeyRunes, Runes: []rune("r")},
+		{Type: tea.KeyRunes, Runes: []rune(":")},
+		{Type: tea.KeyRunes, Runes: []rune("a")},
+		{Type: tea.KeyRunes, Runes: []rune("l")},
+		{Type: tea.KeyRunes, Runes: []rune("i")},
+		{Type: tea.KeyRunes, Runes: []rune("c")},
+		{Type: tea.KeyRunes, Runes: []rune("e")},
+	} {
+		updated, _ = page.Update(keyMsg)
+		page = updated.(*DeadLettersPage)
+	}
+
+	updated, reloadCmd := page.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	page = updated.(*DeadLettersPage)
+	updated, detailCmd = page.Update(reloadCmd())
+	page = updated.(*DeadLettersPage)
+	updated, _ = page.Update(detailCmd())
+	page = updated.(*DeadLettersPage)
+	require.Equal(t, "tx-2", page.selectedID)
+
+	updated, resetCmd := page.Update(tea.KeyMsg{Type: tea.KeyCtrlR})
+	page = updated.(*DeadLettersPage)
+	require.NotNil(t, resetCmd)
+
+	updated, detailCmd = page.Update(resetCmd())
+	page = updated.(*DeadLettersPage)
+	require.NotNil(t, detailCmd)
+	assert.Equal(t, "tx-2", page.selectedID)
+	assert.Equal(t, 1, page.cursor)
+
+	updated, _ = page.Update(detailCmd())
+	page = updated.(*DeadLettersPage)
+	require.NotNil(t, page.detail)
+	assert.Equal(t, "tx-2", page.detail.CanonicalSnapshot.TransactionReceipt.TransactionReceiptID)
+}
+
+func TestDeadLettersPage_RetrySuccessRefreshPreservesCurrentSelectionWhenPresent(t *testing.T) {
+	listFn := &sequenceDeadLetterListFn{
+		results: [][]postadjudicationstatus.DeadLetterBacklogEntry{
+			{
+				{TransactionReceiptID: "tx-1", SubmissionReceiptID: "sub-1", Adjudication: "release", IsDeadLettered: true, CanRetry: true},
+				{TransactionReceiptID: "tx-2", SubmissionReceiptID: "sub-2", Adjudication: "refund", IsDeadLettered: true, CanRetry: true},
+			},
+			{
+				{TransactionReceiptID: "tx-1", SubmissionReceiptID: "sub-1", Adjudication: "release", IsDeadLettered: true, CanRetry: true},
+				{TransactionReceiptID: "tx-2", SubmissionReceiptID: "sub-2", Adjudication: "refund", IsDeadLettered: true, CanRetry: true},
+			},
+		},
+	}
+	detailFn := &mockDeadLetterDetailFn{
+		statusByID: map[string]postadjudicationstatus.TransactionStatus{
+			"tx-1": {CanonicalSnapshot: postadjudicationstatus.CanonicalSnapshot{TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-1"}, SubmissionReceipt: receipts.SubmissionReceipt{SubmissionReceiptID: "sub-1"}}, CanRetry: true},
+			"tx-2": {CanonicalSnapshot: postadjudicationstatus.CanonicalSnapshot{TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-2"}, SubmissionReceipt: receipts.SubmissionReceipt{SubmissionReceiptID: "sub-2"}}, CanRetry: true},
+		},
+	}
+	retryFn := &mockDeadLetterRetryFn{}
+
+	page := NewDeadLettersPage(listFn.call, detailFn.call, retryFn.call)
+	updated, detailCmd := page.Update(page.Activate()())
+	page = updated.(*DeadLettersPage)
+	updated, _ = page.Update(detailCmd())
+	page = updated.(*DeadLettersPage)
+
+	updated, retryCmd := page.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
+	page = updated.(*DeadLettersPage)
+	assert.Nil(t, retryCmd)
+
+	updated, retryCmd = page.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
+	page = updated.(*DeadLettersPage)
+	require.NotNil(t, retryCmd)
+	require.Equal(t, "tx-1", page.retryRunningID)
+
+	updated, detailCmd = page.Update(tea.KeyMsg{Type: tea.KeyDown})
+	page = updated.(*DeadLettersPage)
+	require.NotNil(t, detailCmd)
+	assert.Equal(t, "tx-2", page.selectedID)
+	updated, _ = page.Update(detailCmd())
+	page = updated.(*DeadLettersPage)
+
+	updated, refreshCmd := page.Update(retryCmd())
+	page = updated.(*DeadLettersPage)
+	require.NotNil(t, refreshCmd)
+	assert.Equal(t, []string{"tx-1"}, retryFn.calls)
+
+	updated, detailCmd = page.Update(refreshCmd())
+	page = updated.(*DeadLettersPage)
+	require.NotNil(t, detailCmd)
+	assert.Equal(t, "tx-2", page.selectedID)
+	assert.Equal(t, 1, page.cursor)
+
+	updated, _ = page.Update(detailCmd())
+	page = updated.(*DeadLettersPage)
+	require.NotNil(t, page.detail)
+	assert.Equal(t, "tx-2", page.detail.CanonicalSnapshot.TransactionReceipt.TransactionReceiptID)
+}
+
+func TestDeadLettersPage_RetrySuccessRefreshFallsBackToFirstRowWhenSelectionDisappears(t *testing.T) {
+	listFn := &sequenceDeadLetterListFn{
+		results: [][]postadjudicationstatus.DeadLetterBacklogEntry{
+			{
+				{TransactionReceiptID: "tx-1", SubmissionReceiptID: "sub-1", Adjudication: "release", IsDeadLettered: true, CanRetry: true},
+				{TransactionReceiptID: "tx-2", SubmissionReceiptID: "sub-2", Adjudication: "refund", IsDeadLettered: true, CanRetry: true},
+			},
+			{
+				{TransactionReceiptID: "tx-1", SubmissionReceiptID: "sub-1", Adjudication: "release", IsDeadLettered: true, CanRetry: true},
+			},
+		},
+	}
+	detailFn := &mockDeadLetterDetailFn{
+		statusByID: map[string]postadjudicationstatus.TransactionStatus{
+			"tx-1": {CanonicalSnapshot: postadjudicationstatus.CanonicalSnapshot{TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-1"}, SubmissionReceipt: receipts.SubmissionReceipt{SubmissionReceiptID: "sub-1"}}, CanRetry: true},
+			"tx-2": {CanonicalSnapshot: postadjudicationstatus.CanonicalSnapshot{TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-2"}, SubmissionReceipt: receipts.SubmissionReceipt{SubmissionReceiptID: "sub-2"}}, CanRetry: true},
+		},
+	}
+	retryFn := &mockDeadLetterRetryFn{}
+
+	page := NewDeadLettersPage(listFn.call, detailFn.call, retryFn.call)
+	updated, detailCmd := page.Update(page.Activate()())
+	page = updated.(*DeadLettersPage)
+	updated, _ = page.Update(detailCmd())
+	page = updated.(*DeadLettersPage)
+
+	updated, retryCmd := page.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
+	page = updated.(*DeadLettersPage)
+	assert.Nil(t, retryCmd)
+
+	updated, retryCmd = page.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
+	page = updated.(*DeadLettersPage)
+	require.NotNil(t, retryCmd)
+
+	updated, detailCmd = page.Update(tea.KeyMsg{Type: tea.KeyDown})
+	page = updated.(*DeadLettersPage)
+	require.NotNil(t, detailCmd)
+	assert.Equal(t, "tx-2", page.selectedID)
+	updated, _ = page.Update(detailCmd())
+	page = updated.(*DeadLettersPage)
+
+	updated, refreshCmd := page.Update(retryCmd())
+	page = updated.(*DeadLettersPage)
+	require.NotNil(t, refreshCmd)
+
+	updated, detailCmd = page.Update(refreshCmd())
+	page = updated.(*DeadLettersPage)
+	require.NotNil(t, detailCmd)
+	assert.Equal(t, "tx-1", page.selectedID)
+	assert.Equal(t, 0, page.cursor)
+
+	updated, _ = page.Update(detailCmd())
+	page = updated.(*DeadLettersPage)
+	require.NotNil(t, page.detail)
+	assert.Equal(t, "tx-1", page.detail.CanonicalSnapshot.TransactionReceipt.TransactionReceiptID)
 }

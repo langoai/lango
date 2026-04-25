@@ -82,7 +82,8 @@ The slice is intentionally narrow:
     - `latest_dispatch_reference`
     - `Enter` apply
     - `Ctrl+R` full reset
-    - first-row reset after reload
+    - selection is preserved when the current transaction remains in the refreshed result set
+    - first-row fallback when the current transaction disappears
   - detail-pane `Retry` action
     - reuses `retry_post_adjudication_execution`
     - enabled only when `can_retry = true`
@@ -97,6 +98,8 @@ The slice is intentionally narrow:
     - replay success refreshes backlog and selected detail
     - `Ctrl+R` clears filter draft/applied state and retry confirm state, then reloads backlog/detail
     - `Ctrl+R` is ignored while retry is running
+    - apply, reset, and retry-success refresh preserve the current selection when it remains in the refreshed backlog
+    - if the selected transaction disappears, the page falls back to the first row or clears selection/detail when the backlog becomes empty
 
 ## Current Limits
 
@@ -106,5 +109,4 @@ This slice does not yet include:
 - generic dead-letter browsing for all background tasks
 - full event history dump
 - richer detail-surface actor/time summaries
-- selection preservation after filter changes
 - higher-level CLI surfaces
