@@ -258,10 +258,10 @@ func (p *DeadLettersPage) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			p.retryRunningID = ""
 		}
 		if msg.err != nil {
-			p.statusMsg = "Retry failed: " + msg.err.Error()
+			p.statusMsg = p.retryFailureMessage(msg.transactionID, msg.err)
 			return p, nil
 		}
-		p.statusMsg = "Retry requested: " + msg.transactionID
+		p.statusMsg = p.retrySuccessMessage(msg.transactionID)
 		p.detailErr = nil
 		return p, p.refreshAfterRetry()
 	case tea.KeyMsg:
@@ -533,15 +533,7 @@ func (p *DeadLettersPage) renderDetailPane() string {
 	} else {
 		lines = append(lines, "Background task: n/a")
 	}
-	retryState := "disabled"
-	if p.canRetrySelected() {
-		retryState = "enabled (press r)"
-		if p.retryRunningActive() {
-			retryState = "running..."
-		} else if p.retryConfirmActive() {
-			retryState = "confirm (press r again)"
-		}
-	}
+	retryState := p.retryActionLabel()
 	lines = append(lines, fmt.Sprintf("Retry action: %s", retryState))
 
 	minLines := deadLettersDetailMinLines
@@ -648,6 +640,27 @@ func (p *DeadLettersPage) retrySelected() tea.Cmd {
 
 func (p *DeadLettersPage) refreshAfterRetry() tea.Cmd {
 	return p.reloadBacklogPreservingSelection(p.selectedID)
+}
+
+func (p *DeadLettersPage) retryActionLabel() string {
+	if !p.canRetrySelected() {
+		return "disabled"
+	}
+	if p.retryRunningActive() {
+		return "requesting retry..."
+	}
+	if p.retryConfirmActive() {
+		return "confirm request (press r again)"
+	}
+	return "ready (press r to request retry)"
+}
+
+func (p *DeadLettersPage) retrySuccessMessage(transactionID string) string {
+	return fmt.Sprintf("Retry request accepted for %s. Refreshing backlog and detail.", transactionID)
+}
+
+func (p *DeadLettersPage) retryFailureMessage(transactionID string, err error) string {
+	return fmt.Sprintf("Retry request failed for %s: %v", transactionID, err)
 }
 
 func (f deadLetterAdjudicationFilter) next() deadLetterAdjudicationFilter {

@@ -102,9 +102,14 @@ Behavior:
 
 - reads the current detail status first
 - requires `can_retry=true`
+- rejects before mutation when `can_retry=false`
+- precheck rejection is surfaced as a retry-precheck error, not a mutation failure
 - prompts for confirmation by default
 - `--yes` skips the prompt
 - reuses the existing retry control path
+- success output means the retry request was accepted on the retry path, not that settlement execution already completed
+- `json` output returns a structured retry-request result payload with `transaction_receipt_id`, `result`, and `message`
+- invocation failures are surfaced separately as retry-request failures
 
 Flags:
 

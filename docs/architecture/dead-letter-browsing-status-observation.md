@@ -92,10 +92,10 @@ The slice is intentionally narrow:
     - first `r` enters inline confirm state
     - second `r` executes replay
     - `Esc`, selection change, and filter apply clear confirm state
-    - while replay is in flight, `Retry action` renders `running...`
+    - while replay is in flight, `Retry action` renders `requesting retry...`
     - duplicate retry triggers are blocked while replay is running
-    - replay failure surfaces the backend error string and returns the action to idle
-    - replay success refreshes backlog and selected detail
+    - replay failure surfaces explicit retry-request failure wording and returns the action to idle
+    - replay success surfaces an explicit retry-request acceptance message and refreshes backlog and selected detail
     - `Ctrl+R` clears filter draft/applied state and retry confirm state, then reloads backlog/detail
     - `Ctrl+R` is ignored while retry is running
     - apply, reset, and retry-success refresh preserve the current selection when it remains in the refreshed backlog
@@ -119,18 +119,26 @@ The slice is intentionally narrow:
     - canonical receipts-backed detail
     - `latest_background_task` bridge included by default
   - `lango status dead-letter retry <transaction-receipt-id>`
+    - reads current detail status first
     - prechecks `can_retry`
+    - rejects before mutation with explicit retry-precheck wording when `can_retry = false`
     - default confirm prompt
     - `--yes` bypass
     - reuses `retry_post_adjudication_execution`
+    - success output reports retry-request acceptance, not completed execution
+    - `json` returns `transaction_receipt_id`, `result`, and `message`
+    - invocation failures surface separately from precheck rejection
 
 ## Current Limits
 
 This slice does not yet include:
 
-- replay / repair actions
+- repair actions beyond retry
 - generic dead-letter browsing for all background tasks
 - full event history dump
 - richer detail-surface actor/time summaries
 - richer dead-letter CLI filters beyond latest subtype / latest family / actor-time / reason-dispatch
-- CLI recovery UX beyond first retry action
+- dead-letter CLI `any_match_family` filtering
+- polling / follow-up recovery UX
+- richer structured CLI retry-result payloads
+- broader operator summaries

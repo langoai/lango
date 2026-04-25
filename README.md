@@ -167,6 +167,7 @@ lango doctor [--fix]             Diagnostics and health checks
 lango status [--output json]     Unified system status dashboard
 lango status dead-letters        List current dead-letter backlog
 lango status dead-letter <id>    Show dead-letter status for one transaction
+lango status dead-letter retry <id>  Request retry for one dead-lettered execution
 ```
 
 ### Diagnostics

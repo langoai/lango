@@ -55,7 +55,8 @@ type deadLetterListPage struct {
 
 type deadLetterRetryResult struct {
 	TransactionReceiptID string `json:"transaction_receipt_id"`
-	Status               string `json:"status"`
+	Result               string `json:"result"`
+	Message              string `json:"message"`
 }
 
 type toolCatalogDeadLetterBridge struct {
@@ -232,10 +233,10 @@ func newDeadLetterRetryCmd(loader deadLetterBridgeLoader) *cobra.Command {
 
 			status, err := bridge.Detail(cmd.Context(), transactionReceiptID)
 			if err != nil {
-				return err
+				return fmt.Errorf("read dead-letter status for transaction %q: %w", transactionReceiptID, err)
 			}
 			if !status.CanRetry {
-				return fmt.Errorf("transaction %q is not retryable", transactionReceiptID)
+				return fmt.Errorf("retry precheck rejected for transaction %q: can_retry=false", transactionReceiptID)
 			}
 
 			if !yes {
@@ -250,17 +251,19 @@ func newDeadLetterRetryCmd(loader deadLetterBridgeLoader) *cobra.Command {
 			}
 
 			if err := bridge.Retry(cmd.Context(), transactionReceiptID); err != nil {
-				return err
+				return fmt.Errorf("retry request failed for transaction %q: %w", transactionReceiptID, err)
 			}
 
+			message := fmt.Sprintf("Retry request accepted for transaction %s.", transactionReceiptID)
 			result := deadLetterRetryResult{
 				TransactionReceiptID: transactionReceiptID,
-				Status:               "queued",
+				Result:               "accepted",
+				Message:              message,
 			}
 			if outputFmt == "json" {
 				return printJSONTo(cmd.OutOrStdout(), result)
 			}
-			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Retry requested for transaction %s.\n", transactionReceiptID)
+			_, err = fmt.Fprintln(cmd.OutOrStdout(), message)
 			return err
 		},
 	}

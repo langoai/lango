@@ -690,7 +690,7 @@ func TestDeadLettersPage_ViewIncludesBackgroundTaskWhenPresent(t *testing.T) {
 	assert.Contains(t, view, "Latest subtype: all")
 	assert.Contains(t, view, "Latest family: all")
 	assert.Contains(t, view, "Any-match family: all")
-	assert.Contains(t, view, "Retry action: enabled (press r)")
+	assert.Contains(t, view, "Retry action: ready (press r to request retry)")
 }
 
 func TestDeadLettersPage_RetrySelectedShowsSuccessMessage(t *testing.T) {
@@ -725,24 +725,24 @@ func TestDeadLettersPage_RetrySelectedShowsSuccessMessage(t *testing.T) {
 	page = updated.(*DeadLettersPage)
 	assert.Nil(t, retryCmd)
 	assert.Empty(t, retryFn.calls)
-	assert.Contains(t, page.View(), "Retry action: confirm (press r again)")
+	assert.Contains(t, page.View(), "Retry action: confirm request (press r again)")
 
 	updated, retryCmd = page.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
 	page = updated.(*DeadLettersPage)
 	require.NotNil(t, retryCmd)
-	assert.Contains(t, page.View(), "Retry action: running...")
+	assert.Contains(t, page.View(), "Retry action: requesting retry...")
 
 	updated, duplicateCmd := page.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
 	page = updated.(*DeadLettersPage)
 	assert.Nil(t, duplicateCmd)
 	assert.Empty(t, retryFn.calls)
-	assert.Contains(t, page.View(), "Retry action: running...")
+	assert.Contains(t, page.View(), "Retry action: requesting retry...")
 
 	updated, refreshCmd := page.Update(retryCmd())
 	page = updated.(*DeadLettersPage)
 	assert.Equal(t, []string{"tx-1"}, retryFn.calls)
 	require.NotNil(t, refreshCmd)
-	assert.Contains(t, page.View(), "Retry requested: tx-1")
+	assert.Contains(t, page.View(), "Retry request accepted for tx-1. Refreshing backlog and detail.")
 	assert.Empty(t, page.retryConfirmID)
 
 	updated, detailCmd = page.Update(refreshCmd())
@@ -755,6 +755,8 @@ func TestDeadLettersPage_RetrySelectedShowsSuccessMessage(t *testing.T) {
 	assert.Equal(t, "tx-1", page.detail.CanonicalSnapshot.TransactionReceipt.TransactionReceiptID)
 	assert.Equal(t, 2, listFn.called)
 	assert.Equal(t, []string{"tx-1", "tx-1"}, detailFn.calls)
+	assert.Contains(t, page.View(), "Retry action: ready (press r to request retry)")
+	assert.Contains(t, page.View(), "Retry request accepted for tx-1. Refreshing backlog and detail.")
 }
 
 func TestDeadLettersPage_RetrySelectedShowsFailureMessage(t *testing.T) {
@@ -792,7 +794,7 @@ func TestDeadLettersPage_RetrySelectedShowsFailureMessage(t *testing.T) {
 	updated, retryCmd = page.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
 	page = updated.(*DeadLettersPage)
 	require.NotNil(t, retryCmd)
-	assert.Contains(t, page.View(), "Retry action: running...")
+	assert.Contains(t, page.View(), "Retry action: requesting retry...")
 
 	updated, duplicateCmd := page.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
 	page = updated.(*DeadLettersPage)
@@ -803,11 +805,11 @@ func TestDeadLettersPage_RetrySelectedShowsFailureMessage(t *testing.T) {
 	page = updated.(*DeadLettersPage)
 	assert.Nil(t, refreshCmd)
 	assert.Equal(t, []string{"tx-1"}, retryFn.calls)
-	assert.Contains(t, page.View(), "Retry failed: policy denied")
+	assert.Contains(t, page.View(), "Retry request failed for tx-1: policy denied")
 	require.NotNil(t, page.detail)
 	assert.Equal(t, "tx-1", page.detail.CanonicalSnapshot.TransactionReceipt.TransactionReceiptID)
 	assert.Equal(t, 1, listFn.called)
-	assert.Contains(t, page.View(), "Retry action: enabled (press r)")
+	assert.Contains(t, page.View(), "Retry action: ready (press r to request retry)")
 }
 
 func TestDeadLettersPage_RetryIgnoredWhenDetailIsNotRetryable(t *testing.T) {
@@ -878,7 +880,7 @@ func TestDeadLettersPage_RetryConfirmClearsOnEscape(t *testing.T) {
 	updated, _ = page.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	page = updated.(*DeadLettersPage)
 	assert.False(t, page.retryConfirmActive())
-	assert.Contains(t, page.View(), "Retry action: enabled (press r)")
+	assert.Contains(t, page.View(), "Retry action: ready (press r to request retry)")
 }
 
 func TestDeadLettersPage_RetryConfirmClearsOnSelectionChange(t *testing.T) {

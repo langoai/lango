@@ -635,7 +635,7 @@ func TestDeadLetterRetryCmd_SucceedsWithYes(t *testing.T) {
 
 	out, err := executeCommand(t, cmd, "retry", "tx-1", "--yes")
 	require.NoError(t, err)
-	assert.Contains(t, out, "Retry requested")
+	assert.Contains(t, out, "Retry request accepted")
 	assert.Equal(t, 1, bridge.detailCalls)
 	assert.Equal(t, 1, bridge.retryCalls)
 	assert.Equal(t, "tx-1", bridge.lastRetryID)
@@ -656,7 +656,8 @@ func TestDeadLetterRetryCmd_RejectsWhenCannotRetry(t *testing.T) {
 
 	_, err := executeCommand(t, cmd, "retry", "tx-1", "--yes")
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "is not retryable")
+	assert.ErrorContains(t, err, "retry precheck rejected")
+	assert.ErrorContains(t, err, "can_retry=false")
 	assert.Equal(t, 1, bridge.detailCalls)
 	assert.Equal(t, 0, bridge.retryCalls)
 }
@@ -698,7 +699,52 @@ func TestDeadLetterRetryCmd_InvokesRetryAfterConfirm(t *testing.T) {
 	out, err := executeCommandWithInput(t, cmd, "y\n", "retry", "tx-1")
 	require.NoError(t, err)
 	assert.Contains(t, out, "Retry dead-lettered execution")
-	assert.Contains(t, out, "Retry requested")
+	assert.Contains(t, out, "Retry request accepted")
 	assert.Equal(t, 1, bridge.retryCalls)
 	assert.Equal(t, "tx-1", bridge.lastRetryID)
+}
+
+func TestDeadLetterRetryCmd_ReportsInvocationFailureSeparately(t *testing.T) {
+	bridge := &fakeDeadLetterBridge{
+		detail: postadjudicationstatus.TransactionStatus{
+			CanonicalSnapshot: postadjudicationstatus.CanonicalSnapshot{
+				TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-1"},
+			},
+			CanRetry: true,
+		},
+		retryErr: errors.New("queue unavailable"),
+	}
+	cmd := newDeadLetterCmd(func() (deadLetterBridge, func(), error) {
+		return bridge, func() {}, nil
+	})
+
+	_, err := executeCommand(t, cmd, "retry", "tx-1", "--yes")
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "retry request failed")
+	assert.ErrorContains(t, err, "queue unavailable")
+	assert.Equal(t, 1, bridge.detailCalls)
+	assert.Equal(t, 1, bridge.retryCalls)
+}
+
+func TestDeadLetterRetryCmd_JSONReportsAcceptedRequest(t *testing.T) {
+	bridge := &fakeDeadLetterBridge{
+		detail: postadjudicationstatus.TransactionStatus{
+			CanonicalSnapshot: postadjudicationstatus.CanonicalSnapshot{
+				TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-1"},
+			},
+			CanRetry: true,
+		},
+	}
+	cmd := newDeadLetterCmd(func() (deadLetterBridge, func(), error) {
+		return bridge, func() {}, nil
+	})
+
+	out, err := executeCommand(t, cmd, "retry", "tx-1", "--yes", "--output", "json")
+	require.NoError(t, err)
+
+	var got deadLetterRetryResult
+	require.NoError(t, json.Unmarshal([]byte(out), &got))
+	assert.Equal(t, "tx-1", got.TransactionReceiptID)
+	assert.Equal(t, "accepted", got.Result)
+	assert.Equal(t, "Retry request accepted for transaction tx-1.", got.Message)
 }
