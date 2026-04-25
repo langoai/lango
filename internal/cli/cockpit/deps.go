@@ -51,6 +51,8 @@ type DeadLetterListOptions struct {
 	ManualReplayActor         string
 	DeadLetteredAfter         string
 	DeadLetteredBefore        string
+	DeadLetterReasonQuery     string
+	LatestDispatchReference   string
 }
 
 func NewDeadLetterToolBridge(catalog *toolcatalog.Catalog) *DeadLetterToolBridge {
@@ -110,6 +112,12 @@ func (b *DeadLetterToolBridge) List(ctx context.Context, opts DeadLetterListOpti
 	}
 	if before := strings.TrimSpace(opts.DeadLetteredBefore); before != "" {
 		params["dead_lettered_before"] = before
+	}
+	if reasonQuery := strings.TrimSpace(opts.DeadLetterReasonQuery); reasonQuery != "" {
+		params["dead_letter_reason_query"] = reasonQuery
+	}
+	if dispatchReference := strings.TrimSpace(opts.LatestDispatchReference); dispatchReference != "" {
+		params["latest_dispatch_reference"] = dispatchReference
 	}
 	raw, err := entry.Tool.Handler(ctx, params)
 	if err != nil {

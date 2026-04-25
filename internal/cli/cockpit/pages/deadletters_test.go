@@ -31,6 +31,8 @@ func (m *mockDeadLetterListFn) call(_ context.Context, opts DeadLetterListOption
 	filtered := make([]postadjudicationstatus.DeadLetterBacklogEntry, 0, len(m.items))
 	query := strings.ToLower(strings.TrimSpace(opts.Query))
 	actor := strings.TrimSpace(opts.ManualReplayActor)
+	reasonQuery := strings.ToLower(strings.TrimSpace(opts.DeadLetterReasonQuery))
+	dispatchReference := strings.TrimSpace(opts.LatestDispatchReference)
 	family := strings.TrimSpace(opts.LatestStatusSubtypeFamily)
 	anyMatchFamily := strings.TrimSpace(opts.AnyMatchFamily)
 	after := parseDeadLetterTime(strings.TrimSpace(opts.DeadLetteredAfter))
@@ -49,6 +51,12 @@ func (m *mockDeadLetterListFn) call(_ context.Context, opts DeadLetterListOption
 			continue
 		}
 		if actor != "" && !strings.EqualFold(item.LatestManualReplayActor, actor) {
+			continue
+		}
+		if reasonQuery != "" && !strings.Contains(strings.ToLower(item.LatestDeadLetterReason), reasonQuery) {
+			continue
+		}
+		if dispatchReference != "" && !strings.EqualFold(item.LatestDispatchReference, dispatchReference) {
 			continue
 		}
 		if !after.IsZero() {
@@ -241,8 +249,8 @@ func TestDeadLettersPage_ApplyFiltersReloadsAndResetsSelection(t *testing.T) {
 	listFn := &mockDeadLetterListFn{
 		items: []postadjudicationstatus.DeadLetterBacklogEntry{
 			{TransactionReceiptID: "tx-2", SubmissionReceiptID: "sub-2", Adjudication: "release", LatestStatusSubtype: "manual-retry-requested", LatestRetryAttempt: 4, LatestDeadLetterReason: "release failed", IsDeadLettered: true, CanRetry: true},
-			{TransactionReceiptID: "tx-3", SubmissionReceiptID: "sub-3", Adjudication: "release", LatestStatusSubtype: "dead-lettered", LatestStatusSubtypeFamily: "dead-letter", AnyMatchFamilies: []string{"dead-letter"}, LatestRetryAttempt: 2, LatestDeadLetterReason: "release failed again", LatestManualReplayActor: "operator:bob", LatestDeadLetteredAt: "2026-04-24T10:00:00Z", IsDeadLettered: true, CanRetry: true},
-			{TransactionReceiptID: "tx-2", SubmissionReceiptID: "sub-2", Adjudication: "release", LatestStatusSubtype: "manual-retry-requested", LatestStatusSubtypeFamily: "manual-retry", AnyMatchFamilies: []string{"manual-retry", "retry"}, LatestManualReplayActor: "operator:alice", LatestDeadLetteredAt: "2026-04-24T12:00:00Z", LatestRetryAttempt: 4, LatestDeadLetterReason: "release failed", IsDeadLettered: true, CanRetry: true},
+			{TransactionReceiptID: "tx-3", SubmissionReceiptID: "sub-3", Adjudication: "release", LatestStatusSubtype: "dead-lettered", LatestStatusSubtypeFamily: "dead-letter", AnyMatchFamilies: []string{"dead-letter"}, LatestRetryAttempt: 2, LatestDeadLetterReason: "release failed again", LatestDispatchReference: "dispatch-3", LatestManualReplayActor: "operator:bob", LatestDeadLetteredAt: "2026-04-24T10:00:00Z", IsDeadLettered: true, CanRetry: true},
+			{TransactionReceiptID: "tx-2", SubmissionReceiptID: "sub-2", Adjudication: "release", LatestStatusSubtype: "manual-retry-requested", LatestStatusSubtypeFamily: "manual-retry", AnyMatchFamilies: []string{"manual-retry", "retry"}, LatestDispatchReference: "dispatch-2", LatestManualReplayActor: "operator:alice", LatestDeadLetteredAt: "2026-04-24T12:00:00Z", LatestRetryAttempt: 4, LatestDeadLetterReason: "release failed", IsDeadLettered: true, CanRetry: true},
 		},
 	}
 	detailFn := &mockDeadLetterDetailFn{
@@ -321,6 +329,24 @@ func TestDeadLettersPage_ApplyFiltersReloadsAndResetsSelection(t *testing.T) {
 		{Type: tea.KeyRunes, Runes: []rune("0")},
 		{Type: tea.KeyRunes, Runes: []rune("0")},
 		{Type: tea.KeyRunes, Runes: []rune("Z")},
+		{Type: tea.KeyTab},
+		{Type: tea.KeyRunes, Runes: []rune("f")},
+		{Type: tea.KeyRunes, Runes: []rune("a")},
+		{Type: tea.KeyRunes, Runes: []rune("i")},
+		{Type: tea.KeyRunes, Runes: []rune("l")},
+		{Type: tea.KeyRunes, Runes: []rune("e")},
+		{Type: tea.KeyRunes, Runes: []rune("d")},
+		{Type: tea.KeyTab},
+		{Type: tea.KeyRunes, Runes: []rune("d")},
+		{Type: tea.KeyRunes, Runes: []rune("i")},
+		{Type: tea.KeyRunes, Runes: []rune("s")},
+		{Type: tea.KeyRunes, Runes: []rune("p")},
+		{Type: tea.KeyRunes, Runes: []rune("a")},
+		{Type: tea.KeyRunes, Runes: []rune("t")},
+		{Type: tea.KeyRunes, Runes: []rune("c")},
+		{Type: tea.KeyRunes, Runes: []rune("h")},
+		{Type: tea.KeyRunes, Runes: []rune("-")},
+		{Type: tea.KeyRunes, Runes: []rune("2")},
 		{Type: tea.KeyRight},
 		{Type: tea.KeyRunes, Runes: []rune("]")},
 		{Type: tea.KeyRunes, Runes: []rune("]")},
@@ -339,6 +365,8 @@ func TestDeadLettersPage_ApplyFiltersReloadsAndResetsSelection(t *testing.T) {
 	assert.Equal(t, "operator:alice", page.appliedManualReplayActor)
 	assert.Equal(t, "2026-04-24T11:00:00Z", page.appliedDeadLetteredAfter)
 	assert.Equal(t, "2026-04-24T12:30:00Z", page.appliedDeadLetteredBefore)
+	assert.Equal(t, "failed", page.appliedDeadLetterReasonQuery)
+	assert.Equal(t, "dispatch-2", page.appliedLatestDispatchReference)
 	assert.Equal(t, deadLetterAdjudicationRelease, page.appliedAdjudication)
 	assert.Equal(t, deadLetterSubtypeManualRetryRequested, page.appliedSubtype)
 	assert.Equal(t, deadLetterFamilyManualRetry, page.appliedFamily)
@@ -357,6 +385,8 @@ func TestDeadLettersPage_ApplyFiltersReloadsAndResetsSelection(t *testing.T) {
 		ManualReplayActor:         "operator:alice",
 		DeadLetteredAfter:         "2026-04-24T11:00:00Z",
 		DeadLetteredBefore:        "2026-04-24T12:30:00Z",
+		DeadLetterReasonQuery:     "failed",
+		LatestDispatchReference:   "dispatch-2",
 	}, listFn.lastOptions)
 	assert.Equal(t, 0, page.cursor)
 	assert.Equal(t, "tx-2", page.selectedID)
@@ -483,6 +513,8 @@ func TestDeadLettersPage_ViewIncludesBackgroundTaskWhenPresent(t *testing.T) {
 	assert.Contains(t, view, "Manual replay actor: all")
 	assert.Contains(t, view, "Dead-lettered after: all")
 	assert.Contains(t, view, "Dead-lettered before: all")
+	assert.Contains(t, view, "Dead-letter reason: all")
+	assert.Contains(t, view, "Dispatch reference: all")
 	assert.Contains(t, view, "Adjudication: all")
 	assert.Contains(t, view, "Latest subtype: all")
 	assert.Contains(t, view, "Latest family: all")

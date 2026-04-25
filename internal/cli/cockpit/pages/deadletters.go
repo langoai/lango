@@ -78,6 +78,8 @@ const (
 	deadLetterTextFieldManualReplayActor
 	deadLetterTextFieldDeadLetteredAfter
 	deadLetterTextFieldDeadLetteredBefore
+	deadLetterTextFieldDeadLetterReasonQuery
+	deadLetterTextFieldLatestDispatchReference
 )
 
 type DeadLetterListOptions struct {
@@ -89,6 +91,8 @@ type DeadLetterListOptions struct {
 	ManualReplayActor         string
 	DeadLetteredAfter         string
 	DeadLetteredBefore        string
+	DeadLetterReasonQuery     string
+	LatestDispatchReference   string
 }
 
 // DeadLetterListFn loads the current dead-letter backlog rows for the cockpit table.
@@ -104,33 +108,37 @@ type DeadLettersPage struct {
 	detailFn DeadLetterDetailFn
 	retryFn  DeadLetterRetryFn
 
-	items                     []postadjudicationstatus.DeadLetterBacklogEntry
-	cursor                    int
-	selectedID                string
-	detail                    *postadjudicationstatus.TransactionStatus
-	loadErr                   error
-	detailErr                 error
-	activeTextField           deadLetterTextField
-	queryDraft                string
-	appliedQuery              string
-	manualReplayActorDraft    string
-	appliedManualReplayActor  string
-	deadLetteredAfterDraft    string
-	appliedDeadLetteredAfter  string
-	deadLetteredBeforeDraft   string
-	appliedDeadLetteredBefore string
-	adjudicationDraft         deadLetterAdjudicationFilter
-	appliedAdjudication       deadLetterAdjudicationFilter
-	subtypeDraft              deadLetterSubtypeFilter
-	appliedSubtype            deadLetterSubtypeFilter
-	familyDraft               deadLetterFamilyFilter
-	appliedFamily             deadLetterFamilyFilter
-	anyMatchFamilyDraft       deadLetterFamilyFilter
-	appliedAnyMatchFamily     deadLetterFamilyFilter
-	width, height             int
-	statusMsg                 string
-	retryConfirmID            string
-	retryRunningID            string
+	items                          []postadjudicationstatus.DeadLetterBacklogEntry
+	cursor                         int
+	selectedID                     string
+	detail                         *postadjudicationstatus.TransactionStatus
+	loadErr                        error
+	detailErr                      error
+	activeTextField                deadLetterTextField
+	queryDraft                     string
+	appliedQuery                   string
+	manualReplayActorDraft         string
+	appliedManualReplayActor       string
+	deadLetteredAfterDraft         string
+	appliedDeadLetteredAfter       string
+	deadLetteredBeforeDraft        string
+	appliedDeadLetteredBefore      string
+	deadLetterReasonQueryDraft     string
+	appliedDeadLetterReasonQuery   string
+	latestDispatchReferenceDraft   string
+	appliedLatestDispatchReference string
+	adjudicationDraft              deadLetterAdjudicationFilter
+	appliedAdjudication            deadLetterAdjudicationFilter
+	subtypeDraft                   deadLetterSubtypeFilter
+	appliedSubtype                 deadLetterSubtypeFilter
+	familyDraft                    deadLetterFamilyFilter
+	appliedFamily                  deadLetterFamilyFilter
+	anyMatchFamilyDraft            deadLetterFamilyFilter
+	appliedAnyMatchFamily          deadLetterFamilyFilter
+	width, height                  int
+	statusMsg                      string
+	retryConfirmID                 string
+	retryRunningID                 string
 }
 
 func NewDeadLettersPage(listFn DeadLetterListFn, detailFn DeadLetterDetailFn, retryFns ...DeadLetterRetryFn) *DeadLettersPage {
@@ -276,6 +284,8 @@ func (p *DeadLettersPage) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			p.appliedManualReplayActor = strings.TrimSpace(p.manualReplayActorDraft)
 			p.appliedDeadLetteredAfter = strings.TrimSpace(p.deadLetteredAfterDraft)
 			p.appliedDeadLetteredBefore = strings.TrimSpace(p.deadLetteredBeforeDraft)
+			p.appliedDeadLetterReasonQuery = strings.TrimSpace(p.deadLetterReasonQueryDraft)
+			p.appliedLatestDispatchReference = strings.TrimSpace(p.latestDispatchReferenceDraft)
 			p.appliedAdjudication = p.adjudicationDraft
 			p.appliedSubtype = p.subtypeDraft
 			p.appliedFamily = p.familyDraft
@@ -392,6 +402,8 @@ func (p *DeadLettersPage) renderFilterBar() string {
 		p.renderFilterLine("Manual replay actor", p.manualReplayActorDraft, p.activeTextField == deadLetterTextFieldManualReplayActor),
 		p.renderFilterLine("Dead-lettered after", p.deadLetteredAfterDraft, p.activeTextField == deadLetterTextFieldDeadLetteredAfter),
 		p.renderFilterLine("Dead-lettered before", p.deadLetteredBeforeDraft, p.activeTextField == deadLetterTextFieldDeadLetteredBefore),
+		p.renderFilterLine("Dead-letter reason", p.deadLetterReasonQueryDraft, p.activeTextField == deadLetterTextFieldDeadLetterReasonQuery),
+		p.renderFilterLine("Dispatch reference", p.latestDispatchReferenceDraft, p.activeTextField == deadLetterTextFieldLatestDispatchReference),
 		lipgloss.NewStyle().Foreground(theme.TextPrimary).Render(fmt.Sprintf("Adjudication: %s", p.adjudicationDraft)),
 		lipgloss.NewStyle().Foreground(theme.TextPrimary).Render(fmt.Sprintf("Latest subtype: %s", p.subtypeDraft)),
 		lipgloss.NewStyle().Foreground(theme.TextPrimary).Render(fmt.Sprintf("Latest family: %s", p.familyDraft)),
@@ -565,6 +577,12 @@ func (p *DeadLettersPage) loadBacklogWithSelection(selectedID string, preserveSe
 	if p.appliedDeadLetteredBefore != "" {
 		opts.DeadLetteredBefore = p.appliedDeadLetteredBefore
 	}
+	if p.appliedDeadLetterReasonQuery != "" {
+		opts.DeadLetterReasonQuery = p.appliedDeadLetterReasonQuery
+	}
+	if p.appliedLatestDispatchReference != "" {
+		opts.LatestDispatchReference = p.appliedLatestDispatchReference
+	}
 	return func() tea.Msg {
 		if listFn == nil {
 			return deadLettersLoadedMsg{err: fmt.Errorf("dead-letter list function not configured")}
@@ -695,6 +713,10 @@ func (f deadLetterTextField) next() deadLetterTextField {
 	case deadLetterTextFieldDeadLetteredAfter:
 		return deadLetterTextFieldDeadLetteredBefore
 	case deadLetterTextFieldDeadLetteredBefore:
+		return deadLetterTextFieldDeadLetterReasonQuery
+	case deadLetterTextFieldDeadLetterReasonQuery:
+		return deadLetterTextFieldLatestDispatchReference
+	case deadLetterTextFieldLatestDispatchReference:
 		return deadLetterTextFieldQuery
 	default:
 		return deadLetterTextFieldManualReplayActor
@@ -718,6 +740,8 @@ func (p *DeadLettersPage) hasAppliedFilters() bool {
 		strings.TrimSpace(p.appliedManualReplayActor) != "" ||
 		strings.TrimSpace(p.appliedDeadLetteredAfter) != "" ||
 		strings.TrimSpace(p.appliedDeadLetteredBefore) != "" ||
+		strings.TrimSpace(p.appliedDeadLetterReasonQuery) != "" ||
+		strings.TrimSpace(p.appliedLatestDispatchReference) != "" ||
 		p.appliedAdjudication != deadLetterAdjudicationAll ||
 		p.appliedSubtype != deadLetterSubtypeAll ||
 		p.appliedFamily != deadLetterFamilyAll ||
@@ -732,6 +756,10 @@ func (p *DeadLettersPage) appendToActiveField(value string) {
 		p.deadLetteredAfterDraft += value
 	case deadLetterTextFieldDeadLetteredBefore:
 		p.deadLetteredBeforeDraft += value
+	case deadLetterTextFieldDeadLetterReasonQuery:
+		p.deadLetterReasonQueryDraft += value
+	case deadLetterTextFieldLatestDispatchReference:
+		p.latestDispatchReferenceDraft += value
 	default:
 		p.queryDraft += value
 	}
@@ -745,6 +773,10 @@ func (p *DeadLettersPage) backspaceActiveField() {
 		p.deadLetteredAfterDraft = trimLastByte(p.deadLetteredAfterDraft)
 	case deadLetterTextFieldDeadLetteredBefore:
 		p.deadLetteredBeforeDraft = trimLastByte(p.deadLetteredBeforeDraft)
+	case deadLetterTextFieldDeadLetterReasonQuery:
+		p.deadLetterReasonQueryDraft = trimLastByte(p.deadLetterReasonQueryDraft)
+	case deadLetterTextFieldLatestDispatchReference:
+		p.latestDispatchReferenceDraft = trimLastByte(p.latestDispatchReferenceDraft)
 	default:
 		p.queryDraft = trimLastByte(p.queryDraft)
 	}

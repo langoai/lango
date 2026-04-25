@@ -74,6 +74,8 @@ func TestDeadLetterToolBridge_ListAndDetail(t *testing.T) {
 				assert.Equal(t, "operator:alice", params["manual_replay_actor"])
 				assert.Equal(t, "2026-04-24T11:00:00Z", params["dead_lettered_after"])
 				assert.Equal(t, "2026-04-24T13:00:00Z", params["dead_lettered_before"])
+				assert.Equal(t, "worker exhausted", params["dead_letter_reason_query"])
+				assert.Equal(t, "dispatch-7", params["latest_dispatch_reference"])
 				return map[string]interface{}{
 					"entries": wantEntries,
 					"count":   1,
@@ -100,6 +102,8 @@ func TestDeadLetterToolBridge_ListAndDetail(t *testing.T) {
 		ManualReplayActor:         "operator:alice",
 		DeadLetteredAfter:         "2026-04-24T11:00:00Z",
 		DeadLetteredBefore:        "2026-04-24T13:00:00Z",
+		DeadLetterReasonQuery:     "worker exhausted",
+		LatestDispatchReference:   "dispatch-7",
 	})
 	require.NoError(t, err)
 	assert.Equal(t, wantEntries, gotEntries)
@@ -165,6 +169,10 @@ func TestDeadLetterToolBridge_ListOmitsAdjudicationWhenAll(t *testing.T) {
 				assert.False(t, hasAfter)
 				_, hasBefore := params["dead_lettered_before"]
 				assert.False(t, hasBefore)
+				_, hasReason := params["dead_letter_reason_query"]
+				assert.False(t, hasReason)
+				_, hasDispatch := params["latest_dispatch_reference"]
+				assert.False(t, hasDispatch)
 				return map[string]interface{}{
 					"entries": []postadjudicationstatus.DeadLetterBacklogEntry{},
 				}, nil
@@ -188,6 +196,8 @@ func TestDeadLetterToolBridge_ListOmitsAdjudicationWhenAll(t *testing.T) {
 		ManualReplayActor:         "",
 		DeadLetteredAfter:         "",
 		DeadLetteredBefore:        "",
+		DeadLetterReasonQuery:     "",
+		LatestDispatchReference:   "",
 	})
 	require.NoError(t, err)
 }

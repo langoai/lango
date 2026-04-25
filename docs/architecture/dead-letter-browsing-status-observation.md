@@ -78,6 +78,8 @@ The slice is intentionally narrow:
     - `manual_replay_actor`
     - `dead_lettered_after`
     - `dead_lettered_before`
+    - `dead_letter_reason_query`
+    - `latest_dispatch_reference`
     - `Enter` apply
     - first-row reset after reload
   - detail-pane `Retry` action
