@@ -12,9 +12,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/postadjudicationstatus"
 	"github.com/langoai/lango/internal/receipts"
+	"github.com/langoai/lango/internal/toolcatalog"
 )
 
 type fakeDeadLetterBridge struct {
@@ -287,6 +289,88 @@ func TestDeadLettersCmd_TableAndFilters(t *testing.T) {
 	assert.Contains(t, out, "worker exhausted")
 	assert.Equal(t, 1, bridge.listCalls)
 	assert.Equal(t, deadLetterListOptions{Query: "tx-1", Adjudication: "release"}, bridge.lastListOpts)
+}
+
+func TestDeadLettersCmd_ForwardsSubtypeAndFamilyFilters(t *testing.T) {
+	bridge := &fakeDeadLetterBridge{
+		page: deadLetterListPage{
+			Entries: []postadjudicationstatus.DeadLetterBacklogEntry{{TransactionReceiptID: "tx-1"}},
+			Count:   1,
+			Total:   1,
+		},
+	}
+	cmd := newDeadLettersCmd(func() (deadLetterBridge, func(), error) {
+		return bridge, func() {}, nil
+	})
+
+	_, err := executeCommand(
+		t,
+		cmd,
+		"--latest-status-subtype", "manual-retry-requested",
+		"--latest-status-subtype-family", "manual-retry",
+	)
+	require.NoError(t, err)
+	assert.Equal(t, 1, bridge.listCalls)
+	assert.Equal(t, deadLetterListOptions{
+		LatestStatusSubtype:       "manual-retry-requested",
+		LatestStatusSubtypeFamily: "manual-retry",
+	}, bridge.lastListOpts)
+}
+
+func TestDeadLettersCmd_RejectsInvalidSubtype(t *testing.T) {
+	loaderCalls := 0
+	cmd := newDeadLettersCmd(func() (deadLetterBridge, func(), error) {
+		loaderCalls++
+		return &fakeDeadLetterBridge{}, func() {}, nil
+	})
+
+	_, err := executeCommand(t, cmd, "--latest-status-subtype", "unknown")
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "invalid --latest-status-subtype")
+	assert.Equal(t, 0, loaderCalls)
+}
+
+func TestDeadLettersCmd_RejectsInvalidSubtypeFamily(t *testing.T) {
+	loaderCalls := 0
+	cmd := newDeadLettersCmd(func() (deadLetterBridge, func(), error) {
+		loaderCalls++
+		return &fakeDeadLetterBridge{}, func() {}, nil
+	})
+
+	_, err := executeCommand(t, cmd, "--latest-status-subtype-family", "terminal")
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "invalid --latest-status-subtype-family")
+	assert.Equal(t, 0, loaderCalls)
+}
+
+func TestToolCatalogDeadLetterBridge_ForwardsSubtypeAndFamilyFilters(t *testing.T) {
+	catalog := toolcatalog.New()
+	var gotParams map[string]interface{}
+	catalog.Register("status", []*agent.Tool{
+		{
+			Name: "list_dead_lettered_post_adjudication_executions",
+			Handler: func(_ context.Context, params map[string]interface{}) (interface{}, error) {
+				gotParams = params
+				return map[string]interface{}{
+					"entries": []map[string]interface{}{},
+					"count":   0,
+					"total":   0,
+					"offset":  0,
+					"limit":   0,
+				}, nil
+			},
+		},
+	})
+
+	bridge := &toolCatalogDeadLetterBridge{catalog: catalog}
+	_, err := bridge.List(context.Background(), deadLetterListOptions{
+		LatestStatusSubtype:       "retry-scheduled",
+		LatestStatusSubtypeFamily: "retry",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, gotParams)
+	assert.Equal(t, "retry-scheduled", gotParams["latest_status_subtype"])
+	assert.Equal(t, "retry", gotParams["latest_status_subtype_family"])
 }
 
 func TestDeadLettersCmd_JSON(t *testing.T) {

@@ -47,6 +47,8 @@ Flags:
 | `--output` | `table` | Output format: `table` or `json` |
 | `--query` | `""` | Substring filter over transaction/submission receipt IDs |
 | `--adjudication` | `""` | Adjudication outcome filter: `release` or `refund` |
+| `--latest-status-subtype` | `""` | Latest status subtype filter: `retry-scheduled`, `manual-retry-requested`, or `dead-lettered` |
+| `--latest-status-subtype-family` | `""` | Latest status subtype family filter: `retry`, `manual-retry`, or `dead-letter` |
 
 Examples:
 
@@ -54,6 +56,8 @@ Examples:
 lango status dead-letters
 lango status dead-letters --query tx-123
 lango status dead-letters --adjudication release --output json
+lango status dead-letters --latest-status-subtype dead-lettered
+lango status dead-letters --latest-status-subtype-family manual-retry
 ```
 
 ### `lango status dead-letter <transaction-receipt-id>`

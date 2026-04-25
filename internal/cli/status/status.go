@@ -32,8 +32,10 @@ type deadLetterBridge interface {
 type deadLetterBridgeLoader func() (deadLetterBridge, func(), error)
 
 type deadLetterListOptions struct {
-	Query        string
-	Adjudication string
+	Query                     string
+	Adjudication              string
+	LatestStatusSubtype       string
+	LatestStatusSubtypeFamily string
 }
 
 type deadLetterListPage struct {
@@ -93,9 +95,11 @@ Examples:
 
 func newDeadLettersCmd(loader deadLetterBridgeLoader) *cobra.Command {
 	var (
-		outputFmt    string
-		query        string
-		adjudication string
+		outputFmt                 string
+		query                     string
+		adjudication              string
+		latestStatusSubtype       string
+		latestStatusSubtypeFamily string
 	)
 
 	cmd := &cobra.Command{
@@ -103,6 +107,15 @@ func newDeadLettersCmd(loader deadLetterBridgeLoader) *cobra.Command {
 		Short: "List dead-lettered post-adjudication executions",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			subtype, err := normalizeLatestStatusSubtype(latestStatusSubtype)
+			if err != nil {
+				return err
+			}
+			family, err := normalizeLatestStatusSubtypeFamily(latestStatusSubtypeFamily)
+			if err != nil {
+				return err
+			}
+
 			bridge, cleanup, err := loader()
 			if err != nil {
 				return err
@@ -110,8 +123,10 @@ func newDeadLettersCmd(loader deadLetterBridgeLoader) *cobra.Command {
 			defer cleanup()
 
 			page, err := bridge.List(cmd.Context(), deadLetterListOptions{
-				Query:        query,
-				Adjudication: adjudication,
+				Query:                     query,
+				Adjudication:              adjudication,
+				LatestStatusSubtype:       subtype,
+				LatestStatusSubtypeFamily: family,
 			})
 			if err != nil {
 				return err
@@ -126,6 +141,8 @@ func newDeadLettersCmd(loader deadLetterBridgeLoader) *cobra.Command {
 	cmd.Flags().StringVar(&outputFmt, "output", "table", "Output format: table or json")
 	cmd.Flags().StringVar(&query, "query", "", "Substring filter for transaction or submission receipt IDs")
 	cmd.Flags().StringVar(&adjudication, "adjudication", "", "Adjudication outcome filter: release or refund")
+	cmd.Flags().StringVar(&latestStatusSubtype, "latest-status-subtype", "", "Latest status subtype filter: retry-scheduled, manual-retry-requested, or dead-lettered")
+	cmd.Flags().StringVar(&latestStatusSubtypeFamily, "latest-status-subtype-family", "", "Latest status subtype family filter: retry, manual-retry, or dead-letter")
 	return cmd
 }
 
@@ -207,6 +224,14 @@ func (b *toolCatalogDeadLetterBridge) List(ctx context.Context, opts deadLetterL
 	case "release", "refund":
 		params["adjudication"] = strings.TrimSpace(opts.Adjudication)
 	}
+	switch strings.TrimSpace(opts.LatestStatusSubtype) {
+	case "retry-scheduled", "manual-retry-requested", "dead-lettered":
+		params["latest_status_subtype"] = strings.TrimSpace(opts.LatestStatusSubtype)
+	}
+	switch strings.TrimSpace(opts.LatestStatusSubtypeFamily) {
+	case "retry", "manual-retry", "dead-letter":
+		params["latest_status_subtype_family"] = strings.TrimSpace(opts.LatestStatusSubtypeFamily)
+	}
 	raw, err := entry.Tool.Handler(ctx, params)
 	if err != nil {
 		return deadLetterListPage{}, err
@@ -234,6 +259,24 @@ func (b *toolCatalogDeadLetterBridge) List(ctx context.Context, opts deadLetterL
 		Offset:  optionalInt(payload, "offset"),
 		Limit:   optionalInt(payload, "limit"),
 	}, nil
+}
+
+func normalizeLatestStatusSubtype(value string) (string, error) {
+	switch strings.TrimSpace(value) {
+	case "", "retry-scheduled", "manual-retry-requested", "dead-lettered":
+		return strings.TrimSpace(value), nil
+	default:
+		return "", fmt.Errorf("invalid --latest-status-subtype %q: must be one of retry-scheduled, manual-retry-requested, dead-lettered", value)
+	}
+}
+
+func normalizeLatestStatusSubtypeFamily(value string) (string, error) {
+	switch strings.TrimSpace(value) {
+	case "", "retry", "manual-retry", "dead-letter":
+		return strings.TrimSpace(value), nil
+	default:
+		return "", fmt.Errorf("invalid --latest-status-subtype-family %q: must be one of retry, manual-retry, dead-letter", value)
+	}
 }
 
 func (b *toolCatalogDeadLetterBridge) Detail(ctx context.Context, transactionReceiptID string) (postadjudicationstatus.TransactionStatus, error) {

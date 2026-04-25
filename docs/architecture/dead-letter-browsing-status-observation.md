@@ -106,6 +106,8 @@ The slice is intentionally narrow:
     - `json` support
     - `--query`
     - `--adjudication`
+    - `--latest-status-subtype`
+    - `--latest-status-subtype-family`
   - `lango status dead-letter <transaction-receipt-id>`
     - `table` default
     - `json` support
@@ -120,5 +122,5 @@ This slice does not yet include:
 - generic dead-letter browsing for all background tasks
 - full event history dump
 - richer detail-surface actor/time summaries
-- richer dead-letter CLI filters
+- richer dead-letter CLI filters beyond latest subtype / latest family
 - CLI replay / repair actions
