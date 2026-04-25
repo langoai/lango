@@ -151,11 +151,17 @@ type deadLetterSummary struct {
 	manualRetryFamily int
 	deadLetterFamily  int
 	topReasons        []deadLetterReasonSummaryItem
+	topActors         []deadLetterActorSummaryItem
 }
 
 type deadLetterReasonSummaryItem struct {
 	reason string
 	count  int
+}
+
+type deadLetterActorSummaryItem struct {
+	actor string
+	count int
 }
 
 func NewDeadLettersPage(listFn DeadLetterListFn, detailFn DeadLetterDetailFn, retryFns ...DeadLetterRetryFn) *DeadLettersPage {
@@ -447,11 +453,24 @@ func (p *DeadLettersPage) renderSummaryStrip() string {
 		reasonsLine = ansi.Truncate(reasonsLine, max(p.width-8, 48), "…")
 	}
 
-	return lipgloss.JoinVertical(
-		lipgloss.Left,
+	lines := []string{
 		overview,
 		chipStyle.Render(reasonsLine),
-	)
+	}
+
+	if len(summary.topActors) > 0 {
+		actorParts := make([]string, 0, len(summary.topActors))
+		for _, item := range summary.topActors {
+			actorParts = append(actorParts, fmt.Sprintf("%s(%d)", item.actor, item.count))
+		}
+		actorsLine := "actors: " + strings.Join(actorParts, ", ")
+		if p.width > 0 {
+			actorsLine = ansi.Truncate(actorsLine, max(p.width-8, 48), "…")
+		}
+		lines = append(lines, chipStyle.Render(actorsLine))
+	}
+
+	return lipgloss.JoinVertical(lipgloss.Left, lines...)
 }
 
 func (p *DeadLettersPage) renderFilterBar() string {
@@ -937,6 +956,7 @@ func fallback(value string, fallbackValue string, empty string) string {
 func summarizeDeadLetters(items []postadjudicationstatus.DeadLetterBacklogEntry) deadLetterSummary {
 	var summary deadLetterSummary
 	reasonCounts := make(map[string]int)
+	actorCounts := make(map[string]int)
 	for _, item := range items {
 		summary.total++
 		if item.CanRetry {
@@ -960,24 +980,42 @@ func summarizeDeadLetters(items []postadjudicationstatus.DeadLetterBacklogEntry)
 		if reason != "" {
 			reasonCounts[reason]++
 		}
-	}
-	if len(reasonCounts) == 0 {
-		return summary
-	}
-
-	reasons := make([]deadLetterReasonSummaryItem, 0, len(reasonCounts))
-	for reason, count := range reasonCounts {
-		reasons = append(reasons, deadLetterReasonSummaryItem{reason: reason, count: count})
-	}
-	sort.Slice(reasons, func(i, j int) bool {
-		if reasons[i].count != reasons[j].count {
-			return reasons[i].count > reasons[j].count
+		actor := strings.TrimSpace(item.LatestManualReplayActor)
+		if actor != "" {
+			actorCounts[actor]++
 		}
-		return reasons[i].reason < reasons[j].reason
-	})
-	if len(reasons) > 5 {
-		reasons = reasons[:5]
 	}
-	summary.topReasons = reasons
+	if len(reasonCounts) > 0 {
+		reasons := make([]deadLetterReasonSummaryItem, 0, len(reasonCounts))
+		for reason, count := range reasonCounts {
+			reasons = append(reasons, deadLetterReasonSummaryItem{reason: reason, count: count})
+		}
+		sort.Slice(reasons, func(i, j int) bool {
+			if reasons[i].count != reasons[j].count {
+				return reasons[i].count > reasons[j].count
+			}
+			return reasons[i].reason < reasons[j].reason
+		})
+		if len(reasons) > 5 {
+			reasons = reasons[:5]
+		}
+		summary.topReasons = reasons
+	}
+	if len(actorCounts) > 0 {
+		actors := make([]deadLetterActorSummaryItem, 0, len(actorCounts))
+		for actor, count := range actorCounts {
+			actors = append(actors, deadLetterActorSummaryItem{actor: actor, count: count})
+		}
+		sort.Slice(actors, func(i, j int) bool {
+			if actors[i].count != actors[j].count {
+				return actors[i].count > actors[j].count
+			}
+			return actors[i].actor < actors[j].actor
+		})
+		if len(actors) > 5 {
+			actors = actors[:5]
+		}
+		summary.topActors = actors
+	}
 	return summary
 }
