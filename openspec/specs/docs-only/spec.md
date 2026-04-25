@@ -449,13 +449,14 @@ The `docs/architecture/dead-letter-browsing-status-observation.md` page SHALL de
 - **AND** they SHALL find dead-letter CLI surface described
 - **AND** they SHALL find dead-letter CLI subtype/latest-family filtering described
 - **AND** they SHALL find dead-letter CLI retry action described
+- **AND** they SHALL find dead-letter CLI actor/time filtering described
 - **AND** they SHALL find the cockpit detail-pane `Retry` action described
 - **AND** they SHALL find inline confirm and success-refresh recovery UX described
 - **AND** they SHALL find retry running/failure feedback described
 - **AND** they SHALL find detail navigation hints described for per-transaction status
 
 ### Requirement: P2P knowledge exchange track reflects landed dead-letter browsing / status observation
-The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe dead-letter browsing / status observation as landed work with transaction-global dominant family, compact per-submission breakdown, a thin raw background-task bridge on the detail view, a cockpit dead-letter read surface, a thin cockpit filter bar, cockpit subtype filtering, cockpit latest-family filtering, cockpit any-match-family filtering, cockpit actor/time filtering, cockpit reason/dispatch filtering, cockpit reset/clear shortcuts, cockpit selection preservation, a cockpit `Retry` action, confirm/refresh recovery UX, retry loading/failure feedback, and a dead-letter CLI surface including subtype/latest-family list filtering and the first retry action, and list the remaining work as richer dead-letter CLI filters beyond latest subtype / latest family, richer CLI recovery UX, and broader operator summaries.
+The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe dead-letter browsing / status observation as landed work with transaction-global dominant family, compact per-submission breakdown, a thin raw background-task bridge on the detail view, a cockpit dead-letter read surface, a thin cockpit filter bar, cockpit subtype filtering, cockpit latest-family filtering, cockpit any-match-family filtering, cockpit actor/time filtering, cockpit reason/dispatch filtering, cockpit reset/clear shortcuts, cockpit selection preservation, a cockpit `Retry` action, confirm/refresh recovery UX, retry loading/failure feedback, and a dead-letter CLI surface including subtype/latest-family filtering, actor/time filtering, and the first retry action, and list the remaining work as richer dead-letter CLI filters beyond latest subtype / latest family / actor-time, richer CLI recovery UX, and broader operator summaries.
 
 #### Scenario: Track page points to the landed status slice
 - **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
@@ -474,7 +475,8 @@ The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe dead
 - **AND** they SHALL find dead-letter CLI surface described as landed work
 - **AND** they SHALL find dead-letter CLI subtype/latest-family filtering described as landed work
 - **AND** they SHALL find dead-letter CLI retry action described as landed work
+- **AND** they SHALL find dead-letter CLI actor/time filtering described as landed work
 - **AND** they SHALL find the cockpit `Retry` action described as landed work
 - **AND** they SHALL find confirm/refresh recovery UX described as landed work
 - **AND** they SHALL find retry loading/failure feedback described as landed work
-- **AND** the remaining work SHALL be described as richer dead-letter CLI filters beyond latest subtype / latest family, richer CLI recovery UX, and broader operator summaries
+- **AND** the remaining work SHALL be described as richer dead-letter CLI filters beyond latest subtype / latest family / actor-time, richer CLI recovery UX, and broader operator summaries

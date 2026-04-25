@@ -38,6 +38,9 @@ type deadLetterListOptions struct {
 	Adjudication              string
 	LatestStatusSubtype       string
 	LatestStatusSubtypeFamily string
+	ManualReplayActor         string
+	DeadLetteredAfter         string
+	DeadLetteredBefore        string
 }
 
 type deadLetterListPage struct {
@@ -107,6 +110,9 @@ func newDeadLettersCmd(loader deadLetterBridgeLoader) *cobra.Command {
 		adjudication              string
 		latestStatusSubtype       string
 		latestStatusSubtypeFamily string
+		manualReplayActor         string
+		deadLetteredAfter         string
+		deadLetteredBefore        string
 	)
 
 	cmd := &cobra.Command{
@@ -122,6 +128,14 @@ func newDeadLettersCmd(loader deadLetterBridgeLoader) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			after, err := normalizeRFC3339Flag("dead-lettered-after", deadLetteredAfter)
+			if err != nil {
+				return err
+			}
+			before, err := normalizeRFC3339Flag("dead-lettered-before", deadLetteredBefore)
+			if err != nil {
+				return err
+			}
 
 			bridge, cleanup, err := loader()
 			if err != nil {
@@ -134,6 +148,9 @@ func newDeadLettersCmd(loader deadLetterBridgeLoader) *cobra.Command {
 				Adjudication:              adjudication,
 				LatestStatusSubtype:       subtype,
 				LatestStatusSubtypeFamily: family,
+				ManualReplayActor:         strings.TrimSpace(manualReplayActor),
+				DeadLetteredAfter:         after,
+				DeadLetteredBefore:        before,
 			})
 			if err != nil {
 				return err
@@ -150,6 +167,9 @@ func newDeadLettersCmd(loader deadLetterBridgeLoader) *cobra.Command {
 	cmd.Flags().StringVar(&adjudication, "adjudication", "", "Adjudication outcome filter: release or refund")
 	cmd.Flags().StringVar(&latestStatusSubtype, "latest-status-subtype", "", "Latest status subtype filter: retry-scheduled, manual-retry-requested, or dead-lettered")
 	cmd.Flags().StringVar(&latestStatusSubtypeFamily, "latest-status-subtype-family", "", "Latest status subtype family filter: retry, manual-retry, or dead-letter")
+	cmd.Flags().StringVar(&manualReplayActor, "manual-replay-actor", "", "Latest manual replay actor filter")
+	cmd.Flags().StringVar(&deadLetteredAfter, "dead-lettered-after", "", "Latest dead-letter lower-bound timestamp filter (RFC3339)")
+	cmd.Flags().StringVar(&deadLetteredBefore, "dead-lettered-before", "", "Latest dead-letter upper-bound timestamp filter (RFC3339)")
 	return cmd
 }
 
@@ -298,6 +318,15 @@ func (b *toolCatalogDeadLetterBridge) List(ctx context.Context, opts deadLetterL
 	case "retry", "manual-retry", "dead-letter":
 		params["latest_status_subtype_family"] = strings.TrimSpace(opts.LatestStatusSubtypeFamily)
 	}
+	if actor := strings.TrimSpace(opts.ManualReplayActor); actor != "" {
+		params["manual_replay_actor"] = actor
+	}
+	if after := strings.TrimSpace(opts.DeadLetteredAfter); after != "" {
+		params["dead_lettered_after"] = after
+	}
+	if before := strings.TrimSpace(opts.DeadLetteredBefore); before != "" {
+		params["dead_lettered_before"] = before
+	}
 	raw, err := entry.Tool.Handler(ctx, params)
 	if err != nil {
 		return deadLetterListPage{}, err
@@ -343,6 +372,17 @@ func normalizeLatestStatusSubtypeFamily(value string) (string, error) {
 	default:
 		return "", fmt.Errorf("invalid --latest-status-subtype-family %q: must be one of retry, manual-retry, dead-letter", value)
 	}
+}
+
+func normalizeRFC3339Flag(name, value string) (string, error) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return "", nil
+	}
+	if _, err := time.Parse(time.RFC3339, trimmed); err != nil {
+		return "", fmt.Errorf("invalid --%s %q: must be RFC3339", name, value)
+	}
+	return trimmed, nil
 }
 
 func (b *toolCatalogDeadLetterBridge) Detail(ctx context.Context, transactionReceiptID string) (postadjudicationstatus.TransactionStatus, error) {

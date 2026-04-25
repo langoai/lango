@@ -51,6 +51,9 @@ Flags:
 | `--adjudication` | `""` | Adjudication outcome filter: `release` or `refund` |
 | `--latest-status-subtype` | `""` | Latest status subtype filter: `retry-scheduled`, `manual-retry-requested`, or `dead-lettered` |
 | `--latest-status-subtype-family` | `""` | Latest status subtype family filter: `retry`, `manual-retry`, or `dead-letter` |
+| `--manual-replay-actor` | `""` | Latest manual replay actor filter |
+| `--dead-lettered-after` | `""` | RFC3339 lower-bound timestamp filter for latest dead-letter time |
+| `--dead-lettered-before` | `""` | RFC3339 upper-bound timestamp filter for latest dead-letter time |
 
 Examples:
 
@@ -60,6 +63,8 @@ lango status dead-letters --query tx-123
 lango status dead-letters --adjudication release --output json
 lango status dead-letters --latest-status-subtype dead-lettered
 lango status dead-letters --latest-status-subtype-family manual-retry
+lango status dead-letters --manual-replay-actor operator:alice
+lango status dead-letters --dead-lettered-after 2026-04-25T09:00:00Z --dead-lettered-before 2026-04-25T18:00:00Z
 ```
 
 ### `lango status dead-letter <transaction-receipt-id>`
