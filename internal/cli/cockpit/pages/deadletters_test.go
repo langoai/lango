@@ -759,6 +759,233 @@ func TestDeadLettersPage_RetrySelectedShowsSuccessMessage(t *testing.T) {
 	assert.Contains(t, page.View(), "Retry request accepted for tx-1. Refreshing backlog and detail.")
 }
 
+func TestDeadLettersPage_ViewIncludesSummaryStrip(t *testing.T) {
+	listFn := &mockDeadLetterListFn{
+		items: []postadjudicationstatus.DeadLetterBacklogEntry{
+			{
+				TransactionReceiptID:      "tx-1",
+				SubmissionReceiptID:       "sub-1",
+				Adjudication:              "release",
+				LatestStatusSubtypeFamily: "retry",
+				IsDeadLettered:            true,
+				CanRetry:                  true,
+			},
+			{
+				TransactionReceiptID:      "tx-2",
+				SubmissionReceiptID:       "sub-2",
+				Adjudication:              "refund",
+				LatestStatusSubtypeFamily: "manual-retry",
+				IsDeadLettered:            true,
+				CanRetry:                  false,
+			},
+			{
+				TransactionReceiptID:      "tx-3",
+				SubmissionReceiptID:       "sub-3",
+				Adjudication:              "release",
+				LatestStatusSubtypeFamily: "dead-letter",
+				IsDeadLettered:            true,
+				CanRetry:                  true,
+			},
+		},
+	}
+	detailFn := &mockDeadLetterDetailFn{
+		statusByID: map[string]postadjudicationstatus.TransactionStatus{
+			"tx-1": {CanonicalSnapshot: postadjudicationstatus.CanonicalSnapshot{TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-1"}, SubmissionReceipt: receipts.SubmissionReceipt{SubmissionReceiptID: "sub-1"}}, CanRetry: true},
+			"tx-2": {CanonicalSnapshot: postadjudicationstatus.CanonicalSnapshot{TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-2"}, SubmissionReceipt: receipts.SubmissionReceipt{SubmissionReceiptID: "sub-2"}}, CanRetry: false},
+			"tx-3": {CanonicalSnapshot: postadjudicationstatus.CanonicalSnapshot{TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-3"}, SubmissionReceipt: receipts.SubmissionReceipt{SubmissionReceiptID: "sub-3"}}, CanRetry: true},
+		},
+	}
+
+	page := NewDeadLettersPage(listFn.call, detailFn.call, (&mockDeadLetterRetryFn{}).call)
+	updated, detailCmd := page.Update(page.Activate()())
+	page = updated.(*DeadLettersPage)
+	require.NotNil(t, detailCmd)
+	updated, _ = page.Update(detailCmd())
+	page = updated.(*DeadLettersPage)
+
+	view := page.View()
+	assert.Contains(t, view, "dead letters: 3")
+	assert.Contains(t, view, "retryable: 2")
+	assert.Contains(t, view, "release/refund: 2/1")
+	assert.Contains(t, view, "retry/manual/dead: 1/1/1")
+}
+
+func TestDeadLettersPage_SummaryStripRecomputesAcrossReloadPaths(t *testing.T) {
+	initialItems := []postadjudicationstatus.DeadLetterBacklogEntry{
+		{
+			TransactionReceiptID:      "tx-1",
+			SubmissionReceiptID:       "sub-1",
+			Adjudication:              "release",
+			LatestStatusSubtypeFamily: "retry",
+			LatestManualReplayActor:   "operator:alice",
+			IsDeadLettered:            true,
+			CanRetry:                  true,
+		},
+		{
+			TransactionReceiptID:      "tx-2",
+			SubmissionReceiptID:       "sub-2",
+			Adjudication:              "refund",
+			LatestStatusSubtypeFamily: "dead-letter",
+			LatestManualReplayActor:   "operator:bob",
+			IsDeadLettered:            true,
+			CanRetry:                  false,
+		},
+	}
+	filteredItems := []postadjudicationstatus.DeadLetterBacklogEntry{
+		{
+			TransactionReceiptID:      "tx-1",
+			SubmissionReceiptID:       "sub-1",
+			Adjudication:              "release",
+			LatestStatusSubtypeFamily: "manual-retry",
+			LatestManualReplayActor:   "operator:alice",
+			IsDeadLettered:            true,
+			CanRetry:                  true,
+		},
+	}
+	resetItems := []postadjudicationstatus.DeadLetterBacklogEntry{
+		{
+			TransactionReceiptID:      "tx-1",
+			SubmissionReceiptID:       "sub-1",
+			Adjudication:              "release",
+			LatestStatusSubtypeFamily: "retry",
+			LatestManualReplayActor:   "operator:alice",
+			IsDeadLettered:            true,
+			CanRetry:                  true,
+		},
+		{
+			TransactionReceiptID:      "tx-2",
+			SubmissionReceiptID:       "sub-2",
+			Adjudication:              "refund",
+			LatestStatusSubtypeFamily: "manual-retry",
+			LatestManualReplayActor:   "operator:bob",
+			IsDeadLettered:            true,
+			CanRetry:                  true,
+		},
+		{
+			TransactionReceiptID:      "tx-3",
+			SubmissionReceiptID:       "sub-3",
+			Adjudication:              "release",
+			LatestStatusSubtypeFamily: "dead-letter",
+			LatestManualReplayActor:   "operator:carol",
+			IsDeadLettered:            true,
+			CanRetry:                  false,
+		},
+	}
+	postRetryItems := []postadjudicationstatus.DeadLetterBacklogEntry{
+		{
+			TransactionReceiptID:      "tx-2",
+			SubmissionReceiptID:       "sub-2",
+			Adjudication:              "refund",
+			LatestStatusSubtypeFamily: "manual-retry",
+			LatestManualReplayActor:   "operator:bob",
+			IsDeadLettered:            true,
+			CanRetry:                  true,
+		},
+		{
+			TransactionReceiptID:      "tx-3",
+			SubmissionReceiptID:       "sub-3",
+			Adjudication:              "release",
+			LatestStatusSubtypeFamily: "dead-letter",
+			LatestManualReplayActor:   "operator:carol",
+			IsDeadLettered:            true,
+			CanRetry:                  false,
+		},
+	}
+
+	listFn := &sequenceDeadLetterListFn{
+		results: [][]postadjudicationstatus.DeadLetterBacklogEntry{
+			initialItems,
+			filteredItems,
+			resetItems,
+			postRetryItems,
+		},
+	}
+	detailFn := &mockDeadLetterDetailFn{
+		statusByID: map[string]postadjudicationstatus.TransactionStatus{
+			"tx-1": {CanonicalSnapshot: postadjudicationstatus.CanonicalSnapshot{TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-1"}, SubmissionReceipt: receipts.SubmissionReceipt{SubmissionReceiptID: "sub-1"}}, CanRetry: true},
+			"tx-2": {CanonicalSnapshot: postadjudicationstatus.CanonicalSnapshot{TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-2"}, SubmissionReceipt: receipts.SubmissionReceipt{SubmissionReceiptID: "sub-2"}}, CanRetry: true},
+			"tx-3": {CanonicalSnapshot: postadjudicationstatus.CanonicalSnapshot{TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-3"}, SubmissionReceipt: receipts.SubmissionReceipt{SubmissionReceiptID: "sub-3"}}, CanRetry: false},
+		},
+	}
+	retryFn := &mockDeadLetterRetryFn{}
+
+	page := NewDeadLettersPage(listFn.call, detailFn.call, retryFn.call)
+	updated, detailCmd := page.Update(page.Activate()())
+	page = updated.(*DeadLettersPage)
+	require.NotNil(t, detailCmd)
+	updated, _ = page.Update(detailCmd())
+	page = updated.(*DeadLettersPage)
+	assert.Contains(t, page.View(), "dead letters: 2")
+	assert.Contains(t, page.View(), "retryable: 1")
+	assert.Contains(t, page.View(), "release/refund: 1/1")
+	assert.Contains(t, page.View(), "retry/manual/dead: 1/0/1")
+
+	for _, keyMsg := range []tea.KeyMsg{
+		{Type: tea.KeyTab},
+		{Type: tea.KeyRunes, Runes: []rune("o")},
+		{Type: tea.KeyRunes, Runes: []rune("p")},
+		{Type: tea.KeyRunes, Runes: []rune("e")},
+		{Type: tea.KeyRunes, Runes: []rune("r")},
+		{Type: tea.KeyRunes, Runes: []rune("a")},
+		{Type: tea.KeyRunes, Runes: []rune("t")},
+		{Type: tea.KeyRunes, Runes: []rune("o")},
+		{Type: tea.KeyRunes, Runes: []rune("r")},
+		{Type: tea.KeyRunes, Runes: []rune(":")},
+		{Type: tea.KeyRunes, Runes: []rune("a")},
+		{Type: tea.KeyRunes, Runes: []rune("l")},
+		{Type: tea.KeyRunes, Runes: []rune("i")},
+		{Type: tea.KeyRunes, Runes: []rune("c")},
+		{Type: tea.KeyRunes, Runes: []rune("e")},
+	} {
+		updated, _ = page.Update(keyMsg)
+		page = updated.(*DeadLettersPage)
+	}
+	updated, reloadCmd := page.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	page = updated.(*DeadLettersPage)
+	require.NotNil(t, reloadCmd)
+	updated, detailCmd = page.Update(reloadCmd())
+	page = updated.(*DeadLettersPage)
+	require.NotNil(t, detailCmd)
+	updated, _ = page.Update(detailCmd())
+	page = updated.(*DeadLettersPage)
+	assert.Contains(t, page.View(), "dead letters: 1")
+	assert.Contains(t, page.View(), "retryable: 1")
+	assert.Contains(t, page.View(), "release/refund: 1/0")
+	assert.Contains(t, page.View(), "retry/manual/dead: 0/1/0")
+
+	updated, reloadCmd = page.Update(tea.KeyMsg{Type: tea.KeyCtrlR})
+	page = updated.(*DeadLettersPage)
+	require.NotNil(t, reloadCmd)
+	updated, detailCmd = page.Update(reloadCmd())
+	page = updated.(*DeadLettersPage)
+	require.NotNil(t, detailCmd)
+	updated, _ = page.Update(detailCmd())
+	page = updated.(*DeadLettersPage)
+	assert.Contains(t, page.View(), "dead letters: 3")
+	assert.Contains(t, page.View(), "retryable: 2")
+	assert.Contains(t, page.View(), "release/refund: 2/1")
+	assert.Contains(t, page.View(), "retry/manual/dead: 1/1/1")
+
+	updated, retryCmd := page.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
+	page = updated.(*DeadLettersPage)
+	require.Nil(t, retryCmd)
+	updated, retryCmd = page.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
+	page = updated.(*DeadLettersPage)
+	require.NotNil(t, retryCmd)
+	updated, refreshCmd := page.Update(retryCmd())
+	page = updated.(*DeadLettersPage)
+	require.NotNil(t, refreshCmd)
+	updated, detailCmd = page.Update(refreshCmd())
+	page = updated.(*DeadLettersPage)
+	require.NotNil(t, detailCmd)
+	updated, _ = page.Update(detailCmd())
+	page = updated.(*DeadLettersPage)
+	assert.Contains(t, page.View(), "dead letters: 2")
+	assert.Contains(t, page.View(), "retryable: 1")
+	assert.Contains(t, page.View(), "release/refund: 1/1")
+	assert.Contains(t, page.View(), "retry/manual/dead: 0/1/1")
+}
+
 func TestDeadLettersPage_RetrySelectedShowsFailureMessage(t *testing.T) {
 	listFn := &mockDeadLetterListFn{
 		items: []postadjudicationstatus.DeadLetterBacklogEntry{

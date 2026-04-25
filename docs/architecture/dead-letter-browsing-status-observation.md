@@ -65,6 +65,18 @@ The slice is intentionally narrow:
   - `current submission receipt`
   - `submission receipt trail`
 - cockpit read surface
+  - page-top compact summary strip
+    - recomputed from the currently loaded backlog rows
+    - refreshed on:
+      - initial load
+      - filter apply
+      - `Ctrl+R` reset
+      - retry-success refresh
+    - shows:
+      - total dead letters
+      - retryable count
+      - `release/refund` distribution
+      - `retry/manual-retry/dead-letter` distribution
   - dead-letter backlog table
   - selected transaction detail pane
   - selection-driven detail refresh
@@ -163,4 +175,4 @@ This slice does not yet include:
 - polling / follow-up recovery UX
 - richer structured CLI retry-result payloads
 - grouped reason / actor / dispatch families, configurable top-N, and trend/time-window summary views
-- cockpit summary surfaces
+- richer cockpit summary surfaces beyond the first top strip

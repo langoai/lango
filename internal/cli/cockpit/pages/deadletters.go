@@ -141,6 +141,16 @@ type DeadLettersPage struct {
 	retryRunningID                 string
 }
 
+type deadLetterSummary struct {
+	total             int
+	retryable         int
+	release           int
+	refund            int
+	retryFamily       int
+	manualRetryFamily int
+	deadLetterFamily  int
+}
+
 func NewDeadLettersPage(listFn DeadLetterListFn, detailFn DeadLetterDetailFn, retryFns ...DeadLetterRetryFn) *DeadLettersPage {
 	var retryFn DeadLetterRetryFn
 	if len(retryFns) > 0 {
@@ -390,16 +400,32 @@ func (p *DeadLettersPage) View() string {
 		Foreground(theme.BorderDefault).
 		Render(strings.Repeat("─", max(p.width-4, 48)))
 
+	summary := p.renderSummaryStrip()
 	filterBar := p.renderFilterBar()
 	table := p.renderTable()
 	detail := p.renderDetailPane()
-	parts := []string{title, divider, "", filterBar, "", table, "", detail}
+	parts := []string{title, divider, "", summary, "", filterBar, "", table, "", detail}
 	if strings.TrimSpace(p.statusMsg) != "" {
 		status := lipgloss.NewStyle().Foreground(theme.Accent).Render(p.statusMsg)
 		parts = append(parts, "", status)
 	}
 	content := lipgloss.JoinVertical(lipgloss.Left, parts...)
 	return lipgloss.NewStyle().Padding(1, 2).Render(content)
+}
+
+func (p *DeadLettersPage) renderSummaryStrip() string {
+	summary := summarizeDeadLetters(p.items)
+	chipStyle := lipgloss.NewStyle().Foreground(theme.TextSecondary)
+	return lipgloss.JoinHorizontal(
+		lipgloss.Left,
+		chipStyle.Render(fmt.Sprintf("dead letters: %d", summary.total)),
+		chipStyle.Render("  •  "),
+		chipStyle.Render(fmt.Sprintf("retryable: %d", summary.retryable)),
+		chipStyle.Render("  •  "),
+		chipStyle.Render(fmt.Sprintf("release/refund: %d/%d", summary.release, summary.refund)),
+		chipStyle.Render("  •  "),
+		chipStyle.Render(fmt.Sprintf("retry/manual/dead: %d/%d/%d", summary.retryFamily, summary.manualRetryFamily, summary.deadLetterFamily)),
+	)
 }
 
 func (p *DeadLettersPage) renderFilterBar() string {
@@ -880,4 +906,29 @@ func fallback(value string, fallbackValue string, empty string) string {
 		return fallbackValue
 	}
 	return empty
+}
+
+func summarizeDeadLetters(items []postadjudicationstatus.DeadLetterBacklogEntry) deadLetterSummary {
+	var summary deadLetterSummary
+	for _, item := range items {
+		summary.total++
+		if item.CanRetry {
+			summary.retryable++
+		}
+		switch strings.ToLower(strings.TrimSpace(item.Adjudication)) {
+		case "release":
+			summary.release++
+		case "refund":
+			summary.refund++
+		}
+		switch strings.ToLower(strings.TrimSpace(item.LatestStatusSubtypeFamily)) {
+		case "retry":
+			summary.retryFamily++
+		case "manual-retry":
+			summary.manualRetryFamily++
+		case "dead-letter":
+			summary.deadLetterFamily++
+		}
+	}
+	return summary
 }
