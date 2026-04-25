@@ -62,6 +62,12 @@ The first summary slice includes:
     - `actor`
     - `count`
   - aggregated from each backlog row's current `latest_manual_replay_actor`
+- `top_latest_dispatch_references`
+  - top `5` latest dispatch references
+  - each item includes:
+    - `dispatch_reference`
+    - `count`
+  - aggregated from each backlog row's current `latest_dispatch_reference`
 
 Flags:
 

@@ -181,6 +181,10 @@ func renderDeadLetterSummaryTable(summary deadLetterSummaryResult) string {
 	b.WriteString("\n")
 	b.WriteString(sectionHeader("Top Latest Manual Replay Actors"))
 	b.WriteString(renderActorSummaryItems(summary.TopLatestManualReplayActors))
+
+	b.WriteString("\n")
+	b.WriteString(sectionHeader("Top Latest Dispatch References"))
+	b.WriteString(renderDispatchSummaryItems(summary.TopLatestDispatchReferences))
 	return b.String()
 }
 
@@ -224,6 +228,22 @@ func renderActorSummaryItems(items []deadLetterActorSummaryItem) string {
 	b.WriteString("\n")
 	for _, item := range items {
 		b.WriteString(fmt.Sprintf("%-60s %-8d\n", tui.Truncate(item.Actor, 60), item.Count))
+	}
+	return b.String()
+}
+
+func renderDispatchSummaryItems(items []deadLetterDispatchSummaryItem) string {
+	if len(items) == 0 {
+		return infoLine("none", "0")
+	}
+
+	var b strings.Builder
+	sep := lipgloss.NewStyle().Foreground(tui.Separator).Render(strings.Repeat("\u2500", 72))
+	b.WriteString(fmt.Sprintf("%-60s %-8s\n", "Dispatch Reference", "Count"))
+	b.WriteString(sep)
+	b.WriteString("\n")
+	for _, item := range items {
+		b.WriteString(fmt.Sprintf("%-60s %-8d\n", tui.Truncate(item.DispatchReference, 60), item.Count))
 	}
 	return b.String()
 }

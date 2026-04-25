@@ -337,9 +337,9 @@ func TestDeadLetterSummaryCmd_JSON(t *testing.T) {
 	bridge := &fakeDeadLetterBridge{
 		page: deadLetterListPage{
 			Entries: []postadjudicationstatus.DeadLetterBacklogEntry{
-				{TransactionReceiptID: "tx-1", Adjudication: "release", CanRetry: true, LatestStatusSubtypeFamily: "retry", LatestDeadLetterReason: "worker exhausted", LatestManualReplayActor: "operator:bob"},
-				{TransactionReceiptID: "tx-2", Adjudication: "refund", CanRetry: false, LatestStatusSubtypeFamily: "manual-retry", LatestDeadLetterReason: "insufficient evidence", LatestManualReplayActor: "operator:alice"},
-				{TransactionReceiptID: "tx-3", Adjudication: "release", CanRetry: true, LatestStatusSubtypeFamily: "dead-letter", LatestDeadLetterReason: "worker exhausted", LatestManualReplayActor: "operator:bob"},
+				{TransactionReceiptID: "tx-1", Adjudication: "release", CanRetry: true, LatestStatusSubtypeFamily: "retry", LatestDeadLetterReason: "worker exhausted", LatestManualReplayActor: "operator:bob", LatestDispatchReference: "dispatch-1"},
+				{TransactionReceiptID: "tx-2", Adjudication: "refund", CanRetry: false, LatestStatusSubtypeFamily: "manual-retry", LatestDeadLetterReason: "insufficient evidence", LatestManualReplayActor: "operator:alice", LatestDispatchReference: "dispatch-2"},
+				{TransactionReceiptID: "tx-3", Adjudication: "release", CanRetry: true, LatestStatusSubtypeFamily: "dead-letter", LatestDeadLetterReason: "worker exhausted", LatestManualReplayActor: "operator:bob", LatestDispatchReference: "dispatch-1"},
 			},
 			Count: 3,
 			Total: 3,
@@ -373,6 +373,10 @@ func TestDeadLetterSummaryCmd_JSON(t *testing.T) {
 		{Actor: "operator:bob", Count: 2},
 		{Actor: "operator:alice", Count: 1},
 	}, got.TopLatestManualReplayActors)
+	assert.Equal(t, []deadLetterDispatchSummaryItem{
+		{DispatchReference: "dispatch-1", Count: 2},
+		{DispatchReference: "dispatch-2", Count: 1},
+	}, got.TopLatestDispatchReferences)
 }
 
 func TestAggregateDeadLetterSummary_TopLatestDeadLetterReasons(t *testing.T) {
@@ -407,9 +411,9 @@ func TestDeadLetterSummaryCmd_TableIncludesTopLatestManualReplayActors(t *testin
 	bridge := &fakeDeadLetterBridge{
 		page: deadLetterListPage{
 			Entries: []postadjudicationstatus.DeadLetterBacklogEntry{
-				{TransactionReceiptID: "tx-1", Adjudication: "release", CanRetry: true, LatestStatusSubtypeFamily: "retry", LatestDeadLetterReason: "worker exhausted", LatestManualReplayActor: "operator:bob"},
-				{TransactionReceiptID: "tx-2", Adjudication: "refund", CanRetry: false, LatestStatusSubtypeFamily: "manual-retry", LatestDeadLetterReason: "insufficient evidence", LatestManualReplayActor: "operator:alice"},
-				{TransactionReceiptID: "tx-3", Adjudication: "release", CanRetry: true, LatestStatusSubtypeFamily: "dead-letter", LatestDeadLetterReason: "worker exhausted", LatestManualReplayActor: "operator:bob"},
+				{TransactionReceiptID: "tx-1", Adjudication: "release", CanRetry: true, LatestStatusSubtypeFamily: "retry", LatestDeadLetterReason: "worker exhausted", LatestManualReplayActor: "operator:bob", LatestDispatchReference: "dispatch-1"},
+				{TransactionReceiptID: "tx-2", Adjudication: "refund", CanRetry: false, LatestStatusSubtypeFamily: "manual-retry", LatestDeadLetterReason: "insufficient evidence", LatestManualReplayActor: "operator:alice", LatestDispatchReference: "dispatch-2"},
+				{TransactionReceiptID: "tx-3", Adjudication: "release", CanRetry: true, LatestStatusSubtypeFamily: "dead-letter", LatestDeadLetterReason: "worker exhausted", LatestManualReplayActor: "operator:bob", LatestDispatchReference: "dispatch-1"},
 			},
 			Count: 3,
 			Total: 3,
@@ -424,6 +428,29 @@ func TestDeadLetterSummaryCmd_TableIncludesTopLatestManualReplayActors(t *testin
 	assert.Contains(t, out, "Top Latest Manual Replay Actors")
 	assert.Contains(t, out, "operator:bob")
 	assert.Contains(t, out, "operator:alice")
+}
+
+func TestDeadLetterSummaryCmd_TableIncludesTopLatestDispatchReferences(t *testing.T) {
+	bridge := &fakeDeadLetterBridge{
+		page: deadLetterListPage{
+			Entries: []postadjudicationstatus.DeadLetterBacklogEntry{
+				{TransactionReceiptID: "tx-1", LatestDispatchReference: "dispatch-1"},
+				{TransactionReceiptID: "tx-2", LatestDispatchReference: "dispatch-2"},
+				{TransactionReceiptID: "tx-3", LatestDispatchReference: "dispatch-1"},
+			},
+			Count: 3,
+			Total: 3,
+		},
+	}
+	cmd := newDeadLetterSummaryCmd(func() (deadLetterBridge, func(), error) {
+		return bridge, func() {}, nil
+	})
+
+	out, err := executeCommand(t, cmd)
+	require.NoError(t, err)
+	assert.Contains(t, out, "Top Latest Dispatch References")
+	assert.Contains(t, out, "dispatch-1")
+	assert.Contains(t, out, "dispatch-2")
 }
 
 func TestAggregateDeadLetterSummary_TopLatestManualReplayActors(t *testing.T) {
@@ -451,6 +478,33 @@ func TestAggregateDeadLetterSummary_TopLatestManualReplayActors(t *testing.T) {
 		{Actor: "operator:dave", Count: 1},
 		{Actor: "operator:erin", Count: 1},
 	}, got.TopLatestManualReplayActors)
+}
+
+func TestAggregateDeadLetterSummary_TopLatestDispatchReferences(t *testing.T) {
+	page := deadLetterListPage{
+		Entries: []postadjudicationstatus.DeadLetterBacklogEntry{
+			{LatestDispatchReference: "dispatch-b"},
+			{LatestDispatchReference: "dispatch-b"},
+			{LatestDispatchReference: "dispatch-a"},
+			{LatestDispatchReference: "dispatch-a"},
+			{LatestDispatchReference: "dispatch-c"},
+			{LatestDispatchReference: "dispatch-d"},
+			{LatestDispatchReference: "dispatch-e"},
+			{LatestDispatchReference: "dispatch-f"},
+			{LatestDispatchReference: "dispatch-c"},
+			{LatestDispatchReference: "  "},
+		},
+	}
+
+	got := aggregateDeadLetterSummary(page)
+
+	assert.Equal(t, []deadLetterDispatchSummaryItem{
+		{DispatchReference: "dispatch-a", Count: 2},
+		{DispatchReference: "dispatch-b", Count: 2},
+		{DispatchReference: "dispatch-c", Count: 2},
+		{DispatchReference: "dispatch-d", Count: 1},
+		{DispatchReference: "dispatch-e", Count: 1},
+	}, got.TopLatestDispatchReferences)
 }
 
 func TestDeadLettersCmd_TableAndFilters(t *testing.T) {

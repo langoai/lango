@@ -117,6 +117,10 @@ The slice is intentionally narrow:
         - top `5` actors
         - each item includes `actor` and `count`
         - aggregated from each row's current `latest_manual_replay_actor`
+      - `top_latest_dispatch_references`
+        - top `5` dispatch references
+        - each item includes `dispatch_reference` and `count`
+        - aggregated from each row's current `latest_dispatch_reference`
     - aggregates over the existing dead-letter backlog read model in the CLI layer
   - `lango status dead-letters`
     - `table` default
@@ -158,6 +162,5 @@ This slice does not yet include:
 - dead-letter CLI `any_match_family` filtering
 - polling / follow-up recovery UX
 - richer structured CLI retry-result payloads
-- dispatch summary breakdowns
-- grouped reason / actor families, configurable top-N, and trend/time-window summary views
+- grouped reason / actor / dispatch families, configurable top-N, and trend/time-window summary views
 - cockpit summary surfaces
