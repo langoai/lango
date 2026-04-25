@@ -70,12 +70,18 @@ type deadLetterReasonSummaryItem struct {
 	Count  int    `json:"count"`
 }
 
+type deadLetterActorSummaryItem struct {
+	Actor string `json:"actor"`
+	Count int    `json:"count"`
+}
+
 type deadLetterSummaryResult struct {
-	TotalDeadLetters           int                           `json:"total_dead_letters"`
-	RetryableCount             int                           `json:"retryable_count"`
-	ByAdjudication             []deadLetterSummaryBucket     `json:"by_adjudication"`
-	ByLatestFamily             []deadLetterSummaryBucket     `json:"by_latest_family"`
-	TopLatestDeadLetterReasons []deadLetterReasonSummaryItem `json:"top_latest_dead_letter_reasons"`
+	TotalDeadLetters            int                           `json:"total_dead_letters"`
+	RetryableCount              int                           `json:"retryable_count"`
+	ByAdjudication              []deadLetterSummaryBucket     `json:"by_adjudication"`
+	ByLatestFamily              []deadLetterSummaryBucket     `json:"by_latest_family"`
+	TopLatestDeadLetterReasons  []deadLetterReasonSummaryItem `json:"top_latest_dead_letter_reasons"`
+	TopLatestManualReplayActors []deadLetterActorSummaryItem  `json:"top_latest_manual_replay_actors"`
 }
 
 type toolCatalogDeadLetterBridge struct {
@@ -458,6 +464,7 @@ func aggregateDeadLetterSummary(page deadLetterListPage) deadLetterSummaryResult
 	adjudicationCounts := map[string]int{}
 	latestFamilyCounts := map[string]int{}
 	reasonCounts := map[string]int{}
+	actorCounts := map[string]int{}
 
 	for _, entry := range page.Entries {
 		if entry.CanRetry {
@@ -468,14 +475,18 @@ func aggregateDeadLetterSummary(page deadLetterListPage) deadLetterSummaryResult
 		if reason := strings.TrimSpace(entry.LatestDeadLetterReason); reason != "" {
 			reasonCounts[reason]++
 		}
+		if actor := strings.TrimSpace(entry.LatestManualReplayActor); actor != "" {
+			actorCounts[actor]++
+		}
 	}
 
 	return deadLetterSummaryResult{
-		TotalDeadLetters:           summaryTotal(page),
-		RetryableCount:             retryableCount,
-		ByAdjudication:             orderedSummaryBuckets(adjudicationCounts, []string{"release", "refund"}),
-		ByLatestFamily:             orderedSummaryBuckets(latestFamilyCounts, []string{"retry", "manual-retry", "dead-letter"}),
-		TopLatestDeadLetterReasons: topDeadLetterReasons(reasonCounts, 5),
+		TotalDeadLetters:            summaryTotal(page),
+		RetryableCount:              retryableCount,
+		ByAdjudication:              orderedSummaryBuckets(adjudicationCounts, []string{"release", "refund"}),
+		ByLatestFamily:              orderedSummaryBuckets(latestFamilyCounts, []string{"retry", "manual-retry", "dead-letter"}),
+		TopLatestDeadLetterReasons:  topDeadLetterReasons(reasonCounts, 5),
+		TopLatestManualReplayActors: topManualReplayActors(actorCounts, 5),
 	}
 }
 
@@ -532,6 +543,27 @@ func topDeadLetterReasons(counts map[string]int, limit int) []deadLetterReasonSu
 			return items[i].Count > items[j].Count
 		}
 		return items[i].Reason < items[j].Reason
+	})
+	if len(items) > limit {
+		items = items[:limit]
+	}
+	return items
+}
+
+func topManualReplayActors(counts map[string]int, limit int) []deadLetterActorSummaryItem {
+	if limit <= 0 || len(counts) == 0 {
+		return nil
+	}
+
+	items := make([]deadLetterActorSummaryItem, 0, len(counts))
+	for actor, count := range counts {
+		items = append(items, deadLetterActorSummaryItem{Actor: actor, Count: count})
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].Count != items[j].Count {
+			return items[i].Count > items[j].Count
+		}
+		return items[i].Actor < items[j].Actor
 	})
 	if len(items) > limit {
 		items = items[:limit]

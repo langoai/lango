@@ -56,6 +56,12 @@ The first summary slice includes:
     - `reason`
     - `count`
   - aggregated from each backlog row's current `latest_dead_letter_reason`
+- `top_latest_manual_replay_actors`
+  - top `5` latest manual replay actors
+  - each item includes:
+    - `actor`
+    - `count`
+  - aggregated from each backlog row's current `latest_manual_replay_actor`
 
 Flags:
 

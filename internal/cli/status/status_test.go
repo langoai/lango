@@ -337,9 +337,9 @@ func TestDeadLetterSummaryCmd_JSON(t *testing.T) {
 	bridge := &fakeDeadLetterBridge{
 		page: deadLetterListPage{
 			Entries: []postadjudicationstatus.DeadLetterBacklogEntry{
-				{TransactionReceiptID: "tx-1", Adjudication: "release", CanRetry: true, LatestStatusSubtypeFamily: "retry", LatestDeadLetterReason: "worker exhausted"},
-				{TransactionReceiptID: "tx-2", Adjudication: "refund", CanRetry: false, LatestStatusSubtypeFamily: "manual-retry", LatestDeadLetterReason: "insufficient evidence"},
-				{TransactionReceiptID: "tx-3", Adjudication: "release", CanRetry: true, LatestStatusSubtypeFamily: "dead-letter", LatestDeadLetterReason: "worker exhausted"},
+				{TransactionReceiptID: "tx-1", Adjudication: "release", CanRetry: true, LatestStatusSubtypeFamily: "retry", LatestDeadLetterReason: "worker exhausted", LatestManualReplayActor: "operator:bob"},
+				{TransactionReceiptID: "tx-2", Adjudication: "refund", CanRetry: false, LatestStatusSubtypeFamily: "manual-retry", LatestDeadLetterReason: "insufficient evidence", LatestManualReplayActor: "operator:alice"},
+				{TransactionReceiptID: "tx-3", Adjudication: "release", CanRetry: true, LatestStatusSubtypeFamily: "dead-letter", LatestDeadLetterReason: "worker exhausted", LatestManualReplayActor: "operator:bob"},
 			},
 			Count: 3,
 			Total: 3,
@@ -369,6 +369,10 @@ func TestDeadLetterSummaryCmd_JSON(t *testing.T) {
 		{Reason: "worker exhausted", Count: 2},
 		{Reason: "insufficient evidence", Count: 1},
 	}, got.TopLatestDeadLetterReasons)
+	assert.Equal(t, []deadLetterActorSummaryItem{
+		{Actor: "operator:bob", Count: 2},
+		{Actor: "operator:alice", Count: 1},
+	}, got.TopLatestManualReplayActors)
 }
 
 func TestAggregateDeadLetterSummary_TopLatestDeadLetterReasons(t *testing.T) {
@@ -397,6 +401,56 @@ func TestAggregateDeadLetterSummary_TopLatestDeadLetterReasons(t *testing.T) {
 		{Reason: "worker exhausted", Count: 2},
 		{Reason: "already settled", Count: 1},
 	}, got.TopLatestDeadLetterReasons)
+}
+
+func TestDeadLetterSummaryCmd_TableIncludesTopLatestManualReplayActors(t *testing.T) {
+	bridge := &fakeDeadLetterBridge{
+		page: deadLetterListPage{
+			Entries: []postadjudicationstatus.DeadLetterBacklogEntry{
+				{TransactionReceiptID: "tx-1", Adjudication: "release", CanRetry: true, LatestStatusSubtypeFamily: "retry", LatestDeadLetterReason: "worker exhausted", LatestManualReplayActor: "operator:bob"},
+				{TransactionReceiptID: "tx-2", Adjudication: "refund", CanRetry: false, LatestStatusSubtypeFamily: "manual-retry", LatestDeadLetterReason: "insufficient evidence", LatestManualReplayActor: "operator:alice"},
+				{TransactionReceiptID: "tx-3", Adjudication: "release", CanRetry: true, LatestStatusSubtypeFamily: "dead-letter", LatestDeadLetterReason: "worker exhausted", LatestManualReplayActor: "operator:bob"},
+			},
+			Count: 3,
+			Total: 3,
+		},
+	}
+	cmd := newDeadLetterSummaryCmd(func() (deadLetterBridge, func(), error) {
+		return bridge, func() {}, nil
+	})
+
+	out, err := executeCommand(t, cmd)
+	require.NoError(t, err)
+	assert.Contains(t, out, "Top Latest Manual Replay Actors")
+	assert.Contains(t, out, "operator:bob")
+	assert.Contains(t, out, "operator:alice")
+}
+
+func TestAggregateDeadLetterSummary_TopLatestManualReplayActors(t *testing.T) {
+	page := deadLetterListPage{
+		Entries: []postadjudicationstatus.DeadLetterBacklogEntry{
+			{LatestManualReplayActor: "operator:bob"},
+			{LatestManualReplayActor: "operator:bob"},
+			{LatestManualReplayActor: "operator:alice"},
+			{LatestManualReplayActor: "operator:alice"},
+			{LatestManualReplayActor: "operator:carol"},
+			{LatestManualReplayActor: "operator:dave"},
+			{LatestManualReplayActor: "operator:erin"},
+			{LatestManualReplayActor: "operator:frank"},
+			{LatestManualReplayActor: "operator:carol"},
+			{LatestManualReplayActor: "  "},
+		},
+	}
+
+	got := aggregateDeadLetterSummary(page)
+
+	assert.Equal(t, []deadLetterActorSummaryItem{
+		{Actor: "operator:alice", Count: 2},
+		{Actor: "operator:bob", Count: 2},
+		{Actor: "operator:carol", Count: 2},
+		{Actor: "operator:dave", Count: 1},
+		{Actor: "operator:erin", Count: 1},
+	}, got.TopLatestManualReplayActors)
 }
 
 func TestDeadLettersCmd_TableAndFilters(t *testing.T) {
