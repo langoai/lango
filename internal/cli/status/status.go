@@ -41,6 +41,8 @@ type deadLetterListOptions struct {
 	ManualReplayActor         string
 	DeadLetteredAfter         string
 	DeadLetteredBefore        string
+	DeadLetterReasonQuery     string
+	LatestDispatchReference   string
 }
 
 type deadLetterListPage struct {
@@ -113,6 +115,8 @@ func newDeadLettersCmd(loader deadLetterBridgeLoader) *cobra.Command {
 		manualReplayActor         string
 		deadLetteredAfter         string
 		deadLetteredBefore        string
+		deadLetterReasonQuery     string
+		latestDispatchReference   string
 	)
 
 	cmd := &cobra.Command{
@@ -151,6 +155,8 @@ func newDeadLettersCmd(loader deadLetterBridgeLoader) *cobra.Command {
 				ManualReplayActor:         strings.TrimSpace(manualReplayActor),
 				DeadLetteredAfter:         after,
 				DeadLetteredBefore:        before,
+				DeadLetterReasonQuery:     strings.TrimSpace(deadLetterReasonQuery),
+				LatestDispatchReference:   strings.TrimSpace(latestDispatchReference),
 			})
 			if err != nil {
 				return err
@@ -170,6 +176,8 @@ func newDeadLettersCmd(loader deadLetterBridgeLoader) *cobra.Command {
 	cmd.Flags().StringVar(&manualReplayActor, "manual-replay-actor", "", "Latest manual replay actor filter")
 	cmd.Flags().StringVar(&deadLetteredAfter, "dead-lettered-after", "", "Latest dead-letter lower-bound timestamp filter (RFC3339)")
 	cmd.Flags().StringVar(&deadLetteredBefore, "dead-lettered-before", "", "Latest dead-letter upper-bound timestamp filter (RFC3339)")
+	cmd.Flags().StringVar(&deadLetterReasonQuery, "dead-letter-reason-query", "", "Latest dead-letter reason substring filter")
+	cmd.Flags().StringVar(&latestDispatchReference, "latest-dispatch-reference", "", "Latest dispatch reference exact-match filter")
 	return cmd
 }
 
@@ -326,6 +334,12 @@ func (b *toolCatalogDeadLetterBridge) List(ctx context.Context, opts deadLetterL
 	}
 	if before := strings.TrimSpace(opts.DeadLetteredBefore); before != "" {
 		params["dead_lettered_before"] = before
+	}
+	if reasonQuery := strings.TrimSpace(opts.DeadLetterReasonQuery); reasonQuery != "" {
+		params["dead_letter_reason_query"] = reasonQuery
+	}
+	if dispatchReference := strings.TrimSpace(opts.LatestDispatchReference); dispatchReference != "" {
+		params["latest_dispatch_reference"] = dispatchReference
 	}
 	raw, err := entry.Tool.Handler(ctx, params)
 	if err != nil {

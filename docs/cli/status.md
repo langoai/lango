@@ -54,6 +54,8 @@ Flags:
 | `--manual-replay-actor` | `""` | Latest manual replay actor filter |
 | `--dead-lettered-after` | `""` | RFC3339 lower-bound timestamp filter for latest dead-letter time |
 | `--dead-lettered-before` | `""` | RFC3339 upper-bound timestamp filter for latest dead-letter time |
+| `--dead-letter-reason-query` | `""` | Latest dead-letter reason substring filter |
+| `--latest-dispatch-reference` | `""` | Latest dispatch reference exact-match filter |
 
 Examples:
 
@@ -65,6 +67,8 @@ lango status dead-letters --latest-status-subtype dead-lettered
 lango status dead-letters --latest-status-subtype-family manual-retry
 lango status dead-letters --manual-replay-actor operator:alice
 lango status dead-letters --dead-lettered-after 2026-04-25T09:00:00Z --dead-lettered-before 2026-04-25T18:00:00Z
+lango status dead-letters --dead-letter-reason-query exhausted
+lango status dead-letters --latest-dispatch-reference dispatch-7
 ```
 
 ### `lango status dead-letter <transaction-receipt-id>`

@@ -368,6 +368,32 @@ func TestDeadLettersCmd_ForwardsActorAndTimeFilters(t *testing.T) {
 	}, bridge.lastListOpts)
 }
 
+func TestDeadLettersCmd_ForwardsReasonAndDispatchFilters(t *testing.T) {
+	bridge := &fakeDeadLetterBridge{
+		page: deadLetterListPage{
+			Entries: []postadjudicationstatus.DeadLetterBacklogEntry{{TransactionReceiptID: "tx-1"}},
+			Count:   1,
+			Total:   1,
+		},
+	}
+	cmd := newDeadLettersCmd(func() (deadLetterBridge, func(), error) {
+		return bridge, func() {}, nil
+	})
+
+	_, err := executeCommand(
+		t,
+		cmd,
+		"--dead-letter-reason-query", "worker exhausted",
+		"--latest-dispatch-reference", "dispatch-7",
+	)
+	require.NoError(t, err)
+	assert.Equal(t, 1, bridge.listCalls)
+	assert.Equal(t, deadLetterListOptions{
+		DeadLetterReasonQuery:   "worker exhausted",
+		LatestDispatchReference: "dispatch-7",
+	}, bridge.lastListOpts)
+}
+
 func TestDeadLettersCmd_RejectsInvalidSubtype(t *testing.T) {
 	loaderCalls := 0
 	cmd := newDeadLettersCmd(func() (deadLetterBridge, func(), error) {
@@ -480,6 +506,36 @@ func TestToolCatalogDeadLetterBridge_ForwardsActorAndTimeFilters(t *testing.T) {
 	assert.Equal(t, "operator-1", gotParams["manual_replay_actor"])
 	assert.Equal(t, "2026-04-25T09:00:00Z", gotParams["dead_lettered_after"])
 	assert.Equal(t, "2026-04-25T18:00:00Z", gotParams["dead_lettered_before"])
+}
+
+func TestToolCatalogDeadLetterBridge_ForwardsReasonAndDispatchFilters(t *testing.T) {
+	catalog := toolcatalog.New()
+	var gotParams map[string]interface{}
+	catalog.Register("status", []*agent.Tool{
+		{
+			Name: "list_dead_lettered_post_adjudication_executions",
+			Handler: func(_ context.Context, params map[string]interface{}) (interface{}, error) {
+				gotParams = params
+				return map[string]interface{}{
+					"entries": []map[string]interface{}{},
+					"count":   0,
+					"total":   0,
+					"offset":  0,
+					"limit":   0,
+				}, nil
+			},
+		},
+	})
+
+	bridge := &toolCatalogDeadLetterBridge{catalog: catalog}
+	_, err := bridge.List(context.Background(), deadLetterListOptions{
+		DeadLetterReasonQuery:   "worker exhausted",
+		LatestDispatchReference: "dispatch-7",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, gotParams)
+	assert.Equal(t, "worker exhausted", gotParams["dead_letter_reason_query"])
+	assert.Equal(t, "dispatch-7", gotParams["latest_dispatch_reference"])
 }
 
 func TestDeadLettersCmd_JSON(t *testing.T) {

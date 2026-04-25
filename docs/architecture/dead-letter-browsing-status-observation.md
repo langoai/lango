@@ -111,6 +111,8 @@ The slice is intentionally narrow:
     - `--manual-replay-actor`
     - `--dead-lettered-after`
     - `--dead-lettered-before`
+    - `--dead-letter-reason-query`
+    - `--latest-dispatch-reference`
   - `lango status dead-letter <transaction-receipt-id>`
     - `table` default
     - `json` support
@@ -130,5 +132,5 @@ This slice does not yet include:
 - generic dead-letter browsing for all background tasks
 - full event history dump
 - richer detail-surface actor/time summaries
-- richer dead-letter CLI filters beyond latest subtype / latest family / actor-time
+- richer dead-letter CLI filters beyond latest subtype / latest family / actor-time / reason-dispatch
 - CLI recovery UX beyond first retry action
