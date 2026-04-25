@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -59,6 +60,18 @@ type deadLetterRetryResult struct {
 	Message              string `json:"message"`
 }
 
+type deadLetterSummaryBucket struct {
+	Label string `json:"label"`
+	Count int    `json:"count"`
+}
+
+type deadLetterSummaryResult struct {
+	TotalDeadLetters int                       `json:"total_dead_letters"`
+	RetryableCount   int                       `json:"retryable_count"`
+	ByAdjudication   []deadLetterSummaryBucket `json:"by_adjudication"`
+	ByLatestFamily   []deadLetterSummaryBucket `json:"by_latest_family"`
+}
+
 type toolCatalogDeadLetterBridge struct {
 	catalog *toolcatalog.Catalog
 }
@@ -101,8 +114,40 @@ Examples:
 
 	cmd.Flags().StringVar(&outputFmt, "output", "table", "Output format: table or json")
 	cmd.Flags().StringVar(&addr, "addr", defaultAddr, "Gateway address")
+	cmd.AddCommand(newDeadLetterSummaryCmd(deadLetterLoaderFromBoot(bootLoader)))
 	cmd.AddCommand(newDeadLettersCmd(deadLetterLoaderFromBoot(bootLoader)))
 	cmd.AddCommand(newDeadLetterCmd(deadLetterLoaderFromBoot(bootLoader)))
+	return cmd
+}
+
+func newDeadLetterSummaryCmd(loader deadLetterBridgeLoader) *cobra.Command {
+	var outputFmt string
+
+	cmd := &cobra.Command{
+		Use:   "dead-letter-summary",
+		Short: "Show a dead-letter backlog overview summary",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			bridge, cleanup, err := loader()
+			if err != nil {
+				return err
+			}
+			defer cleanup()
+
+			page, err := bridge.List(cmd.Context(), deadLetterListOptions{})
+			if err != nil {
+				return err
+			}
+
+			summary := aggregateDeadLetterSummary(page)
+			if outputFmt == "json" {
+				return printJSONTo(cmd.OutOrStdout(), summary)
+			}
+			_, err = fmt.Fprint(cmd.OutOrStdout(), renderDeadLetterSummaryTable(summary))
+			return err
+		},
+	}
+	cmd.Flags().StringVar(&outputFmt, "output", "table", "Output format: table or json")
 	return cmd
 }
 
@@ -400,6 +445,66 @@ func normalizeRFC3339Flag(name, value string) (string, error) {
 		return "", fmt.Errorf("invalid --%s %q: must be RFC3339", name, value)
 	}
 	return trimmed, nil
+}
+
+func aggregateDeadLetterSummary(page deadLetterListPage) deadLetterSummaryResult {
+	retryableCount := 0
+	adjudicationCounts := map[string]int{}
+	latestFamilyCounts := map[string]int{}
+
+	for _, entry := range page.Entries {
+		if entry.CanRetry {
+			retryableCount++
+		}
+		adjudicationCounts[summaryBucketLabel(entry.Adjudication)]++
+		latestFamilyCounts[summaryBucketLabel(entry.LatestStatusSubtypeFamily)]++
+	}
+
+	return deadLetterSummaryResult{
+		TotalDeadLetters: summaryTotal(page),
+		RetryableCount:   retryableCount,
+		ByAdjudication:   orderedSummaryBuckets(adjudicationCounts, []string{"release", "refund"}),
+		ByLatestFamily:   orderedSummaryBuckets(latestFamilyCounts, []string{"retry", "manual-retry", "dead-letter"}),
+	}
+}
+
+func summaryTotal(page deadLetterListPage) int {
+	if page.Total > 0 {
+		return page.Total
+	}
+	return len(page.Entries)
+}
+
+func summaryBucketLabel(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return "unknown"
+	}
+	return trimmed
+}
+
+func orderedSummaryBuckets(counts map[string]int, preferredOrder []string) []deadLetterSummaryBucket {
+	buckets := make([]deadLetterSummaryBucket, 0, len(counts))
+	used := map[string]struct{}{}
+	for _, label := range preferredOrder {
+		if count, ok := counts[label]; ok {
+			buckets = append(buckets, deadLetterSummaryBucket{Label: label, Count: count})
+			used[label] = struct{}{}
+		}
+	}
+
+	extras := make([]string, 0, len(counts))
+	for label := range counts {
+		if _, ok := used[label]; ok {
+			continue
+		}
+		extras = append(extras, label)
+	}
+	sort.Strings(extras)
+	for _, label := range extras {
+		buckets = append(buckets, deadLetterSummaryBucket{Label: label, Count: counts[label]})
+	}
+	return buckets
 }
 
 func (b *toolCatalogDeadLetterBridge) Detail(ctx context.Context, transactionReceiptID string) (postadjudicationstatus.TransactionStatus, error) {

@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/langoai/lango/internal/agent"
+	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/postadjudicationstatus"
 	"github.com/langoai/lango/internal/receipts"
@@ -281,6 +282,86 @@ func TestRenderDashboard_EmptyVersion(t *testing.T) {
 
 	output := renderDashboard(info)
 	assert.True(t, strings.Contains(output, "dev"))
+}
+
+func TestNewStatusCmd_WiresDeadLetterSummaryCommand(t *testing.T) {
+	cmd := NewStatusCmd(func() (*bootstrap.Result, error) {
+		return nil, errors.New("should not bootstrap for wiring test")
+	})
+
+	names := make([]string, 0, len(cmd.Commands()))
+	for _, sub := range cmd.Commands() {
+		names = append(names, sub.Name())
+	}
+	assert.Contains(t, names, "dead-letter-summary")
+}
+
+func TestDeadLetterSummaryCmd_Table(t *testing.T) {
+	bridge := &fakeDeadLetterBridge{
+		page: deadLetterListPage{
+			Entries: []postadjudicationstatus.DeadLetterBacklogEntry{
+				{TransactionReceiptID: "tx-1", Adjudication: "release", CanRetry: true, LatestStatusSubtypeFamily: "retry"},
+				{TransactionReceiptID: "tx-2", Adjudication: "refund", CanRetry: false, LatestStatusSubtypeFamily: "manual-retry"},
+				{TransactionReceiptID: "tx-3", Adjudication: "release", CanRetry: true, LatestStatusSubtypeFamily: "dead-letter"},
+			},
+			Count: 3,
+			Total: 3,
+		},
+	}
+	cmd := newDeadLetterSummaryCmd(func() (deadLetterBridge, func(), error) {
+		return bridge, func() {}, nil
+	})
+
+	out, err := executeCommand(t, cmd)
+	require.NoError(t, err)
+	assert.Contains(t, out, "Dead-Letter Summary")
+	assert.Contains(t, out, "Total")
+	assert.Contains(t, out, "3")
+	assert.Contains(t, out, "Retryable")
+	assert.Contains(t, out, "2")
+	assert.Contains(t, out, "By Adjudication")
+	assert.Contains(t, out, "release")
+	assert.Contains(t, out, "refund")
+	assert.Contains(t, out, "By Latest Family")
+	assert.Contains(t, out, "retry")
+	assert.Contains(t, out, "manual-retry")
+	assert.Contains(t, out, "dead-letter")
+	assert.Equal(t, 1, bridge.listCalls)
+	assert.Equal(t, deadLetterListOptions{}, bridge.lastListOpts)
+}
+
+func TestDeadLetterSummaryCmd_JSON(t *testing.T) {
+	bridge := &fakeDeadLetterBridge{
+		page: deadLetterListPage{
+			Entries: []postadjudicationstatus.DeadLetterBacklogEntry{
+				{TransactionReceiptID: "tx-1", Adjudication: "release", CanRetry: true, LatestStatusSubtypeFamily: "retry"},
+				{TransactionReceiptID: "tx-2", Adjudication: "refund", CanRetry: false, LatestStatusSubtypeFamily: "manual-retry"},
+				{TransactionReceiptID: "tx-3", Adjudication: "release", CanRetry: true, LatestStatusSubtypeFamily: "dead-letter"},
+			},
+			Count: 3,
+			Total: 3,
+		},
+	}
+	cmd := newDeadLetterSummaryCmd(func() (deadLetterBridge, func(), error) {
+		return bridge, func() {}, nil
+	})
+
+	out, err := executeCommand(t, cmd, "--output", "json")
+	require.NoError(t, err)
+
+	var got deadLetterSummaryResult
+	require.NoError(t, json.Unmarshal([]byte(out), &got))
+	assert.Equal(t, 3, got.TotalDeadLetters)
+	assert.Equal(t, 2, got.RetryableCount)
+	assert.Equal(t, []deadLetterSummaryBucket{
+		{Label: "release", Count: 2},
+		{Label: "refund", Count: 1},
+	}, got.ByAdjudication)
+	assert.Equal(t, []deadLetterSummaryBucket{
+		{Label: "retry", Count: 1},
+		{Label: "manual-retry", Count: 1},
+		{Label: "dead-letter", Count: 1},
+	}, got.ByLatestFamily)
 }
 
 func TestDeadLettersCmd_TableAndFilters(t *testing.T) {

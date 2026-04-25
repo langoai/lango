@@ -101,6 +101,15 @@ The slice is intentionally narrow:
     - apply, reset, and retry-success refresh preserve the current selection when it remains in the refreshed backlog
     - if the selected transaction disappears, the page falls back to the first row or clears selection/detail when the backlog becomes empty
 - dead-letter CLI surface
+  - `lango status dead-letter-summary`
+    - `table` default
+    - `json` support
+    - global overview only
+      - `total_dead_letters`
+      - `retryable_count`
+      - `by_adjudication`
+      - `by_latest_family`
+    - aggregates over the existing dead-letter backlog read model in the CLI layer
   - `lango status dead-letters`
     - `table` default
     - `json` support
@@ -141,4 +150,5 @@ This slice does not yet include:
 - dead-letter CLI `any_match_family` filtering
 - polling / follow-up recovery UX
 - richer structured CLI retry-result payloads
-- broader operator summaries
+- richer dead-letter summaries beyond the first global overview
+- cockpit summary surfaces

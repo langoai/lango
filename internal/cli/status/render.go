@@ -155,6 +155,39 @@ func renderDeadLetterDetail(status postadjudicationstatus.TransactionStatus) str
 	return b.String()
 }
 
+func renderDeadLetterSummaryTable(summary deadLetterSummaryResult) string {
+	var b strings.Builder
+	title := lipgloss.NewStyle().Bold(true).Foreground(tui.Primary).Render("Dead-Letter Summary")
+	b.WriteString(title)
+	b.WriteString("\n")
+	sep := lipgloss.NewStyle().Foreground(tui.Separator).Render(strings.Repeat("\u2500", 72))
+	b.WriteString(sep)
+	b.WriteString("\n")
+	b.WriteString(infoLine("Total", fmt.Sprintf("%d", summary.TotalDeadLetters)))
+	b.WriteString(infoLine("Retryable", fmt.Sprintf("%d", summary.RetryableCount)))
+
+	b.WriteString("\n")
+	b.WriteString(sectionHeader("By Adjudication"))
+	b.WriteString(renderSummaryBuckets(summary.ByAdjudication))
+
+	b.WriteString("\n")
+	b.WriteString(sectionHeader("By Latest Family"))
+	b.WriteString(renderSummaryBuckets(summary.ByLatestFamily))
+	return b.String()
+}
+
+func renderSummaryBuckets(buckets []deadLetterSummaryBucket) string {
+	if len(buckets) == 0 {
+		return infoLine("none", "0")
+	}
+
+	var b strings.Builder
+	for _, bucket := range buckets {
+		b.WriteString(infoLine(bucket.Label, fmt.Sprintf("%d", bucket.Count)))
+	}
+	return b.String()
+}
+
 func fallbackText(value string) string {
 	if strings.TrimSpace(value) == "" {
 		return "n/a"

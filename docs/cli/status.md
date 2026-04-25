@@ -10,6 +10,7 @@ Show a unified status dashboard combining health, configuration, and feature inf
 
 ```bash
 lango status [flags]
+lango status dead-letter-summary [flags]
 lango status dead-letters [flags]
 lango status dead-letter <transaction-receipt-id> [flags]
 lango status dead-letter retry <transaction-receipt-id> [flags]
@@ -25,6 +26,7 @@ The `status` command provides a single-screen overview of your Lango agent. It s
 
 The `status` command also exposes dead-letter operator views:
 
+- `lango status dead-letter-summary`
 - `lango status dead-letters`
 - `lango status dead-letter <transaction-receipt-id>`
 - `lango status dead-letter retry <transaction-receipt-id>`
@@ -37,6 +39,30 @@ The `status` command also exposes dead-letter operator views:
 | `--addr` | `http://localhost:18789` | Gateway address to probe for live status |
 
 ## Dead-Letter Subcommands
+
+### `lango status dead-letter-summary`
+
+Show a global overview of the current dead-letter backlog.
+
+The first summary slice includes:
+
+- `total_dead_letters`
+- `retryable_count`
+- `by_adjudication`
+- `by_latest_family`
+
+Flags:
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--output` | `table` | Output format: `table` or `json` |
+
+Examples:
+
+```bash
+lango status dead-letter-summary
+lango status dead-letter-summary --output json
+```
 
 ### `lango status dead-letters`
 
