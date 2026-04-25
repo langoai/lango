@@ -769,6 +769,7 @@ func TestDeadLettersPage_ViewIncludesSummaryStrip(t *testing.T) {
 				LatestDeadLetterReason:    "worker exhausted",
 				LatestStatusSubtypeFamily: "retry",
 				LatestManualReplayActor:   "operator:alice",
+				LatestDispatchReference:   "dispatch-a",
 				IsDeadLettered:            true,
 				CanRetry:                  true,
 			},
@@ -779,6 +780,7 @@ func TestDeadLettersPage_ViewIncludesSummaryStrip(t *testing.T) {
 				LatestDeadLetterReason:    "invalid receipt",
 				LatestStatusSubtypeFamily: "manual-retry",
 				LatestManualReplayActor:   "operator:bob",
+				LatestDispatchReference:   "dispatch-b",
 				IsDeadLettered:            true,
 				CanRetry:                  false,
 			},
@@ -789,6 +791,7 @@ func TestDeadLettersPage_ViewIncludesSummaryStrip(t *testing.T) {
 				LatestDeadLetterReason:    "worker exhausted",
 				LatestStatusSubtypeFamily: "dead-letter",
 				LatestManualReplayActor:   "operator:alice",
+				LatestDispatchReference:   "dispatch-a",
 				IsDeadLettered:            true,
 				CanRetry:                  true,
 			},
@@ -816,18 +819,19 @@ func TestDeadLettersPage_ViewIncludesSummaryStrip(t *testing.T) {
 	assert.Contains(t, view, "retry/manual/dead: 1/1/1")
 	assert.Contains(t, view, "reasons: worker exhausted(2), invalid receipt(1)")
 	assert.Contains(t, view, "actors: operator:alice(2), operator:bob(1)")
+	assert.Contains(t, view, "dispatch: dispatch-a(2), dispatch-b(1)")
 }
 
-func TestSummarizeDeadLetters_TopReasonsAndActors(t *testing.T) {
+func TestSummarizeDeadLetters_TopReasonsActorsAndDispatches(t *testing.T) {
 	summary := summarizeDeadLetters([]postadjudicationstatus.DeadLetterBacklogEntry{
-		{LatestDeadLetterReason: "worker exhausted", LatestManualReplayActor: "operator:bob"},
-		{LatestDeadLetterReason: "worker exhausted", LatestManualReplayActor: "operator:bob"},
-		{LatestDeadLetterReason: "invalid receipt", LatestManualReplayActor: "operator:alice"},
-		{LatestDeadLetterReason: "timeout", LatestManualReplayActor: "operator:zoe"},
-		{LatestDeadLetterReason: "bad signature", LatestManualReplayActor: "operator:carl"},
-		{LatestDeadLetterReason: "queue saturated", LatestManualReplayActor: "operator:alice"},
-		{LatestDeadLetterReason: "queue saturated", LatestManualReplayActor: "operator:alice"},
-		{LatestDeadLetterReason: "policy denied", LatestManualReplayActor: "operator:dana"},
+		{LatestDeadLetterReason: "worker exhausted", LatestManualReplayActor: "operator:bob", LatestDispatchReference: "dispatch-c"},
+		{LatestDeadLetterReason: "worker exhausted", LatestManualReplayActor: "operator:bob", LatestDispatchReference: "dispatch-c"},
+		{LatestDeadLetterReason: "invalid receipt", LatestManualReplayActor: "operator:alice", LatestDispatchReference: "dispatch-a"},
+		{LatestDeadLetterReason: "timeout", LatestManualReplayActor: "operator:zoe", LatestDispatchReference: "dispatch-e"},
+		{LatestDeadLetterReason: "bad signature", LatestManualReplayActor: "operator:carl", LatestDispatchReference: "dispatch-b"},
+		{LatestDeadLetterReason: "queue saturated", LatestManualReplayActor: "operator:alice", LatestDispatchReference: "dispatch-a"},
+		{LatestDeadLetterReason: "queue saturated", LatestManualReplayActor: "operator:alice", LatestDispatchReference: "dispatch-a"},
+		{LatestDeadLetterReason: "policy denied", LatestManualReplayActor: "operator:dana", LatestDispatchReference: "dispatch-d"},
 		{LatestDeadLetterReason: ""},
 	})
 
@@ -848,6 +852,15 @@ func TestSummarizeDeadLetters_TopReasonsAndActors(t *testing.T) {
 		{actor: "operator:dana", count: 1},
 		{actor: "operator:zoe", count: 1},
 	}, summary.topActors)
+
+	require.Len(t, summary.topDispatches, 5)
+	assert.Equal(t, []deadLetterDispatchSummaryItem{
+		{dispatchReference: "dispatch-a", count: 3},
+		{dispatchReference: "dispatch-c", count: 2},
+		{dispatchReference: "dispatch-b", count: 1},
+		{dispatchReference: "dispatch-d", count: 1},
+		{dispatchReference: "dispatch-e", count: 1},
+	}, summary.topDispatches)
 }
 
 func TestDeadLettersPage_SummaryStripRecomputesAcrossReloadPaths(t *testing.T) {
@@ -859,6 +872,7 @@ func TestDeadLettersPage_SummaryStripRecomputesAcrossReloadPaths(t *testing.T) {
 			LatestDeadLetterReason:    "worker exhausted",
 			LatestStatusSubtypeFamily: "retry",
 			LatestManualReplayActor:   "operator:alice",
+			LatestDispatchReference:   "dispatch-a",
 			IsDeadLettered:            true,
 			CanRetry:                  true,
 		},
@@ -869,6 +883,7 @@ func TestDeadLettersPage_SummaryStripRecomputesAcrossReloadPaths(t *testing.T) {
 			LatestDeadLetterReason:    "invalid receipt",
 			LatestStatusSubtypeFamily: "dead-letter",
 			LatestManualReplayActor:   "operator:bob",
+			LatestDispatchReference:   "dispatch-b",
 			IsDeadLettered:            true,
 			CanRetry:                  false,
 		},
@@ -881,6 +896,7 @@ func TestDeadLettersPage_SummaryStripRecomputesAcrossReloadPaths(t *testing.T) {
 			LatestDeadLetterReason:    "manual gate",
 			LatestStatusSubtypeFamily: "manual-retry",
 			LatestManualReplayActor:   "operator:alice",
+			LatestDispatchReference:   "dispatch-c",
 			IsDeadLettered:            true,
 			CanRetry:                  true,
 		},
@@ -893,6 +909,7 @@ func TestDeadLettersPage_SummaryStripRecomputesAcrossReloadPaths(t *testing.T) {
 			LatestDeadLetterReason:    "worker exhausted",
 			LatestStatusSubtypeFamily: "retry",
 			LatestManualReplayActor:   "operator:alice",
+			LatestDispatchReference:   "dispatch-a",
 			IsDeadLettered:            true,
 			CanRetry:                  true,
 		},
@@ -903,6 +920,7 @@ func TestDeadLettersPage_SummaryStripRecomputesAcrossReloadPaths(t *testing.T) {
 			LatestDeadLetterReason:    "manual gate",
 			LatestStatusSubtypeFamily: "manual-retry",
 			LatestManualReplayActor:   "operator:bob",
+			LatestDispatchReference:   "dispatch-c",
 			IsDeadLettered:            true,
 			CanRetry:                  true,
 		},
@@ -913,6 +931,7 @@ func TestDeadLettersPage_SummaryStripRecomputesAcrossReloadPaths(t *testing.T) {
 			LatestDeadLetterReason:    "invalid receipt",
 			LatestStatusSubtypeFamily: "dead-letter",
 			LatestManualReplayActor:   "operator:carol",
+			LatestDispatchReference:   "dispatch-b",
 			IsDeadLettered:            true,
 			CanRetry:                  false,
 		},
@@ -925,6 +944,7 @@ func TestDeadLettersPage_SummaryStripRecomputesAcrossReloadPaths(t *testing.T) {
 			LatestDeadLetterReason:    "manual gate",
 			LatestStatusSubtypeFamily: "manual-retry",
 			LatestManualReplayActor:   "operator:bob",
+			LatestDispatchReference:   "dispatch-c",
 			IsDeadLettered:            true,
 			CanRetry:                  true,
 		},
@@ -935,6 +955,7 @@ func TestDeadLettersPage_SummaryStripRecomputesAcrossReloadPaths(t *testing.T) {
 			LatestDeadLetterReason:    "invalid receipt",
 			LatestStatusSubtypeFamily: "dead-letter",
 			LatestManualReplayActor:   "operator:carol",
+			LatestDispatchReference:   "dispatch-b",
 			IsDeadLettered:            true,
 			CanRetry:                  false,
 		},
@@ -969,6 +990,7 @@ func TestDeadLettersPage_SummaryStripRecomputesAcrossReloadPaths(t *testing.T) {
 	assert.Contains(t, page.View(), "retry/manual/dead: 1/0/1")
 	assert.Contains(t, page.View(), "reasons: invalid receipt(1), worker exhausted(1)")
 	assert.Contains(t, page.View(), "actors: operator:alice(1), operator:bob(1)")
+	assert.Contains(t, page.View(), "dispatch: dispatch-a(1), dispatch-b(1)")
 
 	for _, keyMsg := range []tea.KeyMsg{
 		{Type: tea.KeyTab},
@@ -1004,6 +1026,7 @@ func TestDeadLettersPage_SummaryStripRecomputesAcrossReloadPaths(t *testing.T) {
 	assert.Contains(t, page.View(), "retry/manual/dead: 0/1/0")
 	assert.Contains(t, page.View(), "reasons: manual gate(1)")
 	assert.Contains(t, page.View(), "actors: operator:alice(1)")
+	assert.Contains(t, page.View(), "dispatch: dispatch-c(1)")
 
 	updated, reloadCmd = page.Update(tea.KeyMsg{Type: tea.KeyCtrlR})
 	page = updated.(*DeadLettersPage)
@@ -1019,6 +1042,7 @@ func TestDeadLettersPage_SummaryStripRecomputesAcrossReloadPaths(t *testing.T) {
 	assert.Contains(t, page.View(), "retry/manual/dead: 1/1/1")
 	assert.Contains(t, page.View(), "reasons: invalid receipt(1), manual gate(1), worker exhausted(1)")
 	assert.Contains(t, page.View(), "actors: operator:alice(1), operator:bob(1), operator:carol(1)")
+	assert.Contains(t, page.View(), "dispatch: dispatch-a(1), dispatch-b(1), dispatch-c(1)")
 
 	updated, retryCmd := page.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
 	page = updated.(*DeadLettersPage)
@@ -1040,6 +1064,7 @@ func TestDeadLettersPage_SummaryStripRecomputesAcrossReloadPaths(t *testing.T) {
 	assert.Contains(t, page.View(), "retry/manual/dead: 0/1/1")
 	assert.Contains(t, page.View(), "reasons: invalid receipt(1), manual gate(1)")
 	assert.Contains(t, page.View(), "actors: operator:bob(1), operator:carol(1)")
+	assert.Contains(t, page.View(), "dispatch: dispatch-b(1), dispatch-c(1)")
 }
 
 func TestDeadLettersPage_RetrySelectedShowsFailureMessage(t *testing.T) {

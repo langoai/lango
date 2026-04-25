@@ -83,6 +83,9 @@ The slice is intentionally narrow:
       - top `5` latest manual replay actors in a compact third line
         - rendered as a compact `actors:` line
         - aggregated from each row's current `latest_manual_replay_actor`
+      - top `5` latest dispatch references in a compact fourth line
+        - rendered as a compact `dispatch:` line
+        - aggregated from each row's current `latest_dispatch_reference`
   - dead-letter backlog table
   - selected transaction detail pane
   - selection-driven detail refresh
@@ -181,4 +184,4 @@ This slice does not yet include:
 - polling / follow-up recovery UX
 - richer structured CLI retry-result payloads
 - grouped reason / actor / dispatch families, configurable top-N, and trend/time-window summary views
-- richer cockpit summary surfaces beyond top latest dead-letter reasons and actors
+- richer cockpit summary surfaces beyond top latest dead-letter reasons, actors, and dispatch references

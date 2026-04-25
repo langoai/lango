@@ -152,6 +152,7 @@ type deadLetterSummary struct {
 	deadLetterFamily  int
 	topReasons        []deadLetterReasonSummaryItem
 	topActors         []deadLetterActorSummaryItem
+	topDispatches     []deadLetterDispatchSummaryItem
 }
 
 type deadLetterReasonSummaryItem struct {
@@ -162,6 +163,11 @@ type deadLetterReasonSummaryItem struct {
 type deadLetterActorSummaryItem struct {
 	actor string
 	count int
+}
+
+type deadLetterDispatchSummaryItem struct {
+	dispatchReference string
+	count             int
 }
 
 func NewDeadLettersPage(listFn DeadLetterListFn, detailFn DeadLetterDetailFn, retryFns ...DeadLetterRetryFn) *DeadLettersPage {
@@ -468,6 +474,18 @@ func (p *DeadLettersPage) renderSummaryStrip() string {
 			actorsLine = ansi.Truncate(actorsLine, max(p.width-8, 48), "…")
 		}
 		lines = append(lines, chipStyle.Render(actorsLine))
+	}
+
+	if len(summary.topDispatches) > 0 {
+		dispatchParts := make([]string, 0, len(summary.topDispatches))
+		for _, item := range summary.topDispatches {
+			dispatchParts = append(dispatchParts, fmt.Sprintf("%s(%d)", item.dispatchReference, item.count))
+		}
+		dispatchLine := "dispatch: " + strings.Join(dispatchParts, ", ")
+		if p.width > 0 {
+			dispatchLine = ansi.Truncate(dispatchLine, max(p.width-8, 48), "…")
+		}
+		lines = append(lines, chipStyle.Render(dispatchLine))
 	}
 
 	return lipgloss.JoinVertical(lipgloss.Left, lines...)
@@ -957,6 +975,7 @@ func summarizeDeadLetters(items []postadjudicationstatus.DeadLetterBacklogEntry)
 	var summary deadLetterSummary
 	reasonCounts := make(map[string]int)
 	actorCounts := make(map[string]int)
+	dispatchCounts := make(map[string]int)
 	for _, item := range items {
 		summary.total++
 		if item.CanRetry {
@@ -983,6 +1002,10 @@ func summarizeDeadLetters(items []postadjudicationstatus.DeadLetterBacklogEntry)
 		actor := strings.TrimSpace(item.LatestManualReplayActor)
 		if actor != "" {
 			actorCounts[actor]++
+		}
+		dispatchReference := strings.TrimSpace(item.LatestDispatchReference)
+		if dispatchReference != "" {
+			dispatchCounts[dispatchReference]++
 		}
 	}
 	if len(reasonCounts) > 0 {
@@ -1016,6 +1039,22 @@ func summarizeDeadLetters(items []postadjudicationstatus.DeadLetterBacklogEntry)
 			actors = actors[:5]
 		}
 		summary.topActors = actors
+	}
+	if len(dispatchCounts) > 0 {
+		dispatches := make([]deadLetterDispatchSummaryItem, 0, len(dispatchCounts))
+		for dispatchReference, count := range dispatchCounts {
+			dispatches = append(dispatches, deadLetterDispatchSummaryItem{dispatchReference: dispatchReference, count: count})
+		}
+		sort.Slice(dispatches, func(i, j int) bool {
+			if dispatches[i].count != dispatches[j].count {
+				return dispatches[i].count > dispatches[j].count
+			}
+			return dispatches[i].dispatchReference < dispatches[j].dispatchReference
+		})
+		if len(dispatches) > 5 {
+			dispatches = dispatches[:5]
+		}
+		summary.topDispatches = dispatches
 	}
 	return summary
 }
