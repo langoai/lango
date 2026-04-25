@@ -77,6 +77,9 @@ The slice is intentionally narrow:
       - retryable count
       - `release/refund` distribution
       - `retry/manual-retry/dead-letter` distribution
+      - top `5` latest dead-letter reasons in a compact second line
+        - rendered as a compact `reasons:` line
+        - aggregated from each row's current `latest_dead_letter_reason`
   - dead-letter backlog table
   - selected transaction detail pane
   - selection-driven detail refresh
@@ -175,4 +178,4 @@ This slice does not yet include:
 - polling / follow-up recovery UX
 - richer structured CLI retry-result payloads
 - grouped reason / actor / dispatch families, configurable top-N, and trend/time-window summary views
-- richer cockpit summary surfaces beyond the first top strip
+- richer cockpit summary surfaces beyond top latest dead-letter reasons

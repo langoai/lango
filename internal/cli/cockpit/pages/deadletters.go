@@ -3,6 +3,7 @@ package pages
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"unicode"
 
@@ -149,6 +150,12 @@ type deadLetterSummary struct {
 	retryFamily       int
 	manualRetryFamily int
 	deadLetterFamily  int
+	topReasons        []deadLetterReasonSummaryItem
+}
+
+type deadLetterReasonSummaryItem struct {
+	reason string
+	count  int
 }
 
 func NewDeadLettersPage(listFn DeadLetterListFn, detailFn DeadLetterDetailFn, retryFns ...DeadLetterRetryFn) *DeadLettersPage {
@@ -416,7 +423,7 @@ func (p *DeadLettersPage) View() string {
 func (p *DeadLettersPage) renderSummaryStrip() string {
 	summary := summarizeDeadLetters(p.items)
 	chipStyle := lipgloss.NewStyle().Foreground(theme.TextSecondary)
-	return lipgloss.JoinHorizontal(
+	overview := lipgloss.JoinHorizontal(
 		lipgloss.Left,
 		chipStyle.Render(fmt.Sprintf("dead letters: %d", summary.total)),
 		chipStyle.Render("  •  "),
@@ -425,6 +432,25 @@ func (p *DeadLettersPage) renderSummaryStrip() string {
 		chipStyle.Render(fmt.Sprintf("release/refund: %d/%d", summary.release, summary.refund)),
 		chipStyle.Render("  •  "),
 		chipStyle.Render(fmt.Sprintf("retry/manual/dead: %d/%d/%d", summary.retryFamily, summary.manualRetryFamily, summary.deadLetterFamily)),
+	)
+	if len(summary.topReasons) == 0 {
+		return overview
+	}
+
+	reasonParts := make([]string, 0, len(summary.topReasons))
+	for _, item := range summary.topReasons {
+		reasonParts = append(reasonParts, fmt.Sprintf("%s(%d)", item.reason, item.count))
+	}
+
+	reasonsLine := "reasons: " + strings.Join(reasonParts, ", ")
+	if p.width > 0 {
+		reasonsLine = ansi.Truncate(reasonsLine, max(p.width-8, 48), "…")
+	}
+
+	return lipgloss.JoinVertical(
+		lipgloss.Left,
+		overview,
+		chipStyle.Render(reasonsLine),
 	)
 }
 
@@ -910,6 +936,7 @@ func fallback(value string, fallbackValue string, empty string) string {
 
 func summarizeDeadLetters(items []postadjudicationstatus.DeadLetterBacklogEntry) deadLetterSummary {
 	var summary deadLetterSummary
+	reasonCounts := make(map[string]int)
 	for _, item := range items {
 		summary.total++
 		if item.CanRetry {
@@ -929,6 +956,28 @@ func summarizeDeadLetters(items []postadjudicationstatus.DeadLetterBacklogEntry)
 		case "dead-letter":
 			summary.deadLetterFamily++
 		}
+		reason := strings.TrimSpace(item.LatestDeadLetterReason)
+		if reason != "" {
+			reasonCounts[reason]++
+		}
 	}
+	if len(reasonCounts) == 0 {
+		return summary
+	}
+
+	reasons := make([]deadLetterReasonSummaryItem, 0, len(reasonCounts))
+	for reason, count := range reasonCounts {
+		reasons = append(reasons, deadLetterReasonSummaryItem{reason: reason, count: count})
+	}
+	sort.Slice(reasons, func(i, j int) bool {
+		if reasons[i].count != reasons[j].count {
+			return reasons[i].count > reasons[j].count
+		}
+		return reasons[i].reason < reasons[j].reason
+	})
+	if len(reasons) > 5 {
+		reasons = reasons[:5]
+	}
+	summary.topReasons = reasons
 	return summary
 }
