@@ -173,6 +173,10 @@ func renderDeadLetterSummaryTable(summary deadLetterSummaryResult) string {
 	b.WriteString("\n")
 	b.WriteString(sectionHeader("By Latest Family"))
 	b.WriteString(renderSummaryBuckets(summary.ByLatestFamily))
+
+	b.WriteString("\n")
+	b.WriteString(sectionHeader("Top Latest Dead-Letter Reasons"))
+	b.WriteString(renderReasonSummaryItems(summary.TopLatestDeadLetterReasons))
 	return b.String()
 }
 
@@ -184,6 +188,22 @@ func renderSummaryBuckets(buckets []deadLetterSummaryBucket) string {
 	var b strings.Builder
 	for _, bucket := range buckets {
 		b.WriteString(infoLine(bucket.Label, fmt.Sprintf("%d", bucket.Count)))
+	}
+	return b.String()
+}
+
+func renderReasonSummaryItems(items []deadLetterReasonSummaryItem) string {
+	if len(items) == 0 {
+		return infoLine("none", "0")
+	}
+
+	var b strings.Builder
+	sep := lipgloss.NewStyle().Foreground(tui.Separator).Render(strings.Repeat("\u2500", 72))
+	b.WriteString(fmt.Sprintf("%-60s %-8s\n", "Reason", "Count"))
+	b.WriteString(sep)
+	b.WriteString("\n")
+	for _, item := range items {
+		b.WriteString(fmt.Sprintf("%-60s %-8d\n", tui.Truncate(item.Reason, 60), item.Count))
 	}
 	return b.String()
 }

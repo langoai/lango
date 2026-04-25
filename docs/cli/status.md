@@ -50,6 +50,12 @@ The first summary slice includes:
 - `retryable_count`
 - `by_adjudication`
 - `by_latest_family`
+- `top_latest_dead_letter_reasons`
+  - top `5` latest dead-letter reasons
+  - each item includes:
+    - `reason`
+    - `count`
+  - aggregated from each backlog row's current `latest_dead_letter_reason`
 
 Flags:
 

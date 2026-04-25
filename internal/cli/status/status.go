@@ -65,11 +65,17 @@ type deadLetterSummaryBucket struct {
 	Count int    `json:"count"`
 }
 
+type deadLetterReasonSummaryItem struct {
+	Reason string `json:"reason"`
+	Count  int    `json:"count"`
+}
+
 type deadLetterSummaryResult struct {
-	TotalDeadLetters int                       `json:"total_dead_letters"`
-	RetryableCount   int                       `json:"retryable_count"`
-	ByAdjudication   []deadLetterSummaryBucket `json:"by_adjudication"`
-	ByLatestFamily   []deadLetterSummaryBucket `json:"by_latest_family"`
+	TotalDeadLetters           int                           `json:"total_dead_letters"`
+	RetryableCount             int                           `json:"retryable_count"`
+	ByAdjudication             []deadLetterSummaryBucket     `json:"by_adjudication"`
+	ByLatestFamily             []deadLetterSummaryBucket     `json:"by_latest_family"`
+	TopLatestDeadLetterReasons []deadLetterReasonSummaryItem `json:"top_latest_dead_letter_reasons"`
 }
 
 type toolCatalogDeadLetterBridge struct {
@@ -451,6 +457,7 @@ func aggregateDeadLetterSummary(page deadLetterListPage) deadLetterSummaryResult
 	retryableCount := 0
 	adjudicationCounts := map[string]int{}
 	latestFamilyCounts := map[string]int{}
+	reasonCounts := map[string]int{}
 
 	for _, entry := range page.Entries {
 		if entry.CanRetry {
@@ -458,13 +465,17 @@ func aggregateDeadLetterSummary(page deadLetterListPage) deadLetterSummaryResult
 		}
 		adjudicationCounts[summaryBucketLabel(entry.Adjudication)]++
 		latestFamilyCounts[summaryBucketLabel(entry.LatestStatusSubtypeFamily)]++
+		if reason := strings.TrimSpace(entry.LatestDeadLetterReason); reason != "" {
+			reasonCounts[reason]++
+		}
 	}
 
 	return deadLetterSummaryResult{
-		TotalDeadLetters: summaryTotal(page),
-		RetryableCount:   retryableCount,
-		ByAdjudication:   orderedSummaryBuckets(adjudicationCounts, []string{"release", "refund"}),
-		ByLatestFamily:   orderedSummaryBuckets(latestFamilyCounts, []string{"retry", "manual-retry", "dead-letter"}),
+		TotalDeadLetters:           summaryTotal(page),
+		RetryableCount:             retryableCount,
+		ByAdjudication:             orderedSummaryBuckets(adjudicationCounts, []string{"release", "refund"}),
+		ByLatestFamily:             orderedSummaryBuckets(latestFamilyCounts, []string{"retry", "manual-retry", "dead-letter"}),
+		TopLatestDeadLetterReasons: topDeadLetterReasons(reasonCounts, 5),
 	}
 }
 
@@ -505,6 +516,27 @@ func orderedSummaryBuckets(counts map[string]int, preferredOrder []string) []dea
 		buckets = append(buckets, deadLetterSummaryBucket{Label: label, Count: counts[label]})
 	}
 	return buckets
+}
+
+func topDeadLetterReasons(counts map[string]int, limit int) []deadLetterReasonSummaryItem {
+	if limit <= 0 || len(counts) == 0 {
+		return nil
+	}
+
+	items := make([]deadLetterReasonSummaryItem, 0, len(counts))
+	for reason, count := range counts {
+		items = append(items, deadLetterReasonSummaryItem{Reason: reason, Count: count})
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].Count != items[j].Count {
+			return items[i].Count > items[j].Count
+		}
+		return items[i].Reason < items[j].Reason
+	})
+	if len(items) > limit {
+		items = items[:limit]
+	}
+	return items
 }
 
 func (b *toolCatalogDeadLetterBridge) Detail(ctx context.Context, transactionReceiptID string) (postadjudicationstatus.TransactionStatus, error) {

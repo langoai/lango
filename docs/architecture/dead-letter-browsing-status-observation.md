@@ -109,6 +109,10 @@ The slice is intentionally narrow:
       - `retryable_count`
       - `by_adjudication`
       - `by_latest_family`
+      - `top_latest_dead_letter_reasons`
+        - top `5` reasons
+        - each item includes `reason` and `count`
+        - aggregated from each row's current `latest_dead_letter_reason`
     - aggregates over the existing dead-letter backlog read model in the CLI layer
   - `lango status dead-letters`
     - `table` default
@@ -150,5 +154,6 @@ This slice does not yet include:
 - dead-letter CLI `any_match_family` filtering
 - polling / follow-up recovery UX
 - richer structured CLI retry-result payloads
-- richer dead-letter summaries beyond the first global overview
+- actor / dispatch summary breakdowns
+- grouped reason families, configurable top-N, and trend/time-window summary views
 - cockpit summary surfaces
