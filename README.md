@@ -165,6 +165,8 @@ lango onboard                    Guided 5-step setup wizard
 lango settings                   Full interactive configuration editor
 lango doctor [--fix]             Diagnostics and health checks
 lango status [--output json]     Unified system status dashboard
+lango status dead-letters        List current dead-letter backlog
+lango status dead-letter <id>    Show dead-letter status for one transaction
 ```
 
 ### Diagnostics
@@ -258,7 +260,7 @@ lango/
 │   │   ├── security/       #   lango security status/secrets/change-passphrase/recovery/keyring/kms (+ legacy db-* tombstones)
 │   │   ├── settings/       #   lango settings (full configuration editor)
 │   │   ├── smartaccount/   #   lango account info/deploy/session/module/policy/paymaster
-│   │   ├── status/         #   lango status (unified dashboard)
+│   │   ├── status/         #   lango status + dead-letter status views
 │   │   ├── tui/            #   TUI components and views
 │   │   └── workflow/       #   lango workflow run/list/status/cancel/history
 │   ├── config/             # Config loading, env var substitution, validation

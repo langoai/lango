@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/langoai/lango/internal/cli/tui"
+	"github.com/langoai/lango/internal/postadjudicationstatus"
 )
 
 func renderDashboard(info StatusInfo) string {
@@ -93,4 +94,70 @@ func sectionHeader(title string) string {
 func infoLine(label, value string) string {
 	labelStyle := lipgloss.NewStyle().Width(16).PaddingLeft(4)
 	return labelStyle.Render(label) + value + "\n"
+}
+
+func renderDeadLetterBacklogTable(page deadLetterListPage) string {
+	if len(page.Entries) == 0 {
+		return "No current dead-letter backlog.\n"
+	}
+
+	var b strings.Builder
+	title := lipgloss.NewStyle().Bold(true).Foreground(tui.Primary).Render("Dead-Letter Backlog")
+	b.WriteString(title)
+	b.WriteString("\n")
+	sep := lipgloss.NewStyle().Foreground(tui.Separator).Render(strings.Repeat("\u2500", 72))
+	b.WriteString(sep)
+	b.WriteString("\n")
+	b.WriteString(fmt.Sprintf("%-20s %-24s %-12s %-8s %-8s\n", "Transaction", "Reason", "Adjudication", "Attempt", "Retry"))
+	b.WriteString(sep)
+	b.WriteString("\n")
+	for _, entry := range page.Entries {
+		b.WriteString(fmt.Sprintf(
+			"%-20s %-24s %-12s %-8d %-8t\n",
+			tui.Truncate(entry.TransactionReceiptID, 20),
+			tui.Truncate(entry.LatestDeadLetterReason, 24),
+			tui.Truncate(entry.Adjudication, 12),
+			entry.LatestRetryAttempt,
+			entry.CanRetry,
+		))
+	}
+	if page.Total > 0 {
+		b.WriteString("\n")
+		b.WriteString(fmt.Sprintf("Count: %d  Total: %d  Offset: %d  Limit: %d\n", page.Count, page.Total, page.Offset, page.Limit))
+	}
+	return b.String()
+}
+
+func renderDeadLetterDetail(status postadjudicationstatus.TransactionStatus) string {
+	var b strings.Builder
+	title := lipgloss.NewStyle().Bold(true).Foreground(tui.Primary).Render("Dead-Letter Detail")
+	b.WriteString(title)
+	b.WriteString("\n")
+	sep := lipgloss.NewStyle().Foreground(tui.Separator).Render(strings.Repeat("\u2500", 72))
+	b.WriteString(sep)
+	b.WriteString("\n")
+	b.WriteString(infoLine("Transaction", status.CanonicalSnapshot.TransactionReceipt.TransactionReceiptID))
+	b.WriteString(infoLine("Submission", status.CanonicalSnapshot.SubmissionReceipt.SubmissionReceiptID))
+	b.WriteString(infoLine("Adjudication", status.Adjudication))
+	b.WriteString(infoLine("Dead-lettered", fmt.Sprintf("%t", status.IsDeadLettered)))
+	b.WriteString(infoLine("Retryable", fmt.Sprintf("%t", status.CanRetry)))
+	b.WriteString(infoLine("Latest Reason", fallbackText(status.RetryDeadLetterSummary.LatestDeadLetterReason)))
+	b.WriteString(infoLine("Retry Attempt", fmt.Sprintf("%d", status.RetryDeadLetterSummary.LatestRetryAttempt)))
+	b.WriteString(infoLine("Dispatch Ref", fallbackText(status.RetryDeadLetterSummary.LatestDispatchReference)))
+	if task := status.LatestBackgroundTask; task != nil {
+		b.WriteString(infoLine("Task ID", task.TaskID))
+		b.WriteString(infoLine("Task Status", task.Status))
+		b.WriteString(infoLine("Task Attempts", fmt.Sprintf("%d", task.AttemptCount)))
+		b.WriteString(infoLine("Next Retry", fallbackText(task.NextRetryAt)))
+	} else {
+		b.WriteString(infoLine("Task ID", "n/a"))
+	}
+	return b.String()
+}
+
+func fallbackText(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return "n/a"
+	}
+	return value
 }

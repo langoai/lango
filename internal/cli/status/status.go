@@ -2,21 +2,51 @@
 package status
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 
+	"github.com/langoai/lango/internal/app"
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/cli/tui"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/postadjudicationstatus"
+	"github.com/langoai/lango/internal/toolcatalog"
 	"github.com/langoai/lango/internal/types"
 )
 
 const defaultAddr = "http://localhost:18789"
+
+type deadLetterBridge interface {
+	List(context.Context, deadLetterListOptions) (deadLetterListPage, error)
+	Detail(context.Context, string) (postadjudicationstatus.TransactionStatus, error)
+}
+
+type deadLetterBridgeLoader func() (deadLetterBridge, func(), error)
+
+type deadLetterListOptions struct {
+	Query        string
+	Adjudication string
+}
+
+type deadLetterListPage struct {
+	Entries []postadjudicationstatus.DeadLetterBacklogEntry `json:"entries"`
+	Count   int                                             `json:"count"`
+	Total   int                                             `json:"total"`
+	Offset  int                                             `json:"offset"`
+	Limit   int                                             `json:"limit"`
+}
+
+type toolCatalogDeadLetterBridge struct {
+	catalog *toolcatalog.Catalog
+}
 
 // NewStatusCmd creates the status command.
 func NewStatusCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
@@ -56,7 +86,201 @@ Examples:
 
 	cmd.Flags().StringVar(&outputFmt, "output", "table", "Output format: table or json")
 	cmd.Flags().StringVar(&addr, "addr", defaultAddr, "Gateway address")
+	cmd.AddCommand(newDeadLettersCmd(deadLetterLoaderFromBoot(bootLoader)))
+	cmd.AddCommand(newDeadLetterCmd(deadLetterLoaderFromBoot(bootLoader)))
 	return cmd
+}
+
+func newDeadLettersCmd(loader deadLetterBridgeLoader) *cobra.Command {
+	var (
+		outputFmt    string
+		query        string
+		adjudication string
+	)
+
+	cmd := &cobra.Command{
+		Use:   "dead-letters",
+		Short: "List dead-lettered post-adjudication executions",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			bridge, cleanup, err := loader()
+			if err != nil {
+				return err
+			}
+			defer cleanup()
+
+			page, err := bridge.List(cmd.Context(), deadLetterListOptions{
+				Query:        query,
+				Adjudication: adjudication,
+			})
+			if err != nil {
+				return err
+			}
+			if outputFmt == "json" {
+				return printJSONTo(cmd.OutOrStdout(), page)
+			}
+			_, err = fmt.Fprint(cmd.OutOrStdout(), renderDeadLetterBacklogTable(page))
+			return err
+		},
+	}
+	cmd.Flags().StringVar(&outputFmt, "output", "table", "Output format: table or json")
+	cmd.Flags().StringVar(&query, "query", "", "Substring filter for transaction or submission receipt IDs")
+	cmd.Flags().StringVar(&adjudication, "adjudication", "", "Adjudication outcome filter: release or refund")
+	return cmd
+}
+
+func newDeadLetterCmd(loader deadLetterBridgeLoader) *cobra.Command {
+	var outputFmt string
+
+	cmd := &cobra.Command{
+		Use:   "dead-letter <transaction-receipt-id>",
+		Short: "Show dead-letter status for a transaction",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			bridge, cleanup, err := loader()
+			if err != nil {
+				return err
+			}
+			defer cleanup()
+
+			status, err := bridge.Detail(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
+			if outputFmt == "json" {
+				return printJSONTo(cmd.OutOrStdout(), status)
+			}
+			_, err = fmt.Fprint(cmd.OutOrStdout(), renderDeadLetterDetail(status))
+			return err
+		},
+	}
+	cmd.Flags().StringVar(&outputFmt, "output", "table", "Output format: table or json")
+	return cmd
+}
+
+func deadLetterLoaderFromBoot(bootLoader func() (*bootstrap.Result, error)) deadLetterBridgeLoader {
+	return func() (deadLetterBridge, func(), error) {
+		boot, err := bootLoader()
+		if err != nil {
+			return nil, nil, fmt.Errorf("bootstrap: %w", err)
+		}
+		application, err := app.New(boot, app.WithLocalChat())
+		if err != nil {
+			_ = boot.Close()
+			return nil, nil, fmt.Errorf("build app: %w", err)
+		}
+		cleanup := func() {
+			_ = application.Stop(context.Background())
+			_ = boot.Close()
+		}
+		bridge := &toolCatalogDeadLetterBridge{catalog: application.ToolCatalog}
+		if !bridge.ready() {
+			cleanup()
+			return nil, nil, fmt.Errorf("dead-letter status tools are not available")
+		}
+		return bridge, cleanup, nil
+	}
+}
+
+func (b *toolCatalogDeadLetterBridge) ready() bool {
+	if b == nil || b.catalog == nil {
+		return false
+	}
+	_, hasList := b.catalog.Get("list_dead_lettered_post_adjudication_executions")
+	_, hasDetail := b.catalog.Get("get_post_adjudication_execution_status")
+	return hasList && hasDetail
+}
+
+func (b *toolCatalogDeadLetterBridge) List(ctx context.Context, opts deadLetterListOptions) (deadLetterListPage, error) {
+	if b == nil || b.catalog == nil {
+		return deadLetterListPage{}, fmt.Errorf("dead-letter tool catalog is not configured")
+	}
+	entry, ok := b.catalog.Get("list_dead_lettered_post_adjudication_executions")
+	if !ok || entry.Tool == nil || entry.Tool.Handler == nil {
+		return deadLetterListPage{}, fmt.Errorf("dead-letter backlog tool is not available")
+	}
+	params := map[string]interface{}{}
+	if query := strings.TrimSpace(opts.Query); query != "" {
+		params["query"] = query
+	}
+	switch strings.TrimSpace(opts.Adjudication) {
+	case "release", "refund":
+		params["adjudication"] = strings.TrimSpace(opts.Adjudication)
+	}
+	raw, err := entry.Tool.Handler(ctx, params)
+	if err != nil {
+		return deadLetterListPage{}, err
+	}
+	payload, ok := raw.(map[string]interface{})
+	if !ok {
+		return deadLetterListPage{}, fmt.Errorf("dead-letter backlog tool returned invalid payload")
+	}
+	entriesRaw, ok := payload["entries"]
+	if !ok {
+		return deadLetterListPage{}, fmt.Errorf("dead-letter backlog tool returned no entries")
+	}
+	data, err := json.Marshal(entriesRaw)
+	if err != nil {
+		return deadLetterListPage{}, err
+	}
+	var entries []postadjudicationstatus.DeadLetterBacklogEntry
+	if err := json.Unmarshal(data, &entries); err != nil {
+		return deadLetterListPage{}, err
+	}
+	return deadLetterListPage{
+		Entries: entries,
+		Count:   optionalInt(payload, "count"),
+		Total:   optionalInt(payload, "total"),
+		Offset:  optionalInt(payload, "offset"),
+		Limit:   optionalInt(payload, "limit"),
+	}, nil
+}
+
+func (b *toolCatalogDeadLetterBridge) Detail(ctx context.Context, transactionReceiptID string) (postadjudicationstatus.TransactionStatus, error) {
+	if b == nil || b.catalog == nil {
+		return postadjudicationstatus.TransactionStatus{}, fmt.Errorf("dead-letter tool catalog is not configured")
+	}
+	entry, ok := b.catalog.Get("get_post_adjudication_execution_status")
+	if !ok || entry.Tool == nil || entry.Tool.Handler == nil {
+		return postadjudicationstatus.TransactionStatus{}, fmt.Errorf("dead-letter detail tool is not available")
+	}
+	raw, err := entry.Tool.Handler(ctx, map[string]interface{}{
+		"transaction_receipt_id": strings.TrimSpace(transactionReceiptID),
+	})
+	if err != nil {
+		return postadjudicationstatus.TransactionStatus{}, err
+	}
+	if status, ok := raw.(postadjudicationstatus.TransactionStatus); ok {
+		return status, nil
+	}
+	data, err := json.Marshal(raw)
+	if err != nil {
+		return postadjudicationstatus.TransactionStatus{}, err
+	}
+	var status postadjudicationstatus.TransactionStatus
+	if err := json.Unmarshal(data, &status); err != nil {
+		return postadjudicationstatus.TransactionStatus{}, err
+	}
+	return status, nil
+}
+
+func optionalInt(payload map[string]interface{}, key string) int {
+	value, ok := payload[key]
+	if !ok {
+		return 0
+	}
+	switch v := value.(type) {
+	case int:
+		return v
+	case int32:
+		return int(v)
+	case int64:
+		return int(v)
+	case float64:
+		return int(v)
+	default:
+		return 0
+	}
 }
 
 // StatusInfo holds all collected status data.
@@ -82,9 +306,9 @@ type FeatureInfo struct {
 
 // LiveInfo holds data fetched from a running server.
 type LiveInfo struct {
-	Healthy  bool                   `json:"healthy"`
-	Uptime   string                 `json:"uptime,omitempty"`
-	Features []types.FeatureStatus  `json:"features,omitempty"`
+	Healthy  bool                  `json:"healthy"`
+	Uptime   string                `json:"uptime,omitempty"`
+	Features []types.FeatureStatus `json:"features,omitempty"`
 }
 
 func collectStatus(cfg *config.Config, profile, addr string) StatusInfo {
@@ -196,7 +420,11 @@ func probeServer(addr string) (bool, *LiveInfo) {
 }
 
 func printJSON(v interface{}) error {
-	enc := json.NewEncoder(os.Stdout)
+	return printJSONTo(os.Stdout, v)
+}
+
+func printJSONTo(w io.Writer, v interface{}) error {
+	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	return enc.Encode(v)
 }

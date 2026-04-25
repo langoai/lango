@@ -10,6 +10,8 @@ Show a unified status dashboard combining health, configuration, and feature inf
 
 ```bash
 lango status [flags]
+lango status dead-letters [flags]
+lango status dead-letter <transaction-receipt-id> [flags]
 ```
 
 ## Description
@@ -20,12 +22,62 @@ The `status` command provides a single-screen overview of your Lango agent. It s
 
 **Config-only mode**: When the server is not running, `status` still shows configuration-based information (profile, provider, model, features, channels).
 
+The `status` command also exposes dead-letter operator views:
+
+- `lango status dead-letters`
+- `lango status dead-letter <transaction-receipt-id>`
+
 ## Flags
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--output` | `table` | Output format: `table` or `json` |
 | `--addr` | `http://localhost:18789` | Gateway address to probe for live status |
+
+## Dead-Letter Subcommands
+
+### `lango status dead-letters`
+
+List the current dead-lettered post-adjudication backlog.
+
+Flags:
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--output` | `table` | Output format: `table` or `json` |
+| `--query` | `""` | Substring filter over transaction/submission receipt IDs |
+| `--adjudication` | `""` | Adjudication outcome filter: `release` or `refund` |
+
+Examples:
+
+```bash
+lango status dead-letters
+lango status dead-letters --query tx-123
+lango status dead-letters --adjudication release --output json
+```
+
+### `lango status dead-letter <transaction-receipt-id>`
+
+Show the current canonical dead-letter status for one transaction.
+
+The output includes:
+
+- canonical receipts-backed status
+- latest retry / dead-letter summary
+- `latest_background_task` when present
+
+Flags:
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--output` | `table` | Output format: `table` or `json` |
+
+Examples:
+
+```bash
+lango status dead-letter tx-123
+lango status dead-letter tx-123 --output json
+```
 
 ## Output Sections
 

@@ -13,6 +13,8 @@ Lango provides a comprehensive command-line interface built with [Cobra](https:/
 | `lango version` | Print version and build info |
 | `lango health` | Check gateway health |
 | `lango status` | [Unified status dashboard](status.md) (health, config, features) |
+| `lango status dead-letters` | List current dead-lettered post-adjudication executions |
+| `lango status dead-letter <transaction-receipt-id>` | Show detailed dead-letter execution status for one transaction |
 | `lango onboard` | Guided 5-step setup wizard |
 | `lango settings` | Full interactive configuration editor |
 | `lango doctor` | Diagnostics and health checks |

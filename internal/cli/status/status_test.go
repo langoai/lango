@@ -1,15 +1,60 @@
 package status
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/postadjudicationstatus"
+	"github.com/langoai/lango/internal/receipts"
 )
+
+type fakeDeadLetterBridge struct {
+	page         deadLetterListPage
+	detail       postadjudicationstatus.TransactionStatus
+	listErr      error
+	detailErr    error
+	listCalls    int
+	detailCalls  int
+	lastListOpts deadLetterListOptions
+	lastDetailID string
+}
+
+func (f *fakeDeadLetterBridge) List(_ context.Context, opts deadLetterListOptions) (deadLetterListPage, error) {
+	f.listCalls++
+	f.lastListOpts = opts
+	if f.listErr != nil {
+		return deadLetterListPage{}, f.listErr
+	}
+	return f.page, nil
+}
+
+func (f *fakeDeadLetterBridge) Detail(_ context.Context, transactionReceiptID string) (postadjudicationstatus.TransactionStatus, error) {
+	f.detailCalls++
+	f.lastDetailID = transactionReceiptID
+	if f.detailErr != nil {
+		return postadjudicationstatus.TransactionStatus{}, f.detailErr
+	}
+	return f.detail, nil
+}
+
+func executeCommand(t *testing.T, cmd *cobra.Command, args ...string) (string, error) {
+	t.Helper()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs(args)
+	err := cmd.Execute()
+	return out.String(), err
+}
 
 func TestCollectStatus_DefaultConfig(t *testing.T) {
 	cfg := config.DefaultConfig()
@@ -211,4 +256,117 @@ func TestRenderDashboard_EmptyVersion(t *testing.T) {
 
 	output := renderDashboard(info)
 	assert.True(t, strings.Contains(output, "dev"))
+}
+
+func TestDeadLettersCmd_TableAndFilters(t *testing.T) {
+	bridge := &fakeDeadLetterBridge{
+		page: deadLetterListPage{
+			Entries: []postadjudicationstatus.DeadLetterBacklogEntry{
+				{
+					TransactionReceiptID:   "tx-1",
+					LatestDeadLetterReason: "worker exhausted",
+					Adjudication:           "release",
+					LatestRetryAttempt:     3,
+					CanRetry:               true,
+				},
+			},
+			Count:  1,
+			Total:  1,
+			Offset: 0,
+			Limit:  0,
+		},
+	}
+	cmd := newDeadLettersCmd(func() (deadLetterBridge, func(), error) {
+		return bridge, func() {}, nil
+	})
+
+	out, err := executeCommand(t, cmd, "--query", "tx-1", "--adjudication", "release")
+	require.NoError(t, err)
+	assert.Contains(t, out, "Dead-Letter Backlog")
+	assert.Contains(t, out, "tx-1")
+	assert.Contains(t, out, "worker exhausted")
+	assert.Equal(t, 1, bridge.listCalls)
+	assert.Equal(t, deadLetterListOptions{Query: "tx-1", Adjudication: "release"}, bridge.lastListOpts)
+}
+
+func TestDeadLettersCmd_JSON(t *testing.T) {
+	bridge := &fakeDeadLetterBridge{
+		page: deadLetterListPage{
+			Entries: []postadjudicationstatus.DeadLetterBacklogEntry{{TransactionReceiptID: "tx-1"}},
+			Count:   1,
+			Total:   1,
+		},
+	}
+	cmd := newDeadLettersCmd(func() (deadLetterBridge, func(), error) {
+		return bridge, func() {}, nil
+	})
+
+	out, err := executeCommand(t, cmd, "--output", "json")
+	require.NoError(t, err)
+	assert.Contains(t, out, "\"entries\"")
+	assert.Contains(t, out, "\"transaction_receipt_id\": \"tx-1\"")
+}
+
+func TestDeadLetterCmd_Table(t *testing.T) {
+	bridge := &fakeDeadLetterBridge{
+		detail: postadjudicationstatus.TransactionStatus{
+			CanonicalSnapshot: postadjudicationstatus.CanonicalSnapshot{
+				TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-1"},
+				SubmissionReceipt:  receipts.SubmissionReceipt{SubmissionReceiptID: "sub-1"},
+			},
+			RetryDeadLetterSummary: postadjudicationstatus.RetryDeadLetterSummary{
+				LatestDeadLetterReason:  "worker exhausted",
+				LatestRetryAttempt:      3,
+				LatestDispatchReference: "dispatch-1",
+			},
+			LatestBackgroundTask: &postadjudicationstatus.BackgroundTaskBridge{
+				TaskID:       "task-1",
+				Status:       "retrying",
+				AttemptCount: 2,
+				NextRetryAt:  "2026-04-25T12:00:00Z",
+			},
+			IsDeadLettered: true,
+			CanRetry:       true,
+			Adjudication:   "release",
+		},
+	}
+	cmd := newDeadLetterCmd(func() (deadLetterBridge, func(), error) {
+		return bridge, func() {}, nil
+	})
+
+	out, err := executeCommand(t, cmd, "tx-1")
+	require.NoError(t, err)
+	assert.Contains(t, out, "Dead-Letter Detail")
+	assert.Contains(t, out, "tx-1")
+	assert.Contains(t, out, "task-1")
+	assert.Equal(t, 1, bridge.detailCalls)
+	assert.Equal(t, "tx-1", bridge.lastDetailID)
+}
+
+func TestDeadLetterCmd_JSON(t *testing.T) {
+	bridge := &fakeDeadLetterBridge{
+		detail: postadjudicationstatus.TransactionStatus{
+			CanonicalSnapshot: postadjudicationstatus.CanonicalSnapshot{
+				TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-1"},
+			},
+		},
+	}
+	cmd := newDeadLetterCmd(func() (deadLetterBridge, func(), error) {
+		return bridge, func() {}, nil
+	})
+
+	out, err := executeCommand(t, cmd, "tx-1", "--output", "json")
+	require.NoError(t, err)
+	assert.Contains(t, out, "\"canonical_snapshot\"")
+	assert.Contains(t, out, "\"transaction_receipt_id\": \"tx-1\"")
+}
+
+func TestDeadLetterCmd_PropagatesBridgeErrors(t *testing.T) {
+	cmd := newDeadLetterCmd(func() (deadLetterBridge, func(), error) {
+		return &fakeDeadLetterBridge{detailErr: errors.New("boom")}, func() {}, nil
+	})
+
+	_, err := executeCommand(t, cmd, "tx-1")
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "boom")
 }

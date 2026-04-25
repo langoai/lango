@@ -100,6 +100,17 @@ The slice is intentionally narrow:
     - `Ctrl+R` is ignored while retry is running
     - apply, reset, and retry-success refresh preserve the current selection when it remains in the refreshed backlog
     - if the selected transaction disappears, the page falls back to the first row or clears selection/detail when the backlog becomes empty
+- dead-letter CLI surface
+  - `lango status dead-letters`
+    - `table` default
+    - `json` support
+    - `--query`
+    - `--adjudication`
+  - `lango status dead-letter <transaction-receipt-id>`
+    - `table` default
+    - `json` support
+    - canonical receipts-backed detail
+    - `latest_background_task` bridge included by default
 
 ## Current Limits
 
@@ -109,4 +120,5 @@ This slice does not yet include:
 - generic dead-letter browsing for all background tasks
 - full event history dump
 - richer detail-surface actor/time summaries
-- higher-level CLI surfaces
+- richer dead-letter CLI filters
+- CLI replay / repair actions
