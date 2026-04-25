@@ -24,10 +24,13 @@ type fakeDeadLetterBridge struct {
 	detail       postadjudicationstatus.TransactionStatus
 	listErr      error
 	detailErr    error
+	retryErr     error
 	listCalls    int
 	detailCalls  int
+	retryCalls   int
 	lastListOpts deadLetterListOptions
 	lastDetailID string
+	lastRetryID  string
 }
 
 func (f *fakeDeadLetterBridge) List(_ context.Context, opts deadLetterListOptions) (deadLetterListPage, error) {
@@ -48,11 +51,31 @@ func (f *fakeDeadLetterBridge) Detail(_ context.Context, transactionReceiptID st
 	return f.detail, nil
 }
 
+func (f *fakeDeadLetterBridge) Retry(_ context.Context, transactionReceiptID string) error {
+	f.retryCalls++
+	f.lastRetryID = transactionReceiptID
+	if f.retryErr != nil {
+		return f.retryErr
+	}
+	return nil
+}
+
 func executeCommand(t *testing.T, cmd *cobra.Command, args ...string) (string, error) {
 	t.Helper()
 	var out bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&out)
+	cmd.SetArgs(args)
+	err := cmd.Execute()
+	return out.String(), err
+}
+
+func executeCommandWithInput(t *testing.T, cmd *cobra.Command, input string, args ...string) (string, error) {
+	t.Helper()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetIn(strings.NewReader(input))
 	cmd.SetArgs(args)
 	err := cmd.Execute()
 	return out.String(), err
@@ -453,4 +476,87 @@ func TestDeadLetterCmd_PropagatesBridgeErrors(t *testing.T) {
 	_, err := executeCommand(t, cmd, "tx-1")
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "boom")
+}
+
+func TestDeadLetterRetryCmd_SucceedsWithYes(t *testing.T) {
+	bridge := &fakeDeadLetterBridge{
+		detail: postadjudicationstatus.TransactionStatus{
+			CanonicalSnapshot: postadjudicationstatus.CanonicalSnapshot{
+				TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-1"},
+			},
+			CanRetry: true,
+		},
+	}
+	cmd := newDeadLetterCmd(func() (deadLetterBridge, func(), error) {
+		return bridge, func() {}, nil
+	})
+
+	out, err := executeCommand(t, cmd, "retry", "tx-1", "--yes")
+	require.NoError(t, err)
+	assert.Contains(t, out, "Retry requested")
+	assert.Equal(t, 1, bridge.detailCalls)
+	assert.Equal(t, 1, bridge.retryCalls)
+	assert.Equal(t, "tx-1", bridge.lastRetryID)
+}
+
+func TestDeadLetterRetryCmd_RejectsWhenCannotRetry(t *testing.T) {
+	bridge := &fakeDeadLetterBridge{
+		detail: postadjudicationstatus.TransactionStatus{
+			CanonicalSnapshot: postadjudicationstatus.CanonicalSnapshot{
+				TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-1"},
+			},
+			CanRetry: false,
+		},
+	}
+	cmd := newDeadLetterCmd(func() (deadLetterBridge, func(), error) {
+		return bridge, func() {}, nil
+	})
+
+	_, err := executeCommand(t, cmd, "retry", "tx-1", "--yes")
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "is not retryable")
+	assert.Equal(t, 1, bridge.detailCalls)
+	assert.Equal(t, 0, bridge.retryCalls)
+}
+
+func TestDeadLetterRetryCmd_RequiresConfirmationByDefault(t *testing.T) {
+	bridge := &fakeDeadLetterBridge{
+		detail: postadjudicationstatus.TransactionStatus{
+			CanonicalSnapshot: postadjudicationstatus.CanonicalSnapshot{
+				TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-1"},
+			},
+			CanRetry: true,
+		},
+	}
+	cmd := newDeadLetterCmd(func() (deadLetterBridge, func(), error) {
+		return bridge, func() {}, nil
+	})
+
+	out, err := executeCommandWithInput(t, cmd, "n\n", "retry", "tx-1")
+	require.NoError(t, err)
+	assert.Contains(t, out, "Retry dead-lettered execution")
+	assert.Contains(t, out, "aborted")
+	assert.Equal(t, 1, bridge.detailCalls)
+	assert.Equal(t, 0, bridge.retryCalls)
+}
+
+func TestDeadLetterRetryCmd_InvokesRetryAfterConfirm(t *testing.T) {
+	bridge := &fakeDeadLetterBridge{
+		detail: postadjudicationstatus.TransactionStatus{
+			CanonicalSnapshot: postadjudicationstatus.CanonicalSnapshot{
+				TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-1"},
+			},
+			CanRetry: true,
+		},
+	}
+	cmd := newDeadLetterCmd(func() (deadLetterBridge, func(), error) {
+		return bridge, func() {}, nil
+	})
+
+	out, err := executeCommandWithInput(t, cmd, "y\n", "retry", "tx-1")
+	require.NoError(t, err)
+	assert.Contains(t, out, "Retry dead-lettered execution")
+	assert.Contains(t, out, "Retry requested")
+	assert.Equal(t, 1, bridge.retryCalls)
+	assert.Equal(t, "tx-1", bridge.lastRetryID)
 }

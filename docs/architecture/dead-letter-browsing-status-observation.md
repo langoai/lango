@@ -113,6 +113,11 @@ The slice is intentionally narrow:
     - `json` support
     - canonical receipts-backed detail
     - `latest_background_task` bridge included by default
+  - `lango status dead-letter retry <transaction-receipt-id>`
+    - prechecks `can_retry`
+    - default confirm prompt
+    - `--yes` bypass
+    - reuses `retry_post_adjudication_execution`
 
 ## Current Limits
 
@@ -123,4 +128,4 @@ This slice does not yet include:
 - full event history dump
 - richer detail-surface actor/time summaries
 - richer dead-letter CLI filters beyond latest subtype / latest family
-- CLI replay / repair actions
+- CLI recovery UX beyond first retry action

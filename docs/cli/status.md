@@ -12,6 +12,7 @@ Show a unified status dashboard combining health, configuration, and feature inf
 lango status [flags]
 lango status dead-letters [flags]
 lango status dead-letter <transaction-receipt-id> [flags]
+lango status dead-letter retry <transaction-receipt-id> [flags]
 ```
 
 ## Description
@@ -26,6 +27,7 @@ The `status` command also exposes dead-letter operator views:
 
 - `lango status dead-letters`
 - `lango status dead-letter <transaction-receipt-id>`
+- `lango status dead-letter retry <transaction-receipt-id>`
 
 ## Flags
 
@@ -81,6 +83,33 @@ Examples:
 ```bash
 lango status dead-letter tx-123
 lango status dead-letter tx-123 --output json
+```
+
+### `lango status dead-letter retry <transaction-receipt-id>`
+
+Request a retry for a dead-lettered post-adjudication execution.
+
+Behavior:
+
+- reads the current detail status first
+- requires `can_retry=true`
+- prompts for confirmation by default
+- `--yes` skips the prompt
+- reuses the existing retry control path
+
+Flags:
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--output` | `table` | Output format: `table` or `json` |
+| `--yes` | `false` | Skip the confirmation prompt |
+
+Examples:
+
+```bash
+lango status dead-letter retry tx-123
+lango status dead-letter retry tx-123 --yes
+lango status dead-letter retry tx-123 --yes --output json
 ```
 
 ## Output Sections

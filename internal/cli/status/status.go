@@ -2,6 +2,7 @@
 package status
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -27,6 +28,7 @@ const defaultAddr = "http://localhost:18789"
 type deadLetterBridge interface {
 	List(context.Context, deadLetterListOptions) (deadLetterListPage, error)
 	Detail(context.Context, string) (postadjudicationstatus.TransactionStatus, error)
+	Retry(context.Context, string) error
 }
 
 type deadLetterBridgeLoader func() (deadLetterBridge, func(), error)
@@ -44,6 +46,11 @@ type deadLetterListPage struct {
 	Total   int                                             `json:"total"`
 	Offset  int                                             `json:"offset"`
 	Limit   int                                             `json:"limit"`
+}
+
+type deadLetterRetryResult struct {
+	TransactionReceiptID string `json:"transaction_receipt_id"`
+	Status               string `json:"status"`
 }
 
 type toolCatalogDeadLetterBridge struct {
@@ -172,6 +179,65 @@ func newDeadLetterCmd(loader deadLetterBridgeLoader) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&outputFmt, "output", "table", "Output format: table or json")
+	cmd.AddCommand(newDeadLetterRetryCmd(loader))
+	return cmd
+}
+
+func newDeadLetterRetryCmd(loader deadLetterBridgeLoader) *cobra.Command {
+	var (
+		outputFmt string
+		yes       bool
+	)
+
+	cmd := &cobra.Command{
+		Use:   "retry <transaction-receipt-id>",
+		Short: "Retry a dead-lettered post-adjudication execution",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			transactionReceiptID := strings.TrimSpace(args[0])
+
+			bridge, cleanup, err := loader()
+			if err != nil {
+				return err
+			}
+			defer cleanup()
+
+			status, err := bridge.Detail(cmd.Context(), transactionReceiptID)
+			if err != nil {
+				return err
+			}
+			if !status.CanRetry {
+				return fmt.Errorf("transaction %q is not retryable", transactionReceiptID)
+			}
+
+			if !yes {
+				confirmed, err := confirmDeadLetterRetry(cmd, transactionReceiptID)
+				if err != nil {
+					return err
+				}
+				if !confirmed {
+					_, err := fmt.Fprintln(cmd.OutOrStdout(), "Retry aborted.")
+					return err
+				}
+			}
+
+			if err := bridge.Retry(cmd.Context(), transactionReceiptID); err != nil {
+				return err
+			}
+
+			result := deadLetterRetryResult{
+				TransactionReceiptID: transactionReceiptID,
+				Status:               "queued",
+			}
+			if outputFmt == "json" {
+				return printJSONTo(cmd.OutOrStdout(), result)
+			}
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Retry requested for transaction %s.\n", transactionReceiptID)
+			return err
+		},
+	}
+	cmd.Flags().StringVar(&outputFmt, "output", "table", "Output format: table or json")
+	cmd.Flags().BoolVar(&yes, "yes", false, "Skip confirmation prompt")
 	return cmd
 }
 
@@ -305,6 +371,37 @@ func (b *toolCatalogDeadLetterBridge) Detail(ctx context.Context, transactionRec
 		return postadjudicationstatus.TransactionStatus{}, err
 	}
 	return status, nil
+}
+
+func (b *toolCatalogDeadLetterBridge) Retry(ctx context.Context, transactionReceiptID string) error {
+	if b == nil || b.catalog == nil {
+		return fmt.Errorf("dead-letter tool catalog is not configured")
+	}
+	entry, ok := b.catalog.Get("retry_post_adjudication_execution")
+	if !ok || entry.Tool == nil || entry.Tool.Handler == nil {
+		return fmt.Errorf("dead-letter retry tool is not available")
+	}
+	_, err := entry.Tool.Handler(ctx, map[string]interface{}{
+		"transaction_receipt_id": strings.TrimSpace(transactionReceiptID),
+	})
+	return err
+}
+
+func confirmDeadLetterRetry(cmd *cobra.Command, transactionReceiptID string) (bool, error) {
+	if _, err := fmt.Fprintf(
+		cmd.OutOrStdout(),
+		"Retry dead-lettered execution for transaction %s? [y/N]: ",
+		transactionReceiptID,
+	); err != nil {
+		return false, err
+	}
+	reader := bufio.NewReader(cmd.InOrStdin())
+	answer, err := reader.ReadString('\n')
+	if err != nil && err != io.EOF {
+		return false, err
+	}
+	answer = strings.ToLower(strings.TrimSpace(answer))
+	return answer == "y" || answer == "yes", nil
 }
 
 func optionalInt(payload map[string]interface{}, key string) int {
