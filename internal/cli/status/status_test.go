@@ -300,12 +300,13 @@ func TestDeadLetterSummaryCmd_Table(t *testing.T) {
 	bridge := &fakeDeadLetterBridge{
 		page: deadLetterListPage{
 			Entries: []postadjudicationstatus.DeadLetterBacklogEntry{
-				{TransactionReceiptID: "tx-1", Adjudication: "release", CanRetry: true, LatestStatusSubtypeFamily: "retry", LatestDeadLetterReason: "retry attempts exhausted"},
-				{TransactionReceiptID: "tx-2", Adjudication: "refund", CanRetry: false, LatestStatusSubtypeFamily: "manual-retry", LatestDeadLetterReason: "policy gate denied replay"},
-				{TransactionReceiptID: "tx-3", Adjudication: "release", CanRetry: true, LatestStatusSubtypeFamily: "dead-letter", LatestDeadLetterReason: "worker exhausted"},
+				{TransactionReceiptID: "tx-1", Adjudication: "release", CanRetry: true, LatestStatusSubtypeFamily: "retry", LatestDeadLetterReason: "retry attempts exhausted", LatestManualReplayActor: "operator:alice"},
+				{TransactionReceiptID: "tx-2", Adjudication: "refund", CanRetry: false, LatestStatusSubtypeFamily: "manual-retry", LatestDeadLetterReason: "policy gate denied replay", LatestManualReplayActor: "system:auto-retry"},
+				{TransactionReceiptID: "tx-3", Adjudication: "release", CanRetry: true, LatestStatusSubtypeFamily: "dead-letter", LatestDeadLetterReason: "worker exhausted", LatestManualReplayActor: "service:bridge"},
+				{TransactionReceiptID: "tx-4", Adjudication: "refund", CanRetry: false, LatestStatusSubtypeFamily: "dead-letter", LatestDeadLetterReason: "unknown reason", LatestManualReplayActor: "alice"},
 			},
-			Count: 3,
-			Total: 3,
+			Count: 4,
+			Total: 4,
 		},
 	}
 	cmd := newDeadLetterSummaryCmd(func() (deadLetterBridge, func(), error) {
@@ -316,7 +317,7 @@ func TestDeadLetterSummaryCmd_Table(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, out, "Dead-Letter Summary")
 	assert.Contains(t, out, "Total")
-	assert.Contains(t, out, "3")
+	assert.Contains(t, out, "4")
 	assert.Contains(t, out, "Retryable")
 	assert.Contains(t, out, "2")
 	assert.Contains(t, out, "By Adjudication")
@@ -330,6 +331,11 @@ func TestDeadLetterSummaryCmd_Table(t *testing.T) {
 	assert.Contains(t, out, "retry-exhausted")
 	assert.Contains(t, out, "policy-blocked")
 	assert.Contains(t, out, "background-failed")
+	assert.Contains(t, out, "By actor family")
+	assert.Contains(t, out, postadjudicationstatus.ManualReplayActorFamilyOperator)
+	assert.Contains(t, out, postadjudicationstatus.ManualReplayActorFamilySystem)
+	assert.Contains(t, out, postadjudicationstatus.ManualReplayActorFamilyService)
+	assert.Contains(t, out, postadjudicationstatus.ManualReplayActorFamilyUnknown)
 	assert.Contains(t, out, "Top Latest Dead-Letter Reasons")
 	assert.Contains(t, out, "retry attempts exhausted")
 	assert.Contains(t, out, "policy gate denied replay")
@@ -342,11 +348,12 @@ func TestDeadLetterSummaryCmd_JSON(t *testing.T) {
 		page: deadLetterListPage{
 			Entries: []postadjudicationstatus.DeadLetterBacklogEntry{
 				{TransactionReceiptID: "tx-1", Adjudication: "release", CanRetry: true, LatestStatusSubtypeFamily: "retry", LatestDeadLetterReason: "worker exhausted", LatestManualReplayActor: "operator:bob", LatestDispatchReference: "dispatch-1"},
-				{TransactionReceiptID: "tx-2", Adjudication: "refund", CanRetry: false, LatestStatusSubtypeFamily: "manual-retry", LatestDeadLetterReason: "insufficient evidence", LatestManualReplayActor: "operator:alice", LatestDispatchReference: "dispatch-2"},
-				{TransactionReceiptID: "tx-3", Adjudication: "release", CanRetry: true, LatestStatusSubtypeFamily: "dead-letter", LatestDeadLetterReason: "worker exhausted", LatestManualReplayActor: "operator:bob", LatestDispatchReference: "dispatch-1"},
+				{TransactionReceiptID: "tx-2", Adjudication: "refund", CanRetry: false, LatestStatusSubtypeFamily: "manual-retry", LatestDeadLetterReason: "insufficient evidence", LatestManualReplayActor: "system:auto-retry", LatestDispatchReference: "dispatch-2"},
+				{TransactionReceiptID: "tx-3", Adjudication: "release", CanRetry: true, LatestStatusSubtypeFamily: "dead-letter", LatestDeadLetterReason: "worker exhausted", LatestManualReplayActor: "service:bridge", LatestDispatchReference: "dispatch-1"},
+				{TransactionReceiptID: "tx-4", Adjudication: "refund", CanRetry: false, LatestStatusSubtypeFamily: "dead-letter", LatestDeadLetterReason: "policy blocked", LatestManualReplayActor: "alice", LatestDispatchReference: "dispatch-3"},
 			},
-			Count: 3,
-			Total: 3,
+			Count: 4,
+			Total: 4,
 		},
 	}
 	cmd := newDeadLetterSummaryCmd(func() (deadLetterBridge, func(), error) {
@@ -358,36 +365,48 @@ func TestDeadLetterSummaryCmd_JSON(t *testing.T) {
 
 	var got deadLetterSummaryResult
 	require.NoError(t, json.Unmarshal([]byte(out), &got))
-	assert.Equal(t, 3, got.TotalDeadLetters)
+	assert.Equal(t, 4, got.TotalDeadLetters)
 	assert.Equal(t, 2, got.RetryableCount)
 	assert.Equal(t, []deadLetterSummaryBucket{
 		{Label: "release", Count: 2},
-		{Label: "refund", Count: 1},
+		{Label: "refund", Count: 2},
 	}, got.ByAdjudication)
 	assert.Equal(t, []deadLetterSummaryBucket{
 		{Label: "retry", Count: 1},
 		{Label: "manual-retry", Count: 1},
-		{Label: "dead-letter", Count: 1},
+		{Label: "dead-letter", Count: 2},
 	}, got.ByLatestFamily)
 	assert.Equal(t, []deadLetterSummaryBucket{
+		{Label: postadjudicationstatus.DeadLetterReasonFamilyPolicyBlocked, Count: 1},
 		{Label: postadjudicationstatus.DeadLetterReasonFamilyBackgroundFailed, Count: 2},
 		{Label: postadjudicationstatus.DeadLetterReasonFamilyUnknown, Count: 1},
 	}, got.ByReasonFamily)
+	assert.Equal(t, []deadLetterSummaryBucket{
+		{Label: postadjudicationstatus.ManualReplayActorFamilyOperator, Count: 1},
+		{Label: postadjudicationstatus.ManualReplayActorFamilySystem, Count: 1},
+		{Label: postadjudicationstatus.ManualReplayActorFamilyService, Count: 1},
+		{Label: postadjudicationstatus.ManualReplayActorFamilyUnknown, Count: 1},
+	}, got.ByActorFamily)
 	assert.Equal(t, []deadLetterReasonSummaryItem{
 		{Reason: "worker exhausted", Count: 2},
 		{Reason: "insufficient evidence", Count: 1},
+		{Reason: "policy blocked", Count: 1},
 	}, got.TopLatestDeadLetterReasons)
 	assert.Equal(t, []deadLetterActorSummaryItem{
-		{Actor: "operator:bob", Count: 2},
-		{Actor: "operator:alice", Count: 1},
+		{Actor: "alice", Count: 1},
+		{Actor: "operator:bob", Count: 1},
+		{Actor: "service:bridge", Count: 1},
+		{Actor: "system:auto-retry", Count: 1},
 	}, got.TopLatestManualReplayActors)
 	assert.Equal(t, []deadLetterDispatchSummaryItem{
 		{DispatchReference: "dispatch-1", Count: 2},
 		{DispatchReference: "dispatch-2", Count: 1},
+		{DispatchReference: "dispatch-3", Count: 1},
 	}, got.TopLatestDispatchReferences)
 
 	var raw map[string]json.RawMessage
 	require.NoError(t, json.Unmarshal([]byte(out), &raw))
+	assert.Contains(t, raw, "by_actor_family")
 	assert.Contains(t, raw, "by_reason_family")
 	assert.Contains(t, raw, "top_latest_dead_letter_reasons")
 }
@@ -420,6 +439,30 @@ func TestAggregateDeadLetterSummary_ByReasonFamily(t *testing.T) {
 		{Reason: "policy gate denied replay", Count: 1},
 		{Reason: "retry attempts exhausted after 5 attempts", Count: 1},
 	}, got.TopLatestDeadLetterReasons)
+}
+
+func TestAggregateDeadLetterSummary_ByActorFamily(t *testing.T) {
+	page := deadLetterListPage{
+		Entries: []postadjudicationstatus.DeadLetterBacklogEntry{
+			{LatestManualReplayActor: "operator:alice"},
+			{LatestManualReplayActor: "system:auto-retry"},
+			{LatestManualReplayActor: "service:bridge"},
+			{LatestManualReplayActor: "alice"},
+			{LatestManualReplayActor: "OPERATOR:BOB"},
+			{LatestManualReplayActor: "runtime:worker"},
+			{LatestManualReplayActor: "integration:webhook"},
+			{LatestManualReplayActor: "  "},
+		},
+	}
+
+	got := aggregateDeadLetterSummary(page)
+
+	assert.Equal(t, []deadLetterSummaryBucket{
+		{Label: postadjudicationstatus.ManualReplayActorFamilyOperator, Count: 2},
+		{Label: postadjudicationstatus.ManualReplayActorFamilySystem, Count: 2},
+		{Label: postadjudicationstatus.ManualReplayActorFamilyService, Count: 2},
+		{Label: postadjudicationstatus.ManualReplayActorFamilyUnknown, Count: 2},
+	}, got.ByActorFamily)
 }
 
 func TestAggregateDeadLetterSummary_TopLatestDeadLetterReasons(t *testing.T) {

@@ -179,6 +179,10 @@ func renderDeadLetterSummaryTable(summary deadLetterSummaryResult) string {
 	b.WriteString(renderSummaryBuckets(summary.ByReasonFamily))
 
 	b.WriteString("\n")
+	b.WriteString(sectionHeader("By actor family"))
+	b.WriteString(renderSummaryBuckets(summary.ByActorFamily))
+
+	b.WriteString("\n")
 	b.WriteString(sectionHeader("Top Latest Dead-Letter Reasons"))
 	b.WriteString(renderReasonSummaryItems(summary.TopLatestDeadLetterReasons))
 

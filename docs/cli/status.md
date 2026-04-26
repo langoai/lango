@@ -59,6 +59,14 @@ The first summary slice includes:
     - `background-failed`
     - `unknown`
   - classification is case-insensitive and falls back to `unknown` when no built-in heuristic matches
+- `by_actor_family`
+  - grouped actor-family buckets derived from each backlog row's current `latest_manual_replay_actor`
+  - initial taxonomy:
+    - `operator`
+    - `system`
+    - `service`
+    - `unknown`
+  - classification is case-insensitive and falls back to `unknown` when no built-in heuristic matches
 - `top_latest_dead_letter_reasons`
   - top `5` latest dead-letter reasons
   - each item includes:
@@ -72,6 +80,7 @@ The first summary slice includes:
     - `actor`
     - `count`
   - aggregated from each backlog row's current `latest_manual_replay_actor`
+  - remains available alongside `by_actor_family` so operators can see both grouped families and raw latest actor strings
 - `top_latest_dispatch_references`
   - top `5` latest dispatch references
   - each item includes:
@@ -92,7 +101,7 @@ lango status dead-letter-summary
 lango status dead-letter-summary --output json
 ```
 
-Table output includes a `By reason family` section in addition to the existing raw `Top Latest Dead-Letter Reasons` section. JSON output includes `by_reason_family` as an array of `{ "label": "...", "count": ... }` buckets.
+Table output includes `By reason family` and `By actor family` sections while preserving the raw `Top Latest Dead-Letter Reasons` and `Top Latest Manual Replay Actors` sections. JSON output includes `by_reason_family` and `by_actor_family` as arrays of `{ "label": "...", "count": ... }` buckets.
 
 ### `lango status dead-letters`
 

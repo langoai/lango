@@ -152,6 +152,7 @@ type deadLetterSummary struct {
 	deadLetterFamily  int
 	topReasons        []deadLetterReasonSummaryItem
 	reasonFamilies    []deadLetterReasonFamilySummaryItem
+	actorFamilies     []deadLetterActorFamilySummaryItem
 	topActors         []deadLetterActorSummaryItem
 	topDispatches     []deadLetterDispatchSummaryItem
 }
@@ -169,6 +170,11 @@ type deadLetterReasonFamilySummaryItem struct {
 type deadLetterActorSummaryItem struct {
 	actor string
 	count int
+}
+
+type deadLetterActorFamilySummaryItem struct {
+	family string
+	count  int
 }
 
 type deadLetterDispatchSummaryItem struct {
@@ -492,6 +498,18 @@ func (p *DeadLettersPage) renderSummaryStrip() string {
 			actorsLine = ansi.Truncate(actorsLine, max(p.width-8, 48), "…")
 		}
 		lines = append(lines, chipStyle.Render(actorsLine))
+	}
+
+	if len(summary.actorFamilies) > 0 {
+		familyParts := make([]string, 0, len(summary.actorFamilies))
+		for _, item := range summary.actorFamilies {
+			familyParts = append(familyParts, fmt.Sprintf("%s(%d)", item.family, item.count))
+		}
+		actorFamiliesLine := "actor families: " + strings.Join(familyParts, ", ")
+		if p.width > 0 {
+			actorFamiliesLine = ansi.Truncate(actorFamiliesLine, max(p.width-8, 48), "…")
+		}
+		lines = append(lines, chipStyle.Render(actorFamiliesLine))
 	}
 
 	if len(summary.topDispatches) > 0 {
@@ -993,6 +1011,7 @@ func summarizeDeadLetters(items []postadjudicationstatus.DeadLetterBacklogEntry)
 	var summary deadLetterSummary
 	reasonCounts := make(map[string]int)
 	reasonFamilyCounts := make(map[string]int)
+	actorFamilyCounts := make(map[string]int)
 	actorCounts := make(map[string]int)
 	dispatchCounts := make(map[string]int)
 	for _, item := range items {
@@ -1020,6 +1039,8 @@ func summarizeDeadLetters(items []postadjudicationstatus.DeadLetterBacklogEntry)
 		}
 		reasonFamily := postadjudicationstatus.ClassifyDeadLetterReasonFamily(item.LatestDeadLetterReason)
 		reasonFamilyCounts[reasonFamily]++
+		actorFamily := postadjudicationstatus.ClassifyManualReplayActorFamily(item.LatestManualReplayActor)
+		actorFamilyCounts[actorFamily]++
 		actor := strings.TrimSpace(item.LatestManualReplayActor)
 		if actor != "" {
 			actorCounts[actor]++
@@ -1065,6 +1086,26 @@ func summarizeDeadLetters(items []postadjudicationstatus.DeadLetterBacklogEntry)
 			})
 		}
 		summary.reasonFamilies = families
+	}
+	if len(actorFamilyCounts) > 0 {
+		preferredOrder := []string{
+			postadjudicationstatus.ManualReplayActorFamilyOperator,
+			postadjudicationstatus.ManualReplayActorFamilySystem,
+			postadjudicationstatus.ManualReplayActorFamilyService,
+			postadjudicationstatus.ManualReplayActorFamilyUnknown,
+		}
+		families := make([]deadLetterActorFamilySummaryItem, 0, len(actorFamilyCounts))
+		for _, family := range preferredOrder {
+			count := actorFamilyCounts[family]
+			if count == 0 {
+				continue
+			}
+			families = append(families, deadLetterActorFamilySummaryItem{
+				family: family,
+				count:  count,
+			})
+		}
+		summary.actorFamilies = families
 	}
 	if len(actorCounts) > 0 {
 		actors := make([]deadLetterActorSummaryItem, 0, len(actorCounts))

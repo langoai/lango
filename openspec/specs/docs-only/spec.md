@@ -453,17 +453,23 @@ The `docs/architecture/dead-letter-browsing-status-observation.md` page SHALL de
 - **AND** they SHALL find dead-letter CLI reason/dispatch filtering described
 - **AND** they SHALL find dead-letter CLI summary described
 - **AND** they SHALL find dead-letter CLI `by_reason_family` summary buckets described
+- **AND** they SHALL find dead-letter CLI `by_actor_family` summary buckets described
 - **AND** they SHALL find the CLI `By reason family` table section described
+- **AND** they SHALL find the CLI `By actor family` table section described
 - **AND** they SHALL find the initial reason-family taxonomy described as `retry-exhausted`, `policy-blocked`, `receipt-invalid`, `background-failed`, and `unknown`
+- **AND** they SHALL find the initial actor-family taxonomy described as `operator`, `system`, `service`, and `unknown`
 - **AND** they SHALL find top latest dead-letter reasons described for the summary CLI surface
 - **AND** they SHALL find raw top latest dead-letter reasons described as still available alongside grouped reason-family summaries
 - **AND** they SHALL find top latest manual replay actors described for the summary CLI surface
+- **AND** they SHALL find raw top latest manual replay actors described as still available alongside grouped actor-family summaries
 - **AND** they SHALL find top latest dispatch references described for the summary CLI surface
 - **AND** they SHALL find the cockpit page-top summary strip described
 - **AND** they SHALL find the cockpit `reason families:` summary strip line described
+- **AND** they SHALL find the cockpit `actor families:` summary strip line described
 - **AND** they SHALL find top latest dead-letter reasons described for the cockpit summary strip
 - **AND** they SHALL find raw top latest dead-letter reasons described as still available in the cockpit summary strip
 - **AND** they SHALL find top latest manual replay actors described for the cockpit summary strip
+- **AND** they SHALL find raw top latest manual replay actors described as still available in the cockpit summary strip
 - **AND** they SHALL find top latest dispatch references described for the cockpit summary strip
 - **AND** they SHALL find the cockpit detail-pane `Retry` action described
 - **AND** they SHALL find inline confirm and success-refresh recovery UX described
@@ -474,7 +480,7 @@ The `docs/architecture/dead-letter-browsing-status-observation.md` page SHALL de
 - **AND** they SHALL find detail navigation hints described for per-transaction status
 
 ### Requirement: P2P knowledge exchange track reflects landed dead-letter browsing / status observation
-The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe dead-letter browsing / status observation as landed work with transaction-global dominant family, compact per-submission breakdown, a thin raw background-task bridge on the detail view, a cockpit dead-letter read surface, a page-top cockpit summary strip with raw top latest dead-letter reasons, grouped `reason families:`, top latest manual replay actors, and top latest dispatch references, a thin cockpit filter bar, cockpit subtype filtering, cockpit latest-family filtering, cockpit any-match-family filtering, cockpit actor/time filtering, cockpit reason/dispatch filtering, cockpit reset/clear shortcuts, cockpit selection preservation, a cockpit `Retry` action, confirm/refresh recovery UX, refined retry loading/failure/success messaging, and a dead-letter CLI surface including the summary command with grouped `by_reason_family` buckets, a `By reason family` table section, raw top latest dead-letter reasons, top latest manual replay actors, and top latest dispatch references, subtype/latest-family filtering, actor/time filtering, reason/dispatch filtering, and the first retry action with precheck/request-accepted/request-failed semantics, and list the remaining work as dead-letter CLI `any_match_family` filtering, polling / follow-up recovery UX, richer structured CLI retry results, grouped actor/dispatch families or richer top-N/trend summaries, and richer cockpit summary surfaces beyond latest reason families, top latest dead-letter reasons, actors, and dispatch references.
+The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe dead-letter browsing / status observation as landed work with transaction-global dominant family, compact per-submission breakdown, a thin raw background-task bridge on the detail view, a cockpit dead-letter read surface, a page-top cockpit summary strip with raw top latest dead-letter reasons, grouped `reason families:`, top latest manual replay actors, grouped `actor families:`, and top latest dispatch references, a thin cockpit filter bar, cockpit subtype filtering, cockpit latest-family filtering, cockpit any-match-family filtering, cockpit actor/time filtering, cockpit reason/dispatch filtering, cockpit reset/clear shortcuts, cockpit selection preservation, a cockpit `Retry` action, confirm/refresh recovery UX, refined retry loading/failure/success messaging, and a dead-letter CLI surface including the summary command with grouped `by_reason_family` buckets, grouped `by_actor_family` buckets, a `By reason family` table section, a `By actor family` table section, raw top latest dead-letter reasons, raw top latest manual replay actors, and top latest dispatch references, subtype/latest-family filtering, actor/time filtering, reason/dispatch filtering, and the first retry action with precheck/request-accepted/request-failed semantics, and list the remaining work as dead-letter CLI `any_match_family` filtering, polling / follow-up recovery UX, richer structured CLI retry results, grouped dispatch families, configurable actor-family taxonomy, richer top-N / trend / time-window summaries, and richer cockpit summary surfaces beyond latest reason families, actor families, top latest dead-letter reasons, actors, and dispatch references.
 
 #### Scenario: Track page points to the landed status slice
 - **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
@@ -497,21 +503,27 @@ The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe dead
 - **AND** they SHALL find dead-letter CLI reason/dispatch filtering described as landed work
 - **AND** they SHALL find dead-letter CLI summary described as landed work
 - **AND** they SHALL find dead-letter CLI `by_reason_family` described as landed work
+- **AND** they SHALL find dead-letter CLI `by_actor_family` described as landed work
 - **AND** they SHALL find the CLI `By reason family` table section described as landed work
+- **AND** they SHALL find the CLI `By actor family` table section described as landed work
 - **AND** they SHALL find the initial reason-family taxonomy described as `retry-exhausted`, `policy-blocked`, `receipt-invalid`, `background-failed`, and `unknown`
+- **AND** they SHALL find the initial actor-family taxonomy described as `operator`, `system`, `service`, and `unknown`
 - **AND** they SHALL find top latest dead-letter reasons described as landed work
 - **AND** they SHALL find raw top latest dead-letter reasons described as still available alongside grouped reason-family summaries
 - **AND** they SHALL find top latest manual replay actors described as landed work
+- **AND** they SHALL find raw top latest manual replay actors described as still available alongside grouped actor-family summaries
 - **AND** they SHALL find top latest dispatch references described as landed work
 - **AND** they SHALL find the cockpit page-top summary strip described as landed work
 - **AND** they SHALL find the cockpit `reason families:` summary strip line described as landed work
+- **AND** they SHALL find the cockpit `actor families:` summary strip line described as landed work
 - **AND** they SHALL find top latest dead-letter reasons described for the cockpit summary strip as landed work
 - **AND** they SHALL find raw top latest dead-letter reasons described as still available in the cockpit summary strip
 - **AND** they SHALL find top latest manual replay actors described for the cockpit summary strip as landed work
+- **AND** they SHALL find raw top latest manual replay actors described as still available in the cockpit summary strip
 - **AND** they SHALL find top latest dispatch references described for the cockpit summary strip as landed work
 - **AND** they SHALL find the cockpit `Retry` action described as landed work
 - **AND** they SHALL find confirm/refresh recovery UX described as landed work
 - **AND** they SHALL find retry loading/failure feedback described as landed work
 - **AND** they SHALL find refined retry success/failure wording described as landed work
 - **AND** they SHALL find CLI retry precheck/request-accepted/request-failed semantics described as landed work
-- **AND** the remaining work SHALL be described as dead-letter CLI `any_match_family` filtering, polling / follow-up recovery UX, richer structured CLI retry results, grouped actor/dispatch families or richer top-N/trend summaries, and richer cockpit summary surfaces beyond latest reason families, top latest dead-letter reasons, actors, and dispatch references
+- **AND** the remaining work SHALL be described as dead-letter CLI `any_match_family` filtering, polling / follow-up recovery UX, richer structured CLI retry results, grouped dispatch families, configurable actor-family taxonomy, richer top-N / trend / time-window summaries, and richer cockpit summary surfaces beyond latest reason families, actor families, top latest dead-letter reasons, actors, and dispatch references

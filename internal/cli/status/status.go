@@ -86,6 +86,7 @@ type deadLetterSummaryResult struct {
 	ByAdjudication              []deadLetterSummaryBucket       `json:"by_adjudication"`
 	ByLatestFamily              []deadLetterSummaryBucket       `json:"by_latest_family"`
 	ByReasonFamily              []deadLetterSummaryBucket       `json:"by_reason_family"`
+	ByActorFamily               []deadLetterSummaryBucket       `json:"by_actor_family"`
 	TopLatestDeadLetterReasons  []deadLetterReasonSummaryItem   `json:"top_latest_dead_letter_reasons"`
 	TopLatestManualReplayActors []deadLetterActorSummaryItem    `json:"top_latest_manual_replay_actors"`
 	TopLatestDispatchReferences []deadLetterDispatchSummaryItem `json:"top_latest_dispatch_references"`
@@ -471,6 +472,7 @@ func aggregateDeadLetterSummary(page deadLetterListPage) deadLetterSummaryResult
 	adjudicationCounts := map[string]int{}
 	latestFamilyCounts := map[string]int{}
 	reasonFamilyCounts := map[string]int{}
+	actorFamilyCounts := map[string]int{}
 	reasonCounts := map[string]int{}
 	actorCounts := map[string]int{}
 	dispatchCounts := map[string]int{}
@@ -485,6 +487,10 @@ func aggregateDeadLetterSummary(page deadLetterListPage) deadLetterSummaryResult
 			entry.LatestDeadLetterReason,
 		)
 		reasonFamilyCounts[reasonFamily]++
+		actorFamily := postadjudicationstatus.ClassifyManualReplayActorFamily(
+			entry.LatestManualReplayActor,
+		)
+		actorFamilyCounts[actorFamily]++
 		if reason := strings.TrimSpace(entry.LatestDeadLetterReason); reason != "" {
 			reasonCounts[reason]++
 		}
@@ -502,6 +508,7 @@ func aggregateDeadLetterSummary(page deadLetterListPage) deadLetterSummaryResult
 		ByAdjudication:              orderedSummaryBuckets(adjudicationCounts, []string{"release", "refund"}),
 		ByLatestFamily:              orderedSummaryBuckets(latestFamilyCounts, []string{"retry", "manual-retry", "dead-letter"}),
 		ByReasonFamily:              orderedSummaryBuckets(reasonFamilyCounts, deadLetterReasonFamilyOrder()),
+		ByActorFamily:               orderedSummaryBuckets(actorFamilyCounts, manualReplayActorFamilyOrder()),
 		TopLatestDeadLetterReasons:  topDeadLetterReasons(reasonCounts, 5),
 		TopLatestManualReplayActors: topManualReplayActors(actorCounts, 5),
 		TopLatestDispatchReferences: topDispatchReferences(dispatchCounts, 5),
@@ -515,6 +522,15 @@ func deadLetterReasonFamilyOrder() []string {
 		postadjudicationstatus.DeadLetterReasonFamilyReceiptInvalid,
 		postadjudicationstatus.DeadLetterReasonFamilyBackgroundFailed,
 		postadjudicationstatus.DeadLetterReasonFamilyUnknown,
+	}
+}
+
+func manualReplayActorFamilyOrder() []string {
+	return []string{
+		postadjudicationstatus.ManualReplayActorFamilyOperator,
+		postadjudicationstatus.ManualReplayActorFamilySystem,
+		postadjudicationstatus.ManualReplayActorFamilyService,
+		postadjudicationstatus.ManualReplayActorFamilyUnknown,
 	}
 }
 

@@ -93,6 +93,15 @@ The slice is intentionally narrow:
       - top `5` latest manual replay actors in a compact `actors:` line
         - rendered as a compact `actors:` line
         - aggregated from each row's current `latest_manual_replay_actor`
+      - grouped latest manual replay actor families in a compact `actor families:` line
+        - rendered from each row's current `latest_manual_replay_actor`
+        - uses the initial built-in taxonomy:
+          - `operator`
+          - `system`
+          - `service`
+          - `unknown`
+        - uses case-insensitive heuristic matching with `unknown` fallback
+        - raw top latest manual replay actors remain visible alongside grouped actor-family buckets
       - top `5` latest dispatch references in a compact `dispatch:` line
         - rendered as a compact `dispatch:` line
         - aggregated from each row's current `latest_dispatch_reference`
@@ -156,10 +165,21 @@ The slice is intentionally narrow:
         - each item includes `reason` and `count`
         - aggregated from each row's current `latest_dead_letter_reason`
         - remains available as the raw latest reason-string view alongside `by_reason_family`
+      - `by_actor_family`
+        - grouped actor-family buckets derived from each row's current `latest_manual_replay_actor`
+        - table output renders this as a `By actor family` section
+        - JSON output renders this as `by_actor_family`
+        - uses the initial built-in taxonomy:
+          - `operator`
+          - `system`
+          - `service`
+          - `unknown`
+        - uses case-insensitive heuristic matching with `unknown` fallback
       - `top_latest_manual_replay_actors`
         - top `5` actors
         - each item includes `actor` and `count`
         - aggregated from each row's current `latest_manual_replay_actor`
+        - remains available as the raw latest actor-string view alongside `by_actor_family`
       - `top_latest_dispatch_references`
         - top `5` dispatch references
         - each item includes `dispatch_reference` and `count`
@@ -205,5 +225,5 @@ This slice does not yet include:
 - dead-letter CLI `any_match_family` filtering
 - polling / follow-up recovery UX
 - richer structured CLI retry-result payloads
-- grouped actor / dispatch families, configurable top-N, and trend/time-window summary views
-- richer cockpit summary surfaces beyond latest reason families, top latest dead-letter reasons, actors, and dispatch references
+- grouped dispatch families, configurable actor-family taxonomy, and richer top-N / trend / time-window summary views
+- richer cockpit summary surfaces beyond latest reason families, actor families, top latest dead-letter reasons, actors, and dispatch references
