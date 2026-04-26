@@ -50,7 +50,7 @@ Each Lango agent supports two DID forms:
 - `did:lango:<hex>` for legacy wallet-derived identities
 - `did:lango:v2:<hash>` for bundle-backed identities
 
-The active DID is exposed by the CLI and by `GET /api/p2p/identity` when the local identity provider can resolve one.
+The active DID is exposed by `GET /api/p2p/identity` when the local identity provider can resolve one. The current `lango p2p identity` CLI still focuses on peer/node identity and listen addresses rather than printing the DID directly.
 
 The DID is deterministically mapped to a libp2p peer ID, ensuring cryptographic binding between the wallet identity and the network identity. Private keys never leave the wallet layer.
 
@@ -160,7 +160,22 @@ The [Knowledge Firewall](#knowledge-firewall) evaluates static allow/deny rules 
 
 ### Stage 2: Reputation Check
 
-If a reputation checker is configured, the peer's trust score is verified against `minTrustScore` (default: 0.3). New peers with no history (score = 0) are allowed through. Peers with a score above 0 but below the threshold are rejected.
+If a reputation checker is configured, the runtime evaluates one canonical trust entry rather than only comparing a scalar score. The current runtime policy uses:
+
+- `BootstrapTrustScore` for first-time peers
+- `MinEarnedTrustScore` for returning peers
+- `MaxTemporarySafetySignals` for temporary runtime safety invalidation
+
+The resulting trust-entry states are:
+
+| State | Meaning | Admission Behavior |
+|-------|---------|--------------------|
+| `bootstrap` | No returning history yet | Allowed through the reputation gate with the bootstrap floor |
+| `established` | Returning peer with earned trust at or above the minimum and no temporary safety block | Allowed |
+| `review` | Returning peer whose earned trust is below the minimum | Blocked pending manual review |
+| `temporarily_unsafe` | Returning peer with too many temporary safety incidents | Blocked immediately for runtime safety |
+
+For firewall admission, new peers still pass with bootstrap trust, but returning peers in `review` or `temporarily_unsafe` do not.
 
 ### Stage 3: Owner Approval
 
@@ -169,7 +184,7 @@ The local agent owner is prompted to approve or deny the tool invocation. This s
 | Condition | Behavior |
 |-----------|----------|
 | **Paid tool, price < `autoApproveBelow`** | Auto-approved if within spending limits (`maxPerTx`, `maxDaily`) |
-| **`autoApproveKnownPeers: true`** | Previously authenticated peers skip handshake approval |
+| **`autoApproveKnownPeers: true`** | Only returning peers in `established` state skip handshake approval |
 | **Free tool** | Always requires interactive owner approval |
 
 When auto-approval conditions are not met, the request falls back to the composite approval provider (Telegram inline keyboard, Discord button, Slack interactive message, or terminal prompt).
@@ -432,7 +447,7 @@ lango p2p disconnect <peer-id> # Disconnect from a peer
 lango p2p firewall list        # List firewall rules
 lango p2p firewall add         # Add a firewall rule
 lango p2p discover             # Discover agents
-lango p2p identity             # Show local identity and active DID when available
+lango p2p identity             # Show local peer identity and listen addresses
 lango p2p reputation --peer-did <did>  # Query trust score
 lango p2p pricing              # Show provider-side public quote configuration
 lango p2p session list                          # List active sessions
@@ -520,6 +535,8 @@ The pricing system supports differentiated payment flows based on peer reputatio
 This tiered approach rewards trusted peers with lower friction while protecting against unknown or low-reputation callers.
 
 Admission trust and payment trust are separate gates: `minTrustScore` controls whether a peer is admitted by the firewall, while `postPayMinScore` controls whether that peer can use post-pay routing after admission.
+
+For provider-side payment routing, bootstrap peers are admitted with the bootstrap floor but still route to prepay. Post-pay only opens when a returning peer is `established`; the paygate therefore uses earned trust for returning peers instead of the composite score.
 
 ### Configuration
 
@@ -875,20 +892,30 @@ Selection strategies:
 
 The reputation system tracks peer behavior across exchanges and computes a trust score.
 
-### Trust Score Formula
+### Composite Trust Score Formula
 
 ```
 score = successes / (successes + failures×2 + timeouts×1.5 + 1.0)
 ```
 
-The score ranges from 0.0 to 1.0. The `minTrustScore` configuration (default: 0.3) sets the threshold for accepting requests from peers.
+The composite compatibility score ranges from 0.0 to 1.0. The `minTrustScore` configuration (default: 0.3) sets the runtime floor that bootstrap peers inherit and the earned-trust threshold that returning peers must meet.
+
+### V2 Reputation Signals
+
+The landed Reputation V2 model separates four signals:
+
+- **Composite trust score** -- compatibility score used for broad runtime comparisons
+- **Earned trust score** -- collaboration-history score that excludes temporary operational incidents
+- **Durable negative units** -- lasting negative outcomes; a standard failure adds `1`, while an adjudicated failure adds `2`
+- **Temporary safety signals** -- operational incidents such as timeouts or unhealthy-member events that can make a peer temporarily unsafe without automatically causing durable reputation damage
 
 ### Exchange Tracking
 
 Each peer interaction is recorded:
-- **Success** — Tool invocation completed normally
-- **Failure** — Tool invocation returned an error
-- **Timeout** — Tool invocation timed out
+- **Success** -- Tool invocation completed normally
+- **Failure** -- Tool invocation returned a durable negative outcome
+- **Adjudicated failure** -- A reviewed negative outcome applies stronger durable damage than an unaudited failure
+- **Operational incident** -- Timeouts and unhealthy runtime events increment temporary safety signals
 
 ### Querying Reputation
 
@@ -896,7 +923,18 @@ Each peer interaction is recorded:
 - **Agent Tool**: `p2p_reputation` with `peer_did` parameter
 - **REST API**: `GET /api/p2p/reputation?peer_did=<did>`
 
-New peers with no reputation record are given the benefit of the doubt (trusted by default).
+The JSON reputation surface returns the separated V2 fields, including `earnedTrustScore`, `durableNegativeUnits`, and `temporarySafetySignals`.
+
+### Canonical Trust-Entry States
+
+Runtime consumers do not collapse every decision into one scalar score. They distinguish:
+
+- **`bootstrap`** -- first-time peer with no returning history yet
+- **`established`** -- returning peer whose earned trust clears the minimum and whose temporary safety signals stay below the runtime limit
+- **`review`** -- returning peer whose earned trust no longer clears the minimum
+- **`temporarily_unsafe`** -- returning peer whose temporary safety signals force an immediate runtime block
+
+This lets the runtime admit a brand-new peer with a bootstrap floor, route returning peers by earned trust, and still react quickly to temporary operational safety issues.
 
 ## Reorg Protection
 
@@ -946,7 +984,7 @@ The application layer wires P2P subsystems together through event-driven bridges
 | **On-Chain Escrow** | `EscrowOnChain*` events, `EscrowReorgDetectedEvent` | Escrow engine state transitions (fund, activate, release, refund, dispute) |
 | **Team Budget** | `TeamFormed`, `TeamTaskDelegated`, `TeamTaskCompleted` | Budget allocation, reservation, and spend recording |
 | **Team Escrow** | `TeamFormed`, `TeamTaskCompleted`, `TeamDisbanded` | Escrow creation, milestone completion, release/refund on disband |
-| **Team Reputation** | `TeamMemberUnhealthy`, `TeamTaskCompleted`, `ReputationChanged` | Record timeout/success, kick low-reputation members |
+| **Team Reputation** | `TeamMemberUnhealthy`, `TeamTaskCompleted`, `ReputationChanged` | Record operational incidents/success, kick members whose trust entry falls to `review` or `temporarily_unsafe` |
 | **Team Shutdown** | `BudgetAlert` (>=80%), `BudgetExhausted` | Publish `TeamBudgetWarningEvent`, trigger `GracefulShutdown` |
 | **Workspace-Team** | `TeamFormed`, `TeamTaskCompleted`, `TeamDisbanded` | Auto-create workspace, record contributions, unsubscribe gossip |
 

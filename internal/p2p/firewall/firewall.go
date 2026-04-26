@@ -72,8 +72,18 @@ type AttestationResult struct {
 // ZKAttestFunc generates a ZK attestation proof for a response.
 type ZKAttestFunc func(responseHash, agentDIDHash []byte) (*AttestationResult, error)
 
-// ReputationChecker returns a trust score for a peer DID.
-type ReputationChecker func(ctx context.Context, peerDID string) (float64, error)
+// ReputationAssessment summarizes the runtime trust-entry contract for a peer.
+type ReputationAssessment struct {
+	Score             float64
+	ReturningPeer     bool
+	Allowed           bool
+	RequiresApproval  bool
+	TemporarilyUnsafe bool
+	TrustEntryState   string
+}
+
+// ReputationChecker returns a trust assessment for a peer DID.
+type ReputationChecker func(ctx context.Context, peerDID string) (*ReputationAssessment, error)
 
 // Firewall enforces access control and response sanitization for P2P queries.
 type Firewall struct {
@@ -155,15 +165,22 @@ func (f *Firewall) FilterQuery(ctx context.Context, peerDID, toolName string) er
 		}
 	}
 
-	// Check reputation score.
+	// Check reputation score and trust-entry state.
 	if f.reputationCheck != nil {
-		score, err := f.reputationCheck(ctx, peerDID)
+		assessment, err := f.reputationCheck(ctx, peerDID)
 		if err != nil {
 			f.logger.Warnw("reputation check error", "peerDID", peerDID, "error", err)
 			// Don't block on reputation errors, continue to ACL.
-		} else if score > 0 && score < f.minTrustScore {
-			// score == 0 means new peer, allow through (they start fresh).
-			return fmt.Errorf("peer %s reputation %.2f below minimum %.2f", peerDID, score, f.minTrustScore)
+		} else if assessment != nil {
+			switch {
+			case assessment.TemporarilyUnsafe:
+				return fmt.Errorf("peer %s is temporarily unsafe for runtime admission", peerDID)
+			case assessment.ReturningPeer && (!assessment.Allowed || assessment.RequiresApproval):
+				return fmt.Errorf("peer %s trust entry %s requires review", peerDID, assessment.TrustEntryState)
+			case assessment.Score > 0 && assessment.Score < f.minTrustScore:
+				// score == 0 means bootstrap peer, allow through to ACL checks.
+				return fmt.Errorf("peer %s reputation %.2f below minimum %.2f", peerDID, assessment.Score, f.minTrustScore)
+			}
 		}
 	}
 

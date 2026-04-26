@@ -14,13 +14,16 @@ import (
 
 // PeerDetails holds full reputation information for a single peer.
 type PeerDetails struct {
-	PeerDID             string    `json:"peerDid"`
-	TrustScore          float64   `json:"trustScore"`
-	SuccessfulExchanges int       `json:"successfulExchanges"`
-	FailedExchanges     int       `json:"failedExchanges"`
-	TimeoutCount        int       `json:"timeoutCount"`
-	FirstSeen           time.Time `json:"firstSeen"`
-	LastInteraction     time.Time `json:"lastInteraction"`
+	PeerDID                string    `json:"peerDid"`
+	TrustScore             float64   `json:"trustScore"`
+	EarnedTrustScore       float64   `json:"earnedTrustScore"`
+	SuccessfulExchanges    int       `json:"successfulExchanges"`
+	FailedExchanges        int       `json:"failedExchanges"`
+	DurableNegativeUnits   int       `json:"durableNegativeUnits"`
+	TimeoutCount           int       `json:"timeoutCount"`
+	TemporarySafetySignals int       `json:"temporarySafetySignals"`
+	FirstSeen              time.Time `json:"firstSeen"`
+	LastInteraction        time.Time `json:"lastInteraction"`
 }
 
 // Store persists and queries peer reputation data.
@@ -32,6 +35,9 @@ type Store struct {
 
 // NewStore creates a reputation store backed by the given ent client.
 func NewStore(client *ent.Client, logger *zap.SugaredLogger) *Store {
+	if logger == nil {
+		logger = zap.NewNop().Sugar()
+	}
 	return &Store{client: client, logger: logger}
 }
 
@@ -59,16 +65,16 @@ func (s *Store) RecordSuccess(ctx context.Context, peerDID string) error {
 	})
 }
 
-// RecordFailure increments the failed exchange count for a peer and
-// recalculates the trust score.
+// RecordFailure increments the durable negative exchange count for a peer and
+// recalculates the composite trust score.
 func (s *Store) RecordFailure(ctx context.Context, peerDID string) error {
 	return s.upsert(ctx, peerDID, func(successes, failures, timeouts int) (int, int, int) {
-		return successes, failures + 1, timeouts
+		return successes, failures + FailurePenaltyUnits, timeouts
 	})
 }
 
-// RecordTimeout increments the timeout count for a peer and recalculates the
-// trust score.
+// RecordTimeout increments the operational incident count for a peer and
+// recalculates the composite trust score.
 func (s *Store) RecordTimeout(ctx context.Context, peerDID string) error {
 	return s.upsert(ctx, peerDID, func(successes, failures, timeouts int) (int, int, int) {
 		return successes, failures, timeouts + 1
@@ -87,15 +93,7 @@ func (s *Store) GetDetails(ctx context.Context, peerDID string) (*PeerDetails, e
 		}
 		return nil, fmt.Errorf("query peer reputation %q: %w", peerDID, err)
 	}
-	return &PeerDetails{
-		PeerDID:             rep.PeerDid,
-		TrustScore:          rep.TrustScore,
-		SuccessfulExchanges: rep.SuccessfulExchanges,
-		FailedExchanges:     rep.FailedExchanges,
-		TimeoutCount:        rep.TimeoutCount,
-		FirstSeen:           rep.FirstSeen,
-		LastInteraction:     rep.LastInteraction,
-	}, nil
+	return buildPeerDetails(rep), nil
 }
 
 // GetScore returns the current trust score for a peer. Returns 0.0 if the peer
@@ -157,7 +155,7 @@ func (s *Store) upsert(
 		if createErr != nil {
 			return fmt.Errorf("create peer reputation %q: %w", peerDID, createErr)
 		}
-		s.logger.Debugw("peer reputation created", "peerDID", peerDID, "score", score)
+		s.debugw("peer reputation created", "peerDID", peerDID, "score", score)
 		s.publishReputationChanged(peerDID, score)
 		return nil
 	}
@@ -178,9 +176,31 @@ func (s *Store) upsert(
 	if err != nil {
 		return fmt.Errorf("update peer reputation %q: %w", peerDID, err)
 	}
-	s.logger.Debugw("peer reputation updated", "peerDID", peerDID, "score", score)
+	s.debugw("peer reputation updated", "peerDID", peerDID, "score", score)
 	s.publishReputationChanged(peerDID, score)
 	return nil
+}
+
+func buildPeerDetails(rep *ent.PeerReputation) *PeerDetails {
+	return &PeerDetails{
+		PeerDID:                rep.PeerDid,
+		TrustScore:             rep.TrustScore,
+		EarnedTrustScore:       CalculateEarnedScore(rep.SuccessfulExchanges, rep.FailedExchanges),
+		SuccessfulExchanges:    rep.SuccessfulExchanges,
+		FailedExchanges:        rep.FailedExchanges,
+		DurableNegativeUnits:   rep.FailedExchanges,
+		TimeoutCount:           rep.TimeoutCount,
+		TemporarySafetySignals: rep.TimeoutCount,
+		FirstSeen:              rep.FirstSeen,
+		LastInteraction:        rep.LastInteraction,
+	}
+}
+
+func (s *Store) debugw(msg string, keysAndValues ...interface{}) {
+	if s == nil || s.logger == nil {
+		return
+	}
+	s.logger.Debugw(msg, keysAndValues...)
 }
 
 // Scoring weight constants used by CalculateScore.

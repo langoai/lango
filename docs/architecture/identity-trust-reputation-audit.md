@@ -4,14 +4,14 @@
 
 This document is the next detailed audit ledger under the Lango master document.
 
-It exists to review the identity, trust, and reputation boundary that `knowledge exchange v1` already depends on:
+It now locks the landed Reputation V2 model for the identity, trust, and reputation boundary that `knowledge exchange v1` already depends on:
 
 - identity continuity,
 - trust entry,
 - reputation,
 - revocation and trust decay.
 
-The purpose of this audit is not to design `reputation v2` yet. Its purpose is to lock the current relationship model against the real code and documentation surface so later pricing, runtime, and settlement work inherits one consistent interpretation.
+Its purpose is to keep the operator-facing relationship model aligned with the landed runtime contract so later pricing, runtime, and settlement work inherits one consistent interpretation.
 
 ## Relationship to the Master Document
 
@@ -102,6 +102,15 @@ This means the current model is intentionally mixed:
 - payment controls decide what friction applies after an exchange path exists,
 - runtime safety events may revoke access faster than they should permanently damage durable reputation.
 
+The landed V2 contract now makes that relationship explicit in runtime terms:
+
+- `trustScore` remains the composite compatibility score used for broad runtime comparisons.
+- `earnedTrustScore` is derived from actual collaboration history only and excludes temporary operational incidents.
+- `durableNegativeUnits` tracks lasting negative outcomes. Standard failures add `1`, while adjudicated failures add `2`.
+- `temporarySafetySignals` tracks operational incidents such as timeouts or unhealthy-member events without automatically turning them into durable reputation damage.
+- canonical trust-entry states are `bootstrap`, `established`, `review`, and `temporarily_unsafe`.
+- the current runtime policy consumes `BootstrapTrustScore`, `MinEarnedTrustScore`, and `MaxTemporarySafetySignals`; `OwnerRootTrusted` remains available in the contract for future callers but is not enabled by the default runtime wiring today.
+
 ## Detailed Audit: Identity Continuity
 
 ### Audit Record
@@ -151,7 +160,7 @@ This means the current model is intentionally mixed:
 - Product-path linkage: `Phase 1: Knowledge Exchange`, `Phase 2: Result Exchange with Controlled Execution`
 - Current surface area: `docs/security/authentication.md`, `docs/features/p2p-network.md`, `internal/gateway/auth.go`, `internal/p2p/firewall/*`, `internal/p2p/handshake/security_events.go`, `internal/p2p/paygate/*`
 - Core value: `Define which peers can cross the boundary, under what conditions they keep access, and which gate is about admission versus payment.`
-- Current problem: `Gateway auth, handshake approval, firewall admission, and payment friction are all real, but they still read like adjacent mechanisms instead of one operator-facing trust-entry model.`
+- Current problem: `Gateway auth, handshake approval, firewall admission, and payment friction are all real, so the remaining work is keeping the docs and operator story aligned with one canonical trust-entry model instead of letting each consumer drift.`
 - Judgment: `stabilize`
 - Execution track: `P2P Knowledge Exchange Track`
 - Secondary capability areas:
@@ -161,20 +170,22 @@ This means the current model is intentionally mixed:
 
 ### Findings
 
-1. `Major` Admission trust is already implemented as a real multi-layer gate.
+1. `Major` Admission trust now has one canonical runtime contract.
    - `internal/gateway/auth.go` establishes gateway session-based auth when OIDC is configured.
+   - `internal/p2p/reputation/contract.go` evaluates trust entry into `bootstrap`, `established`, `review`, and `temporarily_unsafe`.
    - `docs/features/p2p-network.md` describes the P2P approval pipeline as firewall ACL, reputation check, and owner approval.
    - `internal/app/p2p_routes.go` protects `/api/p2p` with gateway auth whenever auth is configured.
 
-2. `Major` Admission trust and payment trust must stay separate in the operator model.
+2. `Major` Admission trust and payment trust stay separate, but they now read the same canonical trust entry.
    - Admission trust answers whether the peer is allowed in at all.
    - Payment trust answers whether a paid invocation can use post-pay or must use upfront payment.
-   - `internal/p2p/paygate/gate.go` enforces payment-tier routing after the invocation path already exists, which is a different question from handshake or firewall entry.
+   - `internal/app/runtime_reputation.go` returns the bootstrap floor for new peers, the earned trust score for returning peers, and zero post-pay trust unless the peer is `established`.
+   - `internal/p2p/paygate/gate.go` therefore enforces payment-tier routing after the invocation path already exists, which is a different question from handshake or firewall entry.
 
-3. `Major` New peers begin under constrained trust even inside a trusted owner context.
-   - `internal/p2p/reputation/store.go` and the P2P docs allow new peers through the admission threshold with the benefit of the doubt.
-   - `internal/p2p/paygate/gate.go` still withholds post-pay unless the peer earns a score at or above the payment threshold.
-   - This is the correct current expression of bootstrap trust versus earned trust.
+3. `Major` New peers and returning peers now separate cleanly in the runtime contract.
+   - `internal/app/runtime_reputation.go` treats first-time peers as `bootstrap`.
+   - `internal/app/runtime_reputation.go` only auto-approves known peers when they are returning, `established`, allowed, and do not require review.
+   - `internal/p2p/firewall/firewall.go` blocks `review` and `temporarily_unsafe` returning peers before ACL allow rules can admit them.
 
 ### Assessment
 
@@ -182,7 +193,7 @@ This means the current model is intentionally mixed:
 - The correct action is `stabilize`:
   - document gateway auth, firewall entry, and handshake/session controls as one admission model,
   - preserve the separation between admission trust and payment trust,
-  - keep new peers constrained even when owner-root trust prevents a full zero-trust posture.
+  - keep new peers bootstrap-trusted while reserving lower-friction paths for earned `established` trust.
 
 ## Detailed Audit: Reputation
 
@@ -193,7 +204,7 @@ This means the current model is intentionally mixed:
 - Product-path linkage: `Phase 1: Knowledge Exchange`, `Phase 2: Result Exchange with Controlled Execution`
 - Current surface area: `docs/features/p2p-network.md`, `docs/cli/p2p.md`, `internal/p2p/reputation/*`, `internal/app/p2p_routes.go`, `internal/p2p/team/payment.go`
 - Core value: `Capture exchange history so trust can be earned from actual outcomes instead of being inherited wholesale from owner identity or one-time entry approval.`
-- Current problem: `The reputation store and operator query surfaces are real, but the durable meaning of owner-root trust, agent/domain reputation, and payment-side trust reduction is not yet frozen into one canonical model.`
+- Current problem: `The canonical V2 model now exists in code, so the remaining risk is documentation drift rather than missing runtime semantics.`
 - Judgment: `stabilize`
 - Execution track: `P2P Knowledge Exchange Track`
 - Secondary capability areas:
@@ -203,19 +214,21 @@ This means the current model is intentionally mixed:
 
 ### Findings
 
-1. `Major` Reputation already has a durable runtime store and visible operator surface.
-   - `internal/p2p/reputation/store.go` persists successful exchanges, failures, timeouts, trust score, first-seen, and last-interaction state.
+1. `Major` Reputation now exposes separated runtime signals rather than only one scalar score.
+   - `internal/p2p/reputation/store.go` persists successful exchanges, durable negative units, temporary safety signals, trust score, first-seen, and last-interaction state.
+   - `internal/p2p/reputation/contract.go` derives `earnedTrustScore`, `durableNegativeUnits`, and `temporarySafetySignals` into `CanonicalSignals`.
    - `internal/app/p2p_routes.go` exposes read-only reputation details through `/api/p2p/reputation`.
    - `docs/gateway/http-api.md` and `docs/cli/p2p.md` present reputation as a first-class operator-visible concept.
 
 2. `Major` Reputation should remain agent/domain-earned rather than owner-inherited.
    - The current track language already distinguishes owner-root trust from agent-specific reputation.
    - The reputation store is keyed by `peerDID` and updated from actual exchange outcomes, which aligns with an earned-reputation model rather than a root-trust inheritance model.
+   - The current runtime wiring does not set `OwnerRootTrusted`, so bootstrap and earned trust are the active policy inputs today.
 
-3. `Major` Payment trust should continue to consume reputation as a policy input, not redefine reputation itself.
-   - `internal/p2p/paygate/trust.go` and `internal/p2p/paygate/gate.go` use a post-pay threshold to decide friction.
-   - That use is legitimate, but it should not collapse the broader meaning of reputation into one scalar payment rule.
-   - This row therefore locks `payment trust` as one policy gate that reads reputation, not as the definition of reputation.
+3. `Major` Durable and temporary negatives now have stronger, different semantics.
+   - `internal/p2p/reputation/contract.go` records adjudicated failures with a stronger durable penalty than standard failures.
+   - `internal/p2p/reputation/contract.go` records operational incidents separately and keeps them out of `earnedTrustScore`.
+   - This keeps `payment trust` and other consumers reading reputation as policy inputs without redefining reputation itself.
 
 ### Assessment
 
@@ -223,7 +236,7 @@ This means the current model is intentionally mixed:
 - The correct action is `stabilize`:
   - keep agent/domain reputation earned from actual history,
   - keep owner-root trust separate as bootstrap context,
-  - reserve full durable reputation redesign for `reputation v2`.
+  - keep the landed V2 contract as the canonical baseline for later operator and dispute-surface work.
 
 ## Detailed Audit: Revocation & Trust Decay
 
@@ -234,7 +247,7 @@ This means the current model is intentionally mixed:
 - Product-path linkage: `Phase 1: Knowledge Exchange`, `Phase 2: Result Exchange with Controlled Execution`
 - Current surface area: `docs/features/p2p-network.md`, `internal/p2p/handshake/security_events.go`, `internal/p2p/discovery/gossip.go`, `internal/p2p/reputation/*`
 - Core value: `Reduce trust or revoke access quickly when runtime behavior becomes unsafe, without pretending every operational problem is already a durable reputation judgment.`
-- Current problem: `Session invalidation and score updates are real, but the operator-facing model still needs a cleaner distinction between temporary operational safety actions and durable negative reputation.`
+- Current problem: `Session invalidation and score updates are real, and the runtime now distinguishes temporary operational safety from durable negative reputation, so the remaining work is broader adoption rather than inventing new semantics.`
 - Judgment: `stabilize`
 - Execution track: `P2P Knowledge Exchange Track`
 - Secondary capability areas:
@@ -248,14 +261,15 @@ This means the current model is intentionally mixed:
    - `docs/features/p2p-network.md` documents explicit invalidation reasons including `reputation_drop`, `repeated_failures`, `manual_revoke`, and `security_event`.
    - `internal/p2p/handshake/security_events.go` automatically invalidates sessions after repeated failures or reputation drops below threshold.
 
-2. `Major` The current system already treats trust decay as an operational control path.
-   - Repeated failures and security events can close access immediately.
-   - This is appropriate for runtime safety and boundary control.
-   - It should not be over-described as if the system already performs richer durable adjudication.
+2. `Major` The current system now treats trust decay as an explicitly operational control path.
+   - `internal/p2p/reputation/contract.go` exposes `temporarySafetySignals` separately from durable negatives.
+   - `internal/p2p/firewall/firewall.go` treats `temporarily_unsafe` as an immediate runtime block.
+   - `internal/app/bridge_team_reputation.go` records operational incidents from unhealthy members and kicks only when the refreshed trust entry no longer allows runtime collaboration.
 
-3. `Major` Durable negative reputation needs stricter semantics than operational decay.
-   - `internal/p2p/reputation/store.go` records failures and timeouts into the score, which is enough for early exchange stabilization.
-   - But the current surface does not yet justify treating every failure, timeout, or session revocation as a final durable reputational judgment across broader collaboration domains.
+3. `Major` Durable negative reputation now uses stricter semantics than operational decay.
+   - `internal/p2p/reputation/contract.go` distinguishes standard failures from adjudicated failures.
+   - `internal/p2p/reputation/store.go` still keeps the composite score for compatibility, but V2 readers can now avoid treating every timeout or unhealthy event as durable damage.
+   - That is the right contract for early runtime safety without over-claiming broader adjudication coverage.
 
 ### Assessment
 
@@ -271,6 +285,6 @@ All four rows remain `stabilize`: the capability family is real, but the operato
 
 ## Follow-On Design Inputs
 
-1. `reputation v2`
-2. `pricing / negotiation / settlement` audit
-3. `knowledge exchange runtime` end-to-end design
+1. broader owner-root-aware policy adoption on top of the landed V2 contract
+2. richer dispute-to-reputation integration beyond the current adjudicated failure hook
+3. broader operator-facing trust, review, and recovery surfaces
