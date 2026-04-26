@@ -756,10 +756,19 @@ func TestDeadLettersPage_RetrySelectedShowsSuccessMessage(t *testing.T) {
 	assert.Equal(t, 2, listFn.called)
 	assert.Equal(t, []string{"tx-1", "tx-1"}, detailFn.calls)
 	assert.Contains(t, page.View(), "Retry action: ready (press r to request retry)")
-	assert.Contains(t, page.View(), "Retry request accepted for tx-1. Refreshing backlog and detail.")
+	assert.Contains(t, page.View(), "Retry request accepted for tx-1. Follow-up: still present in dead-letter backlog.")
+	assert.Contains(t, page.View(), "Retry follow-up: still present in dead-letter backlog")
 }
 
 func TestDeadLettersPage_ViewIncludesSummaryStrip(t *testing.T) {
+	restoreNow := deadLettersNow
+	deadLettersNow = func() time.Time {
+		return time.Date(2026, time.April, 26, 12, 0, 0, 0, time.UTC)
+	}
+	defer func() {
+		deadLettersNow = restoreNow
+	}()
+
 	listFn := &mockDeadLetterListFn{
 		items: []postadjudicationstatus.DeadLetterBacklogEntry{
 			{
@@ -767,9 +776,10 @@ func TestDeadLettersPage_ViewIncludesSummaryStrip(t *testing.T) {
 				SubmissionReceiptID:       "sub-1",
 				Adjudication:              "release",
 				LatestDeadLetterReason:    "worker exhausted",
+				LatestDeadLetteredAt:      "2026-04-26T10:00:00Z",
 				LatestStatusSubtypeFamily: "retry",
 				LatestManualReplayActor:   "operator:alice",
-				LatestDispatchReference:   "dispatch-a",
+				LatestDispatchReference:   "queue/email-1",
 				IsDeadLettered:            true,
 				CanRetry:                  true,
 			},
@@ -778,9 +788,10 @@ func TestDeadLettersPage_ViewIncludesSummaryStrip(t *testing.T) {
 				SubmissionReceiptID:       "sub-2",
 				Adjudication:              "refund",
 				LatestDeadLetterReason:    "invalid receipt",
+				LatestDeadLetteredAt:      "2026-04-25T10:00:00Z",
 				LatestStatusSubtypeFamily: "manual-retry",
 				LatestManualReplayActor:   "runtime:auto-retry",
-				LatestDispatchReference:   "dispatch-b",
+				LatestDispatchReference:   "queue/email-2",
 				IsDeadLettered:            true,
 				CanRetry:                  false,
 			},
@@ -789,9 +800,21 @@ func TestDeadLettersPage_ViewIncludesSummaryStrip(t *testing.T) {
 				SubmissionReceiptID:       "sub-3",
 				Adjudication:              "release",
 				LatestDeadLetterReason:    "worker exhausted",
+				LatestDeadLetteredAt:      "2026-04-23T12:00:00Z",
 				LatestStatusSubtypeFamily: "dead-letter",
 				LatestManualReplayActor:   "operator:alice",
-				LatestDispatchReference:   "dispatch-a",
+				LatestDispatchReference:   "bridge.refund.1",
+				IsDeadLettered:            true,
+				CanRetry:                  true,
+			},
+			{
+				TransactionReceiptID:      "tx-4",
+				SubmissionReceiptID:       "sub-4",
+				Adjudication:              "release",
+				LatestDeadLetterReason:    "queue saturated",
+				LatestStatusSubtypeFamily: "dead-letter",
+				LatestManualReplayActor:   "operator:bob",
+				LatestDispatchReference:   "manual:operator:1",
 				IsDeadLettered:            true,
 				CanRetry:                  true,
 			},
@@ -813,18 +836,22 @@ func TestDeadLettersPage_ViewIncludesSummaryStrip(t *testing.T) {
 	page = updated.(*DeadLettersPage)
 
 	view := page.View()
-	assert.Contains(t, view, "dead letters: 3")
-	assert.Contains(t, view, "retryable: 2")
-	assert.Contains(t, view, "release/refund: 2/1")
-	assert.Contains(t, view, "retry/manual/dead: 1/1/1")
-	assert.Contains(t, view, "reasons: worker exhausted(2), invalid receipt(1)")
-	assert.Contains(t, view, "reason families: receipt-invalid(1), background-failed(2)")
-	assert.Contains(t, view, "actors: operator:alice(2), runtime:auto-retry(1)")
-	assert.Contains(t, view, "actor families: operator(2), system(1)")
-	assert.Contains(t, view, "dispatch: dispatch-a(2), dispatch-b(1)")
+	assert.Contains(t, view, "dead letters: 4")
+	assert.Contains(t, view, "retryable: 3")
+	assert.Contains(t, view, "release/refund: 3/1")
+	assert.Contains(t, view, "retry/manual/dead: 1/1/2")
+	assert.Contains(t, view, "reasons: worker exhausted(2), invalid receipt(1), queue saturated(1)")
+	assert.Contains(t, view, "reason families: receipt-invalid(1), background-failed(3)")
+	assert.Contains(t, view, "actors: operator:alice(2), operator:bob(1), runtime:auto-retry(1)")
+	assert.Contains(t, view, "actor families: operator(3), system(1)")
+	assert.Contains(t, view, "dispatch families: queue(2), bridge(1), manual(1)")
+	assert.Contains(t, view, "dispatch: bridge.refund.1(1), manual:operator:1(1), queue/email-1(1), queue/email-2(1)")
+	assert.Contains(t, view, "trend: 24h 1 vs prev24h 1 (+0), 7d 3 vs prev7d 0 (+3), older 0, undated 1")
 	assert.Less(t, strings.Index(view, "reasons:"), strings.Index(view, "reason families:"))
 	assert.Less(t, strings.Index(view, "reason families:"), strings.Index(view, "actors:"))
 	assert.Less(t, strings.Index(view, "actors:"), strings.Index(view, "actor families:"))
+	assert.Less(t, strings.Index(view, "actor families:"), strings.Index(view, "dispatch families:"))
+	assert.Less(t, strings.Index(view, "dispatch families:"), strings.Index(view, "dispatch:"))
 	assert.Less(t, strings.Index(view, "actor families:"), strings.Index(view, "dispatch:"))
 }
 
@@ -882,6 +909,37 @@ func TestSummarizeDeadLetters_TopReasonsActorFamiliesActorsAndDispatches(t *test
 		{family: postadjudicationstatus.DeadLetterReasonFamilyBackgroundFailed, count: 4},
 		{family: postadjudicationstatus.DeadLetterReasonFamilyUnknown, count: 4},
 	}, summary.reasonFamilies)
+}
+
+func TestSummarizeDeadLetters_DispatchFamiliesAndTrendWindows(t *testing.T) {
+	restoreNow := deadLettersNow
+	deadLettersNow = func() time.Time {
+		return time.Date(2026, time.April, 26, 12, 0, 0, 0, time.UTC)
+	}
+	defer func() {
+		deadLettersNow = restoreNow
+	}()
+
+	summary := summarizeDeadLetters([]postadjudicationstatus.DeadLetterBacklogEntry{
+		{LatestDispatchReference: "queue/email-1", LatestDeadLetteredAt: "2026-04-26T10:00:00Z"},
+		{LatestDispatchReference: "queue/email-2", LatestDeadLetteredAt: "2026-04-25T10:00:00Z"},
+		{LatestDispatchReference: "bridge.refund.1", LatestDeadLetteredAt: "2026-04-23T12:00:00Z"},
+		{LatestDispatchReference: "bridge.refund.2", LatestDeadLetteredAt: "2026-04-17T12:00:00Z"},
+		{LatestDispatchReference: "manual:operator:1", LatestDeadLetteredAt: "2026-04-01T12:00:00Z"},
+		{LatestDeadLetteredAt: ""},
+	})
+
+	assert.Equal(t, []deadLetterDispatchFamilySummaryItem{
+		{family: "bridge", count: 2},
+		{family: "queue", count: 2},
+		{family: "manual", count: 1},
+	}, summary.dispatchFamilies)
+	assert.Equal(t, 1, summary.last24Hours)
+	assert.Equal(t, 1, summary.previous24Hours)
+	assert.Equal(t, 3, summary.last7Days)
+	assert.Equal(t, 1, summary.previous7Days)
+	assert.Equal(t, 1, summary.olderThan14Days)
+	assert.Equal(t, 1, summary.undated)
 }
 
 func TestDeadLettersPage_SummaryStripRecomputesAcrossReloadPaths(t *testing.T) {
@@ -1143,6 +1201,80 @@ func TestDeadLettersPage_RetrySelectedShowsFailureMessage(t *testing.T) {
 	assert.Equal(t, "tx-1", page.detail.CanonicalSnapshot.TransactionReceipt.TransactionReceiptID)
 	assert.Equal(t, 1, listFn.called)
 	assert.Contains(t, page.View(), "Retry action: ready (press r to request retry)")
+}
+
+func TestDeadLettersPage_RetrySuccessInterpretsFollowUpStatusAfterRefresh(t *testing.T) {
+	listFn := &mockDeadLetterListFn{
+		items: []postadjudicationstatus.DeadLetterBacklogEntry{
+			{
+				TransactionReceiptID:      "tx-1",
+				SubmissionReceiptID:       "sub-1",
+				Adjudication:              "release",
+				LatestStatusSubtype:       "manual-retry-requested",
+				LatestStatusSubtypeFamily: "manual-retry",
+				LatestRetryAttempt:        4,
+				LatestDeadLetterReason:    "terminal failure",
+				LatestDispatchReference:   "queue/email-1",
+				IsDeadLettered:            true,
+				CanRetry:                  true,
+			},
+		},
+	}
+	detailFn := &mockDeadLetterDetailFn{
+		statusByID: map[string]postadjudicationstatus.TransactionStatus{
+			"tx-1": {
+				CanonicalSnapshot: postadjudicationstatus.CanonicalSnapshot{
+					TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-1"},
+					SubmissionReceipt:  receipts.SubmissionReceipt{SubmissionReceiptID: "sub-1"},
+				},
+				RetryDeadLetterSummary: postadjudicationstatus.RetryDeadLetterSummary{
+					LatestDeadLetterReason:    "terminal failure",
+					LatestRetryAttempt:        4,
+					LatestDispatchReference:   "queue/email-1",
+					LatestStatusSubtype:       "manual-retry-requested",
+					LatestStatusSubtypeFamily: "manual-retry",
+				},
+				LatestBackgroundTask: &postadjudicationstatus.BackgroundTaskBridge{
+					TaskID:       "task-1",
+					Status:       "retrying",
+					AttemptCount: 2,
+					NextRetryAt:  "2026-04-26T12:30:00Z",
+				},
+				IsDeadLettered: true,
+				CanRetry:       true,
+				Adjudication:   "release",
+			},
+		},
+	}
+	retryFn := &mockDeadLetterRetryFn{}
+
+	page := NewDeadLettersPage(listFn.call, detailFn.call, retryFn.call)
+	updated, detailCmd := page.Update(page.Activate()())
+	page = updated.(*DeadLettersPage)
+	require.NotNil(t, detailCmd)
+	updated, _ = page.Update(detailCmd())
+	page = updated.(*DeadLettersPage)
+
+	updated, _ = page.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
+	page = updated.(*DeadLettersPage)
+	updated, retryCmd := page.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
+	page = updated.(*DeadLettersPage)
+	require.NotNil(t, retryCmd)
+
+	updated, refreshCmd := page.Update(retryCmd())
+	page = updated.(*DeadLettersPage)
+	require.NotNil(t, refreshCmd)
+	assert.Contains(t, page.View(), "Retry request accepted for tx-1. Refreshing backlog and detail.")
+
+	updated, detailCmd = page.Update(refreshCmd())
+	page = updated.(*DeadLettersPage)
+	require.NotNil(t, detailCmd)
+	assert.Contains(t, page.View(), "Retry request accepted for tx-1. Follow-up: backlog refreshed; loading latest status.")
+
+	updated, _ = page.Update(detailCmd())
+	page = updated.(*DeadLettersPage)
+	assert.Contains(t, page.View(), "Retry request accepted for tx-1. Follow-up: task retrying (attempt 2, next 2026-04-26T12:30:00Z).")
+	assert.Contains(t, page.View(), "Retry follow-up: task retrying (attempt 2, next 2026-04-26T12:30:00Z)")
 }
 
 func TestDeadLettersPage_RetryIgnoredWhenDetailIsNotRetryable(t *testing.T) {

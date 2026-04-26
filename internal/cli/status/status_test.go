@@ -7,6 +7,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
@@ -23,8 +24,10 @@ import (
 type fakeDeadLetterBridge struct {
 	page         deadLetterListPage
 	detail       postadjudicationstatus.TransactionStatus
+	detailSeq    []postadjudicationstatus.TransactionStatus
 	listErr      error
 	detailErr    error
+	detailErrSeq []error
 	retryErr     error
 	listCalls    int
 	detailCalls  int
@@ -46,6 +49,12 @@ func (f *fakeDeadLetterBridge) List(_ context.Context, opts deadLetterListOption
 func (f *fakeDeadLetterBridge) Detail(_ context.Context, transactionReceiptID string) (postadjudicationstatus.TransactionStatus, error) {
 	f.detailCalls++
 	f.lastDetailID = transactionReceiptID
+	if idx := f.detailCalls - 1; idx < len(f.detailErrSeq) && f.detailErrSeq[idx] != nil {
+		return postadjudicationstatus.TransactionStatus{}, f.detailErrSeq[idx]
+	}
+	if idx := f.detailCalls - 1; idx < len(f.detailSeq) {
+		return f.detailSeq[idx], nil
+	}
 	if f.detailErr != nil {
 		return postadjudicationstatus.TransactionStatus{}, f.detailErr
 	}
@@ -593,6 +602,67 @@ func TestAggregateDeadLetterSummary_TopLatestDispatchReferences(t *testing.T) {
 	}, got.TopLatestDispatchReferences)
 }
 
+func TestAggregateDeadLetterSummary_WithDispatchFamiliesAndTrend(t *testing.T) {
+	now := time.Date(2026, 4, 26, 12, 0, 0, 0, time.UTC)
+	page := deadLetterListPage{
+		Entries: []postadjudicationstatus.DeadLetterBacklogEntry{
+			{
+				LatestDispatchReference: "dispatch-final-1",
+				LatestDeadLetterReason:  "worker exhausted",
+				LatestManualReplayActor: "operator:alice",
+				LatestDeadLetteredAt:    "2026-04-26T11:30:00Z",
+			},
+			{
+				LatestDispatchReference: "queue/retry/2",
+				LatestDeadLetterReason:  "worker exhausted",
+				LatestManualReplayActor: "operator:bob",
+				LatestDeadLetteredAt:    "2026-04-26T05:45:00Z",
+			},
+			{
+				LatestDispatchReference: "dispatch-final-2",
+				LatestDeadLetterReason:  "policy blocked",
+				LatestManualReplayActor: "service:bridge",
+				LatestDeadLetteredAt:    "2026-04-25T23:30:00Z",
+			},
+			{
+				LatestDispatchReference: "bridge:dead-letter:1",
+				LatestDeadLetterReason:  "receipt invalid",
+				LatestManualReplayActor: "system:auto-retry",
+				LatestDeadLetteredAt:    "2026-04-24T23:30:00Z",
+			},
+		},
+		Count: 4,
+		Total: 4,
+	}
+
+	got := aggregateDeadLetterSummaryWithOptions(page, deadLetterSummaryOptions{
+		TopN:        2,
+		TrendWindow: 24 * time.Hour,
+		TrendBucket: 12 * time.Hour,
+		Now:         now,
+	})
+
+	assert.Equal(t, 2, got.TopLimit)
+	assert.Equal(t, []deadLetterSummaryBucket{
+		{Label: postadjudicationstatus.DispatchReferenceFamilyDispatch, Count: 2},
+		{Label: postadjudicationstatus.DispatchReferenceFamilyQueue, Count: 1},
+		{Label: postadjudicationstatus.DispatchReferenceFamilyBridge, Count: 1},
+	}, got.ByDispatchFamily)
+	assert.Equal(t, []deadLetterDispatchSummaryItem{
+		{DispatchReference: "bridge:dead-letter:1", Count: 1},
+		{DispatchReference: "dispatch-final-1", Count: 1},
+	}, got.TopLatestDispatchReferences)
+	assert.Equal(t, deadLetterTrendWindow{
+		Window:        "24h0m0s",
+		Bucket:        "12h0m0s",
+		WindowedCount: 3,
+		Buckets: []deadLetterTrendBucket{
+			{Label: "2026-04-25T12:00:00Z -> 2026-04-26T00:00:00Z", Count: 1},
+			{Label: "2026-04-26T00:00:00Z -> 2026-04-26T12:00:00Z", Count: 2},
+		},
+	}, got.RecentDeadLetterTrend)
+}
+
 func TestDeadLettersCmd_TableAndFilters(t *testing.T) {
 	bridge := &fakeDeadLetterBridge{
 		page: deadLetterListPage{
@@ -648,6 +718,24 @@ func TestDeadLettersCmd_ForwardsSubtypeAndFamilyFilters(t *testing.T) {
 		LatestStatusSubtype:       "manual-retry-requested",
 		LatestStatusSubtypeFamily: "manual-retry",
 	}, bridge.lastListOpts)
+}
+
+func TestDeadLettersCmd_ForwardsAnyMatchFamily(t *testing.T) {
+	bridge := &fakeDeadLetterBridge{
+		page: deadLetterListPage{
+			Entries: []postadjudicationstatus.DeadLetterBacklogEntry{{TransactionReceiptID: "tx-1"}},
+			Count:   1,
+			Total:   1,
+		},
+	}
+	cmd := newDeadLettersCmd(func() (deadLetterBridge, func(), error) {
+		return bridge, func() {}, nil
+	})
+
+	_, err := executeCommand(t, cmd, "--any-match-family", "manual-retry")
+	require.NoError(t, err)
+	assert.Equal(t, 1, bridge.listCalls)
+	assert.Equal(t, deadLetterListOptions{AnyMatchFamily: "manual-retry"}, bridge.lastListOpts)
 }
 
 func TestDeadLettersCmd_ForwardsActorAndTimeFilters(t *testing.T) {
@@ -727,6 +815,19 @@ func TestDeadLettersCmd_RejectsInvalidSubtypeFamily(t *testing.T) {
 	_, err := executeCommand(t, cmd, "--latest-status-subtype-family", "terminal")
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "invalid --latest-status-subtype-family")
+	assert.Equal(t, 0, loaderCalls)
+}
+
+func TestDeadLettersCmd_RejectsInvalidAnyMatchFamily(t *testing.T) {
+	loaderCalls := 0
+	cmd := newDeadLettersCmd(func() (deadLetterBridge, func(), error) {
+		loaderCalls++
+		return &fakeDeadLetterBridge{}, func() {}, nil
+	})
+
+	_, err := executeCommand(t, cmd, "--any-match-family", "terminal")
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "invalid --any-match-family")
 	assert.Equal(t, 0, loaderCalls)
 }
 
@@ -816,6 +917,34 @@ func TestToolCatalogDeadLetterBridge_ForwardsActorAndTimeFilters(t *testing.T) {
 	assert.Equal(t, "operator-1", gotParams["manual_replay_actor"])
 	assert.Equal(t, "2026-04-25T09:00:00Z", gotParams["dead_lettered_after"])
 	assert.Equal(t, "2026-04-25T18:00:00Z", gotParams["dead_lettered_before"])
+}
+
+func TestToolCatalogDeadLetterBridge_ForwardsAnyMatchFamily(t *testing.T) {
+	catalog := toolcatalog.New()
+	var gotParams map[string]interface{}
+	catalog.Register("status", []*agent.Tool{
+		{
+			Name: "list_dead_lettered_post_adjudication_executions",
+			Handler: func(_ context.Context, params map[string]interface{}) (interface{}, error) {
+				gotParams = params
+				return map[string]interface{}{
+					"entries": []map[string]interface{}{},
+					"count":   0,
+					"total":   0,
+					"offset":  0,
+					"limit":   0,
+				}, nil
+			},
+		},
+	})
+
+	bridge := &toolCatalogDeadLetterBridge{catalog: catalog}
+	_, err := bridge.List(context.Background(), deadLetterListOptions{
+		AnyMatchFamily: "manual-retry",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, gotParams)
+	assert.Equal(t, "manual-retry", gotParams["any_match_family"])
 }
 
 func TestToolCatalogDeadLetterBridge_ForwardsReasonAndDispatchFilters(t *testing.T) {
@@ -932,11 +1061,39 @@ func TestDeadLetterCmd_PropagatesBridgeErrors(t *testing.T) {
 
 func TestDeadLetterRetryCmd_SucceedsWithYes(t *testing.T) {
 	bridge := &fakeDeadLetterBridge{
-		detail: postadjudicationstatus.TransactionStatus{
-			CanonicalSnapshot: postadjudicationstatus.CanonicalSnapshot{
-				TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-1"},
+		detailSeq: []postadjudicationstatus.TransactionStatus{
+			{
+				CanonicalSnapshot: postadjudicationstatus.CanonicalSnapshot{
+					TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-1"},
+				},
+				RetryDeadLetterSummary: postadjudicationstatus.RetryDeadLetterSummary{
+					LatestStatusSubtype:       "dead-lettered",
+					LatestStatusSubtypeFamily: "dead-letter",
+					LatestDeadLetterReason:    "worker exhausted",
+					LatestRetryAttempt:        3,
+				},
+				CanRetry:       true,
+				IsDeadLettered: true,
 			},
-			CanRetry: true,
+			{
+				CanonicalSnapshot: postadjudicationstatus.CanonicalSnapshot{
+					TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-1"},
+				},
+				RetryDeadLetterSummary: postadjudicationstatus.RetryDeadLetterSummary{
+					LatestStatusSubtype:       "retry-scheduled",
+					LatestStatusSubtypeFamily: "retry",
+					LatestDeadLetterReason:    "worker exhausted",
+					LatestRetryAttempt:        4,
+					LatestDispatchReference:   "dispatch-2",
+				},
+				LatestBackgroundTask: &postadjudicationstatus.BackgroundTaskBridge{
+					TaskID:       "task-2",
+					Status:       "queued",
+					AttemptCount: 1,
+				},
+				CanRetry:       true,
+				IsDeadLettered: true,
+			},
 		},
 	}
 	cmd := newDeadLetterCmd(func() (deadLetterBridge, func(), error) {
@@ -946,7 +1103,10 @@ func TestDeadLetterRetryCmd_SucceedsWithYes(t *testing.T) {
 	out, err := executeCommand(t, cmd, "retry", "tx-1", "--yes")
 	require.NoError(t, err)
 	assert.Contains(t, out, "Retry request accepted")
-	assert.Equal(t, 1, bridge.detailCalls)
+	assert.Contains(t, out, "Follow-up")
+	assert.Contains(t, out, "retry-scheduled")
+	assert.Contains(t, out, "task-2")
+	assert.Equal(t, 2, bridge.detailCalls)
 	assert.Equal(t, 1, bridge.retryCalls)
 	assert.Equal(t, "tx-1", bridge.lastRetryID)
 }
@@ -1038,11 +1198,36 @@ func TestDeadLetterRetryCmd_ReportsInvocationFailureSeparately(t *testing.T) {
 
 func TestDeadLetterRetryCmd_JSONReportsAcceptedRequest(t *testing.T) {
 	bridge := &fakeDeadLetterBridge{
-		detail: postadjudicationstatus.TransactionStatus{
-			CanonicalSnapshot: postadjudicationstatus.CanonicalSnapshot{
-				TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-1"},
+		detailSeq: []postadjudicationstatus.TransactionStatus{
+			{
+				CanonicalSnapshot: postadjudicationstatus.CanonicalSnapshot{
+					TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-1"},
+				},
+				RetryDeadLetterSummary: postadjudicationstatus.RetryDeadLetterSummary{
+					LatestStatusSubtype:       "dead-lettered",
+					LatestStatusSubtypeFamily: "dead-letter",
+				},
+				CanRetry:       true,
+				IsDeadLettered: true,
 			},
-			CanRetry: true,
+			{
+				CanonicalSnapshot: postadjudicationstatus.CanonicalSnapshot{
+					TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-1"},
+				},
+				RetryDeadLetterSummary: postadjudicationstatus.RetryDeadLetterSummary{
+					LatestStatusSubtype:       "retry-scheduled",
+					LatestStatusSubtypeFamily: "retry",
+					LatestRetryAttempt:        4,
+					LatestDispatchReference:   "dispatch-2",
+				},
+				LatestBackgroundTask: &postadjudicationstatus.BackgroundTaskBridge{
+					TaskID:       "task-2",
+					Status:       "queued",
+					AttemptCount: 1,
+				},
+				CanRetry:       true,
+				IsDeadLettered: true,
+			},
 		},
 	}
 	cmd := newDeadLetterCmd(func() (deadLetterBridge, func(), error) {
@@ -1057,4 +1242,75 @@ func TestDeadLetterRetryCmd_JSONReportsAcceptedRequest(t *testing.T) {
 	assert.Equal(t, "tx-1", got.TransactionReceiptID)
 	assert.Equal(t, "accepted", got.Result)
 	assert.Equal(t, "Retry request accepted for transaction tx-1.", got.Message)
+	require.NotNil(t, got.FollowUp)
+	assert.Equal(t, "retry-scheduled", got.FollowUp.LatestStatusSubtype)
+	assert.Equal(t, "retry", got.FollowUp.LatestStatusSubtypeFamily)
+	require.NotNil(t, got.FollowUp.BackgroundTask)
+	assert.Equal(t, "task-2", got.FollowUp.BackgroundTask.TaskID)
+	assert.Equal(t, 1, got.PollCount)
+	assert.False(t, got.TimedOut)
+}
+
+func TestDeadLetterRetryCmd_WaitPollsUntilFollowUpChanges(t *testing.T) {
+	bridge := &fakeDeadLetterBridge{
+		detailSeq: []postadjudicationstatus.TransactionStatus{
+			{
+				CanonicalSnapshot: postadjudicationstatus.CanonicalSnapshot{
+					TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-1"},
+				},
+				RetryDeadLetterSummary: postadjudicationstatus.RetryDeadLetterSummary{
+					LatestStatusSubtype:       "dead-lettered",
+					LatestStatusSubtypeFamily: "dead-letter",
+					LatestRetryAttempt:        3,
+				},
+				CanRetry:       true,
+				IsDeadLettered: true,
+			},
+			{
+				CanonicalSnapshot: postadjudicationstatus.CanonicalSnapshot{
+					TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-1"},
+				},
+				RetryDeadLetterSummary: postadjudicationstatus.RetryDeadLetterSummary{
+					LatestStatusSubtype:       "dead-lettered",
+					LatestStatusSubtypeFamily: "dead-letter",
+					LatestRetryAttempt:        3,
+				},
+				CanRetry:       true,
+				IsDeadLettered: true,
+			},
+			{
+				CanonicalSnapshot: postadjudicationstatus.CanonicalSnapshot{
+					TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-1"},
+				},
+				RetryDeadLetterSummary: postadjudicationstatus.RetryDeadLetterSummary{
+					LatestStatusSubtype:       "retry-scheduled",
+					LatestStatusSubtypeFamily: "retry",
+					LatestRetryAttempt:        4,
+				},
+				LatestBackgroundTask: &postadjudicationstatus.BackgroundTaskBridge{
+					TaskID:       "task-3",
+					Status:       "running",
+					AttemptCount: 1,
+				},
+				CanRetry:       true,
+				IsDeadLettered: true,
+			},
+		},
+	}
+	cmd := newDeadLetterCmd(func() (deadLetterBridge, func(), error) {
+		return bridge, func() {}, nil
+	})
+
+	out, err := executeCommand(
+		t,
+		cmd,
+		"retry", "tx-1", "--yes",
+		"--wait",
+		"--wait-interval", "1ms",
+		"--wait-timeout", "50ms",
+	)
+	require.NoError(t, err)
+	assert.Contains(t, out, "Polling follow-up status")
+	assert.Contains(t, out, "running")
+	assert.Equal(t, 3, bridge.detailCalls)
 }

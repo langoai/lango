@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -26,7 +27,12 @@ const (
 	deadLettersAttemptColW    = 8
 	deadLettersStatusColW     = 12
 	deadLettersColumnGapW     = 1
+	deadLetterTopSummaryLimit = 5
 )
+
+var deadLettersNow = func() time.Time {
+	return time.Now().UTC()
+}
 
 type deadLettersLoadedMsg struct {
 	items             []postadjudicationstatus.DeadLetterBacklogEntry
@@ -140,6 +146,9 @@ type DeadLettersPage struct {
 	statusMsg                      string
 	retryConfirmID                 string
 	retryRunningID                 string
+	retryFollowUpID                string
+	retryFollowUpNote              string
+	retryFollowUpPending           bool
 }
 
 type deadLetterSummary struct {
@@ -155,6 +164,13 @@ type deadLetterSummary struct {
 	actorFamilies     []deadLetterActorFamilySummaryItem
 	topActors         []deadLetterActorSummaryItem
 	topDispatches     []deadLetterDispatchSummaryItem
+	dispatchFamilies  []deadLetterDispatchFamilySummaryItem
+	last24Hours       int
+	previous24Hours   int
+	last7Days         int
+	previous7Days     int
+	olderThan14Days   int
+	undated           int
 }
 
 type deadLetterReasonSummaryItem struct {
@@ -180,6 +196,11 @@ type deadLetterActorFamilySummaryItem struct {
 type deadLetterDispatchSummaryItem struct {
 	dispatchReference string
 	count             int
+}
+
+type deadLetterDispatchFamilySummaryItem struct {
+	family string
+	count  int
 }
 
 func NewDeadLettersPage(listFn DeadLetterListFn, detailFn DeadLetterDetailFn, retryFns ...DeadLetterRetryFn) *DeadLettersPage {
@@ -250,6 +271,11 @@ func (p *DeadLettersPage) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case deadLettersLoadedMsg:
 		p.loadErr = msg.err
 		if msg.err != nil {
+			if p.retryFollowUpPending && strings.TrimSpace(p.retryFollowUpID) != "" {
+				p.retryFollowUpPending = false
+				p.retryFollowUpNote = fmt.Sprintf("refresh failed: %v", msg.err)
+				p.statusMsg = p.retryAcceptedMessage(p.retryFollowUpID, p.retryFollowUpNote)
+			}
 			p.items = nil
 			p.cursor = 0
 			p.selectedID = ""
@@ -281,6 +307,24 @@ func (p *DeadLettersPage) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		p.selectedID = p.items[p.cursor].TransactionReceiptID
 		p.detail = nil
+		if p.retryFollowUpPending && strings.TrimSpace(p.retryFollowUpID) != "" {
+			retryID := strings.TrimSpace(p.retryFollowUpID)
+			if !deadLetterBacklogContains(p.items, retryID) {
+				p.retryFollowUpPending = false
+				p.retryFollowUpNote = "no longer present in current dead-letter backlog"
+				p.statusMsg = p.retryAcceptedMessage(retryID, p.retryFollowUpNote)
+			} else if p.selectedID != retryID {
+				p.retryFollowUpPending = false
+				p.retryFollowUpNote = fmt.Sprintf(
+					"%s is still in backlog; select it to inspect latest status",
+					retryID,
+				)
+				p.statusMsg = p.retryAcceptedMessage(retryID, p.retryFollowUpNote)
+			} else {
+				p.retryFollowUpNote = "backlog refreshed; loading latest status"
+				p.statusMsg = p.retryAcceptedMessage(retryID, p.retryFollowUpNote)
+			}
+		}
 		return p, p.loadSelectedDetail()
 	case deadLetterDetailLoadedMsg:
 		if msg.transactionID != p.selectedID {
@@ -289,19 +333,35 @@ func (p *DeadLettersPage) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		p.detailErr = msg.err
 		if msg.err != nil {
 			p.detail = nil
+			if p.retryFollowUpPending && p.retryFollowUpID == msg.transactionID {
+				p.retryFollowUpPending = false
+				p.retryFollowUpNote = fmt.Sprintf("latest status load failed: %v", msg.err)
+				p.statusMsg = p.retryAcceptedMessage(msg.transactionID, p.retryFollowUpNote)
+			}
 			return p, nil
 		}
 		status := msg.status
 		p.detail = &status
+		if p.retryFollowUpPending && p.retryFollowUpID == msg.transactionID {
+			p.retryFollowUpPending = false
+			p.retryFollowUpNote = p.describeRetryFollowUp(status)
+			p.statusMsg = p.retryAcceptedMessage(msg.transactionID, p.retryFollowUpNote)
+		}
 	case deadLetterRetryResultMsg:
 		p.retryConfirmID = ""
 		if p.retryRunningID == msg.transactionID {
 			p.retryRunningID = ""
 		}
 		if msg.err != nil {
+			p.retryFollowUpID = ""
+			p.retryFollowUpNote = ""
+			p.retryFollowUpPending = false
 			p.statusMsg = p.retryFailureMessage(msg.transactionID, msg.err)
 			return p, nil
 		}
+		p.retryFollowUpID = msg.transactionID
+		p.retryFollowUpNote = ""
+		p.retryFollowUpPending = true
 		p.statusMsg = p.retrySuccessMessage(msg.transactionID)
 		p.detailErr = nil
 		return p, p.refreshAfterRetry()
@@ -512,6 +572,18 @@ func (p *DeadLettersPage) renderSummaryStrip() string {
 		lines = append(lines, chipStyle.Render(actorFamiliesLine))
 	}
 
+	if len(summary.dispatchFamilies) > 0 {
+		familyParts := make([]string, 0, len(summary.dispatchFamilies))
+		for _, item := range summary.dispatchFamilies {
+			familyParts = append(familyParts, fmt.Sprintf("%s(%d)", item.family, item.count))
+		}
+		dispatchFamiliesLine := "dispatch families: " + strings.Join(familyParts, ", ")
+		if p.width > 0 {
+			dispatchFamiliesLine = ansi.Truncate(dispatchFamiliesLine, max(p.width-8, 48), "…")
+		}
+		lines = append(lines, chipStyle.Render(dispatchFamiliesLine))
+	}
+
 	if len(summary.topDispatches) > 0 {
 		dispatchParts := make([]string, 0, len(summary.topDispatches))
 		for _, item := range summary.topDispatches {
@@ -523,6 +595,22 @@ func (p *DeadLettersPage) renderSummaryStrip() string {
 		}
 		lines = append(lines, chipStyle.Render(dispatchLine))
 	}
+
+	trendLine := fmt.Sprintf(
+		"trend: 24h %d vs prev24h %d (%s), 7d %d vs prev7d %d (%s), older %d, undated %d",
+		summary.last24Hours,
+		summary.previous24Hours,
+		formatDeadLetterDelta(summary.last24Hours-summary.previous24Hours),
+		summary.last7Days,
+		summary.previous7Days,
+		formatDeadLetterDelta(summary.last7Days-summary.previous7Days),
+		summary.olderThan14Days,
+		summary.undated,
+	)
+	if p.width > 0 {
+		trendLine = ansi.Truncate(trendLine, max(p.width-8, 48), "…")
+	}
+	lines = append(lines, chipStyle.Render(trendLine))
 
 	return lipgloss.JoinVertical(lipgloss.Left, lines...)
 }
@@ -660,6 +748,9 @@ func (p *DeadLettersPage) renderDetailPane() string {
 	}
 	retryState := p.retryActionLabel()
 	lines = append(lines, fmt.Sprintf("Retry action: %s", retryState))
+	if p.selectedID == p.retryFollowUpID && strings.TrimSpace(p.retryFollowUpNote) != "" {
+		lines = append(lines, fmt.Sprintf("Retry follow-up: %s", p.retryFollowUpNote))
+	}
 
 	minLines := deadLettersDetailMinLines
 	if len(lines) < minLines {
@@ -786,6 +877,52 @@ func (p *DeadLettersPage) retrySuccessMessage(transactionID string) string {
 
 func (p *DeadLettersPage) retryFailureMessage(transactionID string, err error) string {
 	return fmt.Sprintf("Retry request failed for %s: %v", transactionID, err)
+}
+
+func (p *DeadLettersPage) retryAcceptedMessage(transactionID string, note string) string {
+	trimmed := strings.TrimSpace(note)
+	if trimmed == "" {
+		return p.retrySuccessMessage(transactionID)
+	}
+	return fmt.Sprintf("Retry request accepted for %s. Follow-up: %s.", transactionID, trimmed)
+}
+
+func (p *DeadLettersPage) describeRetryFollowUp(
+	status postadjudicationstatus.TransactionStatus,
+) string {
+	if !status.IsDeadLettered {
+		return "cleared from dead-letter state"
+	}
+
+	if task := status.LatestBackgroundTask; task != nil {
+		parts := []string{fmt.Sprintf("task %s", fallback(task.Status, "", "unknown"))}
+		details := make([]string, 0, 2)
+		if task.AttemptCount > 0 {
+			details = append(details, fmt.Sprintf("attempt %d", task.AttemptCount))
+		}
+		if strings.TrimSpace(task.NextRetryAt) != "" {
+			details = append(details, fmt.Sprintf("next %s", task.NextRetryAt))
+		}
+		if len(details) > 0 {
+			parts[0] += " (" + strings.Join(details, ", ") + ")"
+		}
+		return strings.Join(parts, "")
+	}
+
+	parts := make([]string, 0, 3)
+	if subtype := strings.TrimSpace(status.RetryDeadLetterSummary.LatestStatusSubtype); subtype != "" {
+		parts = append(parts, fmt.Sprintf("subtype %s", subtype))
+	}
+	if family := strings.TrimSpace(status.RetryDeadLetterSummary.LatestStatusSubtypeFamily); family != "" {
+		parts = append(parts, fmt.Sprintf("family %s", family))
+	}
+	if attempt := status.RetryDeadLetterSummary.LatestRetryAttempt; attempt > 0 {
+		parts = append(parts, fmt.Sprintf("attempt %d", attempt))
+	}
+	if len(parts) == 0 {
+		return "still present in dead-letter backlog"
+	}
+	return "still present in dead-letter backlog (" + strings.Join(parts, ", ") + ")"
 }
 
 func (f deadLetterAdjudicationFilter) next() deadLetterAdjudicationFilter {
@@ -1014,6 +1151,8 @@ func summarizeDeadLetters(items []postadjudicationstatus.DeadLetterBacklogEntry)
 	actorFamilyCounts := make(map[string]int)
 	actorCounts := make(map[string]int)
 	dispatchCounts := make(map[string]int)
+	dispatchFamilyCounts := make(map[string]int)
+	now := deadLettersNow()
 	for _, item := range items {
 		summary.total++
 		if item.CanRetry {
@@ -1048,6 +1187,31 @@ func summarizeDeadLetters(items []postadjudicationstatus.DeadLetterBacklogEntry)
 		dispatchReference := strings.TrimSpace(item.LatestDispatchReference)
 		if dispatchReference != "" {
 			dispatchCounts[dispatchReference]++
+			if family := classifyDispatchFamily(dispatchReference); family != "" {
+				dispatchFamilyCounts[family]++
+			}
+		}
+
+		deadLetteredAt := parseDeadLetterTimestamp(strings.TrimSpace(item.LatestDeadLetteredAt))
+		switch {
+		case deadLetteredAt.IsZero():
+			summary.undated++
+		default:
+			age := now.Sub(deadLetteredAt.UTC())
+			switch {
+			case age <= 24*time.Hour:
+				summary.last24Hours++
+				summary.last7Days++
+			case age <= 48*time.Hour:
+				summary.previous24Hours++
+				summary.last7Days++
+			case age <= 7*24*time.Hour:
+				summary.last7Days++
+			case age <= 14*24*time.Hour:
+				summary.previous7Days++
+			default:
+				summary.olderThan14Days++
+			}
 		}
 	}
 	if len(reasonCounts) > 0 {
@@ -1061,8 +1225,8 @@ func summarizeDeadLetters(items []postadjudicationstatus.DeadLetterBacklogEntry)
 			}
 			return reasons[i].reason < reasons[j].reason
 		})
-		if len(reasons) > 5 {
-			reasons = reasons[:5]
+		if len(reasons) > deadLetterTopSummaryLimit {
+			reasons = reasons[:deadLetterTopSummaryLimit]
 		}
 		summary.topReasons = reasons
 	}
@@ -1118,8 +1282,8 @@ func summarizeDeadLetters(items []postadjudicationstatus.DeadLetterBacklogEntry)
 			}
 			return actors[i].actor < actors[j].actor
 		})
-		if len(actors) > 5 {
-			actors = actors[:5]
+		if len(actors) > deadLetterTopSummaryLimit {
+			actors = actors[:deadLetterTopSummaryLimit]
 		}
 		summary.topActors = actors
 	}
@@ -1134,10 +1298,82 @@ func summarizeDeadLetters(items []postadjudicationstatus.DeadLetterBacklogEntry)
 			}
 			return dispatches[i].dispatchReference < dispatches[j].dispatchReference
 		})
-		if len(dispatches) > 5 {
-			dispatches = dispatches[:5]
+		if len(dispatches) > deadLetterTopSummaryLimit {
+			dispatches = dispatches[:deadLetterTopSummaryLimit]
 		}
 		summary.topDispatches = dispatches
 	}
+	if len(dispatchFamilyCounts) > 0 {
+		families := make([]deadLetterDispatchFamilySummaryItem, 0, len(dispatchFamilyCounts))
+		for family, count := range dispatchFamilyCounts {
+			families = append(families, deadLetterDispatchFamilySummaryItem{
+				family: family,
+				count:  count,
+			})
+		}
+		sort.Slice(families, func(i, j int) bool {
+			if families[i].count != families[j].count {
+				return families[i].count > families[j].count
+			}
+			return families[i].family < families[j].family
+		})
+		if len(families) > deadLetterTopSummaryLimit {
+			families = families[:deadLetterTopSummaryLimit]
+		}
+		summary.dispatchFamilies = families
+	}
 	return summary
+}
+
+func classifyDispatchFamily(reference string) string {
+	trimmed := strings.ToLower(strings.TrimSpace(reference))
+	if trimmed == "" {
+		return ""
+	}
+
+	parts := strings.FieldsFunc(trimmed, func(r rune) bool {
+		return r == ':' || r == '/' || r == '.' || unicode.IsSpace(r)
+	})
+	if len(parts) == 0 {
+		return ""
+	}
+
+	token := parts[0]
+	if idx := strings.IndexRune(token, '-'); idx > 0 {
+		prefix := token[:idx]
+		if prefix != "" {
+			token = prefix
+		}
+	}
+	return strings.TrimSpace(token)
+}
+
+func parseDeadLetterTimestamp(value string) time.Time {
+	if strings.TrimSpace(value) == "" {
+		return time.Time{}
+	}
+	parsed, err := time.Parse(time.RFC3339, strings.TrimSpace(value))
+	if err != nil {
+		return time.Time{}
+	}
+	return parsed
+}
+
+func formatDeadLetterDelta(delta int) string {
+	if delta >= 0 {
+		return fmt.Sprintf("+%d", delta)
+	}
+	return fmt.Sprintf("%d", delta)
+}
+
+func deadLetterBacklogContains(
+	items []postadjudicationstatus.DeadLetterBacklogEntry,
+	transactionID string,
+) bool {
+	for _, item := range items {
+		if item.TransactionReceiptID == transactionID {
+			return true
+		}
+	}
+	return false
 }

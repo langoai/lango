@@ -26,6 +26,14 @@ import (
 
 const defaultAddr = "http://localhost:18789"
 
+const (
+	defaultDeadLetterSummaryTopN       = 5
+	defaultDeadLetterTrendWindow       = 24 * time.Hour
+	defaultDeadLetterTrendBucket       = 6 * time.Hour
+	defaultDeadLetterRetryWaitInterval = 2 * time.Second
+	defaultDeadLetterRetryWaitTimeout  = 30 * time.Second
+)
+
 type deadLetterBridge interface {
 	List(context.Context, deadLetterListOptions) (deadLetterListPage, error)
 	Detail(context.Context, string) (postadjudicationstatus.TransactionStatus, error)
@@ -39,6 +47,7 @@ type deadLetterListOptions struct {
 	Adjudication              string
 	LatestStatusSubtype       string
 	LatestStatusSubtypeFamily string
+	AnyMatchFamily            string
 	ManualReplayActor         string
 	DeadLetteredAfter         string
 	DeadLetteredBefore        string
@@ -55,9 +64,25 @@ type deadLetterListPage struct {
 }
 
 type deadLetterRetryResult struct {
-	TransactionReceiptID string `json:"transaction_receipt_id"`
-	Result               string `json:"result"`
-	Message              string `json:"message"`
+	TransactionReceiptID string                   `json:"transaction_receipt_id"`
+	Result               string                   `json:"result"`
+	Message              string                   `json:"message"`
+	FollowUp             *deadLetterRetryFollowUp `json:"follow_up,omitempty"`
+	FollowUpError        string                   `json:"follow_up_error,omitempty"`
+	PollCount            int                      `json:"poll_count,omitempty"`
+	TimedOut             bool                     `json:"timed_out,omitempty"`
+}
+
+type deadLetterRetryFollowUp struct {
+	ObservedAt                string                                       `json:"observed_at,omitempty"`
+	IsDeadLettered            bool                                         `json:"is_dead_lettered"`
+	CanRetry                  bool                                         `json:"can_retry"`
+	LatestStatusSubtype       string                                       `json:"latest_status_subtype,omitempty"`
+	LatestStatusSubtypeFamily string                                       `json:"latest_status_subtype_family,omitempty"`
+	LatestDeadLetterReason    string                                       `json:"latest_dead_letter_reason,omitempty"`
+	LatestRetryAttempt        int                                          `json:"latest_retry_attempt,omitempty"`
+	LatestDispatchReference   string                                       `json:"latest_dispatch_reference,omitempty"`
+	BackgroundTask            *postadjudicationstatus.BackgroundTaskBridge `json:"background_task,omitempty"`
 }
 
 type deadLetterSummaryBucket struct {
@@ -83,13 +108,35 @@ type deadLetterDispatchSummaryItem struct {
 type deadLetterSummaryResult struct {
 	TotalDeadLetters            int                             `json:"total_dead_letters"`
 	RetryableCount              int                             `json:"retryable_count"`
+	TopLimit                    int                             `json:"top_limit"`
 	ByAdjudication              []deadLetterSummaryBucket       `json:"by_adjudication"`
 	ByLatestFamily              []deadLetterSummaryBucket       `json:"by_latest_family"`
 	ByReasonFamily              []deadLetterSummaryBucket       `json:"by_reason_family"`
 	ByActorFamily               []deadLetterSummaryBucket       `json:"by_actor_family"`
+	ByDispatchFamily            []deadLetterSummaryBucket       `json:"by_dispatch_family"`
 	TopLatestDeadLetterReasons  []deadLetterReasonSummaryItem   `json:"top_latest_dead_letter_reasons"`
 	TopLatestManualReplayActors []deadLetterActorSummaryItem    `json:"top_latest_manual_replay_actors"`
 	TopLatestDispatchReferences []deadLetterDispatchSummaryItem `json:"top_latest_dispatch_references"`
+	RecentDeadLetterTrend       deadLetterTrendWindow           `json:"recent_dead_letter_trend"`
+}
+
+type deadLetterTrendBucket struct {
+	Label string `json:"label"`
+	Count int    `json:"count"`
+}
+
+type deadLetterTrendWindow struct {
+	Window        string                  `json:"window,omitempty"`
+	Bucket        string                  `json:"bucket,omitempty"`
+	WindowedCount int                     `json:"windowed_count,omitempty"`
+	Buckets       []deadLetterTrendBucket `json:"buckets,omitempty"`
+}
+
+type deadLetterSummaryOptions struct {
+	TopN        int
+	TrendWindow time.Duration
+	TrendBucket time.Duration
+	Now         time.Time
 }
 
 type toolCatalogDeadLetterBridge struct {
@@ -141,7 +188,12 @@ Examples:
 }
 
 func newDeadLetterSummaryCmd(loader deadLetterBridgeLoader) *cobra.Command {
-	var outputFmt string
+	var (
+		outputFmt   string
+		topN        int
+		trendWindow time.Duration
+		trendBucket time.Duration
+	)
 
 	cmd := &cobra.Command{
 		Use:   "dead-letter-summary",
@@ -159,7 +211,11 @@ func newDeadLetterSummaryCmd(loader deadLetterBridgeLoader) *cobra.Command {
 				return err
 			}
 
-			summary := aggregateDeadLetterSummary(page)
+			summary := aggregateDeadLetterSummaryWithOptions(page, deadLetterSummaryOptions{
+				TopN:        topN,
+				TrendWindow: trendWindow,
+				TrendBucket: trendBucket,
+			})
 			if outputFmt == "json" {
 				return printJSONTo(cmd.OutOrStdout(), summary)
 			}
@@ -168,6 +224,9 @@ func newDeadLetterSummaryCmd(loader deadLetterBridgeLoader) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&outputFmt, "output", "table", "Output format: table or json")
+	cmd.Flags().IntVar(&topN, "top", defaultDeadLetterSummaryTopN, "Top-N size for raw latest reason/actor/dispatch sections")
+	cmd.Flags().DurationVar(&trendWindow, "trend-window", defaultDeadLetterTrendWindow, "Time window for recent dead-letter trend output")
+	cmd.Flags().DurationVar(&trendBucket, "trend-bucket", defaultDeadLetterTrendBucket, "Bucket size for recent dead-letter trend output")
 	return cmd
 }
 
@@ -178,6 +237,7 @@ func newDeadLettersCmd(loader deadLetterBridgeLoader) *cobra.Command {
 		adjudication              string
 		latestStatusSubtype       string
 		latestStatusSubtypeFamily string
+		anyMatchFamily            string
 		manualReplayActor         string
 		deadLetteredAfter         string
 		deadLetteredBefore        string
@@ -195,6 +255,10 @@ func newDeadLettersCmd(loader deadLetterBridgeLoader) *cobra.Command {
 				return err
 			}
 			family, err := normalizeLatestStatusSubtypeFamily(latestStatusSubtypeFamily)
+			if err != nil {
+				return err
+			}
+			anyMatchFamilyValue, err := normalizeAnyMatchFamily(anyMatchFamily)
 			if err != nil {
 				return err
 			}
@@ -218,6 +282,7 @@ func newDeadLettersCmd(loader deadLetterBridgeLoader) *cobra.Command {
 				Adjudication:              adjudication,
 				LatestStatusSubtype:       subtype,
 				LatestStatusSubtypeFamily: family,
+				AnyMatchFamily:            anyMatchFamilyValue,
 				ManualReplayActor:         strings.TrimSpace(manualReplayActor),
 				DeadLetteredAfter:         after,
 				DeadLetteredBefore:        before,
@@ -239,6 +304,7 @@ func newDeadLettersCmd(loader deadLetterBridgeLoader) *cobra.Command {
 	cmd.Flags().StringVar(&adjudication, "adjudication", "", "Adjudication outcome filter: release or refund")
 	cmd.Flags().StringVar(&latestStatusSubtype, "latest-status-subtype", "", "Latest status subtype filter: retry-scheduled, manual-retry-requested, or dead-lettered")
 	cmd.Flags().StringVar(&latestStatusSubtypeFamily, "latest-status-subtype-family", "", "Latest status subtype family filter: retry, manual-retry, or dead-letter")
+	cmd.Flags().StringVar(&anyMatchFamily, "any-match-family", "", "Any-match family filter: retry, manual-retry, or dead-letter")
 	cmd.Flags().StringVar(&manualReplayActor, "manual-replay-actor", "", "Latest manual replay actor filter")
 	cmd.Flags().StringVar(&deadLetteredAfter, "dead-lettered-after", "", "Latest dead-letter lower-bound timestamp filter (RFC3339)")
 	cmd.Flags().StringVar(&deadLetteredBefore, "dead-lettered-before", "", "Latest dead-letter upper-bound timestamp filter (RFC3339)")
@@ -279,8 +345,11 @@ func newDeadLetterCmd(loader deadLetterBridgeLoader) *cobra.Command {
 
 func newDeadLetterRetryCmd(loader deadLetterBridgeLoader) *cobra.Command {
 	var (
-		outputFmt string
-		yes       bool
+		outputFmt    string
+		yes          bool
+		wait         bool
+		waitInterval time.Duration
+		waitTimeout  time.Duration
 	)
 
 	cmd := &cobra.Command{
@@ -319,21 +388,48 @@ func newDeadLetterRetryCmd(loader deadLetterBridgeLoader) *cobra.Command {
 				return fmt.Errorf("retry request failed for transaction %q: %w", transactionReceiptID, err)
 			}
 
-			message := fmt.Sprintf("Retry request accepted for transaction %s.", transactionReceiptID)
 			result := deadLetterRetryResult{
 				TransactionReceiptID: transactionReceiptID,
 				Result:               "accepted",
-				Message:              message,
+				Message:              fmt.Sprintf("Retry request accepted for transaction %s.", transactionReceiptID),
+			}
+			if outputFmt != "json" && wait {
+				if _, err := fmt.Fprintf(
+					cmd.OutOrStdout(),
+					"Polling follow-up status every %s for up to %s...\n",
+					waitInterval,
+					waitTimeout,
+				); err != nil {
+					return err
+				}
+			}
+			followUp, pollCount, timedOut, followUpErr := collectDeadLetterRetryFollowUp(
+				cmd.Context(),
+				bridge,
+				transactionReceiptID,
+				status,
+				wait,
+				waitInterval,
+				waitTimeout,
+			)
+			result.FollowUp = followUp
+			result.PollCount = pollCount
+			result.TimedOut = timedOut
+			if followUpErr != nil {
+				result.FollowUpError = followUpErr.Error()
 			}
 			if outputFmt == "json" {
 				return printJSONTo(cmd.OutOrStdout(), result)
 			}
-			_, err = fmt.Fprintln(cmd.OutOrStdout(), message)
+			_, err = fmt.Fprint(cmd.OutOrStdout(), renderDeadLetterRetryResult(result))
 			return err
 		},
 	}
 	cmd.Flags().StringVar(&outputFmt, "output", "table", "Output format: table or json")
 	cmd.Flags().BoolVar(&yes, "yes", false, "Skip confirmation prompt")
+	cmd.Flags().BoolVar(&wait, "wait", false, "Poll follow-up status after retry request acceptance")
+	cmd.Flags().DurationVar(&waitInterval, "wait-interval", defaultDeadLetterRetryWaitInterval, "Polling interval for retry follow-up status")
+	cmd.Flags().DurationVar(&waitTimeout, "wait-timeout", defaultDeadLetterRetryWaitTimeout, "Polling timeout for retry follow-up status")
 	return cmd
 }
 
@@ -394,6 +490,9 @@ func (b *toolCatalogDeadLetterBridge) List(ctx context.Context, opts deadLetterL
 	case "retry", "manual-retry", "dead-letter":
 		params["latest_status_subtype_family"] = strings.TrimSpace(opts.LatestStatusSubtypeFamily)
 	}
+	if anyMatchFamily := strings.TrimSpace(opts.AnyMatchFamily); anyMatchFamily != "" {
+		params["any_match_family"] = anyMatchFamily
+	}
 	if actor := strings.TrimSpace(opts.ManualReplayActor); actor != "" {
 		params["manual_replay_actor"] = actor
 	}
@@ -448,11 +547,19 @@ func normalizeLatestStatusSubtype(value string) (string, error) {
 }
 
 func normalizeLatestStatusSubtypeFamily(value string) (string, error) {
+	return normalizeDeadLetterFamilyFlag("latest-status-subtype-family", value)
+}
+
+func normalizeAnyMatchFamily(value string) (string, error) {
+	return normalizeDeadLetterFamilyFlag("any-match-family", value)
+}
+
+func normalizeDeadLetterFamilyFlag(name, value string) (string, error) {
 	switch strings.TrimSpace(value) {
 	case "", "retry", "manual-retry", "dead-letter":
 		return strings.TrimSpace(value), nil
 	default:
-		return "", fmt.Errorf("invalid --latest-status-subtype-family %q: must be one of retry, manual-retry, dead-letter", value)
+		return "", fmt.Errorf("invalid --%s %q: must be one of retry, manual-retry, dead-letter", name, value)
 	}
 }
 
@@ -468,14 +575,43 @@ func normalizeRFC3339Flag(name, value string) (string, error) {
 }
 
 func aggregateDeadLetterSummary(page deadLetterListPage) deadLetterSummaryResult {
+	return aggregateDeadLetterSummaryWithOptions(page, deadLetterSummaryOptions{})
+}
+
+func aggregateDeadLetterSummaryWithOptions(
+	page deadLetterListPage,
+	options deadLetterSummaryOptions,
+) deadLetterSummaryResult {
+	topN := options.TopN
+	if topN <= 0 {
+		topN = defaultDeadLetterSummaryTopN
+	}
+	trendWindow := options.TrendWindow
+	if trendWindow <= 0 {
+		trendWindow = defaultDeadLetterTrendWindow
+	}
+	trendBucket := options.TrendBucket
+	if trendBucket <= 0 {
+		trendBucket = defaultDeadLetterTrendBucket
+	}
+	if trendBucket > trendWindow {
+		trendBucket = trendWindow
+	}
+	now := options.Now.UTC()
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+
 	retryableCount := 0
 	adjudicationCounts := map[string]int{}
 	latestFamilyCounts := map[string]int{}
 	reasonFamilyCounts := map[string]int{}
 	actorFamilyCounts := map[string]int{}
+	dispatchFamilyCounts := map[string]int{}
 	reasonCounts := map[string]int{}
 	actorCounts := map[string]int{}
 	dispatchCounts := map[string]int{}
+	deadLetterTimes := make([]time.Time, 0, len(page.Entries))
 
 	for _, entry := range page.Entries {
 		if entry.CanRetry {
@@ -498,21 +634,213 @@ func aggregateDeadLetterSummary(page deadLetterListPage) deadLetterSummaryResult
 			actorCounts[actor]++
 		}
 		if dispatchReference := strings.TrimSpace(entry.LatestDispatchReference); dispatchReference != "" {
+			dispatchFamilyCounts[postadjudicationstatus.ClassifyDispatchReferenceFamily(dispatchReference)]++
 			dispatchCounts[dispatchReference]++
+		}
+		if deadLetteredAt, ok := parseSummaryTimestamp(entry.LatestDeadLetteredAt); ok {
+			deadLetterTimes = append(deadLetterTimes, deadLetteredAt)
 		}
 	}
 
 	return deadLetterSummaryResult{
 		TotalDeadLetters:            summaryTotal(page),
 		RetryableCount:              retryableCount,
+		TopLimit:                    topN,
 		ByAdjudication:              orderedSummaryBuckets(adjudicationCounts, []string{"release", "refund"}),
 		ByLatestFamily:              orderedSummaryBuckets(latestFamilyCounts, []string{"retry", "manual-retry", "dead-letter"}),
 		ByReasonFamily:              orderedSummaryBuckets(reasonFamilyCounts, deadLetterReasonFamilyOrder()),
 		ByActorFamily:               orderedSummaryBuckets(actorFamilyCounts, manualReplayActorFamilyOrder()),
-		TopLatestDeadLetterReasons:  topDeadLetterReasons(reasonCounts, 5),
-		TopLatestManualReplayActors: topManualReplayActors(actorCounts, 5),
-		TopLatestDispatchReferences: topDispatchReferences(dispatchCounts, 5),
+		ByDispatchFamily:            orderedSummaryBuckets(dispatchFamilyCounts, postadjudicationstatus.DispatchReferenceFamilyOrder()),
+		TopLatestDeadLetterReasons:  topDeadLetterReasons(reasonCounts, topN),
+		TopLatestManualReplayActors: topManualReplayActors(actorCounts, topN),
+		TopLatestDispatchReferences: topDispatchReferences(dispatchCounts, topN),
+		RecentDeadLetterTrend:       summarizeDeadLetterTrend(deadLetterTimes, now, trendWindow, trendBucket),
 	}
+}
+
+func parseSummaryTimestamp(value string) (time.Time, bool) {
+	parsed, err := time.Parse(time.RFC3339, strings.TrimSpace(value))
+	if err != nil {
+		return time.Time{}, false
+	}
+	return parsed.UTC(), true
+}
+
+func summarizeDeadLetterTrend(
+	timestamps []time.Time,
+	now time.Time,
+	window time.Duration,
+	bucket time.Duration,
+) deadLetterTrendWindow {
+	if window <= 0 || bucket <= 0 {
+		return deadLetterTrendWindow{}
+	}
+
+	windowStart := now.Add(-window)
+	bucketCount := int(window / bucket)
+	if window%bucket != 0 {
+		bucketCount++
+	}
+	if bucketCount <= 0 {
+		bucketCount = 1
+	}
+
+	buckets := make([]deadLetterTrendBucket, 0, bucketCount)
+	counts := make([]int, bucketCount)
+	windowedCount := 0
+	for _, timestamp := range timestamps {
+		if timestamp.Before(windowStart) || timestamp.After(now) {
+			continue
+		}
+		windowedCount++
+		index := int(timestamp.Sub(windowStart) / bucket)
+		if index >= bucketCount {
+			index = bucketCount - 1
+		}
+		counts[index]++
+	}
+
+	for index := 0; index < bucketCount; index++ {
+		start := windowStart.Add(time.Duration(index) * bucket).UTC()
+		end := start.Add(bucket).UTC()
+		if end.After(now) {
+			end = now
+		}
+		buckets = append(buckets, deadLetterTrendBucket{
+			Label: start.Format(time.RFC3339) + " -> " + end.Format(time.RFC3339),
+			Count: counts[index],
+		})
+	}
+
+	return deadLetterTrendWindow{
+		Window:        window.String(),
+		Bucket:        bucket.String(),
+		WindowedCount: windowedCount,
+		Buckets:       buckets,
+	}
+}
+
+func collectDeadLetterRetryFollowUp(
+	ctx context.Context,
+	bridge deadLetterBridge,
+	transactionReceiptID string,
+	baseline postadjudicationstatus.TransactionStatus,
+	wait bool,
+	waitInterval time.Duration,
+	waitTimeout time.Duration,
+) (*deadLetterRetryFollowUp, int, bool, error) {
+	observe := func() (*deadLetterRetryFollowUp, error) {
+		status, err := bridge.Detail(ctx, transactionReceiptID)
+		if err != nil {
+			return nil, err
+		}
+		return deadLetterRetryFollowUpFromStatus(status), nil
+	}
+
+	followUp, err := observe()
+	if err != nil || !wait || deadLetterRetryFollowUpChanged(baseline, followUp) {
+		return followUp, boolToPollCount(followUp != nil), false, err
+	}
+
+	if waitInterval <= 0 {
+		waitInterval = defaultDeadLetterRetryWaitInterval
+	}
+	if waitTimeout <= 0 {
+		waitTimeout = defaultDeadLetterRetryWaitTimeout
+	}
+
+	pollCount := 1
+	ticker := time.NewTicker(waitInterval)
+	defer ticker.Stop()
+	timer := time.NewTimer(waitTimeout)
+	defer timer.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return followUp, pollCount, false, ctx.Err()
+		case <-timer.C:
+			return followUp, pollCount, true, nil
+		case <-ticker.C:
+			nextFollowUp, nextErr := observe()
+			pollCount++
+			if nextErr != nil {
+				return followUp, pollCount, false, nextErr
+			}
+			followUp = nextFollowUp
+			if deadLetterRetryFollowUpChanged(baseline, followUp) {
+				return followUp, pollCount, false, nil
+			}
+		}
+	}
+}
+
+func boolToPollCount(hasFollowUp bool) int {
+	if hasFollowUp {
+		return 1
+	}
+	return 0
+}
+
+func deadLetterRetryFollowUpFromStatus(
+	status postadjudicationstatus.TransactionStatus,
+) *deadLetterRetryFollowUp {
+	followUp := &deadLetterRetryFollowUp{
+		ObservedAt:                time.Now().UTC().Format(time.RFC3339),
+		IsDeadLettered:            status.IsDeadLettered,
+		CanRetry:                  status.CanRetry,
+		LatestStatusSubtype:       status.RetryDeadLetterSummary.LatestStatusSubtype,
+		LatestStatusSubtypeFamily: status.RetryDeadLetterSummary.LatestStatusSubtypeFamily,
+		LatestDeadLetterReason:    status.RetryDeadLetterSummary.LatestDeadLetterReason,
+		LatestRetryAttempt:        status.RetryDeadLetterSummary.LatestRetryAttempt,
+		LatestDispatchReference:   status.RetryDeadLetterSummary.LatestDispatchReference,
+	}
+	if status.LatestBackgroundTask != nil {
+		backgroundTask := *status.LatestBackgroundTask
+		followUp.BackgroundTask = &backgroundTask
+	}
+	return followUp
+}
+
+func deadLetterRetryFollowUpChanged(
+	baseline postadjudicationstatus.TransactionStatus,
+	followUp *deadLetterRetryFollowUp,
+) bool {
+	if followUp == nil {
+		return false
+	}
+	if baseline.IsDeadLettered != followUp.IsDeadLettered || baseline.CanRetry != followUp.CanRetry {
+		return true
+	}
+	if baseline.RetryDeadLetterSummary.LatestStatusSubtype != followUp.LatestStatusSubtype {
+		return true
+	}
+	if baseline.RetryDeadLetterSummary.LatestStatusSubtypeFamily != followUp.LatestStatusSubtypeFamily {
+		return true
+	}
+	if baseline.RetryDeadLetterSummary.LatestRetryAttempt != followUp.LatestRetryAttempt {
+		return true
+	}
+	if baseline.RetryDeadLetterSummary.LatestDispatchReference != followUp.LatestDispatchReference {
+		return true
+	}
+	if backgroundTaskChanged(baseline.LatestBackgroundTask, followUp.BackgroundTask) {
+		return true
+	}
+	return false
+}
+
+func backgroundTaskChanged(
+	baseline *postadjudicationstatus.BackgroundTaskBridge,
+	followUp *postadjudicationstatus.BackgroundTaskBridge,
+) bool {
+	if baseline == nil || followUp == nil {
+		return baseline != followUp
+	}
+	return baseline.TaskID != followUp.TaskID ||
+		baseline.Status != followUp.Status ||
+		baseline.AttemptCount != followUp.AttemptCount ||
+		baseline.NextRetryAt != followUp.NextRetryAt
 }
 
 func deadLetterReasonFamilyOrder() []string {

@@ -13,10 +13,10 @@ Lango provides a comprehensive command-line interface built with [Cobra](https:/
 | `lango version` | Print version and build info |
 | `lango health` | Check gateway health |
 | `lango status` | [Unified status dashboard](status.md) (health, config, features) |
-| `lango status dead-letter-summary` | Show overview counts, grouped reason-family and actor-family buckets, raw top latest dead-letter reasons, raw top latest manual replay actors, and top latest dispatch references for the current dead-letter backlog |
-| `lango status dead-letters` | List current dead-lettered post-adjudication executions |
+| `lango status dead-letter-summary` | Show overview counts, grouped reason/actor/dispatch-family buckets, configurable raw top-N sections, and recent trend windows for the current dead-letter backlog |
+| `lango status dead-letters` | List current dead-lettered post-adjudication executions with latest-family and any-match-family filtering |
 | `lango status dead-letter <transaction-receipt-id>` | Show detailed dead-letter execution status for one transaction |
-| `lango status dead-letter retry <transaction-receipt-id>` | Request retry for one dead-lettered post-adjudication execution |
+| `lango status dead-letter retry <transaction-receipt-id>` | Request retry for one dead-lettered post-adjudication execution with structured follow-up status output |
 | `lango onboard` | Guided 5-step setup wizard |
 | `lango settings` | Full interactive configuration editor |
 | `lango doctor` | Diagnostics and health checks |

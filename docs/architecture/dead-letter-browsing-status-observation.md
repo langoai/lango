@@ -102,9 +102,17 @@ The slice is intentionally narrow:
           - `unknown`
         - uses case-insensitive heuristic matching with `unknown` fallback
         - raw top latest manual replay actors remain visible alongside grouped actor-family buckets
+      - grouped latest dispatch-reference families in a compact `dispatch families:` line
+        - rendered from each row's current `latest_dispatch_reference`
+        - currently recognizes `dispatch`, `queue`, `worker`, `bridge`, `webhook`, and `unknown`
+        - aliases `job`, `runner`, and `task` normalize to `worker`
+        - otherwise the first normalized token is preserved so unfamiliar prefixes still show up deterministically
       - top `5` latest dispatch references in a compact `dispatch:` line
         - rendered as a compact `dispatch:` line
         - aggregated from each row's current `latest_dispatch_reference`
+      - compact trend line
+        - rendered as `trend: 24h ... 7d ... older ... undated ...`
+        - recomputed from each row's current `latest_dead_lettered_at`
   - dead-letter backlog table
   - selected transaction detail pane
   - selection-driven detail refresh
@@ -128,7 +136,6 @@ The slice is intentionally narrow:
     - reuses `retry_post_adjudication_execution`
     - enabled only when `can_retry = true`
     - `r` key binding
-    - success/failure status message only
     - first `r` enters inline confirm state
     - second `r` executes replay
     - `Esc`, selection change, and filter apply clear confirm state
@@ -136,6 +143,11 @@ The slice is intentionally narrow:
     - duplicate retry triggers are blocked while replay is running
     - replay failure surfaces explicit retry-request failure wording and returns the action to idle
     - replay success surfaces an explicit retry-request acceptance message and refreshes backlog and selected detail
+    - follow-up messaging is refined after acceptance:
+      - `Refreshing backlog and detail`
+      - `Follow-up: backlog refreshed; loading latest status`
+      - task-oriented follow-up such as `task retrying (attempt 2, next ...)`
+      - fallback follow-up wording when the item is still in backlog, disappears from backlog, or latest-status refresh fails
     - `Ctrl+R` clears filter draft/applied state and retry confirm state, then reloads backlog/detail
     - `Ctrl+R` is ignored while retry is running
     - apply, reset, and retry-success refresh preserve the current selection when it remains in the refreshed backlog
@@ -176,14 +188,31 @@ The slice is intentionally narrow:
           - `unknown`
         - uses case-insensitive heuristic matching with `unknown` fallback
       - `top_latest_manual_replay_actors`
-        - top `5` actors
+        - top latest actors
         - each item includes `actor` and `count`
         - aggregated from each row's current `latest_manual_replay_actor`
         - remains available as the raw latest actor-string view alongside `by_actor_family`
+      - `by_dispatch_family`
+        - grouped dispatch-family buckets derived from each row's current `latest_dispatch_reference`
+        - table output renders this as a `By dispatch family` section
+        - JSON output renders this as `by_dispatch_family`
+        - uses a compact prefix classifier over each current `latest_dispatch_reference`
+        - currently recognizes `dispatch`, `queue`, `worker`, `bridge`, `webhook`, and `unknown`
+        - aliases `job`, `runner`, and `task` normalize to `worker`
+        - otherwise the first normalized token is preserved
       - `top_latest_dispatch_references`
-        - top `5` dispatch references
+        - top latest dispatch references
         - each item includes `dispatch_reference` and `count`
         - aggregated from each row's current `latest_dispatch_reference`
+        - remains available as the raw latest dispatch-string view alongside `by_dispatch_family`
+      - `recent_dead_letter_trend`
+        - rendered in JSON as `recent_dead_letter_trend`
+        - rendered in table output as `Recent dead-letter trend`
+        - includes `window`, `bucket`, `windowed_count`, and per-bucket counts
+    - summary controls
+      - `--top`
+      - `--trend-window`
+      - `--trend-bucket`
     - aggregates over the existing dead-letter backlog read model in the CLI layer
   - `lango status dead-letters`
     - `table` default
@@ -192,6 +221,7 @@ The slice is intentionally narrow:
     - `--adjudication`
     - `--latest-status-subtype`
     - `--latest-status-subtype-family`
+    - `--any-match-family`
     - `--manual-replay-actor`
     - `--dead-lettered-after`
     - `--dead-lettered-before`
@@ -208,9 +238,13 @@ The slice is intentionally narrow:
     - rejects before mutation with explicit retry-precheck wording when `can_retry = false`
     - default confirm prompt
     - `--yes` bypass
+    - always captures an immediate structured follow-up observation after request acceptance when detail reload succeeds
+    - `--wait` polls follow-up status until it changes or times out
+    - `--wait-interval` and `--wait-timeout` control the polling loop
     - reuses `retry_post_adjudication_execution`
     - success output reports retry-request acceptance, not completed execution
-    - `json` returns `transaction_receipt_id`, `result`, and `message`
+    - table output can show `Follow-up Polls`, `Wait Timed Out`, `Follow-up Error`, and a structured `Follow-up` block
+    - `json` returns `transaction_receipt_id`, `result`, `message`, `follow_up`, `follow_up_error`, `poll_count`, and `timed_out`
     - invocation failures surface separately from precheck rejection
 
 ## Current Limits
@@ -220,10 +254,7 @@ This slice does not yet include:
 - repair actions beyond retry
 - generic dead-letter browsing for all background tasks
 - full event history dump
-- richer detail-surface actor/time summaries
-- richer dead-letter CLI filters beyond latest subtype / latest family / actor-time / reason-dispatch
-- dead-letter CLI `any_match_family` filtering
-- polling / follow-up recovery UX
-- richer structured CLI retry-result payloads
-- grouped dispatch families, configurable actor-family taxonomy, and richer top-N / trend / time-window summary views
-- richer cockpit summary surfaces beyond latest reason families, actor families, top latest dead-letter reasons, actors, and dispatch references
+- configurable taxonomy redesign beyond the current reason/actor/dispatch heuristics
+- generic async retry policy redesign
+- replay substrate normalization beyond the current operator-facing retry surfaces
+- policy-driven defaults for follow-up execution and replay behavior

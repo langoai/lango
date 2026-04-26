@@ -183,15 +183,23 @@ func renderDeadLetterSummaryTable(summary deadLetterSummaryResult) string {
 	b.WriteString(renderSummaryBuckets(summary.ByActorFamily))
 
 	b.WriteString("\n")
-	b.WriteString(sectionHeader("Top Latest Dead-Letter Reasons"))
+	b.WriteString(sectionHeader("By dispatch family"))
+	b.WriteString(renderSummaryBuckets(summary.ByDispatchFamily))
+
+	b.WriteString("\n")
+	b.WriteString(sectionHeader("Recent dead-letter trend"))
+	b.WriteString(renderDeadLetterTrend(summary.RecentDeadLetterTrend))
+
+	b.WriteString("\n")
+	b.WriteString(sectionHeader(fmt.Sprintf("Top Latest Dead-Letter Reasons (Top %d)", summary.TopLimit)))
 	b.WriteString(renderReasonSummaryItems(summary.TopLatestDeadLetterReasons))
 
 	b.WriteString("\n")
-	b.WriteString(sectionHeader("Top Latest Manual Replay Actors"))
+	b.WriteString(sectionHeader(fmt.Sprintf("Top Latest Manual Replay Actors (Top %d)", summary.TopLimit)))
 	b.WriteString(renderActorSummaryItems(summary.TopLatestManualReplayActors))
 
 	b.WriteString("\n")
-	b.WriteString(sectionHeader("Top Latest Dispatch References"))
+	b.WriteString(sectionHeader(fmt.Sprintf("Top Latest Dispatch References (Top %d)", summary.TopLimit)))
 	b.WriteString(renderDispatchSummaryItems(summary.TopLatestDispatchReferences))
 	return b.String()
 }
@@ -253,6 +261,64 @@ func renderDispatchSummaryItems(items []deadLetterDispatchSummaryItem) string {
 	for _, item := range items {
 		b.WriteString(fmt.Sprintf("%-60s %-8d\n", tui.Truncate(item.DispatchReference, 60), item.Count))
 	}
+	return b.String()
+}
+
+func renderDeadLetterTrend(trend deadLetterTrendWindow) string {
+	if trend.Window == "" || trend.Bucket == "" {
+		return infoLine("none", "0")
+	}
+
+	var b strings.Builder
+	b.WriteString(infoLine("Window", trend.Window))
+	b.WriteString(infoLine("Bucket", trend.Bucket))
+	b.WriteString(infoLine("Windowed Count", fmt.Sprintf("%d", trend.WindowedCount)))
+	if len(trend.Buckets) == 0 {
+		return b.String()
+	}
+	for _, bucket := range trend.Buckets {
+		b.WriteString(fmt.Sprintf("    %-40s%d\n", tui.Truncate(bucket.Label, 40), bucket.Count))
+	}
+	return b.String()
+}
+
+func renderDeadLetterRetryResult(result deadLetterRetryResult) string {
+	var b strings.Builder
+	b.WriteString(result.Message)
+	b.WriteString("\n")
+
+	if result.PollCount > 0 {
+		b.WriteString(infoLine("Follow-up Polls", fmt.Sprintf("%d", result.PollCount)))
+	}
+	if result.TimedOut {
+		b.WriteString(infoLine("Wait Timed Out", "true"))
+	}
+	if result.FollowUpError != "" {
+		b.WriteString(infoLine("Follow-up Error", result.FollowUpError))
+	}
+	if result.FollowUp == nil {
+		return b.String()
+	}
+
+	b.WriteString("\n")
+	b.WriteString(sectionHeader("Follow-up"))
+	b.WriteString(infoLine("Observed At", fallbackText(result.FollowUp.ObservedAt)))
+	b.WriteString(infoLine("Dead-lettered", fmt.Sprintf("%t", result.FollowUp.IsDeadLettered)))
+	b.WriteString(infoLine("Retryable", fmt.Sprintf("%t", result.FollowUp.CanRetry)))
+	b.WriteString(infoLine("Latest Status", fallbackText(result.FollowUp.LatestStatusSubtype)))
+	b.WriteString(infoLine("Latest Family", fallbackText(result.FollowUp.LatestStatusSubtypeFamily)))
+	b.WriteString(infoLine("Latest Reason", fallbackText(result.FollowUp.LatestDeadLetterReason)))
+	b.WriteString(infoLine("Retry Attempt", fmt.Sprintf("%d", result.FollowUp.LatestRetryAttempt)))
+	b.WriteString(infoLine("Dispatch Ref", fallbackText(result.FollowUp.LatestDispatchReference)))
+	if result.FollowUp.BackgroundTask == nil {
+		b.WriteString(infoLine("Task ID", "n/a"))
+		return b.String()
+	}
+
+	b.WriteString(infoLine("Task ID", result.FollowUp.BackgroundTask.TaskID))
+	b.WriteString(infoLine("Task Status", result.FollowUp.BackgroundTask.Status))
+	b.WriteString(infoLine("Task Attempts", fmt.Sprintf("%d", result.FollowUp.BackgroundTask.AttemptCount)))
+	b.WriteString(infoLine("Next Retry", fallbackText(result.FollowUp.BackgroundTask.NextRetryAt)))
 	return b.String()
 }
 
