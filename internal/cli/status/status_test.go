@@ -16,25 +16,27 @@ import (
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/ctxkeys"
 	"github.com/langoai/lango/internal/postadjudicationstatus"
 	"github.com/langoai/lango/internal/receipts"
 	"github.com/langoai/lango/internal/toolcatalog"
 )
 
 type fakeDeadLetterBridge struct {
-	page         deadLetterListPage
-	detail       postadjudicationstatus.TransactionStatus
-	detailSeq    []postadjudicationstatus.TransactionStatus
-	listErr      error
-	detailErr    error
-	detailErrSeq []error
-	retryErr     error
-	listCalls    int
-	detailCalls  int
-	retryCalls   int
-	lastListOpts deadLetterListOptions
-	lastDetailID string
-	lastRetryID  string
+	page          deadLetterListPage
+	detail        postadjudicationstatus.TransactionStatus
+	detailSeq     []postadjudicationstatus.TransactionStatus
+	listErr       error
+	detailErr     error
+	detailErrSeq  []error
+	retryErr      error
+	listCalls     int
+	detailCalls   int
+	retryCalls    int
+	lastListOpts  deadLetterListOptions
+	lastDetailID  string
+	lastRetryID   string
+	lastPrincipal string
 }
 
 func (f *fakeDeadLetterBridge) List(_ context.Context, opts deadLetterListOptions) (deadLetterListPage, error) {
@@ -61,9 +63,10 @@ func (f *fakeDeadLetterBridge) Detail(_ context.Context, transactionReceiptID st
 	return f.detail, nil
 }
 
-func (f *fakeDeadLetterBridge) Retry(_ context.Context, transactionReceiptID string) error {
+func (f *fakeDeadLetterBridge) Retry(ctx context.Context, transactionReceiptID string) error {
 	f.retryCalls++
 	f.lastRetryID = transactionReceiptID
+	f.lastPrincipal = ctxkeys.PrincipalFromContext(ctx)
 	if f.retryErr != nil {
 		return f.retryErr
 	}

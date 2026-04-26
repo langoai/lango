@@ -270,7 +270,26 @@ func (m *Manager) execute(ctx context.Context, task *Task) {
 		RunID:       task.ID,
 	})
 	enrichedPrompt := automationPrefix + "Task: " + task.Prompt
-	result, err := m.runner.Run(ctx, sessionKey, enrichedPrompt)
+	result := ""
+	var err error
+	defer func() {
+		if r := recover(); r != nil {
+			stopTyping()
+			err = fmt.Errorf("panic while running background task: %v", r)
+			task.Fail(err.Error())
+			m.syncProjection(types.DetachContext(ctx), task)
+			m.logger.Errorw("task panicked", "taskID", task.ID, "panic", r)
+			m.mu.Lock()
+			m.evictTerminalTasksLocked()
+			m.mu.Unlock()
+			if m.notify != nil {
+				if notifyErr := m.notify.Notify(types.DetachContext(ctx), task); notifyErr != nil {
+					m.logger.Warnw("notification send error", "taskID", task.ID, "error", notifyErr)
+				}
+			}
+		}
+	}()
+	result, err = m.runner.Run(ctx, sessionKey, enrichedPrompt)
 	stopTyping()
 
 	// If the context was cancelled (user cancellation or timeout),

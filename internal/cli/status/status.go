@@ -19,6 +19,7 @@ import (
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/cli/tui"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/ctxkeys"
 	"github.com/langoai/lango/internal/postadjudicationstatus"
 	"github.com/langoai/lango/internal/toolcatalog"
 	"github.com/langoai/lango/internal/types"
@@ -1003,6 +1004,7 @@ func (b *toolCatalogDeadLetterBridge) Retry(ctx context.Context, transactionRece
 	if !ok || entry.Tool == nil || entry.Tool.Handler == nil {
 		return fmt.Errorf("dead-letter retry tool is not available")
 	}
+	ctx = ctxkeys.WithDefaultPrincipal(ctx, "system:cli")
 	_, err := entry.Tool.Handler(ctx, map[string]interface{}{
 		"transaction_receipt_id": strings.TrimSpace(transactionReceiptID),
 	})

@@ -1187,9 +1187,7 @@ func summarizeDeadLetters(items []postadjudicationstatus.DeadLetterBacklogEntry)
 		dispatchReference := strings.TrimSpace(item.LatestDispatchReference)
 		if dispatchReference != "" {
 			dispatchCounts[dispatchReference]++
-			if family := classifyDispatchFamily(dispatchReference); family != "" {
-				dispatchFamilyCounts[family]++
-			}
+			dispatchFamilyCounts[postadjudicationstatus.ClassifyDispatchReferenceFamily(dispatchReference)]++
 		}
 
 		deadLetteredAt := parseDeadLetterTimestamp(strings.TrimSpace(item.LatestDeadLetteredAt))
@@ -1323,29 +1321,6 @@ func summarizeDeadLetters(items []postadjudicationstatus.DeadLetterBacklogEntry)
 		summary.dispatchFamilies = families
 	}
 	return summary
-}
-
-func classifyDispatchFamily(reference string) string {
-	trimmed := strings.ToLower(strings.TrimSpace(reference))
-	if trimmed == "" {
-		return ""
-	}
-
-	parts := strings.FieldsFunc(trimmed, func(r rune) bool {
-		return r == ':' || r == '/' || r == '.' || unicode.IsSpace(r)
-	})
-	if len(parts) == 0 {
-		return ""
-	}
-
-	token := parts[0]
-	if idx := strings.IndexRune(token, '-'); idx > 0 {
-		prefix := token[:idx]
-		if prefix != "" {
-			token = prefix
-		}
-	}
-	return strings.TrimSpace(token)
 }
 
 func parseDeadLetterTimestamp(value string) time.Time {

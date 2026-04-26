@@ -191,6 +191,7 @@ Behavior:
 - prompts for confirmation by default
 - `--yes` skips the prompt
 - reuses the existing retry control path
+- injects a local default operator principal when the invocation context does not already carry one, so replay policy does not evaluate an empty actor
 - success output means the retry request was accepted on the retry path, not that settlement execution already completed
 - captures an immediate follow-up status snapshot after acceptance
 - `--wait` keeps polling follow-up status until the observed follow-up changes or the wait timeout expires

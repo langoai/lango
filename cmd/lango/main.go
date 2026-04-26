@@ -752,10 +752,7 @@ func runCockpit(initialMode string) error {
 			retryFn = deadLetterBridge.Retry
 		}
 		listFn := func(ctx context.Context, opts pages.DeadLetterListOptions) ([]postadjudicationstatus.DeadLetterBacklogEntry, error) {
-			return deadLetterBridge.List(ctx, cockpit.DeadLetterListOptions{
-				Query:        opts.Query,
-				Adjudication: opts.Adjudication,
-			})
+			return deadLetterBridge.List(ctx, cockpitDeadLetterListOptions(opts))
 		}
 		model.RegisterPage(cockpit.PageDeadLetters,
 			pages.NewDeadLettersPage(listFn, deadLetterBridge.Detail, retryFn))
@@ -798,6 +795,21 @@ func runCockpit(initialMode string) error {
 	}
 
 	return nil
+}
+
+func cockpitDeadLetterListOptions(opts pages.DeadLetterListOptions) cockpit.DeadLetterListOptions {
+	return cockpit.DeadLetterListOptions{
+		Query:                     opts.Query,
+		Adjudication:              opts.Adjudication,
+		LatestStatusSubtype:       opts.LatestStatusSubtype,
+		LatestStatusSubtypeFamily: opts.LatestStatusSubtypeFamily,
+		AnyMatchFamily:            opts.AnyMatchFamily,
+		ManualReplayActor:         opts.ManualReplayActor,
+		DeadLetteredAfter:         opts.DeadLetteredAfter,
+		DeadLetteredBefore:        opts.DeadLetteredBefore,
+		DeadLetterReasonQuery:     opts.DeadLetterReasonQuery,
+		LatestDispatchReference:   opts.LatestDispatchReference,
+	}
 }
 
 // bgTaskLister adapts background.Manager to pages.TaskLister.

@@ -25,6 +25,12 @@ func (m *mockRunner) Run(_ context.Context, _ string, _ string) (string, error) 
 	return m.result, m.err
 }
 
+type panicRunner struct{}
+
+func (panicRunner) Run(_ context.Context, _ string, _ string) (string, error) {
+	panic("runner exploded")
+}
+
 type sequenceRunner struct {
 	mu        sync.Mutex
 	responses []runnerResponse
@@ -609,5 +615,23 @@ func TestManagerShutdownHonorsContextDeadline(t *testing.T) {
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 
 	close(release)
+	require.NoError(t, mgr.Shutdown(context.Background()))
+}
+
+func TestManagerExecute_RecoversRunnerPanic(t *testing.T) {
+	t.Parallel()
+
+	mgr := NewManager(panicRunner{}, nil, 1, time.Minute, testLogger())
+	id, err := mgr.Submit(context.Background(), "panic task", Origin{})
+	require.NoError(t, err)
+
+	require.Eventually(t, func() bool {
+		snap, snapErr := mgr.Status(id)
+		if snapErr != nil {
+			return false
+		}
+		return snap.Status == Failed
+	}, time.Second, 10*time.Millisecond)
+
 	require.NoError(t, mgr.Shutdown(context.Background()))
 }

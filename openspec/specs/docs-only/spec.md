@@ -541,9 +541,12 @@ The `docs/architecture/dead-letter-browsing-status-observation.md` page SHALL de
 - **AND** they SHALL find CLI retry precheck behavior described
 - **AND** they SHALL find CLI retry success described as request acceptance rather than completed execution
 - **AND** they SHALL find CLI and cockpit retry failure wording described as distinct from precheck rejection
+- **AND** they SHALL find that CLI and cockpit retry inject a local default operator principal when the runtime context is otherwise empty
 - **AND** they SHALL find CLI `--any-match-family` filtering described
 - **AND** they SHALL find CLI retry follow-up polling and structured follow-up output described
 - **AND** they SHALL find cockpit retry follow-up interpretation described
+- **AND** they SHALL find that cockpit dead-letter filter fields are forwarded through the shell adapter into the dead-letter list tool
+- **AND** they SHALL find dispatch-family grouping described as shared between CLI and cockpit
 - **AND** they SHALL find detail navigation hints described for per-transaction status
 
 ### Requirement: P2P knowledge exchange track reflects landed dead-letter browsing / status observation

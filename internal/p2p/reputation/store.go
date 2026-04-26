@@ -4,6 +4,7 @@ package reputation
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/langoai/lango/internal/ent"
@@ -28,9 +29,10 @@ type PeerDetails struct {
 
 // Store persists and queries peer reputation data.
 type Store struct {
-	client *ent.Client
-	logger *zap.SugaredLogger
-	bus    *eventbus.Bus // Optional event bus for reputation change notifications.
+	client    *ent.Client
+	logger    *zap.SugaredLogger
+	bus       *eventbus.Bus // Optional event bus for reputation change notifications.
+	peerLocks sync.Map
 }
 
 // NewStore creates a reputation store backed by the given ent client.
@@ -134,6 +136,10 @@ func (s *Store) upsert(
 	peerDID string,
 	mutate func(successes, failures, timeouts int) (int, int, int),
 ) error {
+	lock := s.peerLock(peerDID)
+	lock.Lock()
+	defer lock.Unlock()
+
 	rep, err := s.client.PeerReputation.Query().
 		Where(peerreputation.PeerDid(peerDID)).
 		Only(ctx)
@@ -179,6 +185,11 @@ func (s *Store) upsert(
 	s.debugw("peer reputation updated", "peerDID", peerDID, "score", score)
 	s.publishReputationChanged(peerDID, score)
 	return nil
+}
+
+func (s *Store) peerLock(peerDID string) *sync.Mutex {
+	lock, _ := s.peerLocks.LoadOrStore(peerDID, &sync.Mutex{})
+	return lock.(*sync.Mutex)
 }
 
 func buildPeerDetails(rep *ent.PeerReputation) *PeerDetails {

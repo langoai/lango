@@ -104,6 +104,7 @@ The slice is intentionally narrow:
         - raw top latest manual replay actors remain visible alongside grouped actor-family buckets
       - grouped latest dispatch-reference families in a compact `dispatch families:` line
         - rendered from each row's current `latest_dispatch_reference`
+        - uses the same shared classifier as the CLI summary surface
         - currently recognizes `dispatch`, `queue`, `worker`, `bridge`, `webhook`, and `unknown`
         - aliases `job`, `runner`, and `task` normalize to `worker`
         - otherwise the first normalized token is preserved so unfamiliar prefixes still show up deterministically
@@ -128,6 +129,7 @@ The slice is intentionally narrow:
     - `dead_lettered_before`
     - `dead_letter_reason_query`
     - `latest_dispatch_reference`
+    - all filter fields are forwarded through the cockpit bridge into the dead-letter list tool
     - `Enter` apply
     - `Ctrl+R` full reset
     - selection is preserved when the current transaction remains in the refreshed result set
@@ -238,6 +240,7 @@ The slice is intentionally narrow:
     - rejects before mutation with explicit retry-precheck wording when `can_retry = false`
     - default confirm prompt
     - `--yes` bypass
+    - injects a local default operator principal when the runtime context does not already carry one
     - always captures an immediate structured follow-up observation after request acceptance when detail reload succeeds
     - `--wait` polls follow-up status until it changes or times out
     - `--wait-interval` and `--wait-timeout` control the polling loop

@@ -844,7 +844,7 @@ func TestDeadLettersPage_ViewIncludesSummaryStrip(t *testing.T) {
 	assert.Contains(t, view, "reason families: receipt-invalid(1), background-failed(3)")
 	assert.Contains(t, view, "actors: operator:alice(2), operator:bob(1), runtime:auto-retry(1)")
 	assert.Contains(t, view, "actor families: operator(3), system(1)")
-	assert.Contains(t, view, "dispatch families: queue(2), bridge(1), manual(1)")
+	assert.Contains(t, view, "dispatch families: queue(2), bridge.refund.1(1), manual(1)")
 	assert.Contains(t, view, "dispatch: bridge.refund.1(1), manual:operator:1(1), queue/email-1(1), queue/email-2(1)")
 	assert.Contains(t, view, "trend: 24h 1 vs prev24h 1 (+0), 7d 3 vs prev7d 0 (+3), older 0, undated 1")
 	assert.Less(t, strings.Index(view, "reasons:"), strings.Index(view, "reason families:"))
@@ -930,8 +930,9 @@ func TestSummarizeDeadLetters_DispatchFamiliesAndTrendWindows(t *testing.T) {
 	})
 
 	assert.Equal(t, []deadLetterDispatchFamilySummaryItem{
-		{family: "bridge", count: 2},
 		{family: "queue", count: 2},
+		{family: "bridge.refund.1", count: 1},
+		{family: "bridge.refund.2", count: 1},
 		{family: "manual", count: 1},
 	}, summary.dispatchFamilies)
 	assert.Equal(t, 1, summary.last24Hours)

@@ -2,6 +2,7 @@ package reputation_test
 
 import (
 	"context"
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -159,4 +160,17 @@ func TestStore_GetTrustEntry_TemporarySafetySignalsStayOutOfDurableReputation(t 
 	assert.False(t, entry.RequiresApproval)
 	assert.Equal(t, 0, entry.DurableNegativeUnits)
 	assert.Equal(t, 1, entry.TemporarySafetySignals)
+}
+
+func TestEvaluateTrustEntry_ClampsNaNBootstrapScore(t *testing.T) {
+	t.Parallel()
+
+	entry := reputation.EvaluateTrustEntry("did:lango:new-peer", nil, reputation.TrustEntryPolicy{
+		BootstrapTrustScore:       math.NaN(),
+		MinEarnedTrustScore:       0.5,
+		MaxTemporarySafetySignals: 1,
+	})
+
+	assert.False(t, math.IsNaN(entry.EffectiveTrustScore))
+	assert.InDelta(t, 0.0, entry.EffectiveTrustScore, 1e-9)
 }

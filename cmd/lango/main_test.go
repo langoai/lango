@@ -9,6 +9,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
+
+	"github.com/langoai/lango/internal/cli/cockpit"
+	"github.com/langoai/lango/internal/cli/cockpit/pages"
 )
 
 type fakeServeApp struct {
@@ -93,4 +96,34 @@ func TestWatchServeSignals_SecondSignalForcesExit(t *testing.T) {
 	}
 
 	close(release)
+}
+
+func TestCockpitDeadLetterListOptions_MapsAllFields(t *testing.T) {
+	t.Parallel()
+
+	got := cockpitDeadLetterListOptions(pages.DeadLetterListOptions{
+		Query:                     "tx-1",
+		Adjudication:              "release",
+		LatestStatusSubtype:       "dead-lettered",
+		LatestStatusSubtypeFamily: "dead-letter",
+		AnyMatchFamily:            "manual-retry",
+		ManualReplayActor:         "operator:alice",
+		DeadLetteredAfter:         "2026-04-27T10:00:00Z",
+		DeadLetteredBefore:        "2026-04-27T11:00:00Z",
+		DeadLetterReasonQuery:     "worker exhausted",
+		LatestDispatchReference:   "dispatch-7",
+	})
+
+	assert.Equal(t, cockpit.DeadLetterListOptions{
+		Query:                     "tx-1",
+		Adjudication:              "release",
+		LatestStatusSubtype:       "dead-lettered",
+		LatestStatusSubtypeFamily: "dead-letter",
+		AnyMatchFamily:            "manual-retry",
+		ManualReplayActor:         "operator:alice",
+		DeadLetteredAfter:         "2026-04-27T10:00:00Z",
+		DeadLetteredBefore:        "2026-04-27T11:00:00Z",
+		DeadLetterReasonQuery:     "worker exhausted",
+		LatestDispatchReference:   "dispatch-7",
+	}, got)
 }

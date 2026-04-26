@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/langoai/lango/internal/agent"
+	"github.com/langoai/lango/internal/ctxkeys"
 	"github.com/langoai/lango/internal/postadjudicationstatus"
 	"github.com/langoai/lango/internal/receipts"
 	"github.com/langoai/lango/internal/toolcatalog"
@@ -118,6 +119,7 @@ func TestDeadLetterToolBridge_Retry(t *testing.T) {
 	catalog.RegisterCategory(toolcatalog.Category{Name: "knowledge", Enabled: true})
 
 	called := false
+	principal := ""
 	catalog.Register("knowledge", []*agent.Tool{
 		{
 			Name: "list_dead_lettered_post_adjudication_executions",
@@ -133,8 +135,9 @@ func TestDeadLetterToolBridge_Retry(t *testing.T) {
 		},
 		{
 			Name: "retry_post_adjudication_execution",
-			Handler: func(_ context.Context, params map[string]interface{}) (interface{}, error) {
+			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
 				called = true
+				principal = ctxkeys.PrincipalFromContext(ctx)
 				require.Equal(t, "tx-7", params["transaction_receipt_id"])
 				return map[string]interface{}{"status": "queued"}, nil
 			},
@@ -145,6 +148,7 @@ func TestDeadLetterToolBridge_Retry(t *testing.T) {
 	require.True(t, bridge.CanRetry())
 	require.NoError(t, bridge.Retry(context.Background(), "tx-7"))
 	assert.True(t, called)
+	assert.NotEmpty(t, principal)
 }
 
 func TestDeadLetterToolBridge_ListOmitsAdjudicationWhenAll(t *testing.T) {

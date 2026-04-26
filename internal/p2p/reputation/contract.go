@@ -1,6 +1,9 @@
 package reputation
 
-import "context"
+import (
+	"context"
+	"math"
+)
 
 const (
 	// FailurePenaltyUnits is the durable penalty applied for a standard
@@ -217,6 +220,8 @@ func (s *Store) RecordOperationalIncident(ctx context.Context, peerDID string) e
 
 func clampScore(score float64) float64 {
 	switch {
+	case math.IsNaN(score):
+		return 0
 	case score < 0:
 		return 0
 	case score > 1:
