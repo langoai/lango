@@ -109,6 +109,7 @@ func TestHoldEscrowForDispute_DisputeReadyFundedPathReturnsCanonicalReceipt(t *t
 	assert.Equal(t, tx.TransactionReceiptID, payload.TransactionReceiptID)
 	assert.Equal(t, tx.CurrentSubmissionReceiptID, payload.SubmissionReceiptID)
 	assert.Equal(t, string(receipts.SettlementProgressionDisputeReady), payload.SettlementProgressionStatus)
+	assert.Equal(t, string(receipts.DisputeLifecycleHoldActive), payload.DisputeLifecycleStatus)
 	assert.Equal(t, "escrow-123", payload.EscrowReference)
 	assert.Equal(t, "hold-123", payload.RuntimeReference)
 	assert.Equal(t, disputehold.EscrowHoldRequest{

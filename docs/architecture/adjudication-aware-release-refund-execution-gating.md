@@ -1,6 +1,6 @@
 # Adjudication-Aware Release/Refund Execution Gating
 
-This page describes the first `adjudication-aware release/refund execution gating` slice for `knowledge exchange v1`.
+This page describes the current `adjudication-aware release/refund execution gating` slice for `knowledge exchange v1`.
 
 ## Purpose
 
@@ -12,6 +12,7 @@ The slice is intentionally narrow:
 - `refund_escrow_settlement` now requires `escrow_adjudication = refund`
 - adjudication success also moves settlement progression atomically
 - opposite-branch execution evidence blocks the executor
+- successful terminal execution clears the active dispute lifecycle marker
 - automatic post-adjudication execution is still out of scope
 
 ## What Ships
@@ -29,12 +30,13 @@ The slice is intentionally narrow:
   - `review-needed`
   - `escrow_adjudication = refund`
 - one-way branch safety against opposite-branch execution evidence
+- lifecycle cleanup when a release or refund branch completes successfully
 
 ## Current Limits
 
 This slice does not yet include:
 
-- automatic release or refund after adjudication
-- keep-hold or re-escalation states
+- config-backed default execution-mode policy
+- milestone-aware branch execution
 - broader dispute engine behavior
 - human adjudication UI

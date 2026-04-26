@@ -1,10 +1,10 @@
 # Retry / Dead-Letter Handling
 
-This page describes the first `retry / dead-letter handling` slice for background post-adjudication execution in `knowledge exchange v1`.
+This page describes the current `retry / dead-letter handling` slice for background post-adjudication execution in `knowledge exchange v1`.
 
 ## Purpose
 
-This slice normalizes bounded retry semantics for the background post-adjudication recovery path.
+This slice normalizes bounded retry semantics for the background post-adjudication recovery path and defines the canonical re-escalation behavior when retries exhaust.
 
 The slice is intentionally narrow:
 
@@ -13,7 +13,9 @@ The slice is intentionally narrow:
 - the automatic retry policy is normalized into a runtime policy unit
 - retries are bounded to `3` attempts with exponential backoff from a `25ms` base delay
 - exhausted retries become terminal dead-letter background failure
-- canonical adjudication remains unchanged
+- canonical adjudication remains recorded
+- exhausted retries re-enter settlement progression at `dispute-ready`
+- exhausted retries set `dispute_lifecycle_status = re-escalated`
 
 ## What Ships
 
@@ -36,6 +38,12 @@ The slice is intentionally narrow:
 - standardized evidence payloads:
   - retry scheduling records `attempt`, `next_retry_at`, `outcome`, and optional `dispatch_reference`
   - dead-lettering records `attempt`, `outcome`, `dead_lettered_at`, and the terminal failure reason
+- canonical dead-letter re-escalation:
+  - keeps `escrow_adjudication`
+  - sets `settlement_progression_status = dispute-ready`
+  - sets `settlement_progression_reason_code = escalate`
+  - sets `settlement_progression_reason = post-adjudication execution dead-lettered`
+  - sets `dispute_lifecycle_status = re-escalated`
 
 ## Current Limits
 

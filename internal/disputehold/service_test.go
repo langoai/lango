@@ -160,6 +160,7 @@ func TestServiceExecute_RecordsHoldEvidenceWhileKeepingStateUnchanged(t *testing
 	require.Equal(t, "tx-1", result.TransactionReceiptID)
 	require.Equal(t, "sub-1", result.SubmissionReceiptID)
 	require.Equal(t, receipts.SettlementProgressionDisputeReady, result.SettlementProgressionStatus)
+	require.Equal(t, receipts.DisputeLifecycleHoldActive, result.DisputeLifecycleStatus)
 	require.Equal(t, "escrow-123", result.EscrowReference)
 	require.Equal(t, "hold-123", result.RuntimeReference)
 	require.Equal(t, 1, runtime.calls)

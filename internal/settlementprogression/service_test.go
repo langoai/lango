@@ -177,6 +177,38 @@ func TestApplyReleaseOutcome_EscalateDefaultsReason(t *testing.T) {
 	require.Equal(t, "higher approval needed", result.Transaction.SettlementProgressionReason)
 }
 
+func TestApplyReleaseOutcome_EscalateFromReviewNeededMapsToDisputeReady(t *testing.T) {
+	store := receipts.NewStore()
+	svc := NewService(store)
+	ctx := context.Background()
+
+	tx := createSubmittedTransaction(t, store, ctx, "deal-release-escalate-reescalation")
+
+	_, err := svc.ApplyReleaseOutcome(ctx, ApplyReleaseOutcomeRequest{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		Outcome: ReleaseOutcome{
+			Decision: approvalflow.DecisionReject,
+			Reason:   "Artifact release blocked by policy.",
+		},
+	})
+	require.NoError(t, err)
+
+	result, err := svc.ApplyReleaseOutcome(ctx, ApplyReleaseOutcomeRequest{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		Outcome: ReleaseOutcome{
+			Decision: approvalflow.DecisionEscalate,
+			Reason:   "manual approval required",
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, receipts.SettlementProgressionDisputeReady, result.Outcome.ProgressionStatus)
+	require.Equal(t, receipts.SettlementProgressionReasonCodeEscalate, result.Outcome.ProgressionReasonCode)
+	require.Equal(t, "manual approval required", result.Outcome.ProgressionReason)
+	require.Equal(t, receipts.SettlementProgressionDisputeReady, result.Transaction.SettlementProgressionStatus)
+	require.Equal(t, receipts.SettlementProgressionReasonCodeEscalate, result.Transaction.SettlementProgressionReasonCode)
+	require.Equal(t, "manual approval required", result.Transaction.SettlementProgressionReason)
+}
+
 func TestApplyReleaseOutcome_RequestRevisionPreservesReason(t *testing.T) {
 	store := receipts.NewStore()
 	svc := NewService(store)

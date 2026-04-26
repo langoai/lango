@@ -88,6 +88,7 @@ func (s *Store) CreateSubmissionReceipt(_ context.Context, in CreateSubmissionIn
 	transaction.EscrowReference = ""
 	transaction.EscrowAdjudication = ""
 	transaction.EscrowExecutionInput = nil
+	transaction.DisputeLifecycleStatus = ""
 	s.transactions[txReceiptID] = transaction
 
 	return submission, cloneTransactionReceipt(transaction), nil
@@ -134,6 +135,7 @@ func (s *Store) OpenKnowledgeExchangeTransaction(_ context.Context, in OpenTrans
 		tx.SettlementProgressionReason = existing.SettlementProgressionReason
 		tx.PartialSettlementHint = existing.PartialSettlementHint
 		tx.DisputeReady = existing.DisputeReady
+		tx.DisputeLifecycleStatus = existing.DisputeLifecycleStatus
 		tx.CanonicalDecision = existing.CanonicalDecision
 		tx.CanonicalSettlementHint = existing.CanonicalSettlementHint
 		tx.EscrowExecutionStatus = existing.EscrowExecutionStatus
@@ -176,8 +178,9 @@ func (s *Store) ApplySettlementProgression(_ context.Context, transactionReceipt
 	tx.CanonicalSettlementStatus = canonicalSettlementStatusForProgression(next)
 	tx.SettlementProgressionReasonCode = reasonCode
 	tx.SettlementProgressionReason = reason
-	tx.PartialSettlementHint = partialHint
+	tx.PartialSettlementHint = nextPartialSettlementHint(tx.PartialSettlementHint, partialHint, next)
 	tx.DisputeReady = next == SettlementProgressionDisputeReady
+	tx.DisputeLifecycleStatus = nextDisputeLifecycleStatusForProgression(tx.DisputeLifecycleStatus, tx.SettlementProgressionStatus, next)
 	s.transactions[transactionReceiptID] = tx
 
 	s.events[submissionReceiptID] = append(s.events[submissionReceiptID], ReceiptEvent{
@@ -235,6 +238,7 @@ func (s *Store) markTransactionSettled(_ context.Context, req SettlementCloseout
 	transaction.SettlementProgressionReasonCode = SettlementProgressionReasonCodeApprove
 	transaction.SettlementProgressionReason = progressionReason
 	transaction.DisputeReady = false
+	transaction.DisputeLifecycleStatus = ""
 	s.transactions[req.TransactionReceiptID] = transaction
 
 	s.events[req.SubmissionReceiptID] = append(s.events[req.SubmissionReceiptID], ReceiptEvent{
@@ -281,6 +285,9 @@ func (s *Store) RecordEscrowRefundSuccess(_ context.Context, req EscrowRefundEvi
 		return fmt.Errorf("%w: settlement must remain review-needed before recording escrow refund success", ErrInvalidSettlementProgressionState)
 	}
 
+	transaction.DisputeLifecycleStatus = ""
+	s.transactions[req.TransactionReceiptID] = transaction
+
 	s.events[req.SubmissionReceiptID] = append(s.events[req.SubmissionReceiptID], ReceiptEvent{
 		SubmissionReceiptID: req.SubmissionReceiptID,
 		Source:              "escrow_refund",
@@ -324,6 +331,8 @@ func (s *Store) RecordEscrowDisputeHoldSuccess(_ context.Context, req EscrowDisp
 	if strings.TrimSpace(reason) == "" {
 		reason = req.EscrowReference
 	}
+	transaction.DisputeLifecycleStatus = DisputeLifecycleHoldActive
+	s.transactions[req.TransactionReceiptID] = transaction
 	s.events[req.SubmissionReceiptID] = append(s.events[req.SubmissionReceiptID], ReceiptEvent{
 		SubmissionReceiptID: req.SubmissionReceiptID,
 		Source:              "dispute_hold",
@@ -477,6 +486,7 @@ func (s *Store) ApplyEscrowAdjudication(_ context.Context, req EscrowAdjudicatio
 	transaction.SettlementProgressionReasonCode = reasonCode
 	transaction.SettlementProgressionReason = progressionReason
 	transaction.DisputeReady = next == SettlementProgressionDisputeReady
+	transaction.DisputeLifecycleStatus = activeDisputeLifecycleStatus(transaction.DisputeLifecycleStatus)
 	s.transactions[req.TransactionReceiptID] = transaction
 
 	reason := strings.TrimSpace(req.Reason)
@@ -595,6 +605,23 @@ func (s *Store) RecordPostAdjudicationDeadLetter(_ context.Context, req PostAdju
 	if transaction.EscrowAdjudication != req.Outcome {
 		return fmt.Errorf("%w: escrow adjudication does not match dead-letter outcome", ErrInvalidSettlementProgressionState)
 	}
+
+	transaction = reEscalateTransaction(transaction, "post-adjudication execution dead-lettered")
+	s.transactions[req.TransactionReceiptID] = transaction
+	s.events[submissionReceiptID] = append(s.events[submissionReceiptID], ReceiptEvent{
+		SubmissionReceiptID: submissionReceiptID,
+		Source:              "settlement_progression",
+		Subtype:             string(SettlementProgressionDisputeReady),
+		Reason:              transaction.SettlementProgressionReason,
+		Type:                EventSettlementUpdated,
+	})
+	s.events[submissionReceiptID] = append(s.events[submissionReceiptID], ReceiptEvent{
+		SubmissionReceiptID: submissionReceiptID,
+		Source:              "settlement_progression",
+		Subtype:             string(SettlementProgressionDisputeReady),
+		Reason:              transaction.SettlementProgressionReason,
+		Type:                EventDisputed,
+	})
 
 	s.events[submissionReceiptID] = append(s.events[submissionReceiptID], ReceiptEvent{
 		SubmissionReceiptID: submissionReceiptID,
@@ -1205,7 +1232,7 @@ func validateSettlementProgressionTransition(current, next SettlementProgression
 			return nil
 		}
 	case SettlementProgressionApprovedForSettlement:
-		if next == SettlementProgressionInProgress || next == SettlementProgressionSettled || next == SettlementProgressionPartiallySettled {
+		if next == SettlementProgressionInProgress || next == SettlementProgressionSettled || next == SettlementProgressionPartiallySettled || next == SettlementProgressionDisputeReady {
 			return nil
 		}
 	case SettlementProgressionReviewNeeded:
@@ -1221,7 +1248,7 @@ func validateSettlementProgressionTransition(current, next SettlementProgression
 			return nil
 		}
 	case SettlementProgressionDisputeReady:
-		if next == SettlementProgressionApprovedForSettlement || next == SettlementProgressionReviewNeeded {
+		if next == SettlementProgressionApprovedForSettlement || next == SettlementProgressionReviewNeeded || next == SettlementProgressionDisputeReady {
 			return nil
 		}
 	}
@@ -1266,6 +1293,53 @@ func canonicalSettlementStatusForProgression(progress SettlementProgressionStatu
 	default:
 		return SettlementPending
 	}
+}
+
+func activeDisputeLifecycleStatus(current DisputeLifecycleStatus) DisputeLifecycleStatus {
+	if current == DisputeLifecycleReEscalated {
+		return current
+	}
+	return DisputeLifecycleHoldActive
+}
+
+func nextDisputeLifecycleStatusForProgression(current DisputeLifecycleStatus, previous, next SettlementProgressionStatus) DisputeLifecycleStatus {
+	if next != SettlementProgressionDisputeReady {
+		if next == SettlementProgressionSettled {
+			return ""
+		}
+		return current
+	}
+	if current == DisputeLifecycleHoldActive || current == DisputeLifecycleReEscalated {
+		return DisputeLifecycleReEscalated
+	}
+	if previous == SettlementProgressionApprovedForSettlement || previous == SettlementProgressionPartiallySettled {
+		return DisputeLifecycleReEscalated
+	}
+	return current
+}
+
+func nextPartialSettlementHint(current, next string, progression SettlementProgressionStatus) string {
+	trimmed := strings.TrimSpace(next)
+	if trimmed != "" {
+		return trimmed
+	}
+	if current == "" {
+		return ""
+	}
+	if progression == SettlementProgressionSettled {
+		return ""
+	}
+	return current
+}
+
+func reEscalateTransaction(transaction TransactionReceipt, reason string) TransactionReceipt {
+	transaction.SettlementProgressionStatus = SettlementProgressionDisputeReady
+	transaction.CanonicalSettlementStatus = SettlementDisputed
+	transaction.SettlementProgressionReasonCode = SettlementProgressionReasonCodeEscalate
+	transaction.SettlementProgressionReason = reason
+	transaction.DisputeReady = true
+	transaction.DisputeLifecycleStatus = DisputeLifecycleReEscalated
+	return transaction
 }
 
 func validateCanonicalOpenInputConflict(existing TransactionReceipt, in OpenTransactionInput) error {

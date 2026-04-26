@@ -54,6 +54,7 @@ type Result struct {
 	TransactionReceiptID        string                               `json:"transaction_receipt_id,omitempty"`
 	SubmissionReceiptID         string                               `json:"submission_receipt_id,omitempty"`
 	SettlementProgressionStatus receipts.SettlementProgressionStatus `json:"settlement_progression_status,omitempty"`
+	DisputeLifecycleStatus      receipts.DisputeLifecycleStatus      `json:"dispute_lifecycle_status,omitempty"`
 	EscrowReference             string                               `json:"escrow_reference,omitempty"`
 	Outcome                     Outcome                              `json:"outcome,omitempty"`
 	Failure                     *Failure                             `json:"failure,omitempty"`

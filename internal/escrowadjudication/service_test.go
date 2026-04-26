@@ -196,6 +196,7 @@ func TestServiceAdjudicate_AppliesReleaseDecision(t *testing.T) {
 			CurrentSubmissionReceiptID:  "sub-1",
 			EscrowExecutionStatus:       receipts.EscrowExecutionStatusFunded,
 			SettlementProgressionStatus: receipts.SettlementProgressionApprovedForSettlement,
+			DisputeLifecycleStatus:      receipts.DisputeLifecycleHoldActive,
 			EscrowReference:             "escrow-123",
 			EscrowAdjudication:          receipts.EscrowAdjudicationRelease,
 		},
@@ -213,6 +214,7 @@ func TestServiceAdjudicate_AppliesReleaseDecision(t *testing.T) {
 	require.Equal(t, "tx-1", result.TransactionReceiptID)
 	require.Equal(t, "sub-1", result.SubmissionReceiptID)
 	require.Equal(t, receipts.SettlementProgressionApprovedForSettlement, result.SettlementProgressionStatus)
+	require.Equal(t, receipts.DisputeLifecycleHoldActive, result.DisputeLifecycleStatus)
 	require.Equal(t, "escrow-123", result.EscrowReference)
 	require.Equal(t, OutcomeRelease, result.Outcome)
 	require.Equal(t, 1, store.applyCalls)

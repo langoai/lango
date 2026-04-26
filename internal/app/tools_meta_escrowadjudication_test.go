@@ -161,6 +161,7 @@ func TestAdjudicateEscrowDispute_BackgroundExecuteReturnsDispatchReceipt(t *test
 			payload, ok := got.(adjudicateEscrowDisputeReceipt)
 			require.True(t, ok)
 			assert.Equal(t, tt.outcome, payload.Outcome)
+			assert.Equal(t, string(receipts.DisputeLifecycleHoldActive), payload.DisputeLifecycleStatus)
 			require.NotNil(t, payload.BackgroundDispatchReceipt)
 			assert.Nil(t, payload.Execution)
 			assert.Equal(t, "queued", payload.BackgroundDispatchReceipt.Status)
@@ -259,6 +260,7 @@ func TestAdjudicateEscrowDispute_DefaultsToManualRecoveryWhenExecutionFlagsAreAb
 	assert.Equal(t, tx.TransactionReceiptID, payload.TransactionReceiptID)
 	assert.Equal(t, tx.CurrentSubmissionReceiptID, payload.SubmissionReceiptID)
 	assert.Equal(t, "release", payload.Outcome)
+	assert.Equal(t, string(receipts.DisputeLifecycleHoldActive), payload.DisputeLifecycleStatus)
 	assert.Nil(t, payload.Execution)
 	assert.Nil(t, payload.BackgroundDispatchReceipt)
 

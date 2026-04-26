@@ -222,20 +222,24 @@ The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL reference `kn
 - **THEN** they SHALL find the runtime design slice referenced by name and linked to `knowledge-exchange-runtime.md`
 - **AND** the follow-on work SHALL be described as implementation, not redesign of the landed slice
 
-### Requirement: Settlement progression architecture page describes the first progression slice
-The `docs/architecture/settlement-progression.md` page SHALL describe the first transaction-level settlement progression slice for `knowledge exchange v1`, including what currently ships and the current limits of the slice.
+### Requirement: Settlement progression architecture page describes the current progression slice
+The `docs/architecture/settlement-progression.md` page SHALL describe the current transaction-level settlement progression slice for `knowledge exchange v1`, including what currently ships and the current limits of the slice.
 
 #### Scenario: Settlement progression page shows the bounded slice
 - **WHEN** a user reads `docs/architecture/settlement-progression.md`
 - **THEN** they SHALL find sections describing the current progression slice, what ships, canonical state, and current limits
+- **AND** they SHALL find `dispute-ready` described as a public canonical path for renewed disagreement
+- **AND** they SHALL find re-escalation from `partially-settled` described as preserving the canonical `partial_settlement_hint`
+- **AND** they SHALL find `apply_settlement_progression` described as returning `dispute_lifecycle_status`
 
 ### Requirement: P2P knowledge exchange track reflects landed settlement progression
-The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the settlement progression first slice as landed work and list the remaining work as actual settlement execution, partial-settlement rules, and dispute engine completion.
+The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the current settlement progression slice as landed work and list the remaining work as repeated partial execution, broader multi-round settlement orchestration, and operator/policy surfaces.
 
 #### Scenario: Track page points to the landed settlement progression slice
 - **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
 - **THEN** they SHALL find settlement progression described as a landed first slice
-- **AND** the remaining work SHALL be described as actual settlement execution, partial-settlement rules, and dispute engine completion
+- **AND** they SHALL find explicit `dispute-ready` re-entry described as landed work
+- **AND** the remaining work SHALL be described as repeated partial execution, broader multi-round settlement orchestration, and operator/policy surfaces
 
 ### Requirement: Actual settlement execution page describes the first direct execution slice
 The `docs/architecture/actual-settlement-execution.md` page SHALL describe the first direct settlement execution slice for `knowledge exchange v1`, including what currently ships and the current limits of the slice.
@@ -273,14 +277,18 @@ The `docs/architecture/escrow-release.md` page SHALL describe the first escrow r
 #### Scenario: Escrow release page shows the bounded slice
 - **WHEN** a user reads `docs/architecture/escrow-release.md`
 - **THEN** they SHALL find sections describing the current escrow release slice, what currently ships, and current limits
+- **AND** they SHALL find matching `escrow_adjudication = release` described as part of the gate
+- **AND** they SHALL find opposite-branch refund evidence described as blocking execution
+- **AND** they SHALL find dispute lifecycle cleanup on successful release described
 
 ### Requirement: P2P knowledge exchange track reflects landed escrow release
-The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the escrow release first slice as landed work and list the remaining work as refund, dispute-linked escrow handling, and milestone-aware release.
+The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the escrow release first slice as landed work and list the remaining work as milestone-aware release, broader execution policy defaults, and richer operator policy surfaces.
 
 #### Scenario: Track page points to the landed escrow release slice
 - **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
 - **THEN** they SHALL find escrow release described as a landed first slice
-- **AND** the remaining work SHALL be described as refund, dispute-linked escrow handling, and milestone-aware release
+- **AND** they SHALL find adjudication-aware release gating described as landed work
+- **AND** the remaining work SHALL be described as milestone-aware release, broader execution policy defaults, and richer operator policy surfaces
 
 ### Requirement: Escrow refund page describes the first funded refund slice
 The `docs/architecture/escrow-refund.md` page SHALL describe the first escrow refund slice for `knowledge exchange v1`, including what currently ships and the current limits of the slice.
@@ -288,14 +296,18 @@ The `docs/architecture/escrow-refund.md` page SHALL describe the first escrow re
 #### Scenario: Escrow refund page shows the bounded slice
 - **WHEN** a user reads `docs/architecture/escrow-refund.md`
 - **THEN** they SHALL find sections describing the current escrow refund slice, what currently ships, and current limits
+- **AND** they SHALL find matching `escrow_adjudication = refund` described as part of the gate
+- **AND** they SHALL find opposite-branch release evidence described as blocking execution
+- **AND** they SHALL find dispute lifecycle cleanup on successful refund described
 
 ### Requirement: P2P knowledge exchange track reflects landed escrow refund
-The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the escrow refund first slice as landed work and list the remaining work as refund terminal-state design, dispute-linked refund branching, and release-after-refund safety rules.
+The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the escrow refund first slice as landed work and list the remaining work as refund terminal-state design, release-after-refund safety rules, and richer operator policy surfaces.
 
 #### Scenario: Track page points to the landed escrow refund slice
 - **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
 - **THEN** they SHALL find escrow refund described as a landed first slice
-- **AND** the remaining work SHALL be described as refund terminal-state design, dispute-linked refund branching, and release-after-refund safety rules
+- **AND** they SHALL find adjudication-aware refund gating described as landed work
+- **AND** the remaining work SHALL be described as refund terminal-state design, release-after-refund safety rules, and richer operator policy surfaces
 
 ### Requirement: Dispute hold page describes the first funded dispute hold slice
 The `docs/architecture/dispute-hold.md` page SHALL describe the first dispute hold slice for `knowledge exchange v1`, including what currently ships and the current limits of the slice.
@@ -303,14 +315,17 @@ The `docs/architecture/dispute-hold.md` page SHALL describe the first dispute ho
 #### Scenario: Dispute hold page shows the bounded slice
 - **WHEN** a user reads `docs/architecture/dispute-hold.md`
 - **THEN** they SHALL find sections describing the current dispute hold slice, what currently ships, and current limits
+- **AND** they SHALL find canonical `dispute_lifecycle_status = hold-active` described as a hold success outcome
+- **AND** they SHALL find `hold_escrow_for_dispute` described as returning `dispute_lifecycle_status`
 
 ### Requirement: P2P knowledge exchange track reflects landed dispute hold
-The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the dispute hold first slice as landed work and list the remaining work as release-vs-refund adjudication, explicit held-state design, and dispute engine integration.
+The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the dispute hold first slice as landed work and list the remaining work as richer arbitration policy, a separate held-escrow lifecycle only if needed, and operator UI.
 
 #### Scenario: Track page points to the landed dispute hold slice
 - **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
 - **THEN** they SHALL find dispute hold described as a landed first slice
-- **AND** the remaining work SHALL be described as release-vs-refund adjudication, explicit held-state design, and dispute engine integration
+- **AND** they SHALL find canonical `hold-active` lifecycle state described as landed work
+- **AND** the remaining work SHALL be described as richer arbitration policy, a separate held-escrow lifecycle only if needed, and operator UI
 
 ### Requirement: Release-vs-refund adjudication page describes the first post-hold branching slice
 The `docs/architecture/release-vs-refund-adjudication.md` page SHALL describe the first post-hold release-vs-refund adjudication slice for `knowledge exchange v1`, including what currently ships and the current limits of the slice.
@@ -318,14 +333,18 @@ The `docs/architecture/release-vs-refund-adjudication.md` page SHALL describe th
 #### Scenario: Adjudication page shows the bounded slice
 - **WHEN** a user reads `docs/architecture/release-vs-refund-adjudication.md`
 - **THEN** they SHALL find sections describing the current adjudication slice, what currently ships, and current limits
+- **AND** they SHALL find atomic settlement progression updates described for `release` and `refund`
+- **AND** they SHALL find the active dispute lifecycle marker described as preserved through canonical adjudication
+- **AND** they SHALL find `adjudicate_escrow_dispute` described as returning `dispute_lifecycle_status`
 
 ### Requirement: P2P knowledge exchange track reflects landed release-vs-refund adjudication
-The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the release-vs-refund adjudication first slice as landed work and list the remaining work as adjudication-aware release/refund execution, keep-hold or re-escalation states, and broader dispute engine integration.
+The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the release-vs-refund adjudication first slice as landed work and list the remaining work as config-backed non-manual defaults, richer arbitration policy, and operator UI.
 
 #### Scenario: Track page points to the landed adjudication slice
 - **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
 - **THEN** they SHALL find release-vs-refund adjudication described as a landed first slice
-- **AND** the remaining work SHALL be described as adjudication-aware release/refund execution, keep-hold or re-escalation states, and broader dispute engine integration
+- **AND** they SHALL find manual-recovery-by-default canonical adjudication described as landed work
+- **AND** the remaining work SHALL be described as config-backed non-manual defaults, richer arbitration policy, and operator UI
 
 ### Requirement: Adjudication-aware release/refund execution gating page describes the first executor-contract slice
 The `docs/architecture/adjudication-aware-release-refund-execution-gating.md` page SHALL describe the first slice that connects canonical escrow adjudication to release/refund execution gating, including what currently ships and the current limits of the slice.
@@ -333,14 +352,16 @@ The `docs/architecture/adjudication-aware-release-refund-execution-gating.md` pa
 #### Scenario: Adjudication-aware execution gating page shows the bounded slice
 - **WHEN** a user reads `docs/architecture/adjudication-aware-release-refund-execution-gating.md`
 - **THEN** they SHALL find sections describing the current execution-gating slice, what currently ships, and current limits
+- **AND** they SHALL find dispute lifecycle cleanup on successful release or refund described
 
 ### Requirement: P2P knowledge exchange track reflects landed adjudication-aware release/refund execution gating
-The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the adjudication-aware release/refund execution gating first slice as landed work and list the remaining work as automatic post-adjudication execution, keep-hold or re-escalation states, and broader dispute engine integration.
+The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the adjudication-aware release/refund execution gating first slice as landed work and list the remaining work as milestone-aware branch execution, broader dispute automation, and operator/policy surfaces.
 
 #### Scenario: Track page points to the landed adjudication-aware gating slice
 - **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
 - **THEN** they SHALL find adjudication-aware release/refund execution gating described as a landed first slice
-- **AND** the remaining work SHALL be described as automatic post-adjudication execution, keep-hold or re-escalation states, and broader dispute engine integration
+- **AND** they SHALL find terminal lifecycle cleanup described as landed work
+- **AND** the remaining work SHALL be described as milestone-aware branch execution, broader dispute automation, and operator/policy surfaces
 
 ### Requirement: Automatic post-adjudication execution page describes the first inline orchestration slice
 The `docs/architecture/automatic-post-adjudication-execution.md` page SHALL describe the first inline convenience slice after escrow adjudication, including what currently ships and the current limits of the slice.
@@ -384,6 +405,8 @@ The `docs/architecture/retry-dead-letter-handling.md` page SHALL describe the fi
 - **THEN** they SHALL find sections describing the current retry/dead-letter slice, what currently ships, and current limits
 - **AND** they SHALL find the normalized retry policy shape described with retry-attempt and base-delay fields
 - **AND** they SHALL find the shared `post_adjudication_retry` evidence source described for retry and dead-letter events
+- **AND** they SHALL find canonical re-escalation on exhausted retries described as preserving adjudication while setting `settlement_progression_status = dispute-ready`
+- **AND** they SHALL find `dispute_lifecycle_status = re-escalated` described for exhausted retries
 
 ### Requirement: P2P knowledge exchange track reflects landed retry / dead-letter handling
 The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the retry / dead-letter handling first slice as landed work and list the remaining work as operator-editable retry tuning, wider non-post-adjudication adoption of the retry policy shape, and a more generic recovery substrate for arbitrary background task families.
@@ -391,6 +414,7 @@ The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the 
 #### Scenario: Track page points to the landed retry slice
 - **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
 - **THEN** they SHALL find retry / dead-letter handling described as a landed first slice
+- **AND** they SHALL find canonical re-escalation after exhausted retries described as landed work
 - **AND** the remaining work SHALL be described as operator replay, generic async retry policy, dead-letter browsing, and policy-driven backoff tuning
 
 ### Requirement: Operator replay / manual retry page describes the first replay slice

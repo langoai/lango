@@ -98,6 +98,13 @@ const (
 	SettlementProgressionReasonCodeEscalate        SettlementProgressionReasonCode = "escalate"
 )
 
+type DisputeLifecycleStatus string
+
+const (
+	DisputeLifecycleHoldActive  DisputeLifecycleStatus = "hold-active"
+	DisputeLifecycleReEscalated DisputeLifecycleStatus = "re-escalated"
+)
+
 type EventType string
 
 const (
@@ -171,6 +178,7 @@ type TransactionReceipt struct {
 	SettlementProgressionReason     string                          `json:"settlement_progression_reason,omitempty"`
 	PartialSettlementHint           string                          `json:"partial_settlement_hint,omitempty"`
 	DisputeReady                    bool                            `json:"dispute_ready,omitempty"`
+	DisputeLifecycleStatus          DisputeLifecycleStatus          `json:"dispute_lifecycle_status,omitempty"`
 	CurrentSubmissionReceiptID      string                          `json:"current_submission_receipt_id,omitempty"`
 	CanonicalApprovalStatus         ApprovalStatus                  `json:"canonical_approval_status"`
 	CanonicalSettlementStatus       SettlementStatus                `json:"canonical_settlement_status"`

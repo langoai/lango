@@ -938,7 +938,67 @@ func TestApplyEscrowAdjudication_SetsDecisionWithoutMutatingState(t *testing.T) 
 	require.Equal(t, EscrowExecutionStatusFunded, updated.EscrowExecutionStatus)
 	require.Equal(t, SettlementProgressionApprovedForSettlement, updated.SettlementProgressionStatus)
 	require.Equal(t, EscrowAdjudicationRelease, updated.EscrowAdjudication)
+	require.Equal(t, DisputeLifecycleHoldActive, updated.DisputeLifecycleStatus)
 	require.False(t, updated.DisputeReady)
+}
+
+func TestRecordPostAdjudicationDeadLetter_ReEscalatesCanonicalState(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	submission, tx := createSubmittedTransaction(t, store, ctx, "deal-post-adjudication-reescalation")
+	_, err := store.BindEscrowExecutionInput(ctx, tx.TransactionReceiptID, submission.SubmissionReceiptID, EscrowExecutionInput{
+		BuyerDID:  "did:lango:buyer",
+		SellerDID: "did:lango:seller",
+		Amount:    "0.50",
+		Reason:    "re-escalation test",
+		Milestones: []EscrowMilestoneInput{
+			{Description: "deliverable", Amount: "0.50"},
+		},
+	})
+	require.NoError(t, err)
+	_, err = store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, submission.SubmissionReceiptID, EscrowExecutionStatusPending, "", EventEscrowExecutionStarted, "")
+	require.NoError(t, err)
+	_, err = store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, submission.SubmissionReceiptID, EscrowExecutionStatusCreated, "", EventEscrowExecutionCreated, "")
+	require.NoError(t, err)
+	_, err = store.ApplyEscrowExecutionProgress(ctx, tx.TransactionReceiptID, submission.SubmissionReceiptID, EscrowExecutionStatusFunded, "escrow-123", EventEscrowExecutionFunded, "")
+	require.NoError(t, err)
+	_, err = store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, SettlementProgressionReviewNeeded, SettlementProgressionReasonCodeReject, "review needed", "")
+	require.NoError(t, err)
+	_, err = store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, SettlementProgressionDisputeReady, SettlementProgressionReasonCodeEscalate, "dispute ready", "")
+	require.NoError(t, err)
+	err = store.RecordEscrowDisputeHoldSuccess(ctx, EscrowDisputeHoldEvidenceRequest{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		SubmissionReceiptID:  submission.SubmissionReceiptID,
+		EscrowReference:      "escrow-123",
+		RuntimeReference:     "hold-123",
+	})
+	require.NoError(t, err)
+	_, err = store.ApplyEscrowAdjudication(ctx, EscrowAdjudicationRequest{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		SubmissionReceiptID:  submission.SubmissionReceiptID,
+		EscrowReference:      "escrow-123",
+		Outcome:              EscrowAdjudicationRelease,
+		Reason:               "release adjudicated",
+	})
+	require.NoError(t, err)
+
+	err = store.RecordPostAdjudicationDeadLetter(ctx, PostAdjudicationDeadLetterRequest{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		Outcome:              EscrowAdjudicationRelease,
+		AttemptCount:         3,
+		Reason:               "executor timed out repeatedly",
+	})
+	require.NoError(t, err)
+
+	updated, err := store.GetTransactionReceipt(ctx, tx.TransactionReceiptID)
+	require.NoError(t, err)
+	require.Equal(t, SettlementProgressionDisputeReady, updated.SettlementProgressionStatus)
+	require.Equal(t, SettlementDisputed, updated.CanonicalSettlementStatus)
+	require.Equal(t, SettlementProgressionReasonCodeEscalate, updated.SettlementProgressionReasonCode)
+	require.Equal(t, "post-adjudication execution dead-lettered", updated.SettlementProgressionReason)
+	require.True(t, updated.DisputeReady)
+	require.Equal(t, DisputeLifecycleReEscalated, updated.DisputeLifecycleStatus)
 }
 
 func TestApplyEscrowAdjudication_AppendsDecisionTrail(t *testing.T) {
@@ -1144,7 +1204,7 @@ func TestRecordPostAdjudicationRetryScheduled_AppendsEvidenceWithoutMutatingStat
 	require.Equal(t, EventSettlementUpdated, last.Type)
 }
 
-func TestRecordPostAdjudicationDeadLetter_AppendsTerminalFailureWithoutMutatingState(t *testing.T) {
+func TestRecordPostAdjudicationDeadLetter_AppendsTerminalFailureAndReEscalatesState(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
 
@@ -1196,7 +1256,10 @@ func TestRecordPostAdjudicationDeadLetter_AppendsTerminalFailureWithoutMutatingS
 	updated, err := store.GetTransactionReceipt(ctx, tx.TransactionReceiptID)
 	require.NoError(t, err)
 	require.Equal(t, EscrowAdjudicationRefund, updated.EscrowAdjudication)
-	require.Equal(t, SettlementProgressionReviewNeeded, updated.SettlementProgressionStatus)
+	require.Equal(t, SettlementProgressionDisputeReady, updated.SettlementProgressionStatus)
+	require.Equal(t, SettlementDisputed, updated.CanonicalSettlementStatus)
+	require.Equal(t, DisputeLifecycleReEscalated, updated.DisputeLifecycleStatus)
+	require.True(t, updated.DisputeReady)
 
 	_, events, err := store.GetSubmissionReceipt(ctx, submission.SubmissionReceiptID)
 	require.NoError(t, err)
@@ -1206,7 +1269,7 @@ func TestRecordPostAdjudicationDeadLetter_AppendsTerminalFailureWithoutMutatingS
 	require.Equal(t, EventSettlementExecutionFailed, last.Type)
 }
 
-func TestRecordManualRetryRequested_AppendsEvidenceWithoutMutatingState(t *testing.T) {
+func TestRecordManualRetryRequested_AppendsEvidenceWithoutDroppingReEscalatedState(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
 
@@ -1263,7 +1326,10 @@ func TestRecordManualRetryRequested_AppendsEvidenceWithoutMutatingState(t *testi
 	updated, err := store.GetTransactionReceipt(ctx, tx.TransactionReceiptID)
 	require.NoError(t, err)
 	require.Equal(t, EscrowAdjudicationRefund, updated.EscrowAdjudication)
-	require.Equal(t, SettlementProgressionReviewNeeded, updated.SettlementProgressionStatus)
+	require.Equal(t, SettlementProgressionDisputeReady, updated.SettlementProgressionStatus)
+	require.Equal(t, SettlementDisputed, updated.CanonicalSettlementStatus)
+	require.Equal(t, DisputeLifecycleReEscalated, updated.DisputeLifecycleStatus)
+	require.True(t, updated.DisputeReady)
 
 	_, events, err := store.GetSubmissionReceipt(ctx, submission.SubmissionReceiptID)
 	require.NoError(t, err)
@@ -1319,6 +1385,31 @@ func TestMarkPartialSettlementSettled_ClosesApprovedProgressionToPartiallySettle
 	require.NoError(t, err)
 	require.Equal(t, SettlementProgressionPartiallySettled, updated.SettlementProgressionStatus)
 	require.Equal(t, SettlementPartiallySettled, updated.CanonicalSettlementStatus)
+}
+
+func TestApplySettlementProgression_ReEscalationFromPartiallySettledPreservesPartialHint(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	submission, tx := createSubmittedTransaction(t, store, ctx, "deal-partial-settlement-reescalation")
+
+	_, err := store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, SettlementProgressionApprovedForSettlement, SettlementProgressionReasonCodeApprove, "approved", "")
+	require.NoError(t, err)
+	_, err = store.MarkPartialSettlementSettled(ctx, PartialSettlementCloseoutRequest{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		SubmissionReceiptID:  submission.SubmissionReceiptID,
+		ExecutedAmount:       "0.40",
+		RemainingAmount:      "0.60",
+		RuntimeReference:     "partial-123",
+	})
+	require.NoError(t, err)
+
+	updated, err := store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, SettlementProgressionDisputeReady, SettlementProgressionReasonCodeEscalate, "renewed disagreement", "")
+	require.NoError(t, err)
+	require.Equal(t, SettlementProgressionDisputeReady, updated.SettlementProgressionStatus)
+	require.Equal(t, SettlementDisputed, updated.CanonicalSettlementStatus)
+	require.Equal(t, "settle:0.60-usdc", updated.PartialSettlementHint)
+	require.True(t, updated.DisputeReady)
 }
 
 func TestMarkPartialSettlementSettled_CanonicalizesRemainingHint(t *testing.T) {

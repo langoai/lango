@@ -10,6 +10,7 @@ import (
 )
 
 type receiptStore interface {
+	GetTransactionReceipt(context.Context, string) (receipts.TransactionReceipt, error)
 	ApplySettlementProgression(context.Context, string, receipts.SettlementProgressionStatus, receipts.SettlementProgressionReasonCode, string, string) (receipts.TransactionReceipt, error)
 }
 
@@ -30,7 +31,12 @@ func (s *Service) ApplyReleaseOutcome(ctx context.Context, req ApplyReleaseOutco
 		return ApplyReleaseOutcomeResult{}, fmt.Errorf("%w: receipt store is required", ErrInvalidApplyReleaseOutcomeRequest)
 	}
 
-	mapped, err := mapReleaseOutcome(req.Outcome)
+	current, err := s.store.GetTransactionReceipt(ctx, transactionReceiptID)
+	if err != nil {
+		return ApplyReleaseOutcomeResult{}, err
+	}
+
+	mapped, err := mapReleaseOutcome(req.Outcome, current.SettlementProgressionStatus)
 	if err != nil {
 		return ApplyReleaseOutcomeResult{}, err
 	}
@@ -54,7 +60,10 @@ func (s *Service) ApplyReleaseOutcome(ctx context.Context, req ApplyReleaseOutco
 	}, nil
 }
 
-func mapReleaseOutcome(outcome ReleaseOutcome) (SettlementOutcome, error) {
+func mapReleaseOutcome(
+	outcome ReleaseOutcome,
+	current receipts.SettlementProgressionStatus,
+) (SettlementOutcome, error) {
 	switch outcome.Decision {
 	case approvalflow.DecisionApprove:
 		return SettlementOutcome{
@@ -76,7 +85,7 @@ func mapReleaseOutcome(outcome ReleaseOutcome) (SettlementOutcome, error) {
 		}, nil
 	case approvalflow.DecisionEscalate:
 		return SettlementOutcome{
-			ProgressionStatus:     receipts.SettlementProgressionReviewNeeded,
+			ProgressionStatus:     escalationProgressionStatus(current),
 			ProgressionReasonCode: receipts.SettlementProgressionReasonCodeEscalate,
 			ProgressionReason:     progressionReason(outcome.Reason, "higher approval needed"),
 		}, nil
@@ -91,4 +100,18 @@ func progressionReason(reason string, fallback string) string {
 		return fallback
 	}
 	return reason
+}
+
+func escalationProgressionStatus(
+	current receipts.SettlementProgressionStatus,
+) receipts.SettlementProgressionStatus {
+	switch current {
+	case receipts.SettlementProgressionReviewNeeded,
+		receipts.SettlementProgressionApprovedForSettlement,
+		receipts.SettlementProgressionPartiallySettled,
+		receipts.SettlementProgressionDisputeReady:
+		return receipts.SettlementProgressionDisputeReady
+	default:
+		return receipts.SettlementProgressionReviewNeeded
+	}
 }

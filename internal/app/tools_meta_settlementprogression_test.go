@@ -127,3 +127,48 @@ func TestApplySettlementProgression_PreservesReasonAndPartialHint(t *testing.T) 
 	assert.Equal(t, "Need a revised final draft.", updatedTx.SettlementProgressionReason)
 	assert.Equal(t, "partial delivery is acceptable", updatedTx.PartialSettlementHint)
 }
+
+func TestApplySettlementProgression_EscalateFromReviewNeededReturnsCanonicalDisputeReadyState(t *testing.T) {
+	t.Parallel()
+
+	store := receipts.NewStore()
+	tool := findTool(buildMetaTools(nil, nil, nil, config.SkillConfig{}, nil, store), "apply_settlement_progression")
+	require.NotNil(t, tool)
+
+	ctx := context.Background()
+	tx := createSubmittedTransaction(t, store, ctx, "deal-settlement-progress-escalate")
+
+	_, err := store.ApplySettlementProgression(
+		ctx,
+		tx.TransactionReceiptID,
+		receipts.SettlementProgressionReviewNeeded,
+		receipts.SettlementProgressionReasonCodeReject,
+		"Artifact release blocked by policy.",
+		"",
+	)
+	require.NoError(t, err)
+
+	got, err := tool.Handler(ctx, map[string]interface{}{
+		"transaction_receipt_id": tx.TransactionReceiptID,
+		"outcome":                "escalate",
+		"reason":                 "manual approval required",
+	})
+	require.NoError(t, err)
+
+	payload, ok := got.(applySettlementProgressionReceipt)
+	require.True(t, ok)
+	assert.Equal(t, tx.TransactionReceiptID, payload.TransactionReceiptID)
+	assert.Equal(t, string(receipts.SettlementProgressionDisputeReady), payload.SettlementProgressionStatus)
+	assert.Equal(t, string(receipts.SettlementProgressionReasonCodeEscalate), payload.SettlementProgressionReasonCode)
+	assert.Equal(t, "manual approval required", payload.SettlementProgressionReason)
+	assert.Empty(t, payload.PartialHint)
+	assert.Empty(t, payload.DisputeLifecycleStatus)
+
+	updatedTx, err := store.GetTransactionReceipt(ctx, tx.TransactionReceiptID)
+	require.NoError(t, err)
+	assert.Equal(t, receipts.SettlementProgressionDisputeReady, updatedTx.SettlementProgressionStatus)
+	assert.Equal(t, receipts.SettlementProgressionReasonCodeEscalate, updatedTx.SettlementProgressionReasonCode)
+	assert.Equal(t, "manual approval required", updatedTx.SettlementProgressionReason)
+	assert.Empty(t, updatedTx.PartialSettlementHint)
+	assert.Empty(t, updatedTx.DisputeLifecycleStatus)
+}

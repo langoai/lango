@@ -1522,7 +1522,7 @@ func newSelectKnowledgeExchangePathTool(receiptStore *receipts.Store) *agent.Too
 func newApplySettlementProgressionTool(receiptStore *receipts.Store) *agent.Tool {
 	return &agent.Tool{
 		Name:        "apply_settlement_progression",
-		Description: "Apply a release approval decision to the linked transaction receipt and return canonical settlement progression state",
+		Description: "Apply a release review decision to the linked transaction receipt and return canonical settlement progression state",
 		SafetyLevel: agent.SafetyLevelModerate,
 		Capability: agent.ToolCapability{
 			Category: "knowledge",
@@ -1534,7 +1534,7 @@ func newApplySettlementProgressionTool(receiptStore *receipts.Store) *agent.Tool
 				"transaction_receipt_id": map[string]interface{}{"type": "string", "description": "Transaction receipt identifier to update"},
 				"outcome": map[string]interface{}{
 					"type":        "string",
-					"description": "Release approval decision",
+					"description": "Release review decision",
 					"enum":        []string{"approve", "reject", "request-revision", "escalate"},
 				},
 				"reason":       map[string]interface{}{"type": "string", "description": "Optional human-readable reason for the progression update"},
@@ -2388,12 +2388,14 @@ type applySettlementProgressionReceipt struct {
 	SettlementProgressionReasonCode string `json:"settlement_progression_reason_code,omitempty"`
 	SettlementProgressionReason     string `json:"settlement_progression_reason,omitempty"`
 	PartialHint                     string `json:"partial_hint,omitempty"`
+	DisputeLifecycleStatus          string `json:"dispute_lifecycle_status,omitempty"`
 }
 
 type adjudicateEscrowDisputeReceipt struct {
 	TransactionReceiptID        string                                            `json:"transaction_receipt_id"`
 	SubmissionReceiptID         string                                            `json:"submission_receipt_id,omitempty"`
 	SettlementProgressionStatus string                                            `json:"settlement_progression_status"`
+	DisputeLifecycleStatus      string                                            `json:"dispute_lifecycle_status,omitempty"`
 	EscrowReference             string                                            `json:"escrow_reference,omitempty"`
 	Outcome                     string                                            `json:"outcome,omitempty"`
 	Execution                   *adjudicateEscrowDisputeExecutionReceipt          `json:"execution,omitempty"`
@@ -2467,6 +2469,7 @@ type holdEscrowForDisputeReceipt struct {
 	TransactionReceiptID        string `json:"transaction_receipt_id"`
 	SubmissionReceiptID         string `json:"submission_receipt_id,omitempty"`
 	SettlementProgressionStatus string `json:"settlement_progression_status"`
+	DisputeLifecycleStatus      string `json:"dispute_lifecycle_status,omitempty"`
 	EscrowReference             string `json:"escrow_reference,omitempty"`
 	RuntimeReference            string `json:"runtime_reference,omitempty"`
 }
@@ -2509,6 +2512,7 @@ func newApplySettlementProgressionReceipt(result settlementprogression.ApplyRele
 		SettlementProgressionReasonCode: string(result.Transaction.SettlementProgressionReasonCode),
 		SettlementProgressionReason:     result.Transaction.SettlementProgressionReason,
 		PartialHint:                     result.Transaction.PartialSettlementHint,
+		DisputeLifecycleStatus:          string(result.Transaction.DisputeLifecycleStatus),
 	}
 }
 
@@ -2517,6 +2521,7 @@ func newAdjudicateEscrowDisputeReceipt(result escrowadjudication.Result) adjudic
 		TransactionReceiptID:        result.TransactionReceiptID,
 		SubmissionReceiptID:         result.SubmissionReceiptID,
 		SettlementProgressionStatus: string(result.SettlementProgressionStatus),
+		DisputeLifecycleStatus:      string(result.DisputeLifecycleStatus),
 		EscrowReference:             result.EscrowReference,
 		Outcome:                     string(result.Outcome),
 	}
@@ -2615,6 +2620,7 @@ func newHoldEscrowForDisputeReceipt(result disputehold.Result) holdEscrowForDisp
 		TransactionReceiptID:        result.TransactionReceiptID,
 		SubmissionReceiptID:         result.SubmissionReceiptID,
 		SettlementProgressionStatus: string(result.SettlementProgressionStatus),
+		DisputeLifecycleStatus:      string(result.DisputeLifecycleStatus),
 		EscrowReference:             result.EscrowReference,
 		RuntimeReference:            result.RuntimeReference,
 	}

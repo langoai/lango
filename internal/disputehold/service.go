@@ -32,7 +32,7 @@ func NewService(store receiptStore, runtime holdRuntime) *Service {
 func (s *Service) Execute(ctx context.Context, req ExecuteRequest) (Result, error) {
 	transactionReceiptID := strings.TrimSpace(req.TransactionReceiptID)
 	if transactionReceiptID == "" {
-		return deniedResult("", "", receipts.SettlementProgressionPending, "", DenyReasonMissingReceipt)
+		return deniedResult("", "", receipts.SettlementProgressionPending, "", "", DenyReasonMissingReceipt)
 	}
 	if s == nil || s.store == nil {
 		return Result{}, fmt.Errorf("receipt store is required")
@@ -44,37 +44,37 @@ func (s *Service) Execute(ctx context.Context, req ExecuteRequest) (Result, erro
 	transaction, err := s.store.GetTransactionReceipt(ctx, transactionReceiptID)
 	if err != nil {
 		if errors.Is(err, receipts.ErrTransactionReceiptNotFound) {
-			return deniedResult(transactionReceiptID, "", receipts.SettlementProgressionPending, "", DenyReasonMissingReceipt)
+			return deniedResult(transactionReceiptID, "", receipts.SettlementProgressionPending, "", "", DenyReasonMissingReceipt)
 		}
 		return Result{}, err
 	}
 
 	submissionReceiptID := strings.TrimSpace(transaction.CurrentSubmissionReceiptID)
 	if submissionReceiptID == "" {
-		return deniedResult(transaction.TransactionReceiptID, "", transaction.SettlementProgressionStatus, strings.TrimSpace(transaction.EscrowReference), DenyReasonNoCurrentSubmission)
+		return deniedResult(transaction.TransactionReceiptID, "", transaction.SettlementProgressionStatus, transaction.DisputeLifecycleStatus, strings.TrimSpace(transaction.EscrowReference), DenyReasonNoCurrentSubmission)
 	}
 
 	submission, _, err := s.store.GetSubmissionReceipt(ctx, submissionReceiptID)
 	if err != nil {
 		if errors.Is(err, receipts.ErrSubmissionReceiptNotFound) {
-			return deniedResult(transaction.TransactionReceiptID, submissionReceiptID, transaction.SettlementProgressionStatus, strings.TrimSpace(transaction.EscrowReference), DenyReasonNoCurrentSubmission)
+			return deniedResult(transaction.TransactionReceiptID, submissionReceiptID, transaction.SettlementProgressionStatus, transaction.DisputeLifecycleStatus, strings.TrimSpace(transaction.EscrowReference), DenyReasonNoCurrentSubmission)
 		}
 		return Result{}, err
 	}
 	if submission.TransactionReceiptID != transaction.TransactionReceiptID {
-		return deniedResult(transaction.TransactionReceiptID, submissionReceiptID, transaction.SettlementProgressionStatus, strings.TrimSpace(transaction.EscrowReference), DenyReasonNoCurrentSubmission)
+		return deniedResult(transaction.TransactionReceiptID, submissionReceiptID, transaction.SettlementProgressionStatus, transaction.DisputeLifecycleStatus, strings.TrimSpace(transaction.EscrowReference), DenyReasonNoCurrentSubmission)
 	}
 
 	if transaction.EscrowExecutionStatus != receipts.EscrowExecutionStatusFunded {
-		return deniedResult(transaction.TransactionReceiptID, submissionReceiptID, transaction.SettlementProgressionStatus, strings.TrimSpace(transaction.EscrowReference), DenyReasonEscrowNotFunded)
+		return deniedResult(transaction.TransactionReceiptID, submissionReceiptID, transaction.SettlementProgressionStatus, transaction.DisputeLifecycleStatus, strings.TrimSpace(transaction.EscrowReference), DenyReasonEscrowNotFunded)
 	}
 	if transaction.SettlementProgressionStatus != receipts.SettlementProgressionDisputeReady {
-		return deniedResult(transaction.TransactionReceiptID, submissionReceiptID, transaction.SettlementProgressionStatus, strings.TrimSpace(transaction.EscrowReference), DenyReasonNotDisputeReady)
+		return deniedResult(transaction.TransactionReceiptID, submissionReceiptID, transaction.SettlementProgressionStatus, transaction.DisputeLifecycleStatus, strings.TrimSpace(transaction.EscrowReference), DenyReasonNotDisputeReady)
 	}
 
 	escrowReference := strings.TrimSpace(transaction.EscrowReference)
 	if escrowReference == "" {
-		return deniedResult(transaction.TransactionReceiptID, submissionReceiptID, transaction.SettlementProgressionStatus, "", DenyReasonEscrowReferenceMissing)
+		return deniedResult(transaction.TransactionReceiptID, submissionReceiptID, transaction.SettlementProgressionStatus, transaction.DisputeLifecycleStatus, "", DenyReasonEscrowReferenceMissing)
 	}
 
 	runtimeResult, err := s.runtime.Hold(ctx, EscrowHoldRequest{
@@ -88,6 +88,7 @@ func (s *Service) Execute(ctx context.Context, req ExecuteRequest) (Result, erro
 			TransactionReceiptID:        transaction.TransactionReceiptID,
 			SubmissionReceiptID:         submissionReceiptID,
 			SettlementProgressionStatus: receipts.SettlementProgressionDisputeReady,
+			DisputeLifecycleStatus:      transaction.DisputeLifecycleStatus,
 			EscrowReference:             escrowReference,
 			Failure: &Failure{
 				Kind:    FailureKindExecutionFailed,
@@ -120,17 +121,25 @@ func (s *Service) Execute(ctx context.Context, req ExecuteRequest) (Result, erro
 		TransactionReceiptID:        transaction.TransactionReceiptID,
 		SubmissionReceiptID:         submissionReceiptID,
 		SettlementProgressionStatus: receipts.SettlementProgressionDisputeReady,
+		DisputeLifecycleStatus:      receipts.DisputeLifecycleHoldActive,
 		EscrowReference:             escrowReference,
 		RuntimeReference:            runtimeResult.Reference,
 	}, nil
 }
 
-func deniedResult(transactionReceiptID, submissionReceiptID string, status receipts.SettlementProgressionStatus, escrowReference string, reason DenyReason) (Result, error) {
+func deniedResult(
+	transactionReceiptID, submissionReceiptID string,
+	status receipts.SettlementProgressionStatus,
+	disputeLifecycleStatus receipts.DisputeLifecycleStatus,
+	escrowReference string,
+	reason DenyReason,
+) (Result, error) {
 	return Result{
 			Status:                      ResultStatusDenied,
 			TransactionReceiptID:        transactionReceiptID,
 			SubmissionReceiptID:         submissionReceiptID,
 			SettlementProgressionStatus: status,
+			DisputeLifecycleStatus:      disputeLifecycleStatus,
 			EscrowReference:             escrowReference,
 			Failure: &Failure{
 				Kind:       FailureKindDenied,

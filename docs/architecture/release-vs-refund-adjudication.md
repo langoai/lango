@@ -1,10 +1,10 @@
 # Release vs Refund Adjudication
 
-This page describes the first `release vs refund adjudication` slice for `knowledge exchange v1`.
+This page describes the current `release vs refund adjudication` slice for `knowledge exchange v1`.
 
 ## Purpose
 
-Release vs refund adjudication records the first canonical branch decision after dispute hold.
+Release vs refund adjudication records the canonical branch decision after dispute hold and moves settlement progression onto the matching release or refund path while preserving dispute lifecycle state for downstream recovery.
 
 The slice is intentionally narrow:
 
@@ -13,21 +13,29 @@ The slice is intentionally narrow:
 - escrow must already be `funded`
 - settlement progression must already be `dispute-ready`
 - dispute hold evidence must already exist
-- success keeps escrow and settlement state unchanged
-- actual release and refund execution remain separate tools
+- success records `escrow_adjudication`
+- success moves settlement progression atomically to `approved-for-settlement` (`release`) or `review-needed` (`refund`)
+- success preserves the active dispute lifecycle marker
+- release and refund execution remain separate follow-up tools unless explicitly requested through post-adjudication execution modes
 
 ## What Ships
 
 - a receipts-backed `adjudicate_escrow_dispute` meta tool
 - transaction-level gating on funded escrow, `dispute-ready`, and recorded hold evidence
 - canonical adjudication state on the transaction receipt
+- atomic progression update paired with adjudication
 - adjudication evidence in the current submission receipt trail
+- tool results that include:
+  - `settlement_progression_status`
+  - `dispute_lifecycle_status`
+  - `escrow_reference`
+  - `outcome`
 
 ## Current Limits
 
 This slice does not yet include:
 
-- automatic release or refund execution
-- keep-hold or re-escalation outcomes
+- adjudication outcomes beyond `release` and `refund`
+- config-backed non-manual execution defaults
 - richer dispute scoring or policy arbitration
 - human adjudication UI

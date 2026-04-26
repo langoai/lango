@@ -27,7 +27,7 @@ func NewService(store receiptStore) *Service {
 func (s *Service) Adjudicate(ctx context.Context, req AdjudicateRequest) (Result, error) {
 	transactionReceiptID := strings.TrimSpace(req.TransactionReceiptID)
 	if transactionReceiptID == "" {
-		return deniedResult("", "", receipts.SettlementProgressionPending, "", "", DenyReasonMissingReceipt)
+		return deniedResult("", "", receipts.SettlementProgressionPending, "", "", "", DenyReasonMissingReceipt)
 	}
 	if s == nil || s.store == nil {
 		return Result{}, fmt.Errorf("receipt store is required")
@@ -36,36 +36,36 @@ func (s *Service) Adjudicate(ctx context.Context, req AdjudicateRequest) (Result
 	transaction, err := s.store.GetTransactionReceipt(ctx, transactionReceiptID)
 	if err != nil {
 		if errors.Is(err, receipts.ErrTransactionReceiptNotFound) {
-			return deniedResult(transactionReceiptID, "", receipts.SettlementProgressionPending, "", "", DenyReasonMissingReceipt)
+			return deniedResult(transactionReceiptID, "", receipts.SettlementProgressionPending, "", "", "", DenyReasonMissingReceipt)
 		}
 		return Result{}, err
 	}
 
 	submissionReceiptID := strings.TrimSpace(transaction.CurrentSubmissionReceiptID)
 	if submissionReceiptID == "" {
-		return deniedResult(transaction.TransactionReceiptID, "", transaction.SettlementProgressionStatus, strings.TrimSpace(transaction.EscrowReference), "", DenyReasonNoCurrentSubmission)
+		return deniedResult(transaction.TransactionReceiptID, "", transaction.SettlementProgressionStatus, transaction.DisputeLifecycleStatus, strings.TrimSpace(transaction.EscrowReference), "", DenyReasonNoCurrentSubmission)
 	}
 
 	submission, events, err := s.store.GetSubmissionReceipt(ctx, submissionReceiptID)
 	if err != nil {
 		if errors.Is(err, receipts.ErrSubmissionReceiptNotFound) {
-			return deniedResult(transaction.TransactionReceiptID, submissionReceiptID, transaction.SettlementProgressionStatus, strings.TrimSpace(transaction.EscrowReference), "", DenyReasonNoCurrentSubmission)
+			return deniedResult(transaction.TransactionReceiptID, submissionReceiptID, transaction.SettlementProgressionStatus, transaction.DisputeLifecycleStatus, strings.TrimSpace(transaction.EscrowReference), "", DenyReasonNoCurrentSubmission)
 		}
 		return Result{}, err
 	}
 	if submission.TransactionReceiptID != transaction.TransactionReceiptID {
-		return deniedResult(transaction.TransactionReceiptID, submissionReceiptID, transaction.SettlementProgressionStatus, strings.TrimSpace(transaction.EscrowReference), "", DenyReasonNoCurrentSubmission)
+		return deniedResult(transaction.TransactionReceiptID, submissionReceiptID, transaction.SettlementProgressionStatus, transaction.DisputeLifecycleStatus, strings.TrimSpace(transaction.EscrowReference), "", DenyReasonNoCurrentSubmission)
 	}
 
 	escrowReference := strings.TrimSpace(transaction.EscrowReference)
 	if transaction.EscrowExecutionStatus != receipts.EscrowExecutionStatusFunded {
-		return deniedResult(transaction.TransactionReceiptID, submissionReceiptID, transaction.SettlementProgressionStatus, escrowReference, "", DenyReasonEscrowNotFunded)
+		return deniedResult(transaction.TransactionReceiptID, submissionReceiptID, transaction.SettlementProgressionStatus, transaction.DisputeLifecycleStatus, escrowReference, "", DenyReasonEscrowNotFunded)
 	}
 	if transaction.SettlementProgressionStatus != receipts.SettlementProgressionDisputeReady {
-		return deniedResult(transaction.TransactionReceiptID, submissionReceiptID, transaction.SettlementProgressionStatus, escrowReference, "", DenyReasonNotDisputeReady)
+		return deniedResult(transaction.TransactionReceiptID, submissionReceiptID, transaction.SettlementProgressionStatus, transaction.DisputeLifecycleStatus, escrowReference, "", DenyReasonNotDisputeReady)
 	}
 	if !hasDisputeHoldEvidence(events) {
-		result, err := deniedResult(transaction.TransactionReceiptID, submissionReceiptID, transaction.SettlementProgressionStatus, escrowReference, "", DenyReasonHoldEvidenceMissing)
+		result, err := deniedResult(transaction.TransactionReceiptID, submissionReceiptID, transaction.SettlementProgressionStatus, transaction.DisputeLifecycleStatus, escrowReference, "", DenyReasonHoldEvidenceMissing)
 		if recordErr := s.recordFailure(ctx, transaction.TransactionReceiptID, submissionReceiptID, escrowReference, string(DenyReasonHoldEvidenceMissing)); recordErr != nil {
 			return result, recordErr
 		}
@@ -74,7 +74,7 @@ func (s *Service) Adjudicate(ctx context.Context, req AdjudicateRequest) (Result
 
 	outcome, ok := mapOutcome(req.Outcome)
 	if !ok {
-		result, err := deniedResult(transaction.TransactionReceiptID, submissionReceiptID, transaction.SettlementProgressionStatus, escrowReference, string(req.Outcome), DenyReasonInvalidOutcome)
+		result, err := deniedResult(transaction.TransactionReceiptID, submissionReceiptID, transaction.SettlementProgressionStatus, transaction.DisputeLifecycleStatus, escrowReference, string(req.Outcome), DenyReasonInvalidOutcome)
 		if recordErr := s.recordFailure(ctx, transaction.TransactionReceiptID, submissionReceiptID, escrowReference, string(DenyReasonInvalidOutcome)); recordErr != nil {
 			return result, recordErr
 		}
@@ -94,6 +94,7 @@ func (s *Service) Adjudicate(ctx context.Context, req AdjudicateRequest) (Result
 			TransactionReceiptID:        transaction.TransactionReceiptID,
 			SubmissionReceiptID:         submissionReceiptID,
 			SettlementProgressionStatus: transaction.SettlementProgressionStatus,
+			DisputeLifecycleStatus:      transaction.DisputeLifecycleStatus,
 			EscrowReference:             escrowReference,
 			Outcome:                     req.Outcome,
 			Failure: &Failure{
@@ -112,6 +113,7 @@ func (s *Service) Adjudicate(ctx context.Context, req AdjudicateRequest) (Result
 		TransactionReceiptID:        updated.TransactionReceiptID,
 		SubmissionReceiptID:         submissionReceiptID,
 		SettlementProgressionStatus: updated.SettlementProgressionStatus,
+		DisputeLifecycleStatus:      updated.DisputeLifecycleStatus,
 		EscrowReference:             escrowReference,
 		Outcome:                     req.Outcome,
 	}, nil
@@ -146,12 +148,19 @@ func mapOutcome(outcome Outcome) (receipts.EscrowAdjudicationDecision, bool) {
 	}
 }
 
-func deniedResult(transactionReceiptID, submissionReceiptID string, status receipts.SettlementProgressionStatus, escrowReference, outcome string, reason DenyReason) (Result, error) {
+func deniedResult(
+	transactionReceiptID, submissionReceiptID string,
+	status receipts.SettlementProgressionStatus,
+	disputeLifecycleStatus receipts.DisputeLifecycleStatus,
+	escrowReference, outcome string,
+	reason DenyReason,
+) (Result, error) {
 	return Result{
 			Status:                      ResultStatusDenied,
 			TransactionReceiptID:        transactionReceiptID,
 			SubmissionReceiptID:         submissionReceiptID,
 			SettlementProgressionStatus: status,
+			DisputeLifecycleStatus:      disputeLifecycleStatus,
 			EscrowReference:             escrowReference,
 			Outcome:                     Outcome(outcome),
 			Failure: &Failure{
