@@ -80,10 +80,20 @@ The slice is intentionally narrow:
       - top `5` latest dead-letter reasons in a compact second line
         - rendered as a compact `reasons:` line
         - aggregated from each row's current `latest_dead_letter_reason`
-      - top `5` latest manual replay actors in a compact third line
+        - remains visible as the raw latest reason-string view
+      - grouped latest dead-letter reason families in a compact `reason families:` line
+        - rendered from each row's current `latest_dead_letter_reason`
+        - uses the initial built-in taxonomy:
+          - `retry-exhausted`
+          - `policy-blocked`
+          - `receipt-invalid`
+          - `background-failed`
+          - `unknown`
+        - uses case-insensitive heuristic matching with `unknown` fallback
+      - top `5` latest manual replay actors in a compact `actors:` line
         - rendered as a compact `actors:` line
         - aggregated from each row's current `latest_manual_replay_actor`
-      - top `5` latest dispatch references in a compact fourth line
+      - top `5` latest dispatch references in a compact `dispatch:` line
         - rendered as a compact `dispatch:` line
         - aggregated from each row's current `latest_dispatch_reference`
   - dead-letter backlog table
@@ -130,10 +140,22 @@ The slice is intentionally narrow:
       - `retryable_count`
       - `by_adjudication`
       - `by_latest_family`
+      - `by_reason_family`
+        - grouped reason-family buckets derived from each row's current `latest_dead_letter_reason`
+        - table output renders this as a `By reason family` section
+        - JSON output renders this as `by_reason_family`
+        - uses the initial built-in taxonomy:
+          - `retry-exhausted`
+          - `policy-blocked`
+          - `receipt-invalid`
+          - `background-failed`
+          - `unknown`
+        - uses case-insensitive heuristic matching with `unknown` fallback
       - `top_latest_dead_letter_reasons`
         - top `5` reasons
         - each item includes `reason` and `count`
         - aggregated from each row's current `latest_dead_letter_reason`
+        - remains available as the raw latest reason-string view alongside `by_reason_family`
       - `top_latest_manual_replay_actors`
         - top `5` actors
         - each item includes `actor` and `count`
@@ -183,5 +205,5 @@ This slice does not yet include:
 - dead-letter CLI `any_match_family` filtering
 - polling / follow-up recovery UX
 - richer structured CLI retry-result payloads
-- grouped reason / actor / dispatch families, configurable top-N, and trend/time-window summary views
-- richer cockpit summary surfaces beyond top latest dead-letter reasons, actors, and dispatch references
+- grouped actor / dispatch families, configurable top-N, and trend/time-window summary views
+- richer cockpit summary surfaces beyond latest reason families, top latest dead-letter reasons, actors, and dispatch references

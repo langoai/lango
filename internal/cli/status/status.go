@@ -85,6 +85,7 @@ type deadLetterSummaryResult struct {
 	RetryableCount              int                             `json:"retryable_count"`
 	ByAdjudication              []deadLetterSummaryBucket       `json:"by_adjudication"`
 	ByLatestFamily              []deadLetterSummaryBucket       `json:"by_latest_family"`
+	ByReasonFamily              []deadLetterSummaryBucket       `json:"by_reason_family"`
 	TopLatestDeadLetterReasons  []deadLetterReasonSummaryItem   `json:"top_latest_dead_letter_reasons"`
 	TopLatestManualReplayActors []deadLetterActorSummaryItem    `json:"top_latest_manual_replay_actors"`
 	TopLatestDispatchReferences []deadLetterDispatchSummaryItem `json:"top_latest_dispatch_references"`
@@ -469,6 +470,7 @@ func aggregateDeadLetterSummary(page deadLetterListPage) deadLetterSummaryResult
 	retryableCount := 0
 	adjudicationCounts := map[string]int{}
 	latestFamilyCounts := map[string]int{}
+	reasonFamilyCounts := map[string]int{}
 	reasonCounts := map[string]int{}
 	actorCounts := map[string]int{}
 	dispatchCounts := map[string]int{}
@@ -479,6 +481,10 @@ func aggregateDeadLetterSummary(page deadLetterListPage) deadLetterSummaryResult
 		}
 		adjudicationCounts[summaryBucketLabel(entry.Adjudication)]++
 		latestFamilyCounts[summaryBucketLabel(entry.LatestStatusSubtypeFamily)]++
+		reasonFamily := postadjudicationstatus.ClassifyDeadLetterReasonFamily(
+			entry.LatestDeadLetterReason,
+		)
+		reasonFamilyCounts[reasonFamily]++
 		if reason := strings.TrimSpace(entry.LatestDeadLetterReason); reason != "" {
 			reasonCounts[reason]++
 		}
@@ -495,9 +501,20 @@ func aggregateDeadLetterSummary(page deadLetterListPage) deadLetterSummaryResult
 		RetryableCount:              retryableCount,
 		ByAdjudication:              orderedSummaryBuckets(adjudicationCounts, []string{"release", "refund"}),
 		ByLatestFamily:              orderedSummaryBuckets(latestFamilyCounts, []string{"retry", "manual-retry", "dead-letter"}),
+		ByReasonFamily:              orderedSummaryBuckets(reasonFamilyCounts, deadLetterReasonFamilyOrder()),
 		TopLatestDeadLetterReasons:  topDeadLetterReasons(reasonCounts, 5),
 		TopLatestManualReplayActors: topManualReplayActors(actorCounts, 5),
 		TopLatestDispatchReferences: topDispatchReferences(dispatchCounts, 5),
+	}
+}
+
+func deadLetterReasonFamilyOrder() []string {
+	return []string{
+		postadjudicationstatus.DeadLetterReasonFamilyRetryExhausted,
+		postadjudicationstatus.DeadLetterReasonFamilyPolicyBlocked,
+		postadjudicationstatus.DeadLetterReasonFamilyReceiptInvalid,
+		postadjudicationstatus.DeadLetterReasonFamilyBackgroundFailed,
+		postadjudicationstatus.DeadLetterReasonFamilyUnknown,
 	}
 }
 

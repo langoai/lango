@@ -151,12 +151,18 @@ type deadLetterSummary struct {
 	manualRetryFamily int
 	deadLetterFamily  int
 	topReasons        []deadLetterReasonSummaryItem
+	reasonFamilies    []deadLetterReasonFamilySummaryItem
 	topActors         []deadLetterActorSummaryItem
 	topDispatches     []deadLetterDispatchSummaryItem
 }
 
 type deadLetterReasonSummaryItem struct {
 	reason string
+	count  int
+}
+
+type deadLetterReasonFamilySummaryItem struct {
+	family string
 	count  int
 }
 
@@ -445,23 +451,35 @@ func (p *DeadLettersPage) renderSummaryStrip() string {
 		chipStyle.Render("  •  "),
 		chipStyle.Render(fmt.Sprintf("retry/manual/dead: %d/%d/%d", summary.retryFamily, summary.manualRetryFamily, summary.deadLetterFamily)),
 	)
-	if len(summary.topReasons) == 0 {
+	if summary.total == 0 {
 		return overview
 	}
 
-	reasonParts := make([]string, 0, len(summary.topReasons))
-	for _, item := range summary.topReasons {
-		reasonParts = append(reasonParts, fmt.Sprintf("%s(%d)", item.reason, item.count))
+	lines := []string{overview}
+
+	if len(summary.topReasons) > 0 {
+		reasonParts := make([]string, 0, len(summary.topReasons))
+		for _, item := range summary.topReasons {
+			reasonParts = append(reasonParts, fmt.Sprintf("%s(%d)", item.reason, item.count))
+		}
+
+		reasonsLine := "reasons: " + strings.Join(reasonParts, ", ")
+		if p.width > 0 {
+			reasonsLine = ansi.Truncate(reasonsLine, max(p.width-8, 48), "…")
+		}
+		lines = append(lines, chipStyle.Render(reasonsLine))
 	}
 
-	reasonsLine := "reasons: " + strings.Join(reasonParts, ", ")
-	if p.width > 0 {
-		reasonsLine = ansi.Truncate(reasonsLine, max(p.width-8, 48), "…")
-	}
-
-	lines := []string{
-		overview,
-		chipStyle.Render(reasonsLine),
+	if len(summary.reasonFamilies) > 0 {
+		familyParts := make([]string, 0, len(summary.reasonFamilies))
+		for _, item := range summary.reasonFamilies {
+			familyParts = append(familyParts, fmt.Sprintf("%s(%d)", item.family, item.count))
+		}
+		familiesLine := "reason families: " + strings.Join(familyParts, ", ")
+		if p.width > 0 {
+			familiesLine = ansi.Truncate(familiesLine, max(p.width-8, 48), "…")
+		}
+		lines = append(lines, chipStyle.Render(familiesLine))
 	}
 
 	if len(summary.topActors) > 0 {
@@ -974,6 +992,7 @@ func fallback(value string, fallbackValue string, empty string) string {
 func summarizeDeadLetters(items []postadjudicationstatus.DeadLetterBacklogEntry) deadLetterSummary {
 	var summary deadLetterSummary
 	reasonCounts := make(map[string]int)
+	reasonFamilyCounts := make(map[string]int)
 	actorCounts := make(map[string]int)
 	dispatchCounts := make(map[string]int)
 	for _, item := range items {
@@ -999,6 +1018,8 @@ func summarizeDeadLetters(items []postadjudicationstatus.DeadLetterBacklogEntry)
 		if reason != "" {
 			reasonCounts[reason]++
 		}
+		reasonFamily := postadjudicationstatus.ClassifyDeadLetterReasonFamily(item.LatestDeadLetterReason)
+		reasonFamilyCounts[reasonFamily]++
 		actor := strings.TrimSpace(item.LatestManualReplayActor)
 		if actor != "" {
 			actorCounts[actor]++
@@ -1023,6 +1044,27 @@ func summarizeDeadLetters(items []postadjudicationstatus.DeadLetterBacklogEntry)
 			reasons = reasons[:5]
 		}
 		summary.topReasons = reasons
+	}
+	if len(reasonFamilyCounts) > 0 {
+		preferredOrder := []string{
+			postadjudicationstatus.DeadLetterReasonFamilyRetryExhausted,
+			postadjudicationstatus.DeadLetterReasonFamilyPolicyBlocked,
+			postadjudicationstatus.DeadLetterReasonFamilyReceiptInvalid,
+			postadjudicationstatus.DeadLetterReasonFamilyBackgroundFailed,
+			postadjudicationstatus.DeadLetterReasonFamilyUnknown,
+		}
+		families := make([]deadLetterReasonFamilySummaryItem, 0, len(reasonFamilyCounts))
+		for _, family := range preferredOrder {
+			count := reasonFamilyCounts[family]
+			if count == 0 {
+				continue
+			}
+			families = append(families, deadLetterReasonFamilySummaryItem{
+				family: family,
+				count:  count,
+			})
+		}
+		summary.reasonFamilies = families
 	}
 	if len(actorCounts) > 0 {
 		actors := make([]deadLetterActorSummaryItem, 0, len(actorCounts))

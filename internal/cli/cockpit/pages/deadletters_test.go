@@ -818,8 +818,11 @@ func TestDeadLettersPage_ViewIncludesSummaryStrip(t *testing.T) {
 	assert.Contains(t, view, "release/refund: 2/1")
 	assert.Contains(t, view, "retry/manual/dead: 1/1/1")
 	assert.Contains(t, view, "reasons: worker exhausted(2), invalid receipt(1)")
+	assert.Contains(t, view, "reason families: receipt-invalid(1), background-failed(2)")
 	assert.Contains(t, view, "actors: operator:alice(2), operator:bob(1)")
 	assert.Contains(t, view, "dispatch: dispatch-a(2), dispatch-b(1)")
+	assert.Less(t, strings.Index(view, "reasons:"), strings.Index(view, "reason families:"))
+	assert.Less(t, strings.Index(view, "reason families:"), strings.Index(view, "actors:"))
 }
 
 func TestSummarizeDeadLetters_TopReasonsActorsAndDispatches(t *testing.T) {
@@ -861,6 +864,13 @@ func TestSummarizeDeadLetters_TopReasonsActorsAndDispatches(t *testing.T) {
 		{dispatchReference: "dispatch-d", count: 1},
 		{dispatchReference: "dispatch-e", count: 1},
 	}, summary.topDispatches)
+
+	assert.Equal(t, []deadLetterReasonFamilySummaryItem{
+		{family: postadjudicationstatus.DeadLetterReasonFamilyPolicyBlocked, count: 1},
+		{family: postadjudicationstatus.DeadLetterReasonFamilyReceiptInvalid, count: 1},
+		{family: postadjudicationstatus.DeadLetterReasonFamilyBackgroundFailed, count: 4},
+		{family: postadjudicationstatus.DeadLetterReasonFamilyUnknown, count: 3},
+	}, summary.reasonFamilies)
 }
 
 func TestDeadLettersPage_SummaryStripRecomputesAcrossReloadPaths(t *testing.T) {

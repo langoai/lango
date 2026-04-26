@@ -175,6 +175,10 @@ func renderDeadLetterSummaryTable(summary deadLetterSummaryResult) string {
 	b.WriteString(renderSummaryBuckets(summary.ByLatestFamily))
 
 	b.WriteString("\n")
+	b.WriteString(sectionHeader("By reason family"))
+	b.WriteString(renderSummaryBuckets(summary.ByReasonFamily))
+
+	b.WriteString("\n")
 	b.WriteString(sectionHeader("Top Latest Dead-Letter Reasons"))
 	b.WriteString(renderReasonSummaryItems(summary.TopLatestDeadLetterReasons))
 
@@ -195,7 +199,7 @@ func renderSummaryBuckets(buckets []deadLetterSummaryBucket) string {
 
 	var b strings.Builder
 	for _, bucket := range buckets {
-		b.WriteString(infoLine(bucket.Label, fmt.Sprintf("%d", bucket.Count)))
+		b.WriteString(fmt.Sprintf("    %-24s%d\n", bucket.Label, bucket.Count))
 	}
 	return b.String()
 }

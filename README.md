@@ -165,7 +165,7 @@ lango onboard                    Guided 5-step setup wizard
 lango settings                   Full interactive configuration editor
 lango doctor [--fix]             Diagnostics and health checks
 lango status [--output json]     Unified system status dashboard
-lango status dead-letter-summary Overview counts, top latest dead-letter reasons, top latest manual replay actors, and top latest dispatch references for current dead-letter backlog
+lango status dead-letter-summary Overview counts, grouped reason-family buckets, raw top latest dead-letter reasons, top latest manual replay actors, and top latest dispatch references for current dead-letter backlog
 lango status dead-letters        List current dead-letter backlog
 lango status dead-letter <id>    Show dead-letter status for one transaction
 lango status dead-letter retry <id>  Request retry for one dead-lettered execution

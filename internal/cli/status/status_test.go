@@ -300,8 +300,8 @@ func TestDeadLetterSummaryCmd_Table(t *testing.T) {
 	bridge := &fakeDeadLetterBridge{
 		page: deadLetterListPage{
 			Entries: []postadjudicationstatus.DeadLetterBacklogEntry{
-				{TransactionReceiptID: "tx-1", Adjudication: "release", CanRetry: true, LatestStatusSubtypeFamily: "retry", LatestDeadLetterReason: "worker exhausted"},
-				{TransactionReceiptID: "tx-2", Adjudication: "refund", CanRetry: false, LatestStatusSubtypeFamily: "manual-retry", LatestDeadLetterReason: "insufficient evidence"},
+				{TransactionReceiptID: "tx-1", Adjudication: "release", CanRetry: true, LatestStatusSubtypeFamily: "retry", LatestDeadLetterReason: "retry attempts exhausted"},
+				{TransactionReceiptID: "tx-2", Adjudication: "refund", CanRetry: false, LatestStatusSubtypeFamily: "manual-retry", LatestDeadLetterReason: "policy gate denied replay"},
 				{TransactionReceiptID: "tx-3", Adjudication: "release", CanRetry: true, LatestStatusSubtypeFamily: "dead-letter", LatestDeadLetterReason: "worker exhausted"},
 			},
 			Count: 3,
@@ -326,9 +326,13 @@ func TestDeadLetterSummaryCmd_Table(t *testing.T) {
 	assert.Contains(t, out, "retry")
 	assert.Contains(t, out, "manual-retry")
 	assert.Contains(t, out, "dead-letter")
+	assert.Contains(t, out, "By reason family")
+	assert.Contains(t, out, "retry-exhausted")
+	assert.Contains(t, out, "policy-blocked")
+	assert.Contains(t, out, "background-failed")
 	assert.Contains(t, out, "Top Latest Dead-Letter Reasons")
-	assert.Contains(t, out, "worker exhausted")
-	assert.Contains(t, out, "insufficient evidence")
+	assert.Contains(t, out, "retry attempts exhausted")
+	assert.Contains(t, out, "policy gate denied replay")
 	assert.Equal(t, 1, bridge.listCalls)
 	assert.Equal(t, deadLetterListOptions{}, bridge.lastListOpts)
 }
@@ -365,6 +369,10 @@ func TestDeadLetterSummaryCmd_JSON(t *testing.T) {
 		{Label: "manual-retry", Count: 1},
 		{Label: "dead-letter", Count: 1},
 	}, got.ByLatestFamily)
+	assert.Equal(t, []deadLetterSummaryBucket{
+		{Label: postadjudicationstatus.DeadLetterReasonFamilyBackgroundFailed, Count: 2},
+		{Label: postadjudicationstatus.DeadLetterReasonFamilyUnknown, Count: 1},
+	}, got.ByReasonFamily)
 	assert.Equal(t, []deadLetterReasonSummaryItem{
 		{Reason: "worker exhausted", Count: 2},
 		{Reason: "insufficient evidence", Count: 1},
@@ -377,6 +385,41 @@ func TestDeadLetterSummaryCmd_JSON(t *testing.T) {
 		{DispatchReference: "dispatch-1", Count: 2},
 		{DispatchReference: "dispatch-2", Count: 1},
 	}, got.TopLatestDispatchReferences)
+
+	var raw map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal([]byte(out), &raw))
+	assert.Contains(t, raw, "by_reason_family")
+	assert.Contains(t, raw, "top_latest_dead_letter_reasons")
+}
+
+func TestAggregateDeadLetterSummary_ByReasonFamily(t *testing.T) {
+	page := deadLetterListPage{
+		Entries: []postadjudicationstatus.DeadLetterBacklogEntry{
+			{LatestDeadLetterReason: "retry attempts exhausted after 5 attempts"},
+			{LatestDeadLetterReason: "policy gate denied replay"},
+			{LatestDeadLetterReason: "invalid transaction receipt evidence"},
+			{LatestDeadLetterReason: "background dispatch worker failed"},
+			{LatestDeadLetterReason: "unexpected storage condition"},
+			{LatestDeadLetterReason: "POLICY BLOCKED BY GATE"},
+		},
+	}
+
+	got := aggregateDeadLetterSummary(page)
+
+	assert.Equal(t, []deadLetterSummaryBucket{
+		{Label: postadjudicationstatus.DeadLetterReasonFamilyRetryExhausted, Count: 1},
+		{Label: postadjudicationstatus.DeadLetterReasonFamilyPolicyBlocked, Count: 2},
+		{Label: postadjudicationstatus.DeadLetterReasonFamilyReceiptInvalid, Count: 1},
+		{Label: postadjudicationstatus.DeadLetterReasonFamilyBackgroundFailed, Count: 1},
+		{Label: postadjudicationstatus.DeadLetterReasonFamilyUnknown, Count: 1},
+	}, got.ByReasonFamily)
+	assert.Equal(t, []deadLetterReasonSummaryItem{
+		{Reason: "POLICY BLOCKED BY GATE", Count: 1},
+		{Reason: "background dispatch worker failed", Count: 1},
+		{Reason: "invalid transaction receipt evidence", Count: 1},
+		{Reason: "policy gate denied replay", Count: 1},
+		{Reason: "retry attempts exhausted after 5 attempts", Count: 1},
+	}, got.TopLatestDeadLetterReasons)
 }
 
 func TestAggregateDeadLetterSummary_TopLatestDeadLetterReasons(t *testing.T) {

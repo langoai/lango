@@ -50,12 +50,22 @@ The first summary slice includes:
 - `retryable_count`
 - `by_adjudication`
 - `by_latest_family`
+- `by_reason_family`
+  - grouped reason-family buckets derived from each backlog row's current `latest_dead_letter_reason`
+  - initial taxonomy:
+    - `retry-exhausted`
+    - `policy-blocked`
+    - `receipt-invalid`
+    - `background-failed`
+    - `unknown`
+  - classification is case-insensitive and falls back to `unknown` when no built-in heuristic matches
 - `top_latest_dead_letter_reasons`
   - top `5` latest dead-letter reasons
   - each item includes:
     - `reason`
     - `count`
   - aggregated from each backlog row's current `latest_dead_letter_reason`
+  - remains available alongside `by_reason_family` so operators can see both grouped families and raw latest reason strings
 - `top_latest_manual_replay_actors`
   - top `5` latest manual replay actors
   - each item includes:
@@ -81,6 +91,8 @@ Examples:
 lango status dead-letter-summary
 lango status dead-letter-summary --output json
 ```
+
+Table output includes a `By reason family` section in addition to the existing raw `Top Latest Dead-Letter Reasons` section. JSON output includes `by_reason_family` as an array of `{ "label": "...", "count": ... }` buckets.
 
 ### `lango status dead-letters`
 
