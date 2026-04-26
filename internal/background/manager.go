@@ -23,11 +23,6 @@ const automationPrefix = "[Automated Task — Execute the following task using t
 // retained in memory. When exceeded, the oldest terminal task is evicted.
 const maxTerminalTasks = 500
 
-const (
-	maxRetryAttempts = 3
-	retryBaseDelay   = 25 * time.Millisecond
-)
-
 // AgentRunner executes agent prompts.
 type AgentRunner interface {
 	Run(ctx context.Context, sessionKey string, prompt string) (string, error)
@@ -66,6 +61,7 @@ type Manager struct {
 	projection      Projection
 	retryHook       RetryHook
 	retryKeyDeriver RetryKeyDeriver
+	retryPolicy     RetryPolicy
 	sem             chan struct{} // concurrency limiter
 	logger          *zap.SugaredLogger
 }
@@ -87,6 +83,7 @@ func NewManager(runner AgentRunner, notify *Notification, maxTasks int, taskTime
 		taskTimeout: taskTimeout,
 		runner:      runner,
 		notify:      notify,
+		retryPolicy: DefaultRetryPolicy(),
 		sem:         make(chan struct{}, maxTasks),
 		logger:      logger,
 	}
@@ -107,6 +104,12 @@ func (m *Manager) WithRetryHook(hook RetryHook) *Manager {
 // WithRetryKeyDeriver configures an optional retry-key derivation hook.
 func (m *Manager) WithRetryKeyDeriver(deriver RetryKeyDeriver) *Manager {
 	m.retryKeyDeriver = deriver
+	return m
+}
+
+// WithRetryPolicy configures the automatic retry policy for failed work.
+func (m *Manager) WithRetryPolicy(policy RetryPolicy) *Manager {
+	m.retryPolicy = policy.normalized()
 	return m
 }
 
@@ -365,11 +368,12 @@ func (m *Manager) scheduleRetry(ctx context.Context, task *Task) bool {
 	}
 
 	snap := task.Snapshot()
-	if snap.AttemptCount == 0 || snap.AttemptCount > maxRetryAttempts {
+	policy := m.retryPolicy.normalized()
+	if !policy.ShouldScheduleRetry(snap.AttemptCount) {
 		return false
 	}
 
-	delay := retryDelayForAttempt(snap.AttemptCount)
+	delay := policy.DelayForAttempt(snap.AttemptCount)
 	nextRetryAt := time.Now().Add(delay)
 	task.ScheduleRetry(nextRetryAt)
 
@@ -433,18 +437,6 @@ func (m *Manager) resubmit(task *Task, ctx context.Context) {
 		defer m.wg.Done()
 		m.execute(taskCtx, task)
 	}()
-}
-
-func retryDelayForAttempt(attempt int) time.Duration {
-	if attempt <= 0 {
-		return retryBaseDelay
-	}
-
-	delay := retryBaseDelay
-	for i := 1; i < attempt; i++ {
-		delay *= 2
-	}
-	return delay
 }
 
 // evictTerminalTasksLocked removes the oldest terminal tasks when the count

@@ -556,8 +556,8 @@ func (s *Store) RecordPostAdjudicationRetryScheduled(_ context.Context, req Post
 
 	s.events[submissionReceiptID] = append(s.events[submissionReceiptID], ReceiptEvent{
 		SubmissionReceiptID: submissionReceiptID,
-		Source:              "post_adjudication_retry",
-		Subtype:             "retry-scheduled",
+		Source:              PostAdjudicationRecoveryEventSource,
+		Subtype:             PostAdjudicationRetryScheduledSubtype,
 		Reason:              buildPostAdjudicationRetryScheduledReason(req),
 		Type:                EventSettlementUpdated,
 	})
@@ -598,8 +598,8 @@ func (s *Store) RecordPostAdjudicationDeadLetter(_ context.Context, req PostAdju
 
 	s.events[submissionReceiptID] = append(s.events[submissionReceiptID], ReceiptEvent{
 		SubmissionReceiptID: submissionReceiptID,
-		Source:              "post_adjudication_retry",
-		Subtype:             "dead-lettered",
+		Source:              PostAdjudicationRecoveryEventSource,
+		Subtype:             PostAdjudicationDeadLetteredSubtype,
 		Reason:              fmt.Sprintf("attempt=%d outcome=%s dead_lettered_at=%s reason=%s", req.AttemptCount, req.Outcome, time.Now().UTC().Format(time.RFC3339), req.Reason),
 		Type:                EventSettlementExecutionFailed,
 	})
@@ -636,8 +636,8 @@ func (s *Store) RecordManualRetryRequested(ctx context.Context, req ManualRetryR
 	}
 	s.events[submissionReceiptID] = append(s.events[submissionReceiptID], ReceiptEvent{
 		SubmissionReceiptID: submissionReceiptID,
-		Source:              "post_adjudication_retry",
-		Subtype:             "manual-retry-requested",
+		Source:              PostAdjudicationRecoveryEventSource,
+		Subtype:             PostAdjudicationManualRetryRequestedSubtype,
 		Reason:              reason,
 		Type:                EventSettlementUpdated,
 	})

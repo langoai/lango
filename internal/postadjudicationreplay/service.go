@@ -11,9 +11,10 @@ import (
 )
 
 type Service struct {
-	store      receiptStore
-	dispatcher dispatcher
-	policy     ReplayPolicy
+	store          receiptStore
+	dispatcher     dispatcher
+	policy         ReplayPolicy
+	recoveryPolicy RecoveryPolicy
 }
 
 func NewService(store receiptStore, dispatcher dispatcher, policy ...ReplayPolicy) *Service {
@@ -22,9 +23,10 @@ func NewService(store receiptStore, dispatcher dispatcher, policy ...ReplayPolic
 		resolved = policy[0]
 	}
 	return &Service{
-		store:      store,
-		dispatcher: dispatcher,
-		policy:     resolved,
+		store:          store,
+		dispatcher:     dispatcher,
+		policy:         resolved,
+		recoveryPolicy: DefaultRecoveryPolicy(),
 	}
 }
 
@@ -64,7 +66,7 @@ func (s *Service) Replay(ctx context.Context, req Request) (Result, error) {
 		return Result{}, ErrCurrentSubmissionMissing
 	}
 
-	if !hasDeadLetterEvidence(events) {
+	if !s.recoveryPolicy.HasDeadLetterEvidence(events) {
 		return Result{}, ErrDeadLetterEvidenceMissing
 	}
 	if transaction.EscrowAdjudication != receipts.EscrowAdjudicationRelease &&
@@ -104,7 +106,12 @@ func (s *Service) Replay(ctx context.Context, req Request) (Result, error) {
 		SubmissionReceiptID:  submissionReceiptID,
 		EscrowReference:      strings.TrimSpace(transaction.EscrowReference),
 		Outcome:              transaction.EscrowAdjudication,
-		Prompt:               buildBackgroundDispatchPrompt(transaction, submission),
+		Prompt: BuildBackgroundDispatchPrompt(
+			transaction.EscrowAdjudication,
+			transaction.TransactionReceiptID,
+			submission.SubmissionReceiptID,
+			transaction.EscrowReference,
+		),
 	})
 	if err != nil {
 		return Result{CanonicalAdjudication: canonical}, fmt.Errorf("dispatch background post-adjudication: %w", err)
@@ -114,32 +121,6 @@ func (s *Service) Replay(ctx context.Context, req Request) (Result, error) {
 		CanonicalAdjudication:     canonical,
 		BackgroundDispatchReceipt: &dispatchReceipt,
 	}, nil
-}
-
-func buildBackgroundDispatchPrompt(transaction receipts.TransactionReceipt, submission receipts.SubmissionReceipt) string {
-	toolName := "release_escrow_settlement"
-	switch transaction.EscrowAdjudication {
-	case receipts.EscrowAdjudicationRefund:
-		toolName = "refund_escrow_settlement"
-	}
-
-	return fmt.Sprintf(
-		"Execute the adjudicated escrow %s branch for transaction_receipt_id=%s.\nUse %s to perform the branch as a background follow-up.\nThe canonical adjudication is already recorded for submission_receipt_id=%s and escrow_reference=%s.\nDo not re-adjudicate.",
-		transaction.EscrowAdjudication,
-		transaction.TransactionReceiptID,
-		toolName,
-		submission.SubmissionReceiptID,
-		strings.TrimSpace(transaction.EscrowReference),
-	)
-}
-
-func hasDeadLetterEvidence(events []receipts.ReceiptEvent) bool {
-	for _, event := range events {
-		if event.Source == "post_adjudication_retry" && event.Subtype == "dead-lettered" {
-			return true
-		}
-	}
-	return false
 }
 
 func replayAllowedForOutcome(actor string, outcome receipts.EscrowAdjudicationDecision, policy ReplayPolicy) bool {

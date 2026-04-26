@@ -4,35 +4,43 @@ This page describes the first `retry / dead-letter handling` slice for backgroun
 
 ## Purpose
 
-This slice adds bounded retry semantics to the background post-adjudication path.
+This slice normalizes bounded retry semantics for the background post-adjudication recovery path.
 
 The slice is intentionally narrow:
 
 - only post-adjudication background execution is retried
 - retry uses the existing background task substrate
-- retries are bounded to `3` attempts with exponential backoff
+- the automatic retry policy is normalized into a runtime policy unit
+- retries are bounded to `3` attempts with exponential backoff from a `25ms` base delay
 - exhausted retries become terminal dead-letter background failure
 - canonical adjudication remains unchanged
 
 ## What Ships
 
+- normalized retry policy shape on the background manager:
+  - `MaxRetryAttempts`
+  - `BaseDelay`
+  - `ShouldScheduleRetry(attempt_count)`
+  - `DelayForAttempt(attempt_count)`
 - retry metadata on background tasks
   - `retry_key`
   - `attempt_count`
   - `next_retry_at`
 - post-adjudication retry hook on the background manager
-- append-only submission receipt trail evidence for:
-  - retry scheduled
-  - dead-lettered
-- retry identity based on:
+- normalized retry identity based on:
   - `transaction_receipt_id`
   - adjudication outcome
+- append-only submission receipt trail evidence under `source=post_adjudication_retry`
+  - `retry-scheduled`
+  - `dead-lettered`
+- standardized evidence payloads:
+  - retry scheduling records `attempt`, `next_retry_at`, `outcome`, and optional `dispatch_reference`
+  - dead-lettering records `attempt`, `outcome`, `dead_lettered_at`, and the terminal failure reason
 
 ## Current Limits
 
 This slice does not yet include:
 
-- operator replay or manual retry UI
-- generic background-manager-wide retry policy
-- dead-letter queue browsing surface
-- scheduled backoff configuration by policy
+- operator-editable retry tuning
+- wider non-post-adjudication adoption of the retry policy shape
+- a generic recovery substrate for arbitrary background task families

@@ -4,7 +4,7 @@ This page describes the first `policy-driven replay controls` slice for post-adj
 
 ## Purpose
 
-This slice adds actor- and outcome-aware replay authorization on top of the canonical replay gate.
+This slice adds actor- and outcome-aware replay authorization on top of the shared recovery gate.
 
 The slice is intentionally narrow:
 
@@ -12,6 +12,7 @@ The slice is intentionally narrow:
 - replay is fail-closed when actor is unresolved
 - replay is fail-closed when actor is not allowed
 - policy is backed by current config allowlists
+- replay authorization still sits behind the canonical dead-letter evidence gate
 
 ## What Ships
 
@@ -21,6 +22,7 @@ The slice is intentionally narrow:
   - `replay.allowed_actors`
   - `replay.release_allowed_actors`
   - `replay.refund_allowed_actors`
+- outcome-aware authorization on top of the shared recovery evidence source used by retry, dead-letter, and manual replay
 
 ## Current Limits
 

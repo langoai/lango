@@ -241,6 +241,73 @@ func TestManager_Status_PreservesRetryMetadata(t *testing.T) {
 	assert.True(t, snap.NextRetryAt.Equal(nextRetryAt))
 }
 
+func TestRetryPolicy_DefaultsPreserveBoundedExponentialBackoff(t *testing.T) {
+	policy := DefaultRetryPolicy()
+
+	assert.Equal(t, 3, policy.MaxRetryAttempts)
+	assert.Equal(t, 25*time.Millisecond, policy.BaseDelay)
+	assert.False(t, policy.ShouldScheduleRetry(0))
+	assert.True(t, policy.ShouldScheduleRetry(1))
+	assert.True(t, policy.ShouldScheduleRetry(3))
+	assert.False(t, policy.ShouldScheduleRetry(4))
+	assert.Equal(t, 25*time.Millisecond, policy.DelayForAttempt(0))
+	assert.Equal(t, 25*time.Millisecond, policy.DelayForAttempt(1))
+	assert.Equal(t, 50*time.Millisecond, policy.DelayForAttempt(2))
+	assert.Equal(t, 100*time.Millisecond, policy.DelayForAttempt(3))
+}
+
+func TestManager_RetryHook_UsesConfiguredRetryPolicy(t *testing.T) {
+	runner := &sequenceRunner{
+		responses: []runnerResponse{
+			{err: fmt.Errorf("attempt 1 failed")},
+			{err: fmt.Errorf("attempt 2 failed")},
+		},
+	}
+
+	var (
+		mu    sync.Mutex
+		snaps []TaskSnapshot
+	)
+	hook := func(_ context.Context, snap TaskSnapshot, exhausted bool, retry func()) {
+		mu.Lock()
+		snaps = append(snaps, snap)
+		mu.Unlock()
+		if !exhausted {
+			retry()
+		}
+	}
+
+	mgr := NewManager(runner, nil, 5, time.Minute, testLogger()).
+		WithRetryPolicy(RetryPolicy{
+			MaxRetryAttempts: 1,
+			BaseDelay:        time.Millisecond,
+		}).
+		WithRetryHook(hook)
+
+	id, err := mgr.Submit(context.Background(), "retry once", Origin{Channel: "test"})
+	require.NoError(t, err)
+
+	require.Eventually(t, func() bool {
+		return runner.Calls() == 2
+	}, time.Second, 10*time.Millisecond)
+
+	require.Eventually(t, func() bool {
+		snap, err := mgr.Status(id)
+		if err != nil {
+			return false
+		}
+		return snap.Status == Failed && snap.AttemptCount == 2
+	}, time.Second, 10*time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.Len(t, snaps, 2)
+	assert.Equal(t, 1, snaps[0].AttemptCount)
+	assert.False(t, snaps[0].NextRetryAt.IsZero())
+	assert.Equal(t, 2, snaps[1].AttemptCount)
+	assert.True(t, snaps[1].NextRetryAt.IsZero())
+}
+
 func TestManager_RetryHook_ResubmitsWithExponentialBackoff(t *testing.T) {
 	runner := &sequenceRunner{
 		responses: []runnerResponse{

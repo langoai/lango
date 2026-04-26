@@ -41,6 +41,76 @@ func TestServiceReplay_DeniesWhenActorIsUnresolved(t *testing.T) {
 	assert.Equal(t, 0, dispatcher.calls)
 }
 
+func TestExecutionPolicy_DefaultsToManualRecoveryWhenFlagsAreAbsent(t *testing.T) {
+	t.Parallel()
+
+	mode, err := DefaultExecutionPolicy().Resolve(false, false)
+
+	require.NoError(t, err)
+	assert.Equal(t, ExecutionModeManualRecovery, mode)
+}
+
+func TestExecutionPolicy_ExplicitFlagsOverrideDefault(t *testing.T) {
+	t.Parallel()
+
+	policy := ExecutionPolicy{DefaultMode: ExecutionModeBackground}
+
+	mode, err := policy.Resolve(true, false)
+	require.NoError(t, err)
+	assert.Equal(t, ExecutionModeInline, mode)
+
+	mode, err = policy.Resolve(false, true)
+	require.NoError(t, err)
+	assert.Equal(t, ExecutionModeBackground, mode)
+}
+
+func TestExecutionPolicy_RejectsConflictingFlags(t *testing.T) {
+	t.Parallel()
+
+	_, err := DefaultExecutionPolicy().Resolve(true, true)
+
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "mutually exclusive")
+}
+
+func TestRecoveryPolicy_RecognizesCanonicalDeadLetterEvidence(t *testing.T) {
+	t.Parallel()
+
+	policy := DefaultRecoveryPolicy()
+	events := []receipts.ReceiptEvent{
+		{
+			Source:  receipts.PostAdjudicationRecoveryEventSource,
+			Subtype: receipts.PostAdjudicationManualRetryRequestedSubtype,
+		},
+		{
+			Source:  receipts.PostAdjudicationRecoveryEventSource,
+			Subtype: receipts.PostAdjudicationDeadLetteredSubtype,
+		},
+	}
+
+	assert.True(t, policy.HasDeadLetterEvidence(events))
+	assert.False(t, policy.HasDeadLetterEvidence(events[:1]))
+}
+
+func TestRetryKeyHelpers_RoundTripPromptAndIdentity(t *testing.T) {
+	t.Parallel()
+
+	prompt := BuildBackgroundDispatchPrompt(
+		receipts.EscrowAdjudicationRefund,
+		"tx-123",
+		"sub-456",
+		"escrow-789",
+	)
+
+	retryKey := RetryKeyFromPrompt(prompt)
+	assert.Equal(t, CanonicalRetryKey("tx-123", receipts.EscrowAdjudicationRefund), retryKey)
+
+	transactionReceiptID, outcome, ok := ParseRetryKey(retryKey)
+	require.True(t, ok)
+	assert.Equal(t, "tx-123", transactionReceiptID)
+	assert.Equal(t, receipts.EscrowAdjudicationRefund, outcome)
+}
+
 func TestServiceReplay_DeniesWhenActorIsResolvedButNotAllowed(t *testing.T) {
 	t.Parallel()
 
@@ -166,8 +236,8 @@ func TestServiceReplay_DeniesWhenCanonicalAdjudicationIsMissing(t *testing.T) {
 	store.events = []receipts.ReceiptEvent{
 		{
 			SubmissionReceiptID: store.submission.SubmissionReceiptID,
-			Source:              "post_adjudication_retry",
-			Subtype:             "dead-lettered",
+			Source:              receipts.PostAdjudicationRecoveryEventSource,
+			Subtype:             receipts.PostAdjudicationDeadLetteredSubtype,
 			Type:                receipts.EventSettlementExecutionFailed,
 			Reason:              "attempt=3 outcome=release reason=timeout",
 		},
@@ -279,8 +349,8 @@ func newReplayStore() *fakeReplayStore {
 		events: []receipts.ReceiptEvent{
 			{
 				SubmissionReceiptID: "sub-1",
-				Source:              "post_adjudication_retry",
-				Subtype:             "dead-lettered",
+				Source:              receipts.PostAdjudicationRecoveryEventSource,
+				Subtype:             receipts.PostAdjudicationDeadLetteredSubtype,
 				Type:                receipts.EventSettlementExecutionFailed,
 				Reason:              "attempt=3 outcome=release reason=timeout",
 			},
@@ -329,8 +399,8 @@ func (f *fakeReplayStore) RecordManualRetryRequested(ctx context.Context, req re
 	}
 	f.events = append(f.events, receipts.ReceiptEvent{
 		SubmissionReceiptID: f.submission.SubmissionReceiptID,
-		Source:              "post_adjudication_retry",
-		Subtype:             "manual-retry-requested",
+		Source:              receipts.PostAdjudicationRecoveryEventSource,
+		Subtype:             receipts.PostAdjudicationManualRetryRequestedSubtype,
 		Type:                receipts.EventSettlementUpdated,
 		Reason:              reason,
 	})

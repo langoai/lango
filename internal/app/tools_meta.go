@@ -1591,7 +1591,7 @@ func newAdjudicateEscrowDisputeTool(
 ) *agent.Tool {
 	return &agent.Tool{
 		Name:        "adjudicate_escrow_dispute",
-		Description: "Record a canonical release-or-refund adjudication decision for a funded dispute-ready escrow after dispute hold",
+		Description: "Record a canonical release-or-refund adjudication decision for a funded dispute-ready escrow after dispute hold; by default this stops at canonical adjudication and waits for manual recovery unless an execution flag is set",
 		SafetyLevel: agent.SafetyLevelDangerous,
 		Capability: agent.ToolCapability{
 			Category: "knowledge",
@@ -1606,9 +1606,15 @@ func newAdjudicateEscrowDisputeTool(
 					"description": "Canonical adjudication decision after dispute hold",
 					"enum":        []string{"release", "refund"},
 				},
-				"reason":             map[string]interface{}{"type": "string", "description": "Optional adjudication reason"},
-				"auto_execute":       map[string]interface{}{"type": "boolean", "description": "When true, execute the adjudicated release or refund branch inline after adjudication succeeds"},
-				"background_execute": map[string]interface{}{"type": "boolean", "description": "When true, enqueue post-adjudication execution as a background dispatch after adjudication succeeds"},
+				"reason": map[string]interface{}{"type": "string", "description": "Optional adjudication reason"},
+				"auto_execute": map[string]interface{}{
+					"type":        "boolean",
+					"description": "When true, execute the adjudicated release or refund branch inline after adjudication succeeds; when omitted, the runtime keeps only the canonical adjudication and waits for manual recovery",
+				},
+				"background_execute": map[string]interface{}{
+					"type":        "boolean",
+					"description": "When true, enqueue post-adjudication execution as a background dispatch after adjudication succeeds; when omitted, the runtime keeps only the canonical adjudication and waits for manual recovery",
+				},
 			},
 			"required": []string{"transaction_receipt_id", "outcome"},
 		},
@@ -1627,8 +1633,9 @@ func newAdjudicateEscrowDisputeTool(
 			}
 			autoExecute := toolparam.OptionalBool(params, "auto_execute", false)
 			backgroundExecute := toolparam.OptionalBool(params, "background_execute", false)
-			if autoExecute && backgroundExecute {
-				return nil, fmt.Errorf("auto_execute and background_execute are mutually exclusive")
+			executionMode, err := postadjudicationreplay.DefaultExecutionPolicy().Resolve(autoExecute, backgroundExecute)
+			if err != nil {
+				return nil, err
 			}
 
 			result, err := escrowadjudication.NewService(receiptStore).Adjudicate(ctx, escrowadjudication.AdjudicateRequest{
@@ -1657,12 +1664,20 @@ func newAdjudicateEscrowDisputeTool(
 			}
 
 			receipt := newAdjudicateEscrowDisputeReceipt(result)
-			if backgroundExecute {
+			switch executionMode {
+			case postadjudicationreplay.ExecutionModeManualRecovery:
+				return receipt, nil
+			case postadjudicationreplay.ExecutionModeBackground:
 				if backgroundDispatcher == nil {
 					return receipt, fmt.Errorf("background manager is not configured")
 				}
 
-				dispatchReference, err := backgroundDispatcher.Submit(ctx, buildAdjudicateEscrowDisputeBackgroundPrompt(result), background.Origin{
+				dispatchReference, err := backgroundDispatcher.Submit(ctx, postadjudicationreplay.BuildBackgroundDispatchPrompt(
+					receipts.EscrowAdjudicationDecision(result.Outcome),
+					result.TransactionReceiptID,
+					result.SubmissionReceiptID,
+					result.EscrowReference,
+				), background.Origin{
 					Channel: automation.DetectChannelFromContext(ctx),
 					Session: session.SessionKeyFromContext(ctx),
 				})
@@ -1690,9 +1705,9 @@ func newAdjudicateEscrowDisputeTool(
 					}
 				}
 				return receipt, nil
-			}
-			if !autoExecute {
-				return receipt, nil
+			case postadjudicationreplay.ExecutionModeInline:
+			default:
+				return nil, fmt.Errorf("unsupported execution mode %q", executionMode)
 			}
 
 			switch result.Outcome {
@@ -2532,23 +2547,6 @@ func newRetryPostAdjudicationExecutionReceipt(result postadjudicationreplay.Resu
 		}
 	}
 	return receipt
-}
-
-func buildAdjudicateEscrowDisputeBackgroundPrompt(result escrowadjudication.Result) string {
-	toolName := "release_escrow_settlement"
-	switch result.Outcome {
-	case escrowadjudication.OutcomeRefund:
-		toolName = "refund_escrow_settlement"
-	}
-
-	return fmt.Sprintf(
-		"Execute the adjudicated escrow %s branch for transaction_receipt_id=%s.\nUse %s to perform the branch as a background follow-up.\nThe canonical adjudication is already recorded for submission_receipt_id=%s and escrow_reference=%s.\nDo not re-adjudicate.",
-		result.Outcome,
-		result.TransactionReceiptID,
-		toolName,
-		result.SubmissionReceiptID,
-		result.EscrowReference,
-	)
 }
 
 func newAdjudicationNestedExecutionReceiptFromRelease(result escrowrelease.Result) *adjudicateEscrowDisputeExecutionReceipt {

@@ -232,6 +232,13 @@ type EscrowAdjudicationFailureRequest struct {
 	Reason               string `json:"reason"`
 }
 
+const (
+	PostAdjudicationRecoveryEventSource         = "post_adjudication_retry"
+	PostAdjudicationRetryScheduledSubtype       = "retry-scheduled"
+	PostAdjudicationDeadLetteredSubtype         = "dead-lettered"
+	PostAdjudicationManualRetryRequestedSubtype = "manual-retry-requested"
+)
+
 type PostAdjudicationRetryScheduledRequest struct {
 	TransactionReceiptID string                     `json:"transaction_receipt_id"`
 	Outcome              EscrowAdjudicationDecision `json:"outcome"`

@@ -4,12 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/langoai/lango/internal/background"
 	"github.com/langoai/lango/internal/config"
 	cronpkg "github.com/langoai/lango/internal/cron"
+	"github.com/langoai/lango/internal/postadjudicationreplay"
 	"github.com/langoai/lango/internal/receipts"
 	"github.com/langoai/lango/internal/runledger"
 	"github.com/langoai/lango/internal/session"
@@ -114,11 +114,11 @@ func initBackground(cfg *config.Config, app *App, receiptStore *receipts.Store) 
 
 	mgr := background.NewManager(runner, notify, maxTasks, taskTimeout, logger())
 	mgr.WithRetryKeyDeriver(func(prompt string, _ background.Origin) string {
-		return parsePostAdjudicationRetryKey(prompt)
+		return postadjudicationreplay.RetryKeyFromPrompt(prompt)
 	})
 	if receiptStore != nil {
 		mgr.WithRetryHook(func(ctx context.Context, snap background.TaskSnapshot, exhausted bool, resubmit func()) {
-			transactionReceiptID, outcome, ok := parseRetryKeyParts(snap.RetryKey)
+			transactionReceiptID, outcome, ok := postadjudicationreplay.ParseRetryKey(snap.RetryKey)
 			if !ok {
 				return
 			}
@@ -158,45 +158,6 @@ func initBackground(cfg *config.Config, app *App, receiptStore *receipts.Store) 
 	)
 
 	return mgr
-}
-
-func parsePostAdjudicationRetryKey(prompt string) string {
-	transactionReceiptID := ""
-	switch {
-	case strings.Contains(prompt, "release_escrow_settlement"):
-		if idx := strings.Index(prompt, "transaction_receipt_id="); idx >= 0 {
-			fields := strings.Fields(strings.TrimSpace(prompt[idx+len("transaction_receipt_id="):]))
-			if len(fields) > 0 {
-				transactionReceiptID = fields[0]
-			}
-		}
-		if transactionReceiptID != "" {
-			return transactionReceiptID + ":" + string(receipts.EscrowAdjudicationRelease)
-		}
-	case strings.Contains(prompt, "refund_escrow_settlement"):
-		if idx := strings.Index(prompt, "transaction_receipt_id="); idx >= 0 {
-			fields := strings.Fields(strings.TrimSpace(prompt[idx+len("transaction_receipt_id="):]))
-			if len(fields) > 0 {
-				transactionReceiptID = fields[0]
-			}
-		}
-		if transactionReceiptID != "" {
-			return transactionReceiptID + ":" + string(receipts.EscrowAdjudicationRefund)
-		}
-	}
-	return ""
-}
-
-func parseRetryKeyParts(retryKey string) (string, receipts.EscrowAdjudicationDecision, bool) {
-	parts := strings.SplitN(strings.TrimSpace(retryKey), ":", 2)
-	if len(parts) != 2 || parts[0] == "" {
-		return "", "", false
-	}
-	outcome := receipts.EscrowAdjudicationDecision(parts[1])
-	if outcome != receipts.EscrowAdjudicationRelease && outcome != receipts.EscrowAdjudicationRefund {
-		return "", "", false
-	}
-	return parts[0], outcome, true
 }
 
 // initWorkflow creates the workflow engine if enabled.

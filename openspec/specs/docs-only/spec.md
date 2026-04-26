@@ -348,9 +348,11 @@ The `docs/architecture/automatic-post-adjudication-execution.md` page SHALL desc
 #### Scenario: Automatic post-adjudication execution page shows the bounded slice
 - **WHEN** a user reads `docs/architecture/automatic-post-adjudication-execution.md`
 - **THEN** they SHALL find sections describing the current auto-execution slice, what currently ships, and current limits
+- **AND** they SHALL find that omitted execution flags default to `manual_recovery`
+- **AND** they SHALL find that `auto_execute` and `background_execute` are mutually exclusive
 
 ### Requirement: P2P knowledge exchange track reflects landed automatic post-adjudication execution
-The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the automatic post-adjudication execution first slice as landed work and list the remaining work as background execution, retry orchestration, automatic execution as policy default, and broader dispute engine integration.
+The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the automatic post-adjudication execution first slice as landed work, including the shared execution-mode default of `manual_recovery`, and list the remaining work as config-backed non-manual defaults, policy editing for execution-mode selection, and broader dispute engine integration.
 
 #### Scenario: Track page points to the landed auto-execution slice
 - **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
@@ -363,9 +365,11 @@ The `docs/architecture/background-post-adjudication-execution.md` page SHALL des
 #### Scenario: Background post-adjudication execution page shows the bounded slice
 - **WHEN** a user reads `docs/architecture/background-post-adjudication-execution.md`
 - **THEN** they SHALL find sections describing the current background dispatch slice, what currently ships, and current limits
+- **AND** they SHALL find the shared `manual_recovery` / `inline` / `background` execution-mode policy described
+- **AND** they SHALL find that background execution remains an explicit opt-in when execution flags are present
 
 ### Requirement: P2P knowledge exchange track reflects landed background post-adjudication execution
-The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the background post-adjudication execution first slice as landed work and list the remaining work as retry orchestration, dead-letter handling, dedicated status observation, and policy-driven defaults.
+The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the background post-adjudication execution first slice as landed work and list the remaining work as config-backed non-manual defaults, operator-editable execution-mode policy, broader background-task adoption outside post-adjudication follow-up, and broader dispute engine integration.
 
 #### Scenario: Track page points to the landed background slice
 - **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
@@ -378,9 +382,11 @@ The `docs/architecture/retry-dead-letter-handling.md` page SHALL describe the fi
 #### Scenario: Retry / dead-letter handling page shows the bounded slice
 - **WHEN** a user reads `docs/architecture/retry-dead-letter-handling.md`
 - **THEN** they SHALL find sections describing the current retry/dead-letter slice, what currently ships, and current limits
+- **AND** they SHALL find the normalized retry policy shape described with retry-attempt and base-delay fields
+- **AND** they SHALL find the shared `post_adjudication_retry` evidence source described for retry and dead-letter events
 
 ### Requirement: P2P knowledge exchange track reflects landed retry / dead-letter handling
-The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the retry / dead-letter handling first slice as landed work and list the remaining work as operator replay, generic async retry policy, dead-letter browsing, and policy-driven backoff tuning.
+The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the retry / dead-letter handling first slice as landed work and list the remaining work as operator-editable retry tuning, wider non-post-adjudication adoption of the retry policy shape, and a more generic recovery substrate for arbitrary background task families.
 
 #### Scenario: Track page points to the landed retry slice
 - **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
@@ -393,9 +399,11 @@ The `docs/architecture/operator-replay-manual-retry.md` page SHALL describe the 
 #### Scenario: Operator replay / manual retry page shows the bounded slice
 - **WHEN** a user reads `docs/architecture/operator-replay-manual-retry.md`
 - **THEN** they SHALL find sections describing the current replay slice, what currently ships, and current limits
+- **AND** they SHALL find replay described as part of the same recovery evidence family as automatic retry and dead-letter handling
+- **AND** they SHALL find `manual-retry-requested` evidence described
 
 ### Requirement: P2P knowledge exchange track reflects landed operator replay / manual retry
-The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the operator replay / manual retry first slice as landed work and list the remaining work as dead-letter browsing UI, policy-driven replay controls, generic replay substrate design, and broader dispute engine integration.
+The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the operator replay / manual retry first slice as landed work and list the remaining work as inline replay, arbitrary background-task replay, per-transaction recovery snapshots, and broader dispute engine integration.
 
 #### Scenario: Track page points to the landed replay slice
 - **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
@@ -408,6 +416,7 @@ The `docs/architecture/policy-driven-replay-controls.md` page SHALL describe the
 #### Scenario: Policy-driven replay controls page shows the bounded slice
 - **WHEN** a user reads `docs/architecture/policy-driven-replay-controls.md`
 - **THEN** they SHALL find sections describing the current replay-authorization slice, what currently ships, and current limits
+- **AND** they SHALL find replay authorization described as sitting on top of the shared recovery evidence gate
 
 ### Requirement: P2P knowledge exchange track reflects landed policy-driven replay controls
 The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the policy-driven replay controls first slice as landed work and list the remaining work as richer policy classes, policy editing surfaces, per-transaction snapshots, and amount-tier replay controls.
@@ -490,7 +499,7 @@ The `docs/architecture/dead-letter-browsing-status-observation.md` page SHALL de
 - **AND** they SHALL find detail navigation hints described for per-transaction status
 
 ### Requirement: P2P knowledge exchange track reflects landed dead-letter browsing / status observation
-The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe dead-letter browsing / status observation as landed work with transaction-global dominant family, compact per-submission breakdown, a thin raw background-task bridge on the detail view, a cockpit dead-letter read surface, a page-top cockpit summary strip with raw top latest dead-letter reasons, grouped `reason families:`, top latest manual replay actors, grouped `actor families:`, grouped `dispatch families:`, top latest dispatch references, and a compact trend line, a thin cockpit filter bar, cockpit subtype filtering, cockpit latest-family filtering, cockpit any-match-family filtering, cockpit actor/time filtering, cockpit reason/dispatch filtering, cockpit reset/clear shortcuts, cockpit selection preservation, a cockpit `Retry` action, confirm/refresh recovery UX, refined retry loading/failure/success messaging, and a dead-letter CLI surface including the summary command with grouped `by_reason_family`, `by_actor_family`, and `by_dispatch_family` buckets, `By reason family`, `By actor family`, and `By dispatch family` table sections, raw configurable top-N latest reasons, raw configurable top-N latest manual replay actors, raw configurable top-N latest dispatch references, recent trend / time-window summaries, subtype/latest-family/any-match-family filtering, actor/time filtering, reason/dispatch filtering, and retry follow-up polling with precheck/request-accepted/request-failed semantics, and list the remaining work as configurable taxonomy redesign, broader dead-letter history and generic background-task browsing, generic async retry policy redesign, replay substrate normalization, and policy-driven defaults.
+The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe dead-letter browsing / status observation as landed work with transaction-global dominant family, compact per-submission breakdown, a thin raw background-task bridge on the detail view, a cockpit dead-letter read surface, a page-top cockpit summary strip with raw top latest dead-letter reasons, grouped `reason families:`, top latest manual replay actors, grouped `actor families:`, grouped `dispatch families:`, top latest dispatch references, and a compact trend line, a thin cockpit filter bar, cockpit subtype filtering, cockpit latest-family filtering, cockpit any-match-family filtering, cockpit actor/time filtering, cockpit reason/dispatch filtering, cockpit reset/clear shortcuts, cockpit selection preservation, a cockpit `Retry` action, confirm/refresh recovery UX, refined retry loading/failure/success messaging, and a dead-letter CLI surface including the summary command with grouped `by_reason_family`, `by_actor_family`, and `by_dispatch_family` buckets, `By reason family`, `By actor family`, and `By dispatch family` table sections, raw configurable top-N latest reasons, raw configurable top-N latest manual replay actors, raw configurable top-N latest dispatch references, recent trend / time-window summaries, subtype/latest-family/any-match-family filtering, actor/time filtering, reason/dispatch filtering, and retry follow-up polling with precheck/request-accepted/request-failed semantics, and list the remaining work as configurable taxonomy redesign, broader dead-letter history and generic background-task browsing, wider non-post-adjudication adoption of the retry/recovery substrate, and operator-editable execution/recovery policy surfaces.
 
 #### Scenario: Track page points to the landed status slice
 - **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
@@ -545,4 +554,4 @@ The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe dead
 - **AND** they SHALL find CLI retry precheck/request-accepted/request-failed semantics described as landed work
 - **AND** they SHALL find CLI any-match-family filtering described as landed work
 - **AND** they SHALL find CLI retry follow-up polling described as landed work
-- **AND** the remaining work SHALL be described as configurable taxonomy redesign, broader dead-letter history and generic background-task browsing, generic async retry policy redesign, replay substrate normalization, and policy-driven defaults
+- **AND** the remaining work SHALL be described as configurable taxonomy redesign, broader dead-letter history and generic background-task browsing, wider non-post-adjudication adoption of the retry/recovery substrate, and operator-editable execution/recovery policy surfaces
