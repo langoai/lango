@@ -5,7 +5,7 @@ Behavior-preserving efficiency requirements for the retrieval and orchestration 
 ## Requirements
 
 ### Requirement: Retrieval orchestration flow map
-The change SHALL document the real code path from a user turn through context retrieval, agentic retrieval, Graph RAG, memory retrieval, orchestration delegation, and stream fan-in.
+The change SHALL document the real code path from a user turn through context retrieval, agentic retrieval, Graph RAG, memory retrieval, run summary retrieval, orchestration delegation, and stream fan-in.
 
 #### Scenario: Flow map identifies repeated work candidates
 - **WHEN** the design artifact is reviewed
