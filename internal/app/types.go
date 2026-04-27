@@ -36,6 +36,7 @@ import (
 	"github.com/langoai/lango/internal/p2p/team"
 	"github.com/langoai/lango/internal/payment"
 	"github.com/langoai/lango/internal/provenance"
+	"github.com/langoai/lango/internal/receipts"
 	"github.com/langoai/lango/internal/runledger"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/session"
@@ -118,6 +119,7 @@ type App struct {
 	WalletProvider  wallet.WalletProvider
 	PaymentService  *payment.Service
 	X402Interceptor *x402pkg.Interceptor
+	ReceiptStore    *receipts.Store
 
 	// Cron Scheduling Components (optional)
 	CronScheduler *cronpkg.Scheduler

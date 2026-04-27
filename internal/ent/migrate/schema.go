@@ -102,7 +102,7 @@ var (
 	AuditLogsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
 		{Name: "session_key", Type: field.TypeString, Nullable: true},
-		{Name: "action", Type: field.TypeEnum, Enums: []string{"tool_call", "knowledge_save", "learning_save", "skill_create", "skill_execute", "skill_import", "skill_import_bulk", "knowledge_search", "approval_request", "approval_response", "policy_decision", "alert", "sandbox_decision"}},
+		{Name: "action", Type: field.TypeEnum, Enums: []string{"tool_call", "knowledge_save", "learning_save", "skill_create", "skill_execute", "skill_import", "skill_import_bulk", "knowledge_search", "approval_request", "approval_response", "policy_decision", "exportability_decision", "artifact_release_approval", "alert", "sandbox_decision"}},
 		{Name: "actor", Type: field.TypeString},
 		{Name: "target", Type: field.TypeString, Nullable: true},
 		{Name: "details", Type: field.TypeJSON, Nullable: true},
@@ -433,6 +433,8 @@ var (
 		{Name: "content_key_version", Type: field.TypeInt, Nullable: true},
 		{Name: "tags", Type: field.TypeJSON, Nullable: true},
 		{Name: "source", Type: field.TypeString, Nullable: true},
+		{Name: "source_class", Type: field.TypeString, Nullable: true},
+		{Name: "asset_label", Type: field.TypeString, Nullable: true},
 		{Name: "version", Type: field.TypeInt, Default: 1},
 		{Name: "is_latest", Type: field.TypeBool, Default: true},
 		{Name: "use_count", Type: field.TypeInt, Default: 0},
@@ -449,12 +451,12 @@ var (
 			{
 				Name:    "knowledge_key_version",
 				Unique:  true,
-				Columns: []*schema.Column{KnowledgesColumns[1], KnowledgesColumns[9]},
+				Columns: []*schema.Column{KnowledgesColumns[1], KnowledgesColumns[11]},
 			},
 			{
 				Name:    "knowledge_key_is_latest",
 				Unique:  false,
-				Columns: []*schema.Column{KnowledgesColumns[1], KnowledgesColumns[10]},
+				Columns: []*schema.Column{KnowledgesColumns[1], KnowledgesColumns[12]},
 			},
 			{
 				Name:    "knowledge_category",

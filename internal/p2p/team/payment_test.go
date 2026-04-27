@@ -86,7 +86,7 @@ func TestSelectPaymentMode(t *testing.T) {
 	}{
 		{give: "free when price is zero", trustScore: 0.9, pricePerTask: 0, want: PaymentFree},
 		{give: "free when price is negative", trustScore: 0.5, pricePerTask: -1, want: PaymentFree},
-		{give: "postpay for high trust", trustScore: 0.7, pricePerTask: 1.0, want: PaymentPostpay},
+		{give: "postpay for threshold trust", trustScore: 0.8, pricePerTask: 1.0, want: PaymentPostpay},
 		{give: "postpay for very high trust", trustScore: 0.95, pricePerTask: 0.50, want: PaymentPostpay},
 		{give: "prepay for low trust", trustScore: 0.5, pricePerTask: 1.0, want: PaymentPrepay},
 		{give: "prepay for zero trust", trustScore: 0, pricePerTask: 0.10, want: PaymentPrepay},

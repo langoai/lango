@@ -26,6 +26,10 @@ Lango provides a blockchain payment system for USDC on Base L2 (EVM). The agent 
 
     Tools marked **Dangerous** require explicit user approval before execution unless auto-approve policies are configured. See [Tool Approval](../security/tool-approval.md) for details.
 
+!!! info "Direct Payment Execution Gate"
+
+    `payment_send` and `p2p_pay` now run behind a receipt-backed direct payment execution gate. Direct payment execution requires a linked `transaction_receipt_id`, uses the transaction's current canonical submission when `submission_receipt_id` is omitted, and allows execution only when the canonical payment approval state is approved with a `prepay` settlement hint. See [Actual Payment Execution Gating](../security/actual-payment-execution-gating.md).
+
 ## Wallet Providers
 
 | Provider | Description |

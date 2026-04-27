@@ -35,6 +35,10 @@ type Knowledge struct {
 	Tags []string `json:"tags,omitempty"`
 	// Source holds the value of the "source" field.
 	Source string `json:"source,omitempty"`
+	// SourceClass holds the value of the "source_class" field.
+	SourceClass string `json:"source_class,omitempty"`
+	// AssetLabel holds the value of the "asset_label" field.
+	AssetLabel string `json:"asset_label,omitempty"`
 	// Version holds the value of the "version" field.
 	Version int `json:"version,omitempty"`
 	// IsLatest holds the value of the "is_latest" field.
@@ -63,7 +67,7 @@ func (*Knowledge) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullFloat64)
 		case knowledge.FieldContentKeyVersion, knowledge.FieldVersion, knowledge.FieldUseCount:
 			values[i] = new(sql.NullInt64)
-		case knowledge.FieldKey, knowledge.FieldCategory, knowledge.FieldContent, knowledge.FieldSource:
+		case knowledge.FieldKey, knowledge.FieldCategory, knowledge.FieldContent, knowledge.FieldSource, knowledge.FieldSourceClass, knowledge.FieldAssetLabel:
 			values[i] = new(sql.NullString)
 		case knowledge.FieldCreatedAt, knowledge.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -140,6 +144,18 @@ func (_m *Knowledge) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field source", values[i])
 			} else if value.Valid {
 				_m.Source = value.String
+			}
+		case knowledge.FieldSourceClass:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field source_class", values[i])
+			} else if value.Valid {
+				_m.SourceClass = value.String
+			}
+		case knowledge.FieldAssetLabel:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field asset_label", values[i])
+			} else if value.Valid {
+				_m.AssetLabel = value.String
 			}
 		case knowledge.FieldVersion:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -242,6 +258,12 @@ func (_m *Knowledge) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("source=")
 	builder.WriteString(_m.Source)
+	builder.WriteString(", ")
+	builder.WriteString("source_class=")
+	builder.WriteString(_m.SourceClass)
+	builder.WriteString(", ")
+	builder.WriteString("asset_label=")
+	builder.WriteString(_m.AssetLabel)
 	builder.WriteString(", ")
 	builder.WriteString("version=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Version))

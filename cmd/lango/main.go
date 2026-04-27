@@ -58,6 +58,7 @@ import (
 	cliworkflow "github.com/langoai/lango/internal/cli/workflow"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/logging"
+	"github.com/langoai/lango/internal/postadjudicationstatus"
 	"github.com/langoai/lango/internal/sandbox"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/storagebroker"
@@ -745,6 +746,17 @@ func runCockpit(initialMode string) error {
 	} else {
 		model.RegisterPage(cockpit.PageTasks, pages.NewTasksPage(nil, nil))
 	}
+	if deadLetterBridge := cockpit.NewDeadLetterToolBridge(application.ToolCatalog); deadLetterBridge.Ready() {
+		var retryFn pages.DeadLetterRetryFn
+		if deadLetterBridge.CanRetry() {
+			retryFn = deadLetterBridge.Retry
+		}
+		listFn := func(ctx context.Context, opts pages.DeadLetterListOptions) ([]postadjudicationstatus.DeadLetterBacklogEntry, error) {
+			return deadLetterBridge.List(ctx, cockpitDeadLetterListOptions(opts))
+		}
+		model.RegisterPage(cockpit.PageDeadLetters,
+			pages.NewDeadLettersPage(listFn, deadLetterBridge.Detail, retryFn))
+	}
 	model.RegisterPage(cockpit.PageApprovals,
 		pages.NewApprovalsPage(application.ApprovalHistory, application.GrantStore))
 
@@ -783,6 +795,21 @@ func runCockpit(initialMode string) error {
 	}
 
 	return nil
+}
+
+func cockpitDeadLetterListOptions(opts pages.DeadLetterListOptions) cockpit.DeadLetterListOptions {
+	return cockpit.DeadLetterListOptions{
+		Query:                     opts.Query,
+		Adjudication:              opts.Adjudication,
+		LatestStatusSubtype:       opts.LatestStatusSubtype,
+		LatestStatusSubtypeFamily: opts.LatestStatusSubtypeFamily,
+		AnyMatchFamily:            opts.AnyMatchFamily,
+		ManualReplayActor:         opts.ManualReplayActor,
+		DeadLetteredAfter:         opts.DeadLetteredAfter,
+		DeadLetteredBefore:        opts.DeadLetteredBefore,
+		DeadLetterReasonQuery:     opts.DeadLetterReasonQuery,
+		LatestDispatchReference:   opts.LatestDispatchReference,
+	}
 }
 
 // bgTaskLister adapts background.Manager to pages.TaskLister.

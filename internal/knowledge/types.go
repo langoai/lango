@@ -95,14 +95,16 @@ type RetrievalResult struct {
 
 // KnowledgeEntry is the domain type for knowledge CRUD operations.
 type KnowledgeEntry struct {
-	Key       string
-	Category  entknowledge.Category
-	Content   string
-	Tags      []string
-	Source    string
-	Version   int       // 0 = unset (callers constructing entries don't set this)
-	CreatedAt time.Time // zero = unset
-	UpdatedAt time.Time // zero = unset; populated from DB on read
+	Key         string
+	Category    entknowledge.Category
+	Content     string
+	Tags        []string
+	Source      string
+	SourceClass string
+	AssetLabel  string
+	Version     int       // 0 = unset (callers constructing entries don't set this)
+	CreatedAt   time.Time // zero = unset
+	UpdatedAt   time.Time // zero = unset; populated from DB on read
 }
 
 // LearningEntry is the domain type for learning CRUD operations.

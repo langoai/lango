@@ -1,0 +1,267 @@
+# Dead-Letter Browsing / Status Observation
+
+This page describes the first `dead-letter browsing / status observation` slice for post-adjudication execution in `knowledge exchange v1`.
+
+## Purpose
+
+This slice gives operators a read-only view into the current dead-letter backlog and the current status of a specific post-adjudication execution transaction.
+
+The slice is intentionally narrow:
+
+- read-only only
+- transaction-centered read model
+- current dead-letter backlog only
+- per-transaction detail only
+
+## What Ships
+
+- `list_dead_lettered_post_adjudication_executions`
+  - `adjudication` filter
+  - `retry_attempt_min` / `retry_attempt_max` filters
+  - `query` over transaction and submission receipt IDs
+  - `manual_replay_actor` filter
+  - `dead_lettered_after` / `dead_lettered_before` filters
+  - `dead_letter_reason_query` filter
+  - `latest_dispatch_reference` exact-match filter
+  - `latest_status_subtype` filter
+  - `manual_retry_count_min` / `manual_retry_count_max` filters
+  - `total_retry_count_min` / `total_retry_count_max` filters
+  - `transaction_global_total_retry_count_min` / `transaction_global_total_retry_count_max` filters
+  - `transaction_global_any_match_family` filter
+  - `transaction_global_dominant_family` filter
+  - `latest_status_subtype_family` filter
+  - `any_match_family` filter
+  - `dominant_family` filter
+  - `sort_by`
+  - `offset` / `limit` pagination
+  - `count` / `total` / `offset` / `limit` response metadata
+  - `latest_dead_lettered_at`
+  - `latest_manual_replay_actor`
+  - `latest_manual_replay_at`
+  - `latest_status_subtype`
+  - `manual_retry_count`
+  - `total_retry_count`
+  - `transaction_global_total_retry_count`
+  - `transaction_global_any_match_families`
+  - `transaction_global_dominant_family`
+  - `submission_breakdown`
+  - `latest_status_subtype_family`
+  - `any_match_families`
+  - `dominant_family`
+- `get_post_adjudication_execution_status(transaction_receipt_id)`
+  - current canonical snapshot
+  - latest retry / dead-letter summary
+  - optional `latest_background_task`
+    - `task_id`
+    - `status`
+    - `attempt_count`
+    - `next_retry_at`
+  - lightweight navigation hints:
+    - `is_dead_lettered`
+    - `can_retry`
+    - `adjudication`
+- read model composed from:
+  - `transaction receipt`
+  - `current submission receipt`
+  - `submission receipt trail`
+- cockpit read surface
+  - page-top compact summary strip
+    - recomputed from the currently loaded backlog rows
+    - refreshed on:
+      - initial load
+      - filter apply
+      - `Ctrl+R` reset
+      - retry-success refresh
+    - shows:
+      - total dead letters
+      - retryable count
+      - `release/refund` distribution
+      - `retry/manual-retry/dead-letter` distribution
+      - top `5` latest dead-letter reasons in a compact second line
+        - rendered as a compact `reasons:` line
+        - aggregated from each row's current `latest_dead_letter_reason`
+        - remains visible as the raw latest reason-string view
+      - grouped latest dead-letter reason families in a compact `reason families:` line
+        - rendered from each row's current `latest_dead_letter_reason`
+        - uses the initial built-in taxonomy:
+          - `retry-exhausted`
+          - `policy-blocked`
+          - `receipt-invalid`
+          - `background-failed`
+          - `unknown`
+        - uses case-insensitive heuristic matching with `unknown` fallback
+      - top `5` latest manual replay actors in a compact `actors:` line
+        - rendered as a compact `actors:` line
+        - aggregated from each row's current `latest_manual_replay_actor`
+      - grouped latest manual replay actor families in a compact `actor families:` line
+        - rendered from each row's current `latest_manual_replay_actor`
+        - uses the initial built-in taxonomy:
+          - `operator`
+          - `system`
+          - `service`
+          - `unknown`
+        - uses case-insensitive heuristic matching with `unknown` fallback
+        - raw top latest manual replay actors remain visible alongside grouped actor-family buckets
+      - grouped latest dispatch-reference families in a compact `dispatch families:` line
+        - rendered from each row's current `latest_dispatch_reference`
+        - uses the same shared classifier as the CLI summary surface
+        - currently recognizes `dispatch`, `queue`, `worker`, `bridge`, `webhook`, and `unknown`
+        - aliases `job`, `runner`, and `task` normalize to `worker`
+        - otherwise the first normalized token is preserved so unfamiliar prefixes still show up deterministically
+      - top `5` latest dispatch references in a compact `dispatch:` line
+        - rendered as a compact `dispatch:` line
+        - aggregated from each row's current `latest_dispatch_reference`
+      - compact trend line
+        - rendered as `trend: 24h ... 7d ... older ... undated ...`
+        - recomputed from each row's current `latest_dead_lettered_at`
+  - dead-letter backlog table
+  - selected transaction detail pane
+  - selection-driven detail refresh
+  - reuses the existing list/detail status surfaces
+  - thin filter bar
+    - `query`
+    - `adjudication`
+    - `latest_status_subtype`
+    - `latest_status_subtype_family`
+    - `any_match_family`
+    - `manual_replay_actor`
+    - `dead_lettered_after`
+    - `dead_lettered_before`
+    - `dead_letter_reason_query`
+    - `latest_dispatch_reference`
+    - all filter fields are forwarded through the cockpit bridge into the dead-letter list tool
+    - `Enter` apply
+    - `Ctrl+R` full reset
+    - selection is preserved when the current transaction remains in the refreshed result set
+    - first-row fallback when the current transaction disappears
+  - detail-pane `Retry` action
+    - reuses `retry_post_adjudication_execution`
+    - enabled only when `can_retry = true`
+    - `r` key binding
+    - first `r` enters inline confirm state
+    - second `r` executes replay
+    - `Esc`, selection change, and filter apply clear confirm state
+    - while replay is in flight, `Retry action` renders `requesting retry...`
+    - duplicate retry triggers are blocked while replay is running
+    - replay failure surfaces explicit retry-request failure wording and returns the action to idle
+    - replay success surfaces an explicit retry-request acceptance message and refreshes backlog and selected detail
+    - follow-up messaging is refined after acceptance:
+      - `Refreshing backlog and detail`
+      - `Follow-up: backlog refreshed; loading latest status`
+      - task-oriented follow-up such as `task retrying (attempt 2, next ...)`
+      - fallback follow-up wording when the item is still in backlog, disappears from backlog, or latest-status refresh fails
+    - `Ctrl+R` clears filter draft/applied state and retry confirm state, then reloads backlog/detail
+    - `Ctrl+R` is ignored while retry is running
+    - apply, reset, and retry-success refresh preserve the current selection when it remains in the refreshed backlog
+    - if the selected transaction disappears, the page falls back to the first row or clears selection/detail when the backlog becomes empty
+- dead-letter CLI surface
+  - `lango status dead-letter-summary`
+    - `table` default
+    - `json` support
+    - global overview only
+      - `total_dead_letters`
+      - `retryable_count`
+      - `by_adjudication`
+      - `by_latest_family`
+      - `by_reason_family`
+        - grouped reason-family buckets derived from each row's current `latest_dead_letter_reason`
+        - table output renders this as a `By reason family` section
+        - JSON output renders this as `by_reason_family`
+        - uses the initial built-in taxonomy:
+          - `retry-exhausted`
+          - `policy-blocked`
+          - `receipt-invalid`
+          - `background-failed`
+          - `unknown`
+        - uses case-insensitive heuristic matching with `unknown` fallback
+      - `top_latest_dead_letter_reasons`
+        - top `5` reasons
+        - each item includes `reason` and `count`
+        - aggregated from each row's current `latest_dead_letter_reason`
+        - remains available as the raw latest reason-string view alongside `by_reason_family`
+      - `by_actor_family`
+        - grouped actor-family buckets derived from each row's current `latest_manual_replay_actor`
+        - table output renders this as a `By actor family` section
+        - JSON output renders this as `by_actor_family`
+        - uses the initial built-in taxonomy:
+          - `operator`
+          - `system`
+          - `service`
+          - `unknown`
+        - uses case-insensitive heuristic matching with `unknown` fallback
+      - `top_latest_manual_replay_actors`
+        - top latest actors
+        - each item includes `actor` and `count`
+        - aggregated from each row's current `latest_manual_replay_actor`
+        - remains available as the raw latest actor-string view alongside `by_actor_family`
+      - `by_dispatch_family`
+        - grouped dispatch-family buckets derived from each row's current `latest_dispatch_reference`
+        - table output renders this as a `By dispatch family` section
+        - JSON output renders this as `by_dispatch_family`
+        - uses a compact prefix classifier over each current `latest_dispatch_reference`
+        - currently recognizes `dispatch`, `queue`, `worker`, `bridge`, `webhook`, and `unknown`
+        - aliases `job`, `runner`, and `task` normalize to `worker`
+        - otherwise the first normalized token is preserved
+      - `top_latest_dispatch_references`
+        - top latest dispatch references
+        - each item includes `dispatch_reference` and `count`
+        - aggregated from each row's current `latest_dispatch_reference`
+        - remains available as the raw latest dispatch-string view alongside `by_dispatch_family`
+      - `recent_dead_letter_trend`
+        - rendered in JSON as `recent_dead_letter_trend`
+        - rendered in table output as `Recent dead-letter trend`
+        - includes `window`, `bucket`, `windowed_count`, and per-bucket counts
+    - summary controls
+      - `--top`
+      - `--trend-window`
+      - `--trend-bucket`
+    - aggregates over the existing dead-letter backlog read model in the CLI layer
+  - `lango status dead-letters`
+    - `table` default
+    - `json` support
+    - `--query`
+    - `--adjudication`
+    - `--latest-status-subtype`
+    - `--latest-status-subtype-family`
+    - `--any-match-family`
+    - `--manual-replay-actor`
+    - `--dead-lettered-after`
+    - `--dead-lettered-before`
+    - `--dead-letter-reason-query`
+    - `--latest-dispatch-reference`
+    - `--offset`
+    - `--limit`
+  - `lango status dead-letter <transaction-receipt-id>`
+    - `table` default
+    - `json` support
+    - canonical receipts-backed detail
+    - `latest_background_task` bridge included by default
+  - `lango status dead-letter retry <transaction-receipt-id>`
+    - reads current detail status first
+    - prechecks `can_retry`
+    - rejects before mutation with explicit retry-precheck wording when `can_retry = false`
+    - default confirm prompt
+    - `--yes` bypass
+    - `--actor` overrides the local fallback with an explicit replay actor principal
+    - injects a local default operator principal when the runtime context does not already carry one
+    - always captures an immediate structured follow-up observation after request acceptance when detail reload succeeds
+    - `--wait` polls follow-up status until it changes or times out
+    - `--wait-interval` and `--wait-timeout` control the polling loop
+    - reuses `retry_post_adjudication_execution`
+    - success output reports retry-request acceptance, not completed execution
+    - table output can show `Follow-up Polls`, `Wait Timed Out`, `Follow-up Error`, and a structured `Follow-up` block
+    - `json` returns `transaction_receipt_id`, `result`, `message`, `follow_up`, `follow_up_error`, `poll_count`, and `timed_out`
+    - when `--output json` is selected, operational failures also return a structured JSON error payload instead of plain text
+    - invocation failures surface separately from precheck rejection
+
+## Current Limits
+
+This slice does not yet include:
+
+- repair actions beyond retry
+- generic dead-letter browsing for all background tasks
+- full event history dump
+- configurable taxonomy redesign beyond the current reason/actor/dispatch heuristics
+- generic async retry policy redesign
+- replay substrate normalization beyond the current operator-facing retry surfaces
+- policy-driven defaults for follow-up execution and replay behavior

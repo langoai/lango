@@ -18,6 +18,7 @@ const (
 	PageStatus
 	PageSessions
 	PageTasks
+	PageDeadLetters
 	PageApprovals
 )
 
@@ -36,6 +37,8 @@ func (p PageID) String() string {
 		return "sessions"
 	case PageTasks:
 		return "tasks"
+	case PageDeadLetters:
+		return "dead-letters"
 	case PageApprovals:
 		return "approvals"
 	default:
@@ -73,6 +76,7 @@ func AllPageMetas() []sidebar.MenuItem {
 		{ID: PageStatus.String(), Icon: theme.IconStatus, Label: "Status"},
 		{ID: PageSessions.String(), Icon: theme.IconSessions, Label: "Sessions"},
 		{ID: PageTasks.String(), Icon: theme.IconStatus, Label: "Tasks"},
+		{ID: PageDeadLetters.String(), Icon: theme.IconStatus, Label: "Dead Letters"},
 		{ID: PageApprovals.String(), Icon: theme.IconApprovals, Label: "Approvals"},
 	}
 }
@@ -93,6 +97,8 @@ func PageIDFromString(id string) PageID {
 		return PageSessions
 	case "tasks":
 		return PageTasks
+	case "dead-letters":
+		return PageDeadLetters
 	case "approvals":
 		return PageApprovals
 	default:

@@ -73,6 +73,9 @@ func DefaultConfig() *Config {
 					Language:       "en",
 				},
 			},
+			Exportability: ExportabilityConfig{
+				Enabled: true,
+			},
 			DBEncryption: DBEncryptionConfig{
 				Enabled:        false,
 				CipherPageSize: 4096,
@@ -139,6 +142,11 @@ func DefaultConfig() *Config {
 			MaxConcurrentSteps: 4,
 			DefaultTimeout:     10 * time.Minute,
 			StateDir:           "~/.lango/workflows/",
+		},
+		Replay: ReplayConfig{
+			AllowedActors:        []string{},
+			ReleaseAllowedActors: []string{},
+			RefundAllowedActors:  []string{},
 		},
 		Context: ContextConfig{
 			Allocation: ContextAllocationConfig{
@@ -275,7 +283,7 @@ func DefaultConfig() *Config {
 				MaxCredentialAge: "24h",
 			},
 			MaxSafetyLevel: "moderate",
-			ToolIsolation:  ToolIsolationConfig{
+			ToolIsolation: ToolIsolationConfig{
 				Enabled:        false,
 				TimeoutPerTool: 30 * time.Second,
 				MaxMemoryMB:    256,

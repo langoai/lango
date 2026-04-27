@@ -41,6 +41,14 @@ go test -tags "integration" ./...
 
 The Makefile uses the default runtime for normal `build` and `test` targets.
 
+## Documentation
+
+Zensical is the canonical docs toolchain. The local docs build path is:
+
+```bash
+.venv/bin/zensical build
+```
+
 ## Makefile Targets
 
 | Target | Description |

@@ -1,6 +1,7 @@
 package firewall
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -115,4 +116,28 @@ func TestNew_WarnsOnOverlyPermissiveInitialRules(t *testing.T) {
 	// Rule is still loaded (backward compat).
 	rules := fw.Rules()
 	require.Len(t, rules, 1)
+}
+
+func TestFilterQuery_DeniesTemporarilyUnsafePeerEvenWithHealthyScore(t *testing.T) {
+	t.Parallel()
+
+	logger, _ := zap.NewDevelopment()
+	fw := New([]ACLRule{
+		{PeerDID: "did:key:peer-1", Action: ACLActionAllow, Tools: []string{"echo"}},
+	}, logger.Sugar())
+
+	fw.SetReputationChecker(func(_ context.Context, _ string) (*ReputationAssessment, error) {
+		return &ReputationAssessment{
+			Score:             0.95,
+			ReturningPeer:     true,
+			Allowed:           false,
+			TemporarilyUnsafe: true,
+			RequiresApproval:  false,
+			TrustEntryState:   "temporarily_unsafe",
+		}, nil
+	}, 0.3)
+
+	err := fw.FilterQuery(context.Background(), "did:key:peer-1", "echo")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "temporarily unsafe")
 }

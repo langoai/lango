@@ -10,6 +10,10 @@ title: P2P Economy
 
 Lango includes a P2P economy layer that manages the financial lifecycle of inter-agent transactions. It consists of five sub-systems: Budget Manager, Risk Assessor, Dynamic Pricer, Negotiation Engine, and Escrow Service.
 
+The economy subsystem is the local policy layer for dynamic pricing, negotiation, risk, and escrow.
+It may influence public P2P exchange behavior, but it is not the same thing as the provider-side quote surface exposed through `p2p.pricing`.
+`economy.pricing`, `economy.negotiation`, and `economy.escrow` are policy and engine surfaces layered above the P2P market path.
+
 ## Overview
 
 The economy layer coordinates spending, risk, pricing, negotiation, and settlement for paid P2P tool invocations:
@@ -19,6 +23,10 @@ The economy layer coordinates spending, risk, pricing, negotiation, and settleme
 - **Dynamic Pricing** -- peer-specific discounts based on trust score and volume
 - **Negotiation Engine** -- multi-round price negotiation protocol with auto-negotiation
 - **Escrow Service** -- milestone-based escrow with dispute resolution and on-chain settlement
+
+Admission trust and payment trust are separate gates: `minTrustScore` governs whether a peer clears the P2P firewall, while `postPayMinScore` governs whether a paid request can settle after execution.
+
+The economy wiring now reads the same canonical runtime trust entry as the rest of the P2P stack. First-time peers use the bootstrap effective score so risk and pricing can still reason about a brand-new counterparty, while returning peers use `earnedTrustScore` so temporary operational safety incidents do not silently become long-lived pricing or risk penalties.
 
 ```mermaid
 graph LR
@@ -67,6 +75,12 @@ The budget manager enforces per-task spending limits. Each task gets an isolated
 
 The risk assessor evaluates each transaction and recommends a payment strategy based on peer trust score, transaction amount, and output verifiability.
 
+When wired to the P2P reputation store, the score input comes from the runtime trust-entry contract rather than directly from the composite score:
+
+- bootstrap peers contribute the bootstrap effective score
+- returning peers contribute earned trust
+- peers already blocked as `review` or `temporarily_unsafe` are handled by admission/runtime gates before post-pay routing is considered
+
 ### Risk Levels
 
 | Risk Level | Strategy | Condition |
@@ -93,6 +107,8 @@ The risk assessor evaluates each transaction and recommends a payment strategy b
 ## Dynamic Pricing
 
 The dynamic pricer adjusts tool prices per-peer based on trust and transaction volume. High-trust peers receive a trust discount, and high-volume peers receive a volume discount. A configurable minimum price floor prevents prices from dropping too low.
+
+With the landed runtime integration, these trust-sensitive price adjustments follow the same input as the risk engine: bootstrap floor for first contact, earned trust for returning peers.
 
 ### Configuration
 

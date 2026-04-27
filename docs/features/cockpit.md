@@ -276,3 +276,32 @@ Action results appear as a transient status message that auto-clears after 3 sec
 ## Background Task Strip
 
 When a BackgroundManager is available, a compact task strip appears above the footer showing active task count and the most recent task's status. The full Tasks page (Ctrl+5) provides a detailed table view.
+
+## Approval Operations
+
+Approval handling is centered on the Chat page. When a tool call needs approval, the cockpit switches to Chat and renders either the inline strip or the fullscreen dialog depending on the tool's risk level. Operators respond with `a` to allow, `s` to allow for the session, or `d`/`Esc` to deny.
+
+Critical-risk filesystem or automation tools still require the existing double-press confirmation before `a` or `s` takes effect. For the full policy model and approval-provider behavior, see [Tool Approval](../security/tool-approval.md) and [Approval CLI](../security/approval-cli.md).
+
+## Channel Operations
+
+With `--with-channels`, the cockpit acts as a live operator console for Telegram, Discord, and Slack. Channel messages flow into the Chat transcript through the EventBus, and approval requests from those sessions surface in the cockpit even when the operator is on another page.
+
+Channel approvals apply to the originating channel session, so session grants and denials stay scoped to that remote conversation. Do not run `lango cockpit --with-channels` and `lango serve` against the same channel credentials at the same time. For setup details, see [Channels](channels.md).
+
+## Background Task Operations
+
+The Tasks page and the chat footer strip expose background task progress. Operators can inspect a task's detail panel, cancel running or pending work, and retry failed or cancelled tasks from within the cockpit. The page refreshes automatically, so the current task state stays visible without manual reloads.
+
+For the system-level task model, CLI commands, and configuration reference, see [Background Tasks](../automation/background.md).
+
+## Troubleshooting
+
+Start with `lango doctor` when cockpit behavior looks wrong. The most common issues are:
+
+- startup problems caused by a non-interactive terminal or unsupported alt-screen behavior
+- empty context or runtime panels when the metrics collector has no data yet or no active turn is running
+- missing channel messages or approval prompts when `--with-channels` is not enabled or channel credentials are invalid
+- task actions that appear to do nothing because the selected task state does not allow retry or cancel
+
+Check `<DataRoot>/cockpit.log` for the underlying error details when the TUI does not show enough context; the default path is `~/.lango/cockpit.log`. Use a modern terminal with TTY and alt-screen support, and verify the channel/task wiring before assuming the cockpit UI is broken.

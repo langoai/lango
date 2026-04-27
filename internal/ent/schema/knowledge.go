@@ -40,6 +40,10 @@ func (Knowledge) Fields() []ent.Field {
 			Optional(),
 		field.String("source").
 			Optional(),
+		field.String("source_class").
+			Optional(),
+		field.String("asset_label").
+			Optional(),
 		field.Int("version").
 			Default(1),
 		field.Bool("is_latest").

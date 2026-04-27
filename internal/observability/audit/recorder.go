@@ -8,6 +8,7 @@ import (
 	"github.com/langoai/lango/internal/ent/auditlog"
 	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/toolchain"
+	toolpayment "github.com/langoai/lango/internal/tools/payment"
 )
 
 // Recorder writes audit log entries to the database.
@@ -138,4 +139,33 @@ func (r *Recorder) handleAlert(evt eventbus.AlertEvent) {
 		SetTarget(evt.Type).
 		SetDetails(details).
 		Save(context.Background())
+}
+
+// RecordPaymentExecution records a direct payment execution allow/deny decision.
+func (r *Recorder) RecordPaymentExecution(ctx context.Context, entry toolpayment.PaymentExecutionAuditEntry) error {
+	if r == nil || r.client == nil {
+		return nil
+	}
+
+	details := map[string]interface{}{
+		"toolName":             entry.ToolName,
+		"transactionReceiptId": entry.TransactionReceiptID,
+		"submissionReceiptId":  entry.SubmissionReceiptID,
+		"outcome":              entry.Outcome,
+	}
+	if entry.Reason != "" {
+		details["reason"] = entry.Reason
+	}
+
+	builder := r.client.AuditLog.Create().
+		SetAction(auditlog.Action("payment_execution")).
+		SetActor("agent").
+		SetTarget(entry.ToolName).
+		SetDetails(details)
+	if entry.SessionKey != "" {
+		builder = builder.SetSessionKey(entry.SessionKey)
+	}
+
+	_, err := builder.Save(ctx)
+	return err
 }

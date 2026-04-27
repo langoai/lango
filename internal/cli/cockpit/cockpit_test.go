@@ -22,10 +22,13 @@ type mockChild struct {
 	viewContent string
 }
 
-func (m *mockChild) Init() tea.Cmd                           { return nil }
-func (m *mockChild) Update(msg tea.Msg) (tea.Model, tea.Cmd) { m.updates = append(m.updates, msg); return m, nil }
-func (m *mockChild) View() string                            { return m.viewContent }
-func (m *mockChild) SetProgram(_ *tea.Program)               { m.programSet = true }
+func (m *mockChild) Init() tea.Cmd { return nil }
+func (m *mockChild) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	m.updates = append(m.updates, msg)
+	return m, nil
+}
+func (m *mockChild) View() string              { return m.viewContent }
+func (m *mockChild) SetProgram(_ *tea.Program) { m.programSet = true }
 
 // mockPage implements Page for testing page routing.
 type mockPage struct {
@@ -41,11 +44,11 @@ func (p *mockPage) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	p.updates = append(p.updates, msg)
 	return p, nil
 }
-func (p *mockPage) View() string              { return p.viewContent }
-func (p *mockPage) Title() string             { return p.title }
-func (p *mockPage) ShortHelp() []key.Binding  { return nil }
-func (p *mockPage) Activate() tea.Cmd         { p.activated = true; return nil }
-func (p *mockPage) Deactivate()               { p.deactivated = true }
+func (p *mockPage) View() string             { return p.viewContent }
+func (p *mockPage) Title() string            { return p.title }
+func (p *mockPage) ShortHelp() []key.Binding { return nil }
+func (p *mockPage) Activate() tea.Cmd        { p.activated = true; return nil }
+func (p *mockPage) Deactivate()              { p.deactivated = true }
 
 func newTestModel(mock *mockChild) *Model {
 	return &Model{
@@ -228,6 +231,18 @@ func TestPageSelectedMsg_SwitchesPage(t *testing.T) {
 	m.Update(sidebar.PageSelectedMsg{ID: "tools"})
 	assert.Equal(t, PageTools, m.activePage)
 	assert.True(t, toolsPage.activated)
+	assert.False(t, m.sidebarFocused, "focus should return to content")
+}
+
+func TestPageSelectedMsg_SwitchesToDeadLettersPage(t *testing.T) {
+	mock := &mockChild{}
+	m := newTestModel(mock)
+	deadLettersPage := &mockPage{title: "Dead Letters"}
+	m.RegisterPage(PageDeadLetters, deadLettersPage)
+
+	m.Update(sidebar.PageSelectedMsg{ID: "dead-letters"})
+	assert.Equal(t, PageDeadLetters, m.activePage)
+	assert.True(t, deadLettersPage.activated)
 	assert.False(t, m.sidebarFocused, "focus should return to content")
 }
 

@@ -9,6 +9,8 @@ import (
 	"github.com/langoai/lango/internal/background"
 	"github.com/langoai/lango/internal/config"
 	cronpkg "github.com/langoai/lango/internal/cron"
+	"github.com/langoai/lango/internal/postadjudicationreplay"
+	"github.com/langoai/lango/internal/receipts"
 	"github.com/langoai/lango/internal/runledger"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/turnrunner"
@@ -90,7 +92,7 @@ func initCron(cfg *config.Config, store session.Store, app *App) *cronpkg.Schedu
 }
 
 // initBackground creates the background task manager if enabled.
-func initBackground(cfg *config.Config, app *App) *background.Manager {
+func initBackground(cfg *config.Config, app *App, receiptStore *receipts.Store) *background.Manager {
 	if !cfg.Background.Enabled {
 		logger().Info("background tasks disabled")
 		return nil
@@ -111,6 +113,43 @@ func initBackground(cfg *config.Config, app *App) *background.Manager {
 	}
 
 	mgr := background.NewManager(runner, notify, maxTasks, taskTimeout, logger())
+	mgr.WithRetryKeyDeriver(func(prompt string, _ background.Origin) string {
+		return postadjudicationreplay.RetryKeyFromPrompt(prompt)
+	})
+	if receiptStore != nil {
+		mgr.WithRetryHook(func(ctx context.Context, snap background.TaskSnapshot, exhausted bool, resubmit func()) {
+			transactionReceiptID, outcome, ok := postadjudicationreplay.ParseRetryKey(snap.RetryKey)
+			if !ok {
+				return
+			}
+			if exhausted {
+				if err := receiptStore.RecordPostAdjudicationDeadLetter(ctx, receipts.PostAdjudicationDeadLetterRequest{
+					TransactionReceiptID: transactionReceiptID,
+					Outcome:              outcome,
+					AttemptCount:         snap.AttemptCount,
+					Reason:               snap.Error,
+				}); err != nil {
+					// Evidence persistence remains best-effort here so the terminal task
+					// state is not rewritten again, but failure to persist the canonical
+					// dead-letter trail is an operational error and must not stay silent.
+					logger().Errorw("post-adjudication dead-letter evidence failed", "taskID", snap.ID, "error", err)
+				}
+				return
+			}
+			if err := receiptStore.RecordPostAdjudicationRetryScheduled(ctx, receipts.PostAdjudicationRetryScheduledRequest{
+				TransactionReceiptID: transactionReceiptID,
+				Outcome:              outcome,
+				AttemptCount:         snap.AttemptCount,
+				NextRetryAt:          snap.NextRetryAt,
+				DispatchReference:    snap.ID,
+			}); err != nil {
+				// Retry evidence is also best-effort, but losing it hides the recovery
+				// trail from operators, so emit an operational error before resubmitting.
+				logger().Errorw("post-adjudication retry evidence failed", "taskID", snap.ID, "error", err)
+			}
+			resubmit()
+		})
+	}
 	if app.RunLedgerStore != nil && cfg.RunLedger.Enabled && cfg.RunLedger.WriteThrough {
 		mgr.WithProjection(runledger.NewBackgroundWriteThrough(
 			app.RunLedgerStore,

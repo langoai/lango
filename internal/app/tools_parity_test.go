@@ -22,6 +22,7 @@ import (
 	"github.com/langoai/lango/internal/librarian"
 	"github.com/langoai/lango/internal/memory"
 	"github.com/langoai/lango/internal/p2p/team"
+	"github.com/langoai/lango/internal/receipts"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/supervisor"
 	"github.com/langoai/lango/internal/tooloutput"
@@ -293,10 +294,18 @@ func TestBuildSecretsTools_Parity(t *testing.T) {
 func TestBuildMetaTools_Parity(t *testing.T) {
 	t.Parallel()
 
-	tools := buildMetaTools(nil, nil, nil, config.SkillConfig{}, nil)
+	tools := buildMetaTools(nil, nil, nil, config.SkillConfig{}, nil, nil)
 
 	wantNames := []string{
 		"save_knowledge",
+		"evaluate_exportability",
+		"approve_artifact_release",
+		"create_dispute_ready_receipt",
+		"open_knowledge_exchange_transaction",
+		"select_knowledge_exchange_path",
+		"adjudicate_escrow_dispute",
+		"approve_upfront_payment",
+		"apply_settlement_progression",
 		"get_knowledge_history",
 		"search_knowledge",
 		"save_learning",
@@ -307,6 +316,97 @@ func TestBuildMetaTools_Parity(t *testing.T) {
 		"import_skill",
 		"learning_stats",
 		"learning_cleanup",
+	}
+
+	assert.Len(t, tools, len(wantNames))
+	assert.Equal(t, wantNames, toolNamesUnsorted(tools))
+	assertAllHandlersNonNil(t, tools)
+	assertNoDuplicateNames(t, tools)
+}
+
+func TestBuildMetaToolsWithEscrow_Parity(t *testing.T) {
+	t.Parallel()
+
+	receiptStore := receipts.NewStore()
+	escrowEngine := escrow.NewEngine(escrow.NewMemoryStore(), escrow.NoopSettler{}, escrow.DefaultEngineConfig())
+	tools := buildMetaToolsWithEscrow(nil, nil, nil, config.SkillConfig{}, nil, receiptStore, escrowEngine)
+
+	wantNames := []string{
+		"save_knowledge",
+		"evaluate_exportability",
+		"approve_artifact_release",
+		"create_dispute_ready_receipt",
+		"open_knowledge_exchange_transaction",
+		"select_knowledge_exchange_path",
+		"adjudicate_escrow_dispute",
+		"approve_upfront_payment",
+		"apply_settlement_progression",
+		"get_knowledge_history",
+		"search_knowledge",
+		"save_learning",
+		"search_learnings",
+		"create_skill",
+		"list_skills",
+		"view_skill",
+		"import_skill",
+		"learning_stats",
+		"learning_cleanup",
+		"list_dead_lettered_post_adjudication_executions",
+		"get_post_adjudication_execution_status",
+		"retry_post_adjudication_execution",
+		"hold_escrow_for_dispute",
+		"release_escrow_settlement",
+		"refund_escrow_settlement",
+		"execute_escrow_recommendation",
+	}
+
+	assert.Len(t, tools, len(wantNames))
+	assert.Equal(t, wantNames, toolNamesUnsorted(tools))
+	assertAllHandlersNonNil(t, tools)
+	assertNoDuplicateNames(t, tools)
+}
+
+func TestBuildMetaToolsWithRuntimes_Parity(t *testing.T) {
+	t.Parallel()
+
+	receiptStore := receipts.NewStore()
+	escrowEngine := escrow.NewEngine(escrow.NewMemoryStore(), escrow.NoopSettler{}, escrow.DefaultEngineConfig())
+	settlementRuntime := &fakeSettlementExecutionRuntime{}
+	partialSettlementRuntime := &fakePartialSettlementExecutionRuntime{}
+	escrowDisputeHoldRuntime := &fakeDisputeHoldRuntime{}
+	escrowReleaseRuntime := &fakeEscrowReleaseRuntime{}
+	escrowRefundRuntime := &fakeEscrowRefundRuntime{}
+	tools := buildMetaToolsWithRuntimes(nil, nil, nil, config.SkillConfig{}, nil, receiptStore, escrowEngine, settlementRuntime, partialSettlementRuntime, escrowDisputeHoldRuntime, escrowReleaseRuntime, escrowRefundRuntime)
+
+	wantNames := []string{
+		"save_knowledge",
+		"evaluate_exportability",
+		"approve_artifact_release",
+		"create_dispute_ready_receipt",
+		"open_knowledge_exchange_transaction",
+		"select_knowledge_exchange_path",
+		"adjudicate_escrow_dispute",
+		"approve_upfront_payment",
+		"apply_settlement_progression",
+		"get_knowledge_history",
+		"search_knowledge",
+		"save_learning",
+		"search_learnings",
+		"create_skill",
+		"list_skills",
+		"view_skill",
+		"import_skill",
+		"learning_stats",
+		"learning_cleanup",
+		"list_dead_lettered_post_adjudication_executions",
+		"get_post_adjudication_execution_status",
+		"retry_post_adjudication_execution",
+		"execute_settlement",
+		"execute_partial_settlement",
+		"hold_escrow_for_dispute",
+		"release_escrow_settlement",
+		"refund_escrow_settlement",
+		"execute_escrow_recommendation",
 	}
 
 	assert.Len(t, tools, len(wantNames))

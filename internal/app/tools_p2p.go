@@ -11,7 +11,6 @@ import (
 
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/p2p/discovery"
-	"github.com/langoai/lango/internal/toolparam"
 	"github.com/langoai/lango/internal/p2p/firewall"
 	"github.com/langoai/lango/internal/p2p/handshake"
 	"github.com/langoai/lango/internal/p2p/identity"
@@ -19,7 +18,11 @@ import (
 	"github.com/langoai/lango/internal/payment"
 	"github.com/langoai/lango/internal/payment/contracts"
 	"github.com/langoai/lango/internal/payment/eip3009"
+	"github.com/langoai/lango/internal/paymentgate"
+	"github.com/langoai/lango/internal/receipts"
 	"github.com/langoai/lango/internal/session"
+	"github.com/langoai/lango/internal/toolparam"
+	toolpayment "github.com/langoai/lango/internal/tools/payment"
 	"github.com/langoai/lango/internal/wallet"
 	"github.com/libp2p/go-libp2p/core/peer"
 	libp2pproto "github.com/libp2p/go-libp2p/core/protocol"
@@ -535,7 +538,7 @@ func buildP2PTools(pc *p2pComponents) []*agent.Tool {
 }
 
 // buildP2PPaymentTool creates the p2p_pay tool for peer-to-peer USDC payments.
-func buildP2PPaymentTool(p2pc *p2pComponents, pc *paymentComponents) []*agent.Tool {
+func buildP2PPaymentTool(p2pc *p2pComponents, pc *paymentComponents, receiptStore *receipts.Store, auditor toolpayment.PaymentExecutionAuditor) []*agent.Tool {
 	if pc == nil || pc.service == nil {
 		return nil
 	}
@@ -552,17 +555,21 @@ func buildP2PPaymentTool(p2pc *p2pComponents, pc *paymentComponents) []*agent.To
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
-					"peer_did": map[string]interface{}{"type": "string", "description": "The recipient peer's DID"},
-					"amount":   map[string]interface{}{"type": "string", "description": "Amount in USDC (e.g., '0.50')"},
-					"memo":     map[string]interface{}{"type": "string", "description": "Payment memo/reason"},
+					"peer_did":               map[string]interface{}{"type": "string", "description": "The recipient peer's DID"},
+					"transaction_receipt_id": map[string]interface{}{"type": "string", "description": "Linked transaction receipt identifier that must be approved for direct payment execution"},
+					"submission_receipt_id":  map[string]interface{}{"type": "string", "description": "Optional explicit submission receipt identifier. When omitted, the current canonical submission on the transaction receipt is used."},
+					"amount":                 map[string]interface{}{"type": "string", "description": "Amount in USDC (e.g., '0.50')"},
+					"memo":                   map[string]interface{}{"type": "string", "description": "Payment memo/reason"},
 				},
-				"required": []string{"peer_did", "amount"},
+				"required": []string{"peer_did", "transaction_receipt_id", "amount"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
 				peerDID, err := toolparam.RequireString(params, "peer_did")
 				if err != nil {
 					return nil, err
 				}
+				transactionReceiptID := toolparam.OptionalString(params, "transaction_receipt_id", "")
+				submissionReceiptID := toolparam.OptionalString(params, "submission_receipt_id", "")
 				amount, err := toolparam.RequireString(params, "amount")
 				if err != nil {
 					return nil, err
@@ -579,6 +586,26 @@ func buildP2PPaymentTool(p2pc *p2pComponents, pc *paymentComponents) []*agent.To
 				did, err := identity.ParseDID(peerDID)
 				if err != nil {
 					return nil, fmt.Errorf("parse peer DID: %w", err)
+				}
+
+				var gate toolpayment.PaymentExecutionGate
+				if receiptStore != nil {
+					gate = paymentgate.NewService(receiptStore)
+				} else {
+					gate = toolpayment.DenyAllPaymentExecutionGate{}
+				}
+
+				var trail toolpayment.PaymentExecutionTrail
+				if receiptStore != nil {
+					trail = receiptStore
+				}
+
+				allowed, denied, err := toolpayment.CheckDirectPaymentExecution(ctx, "p2p_pay", transactionReceiptID, submissionReceiptID, gate, trail, auditor)
+				if err != nil {
+					return nil, err
+				}
+				if !allowed {
+					return denied, nil
 				}
 
 				// Derive Ethereum address from compressed public key.

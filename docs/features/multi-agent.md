@@ -388,8 +388,8 @@ The `Negotiator` handles payment terms between team leaders and members. Payment
 | Mode | Condition | Description |
 |------|-----------|-------------|
 | `free` | Price is zero | No payment required |
-| `postpay` | Trust score >= 0.7 | Pay after task completion |
-| `prepay` | Trust score < 0.7 | Pay before task execution |
+| `postpay` | Trust score >= 0.8 | Pay after task completion |
+| `prepay` | Trust score < 0.8 | Pay before task execution |
 
 Payment agreements track per-use pricing, currency (USDC), maximum uses, and validity windows.
 

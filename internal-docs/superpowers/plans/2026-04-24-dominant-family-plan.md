@@ -1,0 +1,242 @@
+# Dominant Family Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Extend the dead-letter backlog list with `dominant_family` as both a row field and a single-family exact-match filter, while keeping the surface read-only and current-submission centered.
+
+**Architecture:** Extend the existing `internal/postadjudicationstatus` read model rather than introducing a new store. Derive `dominant_family` from relevant retry-lifecycle events on the current submission trail using count-first selection with latest-event tie-break. Add the exact-match filter to the existing backlog list path, expose the new field in each row, update the existing list meta tool to pass the filter through, and then truth-align docs and OpenSpec.
+
+**Tech Stack:** Go, `internal/postadjudicationstatus`, `internal/app`, Zensical docs, OpenSpec
+
+---
+
+## File Map
+
+- Modify: `internal/postadjudicationstatus/types.go`
+  - Add `DominantFamily` to the row/summary shape and to list options.
+- Modify: `internal/postadjudicationstatus/service.go`
+  - Derive dominant family from relevant current-submission retry events.
+  - Add exact-match filtering for `DominantFamily`.
+- Modify: `internal/postadjudicationstatus/service_test.go`
+  - Cover dominance selection, tie-break behavior, and dominant-family filtering.
+- Modify: `internal/app/tools_meta.go`
+  - Add the new list-tool parameter and pass it through.
+- Modify: `internal/app/tools_meta_postadjudicationstatus_test.go`
+  - Cover `dominant_family` and row-field exposure through the meta-tool surface.
+- Modify: `docs/architecture/dead-letter-browsing-status-observation.md`
+  - Describe `dominant_family`.
+- Modify: `docs/architecture/p2p-knowledge-exchange-track.md`
+  - Mark dominant family as landed and narrow the remaining grouping work.
+- Modify: `openspec/specs/meta-tools/spec.md`
+  - Sync the list-tool contract.
+- Modify: `openspec/specs/docs-only/spec.md`
+  - Sync the dead-letter browsing page and track requirements.
+- Create: `openspec/changes/archive/2026-04-24-dominant-family/**`
+  - Proposal, design, tasks, and delta specs.
+
+### Task 1: Extend the Dead-Letter Read Model
+
+**Files:**
+- Modify: `internal/postadjudicationstatus/types.go`
+- Modify: `internal/postadjudicationstatus/service.go`
+- Modify: `internal/postadjudicationstatus/service_test.go`
+
+- [ ] **Step 1: Write the failing service tests**
+
+Add tests covering:
+
+- dominant family selection by highest count
+- dominant family tie-break by latest relevant event
+- `dominant_family` exact-match filtering
+
+- [ ] **Step 2: Run the status service tests and verify they fail**
+
+Run:
+
+```bash
+go test ./internal/postadjudicationstatus/... -count=1
+```
+
+Expected:
+
+```text
+FAIL
+```
+
+- [ ] **Step 3: Implement dominant-family derivation and filtering**
+
+Extend the read model so that:
+
+- `RetryDeadLetterSummary` includes `DominantFamily`
+- `DeadLetterBacklogEntry` includes `DominantFamily`
+- `DeadLetterListOptions` accepts `DominantFamily`
+- relevant events:
+  - `retry-scheduled`
+  - `manual-retry-requested`
+  - `dead-lettered`
+- family mapping remains:
+  - `retry`
+  - `manual-retry`
+  - `dead-letter`
+- selection rule is:
+  - highest count wins
+  - latest relevant event wins ties
+- the list matcher applies exact matching for `DominantFamily`
+
+- [ ] **Step 4: Re-run the status service tests and verify they pass**
+
+Run:
+
+```bash
+go test ./internal/postadjudicationstatus/... -count=1
+```
+
+Expected:
+
+```text
+ok
+```
+
+- [ ] **Step 5: Commit the read-model slice**
+
+Run:
+
+```bash
+git add internal/postadjudicationstatus/types.go internal/postadjudicationstatus/service.go internal/postadjudicationstatus/service_test.go
+git -c commit.gpgsign=false commit -m "feat: add dominant family grouping"
+```
+
+### Task 2: Upgrade the Read-Only Meta Tool Surface
+
+**Files:**
+- Modify: `internal/app/tools_meta.go`
+- Modify: `internal/app/tools_meta_postadjudicationstatus_test.go`
+
+- [ ] **Step 1: Write the failing meta-tool tests**
+
+Add tests covering:
+
+- `dominant_family`
+- list entries carrying `dominant_family`
+
+- [ ] **Step 2: Run the focused meta-tool tests and verify they fail**
+
+Run:
+
+```bash
+go test ./internal/app -run 'Test(ListDeadLetteredPostAdjudicationExecutions_|BuildMetaTools_IncludesPostAdjudicationStatus)' -count=1
+```
+
+Expected:
+
+```text
+FAIL
+```
+
+- [ ] **Step 3: Implement the list-tool parameter upgrade**
+
+Update `list_dead_lettered_post_adjudication_executions` so that:
+
+- it accepts `dominant_family`
+- it passes the value into `DeadLetterListOptions`
+- it returns the new `dominant_family` row field while keeping the page shape unchanged
+
+- [ ] **Step 4: Re-run the focused meta-tool tests and verify they pass**
+
+Run:
+
+```bash
+go test ./internal/app -run 'Test(ListDeadLetteredPostAdjudicationExecutions_|BuildMetaTools_IncludesPostAdjudicationStatus)' -count=1
+```
+
+Expected:
+
+```text
+ok
+```
+
+- [ ] **Step 5: Commit the meta-tool slice**
+
+Run:
+
+```bash
+git add internal/app/tools_meta.go internal/app/tools_meta_postadjudicationstatus_test.go
+git -c commit.gpgsign=false commit -m "app: add dominant family filter"
+```
+
+### Task 3: Truth-Align Docs and OpenSpec
+
+**Files:**
+- Modify: `docs/architecture/dead-letter-browsing-status-observation.md`
+- Modify: `docs/architecture/p2p-knowledge-exchange-track.md`
+- Modify: `openspec/specs/meta-tools/spec.md`
+- Modify: `openspec/specs/docs-only/spec.md`
+- Create: `openspec/changes/archive/2026-04-24-dominant-family/**`
+
+- [ ] **Step 1: Update the public architecture page**
+
+Update `docs/architecture/dead-letter-browsing-status-observation.md` to describe:
+
+- `dominant_family`
+
+- [ ] **Step 2: Update the track doc**
+
+Update `docs/architecture/p2p-knowledge-exchange-track.md` so it marks dominant family as landed work and narrows the remaining grouping work.
+
+- [ ] **Step 3: Sync main OpenSpec requirements**
+
+Update:
+
+- `openspec/specs/meta-tools/spec.md`
+- `openspec/specs/docs-only/spec.md`
+
+to reflect the landed dominant-family slice.
+
+- [ ] **Step 4: Archive the completed change**
+
+Create:
+
+- `openspec/changes/archive/2026-04-24-dominant-family/proposal.md`
+- `openspec/changes/archive/2026-04-24-dominant-family/design.md`
+- `openspec/changes/archive/2026-04-24-dominant-family/tasks.md`
+- `openspec/changes/archive/2026-04-24-dominant-family/specs/meta-tools/spec.md`
+- `openspec/changes/archive/2026-04-24-dominant-family/specs/docs-only/spec.md`
+
+- [ ] **Step 5: Run full verification**
+
+Run:
+
+```bash
+go build ./...
+go test ./...
+.venv/bin/zensical build
+```
+
+Expected:
+
+```text
+ok
+Build finished
+```
+
+- [ ] **Step 6: Commit the docs/OpenSpec slice**
+
+Run:
+
+```bash
+git add docs/architecture/dead-letter-browsing-status-observation.md docs/architecture/p2p-knowledge-exchange-track.md openspec/specs/meta-tools/spec.md openspec/specs/docs-only/spec.md openspec/changes/archive/2026-04-24-dominant-family
+git -c commit.gpgsign=false commit -m "specs: archive dominant family"
+```
+
+## Self-Review
+
+- Spec coverage:
+  - dominance model: Task 1
+  - filter model: Task 1 + Task 2
+  - response shape: Task 1 + Task 2
+  - evidence source: Task 1
+  - docs/OpenSpec truth alignment: Task 3
+- Placeholder scan:
+  - no placeholders or deferred implementation notes remain in task steps
+- Type consistency:
+  - `DominantFamily` is used consistently across the plan

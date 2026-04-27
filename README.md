@@ -27,6 +27,7 @@ Most agent frameworks stop at tool-calling. Lango builds a **trustworthy operati
 - **Open Interoperability** — A2A protocol for remote agent discovery, MCP integration for external tool servers, and multi-provider AI support (OpenAI, Anthropic, Gemini, Ollama).
 - **Peer-to-Peer Agent Economy** — Agents discover, authenticate, negotiate prices, and trade capabilities over libp2p with budget management, trust-based risk assessment, and dynamic pricing. No central hub. No vendor lock-in.
 - **On-Chain Settlement** — USDC payments on Base Sepolia testnet (chainId 84532) with EIP-3009 authorization, milestone-based escrow (Hub/Vault dual-mode), Foundry smart contracts, and a Security Sentinel that detects anomalies in real time.
+- **Escrow Recommendation Execution** — For knowledge-exchange transactions that were approved with `escrow`, Lango now has a first receipt-backed execution slice that binds escrow input during approval and executes `create + fund` through `execute_escrow_recommendation`.
 - **Smart Accounts** — ERC-7579 modular smart accounts (Safe-based) with ERC-4337 account abstraction, hierarchical session keys, gasless USDC transactions via paymaster, and on-chain spending limits.
 - **Trust & Reputation** — Every interaction builds a verifiable reputation score. Trusted peers get post-pay terms and price discounts; new peers prepay or use escrow.
 
@@ -164,6 +165,10 @@ lango onboard                    Guided 5-step setup wizard
 lango settings                   Full interactive configuration editor
 lango doctor [--fix]             Diagnostics and health checks
 lango status [--output json]     Unified system status dashboard
+lango status dead-letter-summary Overview counts, grouped reason/actor/dispatch-family buckets, configurable raw top-N sections, and recent trend windows for current dead-letter backlog
+lango status dead-letters        List current dead-letter backlog with latest-family and any-match-family filtering
+lango status dead-letter <id>    Show dead-letter status for one transaction
+lango status dead-letter retry <id>  Request retry for one dead-lettered execution with follow-up status output
 ```
 
 ### Diagnostics
@@ -205,7 +210,9 @@ The cockpit is a multi-panel terminal dashboard launched via `lango` or `lango c
 
 Additional shortcuts: Ctrl+B (toggle sidebar), Tab (switch focus), Ctrl+Y (copy to clipboard).
 
-See [Cockpit Reference](docs/features/cockpit.md), [Approval Guide](docs/features/cockpit-approval-guide.md), [Task Management Guide](docs/features/cockpit-tasks-guide.md), [Channel Integration Guide](docs/features/cockpit-channels-guide.md), and [Troubleshooting](docs/features/cockpit-troubleshooting.md) for full documentation.
+See [Cockpit Reference](docs/features/cockpit.md), [Security](docs/security/index.md), [Channels](docs/features/channels.md), and [Background Tasks](docs/automation/background.md) for related public operator docs.
+
+Public docs live under `docs/`. Zensical is the canonical docs toolchain, with `zensical.toml` as the canonical docs config and `.venv/bin/zensical build` as the local docs build path.
 
 ## Architecture
 
@@ -255,7 +262,7 @@ lango/
 │   │   ├── security/       #   lango security status/secrets/change-passphrase/recovery/keyring/kms (+ legacy db-* tombstones)
 │   │   ├── settings/       #   lango settings (full configuration editor)
 │   │   ├── smartaccount/   #   lango account info/deploy/session/module/policy/paymaster
-│   │   ├── status/         #   lango status (unified dashboard)
+│   │   ├── status/         #   lango status + dead-letter status views
 │   │   ├── tui/            #   TUI components and views
 │   │   └── workflow/       #   lango workflow run/list/status/cancel/history
 │   ├── config/             # Config loading, env var substitution, validation
@@ -519,7 +526,7 @@ All settings are managed via `lango onboard` (guided wizard), `lango settings` (
 | `p2p.enableRelay`                                      | bool     | `false`                     | Enable relay for NAT traversal                                                                                    |
 | `p2p.enableMdns`                                       | bool     | `true`                      | Enable mDNS discovery                                                                                             |
 | `p2p.maxPeers`                                         | int      | `50`                        | Maximum connected peers                                                                                           |
-| `p2p.autoApproveKnownPeers`                            | bool     | `false`                     | Skip approval for previously authenticated peers                                                                  |
+| `p2p.autoApproveKnownPeers`                            | bool     | `false`                     | Skip handshake approval only for returning peers whose trust entry is already `established`                      |
 | `p2p.minTrustScore`                                    | float64  | `0.3`                       | Minimum reputation score for accepting peer requests                                                              |
 | `p2p.pricing.enabled`                                  | bool     | `false`                     | Enable paid tool invocations                                                                                      |
 | `p2p.pricing.perQuery`                                 | string   | `"0.10"`                    | Default USDC price per query                                                                                      |
@@ -1106,6 +1113,8 @@ When `payment.enabled` is `true`, the following agent tools are registered:
 | `payment_x402_fetch`    | HTTP request with automatic X402 payment (EIP-3009)   | Dangerous    |
 
 
+Direct payment execution for `payment_send` and `p2p_pay` is now receipt-backed. These paths require a linked `transaction_receipt_id`, fall back to the transaction's current canonical submission when `submission_receipt_id` is omitted, and only allow direct execution when the canonical payment approval state is approved with a `prepay` settlement hint.
+
 ### Wallet Providers
 
 
@@ -1425,6 +1434,8 @@ The P2P network includes multiple security layers:
 - **Session Management** — TTL + explicit invalidation with auto-revocation on reputation drop or repeated failures
 - **Tool Sandbox** — Subprocess and container-based process isolation for remote tool execution
 - **Credential Revocation** — DID revocation set and max credential age enforcement via gossip discovery
+
+For early knowledge exchange, Lango now layers a lite dispute-ready receipt evidence surface above exportability and approval flow, and adds upfront payment approval decisioning before execution. The current operator entrypoint is still narrow, and it is not the full policy, settlement, or dispute system.
 
 ### Authentication
 

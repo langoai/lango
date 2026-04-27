@@ -245,15 +245,7 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 	var repStoreRef *reputation.Store
 	approvalFn := func(ctx context.Context, pending *handshake.PendingHandshake) (bool, error) {
 		if cfg.P2P.AutoApproveKnownPeers && repStoreRef != nil {
-			score, err := repStoreRef.GetScore(ctx, pending.PeerDID)
-			if err != nil {
-				return false, nil
-			}
-			minScore := cfg.P2P.MinTrustScore
-			if minScore <= 0 {
-				minScore = 0.3
-			}
-			return score >= minScore, nil
+			return autoApproveKnownPeer(ctx, repStoreRef, pending.PeerDID, cfg.P2P.MinTrustScore)
 		}
 		return false, nil // default: deny unknown peers
 	}
@@ -373,8 +365,22 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 		if minScore <= 0 {
 			minScore = 0.3
 		}
-		fw.SetReputationChecker(func(ctx context.Context, peerDID string) (float64, error) {
-			return repStore.GetScore(ctx, peerDID)
+		fw.SetReputationChecker(func(ctx context.Context, peerDID string) (*firewall.ReputationAssessment, error) {
+			entry, err := runtimeTrustEntry(ctx, repStore, peerDID, minScore)
+			if err != nil {
+				return nil, err
+			}
+			if entry == nil {
+				return nil, nil
+			}
+			return &firewall.ReputationAssessment{
+				Score:             entry.EffectiveTrustScore,
+				ReturningPeer:     entry.ReturningPeer,
+				Allowed:           entry.Allowed,
+				RequiresApproval:  entry.RequiresApproval,
+				TemporarilyUnsafe: entry.TemporarilyUnsafe,
+				TrustEntryState:   string(entry.State),
+			}, nil
 		}, minScore)
 		pLogger.Infow("P2P reputation system enabled", "minTrustScore", minScore)
 	}
@@ -472,7 +478,7 @@ func initP2P(cfg *config.Config, wp wallet.WalletProvider, pc *paymentComponents
 		var reputationFn paygate.ReputationFunc
 		if repStore != nil {
 			reputationFn = func(ctx context.Context, peerDID string) (float64, error) {
-				return repStore.GetScore(ctx, peerDID)
+				return runtimePostPayTrustScore(ctx, repStore, peerDID, cfg.P2P.MinTrustScore)
 			}
 		}
 

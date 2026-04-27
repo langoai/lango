@@ -1,0 +1,562 @@
+package escrowexecution
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"math/big"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/langoai/lango/internal/economy/escrow"
+	"github.com/langoai/lango/internal/paymentapproval"
+	"github.com/langoai/lango/internal/receipts"
+)
+
+func TestService_ExecuteRecommendation_CreateAndFundSuccess(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := receipts.NewStore()
+	submission, tx := createApprovedEscrowReceipt(t, ctx, store)
+	runtime := &fakeRuntime{
+		createEntry: &escrow.EscrowEntry{ID: "escrow-1"},
+		fundEntry:   &escrow.EscrowEntry{ID: "escrow-1"},
+	}
+
+	service := NewService(store, runtime)
+	result, err := service.ExecuteRecommendation(ctx, Request{
+		TransactionReceiptID: tx.TransactionReceiptID,
+	})
+	require.NoError(t, err)
+
+	assert.Equal(t, tx.TransactionReceiptID, result.TransactionReceiptID)
+	assert.Equal(t, submission.SubmissionReceiptID, result.SubmissionReceiptID)
+	assert.Equal(t, "escrow-1", result.EscrowReference)
+	assert.Equal(t, receipts.EscrowExecutionStatusFunded, result.EscrowExecutionStatus)
+
+	require.Len(t, runtime.createCalls, 1)
+	assert.Equal(t, "did:lango:buyer", runtime.createCalls[0].BuyerDID)
+	assert.Equal(t, "did:lango:seller", runtime.createCalls[0].SellerDID)
+	assert.Zero(t, runtime.createCalls[0].Amount.Cmp(mustBigInt(t, "25000000")))
+	require.Len(t, runtime.createCalls[0].Milestones, 2)
+	assert.Zero(t, runtime.createCalls[0].Milestones[0].Amount.Cmp(mustBigInt(t, "10000000")))
+	assert.Zero(t, runtime.createCalls[0].Milestones[1].Amount.Cmp(mustBigInt(t, "15000000")))
+	assert.Equal(t, []string{"escrow-1"}, runtime.fundCalls)
+
+	updatedTx, err := store.GetTransactionReceipt(ctx, tx.TransactionReceiptID)
+	require.NoError(t, err)
+	assert.Equal(t, receipts.EscrowExecutionStatusFunded, updatedTx.EscrowExecutionStatus)
+	assert.Equal(t, "escrow-1", updatedTx.EscrowReference)
+
+	_, events, err := store.GetSubmissionReceipt(ctx, submission.SubmissionReceiptID)
+	require.NoError(t, err)
+	require.Len(t, events, 4)
+	assert.Equal(t, receipts.EventPaymentApproval, events[0].Type)
+	assert.Equal(t, receipts.EventEscrowExecutionStarted, events[1].Type)
+	assert.Equal(t, receipts.EventEscrowExecutionCreated, events[2].Type)
+	assert.Equal(t, receipts.EventEscrowExecutionFunded, events[3].Type)
+}
+
+func TestService_ExecuteRecommendation_DeniesWhenApprovalIsNotApproved(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := receipts.NewStore()
+	submission, tx, err := store.CreateSubmissionReceipt(ctx, receipts.CreateSubmissionInput{
+		TransactionID:       "tx-not-approved",
+		ArtifactLabel:       "artifact/not-approved",
+		PayloadHash:         "hash-not-approved",
+		SourceLineageDigest: "lineage-not-approved",
+	})
+	require.NoError(t, err)
+
+	_, err = store.ApplyUpfrontPaymentApproval(ctx, tx.TransactionReceiptID, submission.SubmissionReceiptID, paymentapproval.Outcome{
+		Decision:      paymentapproval.DecisionReject,
+		Reason:        "Rejected.",
+		SuggestedMode: paymentapproval.ModeReject,
+	})
+	require.NoError(t, err)
+	_, err = store.BindEscrowExecutionInput(ctx, tx.TransactionReceiptID, submission.SubmissionReceiptID, receipts.EscrowExecutionInput{
+		BuyerDID:  "did:lango:buyer",
+		SellerDID: "did:lango:seller",
+		Amount:    "25.00",
+		Reason:    "knowledge exchange",
+		Milestones: []receipts.EscrowMilestoneInput{
+			{Description: "delivery", Amount: "25.00"},
+		},
+	})
+	require.NoError(t, err)
+
+	service := NewService(store, &fakeRuntime{})
+	result, err := service.ExecuteRecommendation(ctx, Request{
+		TransactionReceiptID: tx.TransactionReceiptID,
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "payment approval status")
+	assert.Equal(t, Result{}, result)
+}
+
+func TestService_ExecuteRecommendation_DeniesWhenSettlementHintIsNotEscrow(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := receipts.NewStore()
+	submission, tx, err := store.CreateSubmissionReceipt(ctx, receipts.CreateSubmissionInput{
+		TransactionID:       "tx-mode-mismatch",
+		ArtifactLabel:       "artifact/mode-mismatch",
+		PayloadHash:         "hash-mode-mismatch",
+		SourceLineageDigest: "lineage-mode-mismatch",
+	})
+	require.NoError(t, err)
+
+	_, err = store.ApplyUpfrontPaymentApproval(ctx, tx.TransactionReceiptID, submission.SubmissionReceiptID, paymentapproval.Outcome{
+		Decision:      paymentapproval.DecisionApprove,
+		Reason:        "Approved.",
+		SuggestedMode: paymentapproval.ModePrepay,
+	})
+	require.NoError(t, err)
+
+	service := NewService(store, &fakeRuntime{})
+	result, err := service.ExecuteRecommendation(ctx, Request{
+		TransactionReceiptID: tx.TransactionReceiptID,
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "settlement hint")
+	assert.Equal(t, Result{}, result)
+}
+
+func TestService_ExecuteRecommendation_DeniesWhenInputIsNotBound(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := receipts.NewStore()
+	submission, tx, err := store.CreateSubmissionReceipt(ctx, receipts.CreateSubmissionInput{
+		TransactionID:       "tx-input-missing",
+		ArtifactLabel:       "artifact/input-missing",
+		PayloadHash:         "hash-input-missing",
+		SourceLineageDigest: "lineage-input-missing",
+	})
+	require.NoError(t, err)
+
+	_, err = store.ApplyUpfrontPaymentApproval(ctx, tx.TransactionReceiptID, submission.SubmissionReceiptID, paymentapproval.Outcome{
+		Decision:      paymentapproval.DecisionApprove,
+		Reason:        "Approved.",
+		SuggestedMode: paymentapproval.ModeEscrow,
+	})
+	require.NoError(t, err)
+
+	service := NewService(store, &fakeRuntime{})
+	result, err := service.ExecuteRecommendation(ctx, Request{
+		TransactionReceiptID: tx.TransactionReceiptID,
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "escrow execution input")
+	assert.Equal(t, Result{}, result)
+}
+
+func TestService_ExecuteRecommendation_CreateFailureRecordsFailedState(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := receipts.NewStore()
+	submission, tx := createApprovedEscrowReceipt(t, ctx, store)
+	runtime := &fakeRuntime{
+		createEntry: &escrow.EscrowEntry{ID: "escrow-create-failed"},
+		createErr:   errors.New("create escrow failed"),
+	}
+
+	service := NewService(store, runtime)
+	result, err := service.ExecuteRecommendation(ctx, Request{
+		TransactionReceiptID: tx.TransactionReceiptID,
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "create escrow")
+	assert.Equal(t, Result{}, result)
+
+	updatedTx, getErr := store.GetTransactionReceipt(ctx, tx.TransactionReceiptID)
+	require.NoError(t, getErr)
+	assert.Equal(t, receipts.EscrowExecutionStatusFailed, updatedTx.EscrowExecutionStatus)
+	assert.Empty(t, updatedTx.EscrowReference)
+
+	_, events, getErr := store.GetSubmissionReceipt(ctx, submission.SubmissionReceiptID)
+	require.NoError(t, getErr)
+	require.Len(t, events, 3)
+	assert.Equal(t, receipts.EventEscrowExecutionStarted, events[1].Type)
+	assert.Equal(t, receipts.EventEscrowExecutionFailed, events[2].Type)
+	assert.Contains(t, events[2].Reason, "create escrow failed")
+}
+
+func TestService_ExecuteRecommendation_FundFailurePreservesCreatedReference(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := receipts.NewStore()
+	submission, tx := createApprovedEscrowReceipt(t, ctx, store)
+	runtime := &fakeRuntime{
+		createEntry: &escrow.EscrowEntry{ID: "escrow-created"},
+		fundErr:     errors.New("lock funds failed"),
+	}
+
+	service := NewService(store, runtime)
+	result, err := service.ExecuteRecommendation(ctx, Request{
+		TransactionReceiptID: tx.TransactionReceiptID,
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "fund escrow")
+	assert.Equal(t, Result{}, result)
+
+	updatedTx, getErr := store.GetTransactionReceipt(ctx, tx.TransactionReceiptID)
+	require.NoError(t, getErr)
+	assert.Equal(t, receipts.EscrowExecutionStatusFailed, updatedTx.EscrowExecutionStatus)
+	assert.Equal(t, "escrow-created", updatedTx.EscrowReference)
+
+	_, events, getErr := store.GetSubmissionReceipt(ctx, submission.SubmissionReceiptID)
+	require.NoError(t, getErr)
+	require.Len(t, events, 4)
+	assert.Equal(t, receipts.EventEscrowExecutionFailed, events[3].Type)
+	assert.Contains(t, events[3].Reason, "lock funds failed")
+}
+
+func TestService_ExecuteRecommendation_RerunAfterFundedIsRejected(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := receipts.NewStore()
+	_, tx := createApprovedEscrowReceipt(t, ctx, store)
+	runtime := &fakeRuntime{
+		createEntry: &escrow.EscrowEntry{ID: "escrow-1"},
+		fundEntry:   &escrow.EscrowEntry{ID: "escrow-1"},
+	}
+
+	service := NewService(store, runtime)
+	_, err := service.ExecuteRecommendation(ctx, Request{TransactionReceiptID: tx.TransactionReceiptID})
+	require.NoError(t, err)
+
+	result, err := service.ExecuteRecommendation(ctx, Request{TransactionReceiptID: tx.TransactionReceiptID})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "already progressed")
+	assert.Equal(t, Result{}, result)
+	require.Len(t, runtime.createCalls, 1)
+	require.Len(t, runtime.fundCalls, 1)
+}
+
+func TestService_ExecuteRecommendation_RerunAfterFailedIsRejected(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := receipts.NewStore()
+	_, tx := createApprovedEscrowReceipt(t, ctx, store)
+	runtime := &fakeRuntime{
+		createEntry: &escrow.EscrowEntry{ID: "escrow-created"},
+		fundErr:     errors.New("lock funds failed"),
+	}
+
+	service := NewService(store, runtime)
+	_, err := service.ExecuteRecommendation(ctx, Request{TransactionReceiptID: tx.TransactionReceiptID})
+	require.Error(t, err)
+
+	result, err := service.ExecuteRecommendation(ctx, Request{TransactionReceiptID: tx.TransactionReceiptID})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "already progressed")
+	assert.Equal(t, Result{}, result)
+	require.Len(t, runtime.createCalls, 1)
+	require.Len(t, runtime.fundCalls, 1)
+}
+
+func TestService_ExecuteRecommendation_RecordsFailedStateWhenCreatedWriteFails(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := newFakeReceiptStore(receipts.TransactionReceipt{
+		TransactionReceiptID:         "tx-created-write-fail",
+		TransactionID:                "tx-created-write-fail",
+		CurrentSubmissionReceiptID:   "sub-created-write-fail",
+		CurrentPaymentApprovalStatus: receipts.PaymentApprovalApproved,
+		CanonicalSettlementHint:      string(paymentapproval.ModeEscrow),
+		EscrowExecutionStatus:        receipts.EscrowExecutionStatusPending,
+		EscrowExecutionInput: &receipts.EscrowExecutionInput{
+			BuyerDID:  "did:lango:buyer",
+			SellerDID: "did:lango:seller",
+			Amount:    "25.00",
+			Reason:    "knowledge exchange",
+			TaskID:    "task-escrow",
+			Milestones: []receipts.EscrowMilestoneInput{
+				{Description: "draft", Amount: "10.00"},
+				{Description: "final", Amount: "15.00"},
+			},
+		},
+	})
+	store.failOn = progressKey{status: receipts.EscrowExecutionStatusCreated, eventType: receipts.EventEscrowExecutionCreated}
+	runtime := &fakeRuntime{
+		createEntry: &escrow.EscrowEntry{ID: "escrow-created"},
+	}
+
+	service := NewService(store, runtime)
+	result, err := service.ExecuteRecommendation(ctx, Request{TransactionReceiptID: "tx-created-write-fail"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "record escrow created progress")
+	assert.Equal(t, Result{}, result)
+
+	require.Len(t, store.progressCalls, 3)
+	assert.Equal(t, receipts.EscrowExecutionStatusPending, store.progressCalls[0].status)
+	assert.Equal(t, receipts.EscrowExecutionStatusCreated, store.progressCalls[1].status)
+	assert.Equal(t, receipts.EscrowExecutionStatusFailed, store.progressCalls[2].status)
+	assert.Equal(t, "escrow-created", store.progressCalls[2].escrowReference)
+	assert.Equal(t, receipts.EscrowExecutionStatusFailed, store.transaction.EscrowExecutionStatus)
+	assert.Equal(t, "escrow-created", store.transaction.EscrowReference)
+}
+
+func TestService_ExecuteRecommendation_RecordsFailedStateWhenFundedWriteFails(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := newFakeReceiptStore(receipts.TransactionReceipt{
+		TransactionReceiptID:         "tx-funded-write-fail",
+		TransactionID:                "tx-funded-write-fail",
+		CurrentSubmissionReceiptID:   "sub-funded-write-fail",
+		CurrentPaymentApprovalStatus: receipts.PaymentApprovalApproved,
+		CanonicalSettlementHint:      string(paymentapproval.ModeEscrow),
+		EscrowExecutionStatus:        receipts.EscrowExecutionStatusPending,
+		EscrowExecutionInput: &receipts.EscrowExecutionInput{
+			BuyerDID:  "did:lango:buyer",
+			SellerDID: "did:lango:seller",
+			Amount:    "25.00",
+			Reason:    "knowledge exchange",
+			TaskID:    "task-escrow",
+			Milestones: []receipts.EscrowMilestoneInput{
+				{Description: "draft", Amount: "10.00"},
+				{Description: "final", Amount: "15.00"},
+			},
+		},
+	})
+	store.failOn = progressKey{status: receipts.EscrowExecutionStatusFunded, eventType: receipts.EventEscrowExecutionFunded}
+	runtime := &fakeRuntime{
+		createEntry: &escrow.EscrowEntry{ID: "escrow-funded"},
+		fundEntry:   &escrow.EscrowEntry{ID: "escrow-funded"},
+	}
+
+	service := NewService(store, runtime)
+	result, err := service.ExecuteRecommendation(ctx, Request{TransactionReceiptID: "tx-funded-write-fail"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "record escrow funded progress")
+	assert.Equal(t, Result{}, result)
+
+	require.Len(t, store.progressCalls, 4)
+	assert.Equal(t, receipts.EscrowExecutionStatusPending, store.progressCalls[0].status)
+	assert.Equal(t, receipts.EscrowExecutionStatusCreated, store.progressCalls[1].status)
+	assert.Equal(t, receipts.EscrowExecutionStatusFunded, store.progressCalls[2].status)
+	assert.Equal(t, receipts.EscrowExecutionStatusFailed, store.progressCalls[3].status)
+	assert.Equal(t, "escrow-funded", store.progressCalls[3].escrowReference)
+	assert.Contains(t, store.progressCalls[3].reason, "record escrow funded progress")
+	assert.Equal(t, receipts.EscrowExecutionStatusFailed, store.transaction.EscrowExecutionStatus)
+	assert.Equal(t, "escrow-funded", store.transaction.EscrowReference)
+}
+
+func TestService_ExecuteRecommendation_SerializesPerTransactionAcrossServiceInstances(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := receipts.NewStore()
+	_, tx := createApprovedEscrowReceipt(t, ctx, store)
+	createStarted := make(chan struct{}, 1)
+	releaseCreate := make(chan struct{})
+	var createCalls atomic.Int32
+	runtime := &blockingRuntime{
+		createFn: func(_ context.Context, req escrow.CreateRequest) (*escrow.EscrowEntry, error) {
+			createCalls.Add(1)
+			createStarted <- struct{}{}
+			<-releaseCreate
+			return &escrow.EscrowEntry{ID: "escrow-serial"}, nil
+		},
+		fundFn: func(context.Context, string) (*escrow.EscrowEntry, error) {
+			return &escrow.EscrowEntry{ID: "escrow-serial"}, nil
+		},
+	}
+
+	firstService := NewService(store, runtime)
+	secondService := NewService(store, runtime)
+	firstDone := make(chan error, 1)
+	go func() {
+		_, err := firstService.ExecuteRecommendation(ctx, Request{TransactionReceiptID: tx.TransactionReceiptID})
+		firstDone <- err
+	}()
+
+	select {
+	case <-createStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("first execution did not enter create")
+	}
+
+	secondDone := make(chan error, 1)
+	go func() {
+		_, err := secondService.ExecuteRecommendation(ctx, Request{TransactionReceiptID: tx.TransactionReceiptID})
+		secondDone <- err
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+	require.Equal(t, int32(1), createCalls.Load())
+
+	close(releaseCreate)
+	require.NoError(t, <-firstDone)
+
+	err := <-secondDone
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "already progressed")
+	require.Equal(t, int32(1), createCalls.Load())
+}
+
+type fakeRuntime struct {
+	createEntry *escrow.EscrowEntry
+	createErr   error
+	fundEntry   *escrow.EscrowEntry
+	fundErr     error
+	createCalls []escrow.CreateRequest
+	fundCalls   []string
+}
+
+type blockingRuntime struct {
+	createFn func(context.Context, escrow.CreateRequest) (*escrow.EscrowEntry, error)
+	fundFn   func(context.Context, string) (*escrow.EscrowEntry, error)
+}
+
+type progressKey struct {
+	status    receipts.EscrowExecutionStatus
+	eventType receipts.EventType
+}
+
+type progressCall struct {
+	status          receipts.EscrowExecutionStatus
+	escrowReference string
+	eventType       receipts.EventType
+	reason          string
+}
+
+type fakeReceiptStore struct {
+	transaction   receipts.TransactionReceipt
+	txErr         error
+	failOn        progressKey
+	progressCalls []progressCall
+}
+
+func newFakeReceiptStore(transaction receipts.TransactionReceipt) *fakeReceiptStore {
+	return &fakeReceiptStore{transaction: transaction}
+}
+
+func (f *fakeReceiptStore) GetTransactionReceipt(context.Context, string) (receipts.TransactionReceipt, error) {
+	if f.txErr != nil {
+		return receipts.TransactionReceipt{}, f.txErr
+	}
+	return f.transaction, nil
+}
+
+func (f *fakeReceiptStore) ApplyEscrowExecutionProgress(_ context.Context, _, _ string, status receipts.EscrowExecutionStatus, escrowReference string, eventType receipts.EventType, reason string) (receipts.TransactionReceipt, error) {
+	f.progressCalls = append(f.progressCalls, progressCall{
+		status:          status,
+		escrowReference: escrowReference,
+		eventType:       eventType,
+		reason:          reason,
+	})
+
+	if f.failOn == (progressKey{status: status, eventType: eventType}) {
+		return receipts.TransactionReceipt{}, fmt.Errorf("write %s/%s: boom", status, eventType)
+	}
+
+	f.transaction.EscrowExecutionStatus = status
+	if escrowReference != "" {
+		f.transaction.EscrowReference = escrowReference
+	}
+	return f.transaction, nil
+}
+
+func (f *fakeRuntime) Create(_ context.Context, req escrow.CreateRequest) (*escrow.EscrowEntry, error) {
+	f.createCalls = append(f.createCalls, cloneCreateRequest(req))
+	if f.createErr != nil {
+		return f.createEntry, f.createErr
+	}
+	if f.createEntry == nil {
+		return &escrow.EscrowEntry{ID: "escrow-default"}, nil
+	}
+	return f.createEntry, nil
+}
+
+func (f *fakeRuntime) Fund(_ context.Context, escrowID string) (*escrow.EscrowEntry, error) {
+	f.fundCalls = append(f.fundCalls, escrowID)
+	if f.fundErr != nil {
+		return f.fundEntry, f.fundErr
+	}
+	if f.fundEntry == nil {
+		return &escrow.EscrowEntry{ID: escrowID}, nil
+	}
+	return f.fundEntry, nil
+}
+
+func (b *blockingRuntime) Create(ctx context.Context, req escrow.CreateRequest) (*escrow.EscrowEntry, error) {
+	return b.createFn(ctx, req)
+}
+
+func (b *blockingRuntime) Fund(ctx context.Context, escrowID string) (*escrow.EscrowEntry, error) {
+	return b.fundFn(ctx, escrowID)
+}
+
+func createApprovedEscrowReceipt(t *testing.T, ctx context.Context, store *receipts.Store) (receipts.SubmissionReceipt, receipts.TransactionReceipt) {
+	t.Helper()
+
+	submission, tx, err := store.CreateSubmissionReceipt(ctx, receipts.CreateSubmissionInput{
+		TransactionID:       "tx-approved-escrow",
+		ArtifactLabel:       "artifact/approved-escrow",
+		PayloadHash:         "hash-approved-escrow",
+		SourceLineageDigest: "lineage-approved-escrow",
+	})
+	require.NoError(t, err)
+
+	_, err = store.ApplyUpfrontPaymentApproval(ctx, tx.TransactionReceiptID, submission.SubmissionReceiptID, paymentapproval.Outcome{
+		Decision:      paymentapproval.DecisionApprove,
+		Reason:        "Approved.",
+		SuggestedMode: paymentapproval.ModeEscrow,
+	})
+	require.NoError(t, err)
+
+	_, err = store.BindEscrowExecutionInput(ctx, tx.TransactionReceiptID, submission.SubmissionReceiptID, receipts.EscrowExecutionInput{
+		BuyerDID:  "did:lango:buyer",
+		SellerDID: "did:lango:seller",
+		Amount:    "25.00",
+		Reason:    "knowledge exchange",
+		TaskID:    "task-escrow",
+		Milestones: []receipts.EscrowMilestoneInput{
+			{Description: "draft", Amount: "10.00"},
+			{Description: "final", Amount: "15.00"},
+		},
+	})
+	require.NoError(t, err)
+
+	return submission, tx
+}
+
+func cloneCreateRequest(req escrow.CreateRequest) escrow.CreateRequest {
+	cloned := req
+	cloned.Amount = new(big.Int).Set(req.Amount)
+	if len(req.Milestones) > 0 {
+		cloned.Milestones = make([]escrow.MilestoneRequest, len(req.Milestones))
+		for i, milestone := range req.Milestones {
+			cloned.Milestones[i] = escrow.MilestoneRequest{
+				Description: milestone.Description,
+				Amount:      new(big.Int).Set(milestone.Amount),
+			}
+		}
+	}
+	return cloned
+}
+
+func mustBigInt(t *testing.T, value string) *big.Int {
+	t.Helper()
+
+	out := new(big.Int)
+	_, ok := out.SetString(value, 10)
+	require.True(t, ok)
+	return out
+}

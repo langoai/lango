@@ -12,11 +12,11 @@ The `p2p/team` package SHALL provide `NegotiatePayment` functionality that negot
 - **THEN** the payment mode SHALL be Free
 
 #### Scenario: PostPay for trusted agents
-- **WHEN** an agent has trust score > 0.7
+- **WHEN** an agent has trust score >= 0.8
 - **THEN** the payment mode SHALL be PostPay (pay after task completion)
 
 #### Scenario: PrePay for low-trust agents
-- **WHEN** an agent has trust score <= 0.7
+- **WHEN** an agent has trust score < 0.8
 - **THEN** the payment mode SHALL be PrePay (pay before task execution)
 
 ### Requirement: PaymentAgreement type

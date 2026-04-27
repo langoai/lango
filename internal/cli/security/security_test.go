@@ -1,9 +1,16 @@
 package security
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"io"
+	"os"
 	"testing"
 
 	"github.com/langoai/lango/internal/bootstrap"
+	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/storagebroker"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -98,6 +105,75 @@ func TestKMSCmd_HasSubcommands(t *testing.T) {
 func TestBoolToStatus(t *testing.T) {
 	assert.Equal(t, "enabled", boolToStatus(true))
 	assert.Equal(t, "disabled", boolToStatus(false))
+}
+
+func TestRenderStatus_IncludesExportability(t *testing.T) {
+	out := statusOutput{
+		SignerProvider:       "local",
+		ApprovalPolicy:       "dangerous",
+		DBEncryption:         "disabled (plaintext)",
+		ExportabilityEnabled: true,
+	}
+
+	stdout, err := captureStdout(t, func() error {
+		return renderStatus(out, false)
+	})
+	require.NoError(t, err)
+	assert.Contains(t, stdout, "Exportability:")
+	assert.Contains(t, stdout, "enabled")
+
+	jsonOut, err := captureStdout(t, func() error {
+		return renderStatus(out, true)
+	})
+	require.NoError(t, err)
+	var decoded struct {
+		ExportabilityEnabled bool `json:"exportability_enabled"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(jsonOut), &decoded))
+	assert.True(t, decoded.ExportabilityEnabled)
+}
+
+func TestLoadActiveStatusConfig_UsesExportabilitySetting(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Security.Exportability.Enabled = true
+	raw, err := json.Marshal(cfg)
+	require.NoError(t, err)
+
+	loaded, ok := loadActiveStatusConfig(&stubActiveConfigLoader{
+		result: storagebroker.ConfigLoadActiveResult{Config: raw},
+	})
+	require.True(t, ok)
+	require.NotNil(t, loaded)
+	assert.True(t, loaded.Security.Exportability.Enabled)
+}
+
+func captureStdout(t *testing.T, fn func() error) (string, error) {
+	t.Helper()
+
+	origStdout := os.Stdout
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+	os.Stdout = w
+
+	runErr := fn()
+
+	w.Close()
+	os.Stdout = origStdout
+
+	var buf bytes.Buffer
+	_, _ = io.Copy(&buf, r)
+	r.Close()
+
+	return buf.String(), runErr
+}
+
+type stubActiveConfigLoader struct {
+	result storagebroker.ConfigLoadActiveResult
+	err    error
+}
+
+func (s *stubActiveConfigLoader) ConfigLoadActive(context.Context) (storagebroker.ConfigLoadActiveResult, error) {
+	return s.result, s.err
 }
 
 func TestIsKMSProvider(t *testing.T) {

@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/langoai/lango/internal/p2p/handshake"
+	"github.com/langoai/lango/internal/p2p/reputation"
+	"github.com/langoai/lango/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -184,4 +186,27 @@ func TestApprovalFnApproveAboveMinScore(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.True(t, approved, "peer above min trust score should be approved")
+}
+
+func TestAutoApproveKnownPeer_UsesTrustEntrySemantics(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	client := testutil.TestEntClient(t)
+	store := reputation.NewStore(client, testLog())
+
+	approved, err := autoApproveKnownPeer(ctx, store, "did:example:new", 0.3)
+	require.NoError(t, err)
+	assert.False(t, approved, "bootstrap peers should not be auto-approved as known peers")
+
+	require.NoError(t, store.RecordSuccess(ctx, "did:example:established"))
+	approved, err = autoApproveKnownPeer(ctx, store, "did:example:established", 0.3)
+	require.NoError(t, err)
+	assert.True(t, approved, "established returning peers should be auto-approved")
+
+	require.NoError(t, store.RecordSuccess(ctx, "did:example:unsafe"))
+	require.NoError(t, store.RecordOperationalIncident(ctx, "did:example:unsafe"))
+	approved, err = autoApproveKnownPeer(ctx, store, "did:example:unsafe", 0.3)
+	require.NoError(t, err)
+	assert.False(t, approved, "temporarily unsafe peers should not be auto-approved")
 }

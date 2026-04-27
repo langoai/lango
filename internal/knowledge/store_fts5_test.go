@@ -170,6 +170,41 @@ func TestWriteTimeSync_Knowledge(t *testing.T) {
 	assert.Equal(t, 0, count)
 }
 
+func TestWriteTimeSync_Knowledge_ProtectedFirstSave(t *testing.T) {
+	store, rawDB := newFTS5TestStore(t)
+	store.SetPayloadProtector(stubPayloadProtector{})
+	ctx := context.Background()
+
+	entry := KnowledgeEntry{
+		Key:         "protected-first-save",
+		Category:    entknowledge.CategoryFact,
+		Content:     "first protected content",
+		Source:      "tool:save_knowledge",
+		SourceClass: "private-confidential",
+		AssetLabel:  "knowledge/protected-first-save",
+	}
+	require.NoError(t, store.SaveKnowledge(ctx, "s1", entry))
+
+	got, err := store.GetKnowledge(ctx, entry.Key)
+	require.NoError(t, err)
+	assert.Equal(t, 1, got.Version)
+	assert.Equal(t, entry.Content, got.Content)
+	assert.Equal(t, entry.SourceClass, got.SourceClass)
+	assert.Equal(t, entry.AssetLabel, got.AssetLabel)
+
+	row := store.client.Knowledge.Query().Where(entknowledge.Key(entry.Key), entknowledge.IsLatest(true)).OnlyX(ctx)
+	require.NotNil(t, row.ContentCiphertext)
+	require.NotNil(t, row.ContentNonce)
+	require.NotNil(t, row.ContentKeyVersion)
+	assert.Equal(t, 1, row.Version)
+	assert.True(t, row.IsLatest)
+
+	var count int
+	err = rawDB.QueryRow(`SELECT count(*) FROM knowledge_fts WHERE source_id = ?`, entry.Key).Scan(&count)
+	require.NoError(t, err)
+	assert.Equal(t, 1, count)
+}
+
 func TestFTS5_OnlyLatestVersion(t *testing.T) {
 	store, rawDB := newFTS5TestStore(t)
 	ctx := context.Background()

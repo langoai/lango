@@ -172,3 +172,447 @@ The CLI index quick reference table SHALL include the `lango status` command.
 #### Scenario: Status in CLI index
 - **WHEN** a user reads `docs/cli/index.md`
 - **THEN** `lango status` SHALL appear in the Quick Reference table under Getting Started
+
+### Requirement: Quickstart installation anchor resolves
+The getting started quickstart documentation SHALL link to the existing installation anchor instead of a missing fragment.
+
+#### Scenario: Installation anchor is valid
+- **WHEN** a user reads `docs/getting-started/quickstart.md`
+- **THEN** the installation link SHALL target the existing installation section and its compiler setup anchor
+
+### Requirement: Cockpit public-entry consolidation
+After the hidden cockpit guides move out of `docs/`, the public cockpit documentation SHALL keep `docs/features/cockpit.md` as the single public entry for operator-facing material from the cockpit approval, channels, tasks, and troubleshooting guides.
+
+#### Scenario: Approval guidance is on the main cockpit page
+- **WHEN** a user reads `docs/features/cockpit.md`
+- **THEN** they SHALL find approval operations guidance previously split into the approval sub-guide
+
+#### Scenario: Channel, task, and troubleshooting guidance are on the main cockpit page
+- **WHEN** a user reads `docs/features/cockpit.md`
+- **THEN** they SHALL find channel operations, background task operations, and troubleshooting guidance previously split into the other cockpit sub-guides
+
+### Requirement: Identity trust reputation audit documents the landed Reputation V2 contract
+The `docs/architecture/identity-trust-reputation-audit.md` page SHALL describe the landed Reputation V2 contract, including separated `earnedTrustScore`, `durableNegativeUnits`, and `temporarySafetySignals`, plus the canonical trust-entry states `bootstrap`, `established`, `review`, and `temporarily_unsafe`.
+
+#### Scenario: Audit page reflects the V2 contract
+- **WHEN** a user reads `docs/architecture/identity-trust-reputation-audit.md`
+- **THEN** they SHALL find the composite and earned trust distinction documented
+- **AND** they SHALL find durable negative units separated from temporary safety signals
+- **AND** they SHALL find the four canonical trust-entry states documented
+
+### Requirement: P2P feature docs describe runtime trust-entry consumption
+The `docs/features/p2p-network.md` and `docs/features/economy.md` pages SHALL describe how runtime consumers use the landed trust-entry contract.
+
+#### Scenario: P2P network page describes admission and approval states
+- **WHEN** a user reads `docs/features/p2p-network.md`
+- **THEN** they SHALL find `bootstrap`, `established`, `review`, and `temporarily_unsafe` documented as the canonical trust-entry states
+- **AND** they SHALL find `autoApproveKnownPeers` described as limited to returning peers in `established` state
+- **AND** they SHALL find post-pay routing described as using earned trust for returning peers
+
+#### Scenario: Economy page describes score consumption
+- **WHEN** a user reads `docs/features/economy.md`
+- **THEN** they SHALL find bootstrap peers described as using the bootstrap effective score
+- **AND** they SHALL find returning peers described as using earned trust for risk and pricing inputs
+
+### Requirement: P2P knowledge exchange track reflects landed reputation runtime integration
+The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the identity/trust/reputation detailed audit and the first `reputation v2 + runtime integration` slice as landed work, and it SHALL narrow the follow-on work accordingly.
+
+#### Scenario: Track follow-on list is updated
+- **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
+- **THEN** the required follow-on plan SHALL state that the identity/trust/reputation detailed audit is now landed
+- **AND** they SHALL find the first `reputation v2 + runtime integration` slice described as landed work
+- **AND** the remaining work SHALL be narrowed to owner-root-aware policy adoption, broader dispute-to-reputation feeds, and richer operator-facing trust/review surfaces
+
+### Requirement: P2P knowledge exchange track reflects the landed pricing negotiation settlement audit
+The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the pricing/negotiation/settlement detailed audit as landed work and list the follow-on work as `runtime integration`, `settlement execution`, and `escrow lifecycle completion`.
+
+#### Scenario: Track follow-on list is updated
+- **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
+- **THEN** the required follow-on plan SHALL state that the pricing/negotiation/settlement detailed audit is now landed
+- **AND** the follow-on work SHALL include `runtime integration`, `settlement execution`, and `escrow lifecycle completion`
+
+### Requirement: Knowledge exchange runtime architecture page describes the first control-plane slice
+The `docs/architecture/knowledge-exchange-runtime.md` page SHALL describe the first transaction-oriented runtime control-plane design slice for `knowledge exchange v1`, centered on transaction receipt and submission receipt, and SHALL list the current limits of that slice.
+
+#### Scenario: Runtime page shows the bounded slice
+- **WHEN** a user reads `docs/architecture/knowledge-exchange-runtime.md`
+- **THEN** they SHALL find sections covering the runtime design slice, canonical state, current limits, and follow-on work
+
+### Requirement: P2P knowledge exchange track links the runtime design slice
+The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL reference `knowledge-exchange-runtime.md` as the first transaction-oriented runtime design slice and SHALL state that the remaining work is runtime implementation and broader progression handling.
+
+#### Scenario: Track page points to the runtime slice
+- **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
+- **THEN** they SHALL find the runtime design slice referenced by name and linked to `knowledge-exchange-runtime.md`
+- **AND** the follow-on work SHALL be described as implementation, not redesign of the landed slice
+
+### Requirement: Settlement progression architecture page describes the current progression slice
+The `docs/architecture/settlement-progression.md` page SHALL describe the current transaction-level settlement progression slice for `knowledge exchange v1`, including what currently ships and the current limits of the slice.
+
+#### Scenario: Settlement progression page shows the bounded slice
+- **WHEN** a user reads `docs/architecture/settlement-progression.md`
+- **THEN** they SHALL find sections describing the current progression slice, what ships, canonical state, and current limits
+- **AND** they SHALL find `dispute-ready` described as a public canonical path for renewed disagreement
+- **AND** they SHALL find re-escalation from `partially-settled` described as preserving the canonical `partial_settlement_hint`
+- **AND** they SHALL find `apply_settlement_progression` described as returning `dispute_lifecycle_status`
+
+### Requirement: P2P knowledge exchange track reflects landed settlement progression
+The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the current settlement progression slice as landed work and list the remaining work as repeated partial execution, broader multi-round settlement orchestration, and operator/policy surfaces.
+
+#### Scenario: Track page points to the landed settlement progression slice
+- **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
+- **THEN** they SHALL find settlement progression described as a landed first slice
+- **AND** they SHALL find explicit `dispute-ready` re-entry described as landed work
+- **AND** the remaining work SHALL be described as repeated partial execution, broader multi-round settlement orchestration, and operator/policy surfaces
+
+### Requirement: Actual settlement execution page describes the first direct execution slice
+The `docs/architecture/actual-settlement-execution.md` page SHALL describe the first direct settlement execution slice for `knowledge exchange v1`, including what currently ships and the current limits of the slice.
+
+#### Scenario: Actual settlement execution page shows the bounded slice
+- **WHEN** a user reads `docs/architecture/actual-settlement-execution.md`
+- **THEN** they SHALL find sections describing the current execution slice, what ships, canonical gate, and current limits
+
+### Requirement: P2P knowledge exchange track reflects landed actual settlement execution
+The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the actual settlement execution first slice as landed work and list the remaining work as escrow lifecycle completion and dispute engine completion.
+
+#### Scenario: Track page points to the landed actual settlement execution slice
+- **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
+- **THEN** they SHALL find actual settlement execution described as a landed first slice
+- **AND** the remaining work SHALL be described as escrow lifecycle completion and dispute engine completion
+
+### Requirement: Partial settlement execution page describes the first direct partial slice
+The `docs/architecture/partial-settlement-execution.md` page SHALL describe the first direct partial settlement execution slice for `knowledge exchange v1`, including what currently ships and the current limits of the slice.
+
+#### Scenario: Partial settlement execution page shows the bounded slice
+- **WHEN** a user reads `docs/architecture/partial-settlement-execution.md`
+- **THEN** they SHALL find sections describing the current partial slice, canonical hint model, success/failure semantics, and current limits
+
+### Requirement: P2P knowledge exchange track reflects landed partial settlement execution
+The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the partial settlement execution first slice as landed work and list the remaining work as escrow lifecycle completion and dispute engine completion.
+
+#### Scenario: Track page points to the landed partial settlement execution slice
+- **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
+- **THEN** they SHALL find partial settlement execution described as a landed first slice
+- **AND** the remaining work SHALL be described as escrow lifecycle completion and dispute engine completion
+
+### Requirement: Escrow release page describes the first funded release slice
+The `docs/architecture/escrow-release.md` page SHALL describe the first escrow release slice for `knowledge exchange v1`, including what currently ships and the current limits of the slice.
+
+#### Scenario: Escrow release page shows the bounded slice
+- **WHEN** a user reads `docs/architecture/escrow-release.md`
+- **THEN** they SHALL find sections describing the current escrow release slice, what currently ships, and current limits
+- **AND** they SHALL find matching `escrow_adjudication = release` described as part of the gate
+- **AND** they SHALL find opposite-branch refund evidence described as blocking execution
+- **AND** they SHALL find dispute lifecycle cleanup on successful release described
+
+### Requirement: P2P knowledge exchange track reflects landed escrow release
+The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the escrow release first slice as landed work and list the remaining work as milestone-aware release, broader execution policy defaults, and richer operator policy surfaces.
+
+#### Scenario: Track page points to the landed escrow release slice
+- **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
+- **THEN** they SHALL find escrow release described as a landed first slice
+- **AND** they SHALL find adjudication-aware release gating described as landed work
+- **AND** the remaining work SHALL be described as milestone-aware release, broader execution policy defaults, and richer operator policy surfaces
+
+### Requirement: Escrow refund page describes the first funded refund slice
+The `docs/architecture/escrow-refund.md` page SHALL describe the first escrow refund slice for `knowledge exchange v1`, including what currently ships and the current limits of the slice.
+
+#### Scenario: Escrow refund page shows the bounded slice
+- **WHEN** a user reads `docs/architecture/escrow-refund.md`
+- **THEN** they SHALL find sections describing the current escrow refund slice, what currently ships, and current limits
+- **AND** they SHALL find matching `escrow_adjudication = refund` described as part of the gate
+- **AND** they SHALL find opposite-branch release evidence described as blocking execution
+- **AND** they SHALL find dispute lifecycle cleanup on successful refund described
+- **AND** they SHALL find concurrent refund attempts for the same transaction described as serialized inside the service boundary
+
+### Requirement: P2P knowledge exchange track reflects landed escrow refund
+The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the escrow refund first slice as landed work and list the remaining work as refund terminal-state design, release-after-refund safety rules, and richer operator policy surfaces.
+
+#### Scenario: Track page points to the landed escrow refund slice
+- **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
+- **THEN** they SHALL find escrow refund described as a landed first slice
+- **AND** they SHALL find adjudication-aware refund gating described as landed work
+- **AND** the remaining work SHALL be described as refund terminal-state design, release-after-refund safety rules, and richer operator policy surfaces
+
+### Requirement: Dispute hold page describes the first funded dispute hold slice
+The `docs/architecture/dispute-hold.md` page SHALL describe the first dispute hold slice for `knowledge exchange v1`, including what currently ships and the current limits of the slice.
+
+#### Scenario: Dispute hold page shows the bounded slice
+- **WHEN** a user reads `docs/architecture/dispute-hold.md`
+- **THEN** they SHALL find sections describing the current dispute hold slice, what currently ships, and current limits
+- **AND** they SHALL find canonical `dispute_lifecycle_status = hold-active` described as a hold success outcome
+- **AND** they SHALL find `hold_escrow_for_dispute` described as returning `dispute_lifecycle_status`
+- **AND** they SHALL find concurrent hold attempts for the same transaction described as serialized inside the service boundary
+
+### Requirement: P2P knowledge exchange track reflects landed dispute hold
+The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the dispute hold first slice as landed work and list the remaining work as richer arbitration policy, a separate held-escrow lifecycle only if needed, and operator UI.
+
+#### Scenario: Track page points to the landed dispute hold slice
+- **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
+- **THEN** they SHALL find dispute hold described as a landed first slice
+- **AND** they SHALL find canonical `hold-active` lifecycle state described as landed work
+- **AND** the remaining work SHALL be described as richer arbitration policy, a separate held-escrow lifecycle only if needed, and operator UI
+
+### Requirement: Release-vs-refund adjudication page describes the first post-hold branching slice
+The `docs/architecture/release-vs-refund-adjudication.md` page SHALL describe the first post-hold release-vs-refund adjudication slice for `knowledge exchange v1`, including what currently ships and the current limits of the slice.
+
+#### Scenario: Adjudication page shows the bounded slice
+- **WHEN** a user reads `docs/architecture/release-vs-refund-adjudication.md`
+- **THEN** they SHALL find sections describing the current adjudication slice, what currently ships, and current limits
+- **AND** they SHALL find atomic settlement progression updates described for `release` and `refund`
+- **AND** they SHALL find the active dispute lifecycle marker described as preserved through canonical adjudication
+- **AND** they SHALL find `adjudicate_escrow_dispute` described as returning `dispute_lifecycle_status`
+- **AND** they SHALL find concurrent adjudication attempts for the same transaction described as serialized inside the service boundary
+
+### Requirement: P2P knowledge exchange track reflects landed release-vs-refund adjudication
+The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the release-vs-refund adjudication first slice as landed work and list the remaining work as config-backed non-manual defaults, richer arbitration policy, and operator UI.
+
+#### Scenario: Track page points to the landed adjudication slice
+- **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
+- **THEN** they SHALL find release-vs-refund adjudication described as a landed first slice
+- **AND** they SHALL find manual-recovery-by-default canonical adjudication described as landed work
+- **AND** the remaining work SHALL be described as config-backed non-manual defaults, richer arbitration policy, and operator UI
+
+### Requirement: Adjudication-aware release/refund execution gating page describes the first executor-contract slice
+The `docs/architecture/adjudication-aware-release-refund-execution-gating.md` page SHALL describe the first slice that connects canonical escrow adjudication to release/refund execution gating, including what currently ships and the current limits of the slice.
+
+#### Scenario: Adjudication-aware execution gating page shows the bounded slice
+- **WHEN** a user reads `docs/architecture/adjudication-aware-release-refund-execution-gating.md`
+- **THEN** they SHALL find sections describing the current execution-gating slice, what currently ships, and current limits
+- **AND** they SHALL find dispute lifecycle cleanup on successful release or refund described
+
+### Requirement: P2P knowledge exchange track reflects landed adjudication-aware release/refund execution gating
+The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the adjudication-aware release/refund execution gating first slice as landed work and list the remaining work as milestone-aware branch execution, broader dispute automation, and operator/policy surfaces.
+
+#### Scenario: Track page points to the landed adjudication-aware gating slice
+- **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
+- **THEN** they SHALL find adjudication-aware release/refund execution gating described as a landed first slice
+- **AND** they SHALL find terminal lifecycle cleanup described as landed work
+- **AND** the remaining work SHALL be described as milestone-aware branch execution, broader dispute automation, and operator/policy surfaces
+
+### Requirement: Automatic post-adjudication execution page describes the first inline orchestration slice
+The `docs/architecture/automatic-post-adjudication-execution.md` page SHALL describe the first inline convenience slice after escrow adjudication, including what currently ships and the current limits of the slice.
+
+#### Scenario: Automatic post-adjudication execution page shows the bounded slice
+- **WHEN** a user reads `docs/architecture/automatic-post-adjudication-execution.md`
+- **THEN** they SHALL find sections describing the current auto-execution slice, what currently ships, and current limits
+- **AND** they SHALL find that omitted execution flags default to `manual_recovery`
+- **AND** they SHALL find that `auto_execute` and `background_execute` are mutually exclusive
+
+### Requirement: P2P knowledge exchange track reflects landed automatic post-adjudication execution
+The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the automatic post-adjudication execution first slice as landed work, including the shared execution-mode default of `manual_recovery`, and list the remaining work as config-backed non-manual defaults, policy editing for execution-mode selection, and broader dispute engine integration.
+
+#### Scenario: Track page points to the landed auto-execution slice
+- **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
+- **THEN** they SHALL find automatic post-adjudication execution described as a landed first slice
+- **AND** the remaining work SHALL be described as background execution, retry orchestration, automatic execution as policy default, and broader dispute engine integration
+
+### Requirement: Background post-adjudication execution page describes the first async dispatch slice
+The `docs/architecture/background-post-adjudication-execution.md` page SHALL describe the first background post-adjudication execution slice for `knowledge exchange v1`, including what currently ships and the current limits of the slice.
+
+#### Scenario: Background post-adjudication execution page shows the bounded slice
+- **WHEN** a user reads `docs/architecture/background-post-adjudication-execution.md`
+- **THEN** they SHALL find sections describing the current background dispatch slice, what currently ships, and current limits
+- **AND** they SHALL find the shared `manual_recovery` / `inline` / `background` execution-mode policy described
+- **AND** they SHALL find that background execution remains an explicit opt-in when execution flags are present
+
+### Requirement: P2P knowledge exchange track reflects landed background post-adjudication execution
+The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the background post-adjudication execution first slice as landed work and list the remaining work as config-backed non-manual defaults, operator-editable execution-mode policy, broader background-task adoption outside post-adjudication follow-up, and broader dispute engine integration.
+
+#### Scenario: Track page points to the landed background slice
+- **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
+- **THEN** they SHALL find background post-adjudication execution described as a landed first slice
+- **AND** the remaining work SHALL be described as retry orchestration, dead-letter handling, dedicated status observation, and policy-driven defaults
+
+### Requirement: Retry / dead-letter handling page describes the first bounded retry slice
+The `docs/architecture/retry-dead-letter-handling.md` page SHALL describe the first retry / dead-letter slice for background post-adjudication execution, including what currently ships and the current limits of the slice.
+
+#### Scenario: Retry / dead-letter handling page shows the bounded slice
+- **WHEN** a user reads `docs/architecture/retry-dead-letter-handling.md`
+- **THEN** they SHALL find sections describing the current retry/dead-letter slice, what currently ships, and current limits
+- **AND** they SHALL find the normalized retry policy shape described with retry-attempt and base-delay fields
+- **AND** they SHALL find the shared `post_adjudication_retry` evidence source described for retry and dead-letter events
+- **AND** they SHALL find canonical re-escalation on exhausted retries described as preserving adjudication while setting `settlement_progression_status = dispute-ready`
+- **AND** they SHALL find `dispute_lifecycle_status = re-escalated` described for exhausted retries
+- **AND** they SHALL find canonical retry-key dedup across pending, running, and scheduled tasks described
+- **AND** they SHALL find background-runner panics described as explicit task failures rather than orphaned running tasks
+- **AND** they SHALL find receipt-evidence write failures described as operational errors even when the retry hook remains best-effort
+
+### Requirement: P2P knowledge exchange track reflects landed retry / dead-letter handling
+The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the retry / dead-letter handling first slice as landed work and list the remaining work as operator-editable retry tuning, wider non-post-adjudication adoption of the retry policy shape, and a more generic recovery substrate for arbitrary background task families.
+
+#### Scenario: Track page points to the landed retry slice
+- **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
+- **THEN** they SHALL find retry / dead-letter handling described as a landed first slice
+- **AND** they SHALL find canonical re-escalation after exhausted retries described as landed work
+- **AND** they SHALL find canonical retry-key dedup across pending, running, and scheduled tasks described as landed work
+- **AND** the remaining work SHALL be described as operator replay, generic async retry policy, dead-letter browsing, and policy-driven backoff tuning
+
+### Requirement: Operator replay / manual retry page describes the first replay slice
+The `docs/architecture/operator-replay-manual-retry.md` page SHALL describe the first operator replay / manual retry slice for dead-lettered post-adjudication execution, including what currently ships and the current limits of the slice.
+
+#### Scenario: Operator replay / manual retry page shows the bounded slice
+- **WHEN** a user reads `docs/architecture/operator-replay-manual-retry.md`
+- **THEN** they SHALL find sections describing the current replay slice, what currently ships, and current limits
+- **AND** they SHALL find replay described as part of the same recovery evidence family as automatic retry and dead-letter handling
+- **AND** they SHALL find `manual-retry-requested` evidence described
+
+### Requirement: P2P knowledge exchange track reflects landed operator replay / manual retry
+The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the operator replay / manual retry first slice as landed work and list the remaining work as inline replay, arbitrary background-task replay, per-transaction recovery snapshots, and broader dispute engine integration.
+
+#### Scenario: Track page points to the landed replay slice
+- **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
+- **THEN** they SHALL find operator replay / manual retry described as a landed first slice
+- **AND** the remaining work SHALL be described as dead-letter browsing UI, policy-driven replay controls, generic replay substrate design, and broader dispute engine integration
+
+### Requirement: Policy-driven replay controls page describes the first replay authorization slice
+The `docs/architecture/policy-driven-replay-controls.md` page SHALL describe the first policy-driven replay controls slice for post-adjudication replay, including what currently ships and the current limits of the slice.
+
+#### Scenario: Policy-driven replay controls page shows the bounded slice
+- **WHEN** a user reads `docs/architecture/policy-driven-replay-controls.md`
+- **THEN** they SHALL find sections describing the current replay-authorization slice, what currently ships, and current limits
+- **AND** they SHALL find replay authorization described as sitting on top of the shared recovery evidence gate
+
+### Requirement: P2P knowledge exchange track reflects landed policy-driven replay controls
+The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the policy-driven replay controls first slice as landed work and list the remaining work as richer policy classes, policy editing surfaces, per-transaction snapshots, and amount-tier replay controls.
+
+#### Scenario: Track page points to the landed replay-policy slice
+- **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
+- **THEN** they SHALL find policy-driven replay controls described as a landed first slice
+- **AND** the remaining work SHALL be described as richer policy classes, policy editing surfaces, per-transaction snapshots, and amount-tier replay controls
+
+### Requirement: Dead-letter browsing / status observation page describes the first read-only visibility slice
+The `docs/architecture/dead-letter-browsing-status-observation.md` page SHALL describe the first dead-letter browsing / status observation slice for post-adjudication execution, including what currently ships and the current limits of the slice.
+
+#### Scenario: Dead-letter browsing / status observation page shows the bounded slice
+- **WHEN** a user reads `docs/architecture/dead-letter-browsing-status-observation.md`
+- **THEN** they SHALL find sections describing the current read-only visibility slice, what currently ships, and current limits
+
+#### Scenario: Dead-letter browsing page describes filtering and detail hints
+- **WHEN** a user reads `docs/architecture/dead-letter-browsing-status-observation.md`
+- **THEN** they SHALL find filtering and pagination described for the backlog list
+- **AND** they SHALL find actor/time-based list filters described
+- **AND** they SHALL find dead-letter reason and dispatch-reference filters described
+- **AND** they SHALL find subtype/count filters and alternate sort modes described
+- **AND** they SHALL find total retry-count and subtype-family filters described
+- **AND** they SHALL find any-match family grouping described
+- **AND** they SHALL find dominant family described
+- **AND** they SHALL find transaction-global retry count and family grouping described
+- **AND** they SHALL find transaction-global dominant family described
+- **AND** they SHALL find compact per-submission breakdown described
+- **AND** they SHALL find the optional detail-view raw background-task bridge described
+- **AND** they SHALL find the cockpit dead-letter master-detail read surface described
+- **AND** they SHALL find the thin cockpit filter bar described
+- **AND** they SHALL find cockpit subtype filtering described
+- **AND** they SHALL find cockpit actor/time filtering described
+- **AND** they SHALL find cockpit latest-family filtering described
+- **AND** they SHALL find cockpit any-match-family filtering described
+- **AND** they SHALL find cockpit reason/dispatch filtering described
+- **AND** they SHALL find cockpit reset/clear shortcut behavior described
+- **AND** they SHALL find cockpit selection preservation described
+- **AND** they SHALL find dead-letter CLI surface described
+- **AND** they SHALL find dead-letter CLI subtype/latest-family filtering described
+- **AND** they SHALL find dead-letter CLI retry action described
+- **AND** they SHALL find dead-letter CLI actor/time filtering described
+- **AND** they SHALL find dead-letter CLI reason/dispatch filtering described
+- **AND** they SHALL find dead-letter CLI `offset` / `limit` pagination described
+- **AND** they SHALL find dead-letter CLI summary described
+- **AND** they SHALL find dead-letter CLI `by_reason_family` summary buckets described
+- **AND** they SHALL find dead-letter CLI `by_actor_family` summary buckets described
+- **AND** they SHALL find dead-letter CLI `by_dispatch_family` summary buckets described
+- **AND** they SHALL find the CLI `By reason family` table section described
+- **AND** they SHALL find the CLI `By actor family` table section described
+- **AND** they SHALL find the CLI `By dispatch family` table section described
+- **AND** they SHALL find the initial reason-family taxonomy described as `retry-exhausted`, `policy-blocked`, `receipt-invalid`, `background-failed`, and `unknown`
+- **AND** they SHALL find the initial actor-family taxonomy described as `operator`, `system`, `service`, and `unknown`
+- **AND** they SHALL find the dispatch-family classifier described as using common prefixes plus deterministic first-token fallback
+- **AND** they SHALL find dead-letter CLI retry described as supporting an explicit `--actor` override
+- **AND** they SHALL find machine-mode dead-letter CLI failures described as structured JSON error payloads when `--output json` is selected
+- **AND** they SHALL find top latest dead-letter reasons described for the summary CLI surface
+- **AND** they SHALL find raw top latest dead-letter reasons described as still available alongside grouped reason-family summaries
+- **AND** they SHALL find top latest manual replay actors described for the summary CLI surface
+- **AND** they SHALL find raw top latest manual replay actors described as still available alongside grouped actor-family summaries
+- **AND** they SHALL find top latest dispatch references described for the summary CLI surface
+- **AND** they SHALL find configurable top-N summary controls described
+- **AND** they SHALL find recent dead-letter trend / time-window summary behavior described
+- **AND** they SHALL find the cockpit page-top summary strip described
+- **AND** they SHALL find the cockpit `reason families:` summary strip line described
+- **AND** they SHALL find the cockpit `actor families:` summary strip line described
+- **AND** they SHALL find the cockpit `dispatch families:` summary strip line described
+- **AND** they SHALL find top latest dead-letter reasons described for the cockpit summary strip
+- **AND** they SHALL find raw top latest dead-letter reasons described as still available in the cockpit summary strip
+- **AND** they SHALL find top latest manual replay actors described for the cockpit summary strip
+- **AND** they SHALL find raw top latest manual replay actors described as still available in the cockpit summary strip
+- **AND** they SHALL find top latest dispatch references described for the cockpit summary strip
+- **AND** they SHALL find the cockpit trend line described
+- **AND** they SHALL find the cockpit detail-pane `Retry` action described
+- **AND** they SHALL find inline confirm and success-refresh recovery UX described
+- **AND** they SHALL find retry running/failure feedback described
+- **AND** they SHALL find CLI retry precheck behavior described
+- **AND** they SHALL find CLI retry success described as request acceptance rather than completed execution
+- **AND** they SHALL find CLI and cockpit retry failure wording described as distinct from precheck rejection
+- **AND** they SHALL find that CLI and cockpit retry inject a local default operator principal when the runtime context is otherwise empty
+- **AND** they SHALL find CLI `--any-match-family` filtering described
+- **AND** they SHALL find CLI retry follow-up polling and structured follow-up output described
+- **AND** they SHALL find cockpit retry follow-up interpretation described
+- **AND** they SHALL find that cockpit dead-letter filter fields are forwarded through the shell adapter into the dead-letter list tool
+- **AND** they SHALL find dispatch-family grouping described as shared between CLI and cockpit
+- **AND** they SHALL find detail navigation hints described for per-transaction status
+
+### Requirement: P2P knowledge exchange track reflects landed dead-letter browsing / status observation
+The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe dead-letter browsing / status observation as landed work with transaction-global dominant family, compact per-submission breakdown, a thin raw background-task bridge on the detail view, a cockpit dead-letter read surface, a page-top cockpit summary strip with raw top latest dead-letter reasons, grouped `reason families:`, top latest manual replay actors, grouped `actor families:`, grouped `dispatch families:`, top latest dispatch references, and a compact trend line, a thin cockpit filter bar, cockpit subtype filtering, cockpit latest-family filtering, cockpit any-match-family filtering, cockpit actor/time filtering, cockpit reason/dispatch filtering, cockpit reset/clear shortcuts, cockpit selection preservation, a cockpit `Retry` action, confirm/refresh recovery UX, refined retry loading/failure/success messaging, and a dead-letter CLI surface including the summary command with grouped `by_reason_family`, `by_actor_family`, and `by_dispatch_family` buckets, `By reason family`, `By actor family`, and `By dispatch family` table sections, raw configurable top-N latest reasons, raw configurable top-N latest manual replay actors, raw configurable top-N latest dispatch references, recent trend / time-window summaries, subtype/latest-family/any-match-family filtering, actor/time filtering, reason/dispatch filtering, and retry follow-up polling with precheck/request-accepted/request-failed semantics, and list the remaining work as configurable taxonomy redesign, broader dead-letter history and generic background-task browsing, wider non-post-adjudication adoption of the retry/recovery substrate, and operator-editable execution/recovery policy surfaces.
+
+#### Scenario: Track page points to the landed status slice
+- **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
+- **THEN** they SHALL find dead-letter browsing / status observation described as a landed first slice
+- **AND** they SHALL find compact per-submission breakdown described as landed work
+- **AND** they SHALL find the thin detail-view raw background-task bridge described as landed work
+- **AND** they SHALL find the cockpit dead-letter read surface described as landed work
+- **AND** they SHALL find the thin cockpit filter bar described as landed work
+- **AND** they SHALL find cockpit subtype filtering described as landed work
+- **AND** they SHALL find cockpit actor/time filtering described as landed work
+- **AND** they SHALL find cockpit latest-family filtering described as landed work
+- **AND** they SHALL find cockpit any-match-family filtering described as landed work
+- **AND** they SHALL find cockpit reason/dispatch filtering described as landed work
+- **AND** they SHALL find cockpit reset/clear shortcuts described as landed work
+- **AND** they SHALL find cockpit selection preservation described as landed work
+- **AND** they SHALL find dead-letter CLI surface described as landed work
+- **AND** they SHALL find dead-letter CLI subtype/latest-family filtering described as landed work
+- **AND** they SHALL find dead-letter CLI retry action described as landed work
+- **AND** they SHALL find dead-letter CLI actor/time filtering described as landed work
+- **AND** they SHALL find dead-letter CLI reason/dispatch filtering described as landed work
+- **AND** they SHALL find dead-letter CLI summary described as landed work
+- **AND** they SHALL find dead-letter CLI `by_reason_family` described as landed work
+- **AND** they SHALL find dead-letter CLI `by_actor_family` described as landed work
+- **AND** they SHALL find dead-letter CLI `by_dispatch_family` described as landed work
+- **AND** they SHALL find the CLI `By reason family` table section described as landed work
+- **AND** they SHALL find the CLI `By actor family` table section described as landed work
+- **AND** they SHALL find the CLI `By dispatch family` table section described as landed work
+- **AND** they SHALL find the initial reason-family taxonomy described as `retry-exhausted`, `policy-blocked`, `receipt-invalid`, `background-failed`, and `unknown`
+- **AND** they SHALL find the initial actor-family taxonomy described as `operator`, `system`, `service`, and `unknown`
+- **AND** they SHALL find dispatch-family grouping described as landed work
+- **AND** they SHALL find top latest dead-letter reasons described as landed work
+- **AND** they SHALL find raw top latest dead-letter reasons described as still available alongside grouped reason-family summaries
+- **AND** they SHALL find top latest manual replay actors described as landed work
+- **AND** they SHALL find raw top latest manual replay actors described as still available alongside grouped actor-family summaries
+- **AND** they SHALL find top latest dispatch references described as landed work
+- **AND** they SHALL find configurable top-N summary controls described as landed work
+- **AND** they SHALL find recent trend / time-window summaries described as landed work
+- **AND** they SHALL find the cockpit page-top summary strip described as landed work
+- **AND** they SHALL find the cockpit `reason families:` summary strip line described as landed work
+- **AND** they SHALL find the cockpit `actor families:` summary strip line described as landed work
+- **AND** they SHALL find the cockpit `dispatch families:` summary strip line described as landed work
+- **AND** they SHALL find top latest dead-letter reasons described for the cockpit summary strip as landed work
+- **AND** they SHALL find raw top latest dead-letter reasons described as still available in the cockpit summary strip
+- **AND** they SHALL find top latest manual replay actors described for the cockpit summary strip as landed work
+- **AND** they SHALL find raw top latest manual replay actors described as still available in the cockpit summary strip
+- **AND** they SHALL find top latest dispatch references described for the cockpit summary strip as landed work
+- **AND** they SHALL find the cockpit trend line described as landed work
+- **AND** they SHALL find the cockpit `Retry` action described as landed work
+- **AND** they SHALL find confirm/refresh recovery UX described as landed work
+- **AND** they SHALL find retry loading/failure feedback described as landed work
+- **AND** they SHALL find refined retry success/failure wording described as landed work
+- **AND** they SHALL find CLI retry precheck/request-accepted/request-failed semantics described as landed work
+- **AND** they SHALL find CLI any-match-family filtering described as landed work
+- **AND** they SHALL find CLI retry follow-up polling described as landed work
+- **AND** the remaining work SHALL be described as configurable taxonomy redesign, broader dead-letter history and generic background-task browsing, wider non-post-adjudication adoption of the retry/recovery substrate, and operator-editable execution/recovery policy surfaces

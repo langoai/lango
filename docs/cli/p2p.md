@@ -193,7 +193,9 @@ research-bot      did:lango:02abc...      research, summarize   QmPeer1abc123
 
 ## lango p2p identity
 
-Show the local P2P identity including peer ID, key directory, and listen addresses.
+Show the local P2P node identity, including peer ID, key storage mode, and listen addresses.
+
+Lango supports both legacy wallet-derived `did:lango:<hex>` identities and bundle-backed `did:lango:v2:<hash>` identities. The current CLI identity command does not print the DID directly; use `GET /api/p2p/identity` to query the active DID when available. The `/api/p2p/*` routes are public only when gateway auth is disabled; otherwise the subtree is protected by gateway auth.
 
 ```
 lango p2p identity [--json]
@@ -209,7 +211,7 @@ lango p2p identity [--json]
 $ lango p2p identity
 P2P Identity
   Peer ID:      QmYourPeerId123...
-  Key Dir:      ~/.lango/p2p
+  Key Storage:  secrets-store
   Listen Addrs:
     /ip4/0.0.0.0/tcp/9000
     /ip6/::/tcp/9000
@@ -426,7 +428,7 @@ Orphaned sandbox containers cleaned up.
 
 ## `lango p2p pricing`
 
-Show P2P tool pricing configuration.
+Show provider-side P2P quote configuration.
 
 ### Usage
 
@@ -458,11 +460,11 @@ lango p2p pricing --json
 
 ## lango p2p team
 
-Manage P2P teams — task-scoped collaboration groups between agents across the network. See the [P2P Teams](../features/p2p-network.md#p2p-team-coordination) section for details.
+Inspect the current team operator surface for the running P2P runtime. Teams are real runtime-only coordination structures, but the CLI commands below currently act as truth-aligned guidance rather than full live team control. See the [P2P Teams](../features/p2p-network.md#p2p-team-coordination) section for subsystem details.
 
 ### lango p2p team list
 
-List all active P2P teams.
+Inspect what the CLI currently reports for active P2P teams.
 
 ```
 lango p2p team list [--json]
@@ -476,14 +478,15 @@ lango p2p team list [--json]
 
 ```bash
 $ lango p2p team list
-ID                                    STATUS    MEMBERS  LEADER DID                   TASK
-a1b2c3d4-5678-9012-abcd-ef1234567890  active    3        did:lango:02abc...          Research project
-e5f6g7h8-9012-3456-cdef-ab1234567890  forming   2        did:lango:03def...          Code review
+No active teams.
+
+Teams are runtime-only structures created during agent collaboration.
+Start the server with 'lango serve' and inspect/form teams via runtime integrations and agent tools.
 ```
 
 ### lango p2p team status
 
-Show detailed status for a specific team, including members and their roles.
+Inspect how the CLI currently guides operators toward live team inspection.
 
 ```
 lango p2p team status <team-id> [--json]
@@ -501,20 +504,15 @@ lango p2p team status <team-id> [--json]
 
 ```bash
 $ lango p2p team status a1b2c3d4-5678-9012-abcd-ef1234567890
-Team: a1b2c3d4-5678-9012-abcd-ef1234567890
-  Status:  active
-  Task:    Research project
+Team not found.
 
-Members:
-  DID                          ROLE       STATUS
-  did:lango:02abc...           leader     idle
-  did:lango:03def...           worker     busy
-  did:lango:04ghi...           reviewer   idle
+Teams are runtime-only structures that exist only while the server is running.
+Use the running server plus the team runtime or agent tools for live inspection.
 ```
 
 ### lango p2p team disband
 
-Disband an active team. Only the team leader can disband.
+Inspect how the CLI currently guides operators toward live team disband.
 
 ```
 lango p2p team disband <team-id>
@@ -528,7 +526,10 @@ lango p2p team disband <team-id>
 
 ```bash
 $ lango p2p team disband a1b2c3d4-5678-9012-abcd-ef1234567890
-Team a1b2c3d4-5678-9012-abcd-ef1234567890 disbanded.
+Team not found.
+
+Teams are runtime-only structures.
+Use the running server plus the team runtime or agent tools to disband a live team.
 ```
 
 ### Team Coordination Features
@@ -537,9 +538,9 @@ Teams support configurable conflict resolution and payment coordination:
 
 - **Conflict Resolution**: `trust_weighted` (default), `majority_vote`, `leader_decides`, `fail_on_conflict`
 - **Assignment**: `best_match`, `round_robin`, `load_balanced`
-- **Payment Modes**: Trust-based mode selection — `free` (price=0), `postpay` (trust >= 0.7), `prepay` (trust < 0.7)
+- **Payment Modes**: Trust-based mode selection — `free` (price=0), `postpay` (trust >= 0.8), `prepay` (trust < 0.8)
 
-Teams are runtime-only structures managed by the running server. Use `lango serve` to start the server and form teams via the agent tools (`p2p_team_create`, `p2p_team_join`).
+Teams are runtime-only structures managed by the running server. Today the stable operator path is runtime-backed or tool-backed (`team_form`, `team_delegate`, `team_status`, `team_list`, `team_disband`), while these CLI commands remain guidance-oriented.
 
 See the [P2P Team Coordination](../features/p2p-network.md#p2p-team-coordination) section for detailed documentation on conflict resolution strategies, assignment strategies, and payment coordination.
 
@@ -600,11 +601,11 @@ attestation          true      389          plonk
 
 ## lango p2p workspace
 
-Manage P2P workspaces — collaborative environments where agents share code, messages, and git bundles. See the [Collaborative Workspaces](../features/p2p-network.md#collaborative-workspaces) section for details.
+Inspect the current workspace operator surface for the running P2P runtime. Workspaces are real runtime structures, but the CLI commands below mostly point operators toward server-backed or tool-backed flows rather than performing full live control directly. See the [Collaborative Workspaces](../features/p2p-network.md#collaborative-workspaces) section for details.
 
 ### lango p2p workspace create
 
-Create a new collaborative workspace.
+Inspect how the CLI currently guides operators toward live workspace creation.
 
 ```
 lango p2p workspace create <name> [--goal <goal>] [--json]
@@ -623,15 +624,15 @@ lango p2p workspace create <name> [--goal <goal>] [--json]
 
 ```bash
 $ lango p2p workspace create "research-project" --goal "Collaborative research on RAG optimization"
-Workspace created: a1b2c3d4-5678-9012-abcd-ef1234567890
-  Name:   research-project
-  Status: forming
-  Goal:   Collaborative research on RAG optimization
+Workspace creation requires a running server.
+Start the server with 'lango serve' and use the server-backed runtime or agent tools.
+
+Example: p2p_workspace_create name="research-project" goal="Collaborative research on RAG optimization"
 ```
 
 ### lango p2p workspace list
 
-List all known workspaces.
+Inspect what the CLI currently reports for runtime-backed workspaces.
 
 ```
 lango p2p workspace list [--json]
@@ -645,14 +646,15 @@ lango p2p workspace list [--json]
 
 ```bash
 $ lango p2p workspace list
-ID                                    STATUS    MEMBERS  NAME
-a1b2c3d4-5678-9012-abcd-ef1234567890  active    3        research-project
-e5f6g7h8-9012-3456-cdef-ab1234567890  forming   1        code-review
+No workspaces found.
+
+Workspaces are runtime structures managed by the running server.
+Start the server with 'lango serve' and use the server-backed runtime or p2p_workspace_* tools.
 ```
 
 ### lango p2p workspace status
 
-Show detailed workspace status including members and contributions.
+Inspect how the CLI currently guides operators toward live workspace inspection.
 
 ```
 lango p2p workspace status <id> [--json]
@@ -670,20 +672,15 @@ lango p2p workspace status <id> [--json]
 
 ```bash
 $ lango p2p workspace status a1b2c3d4-5678-9012-abcd-ef1234567890
-Workspace: a1b2c3d4-5678-9012-abcd-ef1234567890
-  Name:    research-project
-  Status:  active
-  Goal:    Collaborative research on RAG optimization
+Workspace not found.
 
-Members:
-  DID                          ROLE       JOINED
-  did:lango:02abc...           creator    2026-03-10T09:00:00Z
-  did:lango:03def...           member     2026-03-10T09:15:00Z
+Workspaces are runtime structures.
+Use the running server plus workspace runtime integrations or agent tools for inspection.
 ```
 
 ### lango p2p workspace join
 
-Join an existing workspace.
+Inspect how the CLI currently guides operators toward live workspace join.
 
 ```
 lango p2p workspace join <id>
@@ -697,12 +694,13 @@ lango p2p workspace join <id>
 
 ```bash
 $ lango p2p workspace join a1b2c3d4-5678-9012-abcd-ef1234567890
-Joined workspace a1b2c3d4-5678-9012-abcd-ef1234567890.
+Joining a workspace requires a running server.
+Use 'lango serve' and the server-backed runtime or p2p_workspace_join tool.
 ```
 
 ### lango p2p workspace leave
 
-Leave a workspace.
+Inspect how the CLI currently guides operators toward live workspace leave.
 
 ```
 lango p2p workspace leave <id>
@@ -716,7 +714,8 @@ lango p2p workspace leave <id>
 
 ```bash
 $ lango p2p workspace leave a1b2c3d4-5678-9012-abcd-ef1234567890
-Left workspace a1b2c3d4-5678-9012-abcd-ef1234567890.
+Leaving a workspace requires a running server.
+Use 'lango serve' and the server-backed runtime or p2p_workspace_leave tool.
 ```
 
 ### Workspace Features
@@ -725,21 +724,21 @@ Workspaces support configurable collaboration features:
 
 - **Lifecycle**: `forming` → `active` → `archived`
 - **Message Types**: `TASK_PROPOSAL`, `LOG_STREAM`, `COMMIT_SIGNAL`, `KNOWLEDGE_SHARE`, `MEMBER_JOINED`, `MEMBER_LEFT`
-- **Chronicler**: Persists workspace messages as graph triples for knowledge retention
+- **Chronicler**: Chronicler hooks exist, but graph-triple persistence depends on the triple-adder wiring and is not yet the default live operator path
 - **Contribution Tracking**: Per-agent metrics (commits, code bytes, messages)
 - **Auto Sandbox**: Optionally isolate workspace operations in sandboxed environments
 
-Workspaces are runtime structures managed by the running server. Use `lango serve` to start the server and create workspaces via the agent tools (`p2p_workspace_create`, `p2p_workspace_join`).
+Workspaces are runtime structures managed by the running server. Today the stable operator path is server-backed or tool-backed (`p2p_workspace_create`, `p2p_workspace_join`, `p2p_workspace_leave`), while these CLI commands remain guidance-oriented.
 
 ---
 
 ## lango p2p git
 
-Manage git bundle exchange for workspace code collaboration. Workspaces use bare git repositories with bundle-based transfer for atomic code sharing.
+Inspect the current git bundle operator surface for workspace code collaboration. The git bundle runtime is real, but these CLI commands mostly point operators toward server-backed or tool-backed flows instead of providing full direct live repository control.
 
 ### lango p2p git init
 
-Initialize a bare git repository for a workspace.
+Inspect how the CLI currently guides operators toward live workspace git initialization.
 
 ```
 lango p2p git init <workspace-id>
@@ -753,12 +752,13 @@ lango p2p git init <workspace-id>
 
 ```bash
 $ lango p2p git init a1b2c3d4-5678-9012-abcd-ef1234567890
-Initialized bare repo for workspace a1b2c3d4-5678-9012-abcd-ef1234567890.
+Git init requires a running server.
+Use 'lango serve' and the runtime API or p2p_git_init tool.
 ```
 
 ### lango p2p git log
 
-Show recent commits in a workspace repository.
+Inspect how the CLI currently guides operators toward live workspace git history.
 
 ```
 lango p2p git log <workspace-id> [--limit <n>] [--json]
@@ -777,14 +777,14 @@ lango p2p git log <workspace-id> [--limit <n>] [--json]
 
 ```bash
 $ lango p2p git log a1b2c3d4-5678-9012-abcd-ef1234567890 --limit 5
-HASH       AUTHOR          TIMESTAMP                MESSAGE
-abc1234    agent-alpha     2026-03-10T10:30:00Z     Add RAG optimization module
-def5678    agent-beta      2026-03-10T10:15:00Z     Initial project structure
+No commits found.
+Git operations require a running server with workspace enabled.
+Use the runtime API or p2p_git_* tools for live repository inspection.
 ```
 
 ### lango p2p git diff
 
-Show diff between two commits in a workspace repository.
+Inspect how the CLI currently guides operators toward live workspace diffs.
 
 ```
 lango p2p git diff <workspace-id> <from> <to>
@@ -800,13 +800,13 @@ lango p2p git diff <workspace-id> <from> <to>
 
 ```bash
 $ lango p2p git diff a1b2c3d4-... abc1234 def5678
-diff --git a/rag/optimizer.go b/rag/optimizer.go
-...
+Diff requires a running server.
+Use 'lango serve' and the runtime API or p2p_git_diff tool.
 ```
 
 ### lango p2p git push
 
-Create a git bundle from the workspace repository and push to peers.
+Inspect how the CLI currently guides operators toward live git bundle push.
 
 ```
 lango p2p git push <workspace-id>
@@ -820,13 +820,13 @@ lango p2p git push <workspace-id>
 
 ```bash
 $ lango p2p git push a1b2c3d4-5678-9012-abcd-ef1234567890
-Bundle created (12.4 KB), HEAD: abc1234
-Pushed to 2 workspace peers.
+Push requires a running server.
+Use 'lango serve' and the server-backed runtime or p2p_git_push tool.
 ```
 
 ### lango p2p git fetch
 
-Fetch a git bundle from workspace peers and apply to the local repository.
+Inspect how the CLI currently guides operators toward live git bundle fetch.
 
 ```
 lango p2p git fetch <workspace-id>
@@ -840,8 +840,8 @@ lango p2p git fetch <workspace-id>
 
 ```bash
 $ lango p2p git fetch a1b2c3d4-5678-9012-abcd-ef1234567890
-Fetched bundle from did:lango:03def... (8.2 KB)
-Applied 3 new commits.
+Fetch requires a running server.
+Use 'lango serve' and the server-backed runtime plus provenance or workspace artifact tools for live exchange.
 ```
 
 ### Incremental Bundles
@@ -863,22 +863,19 @@ Before applying a received bundle, `VerifyBundle` checks that the bundle's prere
 
 ### Workflow Example: Git Bundle Exchange
 
-A typical collaboration workflow using git bundles:
+A typical runtime-backed collaboration workflow using git bundles:
 
 ```bash
-# 1. Initialize the workspace git repository
-lango p2p git init a1b2c3d4-...
+# 1. Start the runtime that owns the live workspace repo
+lango serve
 
-# 2. Check the commit log
+# 2. Use the workspace/git tools to initialize and exchange bundles
+p2p_git_init workspace_id="a1b2c3d4-..."
+p2p_git_push workspace_id="a1b2c3d4-..."
+p2p_git_fetch workspace_id="a1b2c3d4-..."
+
+# 3. Use the guidance commands when you need CLI reminders about the operator path
 lango p2p git log a1b2c3d4-... --limit 10
-
-# 3. Push a bundle to peers (agent commits are shared as bundles)
-lango p2p git push a1b2c3d4-...
-
-# 4. Peers fetch and safely apply the bundle
-lango p2p git fetch a1b2c3d4-...
-
-# 5. Compare changes between commits
 lango p2p git diff a1b2c3d4-... abc1234 def5678
 ```
 
@@ -893,4 +890,4 @@ lango p2p git diff a1b2c3d4-... abc1234 def5678
 - **DAG Leaf Detection**: Identifies leaf commits (no children) for conflict detection
 - **Size Limits**: Configurable `maxBundleSizeBytes` to prevent oversized transfers
 
-Git operations require the `git` binary to be installed and available in PATH.
+Git operations require the `git` binary to be installed and available in PATH. In this command family, live provenance exchange remains the main concrete CLI-backed exception; workspace and git bundle control are otherwise primarily server-backed or tool-backed today.

@@ -32,6 +32,7 @@ import (
 	"github.com/langoai/lango/internal/p2p/ontologybridge"
 	"github.com/langoai/lango/internal/p2p/reputation"
 	"github.com/langoai/lango/internal/p2p/team"
+	"github.com/langoai/lango/internal/receipts"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/storage"
@@ -51,18 +52,19 @@ import (
 
 // foundationValues holds the outputs of the foundation module.
 type foundationValues struct {
-	Supervisor *supervisor.Supervisor
-	Store      session.Store
-	Crypto     security.CryptoProvider
-	Keys       *security.KeyRegistry
-	Secrets    *security.SecretsStore
-	BrowserSM  *browser.SessionManager
-	Refs       *security.RefStore
-	Scanner    *agent.SecretScanner
-	Sanitizer  *gatekeeper.Sanitizer
-	CmdGuard   *execpkg.CommandGuard
-	FsConfig   filesystem.Config
-	AutoAvail  map[string]bool
+	Supervisor   *supervisor.Supervisor
+	Store        session.Store
+	ReceiptStore *receipts.Store
+	Crypto       security.CryptoProvider
+	Keys         *security.KeyRegistry
+	Secrets      *security.SecretsStore
+	BrowserSM    *browser.SessionManager
+	Refs         *security.RefStore
+	Scanner      *agent.SecretScanner
+	Sanitizer    *gatekeeper.Sanitizer
+	CmdGuard     *execpkg.CommandGuard
+	FsConfig     filesystem.Config
+	AutoAvail    map[string]bool
 }
 
 // intelligenceValues holds the outputs of the intelligence module.
@@ -119,6 +121,7 @@ func (m *foundationModule) Init(ctx context.Context, r appinit.Resolver) (*appin
 	if err != nil {
 		return nil, fmt.Errorf("create session store: %w", err)
 	}
+	receiptStore := receipts.NewStore()
 
 	crypto, keys, secrets, err := initSecurity(cfg, store, m.boot)
 	if err != nil {
@@ -183,18 +186,19 @@ func (m *foundationModule) Init(ctx context.Context, r appinit.Resolver) (*appin
 		CatalogEntries: entries,
 		Values: map[appinit.Provides]interface{}{
 			appinit.ProvidesSupervisor: &foundationValues{
-				Supervisor: sv,
-				Store:      store,
-				Crypto:     crypto,
-				Keys:       keys,
-				Secrets:    secrets,
-				BrowserSM:  browserSM,
-				Refs:       refs,
-				Scanner:    scanner,
-				Sanitizer:  san,
-				CmdGuard:   cmdGuard,
-				FsConfig:   fsConfig,
-				AutoAvail:  automationAvailable,
+				Supervisor:   sv,
+				Store:        store,
+				ReceiptStore: receiptStore,
+				Crypto:       crypto,
+				Keys:         keys,
+				Secrets:      secrets,
+				BrowserSM:    browserSM,
+				Refs:         refs,
+				Scanner:      scanner,
+				Sanitizer:    san,
+				CmdGuard:     cmdGuard,
+				FsConfig:     fsConfig,
+				AutoAvail:    automationAvailable,
 			},
 			appinit.ProvidesSessionStore: store,
 			appinit.ProvidesSecurity:     crypto,
@@ -252,10 +256,11 @@ func buildFoundationCatalogEntries(cfg *config.Config, base, crypto, secrets []*
 // ─── Intelligence Module ───
 
 type intelligenceModule struct {
-	cfg    *config.Config
-	boot   *bootstrap.Result
-	bus    *eventbus.Bus
-	extReg *extension.Registry
+	cfg          *config.Config
+	boot         *bootstrap.Result
+	bus          *eventbus.Bus
+	extReg       *extension.Registry
+	receiptStore *receipts.Store
 }
 
 func (m *intelligenceModule) Name() string { return "intelligence" }
@@ -263,7 +268,7 @@ func (m *intelligenceModule) Provides() []appinit.Provides {
 	return []appinit.Provides{appinit.ProvidesKnowledge, appinit.ProvidesMemory, appinit.ProvidesGraph, appinit.ProvidesLibrarian, appinit.ProvidesSkills}
 }
 func (m *intelligenceModule) DependsOn() []appinit.Provides {
-	return []appinit.Provides{appinit.ProvidesSessionStore, appinit.ProvidesSupervisor}
+	return []appinit.Provides{appinit.ProvidesSessionStore, appinit.ProvidesSupervisor, appinit.ProvidesEconomy, appinit.ProvidesAutomation}
 }
 func (m *intelligenceModule) Enabled() bool { return true } // always enabled — subsystems check their own config
 
@@ -328,7 +333,36 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 		// FTS5 search index.
 		fts5Available = initFTS5(ctx, rawDB, kc.store)
 
-		metaTools := buildMetaTools(kc.store, kc.engine, skillReg, cfg.Skill, cfg)
+		receiptStore := fv.ReceiptStore
+		if receiptStore == nil {
+			receiptStore = receipts.NewStore()
+		}
+		m.receiptStore = receiptStore
+		var escrowRuntime escrowExecutionRuntime
+		if econc, ok := r.Resolve(appinit.ProvidesEconomy).(*economyComponents); ok && econc != nil {
+			escrowRuntime = econc.escrowEngine
+		}
+		var settlementRuntime settlementExecutionRuntime
+		var partialSettlementRuntime partialSettlementExecutionRuntime
+		var escrowDisputeHoldRuntime escrowDisputeHoldExecutionRuntime
+		var escrowReleaseRuntime escrowReleaseExecutionRuntime
+		var escrowRefundRuntime escrowRefundExecutionRuntime
+		if pcv, ok := r.Resolve(appinit.ProvidesPayment).(*paymentComponents); ok && pcv != nil && pcv.service != nil {
+			settlementRuntime = paymentSettlementRuntime{service: pcv.service}
+			partialSettlementRuntime = paymentPartialSettlementRuntime{service: pcv.service}
+		}
+		var adjudicationBackgroundDispatcher adjudicateEscrowDisputeBackgroundDispatcher
+		if av, ok := r.Resolve(appinit.ProvidesAutomation).(*automationValues); ok && av != nil {
+			if bg, ok := av.BackgroundManager.(*background.Manager); ok && bg != nil {
+				adjudicationBackgroundDispatcher = bg
+			}
+		}
+		if econc, ok := r.Resolve(appinit.ProvidesEconomy).(*economyComponents); ok && econc != nil && econc.escrowEngine != nil {
+			escrowDisputeHoldRuntime = engineEscrowDisputeHoldRuntime{engine: econc.escrowEngine}
+			escrowReleaseRuntime = engineEscrowReleaseRuntime{engine: econc.escrowEngine}
+			escrowRefundRuntime = engineEscrowRefundRuntime{engine: econc.escrowEngine}
+		}
+		metaTools := buildMetaToolsWithRuntimes(kc.store, kc.engine, skillReg, cfg.Skill, cfg, receiptStore, escrowRuntime, settlementRuntime, partialSettlementRuntime, escrowDisputeHoldRuntime, escrowReleaseRuntime, escrowRefundRuntime, adjudicationBackgroundDispatcher)
 		tools = append(tools, metaTools...)
 		entries = append(entries, appinit.CatalogEntry{Category: "meta", Description: "Knowledge, learning, and skill management", ConfigKey: "knowledge.enabled", Enabled: true, Tools: metaTools})
 	} else {
@@ -530,7 +564,7 @@ func (m *automationModule) Init(ctx context.Context, r appinit.Resolver) (*appin
 		logger().Info("cron tools registered")
 	}
 
-	bg := initBackground(cfg, m.app)
+	bg := initBackground(cfg, m.app, fv.ReceiptStore)
 	if bg != nil {
 		bgTools := background.BuildTools(bg, cfg.Background.DefaultDeliverTo)
 		tools = append(tools, bgTools...)
@@ -661,6 +695,10 @@ func (m *networkModule) Init(ctx context.Context, r appinit.Resolver) (*appinit.
 	if m.boot != nil && m.boot.Storage != nil {
 		repStore = m.boot.Storage.ReputationStore(logger())
 	}
+	var auditRecorder toolpayment.PaymentExecutionAuditor
+	if m.boot != nil && m.boot.Storage != nil {
+		auditRecorder = m.boot.Storage.AuditRecorder()
+	}
 
 	if pc != nil {
 		xc := initX402(cfg, fv.Secrets, pc.limiter)
@@ -668,7 +706,7 @@ func (m *networkModule) Init(ctx context.Context, r appinit.Resolver) (*appinit.
 			x402Interceptor = xc.interceptor
 		}
 
-		pt := toolpayment.BuildTools(pc.service, pc.limiter, pc.secrets, pc.chainID, x402Interceptor)
+		pt := toolpayment.BuildTools(pc.service, pc.limiter, pc.secrets, pc.chainID, x402Interceptor, fv.ReceiptStore, auditRecorder)
 		tools = append(tools, pt...)
 		entries = append(entries, appinit.CatalogEntry{Category: "payment", Description: "Blockchain payments (USDC on Base)", ConfigKey: "payment.enabled", Enabled: true, Tools: pt})
 
@@ -700,7 +738,7 @@ func (m *networkModule) Init(ctx context.Context, r appinit.Resolver) (*appinit.
 			}
 
 			p2pTools := buildP2PTools(p2pc)
-			p2pTools = append(p2pTools, buildP2PPaymentTool(p2pc, pc)...)
+			p2pTools = append(p2pTools, buildP2PPaymentTool(p2pc, pc, fv.ReceiptStore, auditRecorder)...)
 			p2pTools = append(p2pTools, buildP2PPaidInvokeTool(p2pc, pc)...)
 			tools = append(tools, p2pTools...)
 			entries = append(entries, appinit.CatalogEntry{Category: "p2p", Description: "Peer-to-peer networking", ConfigKey: "p2p.enabled", Enabled: true, Tools: p2pTools})

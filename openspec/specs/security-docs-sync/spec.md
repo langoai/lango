@@ -88,6 +88,17 @@ The `docs/security/encryption.md` SHALL include a Cloud KMS Mode section with al
 - **WHEN** a user reads encryption docs
 - **THEN** they find all 4 KMS backends with configuration examples
 
+### Requirement: Security index reflects the public deep-dive slice
+The `docs/security/index.md` SHALL surface the newly public deep-dive docs exposed by the MkDocs IA recovery slice, including Approval CLI and Envelope Migration.
+
+#### Scenario: Approval CLI is surfaced from the security index
+- **WHEN** a user reads `docs/security/index.md`
+- **THEN** they find a link or quick reference to `approval-cli.md`
+
+#### Scenario: Envelope Migration is surfaced from the security index
+- **WHEN** a user reads `docs/security/index.md`
+- **THEN** they find a link or quick reference to `envelope-migration.md`
+
 ### Requirement: README config table includes new keys
 The `README.md` configuration table SHALL include all P2P security, tool isolation, ZKP, keyring, DB encryption, and KMS config keys matching `mapstructure` tags.
 
@@ -108,3 +119,69 @@ The `openspec/security-roadmap.md` SHALL have `✅ COMPLETED` markers on all P0 
 #### Scenario: Roadmap completion markers
 - **WHEN** a user reads the security roadmap
 - **THEN** all P0 (P0-1, P0-2, P0-3) and P1 (P1-4, P1-5, P1-6) items show completion markers
+
+### Requirement: Exportability operator docs
+The security documentation set SHALL include an exportability document that describes source classes, artifact-level evaluation, decision states, and receipt-style decision records for the first slice.
+
+#### Scenario: Exportability doc available
+- **WHEN** a user reads the security documentation
+- **THEN** they SHALL find a dedicated exportability document describing the first-slice policy model and its current limits
+
+#### Scenario: Exportability docs linked from index
+- **WHEN** a user reads `docs/security/index.md`
+- **THEN** they SHALL find a quick link to the exportability document
+
+### Requirement: Approval-flow operator docs
+The security documentation set SHALL include an approval-flow document that describes first-slice artifact release approval, decision states, and audit-backed approval receipts.
+
+#### Scenario: Approval-flow doc available
+- **WHEN** a user reads the security documentation
+- **THEN** they SHALL find a dedicated approval-flow document describing the first-slice approval model and its current limits
+
+#### Scenario: Approval-flow docs linked from index
+- **WHEN** a user reads `docs/security/index.md`
+- **THEN** they SHALL find a quick link to the approval-flow document
+
+### Requirement: Dispute-ready receipt operator docs
+The security documentation set SHALL include a dispute-ready receipt document that describes the first lite receipt slice, including submission receipts, transaction receipts, current submission pointer, canonical state, and event trail.
+
+#### Scenario: Dispute-ready receipt doc available
+- **WHEN** a user reads the security documentation
+- **THEN** they SHALL find a dedicated dispute-ready receipt document describing the first slice and its current limits
+
+#### Scenario: Dispute-ready receipt docs linked from index
+- **WHEN** a user reads `docs/security/index.md`
+- **THEN** they SHALL find a quick link to the dispute-ready receipt document
+
+### Requirement: Upfront payment approval operator docs
+The security documentation set SHALL include an upfront payment approval document that describes the first slice, including structured decision states, suggested payment modes, and transaction-level payment approval updates.
+
+#### Scenario: Upfront payment approval doc available
+- **WHEN** a user reads the security documentation
+- **THEN** they SHALL find a dedicated upfront payment approval document describing the first slice and its current limits
+
+#### Scenario: Upfront payment approval docs linked from index
+- **WHEN** a user reads `docs/security/index.md`
+- **THEN** they SHALL find a quick link to the upfront payment approval document
+
+### Requirement: Actual payment execution gating operator docs
+The security documentation set SHALL include an actual payment execution gating document that describes the first direct-payment gate slice, its allow/deny behavior, and its current limits.
+
+#### Scenario: Payment execution gate doc available
+- **WHEN** a user reads the security documentation
+- **THEN** they SHALL find a dedicated payment execution gating document describing the first slice and its current limits
+
+#### Scenario: Payment execution gate docs linked from index
+- **WHEN** a user reads `docs/security/index.md`
+- **THEN** they SHALL find a quick link to the payment execution gating document
+
+### Requirement: Escrow execution operator docs
+The security documentation set SHALL include an escrow execution document that describes the first receipt-backed escrow execution slice, its operator entry points, and its current limits.
+
+#### Scenario: Escrow execution doc available
+- **WHEN** a user reads the security documentation
+- **THEN** they SHALL find a dedicated escrow execution document describing the first `create + fund` execution slice and its current limits
+
+#### Scenario: Escrow execution docs linked from index
+- **WHEN** a user reads `docs/security/index.md`
+- **THEN** they SHALL find a quick link to the escrow execution document

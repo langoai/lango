@@ -376,6 +376,7 @@ func populateAppFields(app *App, r appinit.Resolver) {
 	// Foundation.
 	if fv, ok := r.Resolve(appinit.ProvidesSupervisor).(*foundationValues); ok {
 		app.Store = fv.Store
+		app.ReceiptStore = fv.ReceiptStore
 		app.Crypto = fv.Crypto
 		app.Keys = fv.Keys
 		app.Secrets = fv.Secrets

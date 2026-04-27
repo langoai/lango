@@ -15,7 +15,7 @@ Lango supports decentralized agent-to-agent connectivity via libp2p. The Soverei
 The P2P subsystem enables direct agent communication without centralized coordination:
 
 - **Direct connectivity** -- agents connect peer-to-peer using libp2p with Noise encryption
-- **DID-based identity** -- each agent derives a `did:lango:<pubkey>` identity from its wallet
+- **DID-based identity** -- each agent can expose either a legacy `did:lango:<hex>` identity or a bundle-backed `did:lango:v2:<hash>` identity
 - **Knowledge firewall** -- default deny-all ACL controls which peers can access which tools
 - **Agent discovery** -- GossipSub-based agent card propagation for capability-based search
 - **ZK-enhanced handshake** -- optional zero-knowledge proof verification during peer authentication
@@ -45,11 +45,12 @@ graph TB
 
 ## Identity
 
-Each Lango agent derives a decentralized identifier (DID) from its wallet's compressed secp256k1 public key:
+Each Lango agent supports two DID forms:
 
-```
-did:lango:<hex-compressed-pubkey>
-```
+- `did:lango:<hex>` for legacy wallet-derived identities
+- `did:lango:v2:<hash>` for bundle-backed identities
+
+The active DID is exposed by `GET /api/p2p/identity` when the local identity provider can resolve one. The current `lango p2p identity` CLI still focuses on peer/node identity and listen addresses rather than printing the DID directly.
 
 The DID is deterministically mapped to a libp2p peer ID, ensuring cryptographic binding between the wallet identity and the network identity. Private keys never leave the wallet layer.
 
@@ -159,7 +160,22 @@ The [Knowledge Firewall](#knowledge-firewall) evaluates static allow/deny rules 
 
 ### Stage 2: Reputation Check
 
-If a reputation checker is configured, the peer's trust score is verified against `minTrustScore` (default: 0.3). New peers with no history (score = 0) are allowed through. Peers with a score above 0 but below the threshold are rejected.
+If a reputation checker is configured, the runtime evaluates one canonical trust entry rather than only comparing a scalar score. The current runtime policy uses:
+
+- `BootstrapTrustScore` for first-time peers
+- `MinEarnedTrustScore` for returning peers
+- `MaxTemporarySafetySignals` for temporary runtime safety invalidation
+
+The resulting trust-entry states are:
+
+| State | Meaning | Admission Behavior |
+|-------|---------|--------------------|
+| `bootstrap` | No returning history yet | Allowed through the reputation gate with the bootstrap floor |
+| `established` | Returning peer with earned trust at or above the minimum and no temporary safety block | Allowed |
+| `review` | Returning peer whose earned trust is below the minimum | Blocked pending manual review |
+| `temporarily_unsafe` | Returning peer with too many temporary safety incidents | Blocked immediately for runtime safety |
+
+For firewall admission, new peers still pass with bootstrap trust, but returning peers in `review` or `temporarily_unsafe` do not.
 
 ### Stage 3: Owner Approval
 
@@ -168,7 +184,7 @@ The local agent owner is prompted to approve or deny the tool invocation. This s
 | Condition | Behavior |
 |-----------|----------|
 | **Paid tool, price < `autoApproveBelow`** | Auto-approved if within spending limits (`maxPerTx`, `maxDaily`) |
-| **`autoApproveKnownPeers: true`** | Previously authenticated peers skip handshake approval |
+| **`autoApproveKnownPeers: true`** | Only returning peers in `established` state skip handshake approval |
 | **Free tool** | Always requires interactive owner approval |
 
 When auto-approval conditions are not met, the request falls back to the composite approval provider (Telegram inline keyboard, Discord button, Slack interactive message, or terminal prompt).
@@ -395,7 +411,7 @@ When the gateway is running (`lango serve`), read-only P2P endpoints are availab
 |----------|-------------|
 | `GET /api/p2p/status` | Peer ID, listen addresses, connected peer count |
 | `GET /api/p2p/peers` | List of connected peers with multiaddresses |
-| `GET /api/p2p/identity` | Local DID (`did:lango:...`) and peer ID |
+| `GET /api/p2p/identity` | Active DID when available and peer ID |
 | `GET /api/p2p/reputation` | Peer trust score and exchange history |
 | `GET /api/p2p/pricing` | Tool pricing (single or all tools) |
 
@@ -417,7 +433,7 @@ curl http://localhost:18789/api/p2p/pricing
 curl "http://localhost:18789/api/p2p/pricing?tool=knowledge_search"
 ```
 
-These endpoints query the running server's persistent P2P node. They are public (no authentication) and expose only node metadata. See the [HTTP API Reference](../gateway/http-api.md#p2p-network) for response format details.
+These endpoints query the running server's persistent P2P node. They are public only when gateway auth is disabled; when auth is configured, the entire `/api/p2p/*` subtree is protected by gateway auth. See the [HTTP API Reference](../gateway/http-api.md#p2p-network) for response format details.
 
 ## CLI Commands
 
@@ -431,28 +447,28 @@ lango p2p disconnect <peer-id> # Disconnect from a peer
 lango p2p firewall list        # List firewall rules
 lango p2p firewall add         # Add a firewall rule
 lango p2p discover             # Discover agents
-lango p2p identity             # Show local identity
+lango p2p identity             # Show local peer identity and listen addresses
 lango p2p reputation --peer-did <did>  # Query trust score
-lango p2p pricing              # Show tool pricing
+lango p2p pricing              # Show provider-side public quote configuration
 lango p2p session list                          # List active sessions
 lango p2p session revoke --peer-did <did>       # Revoke peer session
 lango p2p session revoke-all                    # Revoke all sessions
 lango p2p sandbox status                        # Show sandbox status
 lango p2p sandbox test                          # Run sandbox smoke test
 lango p2p sandbox cleanup                       # Remove orphaned containers
-lango p2p team list                             # List active P2P teams
-lango p2p team status <id>                      # Show team details
-lango p2p team disband <id>                     # Disband an active team
+lango p2p team list                             # Inspect the current team CLI surface
+lango p2p team status <id>                      # Inspect team guidance for a specific ID
+lango p2p team disband <id>                     # Inspect disband guidance for a live team
 lango p2p zkp status                            # Show ZKP configuration
 lango p2p zkp circuits                          # List ZKP circuits
-lango p2p workspace create <name>               # Create a collaborative workspace
-lango p2p workspace list                        # List all workspaces
-lango p2p workspace status <id>                 # Show workspace status and members
-lango p2p workspace join <id>                   # Join a workspace
-lango p2p workspace leave <id>                  # Leave a workspace
-lango p2p git init <workspace-id>               # Initialize workspace git repo
-lango p2p git log <workspace-id>                # Show workspace commit history
-lango p2p git diff <workspace-id> <from> <to>   # Show diff between commits
+lango p2p workspace create <name>               # Inspect workspace-create guidance
+lango p2p workspace list                        # Inspect runtime-backed workspace listing behavior
+lango p2p workspace status <id>                 # Inspect workspace status guidance
+lango p2p workspace join <id>                   # Inspect workspace-join guidance
+lango p2p workspace leave <id>                  # Inspect workspace-leave guidance
+lango p2p git init <workspace-id>               # Inspect git-init guidance for workspaces
+lango p2p git log <workspace-id>                # Inspect runtime-backed workspace commit history guidance
+lango p2p git diff <workspace-id> <from> <to>   # Inspect workspace diff guidance
 lango p2p git push <workspace-id>               # Create and push git bundle
 lango p2p git fetch <workspace-id>              # Fetch and apply git bundle
 ```
@@ -463,11 +479,15 @@ See the [P2P CLI Reference](../cli/p2p.md) for detailed command documentation.
 
 Lango supports paid P2P tool invocations via the **Payment Gate**. When pricing is enabled, remote peers must pay in USDC before invoking tools.
 
+`p2p.pricing` is the provider-side public quote surface used by remote peers.
+It does not, by itself, imply that dynamic pricing, negotiation, or escrow are enabled.
+Those higher-level policies are owned by the economy subsystem.
+
 ### Payment Gate Flow
 
 1. **Price Query** — The caller queries the provider's pricing via `p2p_price_query` or `GET /api/p2p/pricing`
 2. **Price Quote** — The provider returns a `PriceQuoteResult` with the tool price in USDC
-3. **Payment** — The caller sends USDC via `p2p_pay` to the provider's wallet address
+3. **Payment** — The caller sends USDC via `p2p_pay` to the provider's wallet address. In the current direct-payment slice, this call is receipt-backed: `transaction_receipt_id` is required, `submission_receipt_id` is optional, and the canonical payment state must be approved for `prepay`.
 4. **Tool Invocation** — After payment confirmation, the caller invokes the tool via `p2p_query`
 
 ### Auto-Approval for Small Amounts
@@ -484,7 +504,7 @@ This applies to both outbound payments (`p2p_pay`, `payment_send`) and inbound p
 
 ### USDC Registry
 
-Payment settlements use on-chain USDC transfers. The system supports multiple chains via the `contracts.LookupUSDC()` registry. Wallet addresses are derived from peer DIDs.
+Payment settlements use on-chain USDC transfers. The system supports multiple chains via the `contracts.LookupUSDC()` registry. The live payment path validates an explicit `paymentAuth`, checks that the authorization recipient matches the local wallet address, and then hands the authorization to the settlement service.
 
 ### Configuration
 
@@ -513,6 +533,10 @@ The pricing system supports differentiated payment flows based on peer reputatio
 | **PrePay** | < `postPayMinScore` | Payment must confirm before tool execution |
 
 This tiered approach rewards trusted peers with lower friction while protecting against unknown or low-reputation callers.
+
+Admission trust and payment trust are separate gates: `minTrustScore` controls whether a peer is admitted by the firewall, while `postPayMinScore` controls whether that peer can use post-pay routing after admission.
+
+For provider-side payment routing, bootstrap peers are admitted with the bootstrap floor but still route to prepay. Post-pay only opens when a returning peer is `established`; the paygate therefore uses earned trust for returning peers instead of the composite score.
 
 ### Configuration
 
@@ -713,8 +737,8 @@ The `PaymentCoordinator` negotiates payment terms between team leader and member
 | Trust Score | Mode | Description |
 |-------------|------|-------------|
 | Price = 0 | `free` | No payment required |
-| >= 0.7 | `postpay` | Tool executes first, payment settles after |
-| < 0.7 | `prepay` | Payment must confirm before tool execution |
+| >= 0.8 | `postpay` | Tool executes first, payment settles after |
+| < 0.8 | `prepay` | Payment must confirm before tool execution |
 
 The `Negotiator` queries each member's tool price and trust score to determine the payment mode. Agreements include `PricePerUse`, `Currency` (USDC), `MaxUses`, and `ValidUntil`.
 
@@ -744,7 +768,7 @@ Source: `internal/eventbus/team_events.go`
 
 ## Collaborative Workspaces
 
-Workspaces are collaborative environments where multiple agents share code, messages, and context within a P2P network. Each workspace has a lifecycle, members, and optional features like chronicling and contribution tracking.
+Workspaces are collaborative environments where multiple agents share code, messages, and context within a P2P network. The runtime workspace subsystem is real, but today's operator surface is mixed: live provenance exchange is concrete, while most workspace and git control currently flows through the running server and agent tools.
 
 ### Workspace Lifecycle
 
@@ -782,9 +806,9 @@ Workspaces use GossipSub for real-time message distribution:
 
 ### Chronicler
 
-When `chroniclerEnabled` is true, workspace messages are persisted as graph triples for long-term knowledge retention. Each message generates triples:
+When `chroniclerEnabled` is true, the runtime enables chronicler hooks intended to persist workspace messages as graph triples for long-term knowledge retention. The current default app wiring still leaves the triple-adder pending, so this should be treated as partial wiring rather than a guaranteed live persistence path. When the triple-adder is connected, each message generates triples such as:
 - `workspace:message:<id>` → type, workspace, sender, content, timestamp
-- Reply chains are linked via `replyTo` predicates
+- Reply chains linked via `replyTo` predicates
 
 Source: `internal/p2p/workspace/chronicler.go`
 
@@ -868,20 +892,30 @@ Selection strategies:
 
 The reputation system tracks peer behavior across exchanges and computes a trust score.
 
-### Trust Score Formula
+### Composite Trust Score Formula
 
 ```
 score = successes / (successes + failures×2 + timeouts×1.5 + 1.0)
 ```
 
-The score ranges from 0.0 to 1.0. The `minTrustScore` configuration (default: 0.3) sets the threshold for accepting requests from peers.
+The composite compatibility score ranges from 0.0 to 1.0. The `minTrustScore` configuration (default: 0.3) sets the runtime floor that bootstrap peers inherit and the earned-trust threshold that returning peers must meet.
+
+### V2 Reputation Signals
+
+The landed Reputation V2 model separates four signals:
+
+- **Composite trust score** -- compatibility score used for broad runtime comparisons
+- **Earned trust score** -- collaboration-history score that excludes temporary operational incidents
+- **Durable negative units** -- lasting negative outcomes; a standard failure adds `1`, while an adjudicated failure adds `2`
+- **Temporary safety signals** -- operational incidents such as timeouts or unhealthy-member events that can make a peer temporarily unsafe without automatically causing durable reputation damage
 
 ### Exchange Tracking
 
 Each peer interaction is recorded:
-- **Success** — Tool invocation completed normally
-- **Failure** — Tool invocation returned an error
-- **Timeout** — Tool invocation timed out
+- **Success** -- Tool invocation completed normally
+- **Failure** -- Tool invocation returned a durable negative outcome
+- **Adjudicated failure** -- A reviewed negative outcome applies stronger durable damage than an unaudited failure
+- **Operational incident** -- Timeouts and unhealthy runtime events increment temporary safety signals
 
 ### Querying Reputation
 
@@ -889,7 +923,18 @@ Each peer interaction is recorded:
 - **Agent Tool**: `p2p_reputation` with `peer_did` parameter
 - **REST API**: `GET /api/p2p/reputation?peer_did=<did>`
 
-New peers with no reputation record are given the benefit of the doubt (trusted by default).
+The JSON reputation surface returns the separated V2 fields, including `earnedTrustScore`, `durableNegativeUnits`, and `temporarySafetySignals`.
+
+### Canonical Trust-Entry States
+
+Runtime consumers do not collapse every decision into one scalar score. They distinguish:
+
+- **`bootstrap`** -- first-time peer with no returning history yet
+- **`established`** -- returning peer whose earned trust clears the minimum and whose temporary safety signals stay below the runtime limit
+- **`review`** -- returning peer whose earned trust no longer clears the minimum
+- **`temporarily_unsafe`** -- returning peer whose temporary safety signals force an immediate runtime block
+
+This lets the runtime admit a brand-new peer with a bootstrap floor, route returning peers by earned trust, and still react quickly to temporary operational safety issues.
 
 ## Reorg Protection
 
@@ -939,7 +984,7 @@ The application layer wires P2P subsystems together through event-driven bridges
 | **On-Chain Escrow** | `EscrowOnChain*` events, `EscrowReorgDetectedEvent` | Escrow engine state transitions (fund, activate, release, refund, dispute) |
 | **Team Budget** | `TeamFormed`, `TeamTaskDelegated`, `TeamTaskCompleted` | Budget allocation, reservation, and spend recording |
 | **Team Escrow** | `TeamFormed`, `TeamTaskCompleted`, `TeamDisbanded` | Escrow creation, milestone completion, release/refund on disband |
-| **Team Reputation** | `TeamMemberUnhealthy`, `TeamTaskCompleted`, `ReputationChanged` | Record timeout/success, kick low-reputation members |
+| **Team Reputation** | `TeamMemberUnhealthy`, `TeamTaskCompleted`, `ReputationChanged` | Record operational incidents/success, kick members whose trust entry falls to `review` or `temporarily_unsafe` |
 | **Team Shutdown** | `BudgetAlert` (>=80%), `BudgetExhausted` | Publish `TeamBudgetWarningEvent`, trigger `GracefulShutdown` |
 | **Workspace-Team** | `TeamFormed`, `TeamTaskCompleted`, `TeamDisbanded` | Auto-create workspace, record contributions, unsubscribe gossip |
 

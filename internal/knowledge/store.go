@@ -20,6 +20,7 @@ import (
 	entlearning "github.com/langoai/lango/internal/ent/learning"
 	"github.com/langoai/lango/internal/ent/predicate"
 	"github.com/langoai/lango/internal/eventbus"
+	"github.com/langoai/lango/internal/exportability"
 	"github.com/langoai/lango/internal/search"
 	"github.com/langoai/lango/internal/security"
 )
@@ -119,10 +120,40 @@ func (s *Store) SaveKnowledge(ctx context.Context, sessionKey string, entry Know
 	return err
 }
 
+func knowledgeVersionEquivalent(existing *ent.Knowledge, entry KnowledgeEntry, resolvedContent string) (bool, error) {
+	existingSourceClass, err := exportability.ParseSourceClass(existing.SourceClass)
+	if err != nil {
+		return false, fmt.Errorf("invalid stored source class %q for knowledge %q: %w", existing.SourceClass, existing.Key, err)
+	}
+	entrySourceClass, err := exportability.ParseSourceClass(entry.SourceClass)
+	if err != nil {
+		return false, fmt.Errorf("invalid knowledge source class %q: %w", entry.SourceClass, err)
+	}
+	return existing.Category == entry.Category &&
+		resolvedContent == entry.Content &&
+		existing.Source == entry.Source &&
+		existingSourceClass == entrySourceClass &&
+		existing.AssetLabel == entry.AssetLabel, nil
+}
+
+func normalizeKnowledgeSourceClass(value string) (string, error) {
+	normalized, err := exportability.ParseSourceClass(value)
+	if err != nil {
+		return "", err
+	}
+	return string(normalized), nil
+}
+
 func (s *Store) saveKnowledgeOnce(ctx context.Context, _ string, entry KnowledgeEntry) error {
 	if s.payloads != nil && s.fts5Index != nil && s.fts5Index.DB() != nil {
 		return s.saveKnowledgeAtomic(ctx, entry)
 	}
+
+	normalizedSourceClass, err := normalizeKnowledgeSourceClass(entry.SourceClass)
+	if err != nil {
+		return fmt.Errorf("validate knowledge source class: %w", err)
+	}
+	entry.SourceClass = normalizedSourceClass
 
 	existing, err := s.client.Knowledge.Query().
 		Where(entknowledge.Key(entry.Key), entknowledge.IsLatest(true)).
@@ -152,6 +183,12 @@ func (s *Store) saveKnowledgeOnce(ctx context.Context, _ string, entry Knowledge
 		if entry.Source != "" {
 			builder.SetSource(entry.Source)
 		}
+		if entry.SourceClass != "" {
+			builder.SetSourceClass(entry.SourceClass)
+		}
+		if entry.AssetLabel != "" {
+			builder.SetAssetLabel(entry.AssetLabel)
+		}
 
 		_, err = builder.Save(ctx)
 		if err != nil {
@@ -167,9 +204,12 @@ func (s *Store) saveKnowledgeOnce(ctx context.Context, _ string, entry Knowledge
 		return fmt.Errorf("query knowledge: %w", err)
 	}
 
-	// Content-dedup: skip if latest version has same (category, content).
-	// source/tags changes alone do not justify a new version.
-	if existing.Category == entry.Category && existing.Content == entry.Content {
+	// Dedup if the latest version has the same exportability-significant inputs.
+	same, err := knowledgeVersionEquivalent(existing, entry, s.resolveKnowledgeContent(ctx, existing))
+	if err != nil {
+		return err
+	}
+	if same {
 		return nil
 	}
 
@@ -211,6 +251,12 @@ func (s *Store) saveKnowledgeOnce(ctx context.Context, _ string, entry Knowledge
 	if entry.Source != "" {
 		builder.SetSource(entry.Source)
 	}
+	if entry.SourceClass != "" {
+		builder.SetSourceClass(entry.SourceClass)
+	}
+	if entry.AssetLabel != "" {
+		builder.SetAssetLabel(entry.AssetLabel)
+	}
 
 	_, err = builder.Save(ctx)
 	if err != nil {
@@ -234,6 +280,12 @@ func isUniqueConstraintError(err error) bool {
 }
 
 func (s *Store) saveKnowledgeAtomic(ctx context.Context, entry KnowledgeEntry) error {
+	normalizedSourceClass, err := normalizeKnowledgeSourceClass(entry.SourceClass)
+	if err != nil {
+		return fmt.Errorf("validate knowledge source class: %w", err)
+	}
+	entry.SourceClass = normalizedSourceClass
+
 	tx, err := s.fts5Index.DB().BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin knowledge sql tx: %w", err)
@@ -250,11 +302,18 @@ func (s *Store) saveKnowledgeAtomic(ctx context.Context, entry KnowledgeEntry) e
 		Where(entknowledge.Key(entry.Key), entknowledge.IsLatest(true)).
 		Only(ctx)
 
-	if err != nil && !ent.IsNotFound(err) {
+	isNew := ent.IsNotFound(err)
+	if err != nil && !isNew {
 		return fmt.Errorf("query knowledge: %w", err)
 	}
-	if err == nil && existing.Category == entry.Category && s.resolveKnowledgeContent(ctx, existing) == entry.Content {
-		return nil
+	if err == nil {
+		same, sameErr := knowledgeVersionEquivalent(existing, entry, s.resolveKnowledgeContent(ctx, existing))
+		if sameErr != nil {
+			return fmt.Errorf("compare knowledge version: %w", sameErr)
+		}
+		if same {
+			return nil
+		}
 	}
 
 	storedContent, ciphertext, nonce, keyVersion, err := s.prepareKnowledgeWrite(ctx, entry.Content)
@@ -262,7 +321,6 @@ func (s *Store) saveKnowledgeAtomic(ctx context.Context, entry KnowledgeEntry) e
 		return fmt.Errorf("prepare knowledge payload: %w", err)
 	}
 
-	isNew := ent.IsNotFound(err)
 	version := 1
 	if !isNew {
 		if err := txClient.Knowledge.UpdateOne(existing).SetIsLatest(false).Exec(ctx); err != nil {
@@ -290,6 +348,12 @@ func (s *Store) saveKnowledgeAtomic(ctx context.Context, entry KnowledgeEntry) e
 	}
 	if entry.Source != "" {
 		builder.SetSource(entry.Source)
+	}
+	if entry.SourceClass != "" {
+		builder.SetSourceClass(entry.SourceClass)
+	}
+	if entry.AssetLabel != "" {
+		builder.SetAssetLabel(entry.AssetLabel)
 	}
 	if _, err := builder.Save(ctx); err != nil {
 		return fmt.Errorf("create knowledge version: %w", err)
@@ -328,15 +392,75 @@ func (s *Store) GetKnowledge(ctx context.Context, key string) (*KnowledgeEntry, 
 	}
 
 	return &KnowledgeEntry{
-		Key:       k.Key,
-		Category:  k.Category,
-		Content:   s.resolveKnowledgeContent(ctx, k),
-		Tags:      k.Tags,
-		Source:    k.Source,
-		Version:   k.Version,
-		CreatedAt: k.CreatedAt,
-		UpdatedAt: k.UpdatedAt,
+		Key:         k.Key,
+		Category:    k.Category,
+		Content:     s.resolveKnowledgeContent(ctx, k),
+		Tags:        k.Tags,
+		Source:      k.Source,
+		SourceClass: k.SourceClass,
+		AssetLabel:  k.AssetLabel,
+		Version:     k.Version,
+		CreatedAt:   k.CreatedAt,
+		UpdatedAt:   k.UpdatedAt,
 	}, nil
+}
+
+// GetKnowledgeByKeys retrieves the latest versions of multiple knowledge entries by key.
+// Results preserve the input key order and return an error if any key is missing.
+func (s *Store) GetKnowledgeByKeys(ctx context.Context, keys []string) ([]KnowledgeEntry, error) {
+	if len(keys) == 0 {
+		return nil, nil
+	}
+
+	seen := make(map[string]struct{}, len(keys))
+	uniqueKeys := make([]string, 0, len(keys))
+	for _, key := range keys {
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		uniqueKeys = append(uniqueKeys, key)
+	}
+
+	entries, err := s.client.Knowledge.Query().
+		Where(entknowledge.KeyIn(uniqueKeys...), entknowledge.IsLatest(true)).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("query knowledge by keys: %w", err)
+	}
+
+	byKey := make(map[string]*ent.Knowledge, len(entries))
+	for _, k := range entries {
+		byKey[k.Key] = k
+	}
+
+	result := make([]KnowledgeEntry, 0, len(keys))
+	missing := make([]string, 0)
+	for _, key := range keys {
+		k, ok := byKey[key]
+		if !ok {
+			missing = append(missing, key)
+			continue
+		}
+		result = append(result, KnowledgeEntry{
+			Key:         k.Key,
+			Category:    k.Category,
+			Content:     s.resolveKnowledgeContent(ctx, k),
+			Tags:        k.Tags,
+			Source:      k.Source,
+			SourceClass: k.SourceClass,
+			AssetLabel:  k.AssetLabel,
+			Version:     k.Version,
+			CreatedAt:   k.CreatedAt,
+			UpdatedAt:   k.UpdatedAt,
+		})
+	}
+
+	if len(missing) > 0 {
+		return nil, fmt.Errorf("get knowledge by keys %q: %w", strings.Join(missing, ", "), ErrKnowledgeNotFound)
+	}
+
+	return result, nil
 }
 
 // GetKnowledgeHistory returns all versions of a knowledge entry ordered by version descending.
@@ -356,14 +480,16 @@ func (s *Store) GetKnowledgeHistory(ctx context.Context, key string) ([]Knowledg
 	result := make([]KnowledgeEntry, 0, len(entries))
 	for _, k := range entries {
 		result = append(result, KnowledgeEntry{
-			Key:       k.Key,
-			Category:  k.Category,
-			Content:   s.resolveKnowledgeContent(ctx, k),
-			Tags:      k.Tags,
-			Source:    k.Source,
-			Version:   k.Version,
-			CreatedAt: k.CreatedAt,
-			UpdatedAt: k.UpdatedAt,
+			Key:         k.Key,
+			Category:    k.Category,
+			Content:     s.resolveKnowledgeContent(ctx, k),
+			Tags:        k.Tags,
+			Source:      k.Source,
+			SourceClass: k.SourceClass,
+			AssetLabel:  k.AssetLabel,
+			Version:     k.Version,
+			CreatedAt:   k.CreatedAt,
+			UpdatedAt:   k.UpdatedAt,
 		})
 	}
 	return result, nil
@@ -418,14 +544,16 @@ func (s *Store) searchKnowledgeLIKE(ctx context.Context, query string, category 
 	result := make([]KnowledgeEntry, 0, len(entries))
 	for _, k := range entries {
 		result = append(result, KnowledgeEntry{
-			Key:       k.Key,
-			Category:  k.Category,
-			Content:   s.resolveKnowledgeContent(ctx, k),
-			Tags:      k.Tags,
-			Source:    k.Source,
-			Version:   k.Version,
-			CreatedAt: k.CreatedAt,
-			UpdatedAt: k.UpdatedAt,
+			Key:         k.Key,
+			Category:    k.Category,
+			Content:     s.resolveKnowledgeContent(ctx, k),
+			Tags:        k.Tags,
+			Source:      k.Source,
+			SourceClass: k.SourceClass,
+			AssetLabel:  k.AssetLabel,
+			Version:     k.Version,
+			CreatedAt:   k.CreatedAt,
+			UpdatedAt:   k.UpdatedAt,
 		})
 	}
 	return result, nil
@@ -464,14 +592,16 @@ func (s *Store) resolveKnowledgeByKeys(ctx context.Context, ftsResults []search.
 			continue // Filtered out by category or missing.
 		}
 		result = append(result, KnowledgeEntry{
-			Key:       k.Key,
-			Category:  k.Category,
-			Content:   s.resolveKnowledgeContent(ctx, k),
-			Tags:      k.Tags,
-			Source:    k.Source,
-			Version:   k.Version,
-			CreatedAt: k.CreatedAt,
-			UpdatedAt: k.UpdatedAt,
+			Key:         k.Key,
+			Category:    k.Category,
+			Content:     s.resolveKnowledgeContent(ctx, k),
+			Tags:        k.Tags,
+			Source:      k.Source,
+			SourceClass: k.SourceClass,
+			AssetLabel:  k.AssetLabel,
+			Version:     k.Version,
+			CreatedAt:   k.CreatedAt,
+			UpdatedAt:   k.UpdatedAt,
 		})
 	}
 	return result, nil
@@ -552,14 +682,16 @@ func (s *Store) resolveKnowledgeScoredByKeys(ctx context.Context, ftsResults []s
 		}
 		result = append(result, ScoredKnowledgeEntry{
 			Entry: KnowledgeEntry{
-				Key:       k.Key,
-				Category:  k.Category,
-				Content:   s.resolveKnowledgeContent(ctx, k),
-				Tags:      k.Tags,
-				Source:    k.Source,
-				Version:   k.Version,
-				CreatedAt: k.CreatedAt,
-				UpdatedAt: k.UpdatedAt,
+				Key:         k.Key,
+				Category:    k.Category,
+				Content:     s.resolveKnowledgeContent(ctx, k),
+				Tags:        k.Tags,
+				Source:      k.Source,
+				SourceClass: k.SourceClass,
+				AssetLabel:  k.AssetLabel,
+				Version:     k.Version,
+				CreatedAt:   k.CreatedAt,
+				UpdatedAt:   k.UpdatedAt,
 			},
 			Score:        -r.Rank,
 			SearchSource: "fts5",
@@ -592,14 +724,16 @@ func (s *Store) searchKnowledgeScoredLIKE(ctx context.Context, query string, cat
 	for _, k := range entries {
 		result = append(result, ScoredKnowledgeEntry{
 			Entry: KnowledgeEntry{
-				Key:       k.Key,
-				Category:  k.Category,
-				Content:   s.resolveKnowledgeContent(ctx, k),
-				Tags:      k.Tags,
-				Source:    k.Source,
-				Version:   k.Version,
-				CreatedAt: k.CreatedAt,
-				UpdatedAt: k.UpdatedAt,
+				Key:         k.Key,
+				Category:    k.Category,
+				Content:     s.resolveKnowledgeContent(ctx, k),
+				Tags:        k.Tags,
+				Source:      k.Source,
+				SourceClass: k.SourceClass,
+				AssetLabel:  k.AssetLabel,
+				Version:     k.Version,
+				CreatedAt:   k.CreatedAt,
+				UpdatedAt:   k.UpdatedAt,
 			},
 			Score:        k.RelevanceScore,
 			SearchSource: "like",
@@ -636,14 +770,16 @@ func (s *Store) SearchRecentKnowledge(ctx context.Context, query string, limit i
 	result := make([]KnowledgeEntry, 0, len(entries))
 	for _, k := range entries {
 		result = append(result, KnowledgeEntry{
-			Key:       k.Key,
-			Category:  k.Category,
-			Content:   s.resolveKnowledgeContent(ctx, k),
-			Tags:      k.Tags,
-			Source:    k.Source,
-			Version:   k.Version,
-			CreatedAt: k.CreatedAt,
-			UpdatedAt: k.UpdatedAt,
+			Key:         k.Key,
+			Category:    k.Category,
+			Content:     s.resolveKnowledgeContent(ctx, k),
+			Tags:        k.Tags,
+			Source:      k.Source,
+			SourceClass: k.SourceClass,
+			AssetLabel:  k.AssetLabel,
+			Version:     k.Version,
+			CreatedAt:   k.CreatedAt,
+			UpdatedAt:   k.UpdatedAt,
 		})
 	}
 	return result, nil

@@ -1,6 +1,9 @@
 package p2p
 
 import (
+	"bytes"
+	"context"
+	"crypto/ed25519"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -8,7 +11,95 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/langoai/lango/internal/bootstrap"
+	p2pidentity "github.com/langoai/lango/internal/p2p/identity"
+	"github.com/langoai/lango/internal/wallet"
 )
+
+func buildIdentityView(did any, peerID string, keyStorage string, listenAddrs []string) map[string]interface{} {
+	return map[string]interface{}{
+		"did":         did,
+		"peerId":      peerID,
+		"listenAddrs": listenAddrs,
+		"keyStorage":  keyStorage,
+	}
+}
+
+func didJSONValue(did string) any {
+	if did == "" {
+		return nil
+	}
+	return did
+}
+
+func resolveIdentityDID(boot *bootstrap.Result) string {
+	if boot == nil || boot.LangoDir == "" {
+		return resolveLegacyIdentityDID(boot)
+	}
+
+	bundle, err := p2pidentity.LoadBundleFile(boot.LangoDir)
+	if err == nil && bundle != nil && (len(boot.IdentityKey) == 0 || bundleMatchesIdentityKey(bundle, boot.IdentityKey)) {
+		did, err := p2pidentity.ComputeDIDv2(bundle)
+		if err == nil {
+			return did
+		}
+	}
+
+	return resolveLegacyIdentityDID(boot)
+}
+
+func resolveLegacyIdentityDID(boot *bootstrap.Result) string {
+	wp := loadReadOnlyWalletProvider(boot)
+	if wp == nil {
+		return ""
+	}
+
+	pub, err := wp.PublicKey(context.Background())
+	if err != nil {
+		return ""
+	}
+
+	did, err := p2pidentity.DIDFromPublicKey(pub)
+	if err != nil {
+		return ""
+	}
+	return did.ID
+}
+
+func loadReadOnlyWalletProvider(boot *bootstrap.Result) wallet.WalletProvider {
+	if boot == nil || boot.Config == nil || boot.Storage == nil || boot.Crypto == nil {
+		return nil
+	}
+
+	secrets := boot.Storage.SecretsStore(boot.Crypto)
+	if secrets == nil {
+		return nil
+	}
+
+	switch boot.Config.Payment.WalletProvider {
+	case "", "local":
+		return wallet.NewLocalWallet(secrets, boot.Config.Payment.Network.RPCURL, boot.Config.Payment.Network.ChainID)
+	case "rpc":
+		return nil
+	case "composite":
+		local := wallet.NewLocalWallet(secrets, boot.Config.Payment.Network.RPCURL, boot.Config.Payment.Network.ChainID)
+		return wallet.NewCompositeWallet(wallet.NewRPCWallet(), local, nil)
+	default:
+		return wallet.NewLocalWallet(secrets, boot.Config.Payment.Network.RPCURL, boot.Config.Payment.Network.ChainID)
+	}
+}
+
+func bundleMatchesIdentityKey(bundle *p2pidentity.IdentityBundle, identityKey ed25519.PrivateKey) bool {
+	if bundle == nil || len(identityKey) == 0 {
+		return false
+	}
+
+	pub, ok := identityKey.Public().(ed25519.PublicKey)
+	if !ok || len(pub) == 0 {
+		return false
+	}
+
+	return bundle.SigningKey.Algorithm == "ed25519" && bytes.Equal(bundle.SigningKey.PublicKey, pub)
+}
 
 func newIdentityCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 	var jsonOutput bool
@@ -37,18 +128,19 @@ func newIdentityCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command
 			for i, a := range addrs {
 				listenAddrs[i] = a.String()
 			}
+			did := resolveIdentityDID(boot)
+			view := buildIdentityView(didJSONValue(did), peerID, deps.keyStorage, listenAddrs)
 
 			if jsonOutput {
 				enc := json.NewEncoder(os.Stdout)
 				enc.SetIndent("", "  ")
-				return enc.Encode(map[string]interface{}{
-					"peerId":      peerID,
-					"listenAddrs": listenAddrs,
-					"keyStorage":  deps.keyStorage,
-				})
+				return enc.Encode(view)
 			}
 
 			fmt.Println("P2P Identity")
+			if did != "" {
+				fmt.Printf("  DID:          %s\n", did)
+			}
 			fmt.Printf("  Peer ID:      %s\n", peerID)
 			fmt.Printf("  Key Storage:  %s\n", deps.keyStorage)
 			fmt.Printf("  Listen Addrs:\n")

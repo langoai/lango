@@ -2,11 +2,16 @@ package app
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
+	"path/filepath"
 	"testing"
 
 	"github.com/langoai/lango/internal/appinit"
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/eventbus"
+	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/storage"
 	"github.com/langoai/lango/internal/testutil"
 	"github.com/stretchr/testify/assert"
@@ -156,6 +161,82 @@ func TestIntelligenceModule_AlwaysEnabled(t *testing.T) {
 	cfg := config.DefaultConfig()
 	m := &intelligenceModule{cfg: cfg}
 	assert.True(t, m.Enabled())
+}
+
+func TestIntelligenceModule_BuildRegistersReceiptsToolWhenKnowledgeEnabled(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.DefaultConfig()
+	cfg.Knowledge.Enabled = true
+	cfg.Session.DatabasePath = filepath.Join(t.TempDir(), "test.db")
+	cfg.Agent.Provider = ""
+	cfg.Providers = map[string]config.ProviderConfig{
+		"google": {
+			Type:   "gemini",
+			APIKey: "test-key",
+		},
+	}
+
+	boot := testBoot(t, cfg)
+	builder := appinit.NewBuilder().
+		AddModule(&foundationModule{cfg: cfg, boot: boot}).
+		AddModule(&intelligenceModule{cfg: cfg, boot: boot})
+
+	result, err := builder.Build(context.Background())
+	require.NoError(t, err)
+
+	tool := findTool(result.Tools, "create_dispute_ready_receipt")
+	require.NotNil(t, tool)
+	assert.Equal(t, "knowledge", tool.Capability.Category)
+}
+
+func TestModuleBuild_WithEconomyEscrow_RegistersExecuteEscrowRecommendationTool(t *testing.T) {
+	t.Parallel()
+
+	rpcServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":"0x1"}`))
+	}))
+	defer rpcServer.Close()
+
+	cfg := config.DefaultConfig()
+	cfg.Knowledge.Enabled = true
+	cfg.Payment.Enabled = true
+	cfg.Economy.Enabled = true
+	cfg.Economy.Escrow.Enabled = true
+	cfg.Security.Signer.Provider = "local"
+	cfg.Payment.Network.RPCURL = rpcServer.URL
+	cfg.Session.DatabasePath = filepath.Join(t.TempDir(), "test.db")
+	cfg.Agent.Provider = ""
+	cfg.Providers = map[string]config.ProviderConfig{
+		"google": {
+			Type:   "gemini",
+			APIKey: "test-key",
+		},
+	}
+
+	crypto := security.NewLocalCryptoProvider()
+	require.NoError(t, crypto.Initialize("password123"))
+
+	client := testutil.TestEntClient(t)
+	boot := &bootstrap.Result{
+		Config:  cfg,
+		Crypto:  crypto,
+		Storage: storage.NewFacade(nil, nil, storage.WithEntClient(client)),
+	}
+	bus := eventbus.New()
+
+	builder := appinit.NewBuilder().
+		AddModule(&foundationModule{cfg: cfg, boot: boot}).
+		AddModule(&networkModule{cfg: cfg, boot: boot, bus: bus}).
+		AddModule(&intelligenceModule{cfg: cfg, boot: boot, bus: bus})
+
+	result, err := builder.Build(context.Background())
+	require.NoError(t, err)
+
+	tool := findTool(result.Tools, "execute_escrow_recommendation")
+	require.NotNil(t, tool)
+	assert.Equal(t, "knowledge", tool.Capability.Category)
 }
 
 // TestModuleProvides verifies that each module declares its provides keys correctly.

@@ -19,8 +19,8 @@ func newPricingCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command 
 
 	cmd := &cobra.Command{
 		Use:   "pricing",
-		Short: "Show P2P tool pricing configuration",
-		Long:  "Display the current P2P pricing configuration including default per-query price and tool-specific price overrides.",
+		Short: "Show provider-side P2P quote configuration",
+		Long:  "Display the current provider-side P2P quote configuration including default per-query price and tool-specific public quote overrides.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			boot, err := bootLoader()
 			if err != nil {

@@ -10564,6 +10564,8 @@ type KnowledgeMutation struct {
 	tags                   *[]string
 	appendtags             []string
 	source                 *string
+	source_class           *string
+	asset_label            *string
 	version                *int
 	addversion             *int
 	is_latest              *bool
@@ -11073,6 +11075,104 @@ func (m *KnowledgeMutation) ResetSource() {
 	delete(m.clearedFields, knowledge.FieldSource)
 }
 
+// SetSourceClass sets the "source_class" field.
+func (m *KnowledgeMutation) SetSourceClass(s string) {
+	m.source_class = &s
+}
+
+// SourceClass returns the value of the "source_class" field in the mutation.
+func (m *KnowledgeMutation) SourceClass() (r string, exists bool) {
+	v := m.source_class
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSourceClass returns the old "source_class" field's value of the Knowledge entity.
+// If the Knowledge object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *KnowledgeMutation) OldSourceClass(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSourceClass is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSourceClass requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSourceClass: %w", err)
+	}
+	return oldValue.SourceClass, nil
+}
+
+// ClearSourceClass clears the value of the "source_class" field.
+func (m *KnowledgeMutation) ClearSourceClass() {
+	m.source_class = nil
+	m.clearedFields[knowledge.FieldSourceClass] = struct{}{}
+}
+
+// SourceClassCleared returns if the "source_class" field was cleared in this mutation.
+func (m *KnowledgeMutation) SourceClassCleared() bool {
+	_, ok := m.clearedFields[knowledge.FieldSourceClass]
+	return ok
+}
+
+// ResetSourceClass resets all changes to the "source_class" field.
+func (m *KnowledgeMutation) ResetSourceClass() {
+	m.source_class = nil
+	delete(m.clearedFields, knowledge.FieldSourceClass)
+}
+
+// SetAssetLabel sets the "asset_label" field.
+func (m *KnowledgeMutation) SetAssetLabel(s string) {
+	m.asset_label = &s
+}
+
+// AssetLabel returns the value of the "asset_label" field in the mutation.
+func (m *KnowledgeMutation) AssetLabel() (r string, exists bool) {
+	v := m.asset_label
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAssetLabel returns the old "asset_label" field's value of the Knowledge entity.
+// If the Knowledge object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *KnowledgeMutation) OldAssetLabel(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAssetLabel is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAssetLabel requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAssetLabel: %w", err)
+	}
+	return oldValue.AssetLabel, nil
+}
+
+// ClearAssetLabel clears the value of the "asset_label" field.
+func (m *KnowledgeMutation) ClearAssetLabel() {
+	m.asset_label = nil
+	m.clearedFields[knowledge.FieldAssetLabel] = struct{}{}
+}
+
+// AssetLabelCleared returns if the "asset_label" field was cleared in this mutation.
+func (m *KnowledgeMutation) AssetLabelCleared() bool {
+	_, ok := m.clearedFields[knowledge.FieldAssetLabel]
+	return ok
+}
+
+// ResetAssetLabel resets all changes to the "asset_label" field.
+func (m *KnowledgeMutation) ResetAssetLabel() {
+	m.asset_label = nil
+	delete(m.clearedFields, knowledge.FieldAssetLabel)
+}
+
 // SetVersion sets the "version" field.
 func (m *KnowledgeMutation) SetVersion(i int) {
 	m.version = &i
@@ -11383,7 +11483,7 @@ func (m *KnowledgeMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *KnowledgeMutation) Fields() []string {
-	fields := make([]string, 0, 14)
+	fields := make([]string, 0, 16)
 	if m.key != nil {
 		fields = append(fields, knowledge.FieldKey)
 	}
@@ -11407,6 +11507,12 @@ func (m *KnowledgeMutation) Fields() []string {
 	}
 	if m.source != nil {
 		fields = append(fields, knowledge.FieldSource)
+	}
+	if m.source_class != nil {
+		fields = append(fields, knowledge.FieldSourceClass)
+	}
+	if m.asset_label != nil {
+		fields = append(fields, knowledge.FieldAssetLabel)
 	}
 	if m.version != nil {
 		fields = append(fields, knowledge.FieldVersion)
@@ -11450,6 +11556,10 @@ func (m *KnowledgeMutation) Field(name string) (ent.Value, bool) {
 		return m.Tags()
 	case knowledge.FieldSource:
 		return m.Source()
+	case knowledge.FieldSourceClass:
+		return m.SourceClass()
+	case knowledge.FieldAssetLabel:
+		return m.AssetLabel()
 	case knowledge.FieldVersion:
 		return m.Version()
 	case knowledge.FieldIsLatest:
@@ -11487,6 +11597,10 @@ func (m *KnowledgeMutation) OldField(ctx context.Context, name string) (ent.Valu
 		return m.OldTags(ctx)
 	case knowledge.FieldSource:
 		return m.OldSource(ctx)
+	case knowledge.FieldSourceClass:
+		return m.OldSourceClass(ctx)
+	case knowledge.FieldAssetLabel:
+		return m.OldAssetLabel(ctx)
 	case knowledge.FieldVersion:
 		return m.OldVersion(ctx)
 	case knowledge.FieldIsLatest:
@@ -11563,6 +11677,20 @@ func (m *KnowledgeMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetSource(v)
+		return nil
+	case knowledge.FieldSourceClass:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSourceClass(v)
+		return nil
+	case knowledge.FieldAssetLabel:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAssetLabel(v)
 		return nil
 	case knowledge.FieldVersion:
 		v, ok := value.(int)
@@ -11702,6 +11830,12 @@ func (m *KnowledgeMutation) ClearedFields() []string {
 	if m.FieldCleared(knowledge.FieldSource) {
 		fields = append(fields, knowledge.FieldSource)
 	}
+	if m.FieldCleared(knowledge.FieldSourceClass) {
+		fields = append(fields, knowledge.FieldSourceClass)
+	}
+	if m.FieldCleared(knowledge.FieldAssetLabel) {
+		fields = append(fields, knowledge.FieldAssetLabel)
+	}
 	return fields
 }
 
@@ -11730,6 +11864,12 @@ func (m *KnowledgeMutation) ClearField(name string) error {
 		return nil
 	case knowledge.FieldSource:
 		m.ClearSource()
+		return nil
+	case knowledge.FieldSourceClass:
+		m.ClearSourceClass()
+		return nil
+	case knowledge.FieldAssetLabel:
+		m.ClearAssetLabel()
 		return nil
 	}
 	return fmt.Errorf("unknown Knowledge nullable field %s", name)
@@ -11762,6 +11902,12 @@ func (m *KnowledgeMutation) ResetField(name string) error {
 		return nil
 	case knowledge.FieldSource:
 		m.ResetSource()
+		return nil
+	case knowledge.FieldSourceClass:
+		m.ResetSourceClass()
+		return nil
+	case knowledge.FieldAssetLabel:
+		m.ResetAssetLabel()
 		return nil
 	case knowledge.FieldVersion:
 		m.ResetVersion()

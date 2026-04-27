@@ -12,21 +12,143 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/langoai/lango/internal/agent"
+	"github.com/langoai/lango/internal/approvalflow"
+	"github.com/langoai/lango/internal/automation"
+	"github.com/langoai/lango/internal/background"
 	"github.com/langoai/lango/internal/config"
-	"github.com/langoai/lango/internal/toolparam"
+	"github.com/langoai/lango/internal/disputehold"
+	"github.com/langoai/lango/internal/economy/escrow"
 	entknowledge "github.com/langoai/lango/internal/ent/knowledge"
 	entlearning "github.com/langoai/lango/internal/ent/learning"
+	"github.com/langoai/lango/internal/escrowadjudication"
+	"github.com/langoai/lango/internal/escrowexecution"
+	"github.com/langoai/lango/internal/escrowrefund"
+	"github.com/langoai/lango/internal/escrowrelease"
+	"github.com/langoai/lango/internal/exportability"
 	"github.com/langoai/lango/internal/knowledge"
+	"github.com/langoai/lango/internal/knowledgeruntime"
 	"github.com/langoai/lango/internal/learning"
+	"github.com/langoai/lango/internal/partialsettlementexecution"
+	"github.com/langoai/lango/internal/payment"
+	"github.com/langoai/lango/internal/paymentapproval"
+	"github.com/langoai/lango/internal/postadjudicationreplay"
+	"github.com/langoai/lango/internal/postadjudicationstatus"
+	"github.com/langoai/lango/internal/receipts"
 	"github.com/langoai/lango/internal/session"
+	"github.com/langoai/lango/internal/settlementexecution"
+	"github.com/langoai/lango/internal/settlementprogression"
 	"github.com/langoai/lango/internal/skill"
+	"github.com/langoai/lango/internal/toolparam"
 )
 
 // buildMetaTools creates knowledge/learning/skill meta-tools for the agent.
 // cfg is used for session-mode-aware skill filtering and view_skill path resolution;
 // it may be nil for tests that don't exercise mode features.
-func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *skill.Registry, skillCfg config.SkillConfig, cfg *config.Config) []*agent.Tool {
-	return []*agent.Tool{
+func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *skill.Registry, skillCfg config.SkillConfig, cfg *config.Config, receiptStore *receipts.Store) []*agent.Tool {
+	return buildMetaToolsWithRuntimes(store, engine, registry, skillCfg, cfg, receiptStore, nil, nil, nil, nil, nil, nil)
+}
+
+func buildMetaToolsWithEscrow(
+	store *knowledge.Store,
+	engine *learning.Engine,
+	registry *skill.Registry,
+	skillCfg config.SkillConfig,
+	cfg *config.Config,
+	receiptStore *receipts.Store,
+	escrowRuntime escrowExecutionRuntime,
+) []*agent.Tool {
+	var escrowDisputeHoldRuntime escrowDisputeHoldExecutionRuntime
+	var escrowReleaseRuntime escrowReleaseExecutionRuntime
+	var escrowRefundRuntime escrowRefundExecutionRuntime
+	if engine, ok := escrowRuntime.(*escrow.Engine); ok && engine != nil {
+		escrowDisputeHoldRuntime = engineEscrowDisputeHoldRuntime{engine: engine}
+		escrowReleaseRuntime = engineEscrowReleaseRuntime{engine: engine}
+		escrowRefundRuntime = engineEscrowRefundRuntime{engine: engine}
+	}
+
+	return buildMetaToolsWithRuntimes(store, engine, registry, skillCfg, cfg, receiptStore, escrowRuntime, nil, nil, escrowDisputeHoldRuntime, escrowReleaseRuntime, escrowRefundRuntime)
+}
+
+type adjudicateEscrowDisputeBackgroundDispatcher interface {
+	Submit(context.Context, string, background.Origin) (string, error)
+	List() []background.TaskSnapshot
+}
+
+type postAdjudicationStatusBackgroundTaskReader struct {
+	dispatcher adjudicateEscrowDisputeBackgroundDispatcher
+}
+
+func (r postAdjudicationStatusBackgroundTaskReader) ListTaskSnapshots(_ context.Context) ([]postadjudicationstatus.BackgroundTaskSnapshot, error) {
+	if r.dispatcher == nil {
+		return nil, nil
+	}
+	raw := r.dispatcher.List()
+	out := make([]postadjudicationstatus.BackgroundTaskSnapshot, 0, len(raw))
+	for _, snap := range raw {
+		out = append(out, postadjudicationstatus.BackgroundTaskSnapshot{
+			TaskID:       snap.ID,
+			Status:       snap.StatusText,
+			RetryKey:     snap.RetryKey,
+			AttemptCount: snap.AttemptCount,
+			NextRetryAt:  snap.NextRetryAt,
+			StartedAt:    snap.StartedAt,
+			CompletedAt:  snap.CompletedAt,
+		})
+	}
+	return out, nil
+}
+
+type replayDispatcherAdapter struct {
+	dispatcher adjudicateEscrowDisputeBackgroundDispatcher
+}
+
+func (a replayDispatcherAdapter) Dispatch(ctx context.Context, req postadjudicationreplay.BackgroundDispatchRequest) (postadjudicationreplay.BackgroundDispatchReceipt, error) {
+	if a.dispatcher == nil {
+		return postadjudicationreplay.BackgroundDispatchReceipt{}, fmt.Errorf("background manager is not configured")
+	}
+	dispatchReference, err := a.dispatcher.Submit(ctx, req.Prompt, background.Origin{
+		Channel: automation.DetectChannelFromContext(ctx),
+		Session: session.SessionKeyFromContext(ctx),
+	})
+	if err != nil {
+		return postadjudicationreplay.BackgroundDispatchReceipt{}, err
+	}
+	return postadjudicationreplay.BackgroundDispatchReceipt{
+		Status:               "queued",
+		TransactionReceiptID: req.TransactionReceiptID,
+		SubmissionReceiptID:  req.SubmissionReceiptID,
+		EscrowReference:      req.EscrowReference,
+		Outcome:              string(req.Outcome),
+		DispatchReference:    dispatchReference,
+	}, nil
+}
+
+func buildMetaToolsWithRuntimes(
+	store *knowledge.Store,
+	engine *learning.Engine,
+	registry *skill.Registry,
+	skillCfg config.SkillConfig,
+	cfg *config.Config,
+	receiptStore *receipts.Store,
+	escrowRuntime escrowExecutionRuntime,
+	settlementRuntime settlementExecutionRuntime,
+	partialSettlementRuntime partialSettlementExecutionRuntime,
+	escrowDisputeHoldRuntime escrowDisputeHoldExecutionRuntime,
+	escrowReleaseRuntime escrowReleaseExecutionRuntime,
+	escrowRefundRuntime escrowRefundExecutionRuntime,
+	backgroundDispatchers ...adjudicateEscrowDisputeBackgroundDispatcher,
+) []*agent.Tool {
+	exportabilityEnabled := exportabilityPolicyEnabled(cfg)
+	effectivePartialRuntime := partialSettlementRuntime
+	if effectivePartialRuntime == nil && settlementRuntime != nil {
+		effectivePartialRuntime = settlementPartialSettlementRuntime{runtime: settlementRuntime}
+	}
+	var backgroundDispatcher adjudicateEscrowDisputeBackgroundDispatcher
+	if len(backgroundDispatchers) > 0 {
+		backgroundDispatcher = backgroundDispatchers[0]
+	}
+
+	tools := []*agent.Tool{
 		{
 			Name:        "save_knowledge",
 			Description: "Save knowledge (appends new version if content changes, skips duplicates). Categories: rule, definition, preference, fact, pattern, correction. Temporal tags (evergreen/current_state) are auto-assigned by analyzers",
@@ -38,11 +160,13 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
-					"key":      map[string]interface{}{"type": "string", "description": "Unique key for this knowledge entry"},
-					"category": map[string]interface{}{"type": "string", "description": "Category: rule, definition, preference, fact, pattern, or correction", "enum": []string{"rule", "definition", "preference", "fact", "pattern", "correction"}},
-					"content":  map[string]interface{}{"type": "string", "description": "The knowledge content to save"},
-					"tags":     map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Optional tags for categorization"},
-					"source":   map[string]interface{}{"type": "string", "description": "Where this knowledge came from"},
+					"key":          map[string]interface{}{"type": "string", "description": "Unique key for this knowledge entry"},
+					"category":     map[string]interface{}{"type": "string", "description": "Category: rule, definition, preference, fact, pattern, or correction", "enum": []string{"rule", "definition", "preference", "fact", "pattern", "correction"}},
+					"content":      map[string]interface{}{"type": "string", "description": "The knowledge content to save"},
+					"tags":         map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Optional tags for categorization"},
+					"source":       map[string]interface{}{"type": "string", "description": "Where this knowledge came from"},
+					"source_class": map[string]interface{}{"type": "string", "description": "Exportability source class: public, user-exportable, or private-confidential", "enum": []string{"public", "user-exportable", "private-confidential"}},
+					"asset_label":  map[string]interface{}{"type": "string", "description": "Asset label used for exportability evaluation"},
 				},
 				"required": []string{"key", "category", "content"},
 			},
@@ -60,6 +184,11 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 					return nil, err
 				}
 				source := toolparam.OptionalString(params, "source", "knowledge")
+				sourceClass, err := exportability.ParseSourceClass(toolparam.OptionalString(params, "source_class", string(exportability.DefaultSourceClass)))
+				if err != nil {
+					return nil, err
+				}
+				assetLabel := toolparam.OptionalString(params, "asset_label", key)
 
 				cat := entknowledge.Category(category)
 				if err := entknowledge.CategoryValidator(cat); err != nil {
@@ -69,11 +198,13 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 				tags := toolparam.StringSlice(params, "tags")
 
 				entry := knowledge.KnowledgeEntry{
-					Key:      key,
-					Category: cat,
-					Content:  content,
-					Tags:     tags,
-					Source:   source,
+					Key:         key,
+					Category:    cat,
+					Content:     content,
+					Tags:        tags,
+					Source:      source,
+					SourceClass: string(sourceClass),
+					AssetLabel:  assetLabel,
 				}
 
 				if err := store.SaveKnowledge(ctx, "", entry); err != nil {
@@ -103,6 +234,181 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 				}, nil
 			},
 		},
+		{
+			Name:        "evaluate_exportability",
+			Description: "Evaluate exportability for a knowledge-backed artifact label from the latest source entries and emit a durable decision receipt",
+			SafetyLevel: agent.SafetyLevelModerate,
+			Capability: agent.ToolCapability{
+				Category: "knowledge",
+				Activity: agent.ActivityWrite,
+			},
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"artifact_label": map[string]interface{}{"type": "string", "description": "Label for the artifact being evaluated"},
+					"source_keys": map[string]interface{}{
+						"type":        "array",
+						"items":       map[string]interface{}{"type": "string"},
+						"description": "Knowledge keys that provide source lineage for the artifact",
+					},
+					"stage": map[string]interface{}{
+						"type":        "string",
+						"description": "Decision stage: draft or final",
+						"enum":        []string{"draft", "final"},
+					},
+				},
+				"required": []string{"artifact_label", "source_keys", "stage"},
+			},
+			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+				if store == nil {
+					return nil, fmt.Errorf("knowledge store is not available")
+				}
+
+				artifactLabel, err := toolparam.RequireString(params, "artifact_label")
+				if err != nil {
+					return nil, err
+				}
+				stageStr, err := toolparam.RequireString(params, "stage")
+				if err != nil {
+					return nil, err
+				}
+				var stage exportability.DecisionStage
+				switch stageStr {
+				case string(exportability.StageDraft):
+					stage = exportability.StageDraft
+				case string(exportability.StageFinal):
+					stage = exportability.StageFinal
+				default:
+					return nil, fmt.Errorf("invalid stage %q: must be draft or final", stageStr)
+				}
+
+				sourceKeys := toolparam.StringSlice(params, "source_keys")
+				if len(sourceKeys) == 0 {
+					return nil, fmt.Errorf("source_keys must not be empty")
+				}
+				for _, key := range sourceKeys {
+					if strings.TrimSpace(key) == "" {
+						return nil, fmt.Errorf("source_keys must not contain empty values")
+					}
+				}
+
+				return evaluateExportabilityArtifact(ctx, store, artifactLabel, sourceKeys, stage, exportabilityEnabled)
+			},
+		},
+		{
+			Name:        "approve_artifact_release",
+			Description: "Evaluate an artifact release request and emit an audit-backed approval receipt",
+			SafetyLevel: agent.SafetyLevelModerate,
+			Capability: agent.ToolCapability{
+				Category: "knowledge",
+				Activity: agent.ActivityWrite,
+			},
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"artifact_label":  map[string]interface{}{"type": "string", "description": "Label for the artifact being released"},
+					"requested_scope": map[string]interface{}{"type": "string", "description": "Requested release scope or target label"},
+					"exportability_state": map[string]interface{}{
+						"type":        "string",
+						"description": "Exportability receipt state: exportable, blocked, or needs-human-review",
+						"enum":        []string{"exportable", "blocked", "needs-human-review"},
+					},
+					"override_requested": map[string]interface{}{"type": "boolean", "description": "Whether a blocked release override was requested"},
+					"high_risk":          map[string]interface{}{"type": "boolean", "description": "Whether the release is high risk"},
+				},
+				"required": []string{"artifact_label", "requested_scope", "exportability_state"},
+			},
+			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+				if store == nil {
+					return nil, fmt.Errorf("knowledge store is not available")
+				}
+
+				artifactLabel, err := toolparam.RequireString(params, "artifact_label")
+				if err != nil {
+					return nil, err
+				}
+				requestedScope, err := toolparam.RequireString(params, "requested_scope")
+				if err != nil {
+					return nil, err
+				}
+				exportabilityStateStr, err := toolparam.RequireString(params, "exportability_state")
+				if err != nil {
+					return nil, err
+				}
+
+				overrideRequested := toolparam.OptionalBool(params, "override_requested", false)
+				highRisk := toolparam.OptionalBool(params, "high_risk", false)
+
+				var state exportability.DecisionState
+				switch exportabilityStateStr {
+				case string(exportability.StateExportable):
+					state = exportability.StateExportable
+				case string(exportability.StateBlocked):
+					state = exportability.StateBlocked
+				case string(exportability.StateNeedsHumanReview):
+					state = exportability.StateNeedsHumanReview
+				default:
+					return nil, fmt.Errorf("invalid exportability_state %q", exportabilityStateStr)
+				}
+
+				outcome := evaluateArtifactReleaseApproval(artifactLabel, requestedScope, state, overrideRequested, highRisk)
+				payload := newArtifactReleaseApprovalReceipt(artifactLabel, requestedScope, state, outcome, overrideRequested, highRisk)
+				if err := store.SaveAuditLog(ctx, knowledge.AuditEntry{
+					Action:  "artifact_release_approval",
+					Actor:   "agent",
+					Target:  "artifact:" + artifactLabel,
+					Details: payload.Details(),
+				}); err != nil {
+					return nil, fmt.Errorf("save artifact release approval audit log: %w", err)
+				}
+
+				return payload, nil
+			},
+		},
+		newDisputeReadyReceiptTool(receiptStore),
+		newOpenKnowledgeExchangeTransactionTool(receiptStore),
+		newSelectKnowledgeExchangePathTool(receiptStore),
+		newAdjudicateEscrowDisputeTool(store, receiptStore, escrowReleaseRuntime, escrowRefundRuntime, backgroundDispatcher),
+		{
+			Name:        "approve_upfront_payment",
+			Description: "Evaluate an upfront payment request and update the linked transaction receipt with canonical payment approval state",
+			SafetyLevel: agent.SafetyLevelModerate,
+			Capability: agent.ToolCapability{
+				Category: "knowledge",
+				Activity: agent.ActivityWrite,
+			},
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"transaction_receipt_id": map[string]interface{}{"type": "string", "description": "Linked transaction receipt identifier"},
+					"submission_receipt_id":  map[string]interface{}{"type": "string", "description": "Explicit submission receipt identifier for this approval"},
+					"amount":                 map[string]interface{}{"type": "string", "description": "Requested upfront payment amount"},
+					"trust_score":            map[string]interface{}{"type": "number", "description": "Trust score used for upfront payment policy evaluation"},
+					"user_max_prepay":        map[string]interface{}{"type": "string", "description": "Maximum prepay amount allowed by policy"},
+					"remaining_budget":       map[string]interface{}{"type": "string", "description": "Remaining budget available for the transaction"},
+					"escrow_buyer_did":       map[string]interface{}{"type": "string", "description": "Buyer DID for escrow-backed execution"},
+					"escrow_seller_did":      map[string]interface{}{"type": "string", "description": "Seller DID for escrow-backed execution"},
+					"escrow_reason":          map[string]interface{}{"type": "string", "description": "Reason to store for escrow-backed execution"},
+					"escrow_task_id":         map[string]interface{}{"type": "string", "description": "Optional task identifier for escrow-backed execution"},
+					"escrow_milestones": map[string]interface{}{
+						"type": "array",
+						"items": map[string]interface{}{
+							"type": "object",
+							"properties": map[string]interface{}{
+								"description": map[string]interface{}{"type": "string", "description": "Milestone description"},
+								"amount":      map[string]interface{}{"type": "string", "description": "Milestone amount"},
+							},
+						},
+						"description": "Optional escrow milestone breakdown",
+					},
+				},
+				"required": []string{"transaction_receipt_id", "submission_receipt_id", "amount", "trust_score", "user_max_prepay", "remaining_budget"},
+			},
+			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+				return approveUpfrontPayment(ctx, receiptStore, params, paymentapproval.EvaluateUpfrontPayment)
+			},
+		},
+		newApplySettlementProgressionTool(receiptStore),
 		{
 			Name:        "get_knowledge_history",
 			Description: "Get version history for a knowledge entry. Returns all versions ordered newest first",
@@ -779,5 +1085,1543 @@ func buildMetaTools(store *knowledge.Store, engine *learning.Engine, registry *s
 				return map[string]interface{}{"deleted": n, "dry_run": false}, nil
 			},
 		},
+	}
+
+	if listDeadLettersTool := newListDeadLetteredPostAdjudicationExecutionsTool(receiptStore); listDeadLettersTool != nil {
+		tools = append(tools, listDeadLettersTool)
+	}
+	if getPostAdjudicationStatusTool := newGetPostAdjudicationExecutionStatusTool(receiptStore, backgroundDispatcher); getPostAdjudicationStatusTool != nil {
+		tools = append(tools, getPostAdjudicationStatusTool)
+	}
+	if replayTool := newRetryPostAdjudicationExecutionTool(cfg, receiptStore, backgroundDispatcher); replayTool != nil {
+		tools = append(tools, replayTool)
+	}
+
+	if settlementTool := newExecuteSettlementTool(receiptStore, settlementRuntime); settlementTool != nil {
+		tools = append(tools, settlementTool)
+	}
+	if partialSettlementTool := newExecutePartialSettlementTool(receiptStore, effectivePartialRuntime); partialSettlementTool != nil {
+		tools = append(tools, partialSettlementTool)
+	}
+	if disputeHoldTool := newHoldEscrowForDisputeTool(receiptStore, escrowDisputeHoldRuntime); disputeHoldTool != nil {
+		tools = append(tools, disputeHoldTool)
+	}
+	if escrowReleaseTool := newReleaseEscrowSettlementTool(receiptStore, escrowReleaseRuntime); escrowReleaseTool != nil {
+		tools = append(tools, escrowReleaseTool)
+	}
+	if escrowRefundTool := newRefundEscrowSettlementTool(receiptStore, escrowRefundRuntime); escrowRefundTool != nil {
+		tools = append(tools, escrowRefundTool)
+	}
+	if escrowTool := newExecuteEscrowRecommendationTool(receiptStore, escrowRuntime); escrowTool != nil {
+		tools = append(tools, escrowTool)
+	}
+
+	return tools
+}
+
+type escrowExecutionRuntime interface {
+	Create(context.Context, escrow.CreateRequest) (*escrow.EscrowEntry, error)
+	Fund(context.Context, string) (*escrow.EscrowEntry, error)
+}
+
+func exportabilityPolicyEnabled(cfg *config.Config) bool {
+	if cfg == nil {
+		cfg = config.DefaultConfig()
+	}
+	return cfg.Security.Exportability.Enabled
+}
+
+func evaluateExportabilityArtifact(ctx context.Context, store *knowledge.Store, artifactLabel string, sourceKeys []string, stage exportability.DecisionStage, enabled bool) (map[string]interface{}, error) {
+	entries, err := store.GetKnowledgeByKeys(ctx, sourceKeys)
+	if err != nil {
+		return nil, fmt.Errorf("load source knowledge: %w", err)
+	}
+
+	refs, err := exportabilitySourceRefs(entries)
+	if err != nil {
+		return nil, err
+	}
+
+	receipt := exportability.Evaluate(exportability.Policy{Enabled: enabled}, stage, refs)
+	payload := exportabilityReceiptPayload(artifactLabel, receipt)
+
+	if err := store.SaveAuditLog(ctx, knowledge.AuditEntry{
+		Action:  "exportability_decision",
+		Actor:   "agent",
+		Target:  "artifact:" + artifactLabel,
+		Details: payload,
+	}); err != nil {
+		return nil, fmt.Errorf("save exportability decision audit log: %w", err)
+	}
+
+	return payload, nil
+}
+
+func exportabilitySourceRefs(entries []knowledge.KnowledgeEntry) ([]exportability.SourceRef, error) {
+	refs := make([]exportability.SourceRef, 0, len(entries))
+	for _, entry := range entries {
+		class, err := exportability.ParseSourceClass(entry.SourceClass)
+		if err != nil {
+			return nil, fmt.Errorf("parse source class for %q: %w", entry.Key, err)
+		}
+		label := entry.AssetLabel
+		if label == "" {
+			label = entry.Key
+		}
+		refs = append(refs, exportability.SourceRef{
+			AssetID:    entry.Key,
+			AssetLabel: label,
+			Class:      class,
+		})
+	}
+	return refs, nil
+}
+
+func exportabilityReceiptPayload(artifactLabel string, receipt exportability.Receipt) map[string]interface{} {
+	lineage := make([]map[string]interface{}, 0, len(receipt.Lineage))
+	for _, row := range receipt.Lineage {
+		lineage = append(lineage, map[string]interface{}{
+			"asset_id":    row.AssetID,
+			"asset_label": row.AssetLabel,
+			"class":       string(row.Class),
+			"rule":        row.Rule,
+		})
+	}
+
+	return map[string]interface{}{
+		"artifact_label": artifactLabel,
+		"stage":          string(receipt.Stage),
+		"state":          string(receipt.State),
+		"policy_code":    receipt.PolicyCode,
+		"explanation":    receipt.Explanation,
+		"lineage":        lineage,
+	}
+}
+
+func approveUpfrontPayment(ctx context.Context, receiptStore *receipts.Store, params map[string]interface{}, evaluate func(paymentapproval.Input) paymentapproval.Outcome) (interface{}, error) {
+	if receiptStore == nil {
+		return nil, fmt.Errorf("receipts store dependency is not configured")
+	}
+
+	transactionReceiptID, err := toolparam.RequireString(params, "transaction_receipt_id")
+	if err != nil {
+		return nil, err
+	}
+	submissionReceiptID, err := toolparam.RequireString(params, "submission_receipt_id")
+	if err != nil {
+		return nil, err
+	}
+	amount, err := toolparam.RequireString(params, "amount")
+	if err != nil {
+		return nil, err
+	}
+	trustScore, err := toolparam.RequireFloat64(params, "trust_score")
+	if err != nil {
+		return nil, err
+	}
+	userMaxPrepay, err := toolparam.RequireString(params, "user_max_prepay")
+	if err != nil {
+		return nil, err
+	}
+	remainingBudget, err := toolparam.RequireString(params, "remaining_budget")
+	if err != nil {
+		return nil, err
+	}
+
+	outcome := evaluate(paymentapproval.Input{
+		Amount: amount,
+		Trust: paymentapproval.TrustInput{
+			Score: trustScore,
+		},
+		Budget: paymentapproval.BudgetPolicyContext{
+			UserMaxPrepay:   userMaxPrepay,
+			RemainingBudget: remainingBudget,
+		},
+	})
+
+	var escrowInput receipts.EscrowExecutionInput
+	if outcome.SuggestedMode == paymentapproval.ModeEscrow {
+		escrowInput, err = parseEscrowExecutionInput(params, amount)
+		if err != nil {
+			return nil, err
+		}
+		transaction, err := receiptStore.GetTransactionReceipt(ctx, transactionReceiptID)
+		if err != nil {
+			return nil, fmt.Errorf("load transaction receipt for escrow approval: %w", err)
+		}
+		if transaction.CurrentSubmissionReceiptID != submissionReceiptID {
+			return nil, fmt.Errorf(
+				"submission receipt %q is not current for transaction receipt %q",
+				submissionReceiptID,
+				transactionReceiptID,
+			)
+		}
+	}
+
+	updatedTx, err := receiptStore.ApplyUpfrontPaymentApproval(ctx, transactionReceiptID, submissionReceiptID, outcome)
+	if err != nil {
+		return nil, fmt.Errorf("apply upfront payment approval: %w", err)
+	}
+	if outcome.SuggestedMode == paymentapproval.ModeEscrow {
+		updatedTx, err = receiptStore.BindEscrowExecutionInput(ctx, transactionReceiptID, submissionReceiptID, escrowInput)
+		if err != nil {
+			return nil, fmt.Errorf("bind escrow execution input: %w", err)
+		}
+	}
+
+	return newUpfrontPaymentApprovalReceipt(
+		transactionReceiptID,
+		submissionReceiptID,
+		amount,
+		trustScore,
+		userMaxPrepay,
+		remainingBudget,
+		outcome,
+		updatedTx,
+	), nil
+}
+
+func parseEscrowExecutionInput(params map[string]interface{}, amount string) (receipts.EscrowExecutionInput, error) {
+	buyerDID, err := toolparam.RequireString(params, "escrow_buyer_did")
+	if err != nil {
+		return receipts.EscrowExecutionInput{}, err
+	}
+	sellerDID, err := toolparam.RequireString(params, "escrow_seller_did")
+	if err != nil {
+		return receipts.EscrowExecutionInput{}, err
+	}
+	reason, err := toolparam.RequireString(params, "escrow_reason")
+	if err != nil {
+		return receipts.EscrowExecutionInput{}, err
+	}
+	taskID := toolparam.OptionalString(params, "escrow_task_id", "")
+
+	var milestones []receipts.EscrowMilestoneInput
+	if raw, ok := params["escrow_milestones"]; ok {
+		rawMilestones, ok := raw.([]interface{})
+		if !ok {
+			return receipts.EscrowExecutionInput{}, fmt.Errorf("escrow_milestones must be an array")
+		}
+		milestones = make([]receipts.EscrowMilestoneInput, 0, len(rawMilestones))
+		for i, rawMilestone := range rawMilestones {
+			milestoneMap, ok := rawMilestone.(map[string]interface{})
+			if !ok {
+				return receipts.EscrowExecutionInput{}, fmt.Errorf("escrow_milestones[%d] must be an object", i)
+			}
+			description, err := toolparam.RequireString(milestoneMap, "description")
+			if err != nil {
+				return receipts.EscrowExecutionInput{}, fmt.Errorf("escrow_milestones[%d]: %w", i, err)
+			}
+			milestoneAmount, err := toolparam.RequireString(milestoneMap, "amount")
+			if err != nil {
+				return receipts.EscrowExecutionInput{}, fmt.Errorf("escrow_milestones[%d]: %w", i, err)
+			}
+			milestones = append(milestones, receipts.EscrowMilestoneInput{
+				Description: description,
+				Amount:      milestoneAmount,
+			})
+		}
+	}
+
+	return receipts.EscrowExecutionInput{
+		BuyerDID:   buyerDID,
+		SellerDID:  sellerDID,
+		Amount:     amount,
+		Reason:     reason,
+		TaskID:     taskID,
+		Milestones: milestones,
+	}, nil
+}
+
+func newExecuteEscrowRecommendationTool(receiptStore *receipts.Store, runtime escrowExecutionRuntime) *agent.Tool {
+	if runtime == nil {
+		return nil
+	}
+
+	return &agent.Tool{
+		Name:        "execute_escrow_recommendation",
+		Description: "Execute a previously approved escrow recommendation for a transaction receipt and persist canonical escrow evidence",
+		SafetyLevel: agent.SafetyLevelDangerous,
+		Capability: agent.ToolCapability{
+			Category: "knowledge",
+			Activity: agent.ActivityWrite,
+		},
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"transaction_receipt_id": map[string]interface{}{"type": "string", "description": "Approved transaction receipt identifier with bound escrow execution input"},
+			},
+			"required": []string{"transaction_receipt_id"},
+		},
+		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+			if receiptStore == nil {
+				return nil, fmt.Errorf("receipts store dependency is not configured")
+			}
+
+			transactionReceiptID, err := toolparam.RequireString(params, "transaction_receipt_id")
+			if err != nil {
+				return nil, err
+			}
+
+			result, err := escrowexecution.NewService(receiptStore, runtime).ExecuteRecommendation(ctx, escrowexecution.Request{
+				TransactionReceiptID: transactionReceiptID,
+			})
+			if err != nil {
+				return nil, err
+			}
+
+			return executeEscrowRecommendationReceipt{
+				TransactionReceiptID:  result.TransactionReceiptID,
+				SubmissionReceiptID:   result.SubmissionReceiptID,
+				EscrowReference:       result.EscrowReference,
+				EscrowExecutionStatus: string(result.EscrowExecutionStatus),
+			}, nil
+		},
+	}
+}
+
+func newDisputeReadyReceiptTool(receiptStore *receipts.Store) *agent.Tool {
+	return &agent.Tool{
+		Name:        "create_dispute_ready_receipt",
+		Description: "Create a lite dispute-ready submission receipt linked to a transaction receipt",
+		SafetyLevel: agent.SafetyLevelModerate,
+		Capability: agent.ToolCapability{
+			Category: "knowledge",
+			Activity: agent.ActivityWrite,
+		},
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"transaction_id":        map[string]interface{}{"type": "string", "description": "External transaction identifier"},
+				"artifact_label":        map[string]interface{}{"type": "string", "description": "Label for the artifact being submitted"},
+				"payload_hash":          map[string]interface{}{"type": "string", "description": "Payload content hash"},
+				"source_lineage_digest": map[string]interface{}{"type": "string", "description": "Digest of the source lineage for the submission"},
+			},
+			"required": []string{"transaction_id", "artifact_label", "payload_hash", "source_lineage_digest"},
+		},
+		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+			if receiptStore == nil {
+				return nil, fmt.Errorf("receipts store dependency is not configured")
+			}
+
+			input, err := parseDisputeReadyReceiptInput(params)
+			if err != nil {
+				return nil, err
+			}
+
+			return createDisputeReadyReceipt(ctx, receiptStore, input)
+		},
+	}
+}
+
+func newOpenKnowledgeExchangeTransactionTool(receiptStore *receipts.Store) *agent.Tool {
+	return &agent.Tool{
+		Name:        "open_knowledge_exchange_transaction",
+		Description: "Open a receipts-backed knowledge exchange transaction and persist canonical runtime-open state",
+		SafetyLevel: agent.SafetyLevelModerate,
+		Capability: agent.ToolCapability{
+			Category: "knowledge",
+			Activity: agent.ActivityWrite,
+		},
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"transaction_id":  map[string]interface{}{"type": "string", "description": "External transaction identifier"},
+				"counterparty":    map[string]interface{}{"type": "string", "description": "Counterparty DID or stable participant identifier"},
+				"requested_scope": map[string]interface{}{"type": "string", "description": "Requested knowledge exchange scope"},
+				"price_context":   map[string]interface{}{"type": "string", "description": "Price context to bind at open time"},
+				"trust_context":   map[string]interface{}{"type": "string", "description": "Trust context to bind at open time"},
+			},
+			"required": []string{"transaction_id", "counterparty", "requested_scope", "price_context", "trust_context"},
+		},
+		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+			if receiptStore == nil {
+				return nil, fmt.Errorf("receipts store dependency is not configured")
+			}
+
+			transactionID, err := toolparam.RequireString(params, "transaction_id")
+			if err != nil {
+				return nil, err
+			}
+			counterparty, err := toolparam.RequireString(params, "counterparty")
+			if err != nil {
+				return nil, err
+			}
+			requestedScope, err := toolparam.RequireString(params, "requested_scope")
+			if err != nil {
+				return nil, err
+			}
+			priceContext, err := toolparam.RequireString(params, "price_context")
+			if err != nil {
+				return nil, err
+			}
+			trustContext, err := toolparam.RequireString(params, "trust_context")
+			if err != nil {
+				return nil, err
+			}
+
+			result, err := knowledgeruntime.NewService(receiptStore).OpenTransaction(ctx, knowledgeruntime.OpenTransactionRequest{
+				TransactionID:  transactionID,
+				Counterparty:   counterparty,
+				RequestedScope: requestedScope,
+				PriceContext:   priceContext,
+				TrustContext:   trustContext,
+			})
+			if err != nil {
+				return nil, err
+			}
+
+			return map[string]interface{}{
+				"transaction_id":                    transactionID,
+				"transaction_receipt_id":            result.TransactionReceiptID,
+				"knowledge_exchange_runtime_status": string(result.RuntimeStatus),
+			}, nil
+		},
+	}
+}
+
+func newSelectKnowledgeExchangePathTool(receiptStore *receipts.Store) *agent.Tool {
+	return &agent.Tool{
+		Name:        "select_knowledge_exchange_path",
+		Description: "Select the receipts-backed knowledge exchange execution path from canonical approval state",
+		SafetyLevel: agent.SafetyLevelModerate,
+		Capability: agent.ToolCapability{
+			Category: "knowledge",
+			Activity: agent.ActivityWrite,
+		},
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"transaction_receipt_id": map[string]interface{}{"type": "string", "description": "Transaction receipt identifier to evaluate"},
+			},
+			"required": []string{"transaction_receipt_id"},
+		},
+		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+			if receiptStore == nil {
+				return nil, fmt.Errorf("receipts store dependency is not configured")
+			}
+
+			transactionReceiptID, err := toolparam.RequireString(params, "transaction_receipt_id")
+			if err != nil {
+				return nil, err
+			}
+
+			result, err := knowledgeruntime.NewService(receiptStore).SelectExecutionPath(ctx, transactionReceiptID)
+			if err != nil {
+				return nil, err
+			}
+
+			return map[string]interface{}{
+				"transaction_receipt_id": result.TransactionReceiptID,
+				"branch":                 string(result.Branch),
+			}, nil
+		},
+	}
+}
+
+func newApplySettlementProgressionTool(receiptStore *receipts.Store) *agent.Tool {
+	return &agent.Tool{
+		Name:        "apply_settlement_progression",
+		Description: "Apply a release review decision to the linked transaction receipt and return canonical settlement progression state",
+		SafetyLevel: agent.SafetyLevelModerate,
+		Capability: agent.ToolCapability{
+			Category: "knowledge",
+			Activity: agent.ActivityWrite,
+		},
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"transaction_receipt_id": map[string]interface{}{"type": "string", "description": "Transaction receipt identifier to update"},
+				"outcome": map[string]interface{}{
+					"type":        "string",
+					"description": "Release review decision",
+					"enum":        []string{"approve", "reject", "request-revision", "escalate"},
+				},
+				"reason":       map[string]interface{}{"type": "string", "description": "Optional human-readable reason for the progression update"},
+				"partial_hint": map[string]interface{}{"type": "string", "description": "Optional partial settlement hint"},
+			},
+			"required": []string{"transaction_receipt_id", "outcome"},
+		},
+		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+			if receiptStore == nil {
+				return nil, fmt.Errorf("receipts store dependency is not configured")
+			}
+
+			transactionReceiptID, err := toolparam.RequireString(params, "transaction_receipt_id")
+			if err != nil {
+				return nil, err
+			}
+			transactionReceiptID = strings.TrimSpace(transactionReceiptID)
+			if transactionReceiptID == "" {
+				return nil, &toolparam.ErrMissingParam{Name: "transaction_receipt_id"}
+			}
+
+			outcome, err := toolparam.RequireString(params, "outcome")
+			if err != nil {
+				return nil, err
+			}
+			outcome = strings.TrimSpace(outcome)
+			if outcome == "" {
+				return nil, &toolparam.ErrMissingParam{Name: "outcome"}
+			}
+
+			result, err := settlementprogression.NewService(receiptStore).ApplyReleaseOutcome(ctx, settlementprogression.ApplyReleaseOutcomeRequest{
+				TransactionReceiptID: transactionReceiptID,
+				Outcome: settlementprogression.ReleaseOutcome{
+					Decision: approvalflow.Decision(outcome),
+					Reason:   toolparam.OptionalString(params, "reason", ""),
+				},
+				PartialHint: toolparam.OptionalString(params, "partial_hint", ""),
+			})
+			if err != nil {
+				return nil, err
+			}
+
+			return newApplySettlementProgressionReceipt(result), nil
+		},
+	}
+}
+
+func newAdjudicateEscrowDisputeTool(
+	store *knowledge.Store,
+	receiptStore *receipts.Store,
+	escrowReleaseRuntime escrowReleaseExecutionRuntime,
+	escrowRefundRuntime escrowRefundExecutionRuntime,
+	backgroundDispatcher adjudicateEscrowDisputeBackgroundDispatcher,
+) *agent.Tool {
+	return &agent.Tool{
+		Name:        "adjudicate_escrow_dispute",
+		Description: "Record a canonical release-or-refund adjudication decision for a funded dispute-ready escrow after dispute hold; by default this stops at canonical adjudication and waits for manual recovery unless an execution flag is set",
+		SafetyLevel: agent.SafetyLevelDangerous,
+		Capability: agent.ToolCapability{
+			Category: "knowledge",
+			Activity: agent.ActivityWrite,
+		},
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"transaction_receipt_id": map[string]interface{}{"type": "string", "description": "Funded dispute-ready transaction receipt identifier to adjudicate"},
+				"outcome": map[string]interface{}{
+					"type":        "string",
+					"description": "Canonical adjudication decision after dispute hold",
+					"enum":        []string{"release", "refund"},
+				},
+				"reason": map[string]interface{}{"type": "string", "description": "Optional adjudication reason"},
+				"auto_execute": map[string]interface{}{
+					"type":        "boolean",
+					"description": "When true, execute the adjudicated release or refund branch inline after adjudication succeeds; when omitted, the runtime keeps only the canonical adjudication and waits for manual recovery",
+				},
+				"background_execute": map[string]interface{}{
+					"type":        "boolean",
+					"description": "When true, enqueue post-adjudication execution as a background dispatch after adjudication succeeds; when omitted, the runtime keeps only the canonical adjudication and waits for manual recovery",
+				},
+			},
+			"required": []string{"transaction_receipt_id", "outcome"},
+		},
+		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+			if receiptStore == nil {
+				return nil, fmt.Errorf("receipts store dependency is not configured")
+			}
+
+			transactionReceiptID, err := toolparam.RequireString(params, "transaction_receipt_id")
+			if err != nil {
+				return nil, err
+			}
+			outcome, err := toolparam.RequireString(params, "outcome")
+			if err != nil {
+				return nil, err
+			}
+			autoExecute := toolparam.OptionalBool(params, "auto_execute", false)
+			backgroundExecute := toolparam.OptionalBool(params, "background_execute", false)
+			executionMode, err := postadjudicationreplay.DefaultExecutionPolicy().Resolve(autoExecute, backgroundExecute)
+			if err != nil {
+				return nil, err
+			}
+
+			result, err := escrowadjudication.NewService(receiptStore).Adjudicate(ctx, escrowadjudication.AdjudicateRequest{
+				TransactionReceiptID: strings.TrimSpace(transactionReceiptID),
+				Outcome:              escrowadjudication.Outcome(strings.TrimSpace(outcome)),
+				Reason:               toolparam.OptionalString(params, "reason", ""),
+			})
+			if err != nil {
+				return nil, err
+			}
+
+			if store != nil {
+				if err := store.SaveAuditLog(ctx, knowledge.AuditEntry{
+					Action: "escrow_dispute_adjudication",
+					Actor:  "agent",
+					Target: result.TransactionReceiptID,
+					Details: map[string]interface{}{
+						"transaction_receipt_id": result.TransactionReceiptID,
+						"submission_receipt_id":  result.SubmissionReceiptID,
+						"escrow_reference":       result.EscrowReference,
+						"outcome":                string(result.Outcome),
+					},
+				}); err != nil {
+					return nil, fmt.Errorf("save escrow dispute adjudication audit log: %w", err)
+				}
+			}
+
+			receipt := newAdjudicateEscrowDisputeReceipt(result)
+			switch executionMode {
+			case postadjudicationreplay.ExecutionModeManualRecovery:
+				return receipt, nil
+			case postadjudicationreplay.ExecutionModeBackground:
+				if backgroundDispatcher == nil {
+					return receipt, fmt.Errorf("background manager is not configured")
+				}
+
+				dispatchReference, err := backgroundDispatcher.Submit(ctx, postadjudicationreplay.BuildBackgroundDispatchPrompt(
+					receipts.EscrowAdjudicationDecision(result.Outcome),
+					result.TransactionReceiptID,
+					result.SubmissionReceiptID,
+					result.EscrowReference,
+				), background.Origin{
+					Channel: automation.DetectChannelFromContext(ctx),
+					Session: session.SessionKeyFromContext(ctx),
+				})
+				if err != nil {
+					return receipt, fmt.Errorf("submit background execution: %w", err)
+				}
+
+				dispatchReceipt := newAdjudicateEscrowDisputeBackgroundDispatchReceipt(result, dispatchReference)
+				receipt.BackgroundDispatchReceipt = dispatchReceipt
+				if store != nil {
+					if err := store.SaveAuditLog(ctx, knowledge.AuditEntry{
+						Action: "escrow_dispute_background_dispatch",
+						Actor:  "agent",
+						Target: result.TransactionReceiptID,
+						Details: map[string]interface{}{
+							"transaction_receipt_id": result.TransactionReceiptID,
+							"submission_receipt_id":  result.SubmissionReceiptID,
+							"escrow_reference":       result.EscrowReference,
+							"outcome":                string(result.Outcome),
+							"dispatch_reference":     dispatchReceipt.DispatchReference,
+							"status":                 dispatchReceipt.Status,
+						},
+					}); err != nil {
+						return receipt, fmt.Errorf("save escrow dispute background dispatch audit log: %w", err)
+					}
+				}
+				return receipt, nil
+			case postadjudicationreplay.ExecutionModeInline:
+			default:
+				return nil, fmt.Errorf("unsupported execution mode %q", executionMode)
+			}
+
+			switch result.Outcome {
+			case escrowadjudication.OutcomeRelease:
+				if escrowReleaseRuntime == nil {
+					return nil, fmt.Errorf("escrow release runtime is not configured")
+				}
+				executionResult, err := escrowrelease.NewService(receiptStore, escrowReleaseRuntime).Execute(ctx, escrowrelease.ExecuteRequest{
+					TransactionReceiptID: result.TransactionReceiptID,
+				})
+				receipt.Execution = newAdjudicationNestedExecutionReceiptFromRelease(executionResult)
+				if err != nil {
+					return receipt, err
+				}
+			case escrowadjudication.OutcomeRefund:
+				if escrowRefundRuntime == nil {
+					return nil, fmt.Errorf("escrow refund runtime is not configured")
+				}
+				executionResult, err := escrowrefund.NewService(receiptStore, escrowRefundRuntime).Execute(ctx, escrowrefund.ExecuteRequest{
+					TransactionReceiptID: result.TransactionReceiptID,
+				})
+				receipt.Execution = newAdjudicationNestedExecutionReceiptFromRefund(executionResult)
+				if err != nil {
+					return receipt, err
+				}
+			default:
+				return nil, fmt.Errorf("unsupported adjudication outcome %q", result.Outcome)
+			}
+
+			return receipt, nil
+		},
+	}
+}
+
+func newListDeadLetteredPostAdjudicationExecutionsTool(receiptStore *receipts.Store) *agent.Tool {
+	if receiptStore == nil {
+		return nil
+	}
+
+	return &agent.Tool{
+		Name:        "list_dead_lettered_post_adjudication_executions",
+		Description: "List transactions currently in dead-lettered post-adjudication execution state",
+		SafetyLevel: agent.SafetyLevelSafe,
+		Capability: agent.ToolCapability{
+			Category:        "knowledge",
+			Activity:        agent.ActivityQuery,
+			ReadOnly:        true,
+			ConcurrencySafe: true,
+		},
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"adjudication":             map[string]interface{}{"type": "string", "description": "Optional adjudication outcome filter (release or refund)"},
+				"retry_attempt_min":        map[string]interface{}{"type": "integer", "description": "Optional minimum retry attempt filter"},
+				"retry_attempt_max":        map[string]interface{}{"type": "integer", "description": "Optional maximum retry attempt filter"},
+				"query":                    map[string]interface{}{"type": "string", "description": "Optional substring filter for transaction or submission receipt IDs"},
+				"manual_replay_actor":      map[string]interface{}{"type": "string", "description": "Optional latest manual replay actor filter"},
+				"dead_lettered_after":      map[string]interface{}{"type": "string", "description": "Optional RFC3339 lower bound for latest dead-letter timestamp"},
+				"dead_lettered_before":     map[string]interface{}{"type": "string", "description": "Optional RFC3339 upper bound for latest dead-letter timestamp"},
+				"dead_letter_reason_query": map[string]interface{}{"type": "string", "description": "Optional case-insensitive substring filter for the latest dead-letter reason"},
+				"latest_dispatch_reference": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional exact-match filter for the latest dispatch reference",
+				},
+				"latest_status_subtype": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional exact-match filter for the latest retry/dead-letter subtype",
+				},
+				"manual_retry_count_min": map[string]interface{}{
+					"type":        "integer",
+					"description": "Optional lower bound for manual retry count",
+				},
+				"manual_retry_count_max": map[string]interface{}{
+					"type":        "integer",
+					"description": "Optional upper bound for manual retry count",
+				},
+				"total_retry_count_min": map[string]interface{}{
+					"type":        "integer",
+					"description": "Optional lower bound for total retry count",
+				},
+				"total_retry_count_max": map[string]interface{}{
+					"type":        "integer",
+					"description": "Optional upper bound for total retry count",
+				},
+				"transaction_global_total_retry_count_min": map[string]interface{}{
+					"type":        "integer",
+					"description": "Optional lower bound for transaction-global total retry count",
+				},
+				"transaction_global_total_retry_count_max": map[string]interface{}{
+					"type":        "integer",
+					"description": "Optional upper bound for transaction-global total retry count",
+				},
+				"transaction_global_any_match_family": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional membership filter for any retry/dead-letter family observed across all submissions in the transaction",
+				},
+				"transaction_global_dominant_family": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional exact-match filter for the dominant retry/dead-letter family observed across all submissions in the transaction",
+				},
+				"latest_status_subtype_family": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional exact-match filter for the family of the latest retry/dead-letter subtype",
+				},
+				"any_match_family": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional membership filter for any retry/dead-letter family observed in the current submission trail",
+				},
+				"dominant_family": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional exact-match filter for the dominant retry/dead-letter family on the current submission trail",
+				},
+				"sort_by": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional sort mode: latest_dead_lettered_at, latest_retry_attempt, or latest_manual_replay_at",
+				},
+				"offset": map[string]interface{}{"type": "integer", "description": "Optional zero-based pagination offset"},
+				"limit":  map[string]interface{}{"type": "integer", "description": "Optional pagination limit"},
+			},
+		},
+		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+			page, err := postadjudicationstatus.NewService(receiptStore).ListCurrentDeadLettersPage(ctx, postadjudicationstatus.DeadLetterListOptions{
+				Adjudication:                        toolparam.OptionalString(params, "adjudication", ""),
+				RetryAttemptMin:                     toolparam.OptionalInt(params, "retry_attempt_min", 0),
+				RetryAttemptMax:                     toolparam.OptionalInt(params, "retry_attempt_max", 0),
+				Query:                               toolparam.OptionalString(params, "query", ""),
+				ManualReplayActor:                   toolparam.OptionalString(params, "manual_replay_actor", ""),
+				DeadLetteredAfter:                   toolparam.OptionalString(params, "dead_lettered_after", ""),
+				DeadLetteredBefore:                  toolparam.OptionalString(params, "dead_lettered_before", ""),
+				DeadLetterReasonQuery:               toolparam.OptionalString(params, "dead_letter_reason_query", ""),
+				LatestDispatchReference:             toolparam.OptionalString(params, "latest_dispatch_reference", ""),
+				LatestStatusSubtype:                 toolparam.OptionalString(params, "latest_status_subtype", ""),
+				ManualRetryCountMin:                 toolparam.OptionalInt(params, "manual_retry_count_min", 0),
+				ManualRetryCountMax:                 toolparam.OptionalInt(params, "manual_retry_count_max", 0),
+				TotalRetryCountMin:                  toolparam.OptionalInt(params, "total_retry_count_min", 0),
+				TotalRetryCountMax:                  toolparam.OptionalInt(params, "total_retry_count_max", 0),
+				TransactionGlobalTotalRetryCountMin: toolparam.OptionalInt(params, "transaction_global_total_retry_count_min", 0),
+				TransactionGlobalTotalRetryCountMax: toolparam.OptionalInt(params, "transaction_global_total_retry_count_max", 0),
+				TransactionGlobalAnyMatchFamily:     toolparam.OptionalString(params, "transaction_global_any_match_family", ""),
+				TransactionGlobalDominantFamily:     toolparam.OptionalString(params, "transaction_global_dominant_family", ""),
+				LatestStatusSubtypeFamily:           toolparam.OptionalString(params, "latest_status_subtype_family", ""),
+				AnyMatchFamily:                      toolparam.OptionalString(params, "any_match_family", ""),
+				DominantFamily:                      toolparam.OptionalString(params, "dominant_family", ""),
+				SortBy:                              toolparam.OptionalString(params, "sort_by", ""),
+				Offset:                              toolparam.OptionalInt(params, "offset", 0),
+				Limit:                               toolparam.OptionalInt(params, "limit", 0),
+			})
+			if err != nil {
+				return nil, err
+			}
+			return map[string]interface{}{
+				"entries": page.Items,
+				"count":   page.Count,
+				"total":   page.Total,
+				"offset":  page.Offset,
+				"limit":   page.Limit,
+			}, nil
+		},
+	}
+}
+
+func newGetPostAdjudicationExecutionStatusTool(receiptStore *receipts.Store, backgroundDispatcher adjudicateEscrowDisputeBackgroundDispatcher) *agent.Tool {
+	if receiptStore == nil {
+		return nil
+	}
+
+	return &agent.Tool{
+		Name:        "get_post_adjudication_execution_status",
+		Description: "Get the current canonical snapshot and latest retry/dead-letter summary for a post-adjudication execution transaction",
+		SafetyLevel: agent.SafetyLevelSafe,
+		Capability: agent.ToolCapability{
+			Category:        "knowledge",
+			Activity:        agent.ActivityQuery,
+			ReadOnly:        true,
+			ConcurrencySafe: true,
+		},
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"transaction_receipt_id": map[string]interface{}{"type": "string", "description": "Transaction receipt identifier to inspect"},
+			},
+			"required": []string{"transaction_receipt_id"},
+		},
+		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+			transactionReceiptID, err := toolparam.RequireString(params, "transaction_receipt_id")
+			if err != nil {
+				return nil, err
+			}
+			transactionReceiptID = strings.TrimSpace(transactionReceiptID)
+			if transactionReceiptID == "" {
+				return nil, &toolparam.ErrMissingParam{Name: "transaction_receipt_id"}
+			}
+			service := postadjudicationstatus.NewServiceWithBackgroundTaskReader(
+				receiptStore,
+				postAdjudicationStatusBackgroundTaskReader{dispatcher: backgroundDispatcher},
+			)
+			result, err := service.GetTransactionStatus(ctx, transactionReceiptID)
+			if err != nil {
+				return nil, err
+			}
+			return result, nil
+		},
+	}
+}
+
+func newRetryPostAdjudicationExecutionTool(cfg *config.Config, receiptStore *receipts.Store, backgroundDispatcher adjudicateEscrowDisputeBackgroundDispatcher) *agent.Tool {
+	if receiptStore == nil {
+		return nil
+	}
+
+	return &agent.Tool{
+		Name:        "retry_post_adjudication_execution",
+		Description: "Replay a dead-lettered post-adjudication execution by creating a new background dispatch from canonical adjudication state",
+		SafetyLevel: agent.SafetyLevelDangerous,
+		Capability: agent.ToolCapability{
+			Category: "knowledge",
+			Activity: agent.ActivityWrite,
+		},
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"transaction_receipt_id": map[string]interface{}{"type": "string", "description": "Transaction receipt identifier whose dead-lettered post-adjudication execution should be replayed"},
+			},
+			"required": []string{"transaction_receipt_id"},
+		},
+		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+			if backgroundDispatcher == nil {
+				return nil, fmt.Errorf("background manager is not configured")
+			}
+			transactionReceiptID, err := toolparam.RequireString(params, "transaction_receipt_id")
+			if err != nil {
+				return nil, err
+			}
+			transactionReceiptID = strings.TrimSpace(transactionReceiptID)
+			if transactionReceiptID == "" {
+				return nil, &toolparam.ErrMissingParam{Name: "transaction_receipt_id"}
+			}
+
+			result, err := postadjudicationreplay.NewService(
+				receiptStore,
+				replayDispatcherAdapter{dispatcher: backgroundDispatcher},
+				postadjudicationreplay.ReplayPolicyFromConfig(cfg),
+			).Replay(ctx, postadjudicationreplay.Request{
+				TransactionReceiptID: transactionReceiptID,
+			})
+			if err != nil {
+				return nil, err
+			}
+
+			return newRetryPostAdjudicationExecutionReceipt(result), nil
+		},
+	}
+}
+
+type settlementExecutionRuntime interface {
+	ExecuteSettlement(context.Context, settlementexecution.DirectPaymentRequest) (settlementexecution.DirectPaymentResult, error)
+}
+
+type paymentSettlementRuntime struct {
+	service *payment.Service
+}
+
+func (p paymentSettlementRuntime) ExecuteSettlement(ctx context.Context, req settlementexecution.DirectPaymentRequest) (settlementexecution.DirectPaymentResult, error) {
+	receipt, err := p.service.Send(ctx, payment.PaymentRequest{
+		To:      req.Counterparty,
+		Amount:  req.Amount,
+		Purpose: "final settlement",
+	})
+	if err != nil {
+		return settlementexecution.DirectPaymentResult{}, err
+	}
+	return settlementexecution.DirectPaymentResult{Reference: receipt.TxHash}, nil
+}
+
+type partialSettlementExecutionRuntime interface {
+	ExecuteSettlement(context.Context, partialsettlementexecution.DirectPaymentRequest) (partialsettlementexecution.DirectPaymentResult, error)
+}
+
+type paymentPartialSettlementRuntime struct {
+	service *payment.Service
+}
+
+func (p paymentPartialSettlementRuntime) ExecuteSettlement(ctx context.Context, req partialsettlementexecution.DirectPaymentRequest) (partialsettlementexecution.DirectPaymentResult, error) {
+	receipt, err := p.service.Send(ctx, payment.PaymentRequest{
+		To:      req.Counterparty,
+		Amount:  req.Amount,
+		Purpose: "partial settlement",
+	})
+	if err != nil {
+		return partialsettlementexecution.DirectPaymentResult{}, err
+	}
+	return partialsettlementexecution.DirectPaymentResult{Reference: receipt.TxHash}, nil
+}
+
+type settlementPartialSettlementRuntime struct {
+	runtime settlementExecutionRuntime
+}
+
+func (s settlementPartialSettlementRuntime) ExecuteSettlement(ctx context.Context, req partialsettlementexecution.DirectPaymentRequest) (partialsettlementexecution.DirectPaymentResult, error) {
+	if s.runtime == nil {
+		return partialsettlementexecution.DirectPaymentResult{}, fmt.Errorf("direct payment runtime is required")
+	}
+
+	result, err := s.runtime.ExecuteSettlement(ctx, settlementexecution.DirectPaymentRequest{
+		TransactionReceiptID: req.TransactionReceiptID,
+		SubmissionReceiptID:  req.SubmissionReceiptID,
+		Counterparty:         req.Counterparty,
+		Amount:               req.Amount,
+	})
+	if err != nil {
+		return partialsettlementexecution.DirectPaymentResult{}, err
+	}
+
+	return partialsettlementexecution.DirectPaymentResult{Reference: result.Reference}, nil
+}
+
+type escrowDisputeHoldExecutionRuntime interface {
+	Hold(context.Context, disputehold.EscrowHoldRequest) (disputehold.HoldResult, error)
+}
+
+type engineEscrowDisputeHoldRuntime struct {
+	engine *escrow.Engine
+}
+
+func (e engineEscrowDisputeHoldRuntime) Hold(_ context.Context, req disputehold.EscrowHoldRequest) (disputehold.HoldResult, error) {
+	if e.engine == nil {
+		return disputehold.HoldResult{}, fmt.Errorf("escrow engine is required")
+	}
+	if strings.TrimSpace(req.EscrowReference) == "" {
+		return disputehold.HoldResult{}, fmt.Errorf("escrow reference is required")
+	}
+	return disputehold.HoldResult{Reference: req.EscrowReference}, nil
+}
+
+type escrowReleaseExecutionRuntime interface {
+	Release(context.Context, escrowrelease.ReleaseRequest) (escrowrelease.ReleaseResult, error)
+}
+
+type engineEscrowReleaseRuntime struct {
+	engine *escrow.Engine
+}
+
+func (e engineEscrowReleaseRuntime) Release(ctx context.Context, req escrowrelease.ReleaseRequest) (escrowrelease.ReleaseResult, error) {
+	if e.engine == nil {
+		return escrowrelease.ReleaseResult{}, fmt.Errorf("escrow engine is required")
+	}
+	entry, err := e.engine.Release(ctx, req.EscrowReference)
+	if err != nil {
+		return escrowrelease.ReleaseResult{}, err
+	}
+	if entry == nil {
+		return escrowrelease.ReleaseResult{}, fmt.Errorf("escrow release returned nil entry")
+	}
+	return escrowrelease.ReleaseResult{Reference: entry.ID}, nil
+}
+
+type escrowRefundExecutionRuntime interface {
+	Refund(context.Context, escrowrefund.RefundRequest) (escrowrefund.RefundResult, error)
+}
+
+type engineEscrowRefundRuntime struct {
+	engine *escrow.Engine
+}
+
+func (e engineEscrowRefundRuntime) Refund(ctx context.Context, req escrowrefund.RefundRequest) (escrowrefund.RefundResult, error) {
+	if e.engine == nil {
+		return escrowrefund.RefundResult{}, fmt.Errorf("escrow engine is required")
+	}
+	entry, err := e.engine.Refund(ctx, req.EscrowReference)
+	if err != nil {
+		return escrowrefund.RefundResult{}, err
+	}
+	if entry == nil {
+		return escrowrefund.RefundResult{}, fmt.Errorf("escrow refund returned nil entry")
+	}
+	return escrowrefund.RefundResult{Reference: entry.ID}, nil
+}
+
+func newExecuteSettlementTool(receiptStore *receipts.Store, runtime settlementExecutionRuntime) *agent.Tool {
+	if runtime == nil {
+		return nil
+	}
+
+	return &agent.Tool{
+		Name:        "execute_settlement",
+		Description: "Execute direct final settlement for an approved transaction receipt and return canonical settlement state",
+		SafetyLevel: agent.SafetyLevelDangerous,
+		Capability: agent.ToolCapability{
+			Category: "knowledge",
+			Activity: agent.ActivityWrite,
+		},
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"transaction_receipt_id": map[string]interface{}{"type": "string", "description": "Approved transaction receipt identifier to settle"},
+			},
+			"required": []string{"transaction_receipt_id"},
+		},
+		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+			if receiptStore == nil {
+				return nil, fmt.Errorf("receipts store dependency is not configured")
+			}
+
+			transactionReceiptID, err := toolparam.RequireString(params, "transaction_receipt_id")
+			if err != nil {
+				return nil, err
+			}
+			transactionReceiptID = strings.TrimSpace(transactionReceiptID)
+			if transactionReceiptID == "" {
+				return nil, &toolparam.ErrMissingParam{Name: "transaction_receipt_id"}
+			}
+
+			result, err := settlementexecution.NewService(receiptStore, runtime).Execute(ctx, settlementexecution.ExecuteRequest{
+				TransactionReceiptID: transactionReceiptID,
+			})
+			if err != nil {
+				return nil, err
+			}
+
+			return newExecuteSettlementReceipt(result), nil
+		},
+	}
+}
+
+func newExecutePartialSettlementTool(receiptStore *receipts.Store, runtime partialSettlementExecutionRuntime) *agent.Tool {
+	if runtime == nil {
+		return nil
+	}
+
+	return &agent.Tool{
+		Name:        "execute_partial_settlement",
+		Description: "Execute direct partial settlement for an approved transaction receipt and return canonical partial settlement state",
+		SafetyLevel: agent.SafetyLevelDangerous,
+		Capability: agent.ToolCapability{
+			Category: "knowledge",
+			Activity: agent.ActivityWrite,
+		},
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"transaction_receipt_id": map[string]interface{}{"type": "string", "description": "Approved transaction receipt identifier to partially settle"},
+			},
+			"required": []string{"transaction_receipt_id"},
+		},
+		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+			if receiptStore == nil {
+				return nil, fmt.Errorf("receipts store dependency is not configured")
+			}
+
+			transactionReceiptID, err := toolparam.RequireString(params, "transaction_receipt_id")
+			if err != nil {
+				return nil, err
+			}
+			transactionReceiptID = strings.TrimSpace(transactionReceiptID)
+			if transactionReceiptID == "" {
+				return nil, &toolparam.ErrMissingParam{Name: "transaction_receipt_id"}
+			}
+
+			result, err := partialsettlementexecution.NewService(receiptStore, runtime).Execute(ctx, partialsettlementexecution.ExecuteRequest{
+				TransactionReceiptID: transactionReceiptID,
+			})
+			if err != nil {
+				return nil, err
+			}
+
+			return newExecutePartialSettlementReceipt(result), nil
+		},
+	}
+}
+
+func newHoldEscrowForDisputeTool(receiptStore *receipts.Store, runtime escrowDisputeHoldExecutionRuntime) *agent.Tool {
+	if runtime == nil {
+		return nil
+	}
+
+	return &agent.Tool{
+		Name:        "hold_escrow_for_dispute",
+		Description: "Record dispute hold evidence for a funded dispute-ready escrow and return canonical hold state",
+		SafetyLevel: agent.SafetyLevelDangerous,
+		Capability: agent.ToolCapability{
+			Category: "knowledge",
+			Activity: agent.ActivityWrite,
+		},
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"transaction_receipt_id": map[string]interface{}{"type": "string", "description": "Funded dispute-ready transaction receipt identifier to hold"},
+			},
+			"required": []string{"transaction_receipt_id"},
+		},
+		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+			if receiptStore == nil {
+				return nil, fmt.Errorf("receipts store dependency is not configured")
+			}
+
+			transactionReceiptID, err := toolparam.RequireString(params, "transaction_receipt_id")
+			if err != nil {
+				return nil, err
+			}
+			transactionReceiptID = strings.TrimSpace(transactionReceiptID)
+			if transactionReceiptID == "" {
+				return nil, &toolparam.ErrMissingParam{Name: "transaction_receipt_id"}
+			}
+
+			result, err := disputehold.NewService(receiptStore, runtime).Execute(ctx, disputehold.ExecuteRequest{
+				TransactionReceiptID: transactionReceiptID,
+			})
+			if err != nil {
+				return nil, err
+			}
+
+			return newHoldEscrowForDisputeReceipt(result), nil
+		},
+	}
+}
+
+func newReleaseEscrowSettlementTool(receiptStore *receipts.Store, runtime escrowReleaseExecutionRuntime) *agent.Tool {
+	if runtime == nil {
+		return nil
+	}
+
+	return &agent.Tool{
+		Name:        "release_escrow_settlement",
+		Description: "Release a funded escrow for an approved transaction receipt and return canonical settlement state",
+		SafetyLevel: agent.SafetyLevelDangerous,
+		Capability: agent.ToolCapability{
+			Category: "knowledge",
+			Activity: agent.ActivityWrite,
+		},
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"transaction_receipt_id": map[string]interface{}{"type": "string", "description": "Funded transaction receipt identifier to release"},
+			},
+			"required": []string{"transaction_receipt_id"},
+		},
+		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+			if receiptStore == nil {
+				return nil, fmt.Errorf("receipts store dependency is not configured")
+			}
+
+			transactionReceiptID, err := toolparam.RequireString(params, "transaction_receipt_id")
+			if err != nil {
+				return nil, err
+			}
+			transactionReceiptID = strings.TrimSpace(transactionReceiptID)
+			if transactionReceiptID == "" {
+				return nil, &toolparam.ErrMissingParam{Name: "transaction_receipt_id"}
+			}
+
+			result, err := escrowrelease.NewService(receiptStore, runtime).Execute(ctx, escrowrelease.ExecuteRequest{
+				TransactionReceiptID: transactionReceiptID,
+			})
+			if err != nil {
+				return nil, err
+			}
+
+			return newReleaseEscrowSettlementReceipt(result), nil
+		},
+	}
+}
+
+func newRefundEscrowSettlementTool(receiptStore *receipts.Store, runtime escrowRefundExecutionRuntime) *agent.Tool {
+	if runtime == nil {
+		return nil
+	}
+
+	return &agent.Tool{
+		Name:        "refund_escrow_settlement",
+		Description: "Refund a funded escrow from the settlement review path and return canonical refund state",
+		SafetyLevel: agent.SafetyLevelDangerous,
+		Capability: agent.ToolCapability{
+			Category: "knowledge",
+			Activity: agent.ActivityWrite,
+		},
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"transaction_receipt_id": map[string]interface{}{"type": "string", "description": "Funded review-path transaction receipt identifier to refund"},
+			},
+			"required": []string{"transaction_receipt_id"},
+		},
+		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+			if receiptStore == nil {
+				return nil, fmt.Errorf("receipts store dependency is not configured")
+			}
+
+			transactionReceiptID, err := toolparam.RequireString(params, "transaction_receipt_id")
+			if err != nil {
+				return nil, err
+			}
+			transactionReceiptID = strings.TrimSpace(transactionReceiptID)
+			if transactionReceiptID == "" {
+				return nil, &toolparam.ErrMissingParam{Name: "transaction_receipt_id"}
+			}
+
+			result, err := escrowrefund.NewService(receiptStore, runtime).Execute(ctx, escrowrefund.ExecuteRequest{
+				TransactionReceiptID: transactionReceiptID,
+			})
+			if err != nil {
+				return nil, err
+			}
+
+			return newRefundEscrowSettlementReceipt(result), nil
+		},
+	}
+}
+
+func parseDisputeReadyReceiptInput(params map[string]interface{}) (receipts.CreateSubmissionInput, error) {
+	transactionID, err := toolparam.RequireString(params, "transaction_id")
+	if err != nil {
+		return receipts.CreateSubmissionInput{}, err
+	}
+	artifactLabel, err := toolparam.RequireString(params, "artifact_label")
+	if err != nil {
+		return receipts.CreateSubmissionInput{}, err
+	}
+	payloadHash, err := toolparam.RequireString(params, "payload_hash")
+	if err != nil {
+		return receipts.CreateSubmissionInput{}, err
+	}
+	sourceLineageDigest, err := toolparam.RequireString(params, "source_lineage_digest")
+	if err != nil {
+		return receipts.CreateSubmissionInput{}, err
+	}
+
+	return receipts.CreateSubmissionInput{
+		TransactionID:       transactionID,
+		ArtifactLabel:       artifactLabel,
+		PayloadHash:         payloadHash,
+		SourceLineageDigest: sourceLineageDigest,
+	}, nil
+}
+
+func createDisputeReadyReceipt(ctx context.Context, receiptStore *receipts.Store, input receipts.CreateSubmissionInput) (interface{}, error) {
+	submission, transaction, err := receiptStore.CreateSubmissionReceipt(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("create dispute-ready receipt: %w", err)
+	}
+
+	return map[string]interface{}{
+		"submission_receipt_id":         submission.SubmissionReceiptID,
+		"transaction_receipt_id":        transaction.TransactionReceiptID,
+		"current_submission_receipt_id": transaction.CurrentSubmissionReceiptID,
+	}, nil
+}
+
+type upfrontPaymentApprovalReceipt struct {
+	TransactionReceiptID         string  `json:"transaction_receipt_id"`
+	SubmissionReceiptID          string  `json:"submission_receipt_id"`
+	Amount                       string  `json:"amount"`
+	TrustScore                   float64 `json:"trust_score"`
+	UserMaxPrepay                string  `json:"user_max_prepay"`
+	RemainingBudget              string  `json:"remaining_budget"`
+	Decision                     string  `json:"decision"`
+	Reason                       string  `json:"reason"`
+	PolicyCode                   string  `json:"policy_code,omitempty"`
+	SuggestedMode                string  `json:"suggested_mode"`
+	AmountClass                  string  `json:"amount_class,omitempty"`
+	RiskClass                    string  `json:"risk_class,omitempty"`
+	FailureDetail                string  `json:"failure_detail,omitempty"`
+	CurrentPaymentApprovalStatus string  `json:"current_payment_approval_status"`
+	CanonicalDecision            string  `json:"canonical_decision,omitempty"`
+	CanonicalSettlementHint      string  `json:"canonical_settlement_hint,omitempty"`
+	EscrowExecutionStatus        string  `json:"escrow_execution_status,omitempty"`
+}
+
+type executeEscrowRecommendationReceipt struct {
+	TransactionReceiptID  string `json:"transaction_receipt_id"`
+	SubmissionReceiptID   string `json:"submission_receipt_id"`
+	EscrowReference       string `json:"escrow_reference,omitempty"`
+	EscrowExecutionStatus string `json:"escrow_execution_status"`
+}
+
+type applySettlementProgressionReceipt struct {
+	TransactionReceiptID            string `json:"transaction_receipt_id"`
+	SettlementProgressionStatus     string `json:"settlement_progression_status"`
+	SettlementProgressionReasonCode string `json:"settlement_progression_reason_code,omitempty"`
+	SettlementProgressionReason     string `json:"settlement_progression_reason,omitempty"`
+	PartialHint                     string `json:"partial_hint,omitempty"`
+	DisputeLifecycleStatus          string `json:"dispute_lifecycle_status,omitempty"`
+}
+
+type adjudicateEscrowDisputeReceipt struct {
+	TransactionReceiptID        string                                            `json:"transaction_receipt_id"`
+	SubmissionReceiptID         string                                            `json:"submission_receipt_id,omitempty"`
+	SettlementProgressionStatus string                                            `json:"settlement_progression_status"`
+	DisputeLifecycleStatus      string                                            `json:"dispute_lifecycle_status,omitempty"`
+	EscrowReference             string                                            `json:"escrow_reference,omitempty"`
+	Outcome                     string                                            `json:"outcome,omitempty"`
+	Execution                   *adjudicateEscrowDisputeExecutionReceipt          `json:"execution,omitempty"`
+	BackgroundDispatchReceipt   *adjudicateEscrowDisputeBackgroundDispatchReceipt `json:"background_dispatch_receipt,omitempty"`
+}
+
+type adjudicateEscrowDisputeExecutionReceipt struct {
+	Branch                      string `json:"branch"`
+	Status                      string `json:"status"`
+	SettlementProgressionStatus string `json:"settlement_progression_status,omitempty"`
+	ResolvedAmount              string `json:"resolved_amount,omitempty"`
+	RuntimeReference            string `json:"runtime_reference,omitempty"`
+}
+
+type adjudicateEscrowDisputeBackgroundDispatchReceipt struct {
+	Status               string `json:"status"`
+	TransactionReceiptID string `json:"transaction_receipt_id"`
+	SubmissionReceiptID  string `json:"submission_receipt_id,omitempty"`
+	EscrowReference      string `json:"escrow_reference,omitempty"`
+	Outcome              string `json:"outcome,omitempty"`
+	DispatchReference    string `json:"dispatch_reference,omitempty"`
+}
+
+type retryPostAdjudicationExecutionReceipt struct {
+	TransactionReceiptID string                                `json:"transaction_receipt_id"`
+	SubmissionReceiptID  string                                `json:"submission_receipt_id,omitempty"`
+	EscrowReference      string                                `json:"escrow_reference,omitempty"`
+	Outcome              string                                `json:"outcome,omitempty"`
+	Dispatch             *retryPostAdjudicationDispatchReceipt `json:"dispatch,omitempty"`
+}
+
+type retryPostAdjudicationDispatchReceipt struct {
+	Status            string `json:"status"`
+	DispatchReference string `json:"dispatch_reference,omitempty"`
+}
+
+type executeSettlementReceipt struct {
+	TransactionReceiptID        string `json:"transaction_receipt_id"`
+	SubmissionReceiptID         string `json:"submission_receipt_id,omitempty"`
+	SettlementProgressionStatus string `json:"settlement_progression_status"`
+	ResolvedAmount              string `json:"resolved_amount,omitempty"`
+	RuntimeReference            string `json:"runtime_reference,omitempty"`
+}
+
+type executePartialSettlementReceipt struct {
+	TransactionReceiptID        string `json:"transaction_receipt_id"`
+	SubmissionReceiptID         string `json:"submission_receipt_id,omitempty"`
+	SettlementProgressionStatus string `json:"settlement_progression_status"`
+	ExecutedAmount              string `json:"executed_amount,omitempty"`
+	RemainingAmount             string `json:"remaining_amount,omitempty"`
+	RuntimeReference            string `json:"runtime_reference,omitempty"`
+}
+
+type releaseEscrowSettlementReceipt struct {
+	TransactionReceiptID        string `json:"transaction_receipt_id"`
+	SubmissionReceiptID         string `json:"submission_receipt_id,omitempty"`
+	SettlementProgressionStatus string `json:"settlement_progression_status"`
+	ResolvedAmount              string `json:"resolved_amount,omitempty"`
+	RuntimeReference            string `json:"runtime_reference,omitempty"`
+}
+
+type refundEscrowSettlementReceipt struct {
+	TransactionReceiptID        string `json:"transaction_receipt_id"`
+	SubmissionReceiptID         string `json:"submission_receipt_id,omitempty"`
+	SettlementProgressionStatus string `json:"settlement_progression_status"`
+	ResolvedAmount              string `json:"resolved_amount,omitempty"`
+	RuntimeReference            string `json:"runtime_reference,omitempty"`
+}
+
+type holdEscrowForDisputeReceipt struct {
+	TransactionReceiptID        string `json:"transaction_receipt_id"`
+	SubmissionReceiptID         string `json:"submission_receipt_id,omitempty"`
+	SettlementProgressionStatus string `json:"settlement_progression_status"`
+	DisputeLifecycleStatus      string `json:"dispute_lifecycle_status,omitempty"`
+	EscrowReference             string `json:"escrow_reference,omitempty"`
+	RuntimeReference            string `json:"runtime_reference,omitempty"`
+}
+
+func newUpfrontPaymentApprovalReceipt(
+	transactionReceiptID string,
+	submissionReceiptID string,
+	amount string,
+	trustScore float64,
+	userMaxPrepay string,
+	remainingBudget string,
+	outcome paymentapproval.Outcome,
+	updatedTx receipts.TransactionReceipt,
+) upfrontPaymentApprovalReceipt {
+	return upfrontPaymentApprovalReceipt{
+		TransactionReceiptID:         transactionReceiptID,
+		SubmissionReceiptID:          submissionReceiptID,
+		Amount:                       amount,
+		TrustScore:                   trustScore,
+		UserMaxPrepay:                userMaxPrepay,
+		RemainingBudget:              remainingBudget,
+		Decision:                     string(outcome.Decision),
+		Reason:                       outcome.Reason,
+		PolicyCode:                   outcome.PolicyCode,
+		SuggestedMode:                string(outcome.SuggestedMode),
+		AmountClass:                  string(outcome.AmountClass),
+		RiskClass:                    string(outcome.RiskClass),
+		FailureDetail:                outcome.FailureDetail,
+		CurrentPaymentApprovalStatus: string(updatedTx.CurrentPaymentApprovalStatus),
+		CanonicalDecision:            updatedTx.CanonicalDecision,
+		CanonicalSettlementHint:      updatedTx.CanonicalSettlementHint,
+		EscrowExecutionStatus:        string(updatedTx.EscrowExecutionStatus),
+	}
+}
+
+func newApplySettlementProgressionReceipt(result settlementprogression.ApplyReleaseOutcomeResult) applySettlementProgressionReceipt {
+	return applySettlementProgressionReceipt{
+		TransactionReceiptID:            result.Transaction.TransactionReceiptID,
+		SettlementProgressionStatus:     string(result.Transaction.SettlementProgressionStatus),
+		SettlementProgressionReasonCode: string(result.Transaction.SettlementProgressionReasonCode),
+		SettlementProgressionReason:     result.Transaction.SettlementProgressionReason,
+		PartialHint:                     result.Transaction.PartialSettlementHint,
+		DisputeLifecycleStatus:          string(result.Transaction.DisputeLifecycleStatus),
+	}
+}
+
+func newAdjudicateEscrowDisputeReceipt(result escrowadjudication.Result) adjudicateEscrowDisputeReceipt {
+	return adjudicateEscrowDisputeReceipt{
+		TransactionReceiptID:        result.TransactionReceiptID,
+		SubmissionReceiptID:         result.SubmissionReceiptID,
+		SettlementProgressionStatus: string(result.SettlementProgressionStatus),
+		DisputeLifecycleStatus:      string(result.DisputeLifecycleStatus),
+		EscrowReference:             result.EscrowReference,
+		Outcome:                     string(result.Outcome),
+	}
+}
+
+func newAdjudicateEscrowDisputeBackgroundDispatchReceipt(result escrowadjudication.Result, dispatchReference string) *adjudicateEscrowDisputeBackgroundDispatchReceipt {
+	return &adjudicateEscrowDisputeBackgroundDispatchReceipt{
+		Status:               "queued",
+		TransactionReceiptID: result.TransactionReceiptID,
+		SubmissionReceiptID:  result.SubmissionReceiptID,
+		EscrowReference:      result.EscrowReference,
+		Outcome:              string(result.Outcome),
+		DispatchReference:    dispatchReference,
+	}
+}
+
+func newRetryPostAdjudicationExecutionReceipt(result postadjudicationreplay.Result) retryPostAdjudicationExecutionReceipt {
+	receipt := retryPostAdjudicationExecutionReceipt{
+		TransactionReceiptID: result.CanonicalAdjudication.TransactionReceipt.TransactionReceiptID,
+		SubmissionReceiptID:  result.CanonicalAdjudication.SubmissionReceipt.SubmissionReceiptID,
+		EscrowReference:      result.CanonicalAdjudication.TransactionReceipt.EscrowReference,
+		Outcome:              string(result.CanonicalAdjudication.TransactionReceipt.EscrowAdjudication),
+	}
+	if result.BackgroundDispatchReceipt != nil {
+		receipt.Dispatch = &retryPostAdjudicationDispatchReceipt{
+			Status:            result.BackgroundDispatchReceipt.Status,
+			DispatchReference: result.BackgroundDispatchReceipt.DispatchReference,
+		}
+	}
+	return receipt
+}
+
+func newAdjudicationNestedExecutionReceiptFromRelease(result escrowrelease.Result) *adjudicateEscrowDisputeExecutionReceipt {
+	return &adjudicateEscrowDisputeExecutionReceipt{
+		Branch:                      "release",
+		Status:                      string(result.Status),
+		SettlementProgressionStatus: string(result.SettlementProgressionStatus),
+		ResolvedAmount:              result.ResolvedAmount,
+		RuntimeReference:            result.RuntimeReference,
+	}
+}
+
+func newAdjudicationNestedExecutionReceiptFromRefund(result escrowrefund.Result) *adjudicateEscrowDisputeExecutionReceipt {
+	return &adjudicateEscrowDisputeExecutionReceipt{
+		Branch:                      "refund",
+		Status:                      string(result.Status),
+		SettlementProgressionStatus: string(result.SettlementProgressionStatus),
+		ResolvedAmount:              result.ResolvedAmount,
+		RuntimeReference:            result.RuntimeReference,
+	}
+}
+
+func newExecuteSettlementReceipt(result settlementexecution.Result) executeSettlementReceipt {
+	return executeSettlementReceipt{
+		TransactionReceiptID:        result.TransactionReceiptID,
+		SubmissionReceiptID:         result.SubmissionReceiptID,
+		SettlementProgressionStatus: string(result.SettlementProgressionStatus),
+		ResolvedAmount:              result.ResolvedAmount,
+		RuntimeReference:            result.RuntimeReference,
+	}
+}
+
+func newExecutePartialSettlementReceipt(result partialsettlementexecution.Result) executePartialSettlementReceipt {
+	return executePartialSettlementReceipt{
+		TransactionReceiptID:        result.TransactionReceiptID,
+		SubmissionReceiptID:         result.SubmissionReceiptID,
+		SettlementProgressionStatus: string(result.SettlementProgressionStatus),
+		ExecutedAmount:              result.ExecutedAmount,
+		RemainingAmount:             result.RemainingAmount,
+		RuntimeReference:            result.RuntimeReference,
+	}
+}
+
+func newReleaseEscrowSettlementReceipt(result escrowrelease.Result) releaseEscrowSettlementReceipt {
+	return releaseEscrowSettlementReceipt{
+		TransactionReceiptID:        result.TransactionReceiptID,
+		SubmissionReceiptID:         result.SubmissionReceiptID,
+		SettlementProgressionStatus: string(result.SettlementProgressionStatus),
+		ResolvedAmount:              result.ResolvedAmount,
+		RuntimeReference:            result.RuntimeReference,
+	}
+}
+
+func newRefundEscrowSettlementReceipt(result escrowrefund.Result) refundEscrowSettlementReceipt {
+	return refundEscrowSettlementReceipt{
+		TransactionReceiptID:        result.TransactionReceiptID,
+		SubmissionReceiptID:         result.SubmissionReceiptID,
+		SettlementProgressionStatus: string(result.SettlementProgressionStatus),
+		ResolvedAmount:              result.ResolvedAmount,
+		RuntimeReference:            result.RuntimeReference,
+	}
+}
+
+func newHoldEscrowForDisputeReceipt(result disputehold.Result) holdEscrowForDisputeReceipt {
+	return holdEscrowForDisputeReceipt{
+		TransactionReceiptID:        result.TransactionReceiptID,
+		SubmissionReceiptID:         result.SubmissionReceiptID,
+		SettlementProgressionStatus: string(result.SettlementProgressionStatus),
+		DisputeLifecycleStatus:      string(result.DisputeLifecycleStatus),
+		EscrowReference:             result.EscrowReference,
+		RuntimeReference:            result.RuntimeReference,
 	}
 }

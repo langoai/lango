@@ -1,0 +1,311 @@
+package paymentgate
+
+import (
+	"context"
+	"errors"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/langoai/lango/internal/paymentapproval"
+	"github.com/langoai/lango/internal/receipts"
+)
+
+func TestService_EvaluateDirectPayment_AllowsApprovedPrepay(t *testing.T) {
+	store := receipts.NewStore()
+	ctx := context.Background()
+
+	submission, tx, err := store.CreateSubmissionReceipt(ctx, receipts.CreateSubmissionInput{
+		TransactionID:       "tx-allowed",
+		ArtifactLabel:       "artifact/allowed",
+		PayloadHash:         "hash-allowed",
+		SourceLineageDigest: "lineage-allowed",
+	})
+	require.NoError(t, err)
+
+	_, err = store.ApplyUpfrontPaymentApproval(ctx, tx.TransactionReceiptID, submission.SubmissionReceiptID, paymentapproval.Outcome{
+		Decision:      paymentapproval.DecisionApprove,
+		Reason:        "Upfront payment approved.",
+		SuggestedMode: paymentapproval.ModePrepay,
+	})
+	require.NoError(t, err)
+
+	service := NewService(store)
+	result, err := service.EvaluateDirectPayment(ctx, Request{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		SubmissionReceiptID:  submission.SubmissionReceiptID,
+		ToolName:             "payment_send",
+		Context:              map[string]interface{}{"source": "test"},
+	})
+	require.NoError(t, err)
+	require.Equal(t, Allow, result.Decision)
+	require.Empty(t, result.Reason)
+}
+
+func TestService_EvaluateDirectPayment_DeniesMissingTransactionReceiptID(t *testing.T) {
+	service := NewService(receipts.NewStore())
+
+	result, err := service.EvaluateDirectPayment(context.Background(), Request{})
+	require.NoError(t, err)
+	require.Equal(t, Deny, result.Decision)
+	require.Equal(t, ReasonMissingReceipt, result.Reason)
+}
+
+func TestService_EvaluateDirectPayment_DeniesMissingTransactionInStore(t *testing.T) {
+	service := NewService(receipts.NewStore())
+
+	result, err := service.EvaluateDirectPayment(context.Background(), Request{
+		TransactionReceiptID: "missing",
+		SubmissionReceiptID:  "submission-missing",
+	})
+	require.NoError(t, err)
+	require.Equal(t, Deny, result.Decision)
+	require.Equal(t, ReasonMissingReceipt, result.Reason)
+}
+
+func TestService_EvaluateDirectPayment_UsesCurrentSubmissionWhenSubmissionReceiptIDIsOmitted(t *testing.T) {
+	store := receipts.NewStore()
+	ctx := context.Background()
+
+	submission, tx, err := store.CreateSubmissionReceipt(ctx, receipts.CreateSubmissionInput{
+		TransactionID:       "tx-missing-submission",
+		ArtifactLabel:       "artifact/missing-submission",
+		PayloadHash:         "hash-missing-submission",
+		SourceLineageDigest: "lineage-missing-submission",
+	})
+	require.NoError(t, err)
+
+	_, err = store.ApplyUpfrontPaymentApproval(ctx, tx.TransactionReceiptID, submission.SubmissionReceiptID, paymentapproval.Outcome{
+		Decision:      paymentapproval.DecisionApprove,
+		Reason:        "Upfront payment approved.",
+		SuggestedMode: paymentapproval.ModePrepay,
+	})
+	require.NoError(t, err)
+
+	service := NewService(store)
+	result, err := service.EvaluateDirectPayment(ctx, Request{
+		TransactionReceiptID: tx.TransactionReceiptID,
+	})
+	require.NoError(t, err)
+	require.Equal(t, Allow, result.Decision)
+	require.Equal(t, submission.SubmissionReceiptID, result.SubmissionReceiptID)
+}
+
+func TestService_EvaluateDirectPayment_DeniesUnknownOrMismatchedSubmissionReceiptID(t *testing.T) {
+	store := receipts.NewStore()
+	ctx := context.Background()
+
+	firstSubmission, firstTx, err := store.CreateSubmissionReceipt(ctx, receipts.CreateSubmissionInput{
+		TransactionID:       "tx-valid",
+		ArtifactLabel:       "artifact-valid",
+		PayloadHash:         "hash-valid",
+		SourceLineageDigest: "lineage-valid",
+	})
+	require.NoError(t, err)
+	_, err = store.ApplyUpfrontPaymentApproval(ctx, firstTx.TransactionReceiptID, firstSubmission.SubmissionReceiptID, paymentapproval.Outcome{
+		Decision:      paymentapproval.DecisionApprove,
+		Reason:        "Upfront payment approved.",
+		SuggestedMode: paymentapproval.ModePrepay,
+	})
+	require.NoError(t, err)
+
+	otherSubmission, otherTx, err := store.CreateSubmissionReceipt(ctx, receipts.CreateSubmissionInput{
+		TransactionID:       "tx-other",
+		ArtifactLabel:       "artifact-other",
+		PayloadHash:         "hash-other",
+		SourceLineageDigest: "lineage-other",
+	})
+	require.NoError(t, err)
+	_, err = store.ApplyUpfrontPaymentApproval(ctx, otherTx.TransactionReceiptID, otherSubmission.SubmissionReceiptID, paymentapproval.Outcome{
+		Decision:      paymentapproval.DecisionApprove,
+		Reason:        "Upfront payment approved.",
+		SuggestedMode: paymentapproval.ModePrepay,
+	})
+	require.NoError(t, err)
+
+	service := NewService(store)
+
+	cases := []struct {
+		name string
+		req  Request
+	}{
+		{
+			name: "unknown submission",
+			req: Request{
+				TransactionReceiptID: firstTx.TransactionReceiptID,
+				SubmissionReceiptID:  "missing-submission",
+			},
+		},
+		{
+			name: "mismatched submission",
+			req: Request{
+				TransactionReceiptID: firstTx.TransactionReceiptID,
+				SubmissionReceiptID:  otherSubmission.SubmissionReceiptID,
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			result, err := service.EvaluateDirectPayment(ctx, tc.req)
+			require.NoError(t, err)
+			require.Equal(t, Deny, result.Decision)
+			require.Equal(t, ReasonMissingReceipt, result.Reason)
+		})
+	}
+}
+
+func TestService_EvaluateDirectPayment_DeniesStaleNonCurrentSubmissionReceiptID(t *testing.T) {
+	store := receipts.NewStore()
+	ctx := context.Background()
+
+	firstSubmission, tx, err := store.CreateSubmissionReceipt(ctx, receipts.CreateSubmissionInput{
+		TransactionID:       "tx-stale",
+		ArtifactLabel:       "artifact-stale-1",
+		PayloadHash:         "hash-stale-1",
+		SourceLineageDigest: "lineage-stale-1",
+	})
+	require.NoError(t, err)
+
+	secondSubmission, tx, err := store.CreateSubmissionReceipt(ctx, receipts.CreateSubmissionInput{
+		TransactionID:       "tx-stale",
+		ArtifactLabel:       "artifact-stale-2",
+		PayloadHash:         "hash-stale-2",
+		SourceLineageDigest: "lineage-stale-2",
+	})
+	require.NoError(t, err)
+	require.Equal(t, secondSubmission.SubmissionReceiptID, tx.CurrentSubmissionReceiptID)
+
+	_, err = store.ApplyUpfrontPaymentApproval(ctx, tx.TransactionReceiptID, secondSubmission.SubmissionReceiptID, paymentapproval.Outcome{
+		Decision:      paymentapproval.DecisionApprove,
+		Reason:        "Upfront payment approved.",
+		SuggestedMode: paymentapproval.ModePrepay,
+	})
+	require.NoError(t, err)
+
+	service := NewService(store)
+	result, err := service.EvaluateDirectPayment(ctx, Request{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		SubmissionReceiptID:  firstSubmission.SubmissionReceiptID,
+	})
+	require.NoError(t, err)
+	require.Equal(t, Deny, result.Decision)
+	require.Equal(t, ReasonStaleState, result.Reason)
+}
+
+func TestService_EvaluateDirectPayment_DeniesWhenTransactionHasNoCurrentSubmission(t *testing.T) {
+	service := NewService(&fakeReceiptStore{
+		transaction: receipts.TransactionReceipt{
+			TransactionReceiptID:         "tx-no-current",
+			TransactionID:                "tx-no-current",
+			CanonicalApprovalStatus:      receipts.ApprovalPending,
+			CanonicalSettlementStatus:    receipts.SettlementPending,
+			CurrentPaymentApprovalStatus: receipts.PaymentApprovalApproved,
+			CanonicalSettlementHint:      string(paymentapproval.ModePrepay),
+		},
+	})
+
+	result, err := service.EvaluateDirectPayment(context.Background(), Request{
+		TransactionReceiptID: "tx-no-current",
+	})
+	require.NoError(t, err)
+	require.Equal(t, Deny, result.Decision)
+	require.Equal(t, ReasonMissingReceipt, result.Reason)
+}
+
+func TestService_EvaluateDirectPayment_DeniesWhenApprovalIsNotApproved(t *testing.T) {
+	store := receipts.NewStore()
+	ctx := context.Background()
+
+	submission, tx, err := store.CreateSubmissionReceipt(ctx, receipts.CreateSubmissionInput{
+		TransactionID:       "tx-not-approved",
+		ArtifactLabel:       "artifact/not-approved",
+		PayloadHash:         "hash-not-approved",
+		SourceLineageDigest: "lineage-not-approved",
+	})
+	require.NoError(t, err)
+
+	_, err = store.ApplyUpfrontPaymentApproval(ctx, tx.TransactionReceiptID, submission.SubmissionReceiptID, paymentapproval.Outcome{
+		Decision:      paymentapproval.DecisionReject,
+		Reason:        "Amount exceeds max prepay policy.",
+		SuggestedMode: paymentapproval.ModeReject,
+	})
+	require.NoError(t, err)
+
+	service := NewService(store)
+	result, err := service.EvaluateDirectPayment(ctx, Request{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		SubmissionReceiptID:  submission.SubmissionReceiptID,
+	})
+	require.NoError(t, err)
+	require.Equal(t, Deny, result.Decision)
+	require.Equal(t, ReasonApprovalNotApproved, result.Reason)
+}
+
+func TestService_EvaluateDirectPayment_DeniesWhenExecutionModeIsNotPrepay(t *testing.T) {
+	store := receipts.NewStore()
+	ctx := context.Background()
+
+	submission, tx, err := store.CreateSubmissionReceipt(ctx, receipts.CreateSubmissionInput{
+		TransactionID:       "tx-mode-mismatch",
+		ArtifactLabel:       "artifact/mode-mismatch",
+		PayloadHash:         "hash-mode-mismatch",
+		SourceLineageDigest: "lineage-mode-mismatch",
+	})
+	require.NoError(t, err)
+
+	_, err = store.ApplyUpfrontPaymentApproval(ctx, tx.TransactionReceiptID, submission.SubmissionReceiptID, paymentapproval.Outcome{
+		Decision:      paymentapproval.DecisionApprove,
+		Reason:        "Upfront payment approved.",
+		SuggestedMode: paymentapproval.ModeEscrow,
+	})
+	require.NoError(t, err)
+
+	service := NewService(store)
+	result, err := service.EvaluateDirectPayment(ctx, Request{
+		TransactionReceiptID: tx.TransactionReceiptID,
+		SubmissionReceiptID:  submission.SubmissionReceiptID,
+	})
+	require.NoError(t, err)
+	require.Equal(t, Deny, result.Decision)
+	require.Equal(t, ReasonExecutionModeMismatch, result.Reason)
+}
+
+func TestService_EvaluateDirectPayment_PropagatesUnexpectedStoreErrors(t *testing.T) {
+	storeErr := errors.New("boom")
+	service := NewService(&fakeReceiptStore{txErr: storeErr})
+
+	result, err := service.EvaluateDirectPayment(context.Background(), Request{
+		TransactionReceiptID: "tx-error",
+		SubmissionReceiptID:  "submission-error",
+	})
+	require.ErrorIs(t, err, storeErr)
+	require.Equal(t, Result{}, result)
+}
+
+type fakeReceiptStore struct {
+	transaction   receipts.TransactionReceipt
+	txErr         error
+	submission    receipts.SubmissionReceipt
+	submissionErr error
+}
+
+func (f *fakeReceiptStore) GetTransactionReceipt(context.Context, string) (receipts.TransactionReceipt, error) {
+	if f.txErr == nil && f.transaction.TransactionReceiptID != "" {
+		return f.transaction, nil
+	}
+	if f.txErr == nil {
+		return receipts.TransactionReceipt{}, receipts.ErrTransactionReceiptNotFound
+	}
+	return receipts.TransactionReceipt{}, f.txErr
+}
+
+func (f *fakeReceiptStore) GetSubmissionReceipt(context.Context, string) (receipts.SubmissionReceipt, []receipts.ReceiptEvent, error) {
+	if f.submissionErr == nil && f.submission.SubmissionReceiptID != "" {
+		return f.submission, nil, nil
+	}
+	if f.submissionErr == nil {
+		return receipts.SubmissionReceipt{}, nil, receipts.ErrSubmissionReceiptNotFound
+	}
+	return receipts.SubmissionReceipt{}, nil, f.submissionErr
+}

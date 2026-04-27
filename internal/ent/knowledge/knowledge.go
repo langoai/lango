@@ -31,6 +31,10 @@ const (
 	FieldTags = "tags"
 	// FieldSource holds the string denoting the source field in the database.
 	FieldSource = "source"
+	// FieldSourceClass holds the string denoting the source_class field in the database.
+	FieldSourceClass = "source_class"
+	// FieldAssetLabel holds the string denoting the asset_label field in the database.
+	FieldAssetLabel = "asset_label"
 	// FieldVersion holds the string denoting the version field in the database.
 	FieldVersion = "version"
 	// FieldIsLatest holds the string denoting the is_latest field in the database.
@@ -58,6 +62,8 @@ var Columns = []string{
 	FieldContentKeyVersion,
 	FieldTags,
 	FieldSource,
+	FieldSourceClass,
+	FieldAssetLabel,
 	FieldVersion,
 	FieldIsLatest,
 	FieldUseCount,
@@ -157,6 +163,16 @@ func ByContentKeyVersion(opts ...sql.OrderTermOption) OrderOption {
 // BySource orders the results by the source field.
 func BySource(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldSource, opts...).ToFunc()
+}
+
+// BySourceClass orders the results by the source_class field.
+func BySourceClass(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSourceClass, opts...).ToFunc()
+}
+
+// ByAssetLabel orders the results by the asset_label field.
+func ByAssetLabel(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAssetLabel, opts...).ToFunc()
 }
 
 // ByVersion orders the results by the version field.

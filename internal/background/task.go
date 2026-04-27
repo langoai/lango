@@ -56,6 +56,9 @@ type Task struct {
 	Prompt        string
 	Result        string
 	Error         string
+	RetryKey      string // canonical retry identity for resubmitted work
+	AttemptCount  int
+	NextRetryAt   time.Time
 	OriginChannel string // channel that initiated the request (e.g. "telegram", "slack")
 	OriginSession string // original session key
 	StartedAt     time.Time
@@ -73,6 +76,9 @@ type TaskSnapshot struct {
 	Prompt        string    `json:"prompt"`
 	Result        string    `json:"result"`
 	Error         string    `json:"error,omitempty"`
+	RetryKey      string    `json:"retry_key,omitempty"`
+	AttemptCount  int       `json:"attempt_count"`
+	NextRetryAt   time.Time `json:"next_retry_at,omitempty"`
 	OriginChannel string    `json:"origin_channel"`
 	OriginSession string    `json:"origin_session"`
 	StartedAt     time.Time `json:"started_at"`
@@ -85,7 +91,12 @@ func (t *Task) SetRunning() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.Status = Running
+	t.AttemptCount++
 	t.StartedAt = time.Now()
+	t.CompletedAt = time.Time{}
+	t.NextRetryAt = time.Time{}
+	t.Result = ""
+	t.Error = ""
 }
 
 // Complete transitions the task to the Done state with the given result.
@@ -99,6 +110,8 @@ func (t *Task) Complete(result string) {
 	}
 	t.Status = Done
 	t.Result = result
+	t.Error = ""
+	t.NextRetryAt = time.Time{}
 	t.CompletedAt = time.Now()
 }
 
@@ -113,6 +126,7 @@ func (t *Task) Fail(errMsg string) {
 	}
 	t.Status = Failed
 	t.Error = errMsg
+	t.Result = ""
 	t.CompletedAt = time.Now()
 }
 
@@ -121,10 +135,28 @@ func (t *Task) Cancel() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.Status = Cancelled
+	t.NextRetryAt = time.Time{}
 	t.CompletedAt = time.Now()
 	if t.cancelFn != nil {
 		t.cancelFn()
 	}
+}
+
+// ScheduleRetry records when the next retry should occur.
+func (t *Task) ScheduleRetry(nextRetryAt time.Time) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.Status == Cancelled {
+		return
+	}
+	t.NextRetryAt = nextRetryAt
+}
+
+// SetRetryKey records the canonical retry identity for this task.
+func (t *Task) SetRetryKey(retryKey string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.RetryKey = retryKey
 }
 
 // Snapshot returns an immutable copy of the task's current state.
@@ -138,6 +170,9 @@ func (t *Task) Snapshot() TaskSnapshot {
 		Prompt:        t.Prompt,
 		Result:        t.Result,
 		Error:         t.Error,
+		RetryKey:      t.RetryKey,
+		AttemptCount:  t.AttemptCount,
+		NextRetryAt:   t.NextRetryAt,
 		OriginChannel: t.OriginChannel,
 		OriginSession: t.OriginSession,
 		StartedAt:     t.StartedAt,
