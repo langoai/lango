@@ -2,7 +2,7 @@
 
 Behavior-preserving efficiency requirements for the retrieval and orchestration boundary.
 
-## Requirements
+## ADDED Requirements
 
 ### Requirement: Retrieval orchestration flow map
 The change SHALL document the real code path from a user turn through context retrieval, agentic retrieval, Graph RAG, memory retrieval, run summary retrieval, orchestration delegation, and stream fan-in.
@@ -34,5 +34,5 @@ The change SHALL document the real code path from a user turn through context re
 - **THEN** the truncated result contains zero items
 
 #### Scenario: Cached token costs are reused during rebuild
-- **WHEN** implementation is reviewed or covered by unit tests
-- **THEN** the truncation rebuild pass uses a cached per-item token-cost structure from the initial scan instead of calling token estimation again for retained candidates
+- **WHEN** the truncation rebuild pass selects retained candidates after the initial budget measurement pass
+- **THEN** it consumes cached per-item token costs computed during that initial pass instead of calling token estimation again for retained candidates
