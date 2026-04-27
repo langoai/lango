@@ -55,7 +55,12 @@ func (c *RetrievalCoordinator) Retrieve(ctx context.Context, query string, token
 		return nil, err
 	}
 
-	var allFindings []Finding
+	totalFindings := 0
+	for _, r := range results {
+		totalFindings += len(r)
+	}
+
+	allFindings := make([]Finding, 0, totalFindings)
 	for _, r := range results {
 		allFindings = append(allFindings, r...)
 	}
