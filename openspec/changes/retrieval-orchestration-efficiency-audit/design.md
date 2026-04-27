@@ -2,14 +2,15 @@
 
 ## Code-Grounded Flow Map
 
-1. User turn enters TurnRunner / ADK model adapter.
-2. `ContextAwareModelAdapter` injects retrieved context before model execution.
-3. `ContextRetriever.Retrieve` extracts keywords, walks requested layers, and calls knowledge, skills, external refs, learnings, tool registry, runtime context, and pending inquiries as configured.
-4. Agentic retrieval uses `RetrievalCoordinator.Retrieve`, runs retrieval agents in parallel, appends all findings, merges by `(Layer, Key)`, sorts by score, and truncates by token budget.
-5. Graph RAG runs a content retrieval phase and expands graph nodes when configured.
-6. Observational memory can add observations and reflections to prompt context.
-7. Structured orchestration routes tool-requiring work through `BuildAgentTree`, sub-agent routing entries, and `CoordinatingExecutor`.
-8. Child agent output can be merged through `streamx.AgentStreamFanIn`.
+1. User turn context injection starts in `ContextAwareModelAdapter.GenerateContent`.
+2. `GenerateContent` extracts the last user message, resolves session/runtime state, and runs retrieval section collection in parallel.
+3. In the current user-turn path, `ContextRetriever.Retrieve` is called with configured non-factual/context layers: runtime context, tool registry, skill patterns, and pending inquiries. The retriever still has broader layer support, but those factual store layers are not the primary path here.
+4. Agentic factual retrieval uses `RetrievalCoordinator.Retrieve` when configured, covering user knowledge, agent learnings, and external knowledge through retrieval agents.
+5. `GenerateContent` merges non-factual retriever results and factual coordinator results, measures section token costs, reallocates budgets, truncates knowledge context, and assembles prompt sections.
+6. Graph RAG runs a content retrieval phase and expands graph nodes when configured.
+7. Observational memory can add observations and reflections to prompt context.
+8. Structured orchestration routes tool-requiring work through `BuildAgentTree`, sub-agent routing entries, and `CoordinatingExecutor`.
+9. Child agent output can be merged through `streamx.AgentStreamFanIn`.
 
 ## Quick Wins Selected
 

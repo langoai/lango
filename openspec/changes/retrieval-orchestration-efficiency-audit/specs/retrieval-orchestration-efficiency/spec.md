@@ -22,8 +22,8 @@ The change SHALL document the real code path from a user turn through context re
 - **WHEN** findings share a key across different context layers
 - **THEN** both findings remain present after merge
 
-### Requirement: Context truncation estimates each item once
-`knowledge.TruncateResult` SHALL avoid estimating token count for the same item more than once in a single truncation call.
+### Requirement: Context truncation reuses computed token costs
+`knowledge.TruncateResult` SHALL compute per-item token costs during the initial budget scan and reuse those cached costs when rebuilding the truncated result, avoiding a second token-estimation pass over retained candidates.
 
 #### Scenario: Existing truncation behavior is preserved
 - **WHEN** a result exceeds the budget
@@ -32,3 +32,7 @@ The change SHALL document the real code path from a user turn through context re
 #### Scenario: Too-small budget still returns zero items
 - **WHEN** the first item exceeds the budget
 - **THEN** the truncated result contains zero items
+
+#### Scenario: Cached token costs are reused during rebuild
+- **WHEN** implementation is reviewed or covered by unit tests
+- **THEN** the truncation rebuild pass uses a cached per-item token-cost structure from the initial scan instead of calling token estimation again for retained candidates
