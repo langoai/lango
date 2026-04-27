@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Close the highest-risk dead-letter/runtime wiring gaps with a narrow stabilization batch.
+**Goal:** Remove the highest-risk dead-letter/runtime wiring and execution holes without reopening broader roadmap scope.
 
-**Architecture:** Keep the recently landed product/runtime behavior intact, and patch only the high-risk execution and wiring holes: shell adapter forwarding, replay principal injection, background panic safety, reputation persistence safety, and classifier consistency. The workstream stays surgical and does not open new feature scope.
+**Architecture:** Keep the recently landed product/runtime behavior intact and patch only the narrow, high-risk holes: shell adapter forwarding, replay principal injection, background panic handling, reputation persistence safety, and classifier consistency. The workstream stays surgical and avoids unrelated refactors.
 
 **Tech Stack:** Go, `cmd/lango`, `internal/cli/status`, `internal/cli/cockpit`, `internal/background`, `internal/p2p/reputation`, Zensical docs, OpenSpec
 
@@ -15,9 +15,9 @@
 ### Worker A: Background / Reputation Hardening
 
 - Modify: `internal/background/*`
-  - Add panic hardening and focused task lifecycle coverage.
+  - Panic recovery and task lifecycle safety.
 - Modify: `internal/p2p/reputation/*`
-  - Add per-peer serialization and score-clamping safety.
+  - Per-peer serialization and score-clamping safety.
 - Modify: focused tests adjacent to those packages.
 
 ### Worker B: Cockpit / CLI Wiring Hardening
@@ -26,7 +26,7 @@
 - Modify: `cmd/lango/main_test.go`
 - Modify: `internal/cli/status/*`
 - Modify: `internal/cli/cockpit/*`
-- Modify: any tiny shared helper actually required for principal injection
+- Modify: any tiny helper needed for local principal fallback
 - Modify: focused tests adjacent to those packages
 
 ### Worker C: Docs / OpenSpec / README
@@ -39,27 +39,27 @@
 
 ## Task Breakdown
 
-### Task 1: Add Focused Red Tests for the Hardening Gaps
+### Task 1: Add or Extend Red Tests for the Hardening Gaps
 
 **Owner:** Worker A + Worker B
 
 **Files:**
 - Modify: focused tests under `cmd/lango`, `internal/background`, `internal/p2p/reputation`, `internal/cli/status`, `internal/cli/cockpit`
 
-- [ ] **Step 1: Add or extend failing tests for shell / retry wiring**
+- [ ] **Step 1: Add wiring and retry-context tests**
 
 Cover:
 
 - cockpit dead-letter filter forwarding through `cmd/lango`
-- retry invocation with empty principal context using a stable fallback
+- retry invocation with an empty principal context using a stable fallback
 
-- [ ] **Step 2: Add or extend failing tests for background and reputation safety**
+- [ ] **Step 2: Add execution and persistence safety tests**
 
 Cover:
 
 - background runner panic does not orphan task state
 - concurrent reputation updates on one peer preserve counts
-- `NaN` scores do not propagate through trust-entry logic
+- `NaN` score does not propagate through trust-entry logic
 
 - [ ] **Step 3: Run focused tests and verify they fail**
 
@@ -87,7 +87,7 @@ Implementation rules:
 - recover from runner panic
 - fail the task explicitly
 - avoid orphaned running state
-- preserve current retry/dead-letter semantics unless explicitly documented otherwise
+- preserve current retry/dead-letter semantics unless intentionally documented otherwise
 
 - [ ] **Step 2: Implement reputation persistence hardening**
 
@@ -124,7 +124,7 @@ ok
 Implementation rules:
 
 - forward all dead-letter list options through the cockpit shell adapter
-- keep the bridge / page interfaces unchanged unless a tiny helper is cleaner
+- keep bridge/page interfaces unchanged unless a tiny helper is cleaner
 
 - [ ] **Step 2: Implement retry principal hardening**
 
