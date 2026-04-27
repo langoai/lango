@@ -13,6 +13,14 @@
 9. Structured orchestration routes tool-requiring work through `BuildAgentTree`, sub-agent routing entries, and `CoordinatingExecutor`.
 10. Child agent output can be merged through `streamx.AgentStreamFanIn`.
 
+## Repeated Work Candidates Identified
+
+- Same-turn query fan-out: `GenerateContent` uses the same user query across parallel `ContextRetriever`, `RetrievalCoordinator`, Graph RAG, recall, and memory/run-summary related context paths when configured. This is mostly intentional fan-out for independent context sections and is not selected as a quick win in this change.
+- Retrieval aggregation allocation: `RetrievalCoordinator.Retrieve` collects agent result buckets, then appends them into an initially nil `allFindings` slice before merge and sort. The selected quick win is exact-capacity allocation after counting result bucket sizes.
+- Retrieval merge and score sort: `RetrievalCoordinator` already performs one merge through `mergeFindings` and one final score sort through `sortFindingsByScore`. No ranking, authority, or sorting policy change is selected.
+- Context truncation token estimation: `knowledge.TruncateResult` estimates item token costs during the initial measurement pass and again while rebuilding retained items. The selected quick win is cached per-item token costs reused during rebuild.
+- Agent stream fan-in bookkeeping: `AgentStreamFanIn` wraps child streams and emits progress lifecycle events while merging child output. This is identified as fan-in bookkeeping, but no quick win is selected because event semantics must remain unchanged.
+
 ## Quick Wins Selected
 
 ### Retrieval aggregation preallocation
