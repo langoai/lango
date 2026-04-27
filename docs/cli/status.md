@@ -139,6 +139,8 @@ Flags:
 | `--dead-lettered-before` | `""` | RFC3339 upper-bound timestamp filter for latest dead-letter time |
 | `--dead-letter-reason-query` | `""` | Latest dead-letter reason substring filter |
 | `--latest-dispatch-reference` | `""` | Latest dispatch reference exact-match filter |
+| `--offset` | `0` | Zero-based pagination offset |
+| `--limit` | `0` | Pagination limit (`0` keeps the tool default) |
 
 Examples:
 
@@ -153,6 +155,7 @@ lango status dead-letters --manual-replay-actor operator:alice
 lango status dead-letters --dead-lettered-after 2026-04-25T09:00:00Z --dead-lettered-before 2026-04-25T18:00:00Z
 lango status dead-letters --dead-letter-reason-query exhausted
 lango status dead-letters --latest-dispatch-reference dispatch-7
+lango status dead-letters --offset 50 --limit 25 --output json
 ```
 
 ### `lango status dead-letter <transaction-receipt-id>`
@@ -192,11 +195,15 @@ Behavior:
 - `--yes` skips the prompt
 - reuses the existing retry control path
 - injects a local default operator principal when the invocation context does not already carry one, so replay policy does not evaluate an empty actor
+- `--actor` overrides that fallback and forces the retry request to run under an explicit replay actor principal
 - success output means the retry request was accepted on the retry path, not that settlement execution already completed
 - captures an immediate follow-up status snapshot after acceptance
 - `--wait` keeps polling follow-up status until the observed follow-up changes or the wait timeout expires
 - table output renders follow-up polling count, timeout/error state, and a structured follow-up block when available
 - `json` output returns a structured retry-request result payload with `transaction_receipt_id`, `result`, `message`, `follow_up`, `follow_up_error`, `poll_count`, and `timed_out`
+- dead-letter status subcommands return structured JSON errors when `--output json` is selected:
+  - `result: "error"`
+  - `error: "<message>"`
 - `follow_up` includes `observed_at`, dead-letter/retryable booleans, latest subtype/family/reason/retry-attempt/dispatch data, and `background_task` when present
 - invocation failures are surfaced separately as retry-request failures
 
@@ -206,6 +213,7 @@ Flags:
 |------|---------|-------------|
 | `--output` | `table` | Output format: `table` or `json` |
 | `--yes` | `false` | Skip the confirmation prompt |
+| `--actor` | `""` | Explicit replay actor principal override |
 | `--wait` | `false` | Poll follow-up status after retry request acceptance |
 | `--wait-interval` | `2s` | Polling interval for retry follow-up status |
 | `--wait-timeout` | `30s` | Polling timeout for retry follow-up status |
@@ -216,6 +224,7 @@ Examples:
 lango status dead-letter retry tx-123
 lango status dead-letter retry tx-123 --yes
 lango status dead-letter retry tx-123 --yes --output json
+lango status dead-letter retry tx-123 --yes --actor operator:ci
 lango status dead-letter retry tx-123 --yes --wait --wait-interval 1s --wait-timeout 30s
 ```
 

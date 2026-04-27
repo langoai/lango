@@ -436,6 +436,7 @@ The `docs/architecture/retry-dead-letter-handling.md` page SHALL describe the fi
 - **AND** they SHALL find `dispute_lifecycle_status = re-escalated` described for exhausted retries
 - **AND** they SHALL find canonical retry-key dedup across pending, running, and scheduled tasks described
 - **AND** they SHALL find background-runner panics described as explicit task failures rather than orphaned running tasks
+- **AND** they SHALL find receipt-evidence write failures described as operational errors even when the retry hook remains best-effort
 
 ### Requirement: P2P knowledge exchange track reflects landed retry / dead-letter handling
 The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the retry / dead-letter handling first slice as landed work and list the remaining work as operator-editable retry tuning, wider non-post-adjudication adoption of the retry policy shape, and a more generic recovery substrate for arbitrary background task families.
@@ -514,6 +515,7 @@ The `docs/architecture/dead-letter-browsing-status-observation.md` page SHALL de
 - **AND** they SHALL find dead-letter CLI retry action described
 - **AND** they SHALL find dead-letter CLI actor/time filtering described
 - **AND** they SHALL find dead-letter CLI reason/dispatch filtering described
+- **AND** they SHALL find dead-letter CLI `offset` / `limit` pagination described
 - **AND** they SHALL find dead-letter CLI summary described
 - **AND** they SHALL find dead-letter CLI `by_reason_family` summary buckets described
 - **AND** they SHALL find dead-letter CLI `by_actor_family` summary buckets described
@@ -524,6 +526,8 @@ The `docs/architecture/dead-letter-browsing-status-observation.md` page SHALL de
 - **AND** they SHALL find the initial reason-family taxonomy described as `retry-exhausted`, `policy-blocked`, `receipt-invalid`, `background-failed`, and `unknown`
 - **AND** they SHALL find the initial actor-family taxonomy described as `operator`, `system`, `service`, and `unknown`
 - **AND** they SHALL find the dispatch-family classifier described as using common prefixes plus deterministic first-token fallback
+- **AND** they SHALL find dead-letter CLI retry described as supporting an explicit `--actor` override
+- **AND** they SHALL find machine-mode dead-letter CLI failures described as structured JSON error payloads when `--output json` is selected
 - **AND** they SHALL find top latest dead-letter reasons described for the summary CLI surface
 - **AND** they SHALL find raw top latest dead-letter reasons described as still available alongside grouped reason-family summaries
 - **AND** they SHALL find top latest manual replay actors described for the summary CLI surface

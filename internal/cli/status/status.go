@@ -54,6 +54,8 @@ type deadLetterListOptions struct {
 	DeadLetteredBefore        string
 	DeadLetterReasonQuery     string
 	LatestDispatchReference   string
+	Offset                    int
+	Limit                     int
 }
 
 type deadLetterListPage struct {
@@ -72,6 +74,11 @@ type deadLetterRetryResult struct {
 	FollowUpError        string                   `json:"follow_up_error,omitempty"`
 	PollCount            int                      `json:"poll_count,omitempty"`
 	TimedOut             bool                     `json:"timed_out,omitempty"`
+}
+
+type statusJSONError struct {
+	Result string `json:"result"`
+	Error  string `json:"error"`
 }
 
 type deadLetterRetryFollowUp struct {
@@ -163,20 +170,22 @@ Examples:
   lango status              # Full status dashboard
   lango status --output json  # Machine-readable JSON output`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			boot, err := bootLoader()
-			if err != nil {
-				return fmt.Errorf("bootstrap: %w", err)
-			}
-			defer boot.Close()
+			return handleStatusCommandError(cmd, outputFmt, func() error {
+				boot, err := bootLoader()
+				if err != nil {
+					return fmt.Errorf("bootstrap: %w", err)
+				}
+				defer boot.Close()
 
-			info := collectStatus(boot.Config, boot.ProfileName, addr)
-			info.Version = tui.GetVersion()
+				info := collectStatus(boot.Config, boot.ProfileName, addr)
+				info.Version = tui.GetVersion()
 
-			if outputFmt == "json" {
-				return printJSON(info)
-			}
-			fmt.Print(renderDashboard(info))
-			return nil
+				if outputFmt == "json" {
+					return printJSONTo(cmd.OutOrStdout(), info)
+				}
+				fmt.Print(renderDashboard(info))
+				return nil
+			}())
 		},
 	}
 
@@ -201,27 +210,29 @@ func newDeadLetterSummaryCmd(loader deadLetterBridgeLoader) *cobra.Command {
 		Short: "Show a dead-letter backlog overview summary",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			bridge, cleanup, err := loader()
-			if err != nil {
-				return err
-			}
-			defer cleanup()
+			return handleStatusCommandError(cmd, outputFmt, func() error {
+				bridge, cleanup, err := loader()
+				if err != nil {
+					return err
+				}
+				defer cleanup()
 
-			page, err := bridge.List(cmd.Context(), deadLetterListOptions{})
-			if err != nil {
-				return err
-			}
+				page, err := bridge.List(cmd.Context(), deadLetterListOptions{})
+				if err != nil {
+					return err
+				}
 
-			summary := aggregateDeadLetterSummaryWithOptions(page, deadLetterSummaryOptions{
-				TopN:        topN,
-				TrendWindow: trendWindow,
-				TrendBucket: trendBucket,
-			})
-			if outputFmt == "json" {
-				return printJSONTo(cmd.OutOrStdout(), summary)
-			}
-			_, err = fmt.Fprint(cmd.OutOrStdout(), renderDeadLetterSummaryTable(summary))
-			return err
+				summary := aggregateDeadLetterSummaryWithOptions(page, deadLetterSummaryOptions{
+					TopN:        topN,
+					TrendWindow: trendWindow,
+					TrendBucket: trendBucket,
+				})
+				if outputFmt == "json" {
+					return printJSONTo(cmd.OutOrStdout(), summary)
+				}
+				_, err = fmt.Fprint(cmd.OutOrStdout(), renderDeadLetterSummaryTable(summary))
+				return err
+			}())
 		},
 	}
 	cmd.Flags().StringVar(&outputFmt, "output", "table", "Output format: table or json")
@@ -244,6 +255,8 @@ func newDeadLettersCmd(loader deadLetterBridgeLoader) *cobra.Command {
 		deadLetteredBefore        string
 		deadLetterReasonQuery     string
 		latestDispatchReference   string
+		offset                    int
+		limit                     int
 	)
 
 	cmd := &cobra.Command{
@@ -251,53 +264,57 @@ func newDeadLettersCmd(loader deadLetterBridgeLoader) *cobra.Command {
 		Short: "List dead-lettered post-adjudication executions",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			subtype, err := normalizeLatestStatusSubtype(latestStatusSubtype)
-			if err != nil {
-				return err
-			}
-			family, err := normalizeLatestStatusSubtypeFamily(latestStatusSubtypeFamily)
-			if err != nil {
-				return err
-			}
-			anyMatchFamilyValue, err := normalizeAnyMatchFamily(anyMatchFamily)
-			if err != nil {
-				return err
-			}
-			after, err := normalizeRFC3339Flag("dead-lettered-after", deadLetteredAfter)
-			if err != nil {
-				return err
-			}
-			before, err := normalizeRFC3339Flag("dead-lettered-before", deadLetteredBefore)
-			if err != nil {
-				return err
-			}
+			return handleStatusCommandError(cmd, outputFmt, func() error {
+				subtype, err := normalizeLatestStatusSubtype(latestStatusSubtype)
+				if err != nil {
+					return err
+				}
+				family, err := normalizeLatestStatusSubtypeFamily(latestStatusSubtypeFamily)
+				if err != nil {
+					return err
+				}
+				anyMatchFamilyValue, err := normalizeAnyMatchFamily(anyMatchFamily)
+				if err != nil {
+					return err
+				}
+				after, err := normalizeRFC3339Flag("dead-lettered-after", deadLetteredAfter)
+				if err != nil {
+					return err
+				}
+				before, err := normalizeRFC3339Flag("dead-lettered-before", deadLetteredBefore)
+				if err != nil {
+					return err
+				}
 
-			bridge, cleanup, err := loader()
-			if err != nil {
-				return err
-			}
-			defer cleanup()
+				bridge, cleanup, err := loader()
+				if err != nil {
+					return err
+				}
+				defer cleanup()
 
-			page, err := bridge.List(cmd.Context(), deadLetterListOptions{
-				Query:                     query,
-				Adjudication:              adjudication,
-				LatestStatusSubtype:       subtype,
-				LatestStatusSubtypeFamily: family,
-				AnyMatchFamily:            anyMatchFamilyValue,
-				ManualReplayActor:         strings.TrimSpace(manualReplayActor),
-				DeadLetteredAfter:         after,
-				DeadLetteredBefore:        before,
-				DeadLetterReasonQuery:     strings.TrimSpace(deadLetterReasonQuery),
-				LatestDispatchReference:   strings.TrimSpace(latestDispatchReference),
-			})
-			if err != nil {
+				page, err := bridge.List(cmd.Context(), deadLetterListOptions{
+					Query:                     query,
+					Adjudication:              adjudication,
+					LatestStatusSubtype:       subtype,
+					LatestStatusSubtypeFamily: family,
+					AnyMatchFamily:            anyMatchFamilyValue,
+					ManualReplayActor:         strings.TrimSpace(manualReplayActor),
+					DeadLetteredAfter:         after,
+					DeadLetteredBefore:        before,
+					DeadLetterReasonQuery:     strings.TrimSpace(deadLetterReasonQuery),
+					LatestDispatchReference:   strings.TrimSpace(latestDispatchReference),
+					Offset:                    offset,
+					Limit:                     limit,
+				})
+				if err != nil {
+					return err
+				}
+				if outputFmt == "json" {
+					return printJSONTo(cmd.OutOrStdout(), page)
+				}
+				_, err = fmt.Fprint(cmd.OutOrStdout(), renderDeadLetterBacklogTable(page))
 				return err
-			}
-			if outputFmt == "json" {
-				return printJSONTo(cmd.OutOrStdout(), page)
-			}
-			_, err = fmt.Fprint(cmd.OutOrStdout(), renderDeadLetterBacklogTable(page))
-			return err
+			}())
 		},
 	}
 	cmd.Flags().StringVar(&outputFmt, "output", "table", "Output format: table or json")
@@ -311,6 +328,8 @@ func newDeadLettersCmd(loader deadLetterBridgeLoader) *cobra.Command {
 	cmd.Flags().StringVar(&deadLetteredBefore, "dead-lettered-before", "", "Latest dead-letter upper-bound timestamp filter (RFC3339)")
 	cmd.Flags().StringVar(&deadLetterReasonQuery, "dead-letter-reason-query", "", "Latest dead-letter reason substring filter")
 	cmd.Flags().StringVar(&latestDispatchReference, "latest-dispatch-reference", "", "Latest dispatch reference exact-match filter")
+	cmd.Flags().IntVar(&offset, "offset", 0, "Zero-based pagination offset")
+	cmd.Flags().IntVar(&limit, "limit", 0, "Pagination limit (0 = tool default)")
 	return cmd
 }
 
@@ -322,21 +341,23 @@ func newDeadLetterCmd(loader deadLetterBridgeLoader) *cobra.Command {
 		Short: "Show dead-letter status for a transaction",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			bridge, cleanup, err := loader()
-			if err != nil {
-				return err
-			}
-			defer cleanup()
+			return handleStatusCommandError(cmd, outputFmt, func() error {
+				bridge, cleanup, err := loader()
+				if err != nil {
+					return err
+				}
+				defer cleanup()
 
-			status, err := bridge.Detail(cmd.Context(), args[0])
-			if err != nil {
+				status, err := bridge.Detail(cmd.Context(), args[0])
+				if err != nil {
+					return err
+				}
+				if outputFmt == "json" {
+					return printJSONTo(cmd.OutOrStdout(), status)
+				}
+				_, err = fmt.Fprint(cmd.OutOrStdout(), renderDeadLetterDetail(status))
 				return err
-			}
-			if outputFmt == "json" {
-				return printJSONTo(cmd.OutOrStdout(), status)
-			}
-			_, err = fmt.Fprint(cmd.OutOrStdout(), renderDeadLetterDetail(status))
-			return err
+			}())
 		},
 	}
 	cmd.Flags().StringVar(&outputFmt, "output", "table", "Output format: table or json")
@@ -351,6 +372,7 @@ func newDeadLetterRetryCmd(loader deadLetterBridgeLoader) *cobra.Command {
 		wait         bool
 		waitInterval time.Duration
 		waitTimeout  time.Duration
+		actor        string
 	)
 
 	cmd := &cobra.Command{
@@ -358,76 +380,83 @@ func newDeadLetterRetryCmd(loader deadLetterBridgeLoader) *cobra.Command {
 		Short: "Retry a dead-lettered post-adjudication execution",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			transactionReceiptID := strings.TrimSpace(args[0])
+			return handleStatusCommandError(cmd, outputFmt, func() error {
+				transactionReceiptID := strings.TrimSpace(args[0])
 
-			bridge, cleanup, err := loader()
-			if err != nil {
-				return err
-			}
-			defer cleanup()
-
-			status, err := bridge.Detail(cmd.Context(), transactionReceiptID)
-			if err != nil {
-				return fmt.Errorf("read dead-letter status for transaction %q: %w", transactionReceiptID, err)
-			}
-			if !status.CanRetry {
-				return fmt.Errorf("retry precheck rejected for transaction %q: can_retry=false", transactionReceiptID)
-			}
-
-			if !yes {
-				confirmed, err := confirmDeadLetterRetry(cmd, transactionReceiptID)
+				bridge, cleanup, err := loader()
 				if err != nil {
 					return err
 				}
-				if !confirmed {
-					_, err := fmt.Fprintln(cmd.OutOrStdout(), "Retry aborted.")
-					return err
+				defer cleanup()
+
+				status, err := bridge.Detail(cmd.Context(), transactionReceiptID)
+				if err != nil {
+					return fmt.Errorf("read dead-letter status for transaction %q: %w", transactionReceiptID, err)
 				}
-			}
+				if !status.CanRetry {
+					return fmt.Errorf("retry precheck rejected for transaction %q: can_retry=false", transactionReceiptID)
+				}
 
-			if err := bridge.Retry(cmd.Context(), transactionReceiptID); err != nil {
-				return fmt.Errorf("retry request failed for transaction %q: %w", transactionReceiptID, err)
-			}
+				if !yes {
+					confirmed, err := confirmDeadLetterRetry(cmd, transactionReceiptID)
+					if err != nil {
+						return err
+					}
+					if !confirmed {
+						_, err := fmt.Fprintln(cmd.OutOrStdout(), "Retry aborted.")
+						return err
+					}
+				}
 
-			result := deadLetterRetryResult{
-				TransactionReceiptID: transactionReceiptID,
-				Result:               "accepted",
-				Message:              fmt.Sprintf("Retry request accepted for transaction %s.", transactionReceiptID),
-			}
-			if outputFmt != "json" && wait {
-				if _, err := fmt.Fprintf(
-					cmd.OutOrStdout(),
-					"Polling follow-up status every %s for up to %s...\n",
+				retryCtx := cmd.Context()
+				if explicitActor := strings.TrimSpace(actor); explicitActor != "" {
+					retryCtx = ctxkeys.WithPrincipal(retryCtx, explicitActor)
+				}
+				if err := bridge.Retry(retryCtx, transactionReceiptID); err != nil {
+					return fmt.Errorf("retry request failed for transaction %q: %w", transactionReceiptID, err)
+				}
+
+				result := deadLetterRetryResult{
+					TransactionReceiptID: transactionReceiptID,
+					Result:               "accepted",
+					Message:              fmt.Sprintf("Retry request accepted for transaction %s.", transactionReceiptID),
+				}
+				if outputFmt != "json" && wait {
+					if _, err := fmt.Fprintf(
+						cmd.OutOrStdout(),
+						"Polling follow-up status every %s for up to %s...\n",
+						waitInterval,
+						waitTimeout,
+					); err != nil {
+						return err
+					}
+				}
+				followUp, pollCount, timedOut, followUpErr := collectDeadLetterRetryFollowUp(
+					cmd.Context(),
+					bridge,
+					transactionReceiptID,
+					status,
+					wait,
 					waitInterval,
 					waitTimeout,
-				); err != nil {
-					return err
+				)
+				result.FollowUp = followUp
+				result.PollCount = pollCount
+				result.TimedOut = timedOut
+				if followUpErr != nil {
+					result.FollowUpError = followUpErr.Error()
 				}
-			}
-			followUp, pollCount, timedOut, followUpErr := collectDeadLetterRetryFollowUp(
-				cmd.Context(),
-				bridge,
-				transactionReceiptID,
-				status,
-				wait,
-				waitInterval,
-				waitTimeout,
-			)
-			result.FollowUp = followUp
-			result.PollCount = pollCount
-			result.TimedOut = timedOut
-			if followUpErr != nil {
-				result.FollowUpError = followUpErr.Error()
-			}
-			if outputFmt == "json" {
-				return printJSONTo(cmd.OutOrStdout(), result)
-			}
-			_, err = fmt.Fprint(cmd.OutOrStdout(), renderDeadLetterRetryResult(result))
-			return err
+				if outputFmt == "json" {
+					return printJSONTo(cmd.OutOrStdout(), result)
+				}
+				_, err = fmt.Fprint(cmd.OutOrStdout(), renderDeadLetterRetryResult(result))
+				return err
+			}())
 		},
 	}
 	cmd.Flags().StringVar(&outputFmt, "output", "table", "Output format: table or json")
 	cmd.Flags().BoolVar(&yes, "yes", false, "Skip confirmation prompt")
+	cmd.Flags().StringVar(&actor, "actor", "", "Explicit replay actor principal (overrides local default fallback)")
 	cmd.Flags().BoolVar(&wait, "wait", false, "Poll follow-up status after retry request acceptance")
 	cmd.Flags().DurationVar(&waitInterval, "wait-interval", defaultDeadLetterRetryWaitInterval, "Polling interval for retry follow-up status")
 	cmd.Flags().DurationVar(&waitTimeout, "wait-timeout", defaultDeadLetterRetryWaitTimeout, "Polling timeout for retry follow-up status")
@@ -508,6 +537,12 @@ func (b *toolCatalogDeadLetterBridge) List(ctx context.Context, opts deadLetterL
 	}
 	if dispatchReference := strings.TrimSpace(opts.LatestDispatchReference); dispatchReference != "" {
 		params["latest_dispatch_reference"] = dispatchReference
+	}
+	if opts.Offset > 0 {
+		params["offset"] = opts.Offset
+	}
+	if opts.Limit > 0 {
+		params["limit"] = opts.Limit
 	}
 	raw, err := entry.Tool.Handler(ctx, params)
 	if err != nil {
@@ -1191,4 +1226,24 @@ func printJSONTo(w io.Writer, v interface{}) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	return enc.Encode(v)
+}
+
+func printJSONErrorTo(w io.Writer, err error) error {
+	if err == nil {
+		return nil
+	}
+	return printJSONTo(w, statusJSONError{
+		Result: "error",
+		Error:  err.Error(),
+	})
+}
+
+func handleStatusCommandError(cmd *cobra.Command, outputFmt string, err error) error {
+	if err == nil {
+		return nil
+	}
+	if strings.EqualFold(strings.TrimSpace(outputFmt), "json") {
+		return printJSONErrorTo(cmd.OutOrStdout(), err)
+	}
+	return err
 }

@@ -39,6 +39,11 @@ type fakeDeadLetterBridge struct {
 	lastPrincipal string
 }
 
+type commandJSONErrorPayload struct {
+	Result string `json:"result"`
+	Error  string `json:"error"`
+}
+
 func (f *fakeDeadLetterBridge) List(_ context.Context, opts deadLetterListOptions) (deadLetterListPage, error) {
 	f.listCalls++
 	f.lastListOpts = opts
@@ -795,6 +800,28 @@ func TestDeadLettersCmd_ForwardsReasonAndDispatchFilters(t *testing.T) {
 	}, bridge.lastListOpts)
 }
 
+func TestDeadLettersCmd_ForwardsPagination(t *testing.T) {
+	bridge := &fakeDeadLetterBridge{
+		page: deadLetterListPage{
+			Entries: []postadjudicationstatus.DeadLetterBacklogEntry{{TransactionReceiptID: "tx-1"}},
+			Count:   1,
+			Total:   10,
+			Offset:  4,
+			Limit:   2,
+		},
+	}
+	cmd := newDeadLettersCmd(func() (deadLetterBridge, func(), error) {
+		return bridge, func() {}, nil
+	})
+
+	_, err := executeCommand(t, cmd, "--offset", "4", "--limit", "2")
+	require.NoError(t, err)
+	assert.Equal(t, deadLetterListOptions{
+		Offset: 4,
+		Limit:  2,
+	}, bridge.lastListOpts)
+}
+
 func TestDeadLettersCmd_RejectsInvalidSubtype(t *testing.T) {
 	loaderCalls := 0
 	cmd := newDeadLettersCmd(func() (deadLetterBridge, func(), error) {
@@ -980,6 +1007,36 @@ func TestToolCatalogDeadLetterBridge_ForwardsReasonAndDispatchFilters(t *testing
 	assert.Equal(t, "dispatch-7", gotParams["latest_dispatch_reference"])
 }
 
+func TestToolCatalogDeadLetterBridge_ForwardsPagination(t *testing.T) {
+	catalog := toolcatalog.New()
+	var gotParams map[string]interface{}
+	catalog.Register("status", []*agent.Tool{
+		{
+			Name: "list_dead_lettered_post_adjudication_executions",
+			Handler: func(_ context.Context, params map[string]interface{}) (interface{}, error) {
+				gotParams = params
+				return map[string]interface{}{
+					"entries": []map[string]interface{}{},
+					"count":   0,
+					"total":   0,
+					"offset":  4,
+					"limit":   2,
+				}, nil
+			},
+		},
+	})
+
+	bridge := &toolCatalogDeadLetterBridge{catalog: catalog}
+	_, err := bridge.List(context.Background(), deadLetterListOptions{
+		Offset: 4,
+		Limit:  2,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, gotParams)
+	assert.Equal(t, 4, gotParams["offset"])
+	assert.Equal(t, 2, gotParams["limit"])
+}
+
 func TestDeadLettersCmd_JSON(t *testing.T) {
 	bridge := &fakeDeadLetterBridge{
 		page: deadLetterListPage{
@@ -996,6 +1053,21 @@ func TestDeadLettersCmd_JSON(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, out, "\"entries\"")
 	assert.Contains(t, out, "\"transaction_receipt_id\": \"tx-1\"")
+}
+
+func TestDeadLettersCmd_JSONError(t *testing.T) {
+	bridge := &fakeDeadLetterBridge{listErr: errors.New("backend unavailable")}
+	cmd := newDeadLettersCmd(func() (deadLetterBridge, func(), error) {
+		return bridge, func() {}, nil
+	})
+
+	out, err := executeCommand(t, cmd, "--output", "json")
+	require.NoError(t, err)
+
+	var payload commandJSONErrorPayload
+	require.NoError(t, json.Unmarshal([]byte(out), &payload))
+	assert.Equal(t, "error", payload.Result)
+	assert.Contains(t, payload.Error, "backend unavailable")
 }
 
 func TestDeadLetterCmd_Table(t *testing.T) {
@@ -1177,6 +1249,24 @@ func TestDeadLetterRetryCmd_InvokesRetryAfterConfirm(t *testing.T) {
 	assert.Equal(t, "tx-1", bridge.lastRetryID)
 }
 
+func TestDeadLetterRetryCmd_ForwardsExplicitActor(t *testing.T) {
+	bridge := &fakeDeadLetterBridge{
+		detail: postadjudicationstatus.TransactionStatus{
+			CanonicalSnapshot: postadjudicationstatus.CanonicalSnapshot{
+				TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-1"},
+			},
+			CanRetry: true,
+		},
+	}
+	cmd := newDeadLetterCmd(func() (deadLetterBridge, func(), error) {
+		return bridge, func() {}, nil
+	})
+
+	_, err := executeCommand(t, cmd, "retry", "tx-1", "--yes", "--actor", "operator:ci")
+	require.NoError(t, err)
+	assert.Equal(t, "operator:ci", bridge.lastPrincipal)
+}
+
 func TestDeadLetterRetryCmd_ReportsInvocationFailureSeparately(t *testing.T) {
 	bridge := &fakeDeadLetterBridge{
 		detail: postadjudicationstatus.TransactionStatus{
@@ -1197,6 +1287,30 @@ func TestDeadLetterRetryCmd_ReportsInvocationFailureSeparately(t *testing.T) {
 	assert.ErrorContains(t, err, "queue unavailable")
 	assert.Equal(t, 1, bridge.detailCalls)
 	assert.Equal(t, 1, bridge.retryCalls)
+}
+
+func TestDeadLetterRetryCmd_JSONError(t *testing.T) {
+	bridge := &fakeDeadLetterBridge{
+		detail: postadjudicationstatus.TransactionStatus{
+			CanonicalSnapshot: postadjudicationstatus.CanonicalSnapshot{
+				TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-1"},
+			},
+			CanRetry: true,
+		},
+		retryErr: errors.New("queue unavailable"),
+	}
+	cmd := newDeadLetterCmd(func() (deadLetterBridge, func(), error) {
+		return bridge, func() {}, nil
+	})
+
+	out, err := executeCommand(t, cmd, "retry", "tx-1", "--yes", "--output", "json")
+	require.NoError(t, err)
+
+	var payload commandJSONErrorPayload
+	require.NoError(t, json.Unmarshal([]byte(out), &payload))
+	assert.Equal(t, "error", payload.Result)
+	assert.Contains(t, payload.Error, "retry request failed")
+	assert.Contains(t, payload.Error, "queue unavailable")
 }
 
 func TestDeadLetterRetryCmd_JSONReportsAcceptedRequest(t *testing.T) {

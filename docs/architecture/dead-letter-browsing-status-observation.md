@@ -229,6 +229,8 @@ The slice is intentionally narrow:
     - `--dead-lettered-before`
     - `--dead-letter-reason-query`
     - `--latest-dispatch-reference`
+    - `--offset`
+    - `--limit`
   - `lango status dead-letter <transaction-receipt-id>`
     - `table` default
     - `json` support
@@ -240,6 +242,7 @@ The slice is intentionally narrow:
     - rejects before mutation with explicit retry-precheck wording when `can_retry = false`
     - default confirm prompt
     - `--yes` bypass
+    - `--actor` overrides the local fallback with an explicit replay actor principal
     - injects a local default operator principal when the runtime context does not already carry one
     - always captures an immediate structured follow-up observation after request acceptance when detail reload succeeds
     - `--wait` polls follow-up status until it changes or times out
@@ -248,6 +251,7 @@ The slice is intentionally narrow:
     - success output reports retry-request acceptance, not completed execution
     - table output can show `Follow-up Polls`, `Wait Timed Out`, `Follow-up Error`, and a structured `Follow-up` block
     - `json` returns `transaction_receipt_id`, `result`, `message`, `follow_up`, `follow_up_error`, `poll_count`, and `timed_out`
+    - when `--output json` is selected, operational failures also return a structured JSON error payload instead of plain text
     - invocation failures surface separately from precheck rejection
 
 ## Current Limits

@@ -27,18 +27,18 @@ func initTeamReputationBridge(
 	eventbus.SubscribeTyped(bus, func(ev eventbus.TeamMemberUnhealthyEvent) {
 		if repStore != nil {
 			if err := repStore.RecordOperationalIncident(ctx, ev.MemberDID); err != nil {
-				log.Debugw("team-reputation bridge: record operational incident", "did", ev.MemberDID, "error", err)
+				log.Errorw("team-reputation bridge: record operational incident", "did", ev.MemberDID, "error", err)
 			}
 
 			entry, err := runtimeTrustEntry(ctx, repStore, ev.MemberDID, minScore)
 			if err != nil {
-				log.Debugw("team-reputation bridge: get trust entry", "did", ev.MemberDID, "error", err)
+				log.Errorw("team-reputation bridge: get trust entry", "did", ev.MemberDID, "error", err)
 				return
 			}
 
 			if reason, shouldKick := runtimeTrustKickReason(entry); shouldKick {
 				if err := coordinator.KickMember(ctx, ev.TeamID, ev.MemberDID, reason); err != nil {
-					log.Debugw("team-reputation bridge: kick unhealthy member",
+					log.Warnw("team-reputation bridge: kick unhealthy member",
 						"teamID", ev.TeamID, "did", ev.MemberDID, "error", err)
 				} else {
 					log.Infow("team-reputation bridge: kicked unhealthy member",
@@ -64,7 +64,7 @@ func initTeamReputationBridge(
 		for _, m := range t.Members() {
 			if m.Role == team.RoleWorker && m.Status != team.MemberFailed {
 				if err := repStore.RecordSuccess(ctx, m.DID); err != nil {
-					log.Debugw("team-reputation bridge: record success",
+					log.Errorw("team-reputation bridge: record success",
 						"did", m.DID, "error", err)
 				}
 			}
@@ -93,7 +93,7 @@ func initTeamReputationBridge(
 
 		entry, err := runtimeTrustEntry(ctx, repStore, ev.PeerDID, minScore)
 		if err != nil {
-			log.Debugw("team-reputation bridge: get trust entry on change", "did", ev.PeerDID, "error", err)
+			log.Errorw("team-reputation bridge: get trust entry on change", "did", ev.PeerDID, "error", err)
 			return
 		}
 		reason, shouldKick := runtimeTrustKickReason(entry)
@@ -104,7 +104,7 @@ func initTeamReputationBridge(
 		teamIDs := coordinator.TeamsForMember(ev.PeerDID)
 		for _, teamID := range teamIDs {
 			if err := coordinator.KickMember(ctx, teamID, ev.PeerDID, reason); err != nil {
-				log.Debugw("team-reputation bridge: kick on reputation drop",
+				log.Warnw("team-reputation bridge: kick on reputation drop",
 					"teamID", teamID, "did", ev.PeerDID, "error", err)
 			} else {
 				log.Infow("team-reputation bridge: kicked member on reputation drop",

@@ -129,7 +129,10 @@ func initBackground(cfg *config.Config, app *App, receiptStore *receipts.Store) 
 					AttemptCount:         snap.AttemptCount,
 					Reason:               snap.Error,
 				}); err != nil {
-					logger().Warnw("post-adjudication dead-letter evidence failed", "taskID", snap.ID, "error", err)
+					// Evidence persistence remains best-effort here so the terminal task
+					// state is not rewritten again, but failure to persist the canonical
+					// dead-letter trail is an operational error and must not stay silent.
+					logger().Errorw("post-adjudication dead-letter evidence failed", "taskID", snap.ID, "error", err)
 				}
 				return
 			}
@@ -140,7 +143,9 @@ func initBackground(cfg *config.Config, app *App, receiptStore *receipts.Store) 
 				NextRetryAt:          snap.NextRetryAt,
 				DispatchReference:    snap.ID,
 			}); err != nil {
-				logger().Warnw("post-adjudication retry evidence failed", "taskID", snap.ID, "error", err)
+				// Retry evidence is also best-effort, but losing it hides the recovery
+				// trail from operators, so emit an operational error before resubmitting.
+				logger().Errorw("post-adjudication retry evidence failed", "taskID", snap.ID, "error", err)
 			}
 			resubmit()
 		})

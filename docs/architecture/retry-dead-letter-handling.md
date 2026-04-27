@@ -45,6 +45,7 @@ The slice is intentionally narrow:
   - sets `settlement_progression_reason_code = escalate`
   - sets `settlement_progression_reason = post-adjudication execution dead-lettered`
   - sets `dispute_lifecycle_status = re-escalated`
+- receipt-evidence persistence remains best-effort in the retry hook, but evidence-write failures are raised as operational errors instead of staying as low-signal warnings
 - panic in the background runner fails the task explicitly and keeps the event visible as task failure rather than leaving an orphaned running task
 
 ## Current Limits
