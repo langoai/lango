@@ -20,6 +20,7 @@ The slice is intentionally narrow:
 
 - a receipts-backed `hold_escrow_for_dispute` meta tool
 - transaction-level gating on funded escrow plus `dispute-ready` settlement state
+- service-local per-transaction serialization so concurrent hold requests for the same transaction do not enter the hold runtime at the same time
 - escrow reference resolution from canonical transaction context
 - canonical `dispute_lifecycle_status = hold-active` on the transaction receipt after hold success
 - dispute hold success and failure evidence in the current submission receipt trail

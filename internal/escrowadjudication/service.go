@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/langoai/lango/internal/receipts"
 )
@@ -17,7 +18,8 @@ type receiptStore interface {
 }
 
 type Service struct {
-	store receiptStore
+	store   receiptStore
+	txLocks sync.Map
 }
 
 func NewService(store receiptStore) *Service {
@@ -32,6 +34,9 @@ func (s *Service) Adjudicate(ctx context.Context, req AdjudicateRequest) (Result
 	if s == nil || s.store == nil {
 		return Result{}, fmt.Errorf("receipt store is required")
 	}
+	lock := s.txLock(transactionReceiptID)
+	lock.Lock()
+	defer lock.Unlock()
 
 	transaction, err := s.store.GetTransactionReceipt(ctx, transactionReceiptID)
 	if err != nil {
@@ -170,4 +175,9 @@ func deniedResult(
 			},
 		},
 		&ExecutionError{Kind: FailureKindDenied, DenyReason: reason, Message: string(reason)}
+}
+
+func (s *Service) txLock(transactionReceiptID string) *sync.Mutex {
+	lock, _ := s.txLocks.LoadOrStore(transactionReceiptID, &sync.Mutex{})
+	return lock.(*sync.Mutex)
 }

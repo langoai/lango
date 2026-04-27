@@ -3,7 +3,10 @@ package disputehold
 import (
 	"context"
 	"errors"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -218,6 +221,70 @@ func TestServiceExecute_RuntimeFailureReturnsFailureShapeWhileKeepingStateUnchan
 	}, store.lastFailure)
 }
 
+func TestServiceExecute_RecordHoldSuccessFailureReturnsWrappedError(t *testing.T) {
+	t.Parallel()
+
+	store := &fakeReceiptStore{
+		transaction: receipts.TransactionReceipt{
+			TransactionReceiptID:        "tx-1",
+			CurrentSubmissionReceiptID:  "sub-1",
+			EscrowExecutionStatus:       receipts.EscrowExecutionStatusFunded,
+			SettlementProgressionStatus: receipts.SettlementProgressionDisputeReady,
+			EscrowReference:             "escrow-123",
+		},
+		submission:       receipts.SubmissionReceipt{SubmissionReceiptID: "sub-1", TransactionReceiptID: "tx-1"},
+		recordSuccessErr: errors.New("write failed"),
+	}
+	runtime := &fakeHoldRuntime{result: HoldResult{Reference: "hold-123"}}
+	svc := NewService(store, runtime)
+
+	result, err := svc.Execute(context.Background(), Request{TransactionReceiptID: "tx-1"})
+
+	require.Error(t, err)
+	require.ErrorContains(t, err, "record dispute hold success")
+	require.Equal(t, Result{}, result)
+	require.Equal(t, 1, runtime.calls)
+	require.Equal(t, 1, store.recordSuccessCalls)
+	require.Equal(t, 0, store.recordFailureCalls)
+}
+
+func TestServiceExecute_SerializesConcurrentHoldExecutionPerTransaction(t *testing.T) {
+	t.Parallel()
+
+	store := &fakeReceiptStore{
+		transaction: receipts.TransactionReceipt{
+			TransactionReceiptID:        "tx-1",
+			CurrentSubmissionReceiptID:  "sub-1",
+			EscrowExecutionStatus:       receipts.EscrowExecutionStatusFunded,
+			SettlementProgressionStatus: receipts.SettlementProgressionDisputeReady,
+			EscrowReference:             "escrow-123",
+		},
+		submission: receipts.SubmissionReceipt{
+			SubmissionReceiptID:  "sub-1",
+			TransactionReceiptID: "tx-1",
+		},
+	}
+	runtime := &blockingHoldRuntime{result: HoldResult{Reference: "hold-123"}}
+	svc := NewService(store, runtime)
+
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			_, _ = svc.Execute(context.Background(), Request{TransactionReceiptID: "tx-1"})
+		}()
+	}
+
+	close(start)
+	wg.Wait()
+
+	require.Equal(t, int32(2), atomic.LoadInt32(&runtime.calls))
+	require.Equal(t, int32(1), atomic.LoadInt32(&runtime.maxConcurrent))
+}
+
 func assertExecutionError(t *testing.T, err error, wantKind FailureKind, wantReason DenyReason) {
 	t.Helper()
 
@@ -280,4 +347,27 @@ func (f *fakeHoldRuntime) Hold(_ context.Context, req EscrowHoldRequest) (HoldRe
 		return HoldResult{}, f.err
 	}
 	return f.result, nil
+}
+
+type blockingHoldRuntime struct {
+	result        HoldResult
+	calls         int32
+	active        int32
+	maxConcurrent int32
+}
+
+func (b *blockingHoldRuntime) Hold(_ context.Context, _ EscrowHoldRequest) (HoldResult, error) {
+	atomic.AddInt32(&b.calls, 1)
+	active := atomic.AddInt32(&b.active, 1)
+	defer atomic.AddInt32(&b.active, -1)
+
+	for {
+		current := atomic.LoadInt32(&b.maxConcurrent)
+		if active <= current || atomic.CompareAndSwapInt32(&b.maxConcurrent, current, active) {
+			break
+		}
+	}
+
+	time.Sleep(50 * time.Millisecond)
+	return b.result, nil
 }

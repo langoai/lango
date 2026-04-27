@@ -3,7 +3,10 @@ package escrowadjudication
 import (
 	"context"
 	"errors"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -262,6 +265,59 @@ func TestServiceAdjudicate_ApplyFailureReturnsFailureShape(t *testing.T) {
 	require.Equal(t, 1, store.recordFailureCalls)
 }
 
+func TestServiceAdjudicate_SerializesConcurrentAdjudicationPerTransaction(t *testing.T) {
+	t.Parallel()
+
+	store := &blockingApplyStore{
+		fakeReceiptStore: fakeReceiptStore{
+			transaction: receipts.TransactionReceipt{
+				TransactionReceiptID:        "tx-1",
+				CurrentSubmissionReceiptID:  "sub-1",
+				EscrowExecutionStatus:       receipts.EscrowExecutionStatusFunded,
+				SettlementProgressionStatus: receipts.SettlementProgressionDisputeReady,
+				EscrowReference:             "escrow-123",
+			},
+			submission: receipts.SubmissionReceipt{
+				SubmissionReceiptID:  "sub-1",
+				TransactionReceiptID: "tx-1",
+			},
+			events: []receipts.ReceiptEvent{
+				{Source: "dispute_hold", Subtype: "held", Type: receipts.EventSettlementUpdated},
+			},
+			applyResult: receipts.TransactionReceipt{
+				TransactionReceiptID:        "tx-1",
+				CurrentSubmissionReceiptID:  "sub-1",
+				EscrowExecutionStatus:       receipts.EscrowExecutionStatusFunded,
+				SettlementProgressionStatus: receipts.SettlementProgressionApprovedForSettlement,
+				DisputeLifecycleStatus:      receipts.DisputeLifecycleHoldActive,
+				EscrowReference:             "escrow-123",
+				EscrowAdjudication:          receipts.EscrowAdjudicationRelease,
+			},
+		},
+	}
+	svc := NewService(store)
+
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			_, _ = svc.Adjudicate(context.Background(), Request{
+				TransactionReceiptID: "tx-1",
+				Outcome:              OutcomeRelease,
+			})
+		}()
+	}
+
+	close(start)
+	wg.Wait()
+
+	require.Equal(t, int32(2), atomic.LoadInt32(&store.calls))
+	require.Equal(t, int32(1), atomic.LoadInt32(&store.maxConcurrent))
+}
+
 func assertExecutionError(t *testing.T, err error, wantKind FailureKind, wantReason DenyReason) {
 	t.Helper()
 	var executionErr *ExecutionError
@@ -312,4 +368,27 @@ func (f *fakeReceiptStore) RecordEscrowAdjudicationFailure(_ context.Context, re
 	f.recordFailureCalls++
 	f.lastFailure = req
 	return f.recordFailureErr
+}
+
+type blockingApplyStore struct {
+	fakeReceiptStore
+	calls         int32
+	active        int32
+	maxConcurrent int32
+}
+
+func (b *blockingApplyStore) ApplyEscrowAdjudication(_ context.Context, req receipts.EscrowAdjudicationRequest) (receipts.TransactionReceipt, error) {
+	atomic.AddInt32(&b.calls, 1)
+	active := atomic.AddInt32(&b.active, 1)
+	defer atomic.AddInt32(&b.active, -1)
+
+	for {
+		current := atomic.LoadInt32(&b.maxConcurrent)
+		if active <= current || atomic.CompareAndSwapInt32(&b.maxConcurrent, current, active) {
+			break
+		}
+	}
+
+	time.Sleep(50 * time.Millisecond)
+	return b.fakeReceiptStore.ApplyEscrowAdjudication(context.Background(), req)
 }

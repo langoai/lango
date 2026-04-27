@@ -25,6 +25,28 @@ func (m *mockRunner) Run(_ context.Context, _ string, _ string) (string, error) 
 	return m.result, m.err
 }
 
+type countingRunner struct {
+	delay time.Duration
+	mu    sync.Mutex
+	calls int
+}
+
+func (r *countingRunner) Run(_ context.Context, _ string, _ string) (string, error) {
+	if r.delay > 0 {
+		time.Sleep(r.delay)
+	}
+	r.mu.Lock()
+	r.calls++
+	r.mu.Unlock()
+	return "ok", nil
+}
+
+func (r *countingRunner) Calls() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.calls
+}
+
 type panicRunner struct{}
 
 func (panicRunner) Run(_ context.Context, _ string, _ string) (string, error) {
@@ -434,6 +456,47 @@ func TestManager_Submit_UsesRetryKeyDeriver(t *testing.T) {
 	snap, err := mgr.Status(id)
 	require.NoError(t, err)
 	assert.Equal(t, "derived:retry me", snap.RetryKey)
+}
+
+func TestManager_Submit_DeduplicatesInFlightRetryKey(t *testing.T) {
+	runner := &countingRunner{delay: 50 * time.Millisecond}
+	mgr := NewManager(runner, nil, 5, time.Minute, testLogger()).
+		WithRetryKeyDeriver(func(_ string, _ Origin) string {
+			return "receipt-123:release"
+		})
+
+	id1, err := mgr.Submit(context.Background(), "retry me once", Origin{Channel: "test"})
+	require.NoError(t, err)
+
+	id2, err := mgr.Submit(context.Background(), "retry me twice", Origin{Channel: "test"})
+	require.NoError(t, err)
+
+	require.Equal(t, id1, id2)
+	require.Eventually(t, func() bool {
+		return runner.Calls() == 1
+	}, time.Second, 10*time.Millisecond)
+	require.Len(t, mgr.List(), 1)
+}
+
+func TestManager_Submit_DeduplicatesScheduledRetryKey(t *testing.T) {
+	mgr := NewManager(&mockRunner{}, nil, 5, time.Minute, testLogger()).
+		WithRetryKeyDeriver(func(_ string, _ Origin) string {
+			return "receipt-123:release"
+		})
+
+	mgr.tasks["retry-task"] = &Task{
+		ID:           "retry-task",
+		Status:       Failed,
+		Prompt:       "retry me",
+		RetryKey:     "receipt-123:release",
+		AttemptCount: 1,
+		NextRetryAt:  time.Now().Add(time.Minute),
+	}
+
+	id, err := mgr.Submit(context.Background(), "retry me again", Origin{Channel: "test"})
+	require.NoError(t, err)
+	require.Equal(t, "retry-task", id)
+	require.Len(t, mgr.List(), 1)
 }
 
 func TestStatus_Valid(t *testing.T) {

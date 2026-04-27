@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/langoai/lango/internal/finance"
 	"github.com/langoai/lango/internal/receipts"
@@ -24,6 +25,7 @@ type refundRuntime interface {
 type Service struct {
 	store   receiptStore
 	runtime refundRuntime
+	txLocks sync.Map
 }
 
 func NewService(store receiptStore, runtime refundRuntime) *Service {
@@ -41,6 +43,9 @@ func (s *Service) Execute(ctx context.Context, req ExecuteRequest) (Result, erro
 	if s.runtime == nil {
 		return Result{}, fmt.Errorf("escrow refund runtime is required")
 	}
+	lock := s.txLock(transactionReceiptID)
+	lock.Lock()
+	defer lock.Unlock()
 
 	transaction, err := s.store.GetTransactionReceipt(ctx, transactionReceiptID)
 	if err != nil {
@@ -181,4 +186,9 @@ func resolveAmountFromTransactionContext(priceContext string) (string, error) {
 	}
 
 	return finance.FormatUSDC(parsed), nil
+}
+
+func (s *Service) txLock(transactionReceiptID string) *sync.Mutex {
+	lock, _ := s.txLocks.LoadOrStore(transactionReceiptID, &sync.Mutex{})
+	return lock.(*sync.Mutex)
 }

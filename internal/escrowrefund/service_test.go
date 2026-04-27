@@ -3,7 +3,10 @@ package escrowrefund
 import (
 	"context"
 	"errors"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -298,6 +301,74 @@ func TestServiceExecute_RuntimeFailureReturnsFailureShape(t *testing.T) {
 	}, store.lastFailure)
 }
 
+func TestServiceExecute_RecordRefundSuccessFailureReturnsWrappedError(t *testing.T) {
+	t.Parallel()
+
+	store := &fakeReceiptStore{
+		transaction: receipts.TransactionReceipt{
+			TransactionReceiptID:        "tx-1",
+			CurrentSubmissionReceiptID:  "sub-1",
+			EscrowExecutionStatus:       receipts.EscrowExecutionStatusFunded,
+			SettlementProgressionStatus: receipts.SettlementProgressionReviewNeeded,
+			EscrowAdjudication:          receipts.EscrowAdjudicationRefund,
+			EscrowReference:             "escrow-123",
+			PriceContext:                "quote:1.00-usdc",
+		},
+		submission:       receipts.SubmissionReceipt{SubmissionReceiptID: "sub-1", TransactionReceiptID: "tx-1"},
+		recordSuccessErr: errors.New("write failed"),
+	}
+	runtime := &fakeRefundRuntime{result: RefundResult{Reference: "refund-tx-123"}}
+	svc := NewService(store, runtime)
+
+	result, err := svc.Execute(context.Background(), Request{TransactionReceiptID: "tx-1"})
+
+	require.Error(t, err)
+	require.ErrorContains(t, err, "record escrow refund success")
+	require.Equal(t, Result{}, result)
+	require.Equal(t, 1, runtime.calls)
+	require.Equal(t, 1, store.recordSuccessCalls)
+	require.Equal(t, 0, store.recordFailureCalls)
+}
+
+func TestServiceExecute_SerializesConcurrentRefundExecutionPerTransaction(t *testing.T) {
+	t.Parallel()
+
+	store := &fakeReceiptStore{
+		transaction: receipts.TransactionReceipt{
+			TransactionReceiptID:        "tx-1",
+			CurrentSubmissionReceiptID:  "sub-1",
+			EscrowExecutionStatus:       receipts.EscrowExecutionStatusFunded,
+			SettlementProgressionStatus: receipts.SettlementProgressionReviewNeeded,
+			EscrowAdjudication:          receipts.EscrowAdjudicationRefund,
+			EscrowReference:             "escrow-123",
+			PriceContext:                "quote:1.00-usdc",
+		},
+		submission: receipts.SubmissionReceipt{
+			SubmissionReceiptID:  "sub-1",
+			TransactionReceiptID: "tx-1",
+		},
+	}
+	runtime := &blockingRefundRuntime{result: RefundResult{Reference: "refund-tx-123"}}
+	svc := NewService(store, runtime)
+
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			_, _ = svc.Execute(context.Background(), Request{TransactionReceiptID: "tx-1"})
+		}()
+	}
+
+	close(start)
+	wg.Wait()
+
+	require.Equal(t, int32(2), atomic.LoadInt32(&runtime.calls))
+	require.Equal(t, int32(1), atomic.LoadInt32(&runtime.maxConcurrent))
+}
+
 func assertExecutionError(t *testing.T, err error, wantKind FailureKind, wantReason DenyReason) {
 	t.Helper()
 
@@ -361,4 +432,27 @@ func (f *fakeRefundRuntime) Refund(_ context.Context, req RefundRequest) (Refund
 		return RefundResult{}, f.err
 	}
 	return f.result, nil
+}
+
+type blockingRefundRuntime struct {
+	result        RefundResult
+	calls         int32
+	active        int32
+	maxConcurrent int32
+}
+
+func (b *blockingRefundRuntime) Refund(_ context.Context, _ RefundRequest) (RefundResult, error) {
+	atomic.AddInt32(&b.calls, 1)
+	active := atomic.AddInt32(&b.active, 1)
+	defer atomic.AddInt32(&b.active, -1)
+
+	for {
+		current := atomic.LoadInt32(&b.maxConcurrent)
+		if active <= current || atomic.CompareAndSwapInt32(&b.maxConcurrent, current, active) {
+			break
+		}
+	}
+
+	time.Sleep(50 * time.Millisecond)
+	return b.result, nil
 }

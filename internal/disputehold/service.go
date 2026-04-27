@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/langoai/lango/internal/receipts"
 )
@@ -23,6 +24,7 @@ type holdRuntime interface {
 type Service struct {
 	store   receiptStore
 	runtime holdRuntime
+	txLocks sync.Map
 }
 
 func NewService(store receiptStore, runtime holdRuntime) *Service {
@@ -40,6 +42,9 @@ func (s *Service) Execute(ctx context.Context, req ExecuteRequest) (Result, erro
 	if s.runtime == nil {
 		return Result{}, fmt.Errorf("dispute hold runtime is required")
 	}
+	lock := s.txLock(transactionReceiptID)
+	lock.Lock()
+	defer lock.Unlock()
 
 	transaction, err := s.store.GetTransactionReceipt(ctx, transactionReceiptID)
 	if err != nil {
@@ -148,4 +153,9 @@ func deniedResult(
 			},
 		},
 		&ExecutionError{Kind: FailureKindDenied, DenyReason: reason, Message: string(reason)}
+}
+
+func (s *Service) txLock(transactionReceiptID string) *sync.Mutex {
+	lock, _ := s.txLocks.LoadOrStore(transactionReceiptID, &sync.Mutex{})
+	return lock.(*sync.Mutex)
 }

@@ -22,6 +22,7 @@ The slice is intentionally narrow:
 
 - a receipts-backed `adjudicate_escrow_dispute` meta tool
 - transaction-level gating on funded escrow, `dispute-ready`, and recorded hold evidence
+- service-local per-transaction serialization so concurrent adjudication requests for the same transaction do not apply the branch update in parallel
 - canonical adjudication state on the transaction receipt
 - atomic progression update paired with adjudication
 - adjudication evidence in the current submission receipt trail

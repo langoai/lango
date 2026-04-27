@@ -106,12 +106,16 @@ func escalationProgressionStatus(
 	current receipts.SettlementProgressionStatus,
 ) receipts.SettlementProgressionStatus {
 	switch current {
+	case receipts.SettlementProgressionPending,
+		receipts.SettlementProgressionInProgress,
+		receipts.SettlementProgressionSettled:
+		return receipts.SettlementProgressionReviewNeeded
 	case receipts.SettlementProgressionReviewNeeded,
 		receipts.SettlementProgressionApprovedForSettlement,
 		receipts.SettlementProgressionPartiallySettled,
 		receipts.SettlementProgressionDisputeReady:
 		return receipts.SettlementProgressionDisputeReady
 	default:
-		return receipts.SettlementProgressionReviewNeeded
+		panic(fmt.Sprintf("unhandled settlement progression status %q", current))
 	}
 }

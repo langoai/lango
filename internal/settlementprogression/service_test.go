@@ -10,6 +10,14 @@ import (
 	"github.com/langoai/lango/internal/receipts"
 )
 
+func TestEscalationProgressionStatus_PanicsOnUnknownStatus(t *testing.T) {
+	t.Parallel()
+
+	require.Panics(t, func() {
+		_ = escalationProgressionStatus(receipts.SettlementProgressionStatus("unknown"))
+	})
+}
+
 func createSubmittedTransaction(t *testing.T, store *receipts.Store, ctx context.Context, transactionID string) receipts.TransactionReceipt {
 	t.Helper()
 

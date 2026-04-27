@@ -115,7 +115,18 @@ func (m *Manager) WithRetryPolicy(policy RetryPolicy) *Manager {
 
 // Submit creates and enqueues a new background task. It returns the task ID on success.
 func (m *Manager) Submit(ctx context.Context, prompt string, origin Origin) (string, error) {
+	retryKey := ""
+	if m.retryKeyDeriver != nil {
+		retryKey = strings.TrimSpace(m.retryKeyDeriver(prompt, origin))
+	}
+
 	m.mu.Lock()
+	if retryKey != "" {
+		if existingID, ok := m.reusableTaskIDLocked(retryKey); ok {
+			m.mu.Unlock()
+			return existingID, nil
+		}
+	}
 
 	if m.activeCountLocked() >= m.maxTasks {
 		m.mu.Unlock()
@@ -143,9 +154,7 @@ func (m *Manager) Submit(ctx context.Context, prompt string, origin Origin) (str
 		OriginSession: origin.Session,
 		cancelFn:      cancelFn,
 	}
-	if m.retryKeyDeriver != nil {
-		task.RetryKey = m.retryKeyDeriver(prompt, origin)
-	}
+	task.RetryKey = retryKey
 	m.tasks[id] = task
 	m.mu.Unlock()
 
@@ -272,6 +281,9 @@ func (m *Manager) execute(ctx context.Context, task *Task) {
 	enrichedPrompt := automationPrefix + "Task: " + task.Prompt
 	result := ""
 	var err error
+	// Panics are treated as non-retryable orchestrator defects. We fail the task
+	// explicitly so it does not remain orphaned in running state, but we do not
+	// reschedule or dead-letter the work from this path.
 	defer func() {
 		if r := recover(); r != nil {
 			stopTyping()
@@ -370,6 +382,19 @@ func (m *Manager) activeCountLocked() int {
 		}
 	}
 	return count
+}
+
+func (m *Manager) reusableTaskIDLocked(retryKey string) (string, bool) {
+	for id, task := range m.tasks {
+		snap := task.Snapshot()
+		if snap.RetryKey != retryKey {
+			continue
+		}
+		if snap.Status == Pending || snap.Status == Running || !snap.NextRetryAt.IsZero() {
+			return id, true
+		}
+	}
+	return "", false
 }
 
 func (m *Manager) syncProjection(ctx context.Context, task *Task) {

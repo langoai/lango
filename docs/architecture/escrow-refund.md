@@ -21,6 +21,7 @@ The slice is intentionally narrow:
 
 - a receipts-backed `refund_escrow_settlement` meta tool
 - transaction-level gating on funded escrow plus `review-needed` settlement state
+- service-local per-transaction serialization so concurrent refund requests for the same transaction do not enter the refund runtime at the same time
 - matching `escrow_adjudication = refund`
 - one-way branch safety against opposite release evidence
 - amount resolution from canonical transaction context

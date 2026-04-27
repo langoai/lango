@@ -323,6 +323,7 @@ The `docs/architecture/escrow-refund.md` page SHALL describe the first escrow re
 - **AND** they SHALL find matching `escrow_adjudication = refund` described as part of the gate
 - **AND** they SHALL find opposite-branch release evidence described as blocking execution
 - **AND** they SHALL find dispute lifecycle cleanup on successful refund described
+- **AND** they SHALL find concurrent refund attempts for the same transaction described as serialized inside the service boundary
 
 ### Requirement: P2P knowledge exchange track reflects landed escrow refund
 The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the escrow refund first slice as landed work and list the remaining work as refund terminal-state design, release-after-refund safety rules, and richer operator policy surfaces.
@@ -341,6 +342,7 @@ The `docs/architecture/dispute-hold.md` page SHALL describe the first dispute ho
 - **THEN** they SHALL find sections describing the current dispute hold slice, what currently ships, and current limits
 - **AND** they SHALL find canonical `dispute_lifecycle_status = hold-active` described as a hold success outcome
 - **AND** they SHALL find `hold_escrow_for_dispute` described as returning `dispute_lifecycle_status`
+- **AND** they SHALL find concurrent hold attempts for the same transaction described as serialized inside the service boundary
 
 ### Requirement: P2P knowledge exchange track reflects landed dispute hold
 The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the dispute hold first slice as landed work and list the remaining work as richer arbitration policy, a separate held-escrow lifecycle only if needed, and operator UI.
@@ -360,6 +362,7 @@ The `docs/architecture/release-vs-refund-adjudication.md` page SHALL describe th
 - **AND** they SHALL find atomic settlement progression updates described for `release` and `refund`
 - **AND** they SHALL find the active dispute lifecycle marker described as preserved through canonical adjudication
 - **AND** they SHALL find `adjudicate_escrow_dispute` described as returning `dispute_lifecycle_status`
+- **AND** they SHALL find concurrent adjudication attempts for the same transaction described as serialized inside the service boundary
 
 ### Requirement: P2P knowledge exchange track reflects landed release-vs-refund adjudication
 The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the release-vs-refund adjudication first slice as landed work and list the remaining work as config-backed non-manual defaults, richer arbitration policy, and operator UI.
@@ -431,6 +434,8 @@ The `docs/architecture/retry-dead-letter-handling.md` page SHALL describe the fi
 - **AND** they SHALL find the shared `post_adjudication_retry` evidence source described for retry and dead-letter events
 - **AND** they SHALL find canonical re-escalation on exhausted retries described as preserving adjudication while setting `settlement_progression_status = dispute-ready`
 - **AND** they SHALL find `dispute_lifecycle_status = re-escalated` described for exhausted retries
+- **AND** they SHALL find canonical retry-key dedup across pending, running, and scheduled tasks described
+- **AND** they SHALL find background-runner panics described as explicit task failures rather than orphaned running tasks
 
 ### Requirement: P2P knowledge exchange track reflects landed retry / dead-letter handling
 The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the retry / dead-letter handling first slice as landed work and list the remaining work as operator-editable retry tuning, wider non-post-adjudication adoption of the retry policy shape, and a more generic recovery substrate for arbitrary background task families.
@@ -439,6 +444,7 @@ The `docs/architecture/p2p-knowledge-exchange-track.md` file SHALL describe the 
 - **WHEN** a user reads `docs/architecture/p2p-knowledge-exchange-track.md`
 - **THEN** they SHALL find retry / dead-letter handling described as a landed first slice
 - **AND** they SHALL find canonical re-escalation after exhausted retries described as landed work
+- **AND** they SHALL find canonical retry-key dedup across pending, running, and scheduled tasks described as landed work
 - **AND** the remaining work SHALL be described as operator replay, generic async retry policy, dead-letter browsing, and policy-driven backoff tuning
 
 ### Requirement: Operator replay / manual retry page describes the first replay slice

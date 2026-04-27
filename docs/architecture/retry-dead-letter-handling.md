@@ -32,6 +32,7 @@ The slice is intentionally narrow:
 - normalized retry identity based on:
   - `transaction_receipt_id`
   - adjudication outcome
+- duplicate submissions for the same canonical `retry_key` reuse the existing pending, running, or scheduled task instead of dispatching another background run
 - append-only submission receipt trail evidence under `source=post_adjudication_retry`
   - `retry-scheduled`
   - `dead-lettered`
@@ -44,6 +45,7 @@ The slice is intentionally narrow:
   - sets `settlement_progression_reason_code = escalate`
   - sets `settlement_progression_reason = post-adjudication execution dead-lettered`
   - sets `dispute_lifecycle_status = re-escalated`
+- panic in the background runner fails the task explicitly and keeps the event visible as task failure rather than leaving an orphaned running task
 
 ## Current Limits
 
