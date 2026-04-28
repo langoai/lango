@@ -510,18 +510,21 @@ func TestTruncateResult_PreservesLayerPriorityAndOrder(t *testing.T) {
 			},
 			LayerRuntimeContext: {
 				{Key: "runtime-1", Content: "runtime context"},
+				{Key: "runtime-2", Content: "runtime note"},
 			},
 		},
-		TotalItems: 3,
+		TotalItems: 4,
 	}
 
+	// Runtime items are ~3 tokens each; knowledge is ~4. Budget fits both runtime
+	// items in original order, but not the lower-priority knowledge item afterward.
 	got := TruncateResult(result, 6)
 	if got.TotalItems == 0 {
 		t.Fatal("expected priority layers to keep at least one item")
 	}
 
 	runtimeItems := got.Items[LayerRuntimeContext]
-	if len(runtimeItems) != 1 || runtimeItems[0].Key != "runtime-1" {
+	if len(runtimeItems) != 2 || runtimeItems[0].Key != "runtime-1" || runtimeItems[1].Key != "runtime-2" {
 		t.Fatalf("runtime context should be retained first, got %#v", got.Items)
 	}
 	if _, ok := got.Items[LayerAgentLearnings]; ok {
