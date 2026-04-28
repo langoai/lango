@@ -146,17 +146,23 @@ func (r *ContextRetriever) Retrieve(ctx context.Context, req RetrievalRequest) (
 // Truncation operates at the item level — removing items from the end of each
 // layer (lowest priority first) until the total estimated tokens fit.
 // A budgetTokens of 0 means unlimited (returns result unchanged).
+type contextLayerTokenCosts []int
+
 func TruncateResult(result *RetrievalResult, budgetTokens int) *RetrievalResult {
 	if result == nil || budgetTokens == 0 || result.TotalItems == 0 {
 		return result
 	}
 
-	// Estimate total tokens across all items.
+	tokenCostsByLayer := make(map[ContextLayer]contextLayerTokenCosts, len(result.Items))
 	totalTokens := 0
-	for _, items := range result.Items {
+	for layer, items := range result.Items {
+		tokenCosts := make([]int, 0, len(items))
 		for _, item := range items {
-			totalTokens += types.EstimateTokens(item.Content)
+			tokens := types.EstimateTokens(item.Content)
+			totalTokens += tokens
+			tokenCosts = append(tokenCosts, tokens)
 		}
+		tokenCostsByLayer[layer] = tokenCosts
 	}
 
 	if totalTokens <= budgetTokens {
@@ -182,10 +188,14 @@ func TruncateResult(result *RetrievalResult, budgetTokens int) *RetrievalResult 
 		if !ok || len(items) == 0 {
 			continue
 		}
+		tokenCosts := tokenCostsByLayer[layer]
+		if len(tokenCosts) == 0 {
+			continue
+		}
 
 		var kept []ContextItem
-		for _, item := range items {
-			tokens := types.EstimateTokens(item.Content)
+		for i, item := range items {
+			tokens := tokenCosts[i]
 			if remaining-tokens < 0 {
 				break
 			}
