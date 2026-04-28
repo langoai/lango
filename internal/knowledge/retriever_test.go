@@ -503,7 +503,7 @@ func TestTruncateResult_PreservesLayerPriorityAndOrder(t *testing.T) {
 	result := &RetrievalResult{
 		Items: map[ContextLayer][]ContextItem{
 			LayerUserKnowledge: {
-				{Key: "knowledge-1", Content: "short knowledge item"},
+				{Key: "knowledge-1", Content: strings.Repeat("knowledge ", 20)},
 			},
 			LayerAgentLearnings: {
 				{Key: "learning-1", Content: strings.Repeat("learning ", 200)},
@@ -515,7 +515,7 @@ func TestTruncateResult_PreservesLayerPriorityAndOrder(t *testing.T) {
 		TotalItems: 3,
 	}
 
-	got := TruncateResult(result, 20)
+	got := TruncateResult(result, 5)
 	if got.TotalItems == 0 {
 		t.Fatal("expected priority layers to keep at least one item")
 	}
@@ -526,6 +526,9 @@ func TestTruncateResult_PreservesLayerPriorityAndOrder(t *testing.T) {
 	}
 	if _, ok := got.Items[LayerAgentLearnings]; ok {
 		t.Fatalf("large learning item should not fit in small budget: %#v", got.Items)
+	}
+	if _, ok := got.Items[LayerUserKnowledge]; ok {
+		t.Fatalf("knowledge item should not fit after higher-priority runtime context: %#v", got.Items)
 	}
 }
 
