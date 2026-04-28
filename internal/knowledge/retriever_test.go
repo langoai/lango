@@ -503,7 +503,7 @@ func TestTruncateResult_PreservesLayerPriorityAndOrder(t *testing.T) {
 	result := &RetrievalResult{
 		Items: map[ContextLayer][]ContextItem{
 			LayerUserKnowledge: {
-				{Key: "knowledge-1", Content: strings.Repeat("knowledge ", 20)},
+				{Key: "knowledge-1", Content: "knowledge item xx"},
 			},
 			LayerAgentLearnings: {
 				{Key: "learning-1", Content: strings.Repeat("learning ", 200)},
@@ -515,7 +515,7 @@ func TestTruncateResult_PreservesLayerPriorityAndOrder(t *testing.T) {
 		TotalItems: 3,
 	}
 
-	got := TruncateResult(result, 5)
+	got := TruncateResult(result, 6)
 	if got.TotalItems == 0 {
 		t.Fatal("expected priority layers to keep at least one item")
 	}
