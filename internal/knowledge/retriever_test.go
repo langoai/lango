@@ -2,6 +2,7 @@ package knowledge
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -496,4 +497,62 @@ func TestTruncateResult(t *testing.T) {
 			t.Errorf("expected 0 items, got %d", got.TotalItems)
 		}
 	})
+}
+
+func TestTruncateResult_PreservesLayerPriorityAndOrder(t *testing.T) {
+	result := &RetrievalResult{
+		Items: map[ContextLayer][]ContextItem{
+			LayerUserKnowledge: {
+				{Key: "knowledge-1", Content: "knowledge item xx"},
+			},
+			LayerAgentLearnings: {
+				{Key: "learning-1", Content: strings.Repeat("learning ", 200)},
+			},
+			LayerRuntimeContext: {
+				{Key: "runtime-1", Content: "runtime context"},
+				{Key: "runtime-2", Content: "runtime note"},
+			},
+		},
+		TotalItems: 4,
+	}
+
+	// Runtime items are ~3 tokens each; knowledge is ~4. Budget fits both runtime
+	// items in original order, but not the lower-priority knowledge item afterward.
+	got := TruncateResult(result, 6)
+	if got.TotalItems == 0 {
+		t.Fatal("expected priority layers to keep at least one item")
+	}
+
+	runtimeItems := got.Items[LayerRuntimeContext]
+	if len(runtimeItems) != 2 || runtimeItems[0].Key != "runtime-1" || runtimeItems[1].Key != "runtime-2" {
+		t.Fatalf("runtime context should be retained first, got %#v", got.Items)
+	}
+	if _, ok := got.Items[LayerAgentLearnings]; ok {
+		t.Fatalf("large learning item should not fit in small budget: %#v", got.Items)
+	}
+	if _, ok := got.Items[LayerUserKnowledge]; ok {
+		t.Fatalf("knowledge item should not fit after higher-priority runtime context: %#v", got.Items)
+	}
+}
+
+func BenchmarkTruncateResult_ManyItems(b *testing.B) {
+	items := make([]ContextItem, 0, 500)
+	for i := 0; i < 500; i++ {
+		items = append(items, ContextItem{
+			Key:     fmt.Sprintf("item-%03d", i),
+			Content: strings.Repeat("token ", 40),
+		})
+	}
+	result := &RetrievalResult{
+		Items:      map[ContextLayer][]ContextItem{LayerUserKnowledge: items},
+		TotalItems: len(items),
+	}
+
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		got := TruncateResult(result, 1000)
+		if got.TotalItems == 0 {
+			b.Fatal("expected truncated result to keep some items")
+		}
+	}
 }
