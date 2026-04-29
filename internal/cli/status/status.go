@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"sort"
 	"strings"
 	"time"
@@ -1216,10 +1215,6 @@ func probeServer(addr string) (bool, *LiveInfo) {
 		live.Features = healthResp.Features
 	}
 	return true, live
-}
-
-func printJSON(v interface{}) error {
-	return printJSONTo(os.Stdout, v)
 }
 
 func printJSONTo(w io.Writer, v interface{}) error {

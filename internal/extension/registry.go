@@ -201,9 +201,10 @@ func loadPack(dir string, enforceIntegrity bool) InstalledPack {
 		}
 	}
 
-	if pack.Status == "" {
+	switch pack.Status {
+	case "":
 		pack.Status = StatusOK
-	} else if pack.Status == StatusTampered {
+	case StatusTampered:
 		slog.Warn("extension.tamper.detected",
 			"pack", m.Name,
 			"warnings", pack.Warnings,

@@ -59,8 +59,7 @@ func TestAppendTimingLog_Rotation(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, entries, maxTimingEntries)
 
-	var first TimingLogEntry
-	first = entries[0]
+	first := entries[0]
 	assert.Equal(t, int64(5), first.Phases[0].DurationMs)
 }
 

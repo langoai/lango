@@ -114,12 +114,8 @@ func TestServerEncryptDecryptPayloadRoundTrip(t *testing.T) {
 	require.NotEmpty(t, enc.Nonce)
 
 	decAny, err := srv.dispatch(context.Background(), Request{
-		Method: methodDecryptPayload,
-		Payload: mustPayload(t, DecryptPayloadRequest{
-			Ciphertext: enc.Ciphertext,
-			Nonce:      enc.Nonce,
-			KeyVersion: enc.KeyVersion,
-		}),
+		Method:  methodDecryptPayload,
+		Payload: mustPayload(t, DecryptPayloadRequest(enc)),
 	})
 	require.NoError(t, err)
 	dec := decAny.(DecryptPayloadResult)
@@ -147,12 +143,8 @@ func TestServerDecryptPayloadTamperFails(t *testing.T) {
 	enc.Ciphertext[0] ^= 0xFF
 
 	_, err = srv.dispatch(context.Background(), Request{
-		Method: methodDecryptPayload,
-		Payload: mustPayload(t, DecryptPayloadRequest{
-			Ciphertext: enc.Ciphertext,
-			Nonce:      enc.Nonce,
-			KeyVersion: enc.KeyVersion,
-		}),
+		Method:  methodDecryptPayload,
+		Payload: mustPayload(t, DecryptPayloadRequest(enc)),
 	})
 	require.Error(t, err)
 }
@@ -288,15 +280,12 @@ func TestClientCloseSendsShutdownRPC(t *testing.T) {
 	go func() {
 		dec := json.NewDecoder(reqR)
 		enc := json.NewEncoder(respW)
-		for {
-			var req Request
-			if err := dec.Decode(&req); err != nil {
-				return
-			}
-			seen <- req.Method
-			_ = enc.Encode(Response{ID: req.ID, OK: true, Result: mustPayload(t, ShutdownResult{ShuttingDown: true})})
+		var req Request
+		if err := dec.Decode(&req); err != nil {
 			return
 		}
+		seen <- req.Method
+		_ = enc.Encode(Response{ID: req.ID, OK: true, Result: mustPayload(t, ShutdownResult{ShuttingDown: true})})
 	}()
 
 	require.NoError(t, c.Close(context.Background()))

@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"entgo.io/ent/dialect"
-	"entgo.io/ent/dialect/sql"
 	entsql "entgo.io/ent/dialect/sql"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -467,7 +466,7 @@ func (s *Store) GetKnowledgeByKeys(ctx context.Context, keys []string) ([]Knowle
 func (s *Store) GetKnowledgeHistory(ctx context.Context, key string) ([]KnowledgeEntry, error) {
 	entries, err := s.client.Knowledge.Query().
 		Where(entknowledge.Key(key)).
-		Order(entknowledge.ByVersion(sql.OrderDesc())).
+		Order(entknowledge.ByVersion(entsql.OrderDesc())).
 		All(ctx)
 
 	if err != nil {
@@ -533,7 +532,7 @@ func (s *Store) searchKnowledgeLIKE(ctx context.Context, query string, category 
 
 	entries, err := s.client.Knowledge.Query().
 		Where(predicates...).
-		Order(entknowledge.ByRelevanceScore(sql.OrderDesc())).
+		Order(entknowledge.ByRelevanceScore(entsql.OrderDesc())).
 		Limit(limit).
 		All(ctx)
 
@@ -713,7 +712,7 @@ func (s *Store) searchKnowledgeScoredLIKE(ctx context.Context, query string, cat
 
 	entries, err := s.client.Knowledge.Query().
 		Where(predicates...).
-		Order(entknowledge.ByRelevanceScore(sql.OrderDesc())).
+		Order(entknowledge.ByRelevanceScore(entsql.OrderDesc())).
 		Limit(limit).
 		All(ctx)
 	if err != nil {
@@ -760,7 +759,7 @@ func (s *Store) SearchRecentKnowledge(ctx context.Context, query string, limit i
 
 	entries, err := s.client.Knowledge.Query().
 		Where(predicates...).
-		Order(entknowledge.ByUpdatedAt(sql.OrderDesc())).
+		Order(entknowledge.ByUpdatedAt(entsql.OrderDesc())).
 		Limit(limit).
 		All(ctx)
 	if err != nil {
@@ -803,7 +802,7 @@ func (s *Store) SearchLearningsScored(ctx context.Context, errorPattern string, 
 
 	entries, err := s.client.Learning.Query().
 		Where(predicates...).
-		Order(entlearning.ByConfidence(sql.OrderDesc())).
+		Order(entlearning.ByConfidence(entsql.OrderDesc())).
 		Limit(limit).
 		All(ctx)
 	if err != nil {
@@ -1038,7 +1037,7 @@ func (s *Store) searchLearningsLIKE(ctx context.Context, errorPattern string, ca
 
 	entries, err := s.client.Learning.Query().
 		Where(predicates...).
-		Order(entlearning.ByConfidence(sql.OrderDesc())).
+		Order(entlearning.ByConfidence(entsql.OrderDesc())).
 		Limit(limit).
 		All(ctx)
 
@@ -1139,7 +1138,7 @@ func (s *Store) SearchLearningEntities(ctx context.Context, errorPattern string,
 
 	return s.client.Learning.Query().
 		Where(predicates...).
-		Order(entlearning.ByConfidence(sql.OrderDesc())).
+		Order(entlearning.ByConfidence(entsql.OrderDesc())).
 		Limit(limit).
 		All(ctx)
 }
@@ -1564,7 +1563,7 @@ func (s *Store) ListLearnings(ctx context.Context, category string, minConfidenc
 		limit = 50
 	}
 	entries, err := q.
-		Order(entlearning.ByCreatedAt(sql.OrderDesc())).
+		Order(entlearning.ByCreatedAt(entsql.OrderDesc())).
 		Limit(limit).
 		Offset(offset).
 		All(ctx)

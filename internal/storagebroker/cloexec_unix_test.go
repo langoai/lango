@@ -21,9 +21,9 @@ func TestMarkCloseOnExecSetsFlag(t *testing.T) {
 
 	assertCloseOnExec := func(file *os.File) {
 		t.Helper()
-		flags, _, errno := unix.Syscall(unix.SYS_FCNTL, file.Fd(), unix.F_GETFD, 0)
-		if errno != 0 {
-			t.Fatalf("fcntl(F_GETFD) fd=%d: %v", file.Fd(), errno)
+		flags, err := unix.FcntlInt(file.Fd(), unix.F_GETFD, 0)
+		if err != nil {
+			t.Fatalf("fcntl(F_GETFD) fd=%d: %v", file.Fd(), err)
 		}
 		if flags&unix.FD_CLOEXEC == 0 {
 			t.Fatalf("expected FD_CLOEXEC for fd=%d", file.Fd())

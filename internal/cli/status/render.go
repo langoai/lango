@@ -108,22 +108,22 @@ func renderDeadLetterBacklogTable(page deadLetterListPage) string {
 	sep := lipgloss.NewStyle().Foreground(tui.Separator).Render(strings.Repeat("\u2500", 72))
 	b.WriteString(sep)
 	b.WriteString("\n")
-	b.WriteString(fmt.Sprintf("%-20s %-24s %-12s %-8s %-8s\n", "Transaction", "Reason", "Adjudication", "Attempt", "Retry"))
+	fmt.Fprintf(&b, "%-20s %-24s %-12s %-8s %-8s\n", "Transaction", "Reason", "Adjudication", "Attempt", "Retry")
 	b.WriteString(sep)
 	b.WriteString("\n")
 	for _, entry := range page.Entries {
-		b.WriteString(fmt.Sprintf(
+		fmt.Fprintf(&b,
 			"%-20s %-24s %-12s %-8d %-8t\n",
 			tui.Truncate(entry.TransactionReceiptID, 20),
 			tui.Truncate(entry.LatestDeadLetterReason, 24),
 			tui.Truncate(entry.Adjudication, 12),
 			entry.LatestRetryAttempt,
 			entry.CanRetry,
-		))
+		)
 	}
 	if page.Total > 0 {
 		b.WriteString("\n")
-		b.WriteString(fmt.Sprintf("Count: %d  Total: %d  Offset: %d  Limit: %d\n", page.Count, page.Total, page.Offset, page.Limit))
+		fmt.Fprintf(&b, "Count: %d  Total: %d  Offset: %d  Limit: %d\n", page.Count, page.Total, page.Offset, page.Limit)
 	}
 	return b.String()
 }
@@ -211,7 +211,7 @@ func renderSummaryBuckets(buckets []deadLetterSummaryBucket) string {
 
 	var b strings.Builder
 	for _, bucket := range buckets {
-		b.WriteString(fmt.Sprintf("    %-24s%d\n", bucket.Label, bucket.Count))
+		fmt.Fprintf(&b, "    %-24s%d\n", bucket.Label, bucket.Count)
 	}
 	return b.String()
 }
@@ -223,11 +223,11 @@ func renderReasonSummaryItems(items []deadLetterReasonSummaryItem) string {
 
 	var b strings.Builder
 	sep := lipgloss.NewStyle().Foreground(tui.Separator).Render(strings.Repeat("\u2500", 72))
-	b.WriteString(fmt.Sprintf("%-60s %-8s\n", "Reason", "Count"))
+	fmt.Fprintf(&b, "%-60s %-8s\n", "Reason", "Count")
 	b.WriteString(sep)
 	b.WriteString("\n")
 	for _, item := range items {
-		b.WriteString(fmt.Sprintf("%-60s %-8d\n", tui.Truncate(item.Reason, 60), item.Count))
+		fmt.Fprintf(&b, "%-60s %-8d\n", tui.Truncate(item.Reason, 60), item.Count)
 	}
 	return b.String()
 }
@@ -239,11 +239,11 @@ func renderActorSummaryItems(items []deadLetterActorSummaryItem) string {
 
 	var b strings.Builder
 	sep := lipgloss.NewStyle().Foreground(tui.Separator).Render(strings.Repeat("\u2500", 72))
-	b.WriteString(fmt.Sprintf("%-60s %-8s\n", "Actor", "Count"))
+	fmt.Fprintf(&b, "%-60s %-8s\n", "Actor", "Count")
 	b.WriteString(sep)
 	b.WriteString("\n")
 	for _, item := range items {
-		b.WriteString(fmt.Sprintf("%-60s %-8d\n", tui.Truncate(item.Actor, 60), item.Count))
+		fmt.Fprintf(&b, "%-60s %-8d\n", tui.Truncate(item.Actor, 60), item.Count)
 	}
 	return b.String()
 }
@@ -255,11 +255,11 @@ func renderDispatchSummaryItems(items []deadLetterDispatchSummaryItem) string {
 
 	var b strings.Builder
 	sep := lipgloss.NewStyle().Foreground(tui.Separator).Render(strings.Repeat("\u2500", 72))
-	b.WriteString(fmt.Sprintf("%-60s %-8s\n", "Dispatch Reference", "Count"))
+	fmt.Fprintf(&b, "%-60s %-8s\n", "Dispatch Reference", "Count")
 	b.WriteString(sep)
 	b.WriteString("\n")
 	for _, item := range items {
-		b.WriteString(fmt.Sprintf("%-60s %-8d\n", tui.Truncate(item.DispatchReference, 60), item.Count))
+		fmt.Fprintf(&b, "%-60s %-8d\n", tui.Truncate(item.DispatchReference, 60), item.Count)
 	}
 	return b.String()
 }
@@ -277,7 +277,7 @@ func renderDeadLetterTrend(trend deadLetterTrendWindow) string {
 		return b.String()
 	}
 	for _, bucket := range trend.Buckets {
-		b.WriteString(fmt.Sprintf("    %-40s%d\n", tui.Truncate(bucket.Label, 40), bucket.Count))
+		fmt.Fprintf(&b, "    %-40s%d\n", tui.Truncate(bucket.Label, 40), bucket.Count)
 	}
 	return b.String()
 }

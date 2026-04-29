@@ -159,7 +159,7 @@ func TestService_EvaluateDirectPayment_DeniesStaleNonCurrentSubmissionReceiptID(
 	store := receipts.NewStore()
 	ctx := context.Background()
 
-	firstSubmission, tx, err := store.CreateSubmissionReceipt(ctx, receipts.CreateSubmissionInput{
+	firstSubmission, firstTx, err := store.CreateSubmissionReceipt(ctx, receipts.CreateSubmissionInput{
 		TransactionID:       "tx-stale",
 		ArtifactLabel:       "artifact-stale-1",
 		PayloadHash:         "hash-stale-1",
@@ -167,16 +167,16 @@ func TestService_EvaluateDirectPayment_DeniesStaleNonCurrentSubmissionReceiptID(
 	})
 	require.NoError(t, err)
 
-	secondSubmission, tx, err := store.CreateSubmissionReceipt(ctx, receipts.CreateSubmissionInput{
+	secondSubmission, latestTx, err := store.CreateSubmissionReceipt(ctx, receipts.CreateSubmissionInput{
 		TransactionID:       "tx-stale",
 		ArtifactLabel:       "artifact-stale-2",
 		PayloadHash:         "hash-stale-2",
 		SourceLineageDigest: "lineage-stale-2",
 	})
 	require.NoError(t, err)
-	require.Equal(t, secondSubmission.SubmissionReceiptID, tx.CurrentSubmissionReceiptID)
+	require.Equal(t, secondSubmission.SubmissionReceiptID, latestTx.CurrentSubmissionReceiptID)
 
-	_, err = store.ApplyUpfrontPaymentApproval(ctx, tx.TransactionReceiptID, secondSubmission.SubmissionReceiptID, paymentapproval.Outcome{
+	_, err = store.ApplyUpfrontPaymentApproval(ctx, latestTx.TransactionReceiptID, secondSubmission.SubmissionReceiptID, paymentapproval.Outcome{
 		Decision:      paymentapproval.DecisionApprove,
 		Reason:        "Upfront payment approved.",
 		SuggestedMode: paymentapproval.ModePrepay,
@@ -185,7 +185,7 @@ func TestService_EvaluateDirectPayment_DeniesStaleNonCurrentSubmissionReceiptID(
 
 	service := NewService(store)
 	result, err := service.EvaluateDirectPayment(ctx, Request{
-		TransactionReceiptID: tx.TransactionReceiptID,
+		TransactionReceiptID: firstTx.TransactionReceiptID,
 		SubmissionReceiptID:  firstSubmission.SubmissionReceiptID,
 	})
 	require.NoError(t, err)
