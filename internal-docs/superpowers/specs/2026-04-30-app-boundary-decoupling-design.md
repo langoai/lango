@@ -8,7 +8,7 @@ The first architecture change will establish a dependency firewall before moving
 
 ## Goals
 
-- Make `cmd/lango` the only production package outside `internal/app` that directly imports `internal/app`.
+- Make `cmd/lango` the only production importer of `internal/app`.
 - Remove direct `internal/app` imports from `internal/cli/**`.
 - Replace CLI/TUI dependencies on concrete app types and helper functions with narrow interfaces, DTOs, or app-independent packages.
 - Add an architecture test that prevents `internal/cli/**` from importing `internal/app` again.
@@ -58,21 +58,35 @@ Remove `cockpit.Deps.FeatureStatuses` instead of adding a new interface. Keep th
 
 Resolve this by moving app-backed dead-letter bridge construction out of `internal/cli/status` and into `cmd/lango`. Do not create another production package that imports `internal/app`; that would weaken the composition-root goal. `cmd/lango` should own a lazy helper that bootstraps the app and passes a catalog-backed bridge loader into the status command.
 
-`internal/cli/status` should use the same catalog-backed bridge pattern already used by cockpit's `DeadLetterToolBridge`: command code depends on bridge behavior, not on app construction. `NewStatusCmd` should accept the production dead-letter loader as a dependency, while tests can keep using fake bridge loaders.
+`internal/cli/status` should use the same catalog-backed bridge pattern already used by cockpit's `DeadLetterToolBridge`: command code depends on bridge behavior, not on app construction. `NewStatusCmd` should accept the production dead-letter loader as a dependency, while tests can keep using fake bridge loaders. App-backed construction belongs in a new `cmd/lango/dead_letter_status.go` file rather than further expanding `cmd/lango/main.go`.
+
+Export exactly the status package API needed for that wiring:
+
+- `type DeadLetterBridge interface`
+- `type DeadLetterBridgeLoader func() (DeadLetterBridge, func(), error)`
+- `type DeadLetterListOptions struct`
+- `type DeadLetterListPage struct`
+- `func NewToolCatalogDeadLetterBridge(catalog *toolcatalog.Catalog) DeadLetterBridge`
+- `func NewStatusCmd(bootLoader func() (*bootstrap.Result, error), deadLetterLoader DeadLetterBridgeLoader) *cobra.Command`
+
+`NewStatusCmd` should treat a nil `deadLetterLoader` as "dead-letter status tools are not available" for dead-letter subcommands, so tests and future callers can construct the base status command without importing app wiring. Keep retry result, summary result, trend, and rendering helper types unexported unless an implementation test proves `cmd/lango` needs them. `internal/cli/status` has one app-backed entry point today: `deadLetterLoaderFromBoot`. Moving that single loader is enough to make the status package app-free; the base `status` command and all dead-letter subcommands continue to share the same loader dependency.
 
 This preserves the current lazy bootstrap behavior for dead-letter subcommands, but it does not make that bootstrap lighter. Today the path builds a full app only to access three dead-letter tool handlers. Reducing that startup cost is a follow-up change, not part of this boundary slice.
 
+Do not merge the cockpit dead-letter option types with status in this slice. Cockpit, status, and `postadjudicationstatus` currently use related but differently shaped option structs. Consolidating them is valid follow-up cleanup, but doing it here would expand the boundary change into a dead-letter API refactor.
+
 ### Hook Registry Builder
 
-`internal/cli/agent/hooks.go` uses `app.BuildHookRegistry(...)` to produce a registry snapshot. Move this construction function to `internal/toolchain`, because its signature already depends on `config`, `eventbus`, `toolchain.KnowledgeSaver`, and `toolcatalog`, and it returns `*toolchain.HookRegistry`.
+`internal/cli/agent/hooks.go` uses `app.BuildHookRegistry(...)` to produce a registry snapshot. Move this construction function to `internal/toolchain/build_hook_registry.go` as exported `toolchain.BuildHookRegistry`, because its signature already depends on `config`, `eventbus`, `toolchain.KnowledgeSaver`, and `toolcatalog`, and it returns `*toolchain.HookRegistry`.
 
-`internal/app` can call the same `internal/toolchain` function after the move. The CLI agent command should depend on `internal/toolchain`, not on `internal/app`.
+`internal/app` should call the same `internal/toolchain` function after the move. The CLI agent command should depend on `internal/toolchain`, not on `internal/app`.
 
 Implementation inventory:
 
 - Update `internal/cli/agent/hooks.go` to call `toolchain.BuildHookRegistry`.
 - Move `internal/app/build_hook_registry_test.go` to the `internal/toolchain` package.
-- Update `internal/app/app.go` so its private `buildHookRegistry` delegates to `toolchain.BuildHookRegistry`.
+- Update `internal/app/app.go` so the runtime bootstrap calls `toolchain.BuildHookRegistry` directly.
+- Delete the private `buildHookRegistry` wrapper in `internal/app/app.go`; keeping it would be a dead abstraction layer.
 - Verify `internal/config`, `internal/eventbus`, and `internal/toolcatalog` do not import `internal/toolchain`; current code shows no such reverse import, so the move should not create a package cycle.
 
 ### Architecture Enforcement
@@ -119,6 +133,15 @@ cmd/lango -> internal/cli/* constructors -> narrow interfaces / function provide
 
 CLI packages should not inspect app internals or depend on `app.App` fields. They should receive the exact dependency needed for rendering, command execution, or bridge access.
 
+## Implementation Sequence
+
+Apply the implementation in this order so each checkpoint has a clear rollback boundary and the architecture test is only enabled after the code can pass it:
+
+1. Move `BuildHookRegistry` to `internal/toolchain/build_hook_registry.go`, update app and agent callers, and move the tests.
+2. Remove the unused `cockpit.Deps.FeatureStatuses` field and update `cmd/lango` cockpit wiring.
+3. Export the status dead-letter bridge API, move app-backed lazy loader construction to `cmd/lango/dead_letter_status.go`, and update status tests.
+4. Add and enable the `internal/archtest` rule that blocks production `internal/cli/** -> internal/app` imports.
+
 ## Error Handling
 
 The change must preserve current user-facing error behavior:
@@ -133,6 +156,7 @@ The change must preserve current user-facing error behavior:
 Verification requires:
 
 - Update or add unit tests for affected CLI packages using fakes for the new ports.
+- Verify `lango agent hooks --json` remains decoded-JSON field compatible for a fixed config fixture before and after the `BuildHookRegistry` move. Do not require byte-for-byte equivalence unless saveable tool ordering is explicitly stabilized.
 - Add or update `internal/archtest` coverage for the CLI-to-app import boundary.
 - Run `go test ./internal/archtest/...` during implementation.
 - Run `go build ./...` and `go test ./...` before reporting completion.
@@ -152,10 +176,12 @@ Implementation should use an OpenSpec change focused on app boundary decoupling.
 ## Acceptance Criteria
 
 - `rg 'github.com/langoai/lango/internal/app["/]' internal/cli --glob '*.go'` returns no production CLI imports.
-- `rg 'github.com/langoai/lango/internal/app["/]' --glob '*.go'` returns only `cmd/lango` and files under `internal/app`.
+- Baseline before this change: `rg 'github.com/langoai/lango/internal/app["/]' --glob '*.go'` returns four production files: `cmd/lango/main.go`, `internal/cli/cockpit/deps.go`, `internal/cli/status/status.go`, and `internal/cli/agent/hooks.go`.
+- After this change: the same production grep returns only `cmd/lango/main.go`.
 - `cmd/lango` remains allowed to import and instantiate `internal/app`.
 - A production import from `internal/cli/**` to `internal/app` fails the architecture test.
 - OpenSpec deltas are added for affected concrete package contracts before implementation tasks are marked complete.
 - Existing status, cockpit, and agent hooks behavior remains compatible at the CLI contract level.
+- `lango agent hooks --json` preserves the same decoded JSON fields for a fixed config fixture.
 - `go build ./...` passes.
 - `go test ./...` passes, or any pre-existing environment-dependent failures are explicitly reproduced and documented before implementation begins.
