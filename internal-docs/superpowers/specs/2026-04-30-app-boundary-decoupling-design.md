@@ -62,7 +62,7 @@ Resolve this by moving app-backed dead-letter bridge construction out of `intern
 
 Export exactly the status package API needed for that wiring:
 
-- `type DeadLetterBridge interface`
+- `type DeadLetterBridge interface { Ready() bool; List(context.Context, DeadLetterListOptions) (DeadLetterListPage, error); Detail(context.Context, string) (postadjudicationstatus.TransactionStatus, error); Retry(context.Context, string) error }`
 - `type DeadLetterBridgeLoader func() (DeadLetterBridge, func(), error)`
 - `type DeadLetterListOptions struct`
 - `type DeadLetterListPage struct`
@@ -71,9 +71,11 @@ Export exactly the status package API needed for that wiring:
 
 `NewStatusCmd` should treat a nil `deadLetterLoader` as "dead-letter status tools are not available" for dead-letter subcommands, so tests and future callers can construct the base status command without importing app wiring. Keep retry result, summary result, trend, and rendering helper types unexported unless an implementation test proves `cmd/lango` needs them. `internal/cli/status` has one app-backed entry point today: `deadLetterLoaderFromBoot`. Moving that single loader is enough to make the status package app-free; the base `status` command and all dead-letter subcommands continue to share the same loader dependency.
 
+`internal/cli/status` may continue to import `internal/bootstrap` for the base status command and constructor signature. `internal/bootstrap` does not import `internal/app`, so this dependency is not part of the app boundary violation.
+
 This preserves the current lazy bootstrap behavior for dead-letter subcommands, but it does not make that bootstrap lighter. Today the path builds a full app only to access three dead-letter tool handlers. Reducing that startup cost is a follow-up change, not part of this boundary slice.
 
-Do not merge the cockpit dead-letter option types with status in this slice. Cockpit, status, and `postadjudicationstatus` currently use related but differently shaped option structs. Consolidating them is valid follow-up cleanup, but doing it here would expand the boundary change into a dead-letter API refactor.
+Do not merge the cockpit dead-letter option types with status in this slice. Cockpit, status, and `postadjudicationstatus` currently use related but differently shaped option structs. Cockpit owns an exported concrete `DeadLetterToolBridge`; status will own an exported `DeadLetterBridge` interface. The naming difference is intentional for this slice. Consolidating these bridge and option types is valid follow-up cleanup, but doing it here would expand the boundary change into a dead-letter API refactor.
 
 ### Hook Registry Builder
 
@@ -85,6 +87,7 @@ Implementation inventory:
 
 - Update `internal/cli/agent/hooks.go` to call `toolchain.BuildHookRegistry`.
 - Move `internal/app/build_hook_registry_test.go` to the `internal/toolchain` package.
+- Keep `internal/cli/agent/hooks_test.go` in place and update only imports/call expectations affected by `toolchain.BuildHookRegistry`.
 - Update `internal/app/app.go` so the runtime bootstrap calls `toolchain.BuildHookRegistry` directly.
 - Delete the private `buildHookRegistry` wrapper in `internal/app/app.go`; keeping it would be a dead abstraction layer.
 - Verify `internal/config`, `internal/eventbus`, and `internal/toolcatalog` do not import `internal/toolchain`; current code shows no such reverse import, so the move should not create a package cycle.
@@ -156,7 +159,7 @@ The change must preserve current user-facing error behavior:
 Verification requires:
 
 - Update or add unit tests for affected CLI packages using fakes for the new ports.
-- Verify `lango agent hooks --json` remains decoded-JSON field compatible for a fixed config fixture before and after the `BuildHookRegistry` move. Do not require byte-for-byte equivalence unless saveable tool ordering is explicitly stabilized.
+- Verify `lango agent hooks --json` remains decoded-JSON field compatible for a fixed config fixture in `internal/cli/agent/hooks_test.go` before and after the `BuildHookRegistry` move. Do not require byte-for-byte equivalence unless saveable tool ordering is explicitly stabilized.
 - Add or update `internal/archtest` coverage for the CLI-to-app import boundary.
 - Run `go test ./internal/archtest/...` during implementation.
 - Run `go build ./...` and `go test ./...` before reporting completion.
@@ -175,13 +178,12 @@ Implementation should use an OpenSpec change focused on app boundary decoupling.
 
 ## Acceptance Criteria
 
-- `rg 'github.com/langoai/lango/internal/app["/]' internal/cli --glob '*.go'` returns no production CLI imports.
-- Baseline before this change: `rg 'github.com/langoai/lango/internal/app["/]' --glob '*.go'` returns four production files: `cmd/lango/main.go`, `internal/cli/cockpit/deps.go`, `internal/cli/status/status.go`, and `internal/cli/agent/hooks.go`.
-- After this change: the same production grep returns only `cmd/lango/main.go`.
-- `cmd/lango` remains allowed to import and instantiate `internal/app`.
+- Baseline before this change: `rg 'github.com/langoai/lango/internal/app["/]' --glob '*.go' --glob '!*_test.go'` returns four production files: `cmd/lango/main.go`, `internal/cli/cockpit/deps.go`, `internal/cli/status/status.go`, and `internal/cli/agent/hooks.go`.
+- After this change: the same production grep returns only files under `cmd/lango/`, specifically `cmd/lango/main.go` and `cmd/lango/dead_letter_status.go`.
+- `cmd/lango` remains the only production package allowed to import and instantiate `internal/app`.
 - A production import from `internal/cli/**` to `internal/app` fails the architecture test.
 - OpenSpec deltas are added for affected concrete package contracts before implementation tasks are marked complete.
 - Existing status, cockpit, and agent hooks behavior remains compatible at the CLI contract level.
-- `lango agent hooks --json` preserves the same decoded JSON fields for a fixed config fixture.
+- `lango agent hooks --json` preserves the same decoded JSON fields for the fixed config fixture in `internal/cli/agent/hooks_test.go`.
 - `go build ./...` passes.
 - `go test ./...` passes, or any pre-existing environment-dependent failures are explicitly reproduced and documented before implementation begins.
