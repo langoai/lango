@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,7 +15,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/langoai/lango/internal/app"
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/cli/tui"
 	"github.com/langoai/lango/internal/config"
@@ -34,15 +34,28 @@ const (
 	defaultDeadLetterRetryWaitTimeout  = 30 * time.Second
 )
 
-type deadLetterBridge interface {
-	List(context.Context, deadLetterListOptions) (deadLetterListPage, error)
+// ErrDeadLetterStatusToolsUnavailable reports that the status command cannot build dead-letter tools.
+var ErrDeadLetterStatusToolsUnavailable = errors.New("dead-letter status tools are not available")
+
+// DeadLetterBridge is the narrow port used by status dead-letter commands.
+type DeadLetterBridge interface {
+	List(context.Context, DeadLetterListOptions) (DeadLetterListPage, error)
 	Detail(context.Context, string) (postadjudicationstatus.TransactionStatus, error)
 	Retry(context.Context, string) error
 }
 
-type deadLetterBridgeLoader func() (deadLetterBridge, func(), error)
+// DeadLetterReadyBridge is a dead-letter bridge that can report read-side availability.
+type DeadLetterReadyBridge interface {
+	DeadLetterBridge
+	Ready() bool
+}
 
-type deadLetterListOptions struct {
+// DeadLetterBridgeLoader constructs a bridge and returns a cleanup function.
+// A nil cleanup is normalized to a no-op by command handlers.
+type DeadLetterBridgeLoader func() (DeadLetterBridge, func(), error)
+
+// DeadLetterListOptions contains list filters for dead-letter status tools.
+type DeadLetterListOptions struct {
 	Query                     string
 	Adjudication              string
 	LatestStatusSubtype       string
@@ -57,7 +70,8 @@ type deadLetterListOptions struct {
 	Limit                     int
 }
 
-type deadLetterListPage struct {
+// DeadLetterListPage is the dead-letter backlog page returned by the bridge.
+type DeadLetterListPage struct {
 	Entries []postadjudicationstatus.DeadLetterBacklogEntry `json:"entries"`
 	Count   int                                             `json:"count"`
 	Total   int                                             `json:"total"`
@@ -150,12 +164,25 @@ type toolCatalogDeadLetterBridge struct {
 	catalog *toolcatalog.Catalog
 }
 
+// NewToolCatalogDeadLetterBridge creates a bridge backed by tool catalog entries.
+func NewToolCatalogDeadLetterBridge(catalog *toolcatalog.Catalog) DeadLetterReadyBridge {
+	return &toolCatalogDeadLetterBridge{catalog: catalog}
+}
+
 // NewStatusCmd creates the status command.
-func NewStatusCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
+func NewStatusCmd(
+	bootLoader func() (*bootstrap.Result, error),
+	deadLetterLoader DeadLetterBridgeLoader,
+) *cobra.Command {
 	var (
 		outputFmt string
 		addr      string
 	)
+	if deadLetterLoader == nil {
+		deadLetterLoader = func() (DeadLetterBridge, func(), error) {
+			return nil, nil, ErrDeadLetterStatusToolsUnavailable
+		}
+	}
 
 	cmd := &cobra.Command{
 		Use:   "status",
@@ -190,13 +217,28 @@ Examples:
 
 	cmd.Flags().StringVar(&outputFmt, "output", "table", "Output format: table or json")
 	cmd.Flags().StringVar(&addr, "addr", defaultAddr, "Gateway address")
-	cmd.AddCommand(newDeadLetterSummaryCmd(deadLetterLoaderFromBoot(bootLoader)))
-	cmd.AddCommand(newDeadLettersCmd(deadLetterLoaderFromBoot(bootLoader)))
-	cmd.AddCommand(newDeadLetterCmd(deadLetterLoaderFromBoot(bootLoader)))
+	cmd.AddCommand(newDeadLetterSummaryCmd(deadLetterLoader))
+	cmd.AddCommand(newDeadLettersCmd(deadLetterLoader))
+	cmd.AddCommand(newDeadLetterCmd(deadLetterLoader))
 	return cmd
 }
 
-func newDeadLetterSummaryCmd(loader deadLetterBridgeLoader) *cobra.Command {
+func loadDeadLetterBridge(loader DeadLetterBridgeLoader) (DeadLetterBridge, func(), error) {
+	bridge, cleanup, err := loader()
+	if err != nil {
+		return nil, nil, err
+	}
+	if cleanup == nil {
+		cleanup = func() {}
+	}
+	if bridge == nil {
+		cleanup()
+		return nil, nil, ErrDeadLetterStatusToolsUnavailable
+	}
+	return bridge, cleanup, nil
+}
+
+func newDeadLetterSummaryCmd(loader DeadLetterBridgeLoader) *cobra.Command {
 	var (
 		outputFmt   string
 		topN        int
@@ -210,13 +252,13 @@ func newDeadLetterSummaryCmd(loader deadLetterBridgeLoader) *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return handleStatusCommandError(cmd, outputFmt, func() error {
-				bridge, cleanup, err := loader()
+				bridge, cleanup, err := loadDeadLetterBridge(loader)
 				if err != nil {
 					return err
 				}
 				defer cleanup()
 
-				page, err := bridge.List(cmd.Context(), deadLetterListOptions{})
+				page, err := bridge.List(cmd.Context(), DeadLetterListOptions{})
 				if err != nil {
 					return err
 				}
@@ -241,7 +283,7 @@ func newDeadLetterSummaryCmd(loader deadLetterBridgeLoader) *cobra.Command {
 	return cmd
 }
 
-func newDeadLettersCmd(loader deadLetterBridgeLoader) *cobra.Command {
+func newDeadLettersCmd(loader DeadLetterBridgeLoader) *cobra.Command {
 	var (
 		outputFmt                 string
 		query                     string
@@ -285,13 +327,13 @@ func newDeadLettersCmd(loader deadLetterBridgeLoader) *cobra.Command {
 					return err
 				}
 
-				bridge, cleanup, err := loader()
+				bridge, cleanup, err := loadDeadLetterBridge(loader)
 				if err != nil {
 					return err
 				}
 				defer cleanup()
 
-				page, err := bridge.List(cmd.Context(), deadLetterListOptions{
+				page, err := bridge.List(cmd.Context(), DeadLetterListOptions{
 					Query:                     query,
 					Adjudication:              adjudication,
 					LatestStatusSubtype:       subtype,
@@ -332,7 +374,7 @@ func newDeadLettersCmd(loader deadLetterBridgeLoader) *cobra.Command {
 	return cmd
 }
 
-func newDeadLetterCmd(loader deadLetterBridgeLoader) *cobra.Command {
+func newDeadLetterCmd(loader DeadLetterBridgeLoader) *cobra.Command {
 	var outputFmt string
 
 	cmd := &cobra.Command{
@@ -341,7 +383,7 @@ func newDeadLetterCmd(loader deadLetterBridgeLoader) *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return handleStatusCommandError(cmd, outputFmt, func() error {
-				bridge, cleanup, err := loader()
+				bridge, cleanup, err := loadDeadLetterBridge(loader)
 				if err != nil {
 					return err
 				}
@@ -364,7 +406,7 @@ func newDeadLetterCmd(loader deadLetterBridgeLoader) *cobra.Command {
 	return cmd
 }
 
-func newDeadLetterRetryCmd(loader deadLetterBridgeLoader) *cobra.Command {
+func newDeadLetterRetryCmd(loader DeadLetterBridgeLoader) *cobra.Command {
 	var (
 		outputFmt    string
 		yes          bool
@@ -382,7 +424,7 @@ func newDeadLetterRetryCmd(loader deadLetterBridgeLoader) *cobra.Command {
 			return handleStatusCommandError(cmd, outputFmt, func() error {
 				transactionReceiptID := strings.TrimSpace(args[0])
 
-				bridge, cleanup, err := loader()
+				bridge, cleanup, err := loadDeadLetterBridge(loader)
 				if err != nil {
 					return err
 				}
@@ -462,31 +504,10 @@ func newDeadLetterRetryCmd(loader deadLetterBridgeLoader) *cobra.Command {
 	return cmd
 }
 
-func deadLetterLoaderFromBoot(bootLoader func() (*bootstrap.Result, error)) deadLetterBridgeLoader {
-	return func() (deadLetterBridge, func(), error) {
-		boot, err := bootLoader()
-		if err != nil {
-			return nil, nil, fmt.Errorf("bootstrap: %w", err)
-		}
-		application, err := app.New(boot, app.WithLocalChat())
-		if err != nil {
-			_ = boot.Close()
-			return nil, nil, fmt.Errorf("build app: %w", err)
-		}
-		cleanup := func() {
-			_ = application.Stop(context.Background())
-			_ = boot.Close()
-		}
-		bridge := &toolCatalogDeadLetterBridge{catalog: application.ToolCatalog}
-		if !bridge.ready() {
-			cleanup()
-			return nil, nil, fmt.Errorf("dead-letter status tools are not available")
-		}
-		return bridge, cleanup, nil
-	}
-}
-
-func (b *toolCatalogDeadLetterBridge) ready() bool {
+// Ready reports whether the read-side dead-letter status tools are available.
+// Retry availability is checked by Retry so deployments can expose read-only
+// status commands without hiding the whole dead-letter command group.
+func (b *toolCatalogDeadLetterBridge) Ready() bool {
 	if b == nil || b.catalog == nil {
 		return false
 	}
@@ -495,13 +516,13 @@ func (b *toolCatalogDeadLetterBridge) ready() bool {
 	return hasList && hasDetail
 }
 
-func (b *toolCatalogDeadLetterBridge) List(ctx context.Context, opts deadLetterListOptions) (deadLetterListPage, error) {
+func (b *toolCatalogDeadLetterBridge) List(ctx context.Context, opts DeadLetterListOptions) (DeadLetterListPage, error) {
 	if b == nil || b.catalog == nil {
-		return deadLetterListPage{}, fmt.Errorf("dead-letter tool catalog is not configured")
+		return DeadLetterListPage{}, fmt.Errorf("dead-letter tool catalog is not configured")
 	}
 	entry, ok := b.catalog.Get("list_dead_lettered_post_adjudication_executions")
 	if !ok || entry.Tool == nil || entry.Tool.Handler == nil {
-		return deadLetterListPage{}, fmt.Errorf("dead-letter backlog tool is not available")
+		return DeadLetterListPage{}, fmt.Errorf("dead-letter backlog tool is not available")
 	}
 	params := map[string]interface{}{}
 	if query := strings.TrimSpace(opts.Query); query != "" {
@@ -545,25 +566,25 @@ func (b *toolCatalogDeadLetterBridge) List(ctx context.Context, opts deadLetterL
 	}
 	raw, err := entry.Tool.Handler(ctx, params)
 	if err != nil {
-		return deadLetterListPage{}, err
+		return DeadLetterListPage{}, err
 	}
 	payload, ok := raw.(map[string]interface{})
 	if !ok {
-		return deadLetterListPage{}, fmt.Errorf("dead-letter backlog tool returned invalid payload")
+		return DeadLetterListPage{}, fmt.Errorf("dead-letter backlog tool returned invalid payload")
 	}
 	entriesRaw, ok := payload["entries"]
 	if !ok {
-		return deadLetterListPage{}, fmt.Errorf("dead-letter backlog tool returned no entries")
+		return DeadLetterListPage{}, fmt.Errorf("dead-letter backlog tool returned no entries")
 	}
 	data, err := json.Marshal(entriesRaw)
 	if err != nil {
-		return deadLetterListPage{}, err
+		return DeadLetterListPage{}, err
 	}
 	var entries []postadjudicationstatus.DeadLetterBacklogEntry
 	if err := json.Unmarshal(data, &entries); err != nil {
-		return deadLetterListPage{}, err
+		return DeadLetterListPage{}, err
 	}
-	return deadLetterListPage{
+	return DeadLetterListPage{
 		Entries: entries,
 		Count:   optionalInt(payload, "count"),
 		Total:   optionalInt(payload, "total"),
@@ -609,12 +630,12 @@ func normalizeRFC3339Flag(name, value string) (string, error) {
 	return trimmed, nil
 }
 
-func aggregateDeadLetterSummary(page deadLetterListPage) deadLetterSummaryResult {
+func aggregateDeadLetterSummary(page DeadLetterListPage) deadLetterSummaryResult {
 	return aggregateDeadLetterSummaryWithOptions(page, deadLetterSummaryOptions{})
 }
 
 func aggregateDeadLetterSummaryWithOptions(
-	page deadLetterListPage,
+	page DeadLetterListPage,
 	options deadLetterSummaryOptions,
 ) deadLetterSummaryResult {
 	topN := options.TopN
@@ -757,7 +778,7 @@ func summarizeDeadLetterTrend(
 
 func collectDeadLetterRetryFollowUp(
 	ctx context.Context,
-	bridge deadLetterBridge,
+	bridge DeadLetterBridge,
 	transactionReceiptID string,
 	baseline postadjudicationstatus.TransactionStatus,
 	wait bool,
@@ -897,7 +918,7 @@ func manualReplayActorFamilyOrder() []string {
 	}
 }
 
-func summaryTotal(page deadLetterListPage) int {
+func summaryTotal(page DeadLetterListPage) int {
 	if page.Total > 0 {
 		return page.Total
 	}

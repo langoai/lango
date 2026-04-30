@@ -134,7 +134,7 @@ func main() {
 	settingsCmd.GroupID = "start"
 	rootCmd.AddCommand(settingsCmd)
 
-	statusCmd := clistatus.NewStatusCmd(cliboot.BootResult)
+	statusCmd := clistatus.NewStatusCmd(cliboot.BootResult, newDeadLetterStatusLoader(cliboot.BootResult))
 	statusCmd.GroupID = "start"
 	rootCmd.AddCommand(statusCmd)
 
@@ -709,7 +709,6 @@ func runCockpit(initialMode string) error {
 		SessionStore:      application.Store,
 		ToolCatalog:       application.ToolCatalog,
 		MetricsCollector:  application.MetricsCollector,
-		FeatureStatuses:   application.FeatureStatuses,
 		ConfigStore:       boot.Storage.ConfigProfiles(),
 		ProfileName:       boot.ProfileName,
 		BackgroundManager: application.BackgroundManager,

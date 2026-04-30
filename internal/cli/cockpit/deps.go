@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/langoai/lango/internal/app"
 	"github.com/langoai/lango/internal/approval"
 	"github.com/langoai/lango/internal/background"
 	"github.com/langoai/lango/internal/config"
@@ -30,7 +29,6 @@ type Deps struct {
 	SessionStore      session.Store // optional; enables /mode to persist session mode
 	ToolCatalog       *toolcatalog.Catalog
 	MetricsCollector  *observability.MetricsCollector
-	FeatureStatuses   *app.StatusCollector
 	ConfigStore       storage.ConfigProfileStore
 	ProfileName       string
 	BackgroundManager *background.Manager    // optional, nil when unavailable
