@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -32,6 +33,9 @@ const (
 	defaultDeadLetterRetryWaitInterval = 2 * time.Second
 	defaultDeadLetterRetryWaitTimeout  = 30 * time.Second
 )
+
+// ErrDeadLetterStatusToolsUnavailable reports that the status command cannot build dead-letter tools.
+var ErrDeadLetterStatusToolsUnavailable = errors.New("dead-letter status tools are not available")
 
 // DeadLetterBridge is the narrow port used by status dead-letter commands.
 type DeadLetterBridge interface {
@@ -171,7 +175,7 @@ func NewStatusCmd(
 	)
 	if deadLetterLoader == nil {
 		deadLetterLoader = func() (DeadLetterBridge, func(), error) {
-			return nil, nil, fmt.Errorf("dead-letter status tools are not available")
+			return nil, nil, ErrDeadLetterStatusToolsUnavailable
 		}
 	}
 
@@ -224,7 +228,7 @@ func loadDeadLetterBridge(loader DeadLetterBridgeLoader) (DeadLetterBridge, func
 	}
 	if bridge == nil {
 		cleanup()
-		return nil, nil, fmt.Errorf("dead-letter status tools are not available")
+		return nil, nil, ErrDeadLetterStatusToolsUnavailable
 	}
 	return bridge, cleanup, nil
 }

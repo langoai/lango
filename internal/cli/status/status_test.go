@@ -387,7 +387,7 @@ func TestNewStatusCmd_DeadLetterLoaderNilBridgeCleansUp(t *testing.T) {
 	_, err := executeCommand(t, cmd, "dead-letter-summary")
 
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "dead-letter status tools are not available")
+	assert.ErrorIs(t, err, ErrDeadLetterStatusToolsUnavailable)
 	assert.Equal(t, 1, cleanupCalls)
 }
 

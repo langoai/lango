@@ -27,7 +27,7 @@ func newDeadLetterStatusLoader(bootLoader func() (*bootstrap.Result, error)) cli
 		bridge := clistatus.NewToolCatalogDeadLetterBridge(application.ToolCatalog)
 		if !bridge.Ready() {
 			cleanup()
-			return nil, nil, fmt.Errorf("dead-letter status tools are not available")
+			return nil, nil, clistatus.ErrDeadLetterStatusToolsUnavailable
 		}
 		return bridge, cleanup, nil
 	}
