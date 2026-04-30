@@ -37,6 +37,10 @@
 - Modify `internal/cli/status/status_test.go`: update tests to exported dead-letter types and injected loaders.
 - Modify `internal/archtest/boundary_test.go`: add CLI-to-app import boundary rule.
 
+## Commit Policy
+
+Do not run `git commit` or `git push` while executing this plan. Each task includes a suggested commit message and staging scope for the user to apply manually after review.
+
 ## Task 1: OpenSpec Change Artifacts
 
 **Files:**
@@ -48,7 +52,34 @@
 - Create: `openspec/changes/app-boundary-decoupling/specs/feature-status/spec.md`
 - Create: `openspec/changes/app-boundary-decoupling/specs/application-core/spec.md`
 
-- [ ] **Step 1: Create the OpenSpec change directories**
+- [ ] **Step 1: Verify target main-spec requirement titles**
+
+Run:
+
+```bash
+rg -n '### Requirement: (Public BuildHookRegistry helper|Feature status and metrics dashboard|StatusCollector aggregation|Application Bootstrap)' openspec/specs/cli-agent-tools-hooks/spec.md openspec/specs/cockpit-status-page/spec.md openspec/specs/feature-status/spec.md openspec/specs/application-core/spec.md
+```
+
+Expected output:
+
+```text
+openspec/specs/cockpit-status-page/spec.md:<line>:### Requirement: Feature status and metrics dashboard
+openspec/specs/cli-agent-tools-hooks/spec.md:<line>:### Requirement: Public BuildHookRegistry helper
+openspec/specs/feature-status/spec.md:<line>:### Requirement: StatusCollector aggregation
+openspec/specs/application-core/spec.md:<line>:### Requirement: Application Bootstrap
+```
+
+- [ ] **Step 2: Verify no additional OpenSpec contract references need deltas**
+
+Run:
+
+```bash
+rg 'app\.BuildHookRegistry|app\.StatusCollector|deadLetterLoaderFromBoot' openspec --glob '!**/archive/**'
+```
+
+Expected: no matches and exit code 1. If matches appear, add a delta spec for the affected capability before creating the change artifacts.
+
+- [ ] **Step 3: Create the OpenSpec change directories**
 
 Run:
 
@@ -61,7 +92,7 @@ mkdir -p openspec/changes/app-boundary-decoupling/specs/application-core
 
 Expected: directories exist under `openspec/changes/app-boundary-decoupling/`.
 
-- [ ] **Step 2: Write `proposal.md`**
+- [ ] **Step 4: Write `proposal.md`**
 
 Create `openspec/changes/app-boundary-decoupling/proposal.md` with:
 
@@ -81,7 +112,7 @@ Make `cmd/lango` the only production importer of `internal/app`. Move app-indepe
 Command names, flags, output schemas, status rendering, cockpit status rendering, and `lango agent hooks` output remain compatible.
 ```
 
-- [ ] **Step 3: Write `design.md`**
+- [ ] **Step 5: Write `design.md`**
 
 Create `openspec/changes/app-boundary-decoupling/design.md` with:
 
@@ -109,7 +140,7 @@ Cockpit status page uses `func() []types.FeatureStatus` as its provider contract
 `internal/archtest` fails when production packages under `internal/cli/**` import `github.com/langoai/lango/internal/app`.
 ```
 
-- [ ] **Step 4: Write `tasks.md`**
+- [ ] **Step 6: Write `tasks.md`**
 
 Create `openspec/changes/app-boundary-decoupling/tasks.md` with:
 
@@ -126,7 +157,7 @@ Create `openspec/changes/app-boundary-decoupling/tasks.md` with:
 - [ ] Run `go test ./...`
 ```
 
-- [ ] **Step 5: Write `cli-agent-tools-hooks` delta spec**
+- [ ] **Step 7: Write `cli-agent-tools-hooks` delta spec**
 
 Create `openspec/changes/app-boundary-decoupling/specs/cli-agent-tools-hooks/spec.md` with:
 
@@ -146,7 +177,7 @@ The `internal/toolchain` package SHALL export a `BuildHookRegistry(cfg *config.C
 - **THEN** the `KnowledgeSaver` from the knowledge subsystem is passed through to `KnowledgeSaveHook`
 ```
 
-- [ ] **Step 6: Write `cockpit-status-page` delta spec**
+- [ ] **Step 8: Write `cockpit-status-page` delta spec**
 
 Create `openspec/changes/app-boundary-decoupling/specs/cockpit-status-page/spec.md` with:
 
@@ -161,7 +192,7 @@ StatusPage SHALL display feature flags from a `func() []types.FeatureStatus` sta
 - **THEN** it SHALL render each feature with enabled/disabled badge
 ```
 
-- [ ] **Step 7: Write `feature-status` delta spec**
+- [ ] **Step 9: Write `feature-status` delta spec**
 
 Create `openspec/changes/app-boundary-decoupling/specs/feature-status/spec.md` with:
 
@@ -177,7 +208,7 @@ The app layer SHALL provide a `StatusCollector` that collects `FeatureStatus` fr
 - **AND** the CLI or TUI package does not import `internal/app`
 ```
 
-- [ ] **Step 8: Write `application-core` delta spec**
+- [ ] **Step 10: Write `application-core` delta spec**
 
 Create `openspec/changes/app-boundary-decoupling/specs/application-core/spec.md` with:
 
@@ -192,7 +223,7 @@ The system SHALL initialize all core components through a centralized applicatio
 - **THEN** packages under `internal/cli/**` do not import `github.com/langoai/lango/internal/app`
 ```
 
-- [ ] **Step 9: Verify OpenSpec artifacts exist**
+- [ ] **Step 11: Verify OpenSpec artifacts exist**
 
 Run:
 
@@ -202,16 +233,31 @@ find openspec/changes/app-boundary-decoupling -type f | sort
 
 Expected output includes the seven files created in this task.
 
-- [ ] **Step 10: Commit OpenSpec artifacts**
+- [ ] **Step 12: Validate OpenSpec change**
 
 Run:
 
 ```bash
-git add openspec/changes/app-boundary-decoupling
-git commit -m "spec: add app boundary decoupling change"
+openspec validate app-boundary-decoupling --strict
 ```
 
-Expected: commit succeeds.
+Expected: PASS.
+
+- [ ] **Step 13: Review staging scope and suggested commit message**
+
+Run:
+
+```bash
+git status --short openspec/changes/app-boundary-decoupling
+```
+
+Expected: only files under `openspec/changes/app-boundary-decoupling` are listed.
+
+Suggested commit message for the user:
+
+```text
+spec: add app boundary decoupling change
+```
 
 ## Task 2: Move Hook Registry Construction to Toolchain
 
@@ -224,7 +270,26 @@ Expected: commit succeeds.
 - Test: `internal/toolchain/build_hook_registry_test.go`
 - Test: `internal/cli/agent/hooks_test.go`
 
-- [ ] **Step 1: Add the toolchain builder test by moving the existing app test**
+- [ ] **Step 1: Verify hook registry symbols and call sites**
+
+Run:
+
+```bash
+rg -n 'func BuildHookRegistry|func buildHookRegistry|BuildHookRegistry\(|func buildRegistryOutput|func DefaultConfig' internal/app internal/cli/agent internal/toolchain internal/config --glob '*.go'
+```
+
+Expected output includes:
+
+```text
+internal/app/app.go:<line>:func BuildHookRegistry(...)
+internal/app/app.go:<line>:func buildHookRegistry(...)
+internal/app/app.go:<line>:hookRegistry := buildHookRegistry(...)
+internal/cli/agent/hooks.go:<line>:registry := app.BuildHookRegistry(...)
+internal/cli/agent/hooks.go:<line>:func buildRegistryOutput(...)
+internal/config/loader.go:<line>:func DefaultConfig() *Config
+```
+
+- [ ] **Step 2: Add the toolchain builder test by moving the existing app test**
 
 Move the file:
 
@@ -246,7 +311,7 @@ Remove this import because the test is now in the package that defines the hook 
 
 Expected: tests still reference `BuildHookRegistry` directly.
 
-- [ ] **Step 2: Run the moved test and verify it fails before implementation**
+- [ ] **Step 3: Run the moved test and verify it fails before implementation**
 
 Run:
 
@@ -256,7 +321,7 @@ go test ./internal/toolchain -run 'TestBuildHookRegistry' -count=1
 
 Expected: FAIL with `undefined: BuildHookRegistry`.
 
-- [ ] **Step 3: Create `internal/toolchain/build_hook_registry.go`**
+- [ ] **Step 4: Create `internal/toolchain/build_hook_registry.go`**
 
 Create `internal/toolchain/build_hook_registry.go` with:
 
@@ -298,7 +363,7 @@ func BuildHookRegistry(cfg *config.Config, bus *eventbus.Bus, knowledgeSaver Kno
 }
 ```
 
-- [ ] **Step 4: Update `internal/app/app.go` imports and call site**
+- [ ] **Step 5: Update `internal/app/app.go` imports and call site**
 
 In `internal/app/app.go`, keep the existing `toolchain` import. Replace:
 
@@ -314,7 +379,7 @@ hookRegistry := toolchain.BuildHookRegistry(cfg, bus, knowledgeSaver, catalog)
 
 Delete the exported `BuildHookRegistry` function and the private `buildHookRegistry` wrapper from `internal/app/app.go`.
 
-- [ ] **Step 5: Update `internal/cli/agent/hooks.go`**
+- [ ] **Step 6: Update `internal/cli/agent/hooks.go`**
 
 Remove:
 
@@ -334,7 +399,7 @@ with:
 registry := toolchain.BuildHookRegistry(cfg, nil, nil, nil)
 ```
 
-- [ ] **Step 6: Add CLI JSON compatibility coverage**
+- [ ] **Step 7: Add CLI JSON compatibility coverage**
 
 Append this test to `internal/cli/agent/hooks_test.go`:
 
@@ -378,7 +443,7 @@ func TestAgentHooksJSONSnapshotShape(t *testing.T) {
 
 Add `encoding/json` to the imports in `internal/cli/agent/hooks_test.go`.
 
-- [ ] **Step 7: Run focused tests**
+- [ ] **Step 8: Run focused tests**
 
 Run:
 
@@ -388,17 +453,21 @@ go test ./internal/toolchain ./internal/app ./internal/cli/agent -run 'TestBuild
 
 Expected: PASS.
 
-- [ ] **Step 8: Commit hook registry move**
+- [ ] **Step 9: Review staging scope and suggested commit message**
 
 Run:
 
 ```bash
-git add internal/toolchain/build_hook_registry.go internal/toolchain/build_hook_registry_test.go internal/app/app.go internal/cli/agent/hooks.go internal/cli/agent/hooks_test.go
-git add -u internal/app/build_hook_registry_test.go
-git commit -m "refactor: move hook registry builder to toolchain"
+git status --short internal/toolchain/build_hook_registry.go internal/toolchain/build_hook_registry_test.go internal/app/build_hook_registry_test.go internal/app/app.go internal/cli/agent/hooks.go internal/cli/agent/hooks_test.go
 ```
 
-Expected: commit succeeds.
+Expected: only hook-registry related files are listed.
+
+Suggested commit message for the user:
+
+```text
+refactor: move hook registry builder to toolchain
+```
 
 ## Task 3: Remove Cockpit App Concrete Dependency
 
@@ -451,6 +520,14 @@ model.RegisterPage(cockpit.PageStatus,
 	pages.NewStatusPage(statusProvider, application.MetricsCollector, cfg))
 ```
 
+Do not modify the existing outer guard:
+
+```go
+if application.MetricsCollector != nil || application.FeatureStatuses != nil {
+	// existing status page registration stays inside this guard
+}
+```
+
 - [ ] **Step 4: Run focused cockpit tests**
 
 Run:
@@ -471,16 +548,21 @@ rg 'github.com/langoai/lango/internal/app["/]' internal/cli/cockpit --glob '*.go
 
 Expected: no matches and exit code 1.
 
-- [ ] **Step 6: Commit cockpit dependency removal**
+- [ ] **Step 6: Review staging scope and suggested commit message**
 
 Run:
 
 ```bash
-git add internal/cli/cockpit/deps.go cmd/lango/main.go
-git commit -m "refactor: remove cockpit app dependency"
+git status --short internal/cli/cockpit/deps.go cmd/lango/main.go
 ```
 
-Expected: commit succeeds.
+Expected: only cockpit dependency removal files are listed.
+
+Suggested commit message for the user:
+
+```text
+refactor: remove cockpit app dependency
+```
 
 ## Task 4: Inject Status Dead-Letter Loader from cmd/lango
 
@@ -493,7 +575,30 @@ Expected: commit succeeds.
 - Test: `internal/cli/status/status_test.go`
 - Test: `cmd/lango/main_test.go`
 
-- [ ] **Step 1: Export status dead-letter types**
+- [ ] **Step 1: Verify status dead-letter symbols and ripple surface**
+
+Run:
+
+```bash
+rg -n 'type deadLetterBridge|type deadLetterBridgeLoader|type deadLetterListOptions|type deadLetterListPage|type fakeDeadLetterBridge|toolCatalogDeadLetterBridge|func executeCommand|NewStatusCmd\(|cliboot\.BootResult' internal/cli/status cmd/lango --glob '*.go'
+```
+
+Expected output includes:
+
+```text
+internal/cli/status/status.go:<line>:type deadLetterBridge interface
+internal/cli/status/status.go:<line>:type deadLetterBridgeLoader func() ...
+internal/cli/status/status.go:<line>:type deadLetterListOptions struct
+internal/cli/status/status.go:<line>:type deadLetterListPage struct
+internal/cli/status/status.go:<line>:type toolCatalogDeadLetterBridge struct
+internal/cli/status/status_test.go:<line>:type fakeDeadLetterBridge struct
+internal/cli/status/status_test.go:<line>:func executeCommand(...)
+cmd/lango/main.go:<line>:statusCmd := clistatus.NewStatusCmd(cliboot.BootResult)
+```
+
+If additional implementations of `deadLetterBridge` appear, add `Ready() bool` to each test fake or implementation in the same task.
+
+- [ ] **Step 2: Export status dead-letter types**
 
 In `internal/cli/status/status.go`, replace:
 
@@ -522,7 +627,9 @@ type DeadLetterBridgeLoader func() (DeadLetterBridge, func(), error)
 
 Rename `deadLetterListOptions` to `DeadLetterListOptions` and `deadLetterListPage` to `DeadLetterListPage` throughout `internal/cli/status/status.go`.
 
-- [ ] **Step 2: Export the tool catalog bridge constructor and readiness method**
+The rename must include type definitions, method signatures, parameter types, return types, zero-value returns, and helper function signatures such as `toolCatalogDeadLetterBridge.List`, `aggregateDeadLetterSummary`, and `summaryTotal`.
+
+- [ ] **Step 3: Export the tool catalog bridge constructor and readiness method**
 
 In `internal/cli/status/status.go`, rename:
 
@@ -556,7 +663,7 @@ to:
 func (b *toolCatalogDeadLetterBridge) Ready() bool
 ```
 
-- [ ] **Step 3: Change `NewStatusCmd` signature and nil loader behavior**
+- [ ] **Step 4: Change `NewStatusCmd` signature and nil loader behavior**
 
 In `internal/cli/status/status.go`, change:
 
@@ -590,7 +697,7 @@ if deadLetterLoader == nil {
 
 Replace all uses of `deadLetterLoaderFromBoot(bootLoader)` with `deadLetterLoader`.
 
-- [ ] **Step 4: Remove app bootstrap from status package**
+- [ ] **Step 5: Remove app bootstrap from status package**
 
 Delete `deadLetterLoaderFromBoot` from `internal/cli/status/status.go`.
 
@@ -602,7 +709,7 @@ Remove this import from `internal/cli/status/status.go`:
 
 Keep the `internal/bootstrap` import because the base status command still accepts `bootLoader`.
 
-- [ ] **Step 5: Create `cmd/lango/dead_letter_status.go`**
+- [ ] **Step 6: Create `cmd/lango/dead_letter_status.go`**
 
 Create `cmd/lango/dead_letter_status.go` with:
 
@@ -643,7 +750,7 @@ func deadLetterStatusLoaderFromBoot(bootLoader func() (*bootstrap.Result, error)
 }
 ```
 
-- [ ] **Step 6: Wire the production loader in `cmd/lango/main.go`**
+- [ ] **Step 7: Wire the production loader in `cmd/lango/main.go`**
 
 Replace:
 
@@ -657,7 +764,7 @@ with:
 statusCmd := clistatus.NewStatusCmd(cliboot.BootResult, deadLetterStatusLoaderFromBoot(cliboot.BootResult))
 ```
 
-- [ ] **Step 7: Update status tests for exported names**
+- [ ] **Step 8: Update status tests for exported names**
 
 In `internal/cli/status/status_test.go`, rename:
 
@@ -699,7 +806,7 @@ func TestNewStatusCmd_WiresDeadLetterSummaryCommand(t *testing.T) {
 }
 ```
 
-- [ ] **Step 8: Add a nil loader behavior test**
+- [ ] **Step 9: Add a nil loader behavior test**
 
 Append this test to `internal/cli/status/status_test.go`:
 
@@ -716,7 +823,7 @@ func TestNewStatusCmd_NilDeadLetterLoaderReturnsUnavailable(t *testing.T) {
 }
 ```
 
-- [ ] **Step 9: Update all status command call sites**
+- [ ] **Step 10: Update all status command call sites**
 
 Run:
 
@@ -733,7 +840,7 @@ internal/cli/status/status.go:<line>:func NewStatusCmd(bootLoader func() (*boots
 
 Test files may also call `NewStatusCmd` with two arguments.
 
-- [ ] **Step 10: Run focused status and cmd tests**
+- [ ] **Step 11: Run focused status and cmd tests**
 
 Run:
 
@@ -743,7 +850,7 @@ go test ./internal/cli/status ./cmd/lango -count=1
 
 Expected: PASS.
 
-- [ ] **Step 11: Verify status package no longer imports app**
+- [ ] **Step 12: Verify status package no longer imports app**
 
 Run:
 
@@ -753,16 +860,21 @@ rg 'github.com/langoai/lango/internal/app["/]' internal/cli/status --glob '*.go'
 
 Expected: no matches and exit code 1.
 
-- [ ] **Step 12: Commit status loader injection**
+- [ ] **Step 13: Review staging scope and suggested commit message**
 
 Run:
 
 ```bash
-git add cmd/lango/dead_letter_status.go cmd/lango/main.go cmd/lango/main_test.go internal/cli/status/status.go internal/cli/status/status_test.go
-git commit -m "refactor: inject status dead letter loader"
+git status --short cmd/lango/dead_letter_status.go cmd/lango/main.go cmd/lango/main_test.go internal/cli/status/status.go internal/cli/status/status_test.go
 ```
 
-Expected: commit succeeds.
+Expected: only status loader injection files are listed.
+
+Suggested commit message for the user:
+
+```text
+refactor: inject status dead letter loader
+```
 
 ## Task 5: Add CLI-to-App Boundary Archtest
 
@@ -813,16 +925,21 @@ cmd/lango/dead_letter_status.go:...
 cmd/lango/main.go:...
 ```
 
-- [ ] **Step 4: Commit archtest rule**
+- [ ] **Step 4: Review staging scope and suggested commit message**
 
 Run:
 
 ```bash
-git add internal/archtest/boundary_test.go
-git commit -m "test: enforce cli app boundary"
+git status --short internal/archtest/boundary_test.go
 ```
 
-Expected: commit succeeds.
+Expected: only `internal/archtest/boundary_test.go` is listed.
+
+Suggested commit message for the user:
+
+```text
+test: enforce cli app boundary
+```
 
 ## Task 6: Final Verification and OpenSpec Completion
 
@@ -890,7 +1007,7 @@ go build ./...
 
 Expected: PASS.
 
-- [ ] **Step 6: Run full test suite**
+- [ ] **Step 6: Run full test suite and record exit code**
 
 Run:
 
@@ -898,21 +1015,39 @@ Run:
 go test ./...
 ```
 
-Expected: PASS. If a pre-existing environment-dependent failure appears, capture the exact package, test name, and error output before deciding whether it is unrelated.
+Expected: PASS with exit code 0. If a failure appears, do not mark this task complete. Capture the exact package, test name, command exit code, and error output. Use `git diff --name-only` to identify the files changed since the previous review checkpoint, then either fix the failing task's files or ask for approval before reverting that task's file set.
 
-- [ ] **Step 7: Commit final verification state**
+- [ ] **Step 7: Review final OpenSpec sync scope and suggested commit message**
 
 Run:
 
 ```bash
-git add openspec/changes/app-boundary-decoupling
-git add openspec/specs/cli-agent-tools-hooks/spec.md openspec/specs/cockpit-status-page/spec.md openspec/specs/feature-status/spec.md openspec/specs/application-core/spec.md
-git commit -m "spec: complete app boundary decoupling"
+git status --short openspec/changes/app-boundary-decoupling openspec/specs/cli-agent-tools-hooks/spec.md openspec/specs/cockpit-status-page/spec.md openspec/specs/feature-status/spec.md openspec/specs/application-core/spec.md
 ```
 
-Expected: commit succeeds if OpenSpec sync changed files. If no files changed, skip this commit.
+Expected: only app-boundary OpenSpec files are listed.
+
+Suggested commit message for the user if files changed:
+
+```text
+spec: complete app boundary decoupling
+```
 
 - [ ] **Step 8: Archive the OpenSpec change**
+
+Before archiving, review what will be applied to the main specs:
+
+```bash
+openspec diff app-boundary-decoupling
+```
+
+Expected: diff is limited to `cli-agent-tools-hooks`, `cockpit-status-page`, `feature-status`, and `application-core`. If the local OpenSpec CLI does not support `diff`, run:
+
+```bash
+git diff -- openspec/specs/cli-agent-tools-hooks/spec.md openspec/specs/cockpit-status-page/spec.md openspec/specs/feature-status/spec.md openspec/specs/application-core/spec.md
+```
+
+Expected: diff is limited to the approved app boundary contract changes.
 
 Run:
 
@@ -922,20 +1057,26 @@ openspec archive app-boundary-decoupling --yes
 
 Expected: change archives and affected specs are synced.
 
-- [ ] **Step 9: Commit archive output**
+- [ ] **Step 9: Review archive output scope and suggested commit message**
 
 Run:
 
 ```bash
 git status --short
-git add openspec
-git commit -m "spec: archive app boundary decoupling"
 ```
 
-Expected: commit succeeds if archive changed files.
+Expected: archive output is limited to `openspec` files for `app-boundary-decoupling`.
+
+Suggested commit message for the user if archive changed files:
+
+```text
+spec: archive app boundary decoupling
+```
 
 ## Self-Review
 
-- Spec coverage: covered hook registry ownership, cockpit status provider, status dead-letter injection, archtest enforcement, OpenSpec deltas, and final verification.
-- Placeholder scan: no placeholder markers remain.
+- Spec coverage: Task 1 covers OpenSpec deltas for `cli-agent-tools-hooks`, `cockpit-status-page`, `feature-status`, and `application-core`. Task 2 implements hook registry ownership. Task 3 implements cockpit status provider decoupling. Task 4 implements status dead-letter injection. Task 5 implements archtest enforcement. Task 6 covers verification and archive.
+- Placeholder scan: no placeholder markers remain, and all former `git commit` execution steps have been converted to manual staging-scope review plus suggested commit messages.
 - Type consistency: `DeadLetterBridge`, `DeadLetterBridgeLoader`, `DeadLetterListOptions`, `DeadLetterListPage`, and `toolchain.BuildHookRegistry` names are used consistently across tasks.
+- Precondition checks: Task 1 verifies main-spec requirement titles, Task 2 verifies hook registry symbols and call sites, and Task 4 verifies status bridge ripple surface before edits.
+- Failure handling: Task 6 requires exit-code capture for `go test ./...` failures and uses `git diff --name-only` to identify the changed file set before fixing or requesting approval to revert.
