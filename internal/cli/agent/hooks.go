@@ -8,7 +8,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/langoai/lango/internal/app"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/toolchain"
 )
@@ -27,7 +26,7 @@ func newHooksCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 
 			h := cfg.Hooks
 
-			registry := app.BuildHookRegistry(cfg, nil, nil, nil)
+			registry := toolchain.BuildHookRegistry(cfg, nil, nil, nil)
 
 			if jsonOutput {
 				return printJSON(h, registry)

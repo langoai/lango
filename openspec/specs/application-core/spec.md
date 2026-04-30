@@ -5,7 +5,7 @@ Capability spec for application-core. See requirements below for scope and behav
 ## Requirements
 
 ### Requirement: Application Bootstrap
-The system SHALL initialize all core components through a centralized application entry point (`internal/app`). Security initialization (crypto provider, passphrase) SHALL be skipped entirely when `security.signer.provider` is not configured. The application MUST NOT fail to start due to missing security configuration.
+The system SHALL initialize all core components through a centralized application entry point (`internal/app`) assembled by `cmd/lango`. Security initialization (crypto provider, passphrase) SHALL be skipped entirely when `security.signer.provider` is not configured. The application MUST NOT fail to start due to missing security configuration. `cmd/lango` SHALL be the only production package that imports `internal/app`; CLI packages under `internal/cli/**` SHALL NOT import `internal/app` and SHALL receive narrow interfaces, function providers, DTOs, or app-independent helpers from `cmd/lango`. Production import scans SHALL allow `github.com/langoai/lango/internal/app` only from `cmd/lango/main.go` and `cmd/lango/dead_letter_status.go`.
 
 #### Scenario: Startup Sequence
 - **WHEN** the application starts
@@ -27,6 +27,14 @@ The system SHALL initialize all core components through a centralized applicatio
 - **THEN** it SHALL stop all active Channels
 - **THEN** it SHALL close the Database connection
 - **THEN** it SHALL allow a grace period for active requests to complete
+
+#### Scenario: Production app import boundary
+- **WHEN** production imports are scanned
+- **THEN** imports of `github.com/langoai/lango/internal/app` are allowed only from `cmd/lango/main.go` and `cmd/lango/dead_letter_status.go`
+
+#### Scenario: CLI package does not import app
+- **WHEN** production imports are scanned
+- **THEN** packages under `internal/cli/**` do not import `github.com/langoai/lango/internal/app`
 
 ### Requirement: Component Wiring
 The system SHALL inject dependencies between components to enable communication. The application SHALL be organized into focused files: `app.go` (lifecycle orchestration, Start/Stop), `wiring.go` (component initialization: supervisor, session store, agent, gateway), `tools.go` (tool definitions and registration for exec and filesystem), `channels.go` (channel initialization and message handlers), `types.go` (type definitions). No single file SHALL exceed 200 lines.

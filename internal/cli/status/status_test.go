@@ -23,7 +23,7 @@ import (
 )
 
 type fakeDeadLetterBridge struct {
-	page          deadLetterListPage
+	page          DeadLetterListPage
 	detail        postadjudicationstatus.TransactionStatus
 	detailSeq     []postadjudicationstatus.TransactionStatus
 	listErr       error
@@ -33,7 +33,7 @@ type fakeDeadLetterBridge struct {
 	listCalls     int
 	detailCalls   int
 	retryCalls    int
-	lastListOpts  deadLetterListOptions
+	lastListOpts  DeadLetterListOptions
 	lastDetailID  string
 	lastRetryID   string
 	lastPrincipal string
@@ -44,11 +44,11 @@ type commandJSONErrorPayload struct {
 	Error  string `json:"error"`
 }
 
-func (f *fakeDeadLetterBridge) List(_ context.Context, opts deadLetterListOptions) (deadLetterListPage, error) {
+func (f *fakeDeadLetterBridge) List(_ context.Context, opts DeadLetterListOptions) (DeadLetterListPage, error) {
 	f.listCalls++
 	f.lastListOpts = opts
 	if f.listErr != nil {
-		return deadLetterListPage{}, f.listErr
+		return DeadLetterListPage{}, f.listErr
 	}
 	return f.page, nil
 }
@@ -304,6 +304,8 @@ func TestRenderDashboard_EmptyVersion(t *testing.T) {
 func TestNewStatusCmd_WiresDeadLetterSummaryCommand(t *testing.T) {
 	cmd := NewStatusCmd(func() (*bootstrap.Result, error) {
 		return nil, errors.New("should not bootstrap for wiring test")
+	}, func() (DeadLetterBridge, func(), error) {
+		return &fakeDeadLetterBridge{}, func() {}, nil
 	})
 
 	names := make([]string, 0, len(cmd.Commands()))
@@ -313,9 +315,85 @@ func TestNewStatusCmd_WiresDeadLetterSummaryCommand(t *testing.T) {
 	assert.Contains(t, names, "dead-letter-summary")
 }
 
+func TestNewStatusCmd_DeadLetterCommandsUseInjectedLoader(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{name: "summary", args: []string{"dead-letter-summary", "--output", "json"}},
+		{name: "list", args: []string{"dead-letters", "--output", "json"}},
+		{name: "detail", args: []string{"dead-letter", "tx-1", "--output", "json"}},
+		{name: "retry", args: []string{"dead-letter", "retry", "tx-1", "--yes", "--output", "json"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			bridge := &fakeDeadLetterBridge{
+				page: DeadLetterListPage{
+					Entries: []postadjudicationstatus.DeadLetterBacklogEntry{{TransactionReceiptID: "tx-1"}},
+					Count:   1,
+					Total:   1,
+				},
+				detail: postadjudicationstatus.TransactionStatus{
+					CanRetry: true,
+				},
+			}
+			loadCalls := 0
+			cleanupCalls := 0
+			cmd := NewStatusCmd(func() (*bootstrap.Result, error) {
+				return nil, errors.New("boot loader must not be used by dead-letter subcommands")
+			}, func() (DeadLetterBridge, func(), error) {
+				loadCalls++
+				return bridge, func() { cleanupCalls++ }, nil
+			})
+
+			_, err := executeCommand(t, cmd, tt.args...)
+
+			require.NoError(t, err)
+			assert.Equal(t, 1, loadCalls)
+			assert.Equal(t, 1, cleanupCalls)
+		})
+	}
+}
+
+func TestNewStatusCmd_DeadLetterLoaderNilCleanupIsNoop(t *testing.T) {
+	bridge := &fakeDeadLetterBridge{
+		page: DeadLetterListPage{
+			Entries: []postadjudicationstatus.DeadLetterBacklogEntry{{TransactionReceiptID: "tx-1"}},
+			Count:   1,
+			Total:   1,
+		},
+	}
+	cmd := NewStatusCmd(func() (*bootstrap.Result, error) {
+		return nil, errors.New("boot loader must not be used by dead-letter subcommands")
+	}, func() (DeadLetterBridge, func(), error) {
+		return bridge, nil, nil
+	})
+
+	_, err := executeCommand(t, cmd, "dead-letter-summary")
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, bridge.listCalls)
+}
+
+func TestNewStatusCmd_DeadLetterLoaderNilBridgeCleansUp(t *testing.T) {
+	cleanupCalls := 0
+	cmd := NewStatusCmd(func() (*bootstrap.Result, error) {
+		return nil, errors.New("boot loader must not be used by dead-letter subcommands")
+	}, func() (DeadLetterBridge, func(), error) {
+		return nil, func() { cleanupCalls++ }, nil
+	})
+
+	_, err := executeCommand(t, cmd, "dead-letter-summary")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "dead-letter status tools are not available")
+	assert.Equal(t, 1, cleanupCalls)
+}
+
 func TestDeadLetterSummaryCmd_Table(t *testing.T) {
 	bridge := &fakeDeadLetterBridge{
-		page: deadLetterListPage{
+		page: DeadLetterListPage{
 			Entries: []postadjudicationstatus.DeadLetterBacklogEntry{
 				{TransactionReceiptID: "tx-1", Adjudication: "release", CanRetry: true, LatestStatusSubtypeFamily: "retry", LatestDeadLetterReason: "retry attempts exhausted", LatestManualReplayActor: "operator:alice"},
 				{TransactionReceiptID: "tx-2", Adjudication: "refund", CanRetry: false, LatestStatusSubtypeFamily: "manual-retry", LatestDeadLetterReason: "policy gate denied replay", LatestManualReplayActor: "system:auto-retry"},
@@ -326,7 +404,7 @@ func TestDeadLetterSummaryCmd_Table(t *testing.T) {
 			Total: 4,
 		},
 	}
-	cmd := newDeadLetterSummaryCmd(func() (deadLetterBridge, func(), error) {
+	cmd := newDeadLetterSummaryCmd(func() (DeadLetterBridge, func(), error) {
 		return bridge, func() {}, nil
 	})
 
@@ -357,12 +435,12 @@ func TestDeadLetterSummaryCmd_Table(t *testing.T) {
 	assert.Contains(t, out, "retry attempts exhausted")
 	assert.Contains(t, out, "policy gate denied replay")
 	assert.Equal(t, 1, bridge.listCalls)
-	assert.Equal(t, deadLetterListOptions{}, bridge.lastListOpts)
+	assert.Equal(t, DeadLetterListOptions{}, bridge.lastListOpts)
 }
 
 func TestDeadLetterSummaryCmd_JSON(t *testing.T) {
 	bridge := &fakeDeadLetterBridge{
-		page: deadLetterListPage{
+		page: DeadLetterListPage{
 			Entries: []postadjudicationstatus.DeadLetterBacklogEntry{
 				{TransactionReceiptID: "tx-1", Adjudication: "release", CanRetry: true, LatestStatusSubtypeFamily: "retry", LatestDeadLetterReason: "worker exhausted", LatestManualReplayActor: "operator:bob", LatestDispatchReference: "dispatch-1"},
 				{TransactionReceiptID: "tx-2", Adjudication: "refund", CanRetry: false, LatestStatusSubtypeFamily: "manual-retry", LatestDeadLetterReason: "insufficient evidence", LatestManualReplayActor: "system:auto-retry", LatestDispatchReference: "dispatch-2"},
@@ -373,7 +451,7 @@ func TestDeadLetterSummaryCmd_JSON(t *testing.T) {
 			Total: 4,
 		},
 	}
-	cmd := newDeadLetterSummaryCmd(func() (deadLetterBridge, func(), error) {
+	cmd := newDeadLetterSummaryCmd(func() (DeadLetterBridge, func(), error) {
 		return bridge, func() {}, nil
 	})
 
@@ -429,7 +507,7 @@ func TestDeadLetterSummaryCmd_JSON(t *testing.T) {
 }
 
 func TestAggregateDeadLetterSummary_ByReasonFamily(t *testing.T) {
-	page := deadLetterListPage{
+	page := DeadLetterListPage{
 		Entries: []postadjudicationstatus.DeadLetterBacklogEntry{
 			{LatestDeadLetterReason: "retry attempts exhausted after 5 attempts"},
 			{LatestDeadLetterReason: "policy gate denied replay"},
@@ -459,7 +537,7 @@ func TestAggregateDeadLetterSummary_ByReasonFamily(t *testing.T) {
 }
 
 func TestAggregateDeadLetterSummary_ByActorFamily(t *testing.T) {
-	page := deadLetterListPage{
+	page := DeadLetterListPage{
 		Entries: []postadjudicationstatus.DeadLetterBacklogEntry{
 			{LatestManualReplayActor: "operator:alice"},
 			{LatestManualReplayActor: "system:auto-retry"},
@@ -483,7 +561,7 @@ func TestAggregateDeadLetterSummary_ByActorFamily(t *testing.T) {
 }
 
 func TestAggregateDeadLetterSummary_TopLatestDeadLetterReasons(t *testing.T) {
-	page := deadLetterListPage{
+	page := DeadLetterListPage{
 		Entries: []postadjudicationstatus.DeadLetterBacklogEntry{
 			{LatestDeadLetterReason: "worker exhausted"},
 			{LatestDeadLetterReason: "worker exhausted"},
@@ -512,7 +590,7 @@ func TestAggregateDeadLetterSummary_TopLatestDeadLetterReasons(t *testing.T) {
 
 func TestDeadLetterSummaryCmd_TableIncludesTopLatestManualReplayActors(t *testing.T) {
 	bridge := &fakeDeadLetterBridge{
-		page: deadLetterListPage{
+		page: DeadLetterListPage{
 			Entries: []postadjudicationstatus.DeadLetterBacklogEntry{
 				{TransactionReceiptID: "tx-1", Adjudication: "release", CanRetry: true, LatestStatusSubtypeFamily: "retry", LatestDeadLetterReason: "worker exhausted", LatestManualReplayActor: "operator:bob", LatestDispatchReference: "dispatch-1"},
 				{TransactionReceiptID: "tx-2", Adjudication: "refund", CanRetry: false, LatestStatusSubtypeFamily: "manual-retry", LatestDeadLetterReason: "insufficient evidence", LatestManualReplayActor: "operator:alice", LatestDispatchReference: "dispatch-2"},
@@ -522,7 +600,7 @@ func TestDeadLetterSummaryCmd_TableIncludesTopLatestManualReplayActors(t *testin
 			Total: 3,
 		},
 	}
-	cmd := newDeadLetterSummaryCmd(func() (deadLetterBridge, func(), error) {
+	cmd := newDeadLetterSummaryCmd(func() (DeadLetterBridge, func(), error) {
 		return bridge, func() {}, nil
 	})
 
@@ -535,7 +613,7 @@ func TestDeadLetterSummaryCmd_TableIncludesTopLatestManualReplayActors(t *testin
 
 func TestDeadLetterSummaryCmd_TableIncludesTopLatestDispatchReferences(t *testing.T) {
 	bridge := &fakeDeadLetterBridge{
-		page: deadLetterListPage{
+		page: DeadLetterListPage{
 			Entries: []postadjudicationstatus.DeadLetterBacklogEntry{
 				{TransactionReceiptID: "tx-1", LatestDispatchReference: "dispatch-1"},
 				{TransactionReceiptID: "tx-2", LatestDispatchReference: "dispatch-2"},
@@ -545,7 +623,7 @@ func TestDeadLetterSummaryCmd_TableIncludesTopLatestDispatchReferences(t *testin
 			Total: 3,
 		},
 	}
-	cmd := newDeadLetterSummaryCmd(func() (deadLetterBridge, func(), error) {
+	cmd := newDeadLetterSummaryCmd(func() (DeadLetterBridge, func(), error) {
 		return bridge, func() {}, nil
 	})
 
@@ -557,7 +635,7 @@ func TestDeadLetterSummaryCmd_TableIncludesTopLatestDispatchReferences(t *testin
 }
 
 func TestAggregateDeadLetterSummary_TopLatestManualReplayActors(t *testing.T) {
-	page := deadLetterListPage{
+	page := DeadLetterListPage{
 		Entries: []postadjudicationstatus.DeadLetterBacklogEntry{
 			{LatestManualReplayActor: "operator:bob"},
 			{LatestManualReplayActor: "operator:bob"},
@@ -584,7 +662,7 @@ func TestAggregateDeadLetterSummary_TopLatestManualReplayActors(t *testing.T) {
 }
 
 func TestAggregateDeadLetterSummary_TopLatestDispatchReferences(t *testing.T) {
-	page := deadLetterListPage{
+	page := DeadLetterListPage{
 		Entries: []postadjudicationstatus.DeadLetterBacklogEntry{
 			{LatestDispatchReference: "dispatch-b"},
 			{LatestDispatchReference: "dispatch-b"},
@@ -612,7 +690,7 @@ func TestAggregateDeadLetterSummary_TopLatestDispatchReferences(t *testing.T) {
 
 func TestAggregateDeadLetterSummary_WithDispatchFamiliesAndTrend(t *testing.T) {
 	now := time.Date(2026, 4, 26, 12, 0, 0, 0, time.UTC)
-	page := deadLetterListPage{
+	page := DeadLetterListPage{
 		Entries: []postadjudicationstatus.DeadLetterBacklogEntry{
 			{
 				LatestDispatchReference: "dispatch-final-1",
@@ -673,7 +751,7 @@ func TestAggregateDeadLetterSummary_WithDispatchFamiliesAndTrend(t *testing.T) {
 
 func TestDeadLettersCmd_TableAndFilters(t *testing.T) {
 	bridge := &fakeDeadLetterBridge{
-		page: deadLetterListPage{
+		page: DeadLetterListPage{
 			Entries: []postadjudicationstatus.DeadLetterBacklogEntry{
 				{
 					TransactionReceiptID:   "tx-1",
@@ -689,7 +767,7 @@ func TestDeadLettersCmd_TableAndFilters(t *testing.T) {
 			Limit:  0,
 		},
 	}
-	cmd := newDeadLettersCmd(func() (deadLetterBridge, func(), error) {
+	cmd := newDeadLettersCmd(func() (DeadLetterBridge, func(), error) {
 		return bridge, func() {}, nil
 	})
 
@@ -699,18 +777,18 @@ func TestDeadLettersCmd_TableAndFilters(t *testing.T) {
 	assert.Contains(t, out, "tx-1")
 	assert.Contains(t, out, "worker exhausted")
 	assert.Equal(t, 1, bridge.listCalls)
-	assert.Equal(t, deadLetterListOptions{Query: "tx-1", Adjudication: "release"}, bridge.lastListOpts)
+	assert.Equal(t, DeadLetterListOptions{Query: "tx-1", Adjudication: "release"}, bridge.lastListOpts)
 }
 
 func TestDeadLettersCmd_ForwardsSubtypeAndFamilyFilters(t *testing.T) {
 	bridge := &fakeDeadLetterBridge{
-		page: deadLetterListPage{
+		page: DeadLetterListPage{
 			Entries: []postadjudicationstatus.DeadLetterBacklogEntry{{TransactionReceiptID: "tx-1"}},
 			Count:   1,
 			Total:   1,
 		},
 	}
-	cmd := newDeadLettersCmd(func() (deadLetterBridge, func(), error) {
+	cmd := newDeadLettersCmd(func() (DeadLetterBridge, func(), error) {
 		return bridge, func() {}, nil
 	})
 
@@ -722,7 +800,7 @@ func TestDeadLettersCmd_ForwardsSubtypeAndFamilyFilters(t *testing.T) {
 	)
 	require.NoError(t, err)
 	assert.Equal(t, 1, bridge.listCalls)
-	assert.Equal(t, deadLetterListOptions{
+	assert.Equal(t, DeadLetterListOptions{
 		LatestStatusSubtype:       "manual-retry-requested",
 		LatestStatusSubtypeFamily: "manual-retry",
 	}, bridge.lastListOpts)
@@ -730,31 +808,31 @@ func TestDeadLettersCmd_ForwardsSubtypeAndFamilyFilters(t *testing.T) {
 
 func TestDeadLettersCmd_ForwardsAnyMatchFamily(t *testing.T) {
 	bridge := &fakeDeadLetterBridge{
-		page: deadLetterListPage{
+		page: DeadLetterListPage{
 			Entries: []postadjudicationstatus.DeadLetterBacklogEntry{{TransactionReceiptID: "tx-1"}},
 			Count:   1,
 			Total:   1,
 		},
 	}
-	cmd := newDeadLettersCmd(func() (deadLetterBridge, func(), error) {
+	cmd := newDeadLettersCmd(func() (DeadLetterBridge, func(), error) {
 		return bridge, func() {}, nil
 	})
 
 	_, err := executeCommand(t, cmd, "--any-match-family", "manual-retry")
 	require.NoError(t, err)
 	assert.Equal(t, 1, bridge.listCalls)
-	assert.Equal(t, deadLetterListOptions{AnyMatchFamily: "manual-retry"}, bridge.lastListOpts)
+	assert.Equal(t, DeadLetterListOptions{AnyMatchFamily: "manual-retry"}, bridge.lastListOpts)
 }
 
 func TestDeadLettersCmd_ForwardsActorAndTimeFilters(t *testing.T) {
 	bridge := &fakeDeadLetterBridge{
-		page: deadLetterListPage{
+		page: DeadLetterListPage{
 			Entries: []postadjudicationstatus.DeadLetterBacklogEntry{{TransactionReceiptID: "tx-1"}},
 			Count:   1,
 			Total:   1,
 		},
 	}
-	cmd := newDeadLettersCmd(func() (deadLetterBridge, func(), error) {
+	cmd := newDeadLettersCmd(func() (DeadLetterBridge, func(), error) {
 		return bridge, func() {}, nil
 	})
 
@@ -767,7 +845,7 @@ func TestDeadLettersCmd_ForwardsActorAndTimeFilters(t *testing.T) {
 	)
 	require.NoError(t, err)
 	assert.Equal(t, 1, bridge.listCalls)
-	assert.Equal(t, deadLetterListOptions{
+	assert.Equal(t, DeadLetterListOptions{
 		ManualReplayActor:  "operator-1",
 		DeadLetteredAfter:  "2026-04-25T09:00:00Z",
 		DeadLetteredBefore: "2026-04-25T18:00:00Z",
@@ -776,13 +854,13 @@ func TestDeadLettersCmd_ForwardsActorAndTimeFilters(t *testing.T) {
 
 func TestDeadLettersCmd_ForwardsReasonAndDispatchFilters(t *testing.T) {
 	bridge := &fakeDeadLetterBridge{
-		page: deadLetterListPage{
+		page: DeadLetterListPage{
 			Entries: []postadjudicationstatus.DeadLetterBacklogEntry{{TransactionReceiptID: "tx-1"}},
 			Count:   1,
 			Total:   1,
 		},
 	}
-	cmd := newDeadLettersCmd(func() (deadLetterBridge, func(), error) {
+	cmd := newDeadLettersCmd(func() (DeadLetterBridge, func(), error) {
 		return bridge, func() {}, nil
 	})
 
@@ -794,7 +872,7 @@ func TestDeadLettersCmd_ForwardsReasonAndDispatchFilters(t *testing.T) {
 	)
 	require.NoError(t, err)
 	assert.Equal(t, 1, bridge.listCalls)
-	assert.Equal(t, deadLetterListOptions{
+	assert.Equal(t, DeadLetterListOptions{
 		DeadLetterReasonQuery:   "worker exhausted",
 		LatestDispatchReference: "dispatch-7",
 	}, bridge.lastListOpts)
@@ -802,7 +880,7 @@ func TestDeadLettersCmd_ForwardsReasonAndDispatchFilters(t *testing.T) {
 
 func TestDeadLettersCmd_ForwardsPagination(t *testing.T) {
 	bridge := &fakeDeadLetterBridge{
-		page: deadLetterListPage{
+		page: DeadLetterListPage{
 			Entries: []postadjudicationstatus.DeadLetterBacklogEntry{{TransactionReceiptID: "tx-1"}},
 			Count:   1,
 			Total:   10,
@@ -810,13 +888,13 @@ func TestDeadLettersCmd_ForwardsPagination(t *testing.T) {
 			Limit:   2,
 		},
 	}
-	cmd := newDeadLettersCmd(func() (deadLetterBridge, func(), error) {
+	cmd := newDeadLettersCmd(func() (DeadLetterBridge, func(), error) {
 		return bridge, func() {}, nil
 	})
 
 	_, err := executeCommand(t, cmd, "--offset", "4", "--limit", "2")
 	require.NoError(t, err)
-	assert.Equal(t, deadLetterListOptions{
+	assert.Equal(t, DeadLetterListOptions{
 		Offset: 4,
 		Limit:  2,
 	}, bridge.lastListOpts)
@@ -824,7 +902,7 @@ func TestDeadLettersCmd_ForwardsPagination(t *testing.T) {
 
 func TestDeadLettersCmd_RejectsInvalidSubtype(t *testing.T) {
 	loaderCalls := 0
-	cmd := newDeadLettersCmd(func() (deadLetterBridge, func(), error) {
+	cmd := newDeadLettersCmd(func() (DeadLetterBridge, func(), error) {
 		loaderCalls++
 		return &fakeDeadLetterBridge{}, func() {}, nil
 	})
@@ -837,7 +915,7 @@ func TestDeadLettersCmd_RejectsInvalidSubtype(t *testing.T) {
 
 func TestDeadLettersCmd_RejectsInvalidSubtypeFamily(t *testing.T) {
 	loaderCalls := 0
-	cmd := newDeadLettersCmd(func() (deadLetterBridge, func(), error) {
+	cmd := newDeadLettersCmd(func() (DeadLetterBridge, func(), error) {
 		loaderCalls++
 		return &fakeDeadLetterBridge{}, func() {}, nil
 	})
@@ -850,7 +928,7 @@ func TestDeadLettersCmd_RejectsInvalidSubtypeFamily(t *testing.T) {
 
 func TestDeadLettersCmd_RejectsInvalidAnyMatchFamily(t *testing.T) {
 	loaderCalls := 0
-	cmd := newDeadLettersCmd(func() (deadLetterBridge, func(), error) {
+	cmd := newDeadLettersCmd(func() (DeadLetterBridge, func(), error) {
 		loaderCalls++
 		return &fakeDeadLetterBridge{}, func() {}, nil
 	})
@@ -863,7 +941,7 @@ func TestDeadLettersCmd_RejectsInvalidAnyMatchFamily(t *testing.T) {
 
 func TestDeadLettersCmd_RejectsInvalidDeadLetteredAfter(t *testing.T) {
 	loaderCalls := 0
-	cmd := newDeadLettersCmd(func() (deadLetterBridge, func(), error) {
+	cmd := newDeadLettersCmd(func() (DeadLetterBridge, func(), error) {
 		loaderCalls++
 		return &fakeDeadLetterBridge{}, func() {}, nil
 	})
@@ -876,7 +954,7 @@ func TestDeadLettersCmd_RejectsInvalidDeadLetteredAfter(t *testing.T) {
 
 func TestDeadLettersCmd_RejectsInvalidDeadLetteredBefore(t *testing.T) {
 	loaderCalls := 0
-	cmd := newDeadLettersCmd(func() (deadLetterBridge, func(), error) {
+	cmd := newDeadLettersCmd(func() (DeadLetterBridge, func(), error) {
 		loaderCalls++
 		return &fakeDeadLetterBridge{}, func() {}, nil
 	})
@@ -885,6 +963,18 @@ func TestDeadLettersCmd_RejectsInvalidDeadLetteredBefore(t *testing.T) {
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "invalid --dead-lettered-before")
 	assert.Equal(t, 0, loaderCalls)
+}
+
+func TestToolCatalogDeadLetterBridge_ReadyRequiresReadToolsOnly(t *testing.T) {
+	catalog := toolcatalog.New()
+	catalog.Register("status", []*agent.Tool{
+		{Name: "list_dead_lettered_post_adjudication_executions"},
+		{Name: "get_post_adjudication_execution_status"},
+	})
+
+	bridge := NewToolCatalogDeadLetterBridge(catalog)
+
+	assert.True(t, bridge.Ready())
 }
 
 func TestToolCatalogDeadLetterBridge_ForwardsSubtypeAndFamilyFilters(t *testing.T) {
@@ -906,8 +996,8 @@ func TestToolCatalogDeadLetterBridge_ForwardsSubtypeAndFamilyFilters(t *testing.
 		},
 	})
 
-	bridge := &toolCatalogDeadLetterBridge{catalog: catalog}
-	_, err := bridge.List(context.Background(), deadLetterListOptions{
+	bridge := &ToolCatalogDeadLetterBridge{catalog: catalog}
+	_, err := bridge.List(context.Background(), DeadLetterListOptions{
 		LatestStatusSubtype:       "retry-scheduled",
 		LatestStatusSubtypeFamily: "retry",
 	})
@@ -936,8 +1026,8 @@ func TestToolCatalogDeadLetterBridge_ForwardsActorAndTimeFilters(t *testing.T) {
 		},
 	})
 
-	bridge := &toolCatalogDeadLetterBridge{catalog: catalog}
-	_, err := bridge.List(context.Background(), deadLetterListOptions{
+	bridge := &ToolCatalogDeadLetterBridge{catalog: catalog}
+	_, err := bridge.List(context.Background(), DeadLetterListOptions{
 		ManualReplayActor:  "operator-1",
 		DeadLetteredAfter:  "2026-04-25T09:00:00Z",
 		DeadLetteredBefore: "2026-04-25T18:00:00Z",
@@ -968,8 +1058,8 @@ func TestToolCatalogDeadLetterBridge_ForwardsAnyMatchFamily(t *testing.T) {
 		},
 	})
 
-	bridge := &toolCatalogDeadLetterBridge{catalog: catalog}
-	_, err := bridge.List(context.Background(), deadLetterListOptions{
+	bridge := &ToolCatalogDeadLetterBridge{catalog: catalog}
+	_, err := bridge.List(context.Background(), DeadLetterListOptions{
 		AnyMatchFamily: "manual-retry",
 	})
 	require.NoError(t, err)
@@ -996,8 +1086,8 @@ func TestToolCatalogDeadLetterBridge_ForwardsReasonAndDispatchFilters(t *testing
 		},
 	})
 
-	bridge := &toolCatalogDeadLetterBridge{catalog: catalog}
-	_, err := bridge.List(context.Background(), deadLetterListOptions{
+	bridge := &ToolCatalogDeadLetterBridge{catalog: catalog}
+	_, err := bridge.List(context.Background(), DeadLetterListOptions{
 		DeadLetterReasonQuery:   "worker exhausted",
 		LatestDispatchReference: "dispatch-7",
 	})
@@ -1026,8 +1116,8 @@ func TestToolCatalogDeadLetterBridge_ForwardsPagination(t *testing.T) {
 		},
 	})
 
-	bridge := &toolCatalogDeadLetterBridge{catalog: catalog}
-	_, err := bridge.List(context.Background(), deadLetterListOptions{
+	bridge := &ToolCatalogDeadLetterBridge{catalog: catalog}
+	_, err := bridge.List(context.Background(), DeadLetterListOptions{
 		Offset: 4,
 		Limit:  2,
 	})
@@ -1039,13 +1129,13 @@ func TestToolCatalogDeadLetterBridge_ForwardsPagination(t *testing.T) {
 
 func TestDeadLettersCmd_JSON(t *testing.T) {
 	bridge := &fakeDeadLetterBridge{
-		page: deadLetterListPage{
+		page: DeadLetterListPage{
 			Entries: []postadjudicationstatus.DeadLetterBacklogEntry{{TransactionReceiptID: "tx-1"}},
 			Count:   1,
 			Total:   1,
 		},
 	}
-	cmd := newDeadLettersCmd(func() (deadLetterBridge, func(), error) {
+	cmd := newDeadLettersCmd(func() (DeadLetterBridge, func(), error) {
 		return bridge, func() {}, nil
 	})
 
@@ -1057,7 +1147,7 @@ func TestDeadLettersCmd_JSON(t *testing.T) {
 
 func TestDeadLettersCmd_JSONError(t *testing.T) {
 	bridge := &fakeDeadLetterBridge{listErr: errors.New("backend unavailable")}
-	cmd := newDeadLettersCmd(func() (deadLetterBridge, func(), error) {
+	cmd := newDeadLettersCmd(func() (DeadLetterBridge, func(), error) {
 		return bridge, func() {}, nil
 	})
 
@@ -1093,7 +1183,7 @@ func TestDeadLetterCmd_Table(t *testing.T) {
 			Adjudication:   "release",
 		},
 	}
-	cmd := newDeadLetterCmd(func() (deadLetterBridge, func(), error) {
+	cmd := newDeadLetterCmd(func() (DeadLetterBridge, func(), error) {
 		return bridge, func() {}, nil
 	})
 
@@ -1114,7 +1204,7 @@ func TestDeadLetterCmd_JSON(t *testing.T) {
 			},
 		},
 	}
-	cmd := newDeadLetterCmd(func() (deadLetterBridge, func(), error) {
+	cmd := newDeadLetterCmd(func() (DeadLetterBridge, func(), error) {
 		return bridge, func() {}, nil
 	})
 
@@ -1125,7 +1215,7 @@ func TestDeadLetterCmd_JSON(t *testing.T) {
 }
 
 func TestDeadLetterCmd_PropagatesBridgeErrors(t *testing.T) {
-	cmd := newDeadLetterCmd(func() (deadLetterBridge, func(), error) {
+	cmd := newDeadLetterCmd(func() (DeadLetterBridge, func(), error) {
 		return &fakeDeadLetterBridge{detailErr: errors.New("boom")}, func() {}, nil
 	})
 
@@ -1171,7 +1261,7 @@ func TestDeadLetterRetryCmd_SucceedsWithYes(t *testing.T) {
 			},
 		},
 	}
-	cmd := newDeadLetterCmd(func() (deadLetterBridge, func(), error) {
+	cmd := newDeadLetterCmd(func() (DeadLetterBridge, func(), error) {
 		return bridge, func() {}, nil
 	})
 
@@ -1195,7 +1285,7 @@ func TestDeadLetterRetryCmd_RejectsWhenCannotRetry(t *testing.T) {
 			CanRetry: false,
 		},
 	}
-	cmd := newDeadLetterCmd(func() (deadLetterBridge, func(), error) {
+	cmd := newDeadLetterCmd(func() (DeadLetterBridge, func(), error) {
 		return bridge, func() {}, nil
 	})
 
@@ -1216,7 +1306,7 @@ func TestDeadLetterRetryCmd_RequiresConfirmationByDefault(t *testing.T) {
 			CanRetry: true,
 		},
 	}
-	cmd := newDeadLetterCmd(func() (deadLetterBridge, func(), error) {
+	cmd := newDeadLetterCmd(func() (DeadLetterBridge, func(), error) {
 		return bridge, func() {}, nil
 	})
 
@@ -1237,7 +1327,7 @@ func TestDeadLetterRetryCmd_InvokesRetryAfterConfirm(t *testing.T) {
 			CanRetry: true,
 		},
 	}
-	cmd := newDeadLetterCmd(func() (deadLetterBridge, func(), error) {
+	cmd := newDeadLetterCmd(func() (DeadLetterBridge, func(), error) {
 		return bridge, func() {}, nil
 	})
 
@@ -1258,7 +1348,7 @@ func TestDeadLetterRetryCmd_ForwardsExplicitActor(t *testing.T) {
 			CanRetry: true,
 		},
 	}
-	cmd := newDeadLetterCmd(func() (deadLetterBridge, func(), error) {
+	cmd := newDeadLetterCmd(func() (DeadLetterBridge, func(), error) {
 		return bridge, func() {}, nil
 	})
 
@@ -1277,7 +1367,7 @@ func TestDeadLetterRetryCmd_ReportsInvocationFailureSeparately(t *testing.T) {
 		},
 		retryErr: errors.New("queue unavailable"),
 	}
-	cmd := newDeadLetterCmd(func() (deadLetterBridge, func(), error) {
+	cmd := newDeadLetterCmd(func() (DeadLetterBridge, func(), error) {
 		return bridge, func() {}, nil
 	})
 
@@ -1299,7 +1389,7 @@ func TestDeadLetterRetryCmd_JSONError(t *testing.T) {
 		},
 		retryErr: errors.New("queue unavailable"),
 	}
-	cmd := newDeadLetterCmd(func() (deadLetterBridge, func(), error) {
+	cmd := newDeadLetterCmd(func() (DeadLetterBridge, func(), error) {
 		return bridge, func() {}, nil
 	})
 
@@ -1347,7 +1437,7 @@ func TestDeadLetterRetryCmd_JSONReportsAcceptedRequest(t *testing.T) {
 			},
 		},
 	}
-	cmd := newDeadLetterCmd(func() (deadLetterBridge, func(), error) {
+	cmd := newDeadLetterCmd(func() (DeadLetterBridge, func(), error) {
 		return bridge, func() {}, nil
 	})
 
@@ -1414,7 +1504,7 @@ func TestDeadLetterRetryCmd_WaitPollsUntilFollowUpChanges(t *testing.T) {
 			},
 		},
 	}
-	cmd := newDeadLetterCmd(func() (deadLetterBridge, func(), error) {
+	cmd := newDeadLetterCmd(func() (DeadLetterBridge, func(), error) {
 		return bridge, func() {}, nil
 	})
 

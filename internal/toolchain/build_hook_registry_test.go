@@ -1,4 +1,4 @@
-package app
+package toolchain
 
 import (
 	"testing"
@@ -85,6 +85,11 @@ func TestBuildHookRegistry_WithCatalog(t *testing.T) {
 	postHooks := registry.PostHooks()
 	require.Len(t, postHooks, 1)
 	assert.Equal(t, "knowledge_save", postHooks[0].Name())
+
+	knowledgeHook, ok := postHooks[0].(*KnowledgeSaveHook)
+	require.True(t, ok)
+	assert.True(t, knowledgeHook.SaveableTools["my_reader"])
+	assert.False(t, knowledgeHook.SaveableTools["my_writer"])
 }
 
 func TestBuildHookRegistry_NilCatalogFallback(t *testing.T) {
@@ -99,4 +104,10 @@ func TestBuildHookRegistry_NilCatalogFallback(t *testing.T) {
 	postHooks := registry.PostHooks()
 	require.Len(t, postHooks, 1)
 	assert.Equal(t, "knowledge_save", postHooks[0].Name())
+
+	knowledgeHook, ok := postHooks[0].(*KnowledgeSaveHook)
+	require.True(t, ok)
+	for _, toolName := range DefaultSaveableTools {
+		assert.True(t, knowledgeHook.SaveableTools[toolName])
+	}
 }

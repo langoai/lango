@@ -96,7 +96,7 @@ func infoLine(label, value string) string {
 	return labelStyle.Render(label) + value + "\n"
 }
 
-func renderDeadLetterBacklogTable(page deadLetterListPage) string {
+func renderDeadLetterBacklogTable(page DeadLetterListPage) string {
 	if len(page.Entries) == 0 {
 		return "No current dead-letter backlog.\n"
 	}
