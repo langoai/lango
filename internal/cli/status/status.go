@@ -44,6 +44,12 @@ type DeadLetterBridge interface {
 	Retry(context.Context, string) error
 }
 
+// DeadLetterReadyBridge is a dead-letter bridge that can report read-side availability.
+type DeadLetterReadyBridge interface {
+	DeadLetterBridge
+	Ready() bool
+}
+
 // DeadLetterBridgeLoader constructs a bridge and returns a cleanup function.
 // A nil cleanup is normalized to a no-op by command handlers.
 type DeadLetterBridgeLoader func() (DeadLetterBridge, func(), error)
@@ -154,14 +160,13 @@ type deadLetterSummaryOptions struct {
 	Now         time.Time
 }
 
-// ToolCatalogDeadLetterBridge adapts catalog tools to DeadLetterBridge.
-type ToolCatalogDeadLetterBridge struct {
+type toolCatalogDeadLetterBridge struct {
 	catalog *toolcatalog.Catalog
 }
 
 // NewToolCatalogDeadLetterBridge creates a bridge backed by tool catalog entries.
-func NewToolCatalogDeadLetterBridge(catalog *toolcatalog.Catalog) *ToolCatalogDeadLetterBridge {
-	return &ToolCatalogDeadLetterBridge{catalog: catalog}
+func NewToolCatalogDeadLetterBridge(catalog *toolcatalog.Catalog) DeadLetterReadyBridge {
+	return &toolCatalogDeadLetterBridge{catalog: catalog}
 }
 
 // NewStatusCmd creates the status command.
@@ -502,7 +507,7 @@ func newDeadLetterRetryCmd(loader DeadLetterBridgeLoader) *cobra.Command {
 // Ready reports whether the read-side dead-letter status tools are available.
 // Retry availability is checked by Retry so deployments can expose read-only
 // status commands without hiding the whole dead-letter command group.
-func (b *ToolCatalogDeadLetterBridge) Ready() bool {
+func (b *toolCatalogDeadLetterBridge) Ready() bool {
 	if b == nil || b.catalog == nil {
 		return false
 	}
@@ -511,7 +516,7 @@ func (b *ToolCatalogDeadLetterBridge) Ready() bool {
 	return hasList && hasDetail
 }
 
-func (b *ToolCatalogDeadLetterBridge) List(ctx context.Context, opts DeadLetterListOptions) (DeadLetterListPage, error) {
+func (b *toolCatalogDeadLetterBridge) List(ctx context.Context, opts DeadLetterListOptions) (DeadLetterListPage, error) {
 	if b == nil || b.catalog == nil {
 		return DeadLetterListPage{}, fmt.Errorf("dead-letter tool catalog is not configured")
 	}
@@ -1018,7 +1023,7 @@ func topDispatchReferences(counts map[string]int, limit int) []deadLetterDispatc
 	return items
 }
 
-func (b *ToolCatalogDeadLetterBridge) Detail(ctx context.Context, transactionReceiptID string) (postadjudicationstatus.TransactionStatus, error) {
+func (b *toolCatalogDeadLetterBridge) Detail(ctx context.Context, transactionReceiptID string) (postadjudicationstatus.TransactionStatus, error) {
 	if b == nil || b.catalog == nil {
 		return postadjudicationstatus.TransactionStatus{}, fmt.Errorf("dead-letter tool catalog is not configured")
 	}
@@ -1046,7 +1051,7 @@ func (b *ToolCatalogDeadLetterBridge) Detail(ctx context.Context, transactionRec
 	return status, nil
 }
 
-func (b *ToolCatalogDeadLetterBridge) Retry(ctx context.Context, transactionReceiptID string) error {
+func (b *toolCatalogDeadLetterBridge) Retry(ctx context.Context, transactionReceiptID string) error {
 	if b == nil || b.catalog == nil {
 		return fmt.Errorf("dead-letter tool catalog is not configured")
 	}

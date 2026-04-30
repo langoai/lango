@@ -996,7 +996,7 @@ func TestToolCatalogDeadLetterBridge_ForwardsSubtypeAndFamilyFilters(t *testing.
 		},
 	})
 
-	bridge := &ToolCatalogDeadLetterBridge{catalog: catalog}
+	bridge := NewToolCatalogDeadLetterBridge(catalog)
 	_, err := bridge.List(context.Background(), DeadLetterListOptions{
 		LatestStatusSubtype:       "retry-scheduled",
 		LatestStatusSubtypeFamily: "retry",
@@ -1026,7 +1026,7 @@ func TestToolCatalogDeadLetterBridge_ForwardsActorAndTimeFilters(t *testing.T) {
 		},
 	})
 
-	bridge := &ToolCatalogDeadLetterBridge{catalog: catalog}
+	bridge := NewToolCatalogDeadLetterBridge(catalog)
 	_, err := bridge.List(context.Background(), DeadLetterListOptions{
 		ManualReplayActor:  "operator-1",
 		DeadLetteredAfter:  "2026-04-25T09:00:00Z",
@@ -1058,7 +1058,7 @@ func TestToolCatalogDeadLetterBridge_ForwardsAnyMatchFamily(t *testing.T) {
 		},
 	})
 
-	bridge := &ToolCatalogDeadLetterBridge{catalog: catalog}
+	bridge := NewToolCatalogDeadLetterBridge(catalog)
 	_, err := bridge.List(context.Background(), DeadLetterListOptions{
 		AnyMatchFamily: "manual-retry",
 	})
@@ -1086,7 +1086,7 @@ func TestToolCatalogDeadLetterBridge_ForwardsReasonAndDispatchFilters(t *testing
 		},
 	})
 
-	bridge := &ToolCatalogDeadLetterBridge{catalog: catalog}
+	bridge := NewToolCatalogDeadLetterBridge(catalog)
 	_, err := bridge.List(context.Background(), DeadLetterListOptions{
 		DeadLetterReasonQuery:   "worker exhausted",
 		LatestDispatchReference: "dispatch-7",
@@ -1116,7 +1116,7 @@ func TestToolCatalogDeadLetterBridge_ForwardsPagination(t *testing.T) {
 		},
 	})
 
-	bridge := &ToolCatalogDeadLetterBridge{catalog: catalog}
+	bridge := NewToolCatalogDeadLetterBridge(catalog)
 	_, err := bridge.List(context.Background(), DeadLetterListOptions{
 		Offset: 4,
 		Limit:  2,
