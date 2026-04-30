@@ -2,7 +2,7 @@
 
 ## Context
 
-`internal/app` has grown into a broad application package that owns process assembly, runtime wiring, tool construction, bridge adapters, and several CLI-facing helper surfaces. The package currently contains more than 15,000 non-test lines across more than 100 Go files. This size is not the root problem by itself; the structural issue is that downstream CLI/TUI packages directly import `internal/app`, which makes future app decomposition expensive and risky.
+`internal/app` has grown into a broad application package that owns process assembly, runtime wiring, tool construction, bridge adapters, and several CLI-facing helper surfaces. The package currently contains more than 15,000 non-test lines across 55 non-test Go files. This size is not the root problem by itself; the structural issue is that downstream CLI/TUI packages directly import `internal/app`, which makes future app decomposition expensive and risky.
 
 The first architecture change will establish a dependency firewall before moving large wiring or tool files. The public CLI behavior remains stable, while internal APIs may change.
 
@@ -43,27 +43,35 @@ internal/app
 
 ### Runtime Status Port
 
-`internal/cli/cockpit` currently depends on `*app.StatusCollector` through `cockpit.Deps.FeatureStatuses`. Replace that concrete dependency with a small interface owned outside `internal/app` or inside the CLI package if it is only consumed there.
+`internal/cli/cockpit` currently depends on `*app.StatusCollector` through `cockpit.Deps.FeatureStatuses`. Replace that concrete dependency with a small local interface owned by `internal/cli/cockpit`, because current usage is cockpit-specific.
 
-The interface should expose only what the cockpit status page needs. If the existing status page already has a local abstraction, reuse it instead of introducing a larger shared package.
+The interface should expose only what the cockpit status page needs. `cmd/lango` can pass `*app.StatusCollector` into that interface slot because the concrete app type already has the required methods. Do not introduce a broader shared status package for this slice unless implementation discovers another production consumer.
 
 ### Status CLI Bridge
 
-`internal/cli/status` currently creates a local app instance to access dead-letter tools through the app tool catalog. This command should depend on a narrow bridge loader or runtime dependency provider rather than importing `internal/app` directly.
+`internal/cli/status` currently creates a local app instance to access dead-letter tools through the app tool catalog. This is the riskiest part of the change because `deadLetterLoaderFromBoot` calls `app.New(boot, app.WithLocalChat())` and then reads `application.ToolCatalog`.
 
-`cmd/lango` remains responsible for app construction. The status package remains responsible for command behavior, rendering, validation, and JSON output.
+Resolve this by moving app-backed dead-letter bridge construction out of `internal/cli/status`. The status package should keep the existing `deadLetterBridge` and `deadLetterBridgeLoader` interfaces, but the loader that bootstraps an app and extracts a `*toolcatalog.Catalog` must live outside the CLI package. Prefer a small production bridge package, such as `internal/deadletterbridge`, that can build the catalog-backed bridge while `internal/cli/status` remains app-independent.
+
+`internal/cli/status` should use the same catalog-backed bridge pattern already used by cockpit's `DeadLetterToolBridge`: command code depends on bridge behavior, not on app construction. `cmd/lango` wires the production loader into `NewStatusCmd`, while tests can keep using fake bridge loaders.
 
 ### Hook Registry Builder
 
-`internal/cli/agent/hooks.go` uses `app.BuildHookRegistry(...)` to produce a registry snapshot. Move this construction function to an app-independent package, likely under `internal/toolchain` or a small hook registry package, because hook registry construction is not process composition.
+`internal/cli/agent/hooks.go` uses `app.BuildHookRegistry(...)` to produce a registry snapshot. Move this construction function to `internal/toolchain`, because its signature already depends on `config`, `eventbus`, `toolchain.KnowledgeSaver`, and `toolcatalog`, and it returns `*toolchain.HookRegistry`.
 
-`internal/app` can call the same package after the move. The CLI agent command should depend on that app-independent package, not on `internal/app`.
+`internal/app` can call the same `internal/toolchain` function after the move. The CLI agent command should depend on `internal/toolchain`, not on `internal/app`.
 
 ### Architecture Enforcement
 
 Add an `internal/archtest` rule that scans production imports and fails when any package under `internal/cli/**` imports `github.com/langoai/lango/internal/app`.
 
-The rule should follow the repository's existing archtest pattern: use `go list -json` via `os/exec`, avoid adding external dependencies, and exclude test-only imports unless the existing helper already handles that distinction.
+The rule must use exact import path matching with a slash boundary, following the existing pattern:
+
+```go
+importPath == prefix || strings.HasPrefix(importPath, prefix+"/")
+```
+
+This avoids false positives for neighboring packages such as `internal/approval` or `internal/appinit`. The rule should follow the repository's existing archtest pattern: use `go list -json` via `os/exec`, inspect the `Imports` field, and avoid adding external dependencies. Because `TestImports` is not inspected, test-only imports are excluded by design.
 
 ## Data Flow
 
@@ -113,7 +121,7 @@ Implementation should use an OpenSpec change focused on app boundary decoupling.
 
 ## Acceptance Criteria
 
-- `rg "github.com/langoai/lango/internal/app" internal/cli --glob '*.go'` returns no production CLI imports.
+- `rg 'github.com/langoai/lango/internal/app(\"|/)' internal/cli --glob '*.go'` returns no production CLI imports.
 - `cmd/lango` remains allowed to import and instantiate `internal/app`.
 - A production import from `internal/cli/**` to `internal/app` fails the architecture test.
 - Existing status, cockpit, and agent hooks behavior remains compatible at the CLI contract level.
