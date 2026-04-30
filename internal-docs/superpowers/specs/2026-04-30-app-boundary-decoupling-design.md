@@ -2,13 +2,13 @@
 
 ## Context
 
-`internal/app` has grown into a broad application package that owns process assembly, runtime wiring, tool construction, bridge adapters, and several CLI-facing helper surfaces. The package currently contains more than 15,000 non-test lines across 55 non-test Go files. This size is not the root problem by itself; the structural issue is that downstream CLI/TUI packages directly import `internal/app`, which makes future app decomposition expensive and risky.
+`internal/app` has grown into a broad application package that owns process assembly, runtime wiring, tool construction, bridge adapters, and several CLI-facing helper surfaces. For orientation, the package currently contains more than 15,000 non-test lines across 55 non-test Go files. The size is not the root problem by itself; the structural issue is that downstream CLI/TUI packages directly import `internal/app`, which makes future app decomposition expensive and risky.
 
 The first architecture change will establish a dependency firewall before moving large wiring or tool files. The public CLI behavior remains stable, while internal APIs may change.
 
 ## Goals
 
-- Make `cmd/lango` the only non-`internal/app` composition entrypoint that directly imports `internal/app`.
+- Make `cmd/lango` the only production package outside `internal/app` that directly imports `internal/app`.
 - Remove direct `internal/app` imports from `internal/cli/**`.
 - Replace CLI/TUI dependencies on concrete app types and helper functions with narrow interfaces, DTOs, or app-independent packages.
 - Add an architecture test that prevents `internal/cli/**` from importing `internal/app` again.
@@ -43,23 +43,37 @@ internal/app
 
 ### Runtime Status Port
 
-`internal/cli/cockpit` currently depends on `*app.StatusCollector` through `cockpit.Deps.FeatureStatuses`. Replace that concrete dependency with a small local interface owned by `internal/cli/cockpit`, because current usage is cockpit-specific.
+`internal/cli/cockpit` currently depends on `*app.StatusCollector` through `cockpit.Deps.FeatureStatuses`, but the dependency is not used by `cockpit.New`. The actual status page wiring in `cmd/lango` already passes `application.FeatureStatuses.All` as a `func() []types.FeatureStatus` to `pages.NewStatusPage`.
 
-The interface should expose only what the cockpit status page needs. `cmd/lango` can pass `*app.StatusCollector` into that interface slot because the concrete app type already has the required methods. Do not introduce a broader shared status package for this slice unless implementation discovers another production consumer.
+Remove `cockpit.Deps.FeatureStatuses` instead of adding a new interface. Keep the status page contract as `func() []types.FeatureStatus`, and update `cmd/lango` in both wiring points:
+
+- Remove `FeatureStatuses: application.FeatureStatuses` from the `cockpit.Deps` literal.
+- Keep the existing `statusProvider = application.FeatureStatuses.All` method value for `pages.NewStatusPage`.
+
+`internal/gateway.Server.SetFeatureStatuses(statuses []types.FeatureStatus)` already uses a slice contract and does not need to change.
 
 ### Status CLI Bridge
 
 `internal/cli/status` currently creates a local app instance to access dead-letter tools through the app tool catalog. This is the riskiest part of the change because `deadLetterLoaderFromBoot` calls `app.New(boot, app.WithLocalChat())` and then reads `application.ToolCatalog`.
 
-Resolve this by moving app-backed dead-letter bridge construction out of `internal/cli/status`. The status package should keep the existing `deadLetterBridge` and `deadLetterBridgeLoader` interfaces, but the loader that bootstraps an app and extracts a `*toolcatalog.Catalog` must live outside the CLI package. Prefer a small production bridge package, such as `internal/deadletterbridge`, that can build the catalog-backed bridge while `internal/cli/status` remains app-independent.
+Resolve this by moving app-backed dead-letter bridge construction out of `internal/cli/status` and into `cmd/lango`. Do not create another production package that imports `internal/app`; that would weaken the composition-root goal. `cmd/lango` should own a lazy helper that bootstraps the app and passes a catalog-backed bridge loader into the status command.
 
-`internal/cli/status` should use the same catalog-backed bridge pattern already used by cockpit's `DeadLetterToolBridge`: command code depends on bridge behavior, not on app construction. `cmd/lango` wires the production loader into `NewStatusCmd`, while tests can keep using fake bridge loaders.
+`internal/cli/status` should use the same catalog-backed bridge pattern already used by cockpit's `DeadLetterToolBridge`: command code depends on bridge behavior, not on app construction. `NewStatusCmd` should accept the production dead-letter loader as a dependency, while tests can keep using fake bridge loaders.
+
+This preserves the current lazy bootstrap behavior for dead-letter subcommands, but it does not make that bootstrap lighter. Today the path builds a full app only to access three dead-letter tool handlers. Reducing that startup cost is a follow-up change, not part of this boundary slice.
 
 ### Hook Registry Builder
 
 `internal/cli/agent/hooks.go` uses `app.BuildHookRegistry(...)` to produce a registry snapshot. Move this construction function to `internal/toolchain`, because its signature already depends on `config`, `eventbus`, `toolchain.KnowledgeSaver`, and `toolcatalog`, and it returns `*toolchain.HookRegistry`.
 
 `internal/app` can call the same `internal/toolchain` function after the move. The CLI agent command should depend on `internal/toolchain`, not on `internal/app`.
+
+Implementation inventory:
+
+- Update `internal/cli/agent/hooks.go` to call `toolchain.BuildHookRegistry`.
+- Move `internal/app/build_hook_registry_test.go` to the `internal/toolchain` package.
+- Update `internal/app/app.go` so its private `buildHookRegistry` delegates to `toolchain.BuildHookRegistry`.
+- Verify `internal/config`, `internal/eventbus`, and `internal/toolcatalog` do not import `internal/toolchain`; current code shows no such reverse import, so the move should not create a package cycle.
 
 ### Architecture Enforcement
 
@@ -71,7 +85,23 @@ The rule must use exact import path matching with a slash boundary, following th
 importPath == prefix || strings.HasPrefix(importPath, prefix+"/")
 ```
 
-This avoids false positives for neighboring packages such as `internal/approval` or `internal/appinit`. The rule should follow the repository's existing archtest pattern: use `go list -json` via `os/exec`, inspect the `Imports` field, and avoid adding external dependencies. Because `TestImports` is not inspected, test-only imports are excluded by design.
+The prefix must be the exact module-qualified app import path: `github.com/langoai/lango/internal/app`. This avoids false positives for neighboring packages such as `internal/approval` or `internal/appinit`. The rule should follow the repository's existing archtest pattern: use `go list -json` via `os/exec`, inspect the `Imports` field, and avoid adding external dependencies. Because `TestImports` is not inspected, test-only imports are excluded by design.
+
+## OpenSpec Contract Impact
+
+Before implementation, inspect these specs and create delta updates when concrete package contracts are affected:
+
+- `openspec/specs/feature-status/spec.md`
+- `openspec/specs/cockpit-status-page/spec.md`
+- `openspec/specs/cli-agent-tools-hooks/spec.md`
+- `openspec/specs/application-core/spec.md`
+
+Known expected deltas:
+
+- `cli-agent-tools-hooks` currently requires `internal/app` to export `BuildHookRegistry`; this must change to `internal/toolchain`.
+- `cockpit-status-page` currently references `FeatureStatuses.All()`; it should describe the `func() []types.FeatureStatus` status provider used by the page instead of app concrete type knowledge.
+- `feature-status` may keep `StatusCollector` in the app layer for wiring aggregation, but CLI/TUI consumption must be described through `types.FeatureStatus` slices or provider functions rather than app imports.
+- `application-core` should remain focused on centralized process assembly and must not require CLI packages to import `internal/app`.
 
 ## Data Flow
 
@@ -84,7 +114,7 @@ cmd/lango -> bootstrap -> app.New(...) -> assembled app/runtime dependencies
 CLI/TUI consumption becomes:
 
 ```text
-cmd/lango -> internal/cli/* constructors -> narrow interfaces / DTOs / app-independent helpers
+cmd/lango -> internal/cli/* constructors -> narrow interfaces / function providers / DTOs / app-independent helpers
 ```
 
 CLI packages should not inspect app internals or depend on `app.App` fields. They should receive the exact dependency needed for rendering, command execution, or bridge access.
@@ -121,9 +151,11 @@ Implementation should use an OpenSpec change focused on app boundary decoupling.
 
 ## Acceptance Criteria
 
-- `rg 'github.com/langoai/lango/internal/app(\"|/)' internal/cli --glob '*.go'` returns no production CLI imports.
+- `rg 'github.com/langoai/lango/internal/app["/]' internal/cli --glob '*.go'` returns no production CLI imports.
+- `rg 'github.com/langoai/lango/internal/app["/]' --glob '*.go'` returns only `cmd/lango` and files under `internal/app`.
 - `cmd/lango` remains allowed to import and instantiate `internal/app`.
 - A production import from `internal/cli/**` to `internal/app` fails the architecture test.
+- OpenSpec deltas are added for affected concrete package contracts before implementation tasks are marked complete.
 - Existing status, cockpit, and agent hooks behavior remains compatible at the CLI contract level.
 - `go build ./...` passes.
 - `go test ./...` passes, or any pre-existing environment-dependent failures are explicitly reproduced and documented before implementation begins.
