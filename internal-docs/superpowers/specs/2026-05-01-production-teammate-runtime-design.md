@@ -1,7 +1,7 @@
 # Production Teammate Runtime Design
 
 Date: 2026-05-01
-Revision: 2
+Revision: 3
 
 ## Purpose
 
@@ -16,7 +16,7 @@ The implementation direction is not "add a parallel teammate subsystem." The dir
 The repository already has several pieces of the target runtime:
 
 - `internal/agentrt/control_tools.go` defines `agent_spawn`, `agent_wait`, and `agent_stop`.
-- `internal/agentrt/agent_run.go` defines `AgentRun`, `AgentRunStatus`, `ChildSession`, and `AllowedTools`.
+- `internal/agentrt/agent_run.go` defines `AgentRun`, `AgentRunStatus`, and per-run fields for child session key and allowed tools.
 - `internal/agentrt/agent_run_projection.go` unifies `AgentRun.ID` with the background task ID through `background.Projection`.
 - `internal/background/manager.go` provides in-process async execution, timeout, cancellation, retry, task snapshots, and projection hooks.
 - `internal/agentrt/coordinating_executor.go` wraps execution with delegation, budget, and recovery observation.
@@ -47,7 +47,7 @@ The issue is not a complete absence of mechanisms. The issue is that spawn, back
 
 1. Do not remove the existing specialist roles.
 2. Do not introduce a new user-facing setting as the primary path for teammate mode.
-3. Do not create a new parallel `internal/agentrt/teammate` package in v1 unless implementation planning proves the existing `agentrt` package cannot hold the extension cleanly.
+3. Do not create a new parallel `internal/agentrt/teammate` package in v1 unless implementation planning proves the existing `agentrt` package cannot hold the extension cleanly. The proof must include `go list ./...`, import-cycle checks, and a package-boundary note showing that the extension would otherwise pull UI, CLI, or storage-specific dependencies into the wrong layer.
 4. Do not define or implement a separate-process worker adapter in v1.
 5. Do not redesign the whole TUI in this workstream.
 6. Do not expose both `agent_*` and `teammate_*` LLM tool families at the same time.
@@ -78,7 +78,7 @@ These requirements remain valuable but must be reframed:
 | Specialist roles | Built-in teammate types with role prompts, maximum tool scope, default budget, and isolation policy. |
 | Prefix partitioning | Role maximum scope and default tool affinity. Spawn-time `AllowedTools` narrows it. |
 | Capability descriptions | Teammate type descriptions used by main-agent routing and operator surfaces. |
-| Remote A2A agents | Candidate teammate providers or remote teammate types, after the in-process path is stable. |
+| Remote A2A agents | Existing remote A2A routing remains preserved in v1. Absorbing remotes as dynamic teammate providers is deferred to a v2 spike after the in-process path is stable. |
 | Re-routing protocol | Recovery policy plus main-agent synthesis and reroute decisions. |
 | Event author identity | Teammate run and child-session authorship must remain traceable in events and summaries. |
 
@@ -121,12 +121,12 @@ The implementation should extend existing symbols first.
 | Teammate run ID | `AgentRun.ID`, `background.Task.ID`, RunLedger `run_id` | Keep and extend | Preserve the existing canonical ID unification. |
 | Teammate status | `AgentRunStatus`, `background.Status`, RunLedger snapshot status | Extend via fields/projection before adding many enum states | Avoid a premature 11-state enum unless producer/consumer wiring requires it. |
 | Teammate type | `AgentRun.RequestedAgent`, agent registry definitions | Extend/rename later | `RequestedAgent` can represent teammate type in v1. A later rename can follow after spec rewrite. |
-| Spawn instruction | `AgentRun.Instruction`, background prompt | Keep | Spawn reason and role metadata can be added around it. |
+| Spawn instruction | `AgentRun.Instruction`, background prompt | Keep | Spawn reason is stored as a new `AgentRun.SpawnReason` projection field for operator views and emitted as trace/audit data. When RunLedger is enabled, the same reason is also recorded in the run journal. |
 | Tool subset | `AgentRun.AllowedTools`, DynamicAllowedTools context | Keep and enforce | Add role maximum scope validation before storing. |
 | Context isolation | `AgentRun.ChildSession`, `ChildSessionStore` | Keep and require | Every isolated teammate run should carry the child session key. |
 | In-process execution | `background.Manager`, `AgentRunProjection` | Keep | This is the v1 execution path. |
 | Recovery | `RecoveryPolicy`, `CauseClass`, `DelegationGuard` | Extend | Add teammate-aware outcomes only where missing. |
-| Audit event | Event bus, RunLedger journal, trace events | Decide in implementation plan | The design requires audit events; the storage target must be specified per slice. |
+| Audit event | Event bus, RunLedger journal, trace events | Extend | V1 emits trace/eventbus audit events for all environments and mirrors durable audit events into RunLedger when enabled. |
 | Operator read model | Cockpit Tasks/Runtime pages, `lango agent status/list/trace/graph/metrics` | Extend | Add runs/grants only after CLI command names are locked. |
 | Direct messaging | No current `agent_message`; spec excludes it from initial tools | Add later | Direct teammate channels are not v1. |
 | Worker process | None | Separate spike | Do not define v1 interfaces for this yet. |
@@ -173,6 +173,8 @@ V1 is in-process only. It uses `background.Manager` and the existing runner path
 
 This is an honest scope boundary. The design should not promise a worker-process contract in v1.
 
+Remote A2A agents keep their existing v1 behavior: they remain loaded into the current A2A/static routing path so existing remote-agent workflows do not regress. Treating remote A2A agents as dynamic teammate providers is a v2 spike after the in-process teammate runtime is stable.
+
 ### Policy And Approval Layer
 
 Permissions are the intersection of:
@@ -185,6 +187,24 @@ Permissions are the intersection of:
 Role maximum scope is a hard upper bound. A UI approval must not grant a teammate a tool outside its role maximum scope.
 
 If a teammate needs additional permitted scope during execution, it submits a capability request. The policy layer first evaluates existing grants and always-allow rules. If the decision is unsafe or ambiguous, the request is surfaced through CLI/TUI approval UI. The main agent observes the event but does not hide the audit trail behind natural language.
+
+### Capability Request Emission
+
+V1 does not add a new model-facing request-capability tool. Capability requests are emitted by the runtime when a teammate attempts to call a tool that is outside its current `DynamicAllowedTools` subset but inside the teammate type's role maximum scope.
+
+The flow is:
+
+1. Teammate attempts a tool call.
+2. `AgentAccessControlHook` blocks the call with `tool restricted by DynamicAllowedTools`.
+3. The runtime classifies the blocked call against role maximum scope.
+4. If the tool is inside role maximum scope, the runtime emits a structured capability request and moves the run projection to `blocked_waiting_approval` when approval is required.
+5. If the tool is outside role maximum scope, the runtime emits a structured denial; UI approval cannot override it.
+
+This keeps the v1 LLM tool surface limited to `agent_spawn`, `agent_wait`, and `agent_stop` while still giving teammates a production path for requesting additional capability.
+
+### Transfer-To-Agent Compatibility
+
+`transfer_to_agent` remains as a legacy ADK specialist fallback in v1 because current built-in prompts, tests, and A2A routing still depend on it. The dynamic teammate path should become the primary path for new multi-agent work, but `transfer_to_agent` removal requires a later compatibility change with prompt, registry, and test updates.
 
 ### Operational Surfaces
 
@@ -245,7 +265,7 @@ These conditions can be represented as fields or derived view state before addin
 | `orphaned` | Reconciliation job detects run without active task/session | Recovery policy, operator surface | Recovery decision records resume, fail, or cancel. |
 | `recovering` | Recovery policy begins action | Main agent, trace, operator surface | Recovery action completes. |
 
-Each projected condition needs an explicit storage location during implementation planning. Candidate fields include `BlockedReason`, `WaitingOnRunID`, `RecoveryState`, `ExecutionMode`, `BudgetSnapshot`, and `GrantRequestID`. If these become durable columns, the OpenSpec change must include schema and migration requirements.
+Each projected condition needs an explicit storage location during implementation planning. Fields requiring a Slice B storage decision include `BlockedReason`, `WaitingOnRunID`, `RecoveryState`, `ExecutionMode`, `BudgetSnapshot`, and `GrantRequestID`. If these become durable columns, the OpenSpec change must include schema and reversible migration requirements.
 
 ## Data Flow
 
@@ -268,7 +288,7 @@ The main agent's spawn decision must include a reason that is stored in audit or
 - Child session key when isolation is active.
 - Audit correlation ID or trace ID.
 
-The spawn path validates role maximum scope and budget before registering the ID with `AgentRunProjection` and submitting the in-process background task.
+The spawn path validates role maximum scope and budget before registering the ID with `AgentRunProjection` and submitting the in-process background task. `SpawnReason` is also stored on `AgentRun` for projection, emitted into trace/eventbus audit events, and mirrored into RunLedger journal events when RunLedger is enabled.
 
 ### Work And Report Flow
 
@@ -285,7 +305,7 @@ Teammate results should preserve:
 
 ### Capability Escalation Flow
 
-When a teammate needs a tool outside its current allowed subset but inside role maximum scope, it emits a capability request.
+When a teammate needs a tool outside its current allowed subset but inside role maximum scope, the runtime emits a capability request from the blocked tool attempt. Teammates do not receive a new model-facing capability request tool in v1.
 
 The policy layer evaluates the request. If allowed, a grant event updates the run's effective permissions. If user approval is required, the projected condition becomes `blocked_waiting_approval`. If denied or outside role scope, the teammate receives a structured denial and can reroute, summarize partial work, or escalate to the main agent.
 
@@ -332,7 +352,7 @@ Teammates should not receive the entire parent context by default. The spawn ins
 
 ### Spec Rewrite Tests
 
-The first OpenSpec wave should update `multi-agent-orchestration` and related specs before implementation changes. Tests should fail if code still assumes the old tool-less orchestrator contract after the rewrite wave is applied.
+The first OpenSpec wave inside the same teammate-runtime change should update `multi-agent-orchestration`, `agent-control-plane-tools`, and related specs before implementation tasks switch behavior. Tests should fail if code still assumes the old tool-less orchestrator contract after the implementation waves are applied.
 
 ### Asset Mapping Tests
 
@@ -360,15 +380,15 @@ Verify cockpit and CLI surfaces read the same projection and show blocked reason
 
 ## Rollout Plan
 
-### Slice A: OpenSpec Rewrite
+### Slice A: OpenSpec Rewrite Wave
 
-Rewrite `multi-agent-orchestration` from static tool-less orchestrator to dynamic teammate runtime. Classify old requirements as deprecated, reframed, or replaced. Update related specs only where the contract boundary requires it.
+Rewrite `multi-agent-orchestration` and `agent-control-plane-tools` from static tool-less orchestrator and advisory spawn semantics to dynamic teammate runtime semantics. Classify old requirements as deprecated, reframed, or replaced. Update related specs only where the contract boundary requires it.
 
-No runtime code changes should switch behavior before this contract wave is accepted.
+This is a wave inside the same OpenSpec change as implementation, not a separately archived docs-only change. Do not archive the change until the spec rewrite and the matching implementation waves are both verified.
 
 ### Slice B: Existing Asset Mapping And In-Process Control Path
 
-Extend `AgentRun`, `AgentRunProjection`, and the existing `agent_*` tools as needed so the teammate policy layer can use the current in-process background execution path. Preserve the current model-facing tool names.
+Extend `AgentRun`, `AgentRunProjection`, and the existing `agent_*` tools as needed so the teammate policy layer can use the current in-process background execution path. Preserve the current model-facing tool names. This slice decides durable versus derived storage for `SpawnReason`, `BlockedReason`, `WaitingOnRunID`, `RecoveryState`, and `GrantRequestID`; any durable field ships with reversible migration requirements.
 
 ### Slice C: Main-Agent Prompt And Dynamic Spawn Policy
 
@@ -376,7 +396,7 @@ Update the main-agent multi-agent prompt so `agent.multiAgent=true` means coordi
 
 ### Slice D: Capability Escalation And Approval
 
-Implement capability requests, policy evaluation, approval integration, grant audit events, and blocked approval projection.
+Implement runtime-emitted capability requests from blocked `DynamicAllowedTools` attempts, policy evaluation, approval integration, grant audit events, and blocked approval projection.
 
 ### Slice E: Operator Projection
 
@@ -391,10 +411,10 @@ Investigate worker-process or sandboxed teammate execution after the in-process 
 Primary OpenSpec wave:
 
 - `multi-agent-orchestration`
+- `agent-control-plane-tools`
 
 Secondary impacted specs:
 
-- `agent-control-plane-tools`
 - `agent-runtime`
 - `sub-session-isolation`
 - `run-ledger`
@@ -420,11 +440,13 @@ Documentation must describe the new dynamic teammate runtime without claiming wo
 3. Existing specialist roles are available as teammate types.
 4. The main agent can autonomously spawn teammates with a recorded reason.
 5. Existing `agent_spawn`, `agent_wait`, and `agent_stop` remain the only v1 model-facing control tools.
-6. `AgentRun`, background task ID, and RunLedger projection preserve canonical identity.
+6. `AgentRun`, background task ID, and RunLedger projection preserve canonical identity when RunLedger is enabled; when RunLedger is disabled, `AgentRun.ID` and `background.Task.ID` remain the canonical runtime identity.
 7. ChildSession remains the context isolation primitive for teammate execution.
 8. Role maximum scope and spawn-time `AllowedTools` are both enforced.
 9. Capability escalation is policy-first and surfaces user approval only when required.
 10. Timeout, cancel, background failure, orphaned runs, and partial results converge through recovery policy.
 11. CLI/TUI projections can show current teammate status and blocked reason from the same source of truth.
 12. Worker-process and sandboxed teammate execution remain outside v1 and are handled as a separate spike.
-
+13. Any new durable run-state column ships with reversible migration requirements.
+14. Capability escalation in v1 is emitted by runtime interception of blocked tool attempts, not by adding a new model-facing capability request tool.
+15. Remote A2A agents keep existing v1 routing behavior; dynamic teammate-provider integration for remotes is deferred.
