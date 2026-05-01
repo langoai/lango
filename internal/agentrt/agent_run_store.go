@@ -12,7 +12,22 @@ type AgentRunStore interface {
 	Get(id string) (*AgentRun, error)
 	List() []*AgentRun
 	UpdateStatus(id string, status AgentRunStatus, result, errMsg string) error
+	UpdateProjection(id string, patch RunProjectionPatch) error
 	Cancel(id string) error
+}
+
+type RunProjectionPatch struct {
+	ApplyRuntimeCondition bool
+	ApplyBlockedReason    bool
+	ApplyGrantRequestID   bool
+	ApplyWaitingOnRunID   bool
+	ApplyRecoveryState    bool
+	RuntimeCondition      AgentRunCondition
+	BlockedReason         string
+	GrantRequestID        string
+	WaitingOnRunID        string
+	RecoveryState         string
+	AddAllowedTool        string
 }
 
 // InMemoryAgentRunStore is a thread-safe in-memory implementation of AgentRunStore.
@@ -94,6 +109,40 @@ func (s *InMemoryAgentRunStore) UpdateStatus(id string, status AgentRunStatus, r
 	return nil
 }
 
+func (s *InMemoryAgentRunStore) UpdateProjection(id string, patch RunProjectionPatch) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	run, ok := s.runs[id]
+	if !ok {
+		return fmt.Errorf("update agent run projection: ID %q not found", id)
+	}
+	if run.Status.isTerminal() {
+		return fmt.Errorf("update agent run projection: ID %q is already %s", id, run.Status)
+	}
+
+	if patch.ApplyRuntimeCondition {
+		run.RuntimeCondition = patch.RuntimeCondition
+	}
+	if patch.ApplyBlockedReason {
+		run.BlockedReason = patch.BlockedReason
+	}
+	if patch.ApplyGrantRequestID {
+		run.GrantRequestID = patch.GrantRequestID
+	}
+	if patch.ApplyWaitingOnRunID {
+		run.WaitingOnRunID = patch.WaitingOnRunID
+	}
+	if patch.ApplyRecoveryState {
+		run.RecoveryState = patch.RecoveryState
+	}
+	if patch.AddAllowedTool != "" && !stringSliceContains(run.AllowedTools, patch.AddAllowedTool) {
+		run.AllowedTools = append(run.AllowedTools, patch.AddAllowedTool)
+	}
+
+	return nil
+}
+
 // Cancel cancels an agent run by calling its CancelFn (if set) and setting the
 // status to Cancelled. Returns an error if the run is not found or is already
 // in a terminal status. This follows the same guard pattern as background.Manager.
@@ -128,4 +177,13 @@ func copyRun(run *AgentRun) *AgentRun {
 		copy(cp.AllowedTools, run.AllowedTools)
 	}
 	return &cp
+}
+
+func stringSliceContains(items []string, want string) bool {
+	for _, item := range items {
+		if item == want {
+			return true
+		}
+	}
+	return false
 }

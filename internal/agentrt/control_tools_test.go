@@ -106,6 +106,74 @@ func TestAgentSpawn_WithAllowedTools(t *testing.T) {
 	assert.Equal(t, []string{"fs_read", "web_search"}, run.AllowedTools)
 }
 
+func TestAgentSpawn_WithAllowedToolsForBuiltinTeammate(t *testing.T) {
+	store := NewInMemoryAgentRunStore()
+	cp := &AgentControlPlane{
+		RunStore:   store,
+		Projection: NewAgentRunProjection(store),
+	}
+	tools := BuildControlTools(cp)
+	spawnTool := findControlTool(t, tools, "agent_spawn")
+
+	result, err := spawnTool.call(context.Background(), map[string]interface{}{
+		"instruction":   "operate on local files",
+		"agent":         "operator",
+		"allowed_tools": []interface{}{"fs_read", "exec"},
+	})
+	require.NoError(t, err)
+
+	m := result.(map[string]interface{})
+	assert.Equal(t, "operator", m["requested_agent"])
+
+	run, err := store.Get(m["agent_id"].(string))
+	require.NoError(t, err)
+	assert.Equal(t, "operator", run.RequestedAgent)
+	assert.Equal(t, []string{"fs_read", "exec"}, run.AllowedTools)
+}
+
+func TestAgentSpawn_WithSpawnReason(t *testing.T) {
+	store := NewInMemoryAgentRunStore()
+	cp := &AgentControlPlane{
+		RunStore:   store,
+		Projection: NewAgentRunProjection(store),
+	}
+	tools := BuildControlTools(cp)
+	spawnTool := findControlTool(t, tools, "agent_spawn")
+
+	result, err := spawnTool.call(context.Background(), map[string]interface{}{
+		"instruction":  "approval task",
+		"spawn_reason": "delegated_for_approval",
+	})
+	require.NoError(t, err)
+
+	m := result.(map[string]interface{})
+	assert.Equal(t, "delegated_for_approval", m["spawn_reason"])
+
+	run, err := store.Get(m["agent_id"].(string))
+	require.NoError(t, err)
+	assert.Equal(t, "delegated_for_approval", run.SpawnReason)
+}
+
+func TestAgentSpawn_RejectsAllowedToolsOutsideRoleScope(t *testing.T) {
+	store := NewInMemoryAgentRunStore()
+	cp := &AgentControlPlane{
+		RunStore:   store,
+		Projection: NewAgentRunProjection(store),
+	}
+	tools := BuildControlTools(cp)
+	spawnTool := findControlTool(t, tools, "agent_spawn")
+
+	result, err := spawnTool.call(context.Background(), map[string]interface{}{
+		"instruction":   "plan work",
+		"agent":         "planner",
+		"allowed_tools": []interface{}{"exec"},
+	})
+	require.Error(t, err)
+	assert.Nil(t, result)
+	assert.Equal(t, `tool "exec" outside role maximum scope for teammate type "planner"`, err.Error())
+	assert.Empty(t, store.List())
+}
+
 func TestAgentSpawn_SpawnDepthPropagation(t *testing.T) {
 	store := NewInMemoryAgentRunStore()
 	cp := &AgentControlPlane{

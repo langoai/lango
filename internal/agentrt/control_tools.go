@@ -36,6 +36,7 @@ func buildAgentSpawn(cp *AgentControlPlane) *agent.Tool {
 		Parameters: agent.Schema().
 			Str("instruction", "The task instruction for the spawned agent (required)").
 			Str("agent", "Advisory target specialist name (not guaranteed routing)").
+			Str("spawn_reason", "Why the spawned agent is being created").
 			Int("timeout", "Timeout in seconds for the spawned agent (default 300)").
 			Array("allowed_tools", "string", "Tool names the spawned agent is allowed to use").
 			Required("instruction").
@@ -47,7 +48,11 @@ func buildAgentSpawn(cp *AgentControlPlane) *agent.Tool {
 			}
 
 			requestedAgent := toolparam.OptionalString(params, "agent", "")
+			spawnReason := toolparam.OptionalString(params, "spawn_reason", "")
 			allowedTools := toolparam.StringSlice(params, "allowed_tools")
+			if err := ValidateAllowedToolsForTeammate(requestedAgent, allowedTools); err != nil {
+				return nil, err
+			}
 
 			// Build the enriched prompt when an agent specialist is requested.
 			enrichedInstruction := instruction
@@ -72,6 +77,7 @@ func buildAgentSpawn(cp *AgentControlPlane) *agent.Tool {
 				Status:         AgentRunSpawned,
 				SpawnDepth:     parentDepth + 1,
 				AllowedTools:   allowedTools,
+				SpawnReason:    spawnReason,
 				CreatedAt:      time.Now(),
 			}
 
@@ -89,6 +95,7 @@ func buildAgentSpawn(cp *AgentControlPlane) *agent.Tool {
 				"agent_id":        agentID,
 				"status":          string(AgentRunSpawned),
 				"requested_agent": requestedAgent,
+				"spawn_reason":    spawnReason,
 			}, nil
 		},
 	}

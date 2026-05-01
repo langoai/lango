@@ -11,6 +11,16 @@ var runtimeEssentials = map[string]bool{
 	"builtin_health":  true,
 }
 
+// RuntimeEssentialToolNames returns the canonical tool names that remain
+// allowed under DynamicAllowedTools. builtin_invoke is intentionally excluded.
+func RuntimeEssentialToolNames() []string {
+	names := make([]string, 0, len(runtimeEssentials))
+	for name := range runtimeEssentials {
+		names = append(names, name)
+	}
+	return names
+}
+
 // AgentAccessControlHook enforces per-agent tool ACL.
 // Priority: 20 (runs after security filter but before execution).
 type AgentAccessControlHook struct {

@@ -2,6 +2,7 @@ package toolchain
 
 import (
 	"context"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -132,12 +133,12 @@ func TestAgentAccessControlHook_DynamicAllowedTools(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		give         string
-		dynAllowed   []string
-		toolName     string
-		agentName    string
-		wantAction   PreHookAction
-		wantReason   string
+		give       string
+		dynAllowed []string
+		toolName   string
+		agentName  string
+		wantAction PreHookAction
+		wantReason string
 	}{
 		{
 			give:       "allowed tool passes through",
@@ -237,4 +238,19 @@ func TestAgentAccessControlHook_DynamicAllowedTools(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRuntimeEssentialToolNames(t *testing.T) {
+	t.Parallel()
+
+	names := RuntimeEssentialToolNames()
+	slices.Sort(names)
+
+	assert.Equal(t, []string{
+		"builtin_health",
+		"builtin_list",
+		"builtin_search",
+		"tool_output_get",
+	}, names)
+	assert.NotContains(t, names, "builtin_invoke")
 }

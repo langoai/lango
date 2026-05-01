@@ -70,6 +70,50 @@ func TestWithHooks_PreHookBlocks(t *testing.T) {
 	assert.False(t, handlerCalled, "handler should not be called when blocked")
 }
 
+func TestWithHooks_EmitsBlockedToolCallMetadata(t *testing.T) {
+	t.Parallel()
+
+	reg := NewHookRegistry()
+	reg.RegisterPre(&stubPreHook{
+		name:     "dynamic-allowed-tools",
+		priority: 1,
+		result: PreHookResult{
+			Action:      Block,
+			BlockReason: "tool restricted by DynamicAllowedTools",
+		},
+	})
+
+	tool := makeTool("shell_exec", func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
+		t.Fatal("handler should not be called when blocked")
+		return nil, nil
+	})
+
+	params := map[string]interface{}{
+		"command": "rm -rf /tmp/demo",
+		"args":    []interface{}{"--force"},
+	}
+
+	var got BlockedToolCall
+	ctx := context.Background()
+	ctx = WithAgentName(ctx, "planner")
+	ctx = session.WithSessionKey(ctx, "session-123")
+	ctx = WithBlockedToolCallSink(ctx, func(call BlockedToolCall) {
+		got = call
+	})
+
+	wrapped := Chain(tool, WithHooks(reg))
+	_, err := wrapped.Handler(ctx, params)
+
+	require.Error(t, err)
+	assert.Equal(t, "tool 'shell_exec' blocked by hook: tool restricted by DynamicAllowedTools", err.Error())
+	assert.Equal(t, "shell_exec", got.ToolName)
+	assert.Equal(t, "planner", got.AgentName)
+	assert.Equal(t, "session-123", got.SessionKey)
+	assert.Equal(t, "tool restricted by DynamicAllowedTools", got.BlockReason)
+	assert.Equal(t, params, got.Params)
+	assert.Same(t, ctx, got.Ctx)
+}
+
 func TestWithHooks_PreHookModifiesParams(t *testing.T) {
 	t.Parallel()
 
