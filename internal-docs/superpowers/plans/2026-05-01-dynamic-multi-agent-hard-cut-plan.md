@@ -29,7 +29,6 @@ This plan covers one coherent contract change: built-in teammate hard cut with r
 - Create `openspec/changes/dynamic-multi-agent-hard-cut/specs/agent-routing/spec.md`: remove built-in `transfer_to_agent("lango-orchestrator")` requirement from prompt files.
 - Create `openspec/changes/dynamic-multi-agent-hard-cut/specs/agent-registry/spec.md`: embedded `AGENT.md` contract changes.
 - Create `openspec/changes/dynamic-multi-agent-hard-cut/specs/adk-architecture/spec.md`: narrow hallucinated-agent retry to remote/legacy transfer paths.
-- Create `openspec/changes/dynamic-multi-agent-hard-cut/specs/tool-execution-hooks/spec.md`: blocked-call runtime emission contract.
 - Create `openspec/changes/dynamic-multi-agent-hard-cut/specs/tool-capability-layer/spec.md`: grant/recheck semantics.
 - Create `openspec/changes/dynamic-multi-agent-hard-cut/specs/run-ledger/spec.md`: durable visibility expectations and audit verdict shape.
 - Modify `internal/orchestration/tools.go`: remove built-in transfer wording, tighten routing/disambiguation, require spawn-only built-in execution.
@@ -63,7 +62,6 @@ Each task ends with a suggested commit message. When executing, stage only the f
 - Create: `openspec/changes/dynamic-multi-agent-hard-cut/specs/agent-routing/spec.md`
 - Create: `openspec/changes/dynamic-multi-agent-hard-cut/specs/agent-registry/spec.md`
 - Create: `openspec/changes/dynamic-multi-agent-hard-cut/specs/adk-architecture/spec.md`
-- Create: `openspec/changes/dynamic-multi-agent-hard-cut/specs/tool-execution-hooks/spec.md`
 - Create: `openspec/changes/dynamic-multi-agent-hard-cut/specs/tool-capability-layer/spec.md`
 - Create: `openspec/changes/dynamic-multi-agent-hard-cut/specs/run-ledger/spec.md`
 
@@ -88,7 +86,6 @@ mkdir -p openspec/changes/dynamic-multi-agent-hard-cut/specs/agent-control-plane
 mkdir -p openspec/changes/dynamic-multi-agent-hard-cut/specs/agent-routing
 mkdir -p openspec/changes/dynamic-multi-agent-hard-cut/specs/agent-registry
 mkdir -p openspec/changes/dynamic-multi-agent-hard-cut/specs/adk-architecture
-mkdir -p openspec/changes/dynamic-multi-agent-hard-cut/specs/tool-execution-hooks
 mkdir -p openspec/changes/dynamic-multi-agent-hard-cut/specs/tool-capability-layer
 mkdir -p openspec/changes/dynamic-multi-agent-hard-cut/specs/run-ledger
 ```
@@ -106,7 +103,6 @@ rg -n "transfer_to_agent|lango-orchestrator|failed to find agent|sub-agent escal
   openspec/specs/agent-routing/spec.md \
   openspec/specs/agent-registry/spec.md \
   openspec/specs/adk-architecture/spec.md \
-  openspec/specs/tool-execution-hooks/spec.md \
   openspec/specs/tool-capability-layer/spec.md \
   openspec/specs/run-ledger/spec.md
 ```
@@ -125,7 +121,7 @@ Add this section to `openspec/changes/dynamic-multi-agent-hard-cut/design.md`:
 - `agent-routing`: embedded prompt files still require `transfer_to_agent("lango-orchestrator")`.
 - `agent-registry`: embedded `AGENT.md` defaults remain part of the production prompt contract.
 - `adk-architecture`: `failed to find agent` retry still assumes a useful sub-agent list exists.
-- `tool-execution-hooks` and `tool-capability-layer`: blocked-call and grant semantics must be aligned with the hard cut.
+- `tool-capability-layer`: grant/recheck semantics must be aligned with the hard cut.
 - `run-ledger`: durable visibility expectations must be explicit for built-in teammate runs.
 ```
 
@@ -191,7 +187,6 @@ docs: scaffold hard cut openspec change
 - Modify: `openspec/changes/dynamic-multi-agent-hard-cut/specs/agent-routing/spec.md`
 - Modify: `openspec/changes/dynamic-multi-agent-hard-cut/specs/agent-registry/spec.md`
 - Modify: `openspec/changes/dynamic-multi-agent-hard-cut/specs/adk-architecture/spec.md`
-- Modify: `openspec/changes/dynamic-multi-agent-hard-cut/specs/tool-execution-hooks/spec.md`
 - Modify: `openspec/changes/dynamic-multi-agent-hard-cut/specs/tool-capability-layer/spec.md`
 - Modify: `openspec/changes/dynamic-multi-agent-hard-cut/specs/run-ledger/spec.md`
 
@@ -299,22 +294,7 @@ The embedded built-in `AGENT.md` files SHALL no longer encode built-in escalatio
 - **THEN** their escalation behavior SHALL match the spawn-only built-in runtime contract
 ```
 
-- [ ] **Step 8: Add the `tool-execution-hooks` delta**
-
-Include this requirement block in `openspec/changes/dynamic-multi-agent-hard-cut/specs/tool-execution-hooks/spec.md`:
-
-```markdown
-## MODIFIED Requirements
-
-### Requirement: DynamicAllowedTools block emission remains structured
-When a built-in teammate hits a DynamicAllowedTools block, the hook path SHALL emit structured blocked-call metadata before the runtime decides whether to request approval or ignore a now-stale block.
-
-#### Scenario: Structured blocked-call emission precedes runtime decision
-- **WHEN** a built-in teammate attempts a blocked tool
-- **THEN** the blocked call metadata SHALL remain available to the runtime before projection state is updated
-```
-
-- [ ] **Step 9: Add the `tool-capability-layer` delta**
+- [ ] **Step 8: Add the `tool-capability-layer` delta**
 
 Include this requirement block in `openspec/changes/dynamic-multi-agent-hard-cut/specs/tool-capability-layer/spec.md`:
 
@@ -327,9 +307,10 @@ Before persisting a `blocked_waiting_approval` projection for a built-in teammat
 #### Scenario: Final observed run state is clear after grant wins the race
 - **WHEN** a grant becomes effective before the final observed state is read
 - **THEN** the final observed teammate run state SHALL NOT remain stuck in `blocked_waiting_approval`
+- **AND** the runtime regression tests SHALL be the concrete verification gate for that condition
 ```
 
-- [ ] **Step 10: Re-run spec validation**
+- [ ] **Step 9: Re-run spec validation**
 
 Run:
 
@@ -339,7 +320,7 @@ openspec validate dynamic-multi-agent-hard-cut --strict
 
 Expected: PASS for the spec-only delta set, or a narrowed set of actionable failures.
 
-- [ ] **Step 11: Suggested commit**
+- [ ] **Step 10: Suggested commit**
 
 Suggested commit message:
 
@@ -479,11 +460,15 @@ refactor: hard cut built-in orchestration prompts
 
 - [ ] **Step 1: Add a failing recovery-message test**
 
-First extract the correction-message construction into a helper in `internal/adk/agent.go`:
+First extract the correction-message construction into a helper in `internal/adk/agent.go` that accepts a caller-supplied built-in predicate:
 
 ```go
-func buildMissingAgentCorrection(badAgent string, subAgents []string, builtIn bool) string {
-	if builtIn {
+func buildMissingAgentCorrection(
+	badAgent string,
+	subAgents []string,
+	isBuiltIn func(string) bool,
+) string {
+	if isBuiltIn != nil && isBuiltIn(badAgent) {
 		return fmt.Sprintf(
 			"[System: Built-in agent %q does not exist as a transfer target. "+
 				"Do not retry built-in transfer_to_agent routing. "+
@@ -502,7 +487,11 @@ Then add this test to `internal/adk/agent_test.go`:
 
 ```go
 func TestBuildMissingAgentCorrection_BuiltinDoesNotSuggestTransferRetry(t *testing.T) {
-	got := buildMissingAgentCorrection("web_search", []string{"operator", "vault"}, true)
+	got := buildMissingAgentCorrection(
+		"web_search",
+		[]string{"operator", "vault"},
+		func(name string) bool { return name == "web_search" },
+	)
 	assert.NotContains(t, got, "Valid agents:")
 	assert.Contains(t, got, "Use agent_spawn")
 	assert.Contains(t, got, "answer directly from gathered evidence")
@@ -524,20 +513,26 @@ Expected: FAIL before the recovery text changes because the helper or the built-
 Change the hallucinated-agent branch in `internal/adk/agent.go` to:
 
 ```go
-builtin := false
-if _, ok := agentrt.BuiltinTeammateTypes()[badAgent]; ok {
-	builtin = true
-}
-correction := buildMissingAgentCorrection(badAgent, names, builtin)
+names := subAgentNames(a.adkAgent)
+correction := buildMissingAgentCorrection(badAgent, names, func(name string) bool {
+	return containsBuiltinTargetName(name)
+})
 ```
 
-Add to imports if missing:
+Then introduce a local helper in `internal/adk/agent.go` rather than importing `internal/agentrt`:
 
 ```go
-import "github.com/langoai/lango/internal/agentrt"
+func containsBuiltinTargetName(name string) bool {
+	switch name {
+	case "operator", "navigator", "vault", "librarian", "automator", "planner", "chronicler", "ontologist":
+		return true
+	default:
+		return false
+	}
+}
 ```
 
-Keep the remote/legacy sub-agent list branch only where a remaining compatibility path still exists.
+This avoids an `internal/adk -> internal/agentrt` import cycle. Keep the remote/legacy sub-agent list branch only where a remaining compatibility path still exists.
 
 - [ ] **Step 4: Run the ADK package tests**
 
@@ -663,12 +658,12 @@ refactor: switch built-in skill forks to agent_spawn guidance
 - Modify: `internal/agentrt/capability_runtime.go`
 - Modify: `internal/agentrt/capability_runtime_test.go`
 
-- [ ] **Step 1: Add a failing stale-final-state test**
+- [ ] **Step 1: Add a failing recheck-specific regression test**
 
 Add this test to `internal/agentrt/capability_runtime_test.go`:
 
 ```go
-func TestHandleBlockedToolCall_GrantThenBlockProducesNoStaleProjection(t *testing.T) {
+func TestHandleBlockedToolCall_AllowedToolExpansionSkipsBlockedProjection(t *testing.T) {
 	store := NewInMemoryAgentRunStore()
 	require.NoError(t, store.Create(&AgentRun{
 		ID:             "arun-1",
@@ -677,7 +672,9 @@ func TestHandleBlockedToolCall_GrantThenBlockProducesNoStaleProjection(t *testin
 	}))
 
 	rt := NewCapabilityRuntime(store, &CapabilityPolicy{}, nil)
-	require.NoError(t, rt.ApplyGrant("arun-1", "fs_write"))
+	require.NoError(t, store.UpdateProjection("arun-1", RunProjectionPatch{
+		AddAllowedTool: "fs_write",
+	}))
 	require.NoError(t, rt.HandleBlockedToolCall("arun-1", toolchain.BlockedToolCall{
 		ToolName:    "fs_write",
 		BlockReason: dynamicAllowedToolsBlockReason,
@@ -694,12 +691,12 @@ func TestHandleBlockedToolCall_GrantThenBlockProducesNoStaleProjection(t *testin
 Run:
 
 ```bash
-go test ./internal/agentrt -run TestHandleBlockedToolCall_GrantThenBlockProducesNoStaleProjection -count=1
+go test ./internal/agentrt -run TestHandleBlockedToolCall_AllowedToolExpansionSkipsBlockedProjection -count=1
 ```
 
 Expected: FAIL before the optimistic recheck is added.
 
-- [ ] **Step 3: Add a concurrent interleaving regression test**
+- [ ] **Step 3: Add a concurrent final-state regression test**
 
 Add this second test to `internal/agentrt/capability_runtime_test.go`:
 
@@ -732,6 +729,8 @@ func TestHandleBlockedToolCall_ConcurrentGrantInterleavingLeavesNoFinalBlockedSt
 	assert.Equal(t, AgentRunConditionNone, run.RuntimeCondition)
 }
 ```
+
+This second test is not the primary recheck gate. Its purpose is to preserve the design's final-state success criterion under repeated interleavings, while Step 1 is the direct regression gate for the recheck logic itself.
 
 - [ ] **Step 4: Implement the latest-run optimistic recheck**
 
@@ -849,7 +848,7 @@ if cfg.Agent.MultiAgent && cfg.Background.Enabled {
 }
 ```
 
-Do not add wording that implies remote A2A shares built-in control-plane runs unless that wiring was explicitly added.
+Do not add wording that implies remote A2A shares built-in control-plane runs unless that wiring was explicitly added. Because `config.DefaultConfig()` leaves `Background.Enabled` false, also add a short user-facing hint in docs or CLI text that `dynamic-v1` reporting requires `background.enabled: true`.
 
 - [ ] **Step 6: Run the focused package tests**
 
