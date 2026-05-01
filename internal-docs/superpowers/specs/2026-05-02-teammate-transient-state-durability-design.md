@@ -114,6 +114,14 @@ With this structure:
 - any transition from approval-blocked state to clear state emits `teammate_approval_unblocked`
 - the mirror logic is state-delta based, not caller-name based
 
+State-delta edge rules are explicit:
+
+- `blocked -> blocked` transitions, such as a changed `blocked_reason` or `grant_request_id` while the run remains approval-blocked, are treated as a single replace and do not emit a separate unblock event
+- `blocked -> clear` transitions cross the event boundary and emit the unblock transition
+- terminal status transitions take precedence; if a run reaches `completed`, `failed`, or `cancelled` while blocked, the terminal status event is the durable transition and no separate unblock event is required
+
+The mirror boundary itself should be treated as a choke-point invariant: production writes to teammate transient approval-blocked state should continue to flow through `AgentRunStore.UpdateProjection(...)`, and any new write path must preserve the same mirror hook boundary.
+
 ### Mirror Failure Policy
 
 RunLedger mirroring is **best effort** in this change.
@@ -126,6 +134,8 @@ If the mirror write fails:
 - drift remains observable for operators and future audit
 
 This is the right trade-off for a mirror-only change. Runtime continuity is more important than failing closed on durability while RunLedger is still not the authoritative live read path.
+
+Journal append and snapshot update are not assumed to be a single transaction. On partial mirror failure, the journal remains the authoritative source for replay reconstruction. The snapshot is best-effort state that may temporarily lag and may later be regenerated from replay or by a future authoritative-read convergence change.
 
 When RunLedger is disabled or write-through is unavailable, mirroring is silently skipped and the live control-plane projection remains the only state source.
 
@@ -152,6 +162,11 @@ This is also forward-compatible with the existing `run-ledger` authoritative-rea
 - `openspec/specs/agent-control-plane-tools/spec.md`
 - `openspec/specs/multi-agent-orchestration/spec.md`
 
+The likely artifact shape is:
+
+- `run-ledger` gains the actual new requirements
+- secondary specs receive only the cross-reference needed to keep terminology and operator expectations aligned
+
 ## Implementation Waves
 
 ### Wave 1: Contract Closure
@@ -161,6 +176,7 @@ This is also forward-compatible with the existing `run-ledger` authoritative-rea
 - Explicitly defer `recovery_state` durability until a production writer exists
 - Record best-effort mirror semantics explicitly
 - Record that archived verdict closure happens via cross-reference in the new change's design, not by mutating the archived design in place
+- Carry forward the unmodified `recovery states` follow-up row into the new change's design so the remaining gap stays tracked in a live document
 - Record the schema decision:
   - new journal event kinds + typed payload structs are added
   - snapshot fields are extended through `RunSnapshot` / `snapshot_data`
@@ -172,6 +188,8 @@ This is also forward-compatible with the existing `run-ledger` authoritative-rea
 - Mirror approval unblock transitions
 - Attach mirroring at the `AgentRunStore.UpdateProjection(...)` choke point
 - Keep drift observable when mirror writes fail
+
+The mirror adapter should live on the `agentrt` side of the boundary, or be composed at `internal/app` wiring time, with a one-way dependency toward RunLedger. RunLedger should not import `agentrt`.
 
 ## Testing
 
