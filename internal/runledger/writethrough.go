@@ -3,6 +3,7 @@ package runledger
 import (
 	"context"
 	"fmt"
+
 	"github.com/langoai/lango/internal/logging"
 	"strings"
 
@@ -490,8 +491,20 @@ func (b *BackgroundWriteThrough) PrepareTask(
 	origin background.Origin,
 ) (string, error) {
 	runID := uuid.NewString()
+	if err := b.PrepareTaskWithID(ctx, prompt, origin, runID); err != nil {
+		return "", err
+	}
+	return runID, nil
+}
+
+func (b *BackgroundWriteThrough) PrepareTaskWithID(
+	ctx context.Context,
+	prompt string,
+	origin background.Origin,
+	runID string,
+) error {
 	if !b.enabled {
-		return runID, nil
+		return nil
 	}
 
 	if err := b.ledger.AppendJournalEvent(ctx, JournalEvent{
@@ -505,7 +518,7 @@ func (b *BackgroundWriteThrough) PrepareTask(
 			SourceDescriptor: marshalPayload(origin),
 		}),
 	}); err != nil {
-		return "", fmt.Errorf("append background run_created: %w", err)
+		return fmt.Errorf("append background run_created: %w", err)
 	}
 
 	if err := b.ledger.AppendJournalEvent(ctx, JournalEvent{
@@ -526,17 +539,17 @@ func (b *BackgroundWriteThrough) PrepareTask(
 			}},
 		}),
 	}); err != nil {
-		return "", fmt.Errorf("append background plan_attached: %w", err)
+		return fmt.Errorf("append background plan_attached: %w", err)
 	}
 
 	if _, err := b.ledger.GetRunSnapshot(ctx, runID); err != nil {
-		return "", fmt.Errorf("materialize background snapshot: %w", err)
+		return fmt.Errorf("materialize background snapshot: %w", err)
 	}
 
 	if err := appendProjectionSyncEvent(ctx, b.ledger, runID, "background", "synced", nil); err != nil {
-		return "", fmt.Errorf("append background projection_synced: %w", err)
+		return fmt.Errorf("append background projection_synced: %w", err)
 	}
-	return runID, nil
+	return nil
 }
 
 func (b *BackgroundWriteThrough) SyncTask(ctx context.Context, snap background.TaskSnapshot) error {

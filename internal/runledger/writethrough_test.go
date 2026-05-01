@@ -145,6 +145,26 @@ func TestBackgroundWriteThrough_SnapshotMatchesBackgroundTaskStatus(t *testing.T
 	assert.Equal(t, StepStatusCompleted, snap.Steps[0].Status)
 }
 
+func TestBackgroundWriteThrough_PrepareTaskWithID_UsesProvidedID(t *testing.T) {
+	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&_fk=1")
+	defer client.Close()
+
+	ledger := NewEntStore(client)
+	projection := NewBackgroundWriteThrough(ledger, RolloutConfig{
+		Stage: StageWriteThrough,
+	})
+
+	err := projection.PrepareTaskWithID(context.Background(), "background prompt", background.Origin{
+		Session: "session-1",
+	}, "run-fixed")
+	require.NoError(t, err)
+
+	snap, err := ledger.GetRunSnapshot(context.Background(), "run-fixed")
+	require.NoError(t, err)
+	assert.Equal(t, "run-fixed", snap.RunID)
+	assert.Equal(t, RunStatusRunning, snap.Status)
+}
+
 type failingWorkflowProjectionStore struct {
 	err error
 }

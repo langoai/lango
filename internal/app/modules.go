@@ -33,6 +33,7 @@ import (
 	"github.com/langoai/lango/internal/p2p/reputation"
 	"github.com/langoai/lango/internal/p2p/team"
 	"github.com/langoai/lango/internal/receipts"
+	"github.com/langoai/lango/internal/runledger"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/storage"
@@ -599,9 +600,33 @@ func (m *automationModule) Init(ctx context.Context, r appinit.Resolver) (*appin
 	// Agent lifecycle tools (always available when automation module is active).
 	agentRunStore := agentrt.NewInMemoryAgentRunStore()
 	agentRunProjection := agentrt.NewAgentRunProjection(agentRunStore)
+	capabilityRuntime := agentrt.NewCapabilityRuntime(
+		agentRunStore,
+		&agentrt.CapabilityPolicy{},
+		func(toolName string) agent.SafetyLevel {
+			if m.app != nil && m.app.ToolCatalog != nil {
+				if level, found := m.app.ToolCatalog.GetToolSafetyLevel(toolName); found {
+					return level
+				}
+			}
+			return agent.SafetyLevelDangerous
+		},
+	)
 	controlPlane := &agentrt.AgentControlPlane{
-		RunStore:   agentRunStore,
-		Projection: agentRunProjection,
+		RunStore:          agentRunStore,
+		Projection:        agentRunProjection,
+		Submitter:         bg,
+		CapabilityRuntime: capabilityRuntime,
+	}
+	if bg != nil {
+		var runLedgerProjection *runledger.BackgroundWriteThrough
+		if rlv != nil && rlv.store != nil && cfg.RunLedger.Enabled && cfg.RunLedger.WriteThrough {
+			runLedgerProjection = runledger.NewBackgroundWriteThrough(
+				rlv.store,
+				runledger.RolloutConfig{Stage: runledger.StageWriteThrough},
+			).WithMaxHistory(cfg.RunLedger.MaxRunHistory)
+		}
+		bg.WithProjection(agentrt.NewBackgroundProjection(agentRunProjection, runLedgerProjection))
 	}
 	controlTools := agentrt.BuildControlTools(controlPlane)
 	tools = append(tools, controlTools...)

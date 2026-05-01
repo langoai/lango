@@ -19,9 +19,9 @@ func TestAgentRunProjection_PrepareTaskReturnsPendingID(t *testing.T) {
 	store := NewInMemoryAgentRunStore()
 	proj := NewAgentRunProjection(store)
 
-	proj.RegisterPending("run-42")
+	ctx := withPendingAgentRunID(context.Background(), "run-42")
 
-	id, err := proj.PrepareTask(context.Background(), "do something", background.Origin{
+	id, err := proj.PrepareTask(ctx, "do something", background.Origin{
 		Channel: "test",
 		Session: "sess-1",
 	})
@@ -54,28 +54,20 @@ func TestAgentRunProjection_PrepareTaskConsumesOnce(t *testing.T) {
 	assert.Contains(t, err.Error(), "no pending agent run ID")
 }
 
-func TestAgentRunProjection_PrepareTaskMultiplePending(t *testing.T) {
+func TestAgentRunProjection_PrepareTaskMultiplePendingContextsAreDeterministic(t *testing.T) {
 	store := NewInMemoryAgentRunStore()
 	proj := NewAgentRunProjection(store)
 
-	proj.RegisterPending("run-a")
-	proj.RegisterPending("run-b")
+	ctxA := withPendingAgentRunID(context.Background(), "run-a")
+	ctxB := withPendingAgentRunID(context.Background(), "run-b")
 
-	// Both should be consumed (order is non-deterministic due to map iteration).
-	id1, err := proj.PrepareTask(context.Background(), "p1", background.Origin{})
+	id1, err := proj.PrepareTask(ctxA, "p1", background.Origin{})
 	require.NoError(t, err)
+	assert.Equal(t, "run-a", id1)
 
-	id2, err := proj.PrepareTask(context.Background(), "p2", background.Origin{})
+	id2, err := proj.PrepareTask(ctxB, "p2", background.Origin{})
 	require.NoError(t, err)
-
-	assert.NotEqual(t, id1, id2)
-	ids := map[string]bool{id1: true, id2: true}
-	assert.True(t, ids["run-a"])
-	assert.True(t, ids["run-b"])
-
-	// Third call should fail.
-	_, err = proj.PrepareTask(context.Background(), "p3", background.Origin{})
-	require.Error(t, err)
+	assert.Equal(t, "run-b", id2)
 }
 
 func TestAgentRunProjection_SyncTaskStatusMapping(t *testing.T) {
@@ -193,11 +185,11 @@ func TestAgentRunProjection_FullLifecycle(t *testing.T) {
 		CreatedAt:   time.Now(),
 	}))
 
-	// 2. Register pending for ID unification.
-	proj.RegisterPending("lifecycle-1")
+	// 2. Context carries the canonical pending ID for deterministic unification.
+	ctx := withPendingAgentRunID(context.Background(), "lifecycle-1")
 
 	// 3. PrepareTask returns the unified ID.
-	id, err := proj.PrepareTask(context.Background(), "run analysis", background.Origin{
+	id, err := proj.PrepareTask(ctx, "run analysis", background.Origin{
 		Channel: "test",
 		Session: "parent-sess",
 	})
@@ -255,3 +247,60 @@ func TestMapBgStatus(t *testing.T) {
 		})
 	}
 }
+
+func TestBackgroundProjection_PrepareTaskUsesSameIDForAgentRunAndRunLedger(t *testing.T) {
+	store := NewInMemoryAgentRunStore()
+	agentProjection := NewAgentRunProjection(store)
+	runLedgerProjection := &recordingBackgroundWriteThrough{}
+	projection := NewBackgroundProjection(agentProjection, runLedgerProjection)
+
+	ctx := withPendingAgentRunID(context.Background(), "agent-run-1")
+
+	id, err := projection.PrepareTask(ctx, "do something", background.Origin{
+		Channel: "agent_control",
+		Session: "sess-1",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "agent-run-1", id)
+	assert.Equal(t, "agent-run-1", runLedgerProjection.preparedID)
+	assert.Equal(t, "do something", runLedgerProjection.prompt)
+	assert.Equal(t, "sess-1", runLedgerProjection.origin.Session)
+}
+
+type recordingBackgroundWriteThrough struct {
+	preparedID string
+	prompt     string
+	origin     background.Origin
+	syncSnap   background.TaskSnapshot
+}
+
+func (r *recordingBackgroundWriteThrough) PrepareTask(
+	_ context.Context,
+	_ string,
+	_ background.Origin,
+) (string, error) {
+	return "fallback-run", nil
+}
+
+func (r *recordingBackgroundWriteThrough) PrepareTaskWithID(
+	_ context.Context,
+	prompt string,
+	origin background.Origin,
+	runID string,
+) error {
+	r.preparedID = runID
+	r.prompt = prompt
+	r.origin = origin
+	return nil
+}
+
+func (r *recordingBackgroundWriteThrough) SyncTask(_ context.Context, snap background.TaskSnapshot) error {
+	r.syncSnap = snap
+	return nil
+}
+
+var _ interface {
+	PrepareTask(context.Context, string, background.Origin) (string, error)
+	PrepareTaskWithID(context.Context, string, background.Origin, string) error
+	SyncTask(context.Context, background.TaskSnapshot) error
+} = (*recordingBackgroundWriteThrough)(nil)

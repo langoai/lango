@@ -8,15 +8,23 @@ import (
 	"time"
 
 	"github.com/langoai/lango/internal/agent"
+	"github.com/langoai/lango/internal/background"
 	"github.com/langoai/lango/internal/ctxkeys"
+	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/toolparam"
 )
+
+type AgentRunSubmitter interface {
+	Submit(context.Context, string, background.Origin) (string, error)
+}
 
 // AgentControlPlane provides the dependencies needed by agent lifecycle tools.
 // Actual bgManager.Submit integration is deferred to the wiring layer (D4).
 type AgentControlPlane struct {
-	RunStore   AgentRunStore
-	Projection *AgentRunProjection
+	RunStore          AgentRunStore
+	Projection        *AgentRunProjection
+	Submitter         AgentRunSubmitter
+	CapabilityRuntime *CapabilityRuntime
 }
 
 // BuildControlTools creates the agent lifecycle tools: agent_spawn, agent_wait, agent_stop.
@@ -85,10 +93,49 @@ func buildAgentSpawn(cp *AgentControlPlane) *agent.Tool {
 				return nil, fmt.Errorf("agent spawn: %w", err)
 			}
 
-			// Register the ID with the projection so that bgManager.Submit (D4)
-			// will reuse it instead of generating a new one.
-			if cp.Projection != nil {
+			// Keep legacy pending registration only for non-submitter paths.
+			if cp.Projection != nil && cp.Submitter == nil {
 				cp.Projection.RegisterPending(agentID)
+			}
+
+			if cp.Submitter != nil {
+				childCtx := withPendingAgentRunID(ctx, agentID)
+				if cp.CapabilityRuntime != nil {
+					childCtx = cp.CapabilityRuntime.ContextForRun(childCtx, run)
+				}
+
+				parentSession := session.SessionKeyFromContext(ctx)
+				submittedID, err := cp.Submitter.Submit(childCtx, enrichedInstruction, background.Origin{
+					Channel: "agent_control",
+					Session: parentSession,
+				})
+				if err != nil {
+					statusErr := cp.RunStore.UpdateStatus(agentID, AgentRunFailed, "", err.Error())
+					if statusErr != nil {
+						return nil, fmt.Errorf(
+							"agent spawn submit: %w (mark failed: %v)",
+							err,
+							statusErr,
+						)
+					}
+					return nil, fmt.Errorf("agent spawn submit: %w", err)
+				}
+				if submittedID != "" && submittedID != agentID {
+					err = fmt.Errorf(
+						"submitter returned mismatched task ID %q (expected %q)",
+						submittedID,
+						agentID,
+					)
+					statusErr := cp.RunStore.UpdateStatus(agentID, AgentRunFailed, "", err.Error())
+					if statusErr != nil {
+						return nil, fmt.Errorf(
+							"agent spawn submit: %w (mark failed: %v)",
+							err,
+							statusErr,
+						)
+					}
+					return nil, fmt.Errorf("agent spawn submit: %w", err)
+				}
 			}
 
 			return map[string]interface{}{
@@ -129,23 +176,16 @@ func buildAgentWait(cp *AgentControlPlane) *agent.Tool {
 				}
 
 				if run.Status.isTerminal() {
-					return map[string]interface{}{
-						"agent_id": run.ID,
-						"status":   string(run.Status),
-						"result":   run.Result,
-						"error":    run.Error,
-					}, nil
+					return agentRunResponse(run), nil
 				}
 
 				select {
 				case <-ctx.Done():
 					return nil, fmt.Errorf("agent wait: %w", ctx.Err())
 				case <-deadline:
-					return map[string]interface{}{
-						"agent_id": agentID,
-						"status":   string(run.Status),
-						"timeout":  true,
-					}, nil
+					resp := agentRunResponse(run)
+					resp["timeout"] = true
+					return resp, nil
 				case <-ticker.C:
 					// Poll again.
 				}
@@ -179,6 +219,35 @@ func buildAgentStop(cp *AgentControlPlane) *agent.Tool {
 			}, nil
 		},
 	}
+}
+
+func agentRunResponse(run *AgentRun) map[string]interface{} {
+	resp := map[string]interface{}{
+		"agent_id": run.ID,
+		"status":   string(run.Status),
+	}
+	if run.Result != "" {
+		resp["result"] = run.Result
+	}
+	if run.Error != "" {
+		resp["error"] = run.Error
+	}
+	if run.RuntimeCondition != AgentRunConditionNone {
+		resp["condition"] = string(run.RuntimeCondition)
+	}
+	if run.BlockedReason != "" {
+		resp["blocked_reason"] = run.BlockedReason
+	}
+	if run.GrantRequestID != "" {
+		resp["grant_request_id"] = run.GrantRequestID
+	}
+	if run.WaitingOnRunID != "" {
+		resp["waiting_on_run_id"] = run.WaitingOnRunID
+	}
+	if run.RecoveryState != "" {
+		resp["recovery_state"] = run.RecoveryState
+	}
+	return resp
 }
 
 // generateAgentRunID creates a random hex ID for an agent run.
