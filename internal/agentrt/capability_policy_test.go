@@ -106,6 +106,22 @@ func TestCapabilityPolicy_UnknownTeammateTypeIsDenied(t *testing.T) {
 	assert.Empty(t, decision.GrantRequestID)
 }
 
+func TestCapabilityPolicy_UnknownTeammateTypeFallsBackToCurrentAllowed(t *testing.T) {
+	policy := CapabilityPolicy{}
+
+	decision := policy.Evaluate(CapabilityRequest{
+		RunID:          "run-1",
+		TeammateType:   "unknown-agent",
+		ToolName:       "exec",
+		CurrentAllowed: []string{"exec"},
+		ToolSafety:     agent.SafetyLevelDangerous,
+	})
+
+	assert.Equal(t, CapabilityDecisionAllow, decision.Kind)
+	assert.Equal(t, "already allowed by current projection", decision.Reason)
+	assert.Empty(t, decision.GrantRequestID)
+}
+
 func TestCapabilityPolicy_GrantInitializesActiveGrantsMap(t *testing.T) {
 	var policy CapabilityPolicy
 

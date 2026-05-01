@@ -32,12 +32,10 @@ type CapabilityPolicy struct {
 	ActiveGrants map[string]map[string]bool
 }
 
-func (p CapabilityPolicy) Evaluate(req CapabilityRequest) CapabilityDecision {
-	if !teammateAllowsTool(req.TeammateType, req.ToolName) {
+func (p *CapabilityPolicy) Evaluate(req CapabilityRequest) CapabilityDecision {
+	if !teammateAllowsTool(req.TeammateType, req.ToolName, req.CurrentAllowed) {
 		return CapabilityDecision{
 			Kind: CapabilityDecisionDeny,
-			// Capability policy enforces the built-in teammate runtime role ceiling.
-			// Unknown teammate types are treated as out-of-scope and denied.
 			Reason: fmt.Sprintf("tool %q outside role maximum scope for teammate type %q", req.ToolName, req.TeammateType),
 		}
 	}
@@ -70,7 +68,7 @@ func (p CapabilityPolicy) Evaluate(req CapabilityRequest) CapabilityDecision {
 	}
 }
 
-func (p CapabilityPolicy) hasGrant(runID, toolName string) bool {
+func (p *CapabilityPolicy) hasGrant(runID, toolName string) bool {
 	if p.ActiveGrants == nil {
 		return false
 	}
@@ -89,12 +87,12 @@ func (p *CapabilityPolicy) Grant(runID, toolName string) {
 	p.ActiveGrants[runID][toolName] = true
 }
 
-func teammateAllowsTool(teammateType, toolName string) bool {
-	// Capability policy is only defined for built-in teammate runtime enforcement.
-	// Unknown teammate types fail closed and are treated as out-of-scope.
+func teammateAllowsTool(teammateType, toolName string, currentAllowed []string) bool {
 	teammate, ok := BuiltinTeammateTypes()[teammateType]
 	if !ok {
-		return false
+		// Custom or remote teammates do not have a built-in role ceiling.
+		// For those paths, treat the current allowlist as the effective ceiling.
+		return containsTool(currentAllowed, toolName)
 	}
 
 	return teammate.AllowsTool(toolName)
