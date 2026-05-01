@@ -45,8 +45,8 @@ type Config struct {
 	// SubAgentPrompt builds the final system prompt for each sub-agent.
 	// When nil, the original spec.Instruction is used unchanged.
 	SubAgentPrompt SubAgentPromptFunc
-	// UniversalTools are tools given directly to the orchestrator
-	// (e.g. builtin_list/builtin_invoke dispatchers).
+	// UniversalTools is retained for compatibility, but the built-in
+	// multi-agent runtime keeps the orchestrator root tool-less.
 	UniversalTools []*agent.Tool
 	// Specs overrides the default built-in agent specifications.
 	// When nil, the built-in agentSpecs are used (backward compatible).
@@ -57,7 +57,9 @@ type Config struct {
 }
 
 // BuildAgentTree creates a hierarchical agent tree with an orchestrator root
-// and specialized sub-agents. Sub-agents are created data-driven from specs.
+// and specialized sub-agents. Built-in teammate work is expected to route
+// through the root runtime, while remote compatibility agents may still be
+// attached to the tree. Sub-agents are created data-driven from specs.
 // When cfg.Specs is nil, the built-in agentSpecs are used (backward compatible).
 // Agents with no tools are skipped unless AlwaysInclude is set (e.g. Planner).
 func BuildAgentTree(cfg Config) (adk_agent.Agent, error) {

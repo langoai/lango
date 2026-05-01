@@ -10,6 +10,21 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var loadAgentRegistryCounts = func(cfg *config.Config) (builtinCount, userCount, activeCount int) {
+	reg := agentregistry.New()
+	embeddedStore := agentregistry.NewEmbeddedStore()
+	_ = reg.LoadFromStore(embeddedStore)
+	builtinCount = len(reg.All())
+
+	if cfg.Agent.AgentsDir != "" {
+		userStore := agentregistry.NewFileStore(cfg.Agent.AgentsDir)
+		_ = reg.LoadFromStore(userStore)
+		userCount = len(reg.All()) - builtinCount
+	}
+
+	return builtinCount, userCount, len(reg.Active())
+}
+
 func newStatusCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 	var jsonOutput bool
 
@@ -72,19 +87,12 @@ func newStatusCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 			if cfg.Agent.MultiAgent && cfg.Background.Enabled {
 				teammateRuntime = "dynamic-v1"
 			}
-
-			// Load registry to count agents by source.
-			reg := agentregistry.New()
-			embeddedStore := agentregistry.NewEmbeddedStore()
-			_ = reg.LoadFromStore(embeddedStore)
-			builtinCount := len(reg.All())
-
-			userCount := 0
-			if cfg.Agent.AgentsDir != "" {
-				userStore := agentregistry.NewFileStore(cfg.Agent.AgentsDir)
-				_ = reg.LoadFromStore(userStore)
-				userCount = len(reg.All()) - builtinCount
+			teammateRuntimeHint := ""
+			if cfg.Agent.MultiAgent && !cfg.Background.Enabled {
+				teammateRuntimeHint = "Enable background.enabled to report dynamic-v1 teammate runtime."
 			}
+
+			builtinCount, userCount, activeCount := loadAgentRegistryCounts(cfg)
 
 			s := statusOutput{
 				Mode:                   mode,
@@ -102,7 +110,7 @@ func newStatusCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 				Registry: registryInfo{
 					Builtin:  builtinCount,
 					User:     userCount,
-					Active:   len(reg.Active()),
+					Active:   activeCount,
 					AgentDir: cfg.Agent.AgentsDir,
 				},
 			}
@@ -124,6 +132,9 @@ func newStatusCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 			fmt.Printf("  Multi-Agent:       %v\n", s.MultiAgent)
 			if s.TeammateRuntime != "" {
 				fmt.Printf("  Teammate Runtime:  %s\n", s.TeammateRuntime)
+			} else if teammateRuntimeHint != "" {
+				fmt.Printf("  Teammate Runtime:  unavailable\n")
+				fmt.Printf("  Runtime Hint:      %s\n", teammateRuntimeHint)
 			}
 			fmt.Printf("  Max Turns:         %d\n", s.MaxTurns)
 			fmt.Printf("  Error Correction:  %v\n", s.ErrorCorrectionEnabled)

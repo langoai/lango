@@ -12,6 +12,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/langoai/lango/internal/agentrt"
 	"github.com/langoai/lango/internal/eventbus"
 	sandboxos "github.com/langoai/lango/internal/sandbox/os"
 	"github.com/langoai/lango/internal/session"
@@ -257,6 +258,27 @@ func (e *Executor) executeFork(skill SkillEntry, params map[string]interface{}) 
 		paramSection = strings.Join(parts, "\n")
 	} else {
 		paramSection = "  (none)"
+	}
+
+	builtin := false
+	if _, ok := agentrt.BuiltinTeammateTypes()[agentName]; ok {
+		builtin = true
+	}
+
+	if builtin {
+		result := fmt.Sprintf(`[Fork Skill Result]
+This task should be delegated to the '%s' built-in teammate.
+
+Instruction: %s
+
+Parameters:
+%s
+
+Advisory tool restrictions: %s
+(Note: tool restrictions are enforced only when using agent_spawn)
+
+Please use agent_spawn with agent "%s".`, agentName, instruction, paramSection, advisoryTools, agentName)
+		return result, nil
 	}
 
 	result := fmt.Sprintf(`[Fork Skill Result]

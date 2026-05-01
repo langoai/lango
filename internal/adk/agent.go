@@ -613,9 +613,9 @@ func (a *Agent) RunAndCollect(ctx context.Context, sessionID, input string, opts
 
 	// Build correction message and retry once.
 	names := subAgentNames(a.adkAgent)
-	correction := fmt.Sprintf(
-		"[System: Agent %q does not exist. Valid agents: %s. Please retry using one of the valid agent names listed above.]",
-		badAgent, strings.Join(names, ", "))
+	correction := buildMissingAgentCorrection(badAgent, names, func(name string) bool {
+		return containsBuiltinTargetName(name)
+	})
 	logger().Warnw("agent name hallucination detected, retrying",
 		"hallucinated", badAgent,
 		"valid_agents", names,
@@ -779,6 +779,34 @@ func extractMissingAgent(err error) string {
 		return ""
 	}
 	return m[1]
+}
+
+func buildMissingAgentCorrection(
+	badAgent string,
+	subAgents []string,
+	isBuiltIn func(string) bool,
+) string {
+	if isBuiltIn != nil && isBuiltIn(badAgent) {
+		return fmt.Sprintf(
+			"[System: Built-in agent %q does not exist as a transfer target. "+
+				"Do not retry built-in transfer_to_agent routing. "+
+				"Use agent_spawn for built-in teammate work or answer directly from gathered evidence.]",
+			badAgent,
+		)
+	}
+	return fmt.Sprintf(
+		"[System: Agent %q does not exist. Valid agents: %s. Please retry using one of the valid agent names listed above.]",
+		badAgent, strings.Join(subAgents, ", "),
+	)
+}
+
+func containsBuiltinTargetName(name string) bool {
+	switch name {
+	case "operator", "navigator", "vault", "librarian", "automator", "planner", "chronicler", "ontologist":
+		return true
+	default:
+		return false
+	}
 }
 
 // subAgentNames returns the names of all immediate sub-agents.

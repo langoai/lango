@@ -125,6 +125,12 @@ When multi-agent mode is enabled (`agent.multiAgent: true`), custom agents are i
 
 See [Multi-Agent Orchestration](multi-agent.md) for routing details.
 
+## Upgrade Note For Older Embedded Defaults
+
+If you copied or derived a custom `AGENT.md` from older embedded built-in defaults, remove any escalation text that tells the agent to call `transfer_to_agent("lango-orchestrator")` for built-in teammate escalation.
+
+Built-in teammate production work now enters through the `agent_spawn` runtime path. The remaining `transfer_to_agent` path is for remote A2A or tightly documented legacy compatibility behavior, not for built-in teammate escalation.
+
 ## CLI Commands
 
 ```bash

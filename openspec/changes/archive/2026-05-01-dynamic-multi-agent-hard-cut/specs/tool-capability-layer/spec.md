@@ -1,4 +1,4 @@
-## MODIFIED Requirements
+## ADDED Requirements
 
 ### Requirement: Capability runtime rechecks grant state before blocked projection
 Before persisting a `blocked_waiting_approval` projection for a built-in teammate run, the runtime SHALL re-read the latest grant and allowlist state. The check narrows the stale projection window but correctness is measured on the final observed run state rather than every intermediate transition.

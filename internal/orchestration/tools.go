@@ -9,7 +9,7 @@ import (
 
 // AgentSpec defines a sub-agent's identity, routing metadata, and prompt structure.
 type AgentSpec struct {
-	// Name is the ADK agent name used for transfer_to_agent delegation.
+	// Name is the canonical built-in teammate or compatibility agent name.
 	Name string
 	// Description is a one-line summary for the orchestrator's routing table.
 	Description string
@@ -54,7 +54,7 @@ Tool results may include a _meta field with compression info. After each tool ca
 const responseRulesSection = `
 
 ## Response Rules
-- After a successful tool call, ALWAYS produce at least one visible sentence summarizing the result before any transfer_to_agent call.
+- After a successful tool call, ALWAYS produce at least one visible sentence summarizing the result before ending the turn.
 - Never end the turn with tool-only output if the user still needs a natural-language answer.`
 
 const escalationProtocolSection = `
@@ -63,8 +63,8 @@ const escalationProtocolSection = `
 If a task does not match your capabilities:
 1. Do NOT attempt to answer or explain why you cannot help.
 2. Output ONE short sentence summarizing what you tried or why you are escalating.
-3. IMMEDIATELY call transfer_to_agent with agent_name "lango-orchestrator".
-4. Never claim that a tool or action completed unless you have direct evidence from this turn.`
+3. Return control cleanly to the root runtime by ending with a short visible escalation summary.
+4. Do not call transfer_to_agent for built-in teammate escalation.`
 
 const plannerEscalationProtocolSection = `
 
@@ -72,8 +72,8 @@ const plannerEscalationProtocolSection = `
 If a task does not match your capabilities:
 1. Do NOT attempt to answer or explain why you cannot help.
 2. Output ONE short sentence explaining why you are escalating.
-3. IMMEDIATELY call transfer_to_agent with agent_name "lango-orchestrator".
-4. Never transfer silently.`
+3. Return control cleanly to the root runtime by ending with a short visible escalation summary.
+4. Do not call transfer_to_agent for built-in teammate escalation.`
 
 // agentSpecs is the ordered registry of all sub-agent specifications.
 // BuildAgentTree iterates this slice to create agents data-driven.
@@ -649,11 +649,11 @@ func buildOrchestratorInstruction(basePrompt string, entries []routingEntry, max
 
 	b.WriteString(basePrompt)
 	b.WriteString("\n\nYou are the orchestrator. You coordinate specialized sub-agents to fulfill user requests.\n\n## Your Role\n")
-	b.WriteString("You coordinate work, answer directly when no teammate is needed, and use runtime control tools for new dynamic teammate work.\n")
+	b.WriteString("You coordinate work, answer directly when no teammate is needed, and use the root runtime to spawn built-in teammates when tools are required.\n")
 	b.WriteString("\n## Dynamic Teammate Runtime V1\n")
-	b.WriteString("Use agent_spawn for new dynamic teammate work. Include a concise spawn_reason and the narrowest allowed_tools that can complete the task.\n")
-	b.WriteString("Use transfer_to_agent only for legacy ADK static sub-agent fallback, specialist re-routing, or existing remote A2A paths.\n")
-	b.WriteString("When both paths could work, prefer agent_spawn for new work because it creates an inspectable AgentRun with projection, cancellation, and wait semantics.\n")
+	b.WriteString("Built-in teammate work MUST use agent_spawn. Include a concise spawn_reason and the narrowest allowed_tools that can complete the task.\n")
+	b.WriteString("Do not use transfer_to_agent for built-in teammates.\n")
+	b.WriteString("Use transfer_to_agent only for remote A2A or tightly documented legacy compatibility paths.\n")
 
 	b.WriteString("\n## Routing Table (use EXACTLY these agent names)\n")
 	for _, e := range entries {
@@ -711,7 +711,7 @@ When a prompt starts with "[Automated Task":
 ## Decision Protocol
 Before delegating, follow these steps:
 0. ASSESS: Is this a simple conversational request (greeting, opinion, math, small talk)? If yes, respond directly — no delegation needed.
-   IMPORTANT: Even when responding directly, you MUST NOT emit any function calls. If the request needs tool execution or real-time data (weather, news, prices, search), route it through the dynamic teammate/runtime path or the legacy fallback path below.
+   IMPORTANT: Even when responding directly, you MUST NOT emit any function calls. If the request needs tool execution or real-time data (weather, news, prices, search), route it through the dynamic teammate/runtime path or the remote A2A / tightly documented legacy compatibility exceptions below.
 
 Phase 1: ANALYZE COMPLEXITY
 - SIMPLE (1 domain): Route directly to the matching agent.
@@ -727,8 +727,9 @@ Phase 1: ANALYZE COMPLEXITY
 3. SELECT: Choose the best-matching agent. Check "When NOT this agent" to avoid misrouting.
 4. VERIFY: Check the selected agent's "Cannot" list to ensure no conflict.
 5. DELEGATE:
-   - Prefer agent_spawn for new dynamic teammate work.
-   - Use transfer_to_agent only for legacy ADK static sub-agent fallback, specialist re-routing, or existing remote A2A paths.
+   - Built-in teammate work MUST use agent_spawn.
+   - Do not use transfer_to_agent for built-in teammates.
+   - Use transfer_to_agent only for remote A2A or tightly documented legacy compatibility paths.
 
 ## Disambiguation Rules
 - "search" + no URL → librarian | + URL → navigator
@@ -739,7 +740,7 @@ Phase 1: ANALYZE COMPLEXITY
 - "memory" + conversation → chronicler | + factual → librarian
 
 ## Re-Routing Protocol
-When a sub-agent transfers control back to you:
+When a built-in teammate returns control to the root runtime with a short escalation summary, or a remote/legacy sub-agent transfers control back to you:
 - Review conversation history to identify which agents already failed.
 - NEVER re-delegate to an agent that already returned to you for the same request.
 - Re-evaluate from Step 0, excluding failed agents.
@@ -763,7 +764,7 @@ If running low on rounds:
 
 ## Delegation Rules
 1. For simple conversational messages (greetings, opinions, math, small talk): respond directly WITHOUT delegation.
-2. For any action that requires tools: prefer agent_spawn for the best-matching teammate from the routing table, and use transfer_to_agent only for the legacy fallback cases described above.
+2. For any action that requires tools: use agent_spawn for the best-matching built-in teammate from the routing table, and use transfer_to_agent only for remote A2A or tightly documented legacy compatibility paths.
 
 ## Output Awareness
 Sub-agents may receive compressed tool output with _meta.compressed: true.

@@ -4,16 +4,16 @@ title: Multi-Agent Orchestration
 
 # Multi-Agent Orchestration
 
-When `agent.multiAgent` is enabled and the background submit path is also enabled, Lango can run new built-in teammate work through the dynamic in-process teammate runtime (`dynamic-v1`). The production model-facing control surface for that path remains `agent_spawn`, `agent_wait`, and `agent_stop`.
+When `agent.multiAgent` is enabled and the background submit path is also enabled, Lango runs built-in teammate production work through the dynamic in-process teammate runtime (`dynamic-v1`). The production model-facing control surface for that path is `agent_spawn`, `agent_wait`, and `agent_stop`.
 
-The older `transfer_to_agent` path still exists, but it is now a compatibility route for legacy ADK static fallback, specialist re-routing, and existing remote A2A paths. It is not the primary path for new built-in teammate execution.
+The older `transfer_to_agent` path still exists, but it is now a compatibility route for remote A2A and tightly documented legacy interoperability boundaries. It is not the production path for built-in teammate execution.
 
 ## Runtime Model
 
 - `agent_spawn` creates an inspectable `AgentRun` for the new teammate run.
 - `agent_wait` observes that run until it reaches a terminal state, or reports a non-terminal timeout view when it is still waiting.
 - `agent_stop` cancels a spawned run through the existing run store path.
-- `transfer_to_agent` remains available for legacy fallback and remote routing compatibility.
+- `transfer_to_agent` remains available only for remote routing and tightly documented legacy compatibility.
 
 ## Architecture
 
@@ -35,7 +35,7 @@ graph TD
     style RA fill:#e67e22,color:#fff
 ```
 
-The root runtime can still classify requests across the built-in specialist types shown above, but new production teammate work is expected to use `agent_spawn` rather than a required static handoff. The built-in teammate registry remains `operator`, `navigator`, `vault`, `librarian`, `automator`, `planner`, `chronicler`, and `ontologist`.
+The root runtime can still classify requests across the built-in specialist types shown above, but built-in production teammate work uses `agent_spawn` rather than static built-in handoff. The built-in teammate registry remains `operator`, `navigator`, `vault`, `librarian`, `automator`, `planner`, `chronicler`, and `ontologist`.
 
 ## Sub-Agent Roles
 
@@ -142,7 +142,7 @@ The root runtime follows a 5-step decision protocol before choosing a teammate p
 2. MATCH     -- Compare keywords against the routing table
 3. SELECT    -- Choose the best-matching teammate type or remote path
 4. SCOPE     -- Apply role max scope and any spawn-time `allowed_tools`
-5. EXECUTE   -- Prefer `agent_spawn` for new built-in teammate work; use `transfer_to_agent` only for legacy fallback, re-routing, or remote A2A compatibility
+5. EXECUTE   -- Built-in teammate work must use `agent_spawn`; use `transfer_to_agent` only for remote A2A or tightly documented legacy compatibility paths
 ```
 
 Each sub-agent has a keyword list used for routing:
@@ -160,14 +160,15 @@ Each sub-agent has a keyword list used for routing:
 
 ### Rejection Handling
 
-Sub-agents do not emit textual rejection markers. When a task is out of scope, they produce a short visible escalation sentence, transfer control back to the orchestrator via `transfer_to_agent`, and the orchestrator re-evaluates the request using only evidence gathered in the current turn.
+Built-in teammates do not emit textual rejection markers. When a task is out of scope, they produce a short visible escalation sentence, end the turn, and return control to the root runtime for re-evaluation using only evidence gathered in the current turn. Remote or legacy compatibility paths may still use `transfer_to_agent` where explicitly documented.
 
 ### Completion Contract
 
 Successful tool execution is not enough on its own. A specialist turn is only considered complete when it ends in one of the following:
 
 - A visible assistant response summarizing the result
-- A `transfer_to_agent` handoff
+- A short visible escalation summary that returns control to the root runtime
+- A remote/legacy `transfer_to_agent` handoff where that compatibility path is still active
 - A structured runtime outcome such as `loop_detected`, `empty_after_tool_use`, or `timeout`
 
 This prevents "tool-only" specialist turns from being treated as silent success.
@@ -178,7 +179,7 @@ The orchestrator enforces a maximum number of delegation rounds per user turn (d
 
 ## Remote A2A Agents
 
-When [A2A protocol](a2a-protocol.md) is enabled, remote agents are appended to the sub-agent list and appear in the routing table. The current remote path continues to use the existing compatibility behavior; `transfer_to_agent` remains the legacy bridge for those paths.
+When [A2A protocol](a2a-protocol.md) is enabled, remote agents are appended to the sub-agent list and appear in the routing table. The current remote path continues to use the existing compatibility behavior; `transfer_to_agent` remains the legacy bridge for those paths. This remote compatibility path is separate from the built-in `agent_spawn` runtime path and does not restore built-in production delegation through `transfer_to_agent`.
 
 ## Custom Agent Definitions
 
@@ -479,7 +480,7 @@ The `Selector` chooses agents for team formation using capability matching and t
 lango agent status
 ```
 
-Shows the current agent mode, provider/model, A2A/P2P/hook status, registry counts, and `Teammate Runtime: dynamic-v1` when the built-in teammate runtime path is configured and the background submit path is enabled.
+Shows the current agent mode, provider/model, A2A/P2P/hook status, registry counts, and `Teammate Runtime: dynamic-v1` when the built-in teammate runtime path is configured and `background.enabled` is also enabled. If `agent.multiAgent` is enabled without `background.enabled`, the status output keeps the runtime unavailable and prints a hint telling you to enable `background.enabled`.
 
 ### Agent List
 

@@ -11,14 +11,14 @@ Hierarchical multi-agent orchestration for Lango. Defines how the tool-less orch
 - **AND** `builtin_*` tools SHALL not appear in any RoleToolSet field
 
 ### Requirement: Hierarchical agent tree with sub-agents
+The system SHALL continue to support a hierarchical dynamic teammate path when `agent.multiAgent` is true. For built-in teammate production execution, the normal path SHALL enter through the control plane with `agent_spawn` rather than requiring static ADK specialist delegation. The static specialist tree remains available as a documented compatibility baseline where it already applies, and the production execution path SHALL continue to preserve parent-child session isolation and the canonical run identity chain.
 
-The system SHALL support a hierarchical dynamic teammate path when `agent.multiAgent` is true. The static specialist tree remains available as a compatibility baseline, but the production execution path SHALL allow the runtime to spawn built-in teammate types in-process through the control plane while preserving parent-child session isolation and the canonical run identity chain.
+The authoritative built-in teammate registry SHALL be `operator`, `navigator`, `vault`, `librarian`, `automator`, `planner`, `chronicler`, and `ontologist`. Spawn-time validation, prompt defaults, and role max scope for built-in teammates SHALL derive from that registry. Remote A2A agents remain a separate execution model.
 
-The canonical built-in teammate type registry SHALL be `operator`, `navigator`, `vault`, `librarian`, `automator`, `planner`, `chronicler`, and `ontologist`. Spawn-time validation, prompt defaults, and role max scope for built-in teammates SHALL derive from that registry.
-
-#### Scenario: Dynamic teammate created under multi-agent mode
-- **WHEN** multi-agent mode is enabled and the runtime needs a specialist execution path
-- **THEN** the system SHALL be able to create an in-process teammate run through the control plane instead of requiring a predeclared static delegation-only hop
+#### Scenario: Built-in work uses spawn-only production execution
+- **WHEN** the runtime routes built-in specialist work under multi-agent mode
+- **THEN** the production path SHALL begin with `agent_spawn`
+- **AND** built-in `transfer_to_agent` delegation SHALL NOT be required as the normal production path
 
 #### Scenario: Parent and child sessions remain isolated
 - **WHEN** a teammate is spawned from an active parent run
@@ -29,9 +29,14 @@ The canonical built-in teammate type registry SHALL be `operator`, `navigator`, 
 - **WHEN** the dynamic teammate runtime is unavailable or a legacy static path is already active
 - **THEN** the system MAY continue through the existing static specialist routing behavior
 
+#### Scenario: Remote A2A remains separate
+- **WHEN** a configured remote A2A agent is selected
+- **THEN** the runtime MAY still use the remote compatibility path
+- **AND** this SHALL NOT re-open built-in static delegation as the normal production path
+
 #### Scenario: Built-in teammate registry is authoritative
 - **WHEN** the runtime resolves a built-in teammate type for spawn or policy evaluation
-- **THEN** it SHALL use the canonical built-in registry of `operator`, `navigator`, `vault`, `librarian`, `automator`, `planner`, `chronicler`, and `ontologist`
+- **THEN** it SHALL use the authoritative built-in registry of `operator`, `navigator`, `vault`, `librarian`, `automator`, `planner`, `chronicler`, and `ontologist`
 
 ### Requirement: Tool partitioning by prefix
 

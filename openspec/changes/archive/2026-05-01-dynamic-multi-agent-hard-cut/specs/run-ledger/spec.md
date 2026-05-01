@@ -1,4 +1,4 @@
-## MODIFIED Requirements
+## ADDED Requirements
 
 ### Requirement: Built-in teammate durability audit
 Before archive, the implementation SHALL classify built-in teammate durability for spawn submission, run status transitions, projection sync markers, approval-blocked conditions, and recovery states using one of three verdicts: recorded, not recorded but harmless, or not recorded and follow-up required.

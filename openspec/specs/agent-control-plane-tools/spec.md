@@ -3,20 +3,12 @@
 Agent Control Plane Tools provide the tool-level interface for agent lifecycle management and structured task tracking within the agent runtime. These tools allow agents to spawn child agents, wait for their completion, stop them, and manage structured tasks — forming the operational surface of the agent control plane.
 ## Requirements
 ### Requirement: agent_spawn tool creates AgentRun with enriched prompt and advisory routing
+The existing `agent_spawn` response shape, advisory routing semantics, and basic ID behavior SHALL remain preserved. As a refinement for the hard cut, built-in teammate production execution SHALL enter through this existing `agent_spawn` contract. `RequestedAgent` SHALL identify the built-in teammate type, and built-in production execution SHALL NOT require static ADK `transfer_to_agent` routing.
 
-The existing `agent_spawn` response shape and basic ID semantics remain preserved unless explicitly changed by this requirement. Advisory teammate routing SHALL now be carried by `RequestedAgent` metadata rather than by rewriting the stored `Instruction` with an advisory system prefix. The stored `Instruction` SHALL remain the raw user instruction text.
-
-Built-in teammate types SHALL still validate `allowed_tools` against their role maximum scope before execution begins. Custom or non-built-in teammate paths SHALL continue to accept spawn-time `allowed_tools`, but their effective runtime ceiling is defined by the current allowlist rather than a built-in role registry.
-
-#### Scenario: Requested agent remains advisory metadata
-- **WHEN** `agent_spawn` is called with `agent: "researcher"`
-- **THEN** the created run SHALL persist `RequestedAgent: "researcher"`
-- **AND** no code-level enforcement SHALL guarantee routing to `"researcher"`
-
-#### Scenario: Stored instruction remains raw
-- **WHEN** `agent_spawn` is called with `instruction: "fix the bug"` and `agent: "researcher"`
-- **THEN** the stored `Instruction` SHALL remain exactly `"fix the bug"`
-- **AND** the advisory routing signal SHALL be carried outside the raw instruction text
+#### Scenario: Built-in teammate spawn remains the production entrypoint
+- **WHEN** built-in specialist work is delegated
+- **THEN** `agent_spawn` SHALL create the run
+- **AND** `agent_wait` / `agent_stop` SHALL operate on that run identity chain
 
 ### Requirement: agent_wait polls AgentRunStore until terminal status
 

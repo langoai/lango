@@ -38,7 +38,13 @@ func NewCapabilityRuntime(
 
 func (r *CapabilityRuntime) BlockedToolSinkForRun(runID string) toolchain.BlockedToolCallSink {
 	return func(call toolchain.BlockedToolCall) {
-		_ = r.HandleBlockedToolCall(runID, call)
+		if err := r.HandleBlockedToolCall(runID, call); err != nil {
+			logger().Errorw("blocked tool call handling failed",
+				"run_id", runID,
+				"tool", call.ToolName,
+				"error", err,
+			)
+		}
 	}
 }
 
@@ -83,14 +89,46 @@ func (r *CapabilityRuntime) HandleBlockedToolCall(runID string, call toolchain.B
 
 	switch decision.Kind {
 	case CapabilityDecisionNeedsApproval:
-		return r.Store.UpdateProjection(runID, RunProjectionPatch{
+		latest, err := r.Store.Get(runID)
+		if err != nil {
+			return err
+		}
+		if r.hasGrant(runID, call.ToolName) || containsTool(latest.AllowedTools, call.ToolName) {
+			return nil
+		}
+
+		if err := r.Store.UpdateProjection(runID, RunProjectionPatch{
 			ApplyRuntimeCondition: true,
 			ApplyBlockedReason:    true,
 			ApplyGrantRequestID:   true,
 			RuntimeCondition:      AgentRunConditionBlockedWaitingApproval,
 			BlockedReason:         decision.Reason,
 			GrantRequestID:        decision.GrantRequestID,
-		})
+		}); err != nil {
+			return err
+		}
+
+		latest, err = r.Store.Get(runID)
+		if err != nil {
+			return err
+		}
+		if r.hasGrant(runID, call.ToolName) || containsTool(latest.AllowedTools, call.ToolName) {
+			if latest.RuntimeCondition == AgentRunConditionBlockedWaitingApproval &&
+				latest.GrantRequestID == decision.GrantRequestID {
+				return r.Store.UpdateProjection(runID, RunProjectionPatch{
+					ApplyRuntimeCondition: true,
+					ApplyBlockedReason:    true,
+					ApplyGrantRequestID:   true,
+					RuntimeCondition:      AgentRunConditionNone,
+					BlockedReason:         "",
+					GrantRequestID:        "",
+				})
+			}
+
+			return nil
+		}
+
+		return nil
 	case CapabilityDecisionDeny:
 		return r.Store.UpdateProjection(runID, RunProjectionPatch{
 			ApplyRuntimeCondition: true,

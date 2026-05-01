@@ -628,12 +628,13 @@ func (m *automationModule) Init(ctx context.Context, r appinit.Resolver) (*appin
 		}
 		bg.WithProjection(agentrt.NewBackgroundProjection(agentRunProjection, runLedgerProjection))
 	}
+	automationCategoryConfigKey := "cron.enabled|background.enabled|workflow.enabled"
 	controlTools := agentrt.BuildControlTools(controlPlane)
 	tools = append(tools, controlTools...)
 	entries = append(entries, appinit.CatalogEntry{
 		Category:    "agent_control",
 		Description: "Agent lifecycle management (spawn, wait, stop)",
-		ConfigKey:   "agent.orchestration.mode",
+		ConfigKey:   automationCategoryConfigKey,
 		Enabled:     true,
 		Tools:       controlTools,
 	})

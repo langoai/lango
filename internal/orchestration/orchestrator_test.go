@@ -250,6 +250,18 @@ func TestBuildAgentTree_NoTools(t *testing.T) {
 	assert.Equal(t, "planner", root.SubAgents()[0].Name())
 }
 
+func TestBuildAgentTree_RootOnlyAllowed(t *testing.T) {
+	root, err := BuildAgentTree(Config{
+		Tools:        nil,
+		Model:        nil,
+		SystemPrompt: "base",
+		AdaptTool:    stubAdapter,
+		Specs:        []AgentSpec{},
+	})
+	require.NoError(t, err)
+	assert.Len(t, root.SubAgents(), 0)
+}
+
 func TestBuildAgentTree_PartialAgents(t *testing.T) {
 	// Only operator and librarian tools — other roles should be skipped.
 	tools := []*agent.Tool{
@@ -349,7 +361,7 @@ func TestBuildAgentTree_RoutingTableInInstruction(t *testing.T) {
 
 	// Should contain re-routing protocol.
 	assert.Contains(t, inst, "Re-Routing Protocol")
-	assert.Contains(t, inst, "sub-agent transfers control back")
+	assert.Contains(t, inst, "returns control to the root runtime")
 }
 
 func TestBuildAgentTree_EscalationProtocolInInstructions(t *testing.T) {
@@ -369,10 +381,10 @@ func TestBuildAgentTree_EscalationProtocolInInstructions(t *testing.T) {
 		if len(st) == 0 && !spec.AlwaysInclude {
 			continue
 		}
-		assert.Contains(t, spec.Instruction, "transfer_to_agent",
-			"spec %q should have transfer_to_agent escalation in instruction", spec.Name)
-		assert.Contains(t, spec.Instruction, "lango-orchestrator",
-			"spec %q should escalate to lango-orchestrator", spec.Name)
+		assert.Contains(t, spec.Instruction, "Return control cleanly to the root runtime",
+			"spec %q should return control to the root runtime", spec.Name)
+		assert.Contains(t, spec.Instruction, "Do not call transfer_to_agent for built-in teammate escalation",
+			"spec %q should forbid built-in transfer_to_agent escalation", spec.Name)
 	}
 }
 
@@ -754,16 +766,22 @@ func TestOrchestratorInstruction_IncludesDynamicTeammateSelectionRule(t *testing
 
 	got := buildOrchestratorInstruction("base", entries, 5, nil)
 
-	assert.Contains(t, got, "Use agent_spawn for new dynamic teammate work.")
-	assert.Contains(t, got, "Use transfer_to_agent only for legacy ADK static sub-agent fallback")
-	assert.Contains(t, got, "existing remote A2A paths")
+	assert.Contains(t, got, "Built-in teammate work MUST use agent_spawn.")
+	assert.Contains(t, got, "Do not use transfer_to_agent for built-in teammates.")
+	assert.Contains(t, got, "Use transfer_to_agent only for remote A2A or tightly documented legacy compatibility paths.")
+}
+
+func TestOrchestratorInstruction_BuiltinUsesSpawnOnly(t *testing.T) {
+	got := buildOrchestratorInstruction("base", nil, 10, nil)
+	assert.Contains(t, got, "Built-in teammate work MUST use agent_spawn")
+	assert.NotContains(t, got, "Use transfer_to_agent only for legacy ADK static sub-agent fallback, specialist re-routing")
 }
 
 func TestBuildOrchestratorInstruction_DelegateOnly(t *testing.T) {
 	got := buildOrchestratorInstruction("base", nil, 5, nil)
 
 	assert.Contains(t, got, "You coordinate work, answer directly when no teammate is needed")
-	assert.Contains(t, got, "Use agent_spawn for new dynamic teammate work.")
+	assert.Contains(t, got, "Built-in teammate work MUST use agent_spawn.")
 	assert.NotContains(t, got, "You do NOT have tools")
 	// Output Awareness section replaces the old Diagnostics section.
 	assert.Contains(t, got, "Output Awareness")
@@ -776,7 +794,7 @@ func TestBuildOrchestratorInstruction_HasAssessStep(t *testing.T) {
 	assert.Contains(t, got, "0. ASSESS")
 	assert.Contains(t, got, "simple conversational request")
 	assert.Contains(t, got, "respond directly")
-	assert.Contains(t, got, "Use agent_spawn for new dynamic teammate work.")
+	assert.Contains(t, got, "Built-in teammate work MUST use agent_spawn.")
 
 	// ASSESS direct-answer line must NOT list weather or general knowledge.
 	assessIdx := strings.Index(got, "0. ASSESS:")
@@ -838,11 +856,11 @@ func TestBuildOrchestratorInstruction_HasReRoutingProtocol(t *testing.T) {
 	got := buildOrchestratorInstruction("base", nil, 5, nil)
 
 	assert.Contains(t, got, "Re-Routing Protocol")
-	assert.Contains(t, got, "sub-agent transfers control back")
+	assert.Contains(t, got, "returns control to the root runtime")
 	assert.Contains(t, got, "NEVER re-delegate to an agent that already returned")
 	assert.Contains(t, got, "general-purpose assistant")
 	assert.Contains(t, got, "two consecutive agents fail")
-	assert.Contains(t, got, "Use transfer_to_agent only for legacy ADK static sub-agent fallback")
+	assert.Contains(t, got, "Use transfer_to_agent only for remote A2A or tightly documented legacy compatibility paths")
 }
 
 func TestBuildOrchestratorInstruction_DelegationRulesOrder(t *testing.T) {
@@ -850,12 +868,12 @@ func TestBuildOrchestratorInstruction_DelegationRulesOrder(t *testing.T) {
 
 	// Verify runtime guidance appears before later delegation rules.
 	directIdx := strings.Index(got, "respond directly WITHOUT delegation")
-	delegateIdx := strings.Index(got, "Use agent_spawn for new dynamic teammate work.")
+	delegateIdx := strings.Index(got, "Built-in teammate work MUST use agent_spawn.")
 	assert.Greater(t, directIdx, 0, "direct response rule should exist")
 	assert.Greater(t, delegateIdx, 0, "delegation rule should exist")
 	assert.Greater(t, directIdx, delegateIdx, "runtime guidance should appear before direct response rule")
-	assert.Contains(t, got, "Prefer agent_spawn for new dynamic teammate work.")
-	assert.Contains(t, got, "Use transfer_to_agent only for legacy ADK static sub-agent fallback")
+	assert.Contains(t, got, "Do not use transfer_to_agent for built-in teammates.")
+	assert.Contains(t, got, "Use transfer_to_agent only for remote A2A or tightly documented legacy compatibility paths.")
 }
 
 // --- PartitionTools builtin_ skip tests ---
@@ -894,10 +912,10 @@ func TestAgentSpecs_AllHaveEscalationProtocol(t *testing.T) {
 	for _, spec := range agentSpecs {
 		assert.Contains(t, spec.Instruction, "## Escalation Protocol",
 			"spec %q must have escalation protocol section", spec.Name)
-		assert.Contains(t, spec.Instruction, `transfer_to_agent`,
-			"spec %q must use transfer_to_agent for escalation", spec.Name)
-		assert.Contains(t, spec.Instruction, `lango-orchestrator`,
-			"spec %q must escalate to lango-orchestrator", spec.Name)
+		assert.Contains(t, spec.Instruction, "Return control cleanly to the root runtime",
+			"spec %q must return control to the root runtime", spec.Name)
+		assert.Contains(t, spec.Instruction, "Do not call transfer_to_agent for built-in teammate escalation",
+			"spec %q must forbid built-in transfer_to_agent escalation", spec.Name)
 	}
 }
 
