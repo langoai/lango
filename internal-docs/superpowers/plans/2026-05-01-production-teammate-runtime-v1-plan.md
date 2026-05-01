@@ -4,9 +4,9 @@
 
 **Goal:** Replace Lango's static tool-less multi-agent contract with a v1 dynamic teammate runtime using existing `agentrt`, background projection, child-session, hook, approval, and operator-surface assets.
 
-**Architecture:** Keep `agent_spawn`, `agent_wait`, and `agent_stop` as the only v1 model-facing control tools while extending their backing runtime state. Add teammate policy and projection fields inside `internal/agentrt`, preserve structured hook block metadata in `internal/toolchain`, then wire capability escalation and operator visibility without creating a parallel teammate package. OpenSpec leads the change and is archived only after implementation, verification, sync, and archive complete.
+**Architecture:** Keep `agent_spawn`, `agent_wait`, and `agent_stop` as the only v1 model-facing control tools while extending their backing runtime state. Add teammate policy and projection fields inside `internal/agentrt`, preserve structured hook block metadata in `internal/toolchain`, then wire capability escalation and operator visibility without creating a parallel teammate package. OpenSpec leads the change and is archived only after implementation and verification; `openspec archive` is the step that updates the main specs.
 
-**Tech Stack:** Go, Cobra CLI, Bubble Tea TUI/cockpit, OpenSpec, `internal/agentrt`, `internal/background`, `internal/toolchain`, `internal/approval`, `go test ./...`, `go build ./...`.
+**Tech Stack:** Go, Cobra CLI, OpenSpec, `internal/agentrt`, `internal/background`, `internal/toolchain`, `internal/approval`, `go test ./...`, `go build ./...`.
 
 ---
 
@@ -19,7 +19,7 @@
 
 ## Scope Check
 
-This plan intentionally covers one production slice: in-process dynamic teammate runtime v1. It does not implement separate worker processes, sandboxed teammate execution, or direct teammate messaging. Those are separate spikes after this plan ships.
+This plan intentionally covers one production slice: in-process dynamic teammate runtime v1 with CLI-level operator visibility. It does not implement separate worker processes, sandboxed teammate execution, direct teammate messaging, or cockpit/TUI projection panels. Cockpit/TUI projection consumes the stable read model in a follow-up plan after this runtime slice ships.
 
 ## File Map
 
@@ -35,6 +35,8 @@ This plan intentionally covers one production slice: in-process dynamic teammate
 - Create `internal/agentrt/teammate_types_test.go`: role scope and validation tests.
 - Create `internal/agentrt/capability_policy.go`: pure policy for blocked tool attempts, grants, and approval decisions.
 - Create `internal/agentrt/capability_policy_test.go`: capability decision tests.
+- Create `internal/agentrt/capability_runtime.go`: connects blocked hook metadata to capability policy and run projection.
+- Create `internal/agentrt/capability_runtime_test.go`: wiring tests for DynamicAllowedTools blocks.
 - Modify `internal/agentrt/agent_run.go`: add projection fields without expanding the base status enum.
 - Modify `internal/agentrt/agent_run_store.go`: add projection patch support and copy new fields.
 - Modify `internal/agentrt/control_tools.go`: add `spawn_reason`, validate role scope, surface projected state in wait responses.
@@ -44,12 +46,15 @@ This plan intentionally covers one production slice: in-process dynamic teammate
 - Modify `internal/toolchain/mw_hooks_test.go`: verify blocked metadata includes tool, agent, session, params, and block reason.
 - Modify `internal/orchestration/tools.go`: add temporary v1 selection rule for `agent_spawn` versus `transfer_to_agent`.
 - Modify `internal/orchestration/orchestrator_test.go`: lock prompt guidance.
+- Modify `internal/toolcatalog/catalog.go`: expose read-only tool safety lookup for capability policy.
+- Modify `internal/toolcatalog/catalog_test.go`: cover tool safety lookup fallback.
+- Modify `internal/app/modules.go`: wire background submitter and capability runtime into the agent control plane.
 - Modify `internal/cli/agent/status.go`: expose teammate runtime mode details.
 - Modify `docs/features/multi-agent.md`: document current v1 dynamic teammate behavior accurately after code changes.
 
 ## Commit Policy
 
-Each task includes a suggested commit. Commit after the task passes its local verification. Do not combine unrelated tasks in one commit.
+Each task includes suggested staging scope and a suggested commit message. Do not run `git commit` automatically while executing this plan; present the staging scope and message to the user after the task passes local verification so the user can commit manually.
 
 ## Task 1: OpenSpec Change Artifacts
 
@@ -73,7 +78,17 @@ openspec list
 
 Expected: no active change named `production-teammate-runtime`. If it exists, continue that change instead of creating a duplicate.
 
-- [ ] **Step 2: Create change directories**
+- [ ] **Step 2: Confirm change creation command**
+
+Run:
+
+```bash
+openspec new change --help
+```
+
+Expected: output includes `Create a new change directory`.
+
+- [ ] **Step 3: Create change directories**
 
 Run:
 
@@ -88,7 +103,7 @@ mkdir -p openspec/changes/production-teammate-runtime/specs/cli-agent-inspection
 
 Expected: `openspec/changes/production-teammate-runtime/` exists with five spec delta directories.
 
-- [ ] **Step 3: Write `proposal.md`**
+- [ ] **Step 4: Write `proposal.md`**
 
 Create `openspec/changes/production-teammate-runtime/proposal.md` with:
 
@@ -105,10 +120,10 @@ Reframe multi-agent mode as an in-process dynamic teammate runtime. Keep the exi
 
 ## User-Facing Impact
 
-Users keep enabling multi-agent mode with `agent.multiAgent=true`. The main agent can answer directly or spawn teammates. CLI and TUI surfaces expose teammate type, spawn reason, blocked reason, grant request, and final result. Remote A2A agents keep their existing v1 routing behavior.
+Users keep enabling multi-agent mode with `agent.multiAgent=true`. The main agent can answer directly or spawn teammates. CLI status exposes dynamic runtime availability; detailed cockpit/TUI projection is a follow-up once the shared runtime read model is stable. Remote A2A agents keep their existing v1 routing behavior.
 ```
 
-- [ ] **Step 4: Write `design.md`**
+- [ ] **Step 5: Write `design.md`**
 
 Create `openspec/changes/production-teammate-runtime/design.md` with:
 
@@ -136,7 +151,7 @@ V1 emits capability requests from runtime interception of blocked DynamicAllowed
 `transfer_to_agent` remains a legacy ADK static sub-agent fallback in v1. New dynamic teammate work uses `agent_spawn`; legacy static sub-agent fallback, specialist re-routing, and existing remote A2A paths may still use `transfer_to_agent`.
 ```
 
-- [ ] **Step 5: Write `tasks.md`**
+- [ ] **Step 6: Write `tasks.md`**
 
 Create `openspec/changes/production-teammate-runtime/tasks.md` with:
 
@@ -155,14 +170,31 @@ Create `openspec/changes/production-teammate-runtime/tasks.md` with:
 - [ ] Run openspec verify/apply workflow checks
 - [ ] Run go build ./...
 - [ ] Run go test ./...
-- [ ] Sync and archive the OpenSpec change
+- [ ] Archive the OpenSpec change and update main specs through `openspec archive`
 ```
 
-- [ ] **Step 6: Write `multi-agent-orchestration` delta spec**
+- [ ] **Step 7: Write `multi-agent-orchestration` delta spec**
 
 Create `openspec/changes/production-teammate-runtime/specs/multi-agent-orchestration/spec.md` with:
 
 ```markdown
+## REMOVED Requirements
+
+### Requirement: Multi-agent orchestrator has no tools
+The old guarantee that the root orchestrator has `Tools: nil` and no direct control tools is removed. The new coordinator-capable main agent may answer directly and may use `agent_spawn`, `agent_wait`, and `agent_stop` for dynamic teammate runs.
+
+### Requirement: Orchestrator delegates all tool-requiring tasks
+The old delegation-only rule is removed. Requests requiring work may be handled through dynamic teammate spawn, legacy static `transfer_to_agent` fallback, or direct answer when no tool execution is required.
+
+### Requirement: Static BuildAgentTree as the only multi-agent shape
+The static ADK sub-agent tree is no longer the only multi-agent execution model. Dynamic in-process teammate runs become the primary v1 path for new teammate work.
+
+### Requirement: Static RoleToolSet partition as execution authority
+Prefix-based `RoleToolSet` partitioning is no longer the final runtime execution authority. It is reframed as role maximum scope and default affinity. Spawn-time `allowed_tools` narrows that scope.
+
+### Requirement: transfer_to_agent as only handoff primitive
+`transfer_to_agent` is no longer the only handoff primitive. It remains as a legacy ADK static sub-agent fallback and existing remote A2A path while dynamic teammate work uses the agent control plane.
+
 ## MODIFIED Requirements
 
 ### Requirement: Hierarchical agent tree with sub-agents
@@ -174,6 +206,25 @@ When `agent.multiAgent` is true, the system SHALL support a coordinator-capable 
 - **AND** the prompt SHALL allow direct answers for simple conversational work
 - **AND** the prompt SHALL describe `transfer_to_agent` as legacy static sub-agent fallback or re-routing only
 
+### Requirement: Tool prefix partitioning
+Tool prefix partitioning SHALL define role maximum scope and default affinity for teammate types. It SHALL NOT grant final execution authority by itself. The actual runtime tool set SHALL be the intersection of role maximum scope, spawn-time `allowed_tools`, active grants, and capability policy.
+
+#### Scenario: Spawn-time tools narrow role scope
+- **WHEN** teammate type `operator` has `fs_write` inside role maximum scope
+- **AND** `agent_spawn` creates an operator teammate with `allowed_tools: ["fs_read"]`
+- **THEN** `fs_write` SHALL be blocked until capability policy grants it
+
+### Requirement: Re-routing protocol
+The old static sub-agent re-routing protocol SHALL be reframed as recovery policy plus main-agent synthesis. The main agent SHALL avoid repeating a failed teammate path and MAY spawn a different teammate, summarize partial work, answer from gathered evidence, or escalate to the user.
+
+#### Scenario: Failed teammate path is not immediately repeated
+- **WHEN** a teammate run fails with a specialist identity recorded
+- **THEN** recovery guidance SHALL identify the failed teammate type
+- **AND** the next coordinator decision SHALL avoid immediately repeating the same teammate path for the same request
+
+### Requirement: Event author identity
+Teammate run and child-session authorship SHALL remain traceable in events, summaries, and operator projections. A teammate final result SHALL include enough identity metadata to distinguish the main agent from spawned teammates.
+
 ### Requirement: Remote agents as sub-agents
 Remote A2A agents SHALL preserve their existing v1 behavior. They remain available through the existing remote A2A/static routing path. Treating remote A2A agents as dynamic teammate providers is outside v1.
 
@@ -183,7 +234,7 @@ Remote A2A agents SHALL preserve their existing v1 behavior. They remain availab
 - **AND** dynamic teammate-provider integration is not required for v1
 ```
 
-- [ ] **Step 7: Write `agent-control-plane-tools` delta spec**
+- [ ] **Step 8: Write `agent-control-plane-tools` delta spec**
 
 Create `openspec/changes/production-teammate-runtime/specs/agent-control-plane-tools/spec.md` with:
 
@@ -191,7 +242,7 @@ Create `openspec/changes/production-teammate-runtime/specs/agent-control-plane-t
 ## MODIFIED Requirements
 
 ### Requirement: agent_spawn tool creates AgentRun with enriched prompt and advisory routing
-The `agent_spawn` tool SHALL accept optional `spawn_reason` and `allowed_tools` parameters. When `agent` matches a built-in teammate type, `allowed_tools` SHALL be validated against that teammate type's role maximum scope before the run is created. The run projection SHALL carry spawn reason for operator visibility and audit correlation.
+The `agent_spawn` tool SHALL accept optional `spawn_reason` and `allowed_tools` parameters. When `agent` matches a built-in teammate type, `allowed_tools` SHALL be validated against that teammate type's role maximum scope before the run is created. The run projection SHALL carry spawn reason for operator visibility and audit correlation. When an in-process submitter is configured, `agent_spawn` SHALL submit the teammate prompt through the existing background manager using the pre-registered AgentRun ID.
 
 #### Scenario: Spawn reason is stored for projection
 - **WHEN** `agent_spawn` is called with `instruction: "Review patch"` and `spawn_reason: "parallel review"`
@@ -199,9 +250,15 @@ The `agent_spawn` tool SHALL accept optional `spawn_reason` and `allowed_tools` 
 - **AND** the response SHALL include `spawn_reason: "parallel review"`
 
 #### Scenario: Allowed tools outside role scope are rejected
-- **WHEN** `agent_spawn` is called with `agent: "planner"` and `allowed_tools: ["exec_shell"]`
-- **THEN** the tool SHALL return an error containing `tool "exec_shell" outside role maximum scope for teammate type "planner"`
+- **WHEN** `agent_spawn` is called with `agent: "planner"` and `allowed_tools: ["exec"]`
+- **THEN** the tool SHALL return an error containing `tool "exec" outside role maximum scope for teammate type "planner"`
 - **AND** no AgentRun SHALL be created
+
+#### Scenario: Spawn submits through existing in-process execution path
+- **WHEN** `agent_spawn` creates an operator teammate with `allowed_tools: ["fs_read"]`
+- **THEN** the background submitter SHALL receive a context carrying agent name `operator`
+- **AND** the same context SHALL carry DynamicAllowedTools `["fs_read"]`
+- **AND** blocked DynamicAllowedTools attempts in that context SHALL update the matching AgentRun projection
 
 ### Requirement: agent_wait polls AgentRunStore until terminal status
 `agent_wait` SHALL include projected condition fields in non-terminal timeout responses. During `blocked_waiting_approval`, `agent_wait` timeout SHALL return `timeout: true` and SHALL NOT cancel the run.
@@ -213,7 +270,7 @@ The `agent_spawn` tool SHALL accept optional `spawn_reason` and `allowed_tools` 
 - **AND** the run status SHALL remain `running`
 ```
 
-- [ ] **Step 8: Write `tool-execution-hooks` delta spec**
+- [ ] **Step 9: Write `tool-execution-hooks` delta spec**
 
 Create `openspec/changes/production-teammate-runtime/specs/tool-execution-hooks/spec.md` with:
 
@@ -224,12 +281,12 @@ Create `openspec/changes/production-teammate-runtime/specs/tool-execution-hooks/
 When a PreToolHook returns Action=Block, `WithHooks` SHALL preserve structured blocked-call metadata before returning the existing blocked-tool error. The metadata SHALL include tool name, agent name, session key, block reason, original params, and context.
 
 #### Scenario: Blocked call metadata emitted before error
-- **WHEN** `AgentAccessControlHook` blocks tool `exec_shell` for agent `operator`
-- **THEN** a blocked-call sink installed on the context SHALL receive tool name `exec_shell`, agent name `operator`, and the hook block reason
-- **AND** the tool handler SHALL still return the existing error format `tool 'exec_shell' blocked by hook: <reason>`
+- **WHEN** `AgentAccessControlHook` blocks tool `exec` for agent `operator`
+- **THEN** a blocked-call sink installed on the context SHALL receive tool name `exec`, agent name `operator`, and the hook block reason
+- **AND** the tool handler SHALL still return the existing error format `tool 'exec' blocked by hook: <reason>`
 ```
 
-- [ ] **Step 9: Write `tool-capability-layer` delta spec**
+- [ ] **Step 10: Write `tool-capability-layer` delta spec**
 
 Create `openspec/changes/production-teammate-runtime/specs/tool-capability-layer/spec.md` with:
 
@@ -247,13 +304,13 @@ When `AgentAccessControlHook` blocks a teammate tool call with reason `tool rest
 - **AND** the run projection SHALL become `blocked_waiting_approval`
 
 #### Scenario: Blocked tool outside role maximum scope is denied
-- **GIVEN** teammate type `planner` does not have `exec_shell` inside role maximum scope
-- **WHEN** the teammate attempts `exec_shell`
+- **GIVEN** teammate type `planner` does not have `exec` inside role maximum scope
+- **WHEN** the teammate attempts `exec`
 - **THEN** the runtime SHALL deny the request
 - **AND** no approval request SHALL be surfaced
 ```
 
-- [ ] **Step 10: Write `cli-agent-inspection` delta spec**
+- [ ] **Step 11: Write `cli-agent-inspection` delta spec**
 
 Create `openspec/changes/production-teammate-runtime/specs/cli-agent-inspection/spec.md` with:
 
@@ -269,7 +326,7 @@ The `lango agent status` command SHALL identify dynamic teammate runtime availab
 - **THEN** the output SHALL include `"teammate_runtime": "dynamic-v1"`
 ```
 
-- [ ] **Step 11: Verify OpenSpec status**
+- [ ] **Step 12: Verify OpenSpec status**
 
 Run:
 
@@ -279,16 +336,16 @@ openspec status --change production-teammate-runtime
 
 Expected: proposal, design, tasks, and specs are present. The change is ready for implementation.
 
-- [ ] **Step 12: Commit OpenSpec artifacts**
+- [ ] **Step 13: Record suggested commit OpenSpec artifacts**
 
-Run:
+Suggested user-run commands after review:
 
 ```bash
 git add openspec/changes/production-teammate-runtime
 git commit -m "spec: define production teammate runtime"
 ```
 
-Expected: commit succeeds with only OpenSpec files staged.
+Expected: user can run the suggested commit after review with only OpenSpec files staged.
 
 ## Task 2: AgentRun Projection Fields
 
@@ -336,7 +393,7 @@ func TestAgentRunStore_CopyIncludesProjectionFields(t *testing.T) {
 	assert.Equal(t, "arun-child", got.WaitingOnRunID)
 	assert.Equal(t, "retry_with_hint", got.RecoveryState)
 
-	got.AllowedTools[0] = "exec_shell"
+	got.AllowedTools[0] = "exec"
 	again, err := store.Get("arun-projection")
 	require.NoError(t, err)
 	assert.Equal(t, []string{"fs_read"}, again.AllowedTools)
@@ -474,16 +531,16 @@ go test ./internal/agentrt -run 'TestAgentRunStore_(CopyIncludesProjectionFields
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit projection fields**
+- [ ] **Step 6: Record suggested commit projection fields**
 
-Run:
+Suggested user-run commands after review:
 
 ```bash
 git add internal/agentrt/agent_run.go internal/agentrt/agent_run_store.go internal/agentrt/agent_run_store_test.go
 git commit -m "feat: add teammate run projection fields"
 ```
 
-Expected: commit succeeds with only agent runtime projection files staged.
+Expected: user can run the suggested commit after review with only agent runtime projection files staged.
 
 ## Task 3: Teammate Type Role Scope
 
@@ -493,7 +550,17 @@ Expected: commit succeeds with only agent runtime projection files staged.
 - Modify: `internal/agentrt/control_tools.go`
 - Modify: `internal/agentrt/control_tools_test.go`
 
-- [ ] **Step 1: Write failing teammate type tests**
+- [ ] **Step 1: Lock actual registered tool inventory**
+
+Run:
+
+```bash
+rg -n 'Name:\s*"|NewTool\("' internal/tools internal/agentrt internal/background internal/cron internal/workflow internal/memory internal/agentmemory internal/ontology internal/app/tools_meta.go internal/toolcatalog/dispatcher.go internal/tooloutput/tools.go -g '*.go'
+```
+
+Expected output includes the concrete tool names used in the role scope below, including `exec`, `fs_read`, `fs_write`, `fs_list`, `fs_delete`, `browser_search`, `web_search`, `workflow_run`, `memory_agent_save`, `ontology_assert_fact`, `ontology_list_conflicts`, `tool_output_get`, `builtin_list`, `builtin_search`, and `builtin_health`. If any name in the code block below is not present in this inventory, replace it with the registered name before writing tests.
+
+- [ ] **Step 2: Write failing teammate type tests**
 
 Create `internal/agentrt/teammate_types_test.go` with:
 
@@ -519,18 +586,18 @@ func TestBuiltinTeammateTypes(t *testing.T) {
 	require.Contains(t, types, "ontologist")
 
 	assert.True(t, types["operator"].AllowsTool("fs_read"))
-	assert.True(t, types["operator"].AllowsTool("exec_shell"))
-	assert.False(t, types["planner"].AllowsTool("exec_shell"))
+	assert.True(t, types["operator"].AllowsTool("exec"))
+	assert.False(t, types["planner"].AllowsTool("exec"))
 	assert.True(t, types["planner"].AllowsTool("agent_wait"))
 }
 
 func TestValidateAllowedToolsForTeammate(t *testing.T) {
-	err := ValidateAllowedToolsForTeammate("operator", []string{"fs_read", "exec_shell"})
+	err := ValidateAllowedToolsForTeammate("operator", []string{"fs_read", "exec"})
 	require.NoError(t, err)
 
-	err = ValidateAllowedToolsForTeammate("planner", []string{"exec_shell"})
+	err = ValidateAllowedToolsForTeammate("planner", []string{"exec"})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), `tool "exec_shell" outside role maximum scope for teammate type "planner"`)
+	assert.Contains(t, err.Error(), `tool "exec" outside role maximum scope for teammate type "planner"`)
 }
 
 func TestValidateAllowedToolsForTeammatePreservesCompatibilityForUnknownAgent(t *testing.T) {
@@ -539,7 +606,7 @@ func TestValidateAllowedToolsForTeammatePreservesCompatibilityForUnknownAgent(t 
 }
 ```
 
-- [ ] **Step 2: Run tests and verify failure**
+- [ ] **Step 3: Run tests and verify failure**
 
 Run:
 
@@ -549,7 +616,7 @@ go test ./internal/agentrt -run 'Test(BuiltinTeammateTypes|ValidateAllowedToolsF
 
 Expected: FAIL with undefined `BuiltinTeammateTypes` and `ValidateAllowedToolsForTeammate`.
 
-- [ ] **Step 3: Add teammate type metadata**
+- [ ] **Step 4: Add teammate type metadata**
 
 Create `internal/agentrt/teammate_types.go` with:
 
@@ -577,8 +644,9 @@ func BuiltinTeammateTypes() map[string]TeammateType {
 			Name:        "operator",
 			Description: "Local execution, file operations, and skill execution.",
 			MaxTools: allowTools(
-				"exec_shell", "fs_read", "fs_write", "fs_list", "fs_delete",
-				"skill_execute", "tool_output_get", "builtin_list", "builtin_search", "builtin_health",
+				"exec", "exec_bg", "exec_status", "exec_stop",
+				"fs_read", "fs_write", "fs_list", "fs_delete", "fs_edit", "fs_mkdir", "fs_stat",
+				"tool_output_get", "builtin_list", "builtin_search", "builtin_health",
 				"agent_spawn", "agent_wait", "agent_stop", "task_create", "task_get", "task_list", "task_update",
 			),
 		},
@@ -586,7 +654,7 @@ func BuiltinTeammateTypes() map[string]TeammateType {
 			Name:        "navigator",
 			Description: "Browser and web navigation work.",
 			MaxTools: allowTools(
-				"browser_navigate", "browser_action", "browser_screenshot", "browser_extract",
+				"browser_navigate", "browser_search", "browser_observe", "browser_action", "browser_screenshot", "browser_extract",
 				"web_search", "tool_output_get", "builtin_list", "builtin_search", "builtin_health",
 			),
 		},
@@ -594,8 +662,10 @@ func BuiltinTeammateTypes() map[string]TeammateType {
 			Name:        "vault",
 			Description: "Cryptography, secrets, payment, wallet, and signing work.",
 			MaxTools: allowTools(
-				"crypto_sign", "crypto_verify", "secrets_get", "secrets_set",
-				"payment_send", "wallet_sign", "wallet_address", "tool_output_get",
+				"crypto_encrypt", "crypto_decrypt", "crypto_sign", "crypto_hash", "crypto_keys",
+				"secrets_store", "secrets_get", "secrets_list", "secrets_delete",
+				"payment_send", "payment_balance", "payment_history", "payment_limits", "payment_wallet_info", "payment_create_wallet", "payment_x402_fetch",
+				"tool_output_get",
 				"builtin_list", "builtin_search", "builtin_health",
 			),
 		},
@@ -603,8 +673,8 @@ func BuiltinTeammateTypes() map[string]TeammateType {
 			Name:        "librarian",
 			Description: "Knowledge search, RAG, graph traversal, learning, and skill management.",
 			MaxTools: allowTools(
-				"search_knowledge", "rag_retrieve", "graph_query", "graph_traverse",
-				"save_knowledge", "save_learning", "create_skill", "list_skills",
+				"search_knowledge", "get_knowledge_history", "search_learnings", "graph_query", "graph_traverse",
+				"save_knowledge", "save_learning", "create_skill", "list_skills", "view_skill", "import_skill",
 				"tool_output_get", "builtin_list", "builtin_search", "builtin_health",
 			),
 		},
@@ -612,8 +682,10 @@ func BuiltinTeammateTypes() map[string]TeammateType {
 			Name:        "automator",
 			Description: "Background, cron, workflow, and scheduled work.",
 			MaxTools: allowTools(
-				"cron_add", "cron_list", "cron_remove", "bg_submit", "bg_status",
-				"workflow_start", "workflow_status", "agent_spawn", "agent_wait", "agent_stop",
+				"cron_add", "cron_list", "cron_pause", "cron_resume", "cron_remove", "cron_history",
+				"bg_submit", "bg_status", "bg_list", "bg_result", "bg_cancel",
+				"workflow_run", "workflow_status", "workflow_list", "workflow_cancel", "workflow_save",
+				"agent_spawn", "agent_wait", "agent_stop",
 				"task_create", "task_get", "task_list", "task_update", "tool_output_get",
 				"builtin_list", "builtin_search", "builtin_health",
 			),
@@ -630,16 +702,21 @@ func BuiltinTeammateTypes() map[string]TeammateType {
 			Name:        "chronicler",
 			Description: "Memory, observations, reflections, and recall.",
 			MaxTools: allowTools(
-				"memory_list_observations", "memory_list_reflections", "observe_record",
-				"reflect_record", "tool_output_get", "builtin_list", "builtin_search", "builtin_health",
+				"memory_list_observations", "memory_list_reflections",
+				"memory_agent_save", "memory_agent_recall", "memory_agent_forget",
+				"tool_output_get", "builtin_list", "builtin_search", "builtin_health",
 			),
 		},
 		"ontologist": {
 			Name:        "ontologist",
 			Description: "Ontology types, entities, facts, conflicts, and ingestion.",
 			MaxTools: allowTools(
-				"ontology_entity_create", "ontology_fact_create", "ontology_conflict_list",
-				"ontology_type_list", "tool_output_get", "builtin_list", "builtin_search", "builtin_health",
+				"ontology_list_actions", "ontology_promote_type", "ontology_promote_predicate",
+				"ontology_list_types", "ontology_describe_type", "ontology_query_entities", "ontology_get_entity",
+				"ontology_assert_fact", "ontology_retract_fact", "ontology_list_conflicts", "ontology_resolve_conflict",
+				"ontology_merge_entities", "ontology_facts_at", "ontology_import_json", "ontology_import_csv",
+				"ontology_from_mcp", "ontology_schema_health", "ontology_type_usage",
+				"tool_output_get", "builtin_list", "builtin_search", "builtin_health",
 			),
 		},
 	}
@@ -671,7 +748,7 @@ func allowTools(names ...string) map[string]bool {
 }
 ```
 
-- [ ] **Step 4: Run teammate type tests**
+- [ ] **Step 5: Run teammate type tests**
 
 Run:
 
@@ -681,7 +758,7 @@ go test ./internal/agentrt -run 'Test(BuiltinTeammateTypes|ValidateAllowedToolsF
 
 Expected: PASS.
 
-- [ ] **Step 5: Write failing spawn validation tests**
+- [ ] **Step 6: Write failing spawn validation tests**
 
 Append to `internal/agentrt/control_tools_test.go`:
 
@@ -722,15 +799,15 @@ func TestAgentSpawn_RejectsAllowedToolsOutsideRoleScope(t *testing.T) {
 	_, err := spawnTool.call(context.Background(), map[string]interface{}{
 		"instruction":   "plan and execute",
 		"agent":         "planner",
-		"allowed_tools": []interface{}{"exec_shell"},
+		"allowed_tools": []interface{}{"exec"},
 	})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), `tool "exec_shell" outside role maximum scope for teammate type "planner"`)
+	assert.Contains(t, err.Error(), `tool "exec" outside role maximum scope for teammate type "planner"`)
 	assert.Empty(t, store.List())
 }
 ```
 
-- [ ] **Step 6: Run spawn tests and verify failure**
+- [ ] **Step 7: Run spawn tests and verify failure**
 
 Run:
 
@@ -740,7 +817,7 @@ go test ./internal/agentrt -run 'TestAgentSpawn_(WithSpawnReason|RejectsAllowedT
 
 Expected: FAIL because `spawn_reason` is not parsed, returned, or validated.
 
-- [ ] **Step 7: Extend `agent_spawn`**
+- [ ] **Step 8: Extend `agent_spawn`**
 
 Modify `internal/agentrt/control_tools.go`:
 
@@ -769,7 +846,7 @@ Add response field:
 				"spawn_reason":    spawnReason,
 ```
 
-- [ ] **Step 8: Run agentrt tests**
+- [ ] **Step 9: Run agentrt tests**
 
 Run:
 
@@ -779,16 +856,16 @@ go test ./internal/agentrt -count=1
 
 Expected: PASS.
 
-- [ ] **Step 9: Commit role scope and spawn reason**
+- [ ] **Step 10: Record suggested commit role scope and spawn reason**
 
-Run:
+Suggested user-run commands after review:
 
 ```bash
 git add internal/agentrt/teammate_types.go internal/agentrt/teammate_types_test.go internal/agentrt/control_tools.go internal/agentrt/control_tools_test.go
 git commit -m "feat: validate teammate role tool scope"
 ```
 
-Expected: commit succeeds with teammate type and control tool changes.
+Expected: user can run the suggested commit after review with teammate type and control tool changes.
 
 ## Task 4: Structured Hook Block Metadata
 
@@ -811,7 +888,7 @@ func TestWithHooks_EmitsBlockedToolCallMetadata(t *testing.T) {
 	})
 
 	tool := &agent.Tool{
-		Name: "exec_shell",
+		Name: "exec",
 		Handler: func(context.Context, map[string]interface{}) (interface{}, error) {
 			t.Fatal("handler should not execute")
 			return nil, nil
@@ -828,7 +905,7 @@ func TestWithHooks_EmitsBlockedToolCallMetadata(t *testing.T) {
 	_, err := handler(ctx, map[string]interface{}{"command": "rm -rf /tmp/nope"})
 	require.Error(t, err)
 
-	assert.Equal(t, "exec_shell", captured.ToolName)
+	assert.Equal(t, "exec", captured.ToolName)
 	assert.Equal(t, "operator", captured.AgentName)
 	assert.Equal(t, "tool restricted by DynamicAllowedTools", captured.BlockReason)
 	assert.Equal(t, "rm -rf /tmp/nope", captured.Params["command"])
@@ -904,16 +981,16 @@ go test ./internal/toolchain -count=1
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit hook metadata**
+- [ ] **Step 6: Record suggested commit hook metadata**
 
-Run:
+Suggested user-run commands after review:
 
 ```bash
 git add internal/toolchain/hooks.go internal/toolchain/mw_hooks.go internal/toolchain/mw_hooks_test.go
 git commit -m "feat: preserve blocked tool metadata"
 ```
 
-Expected: commit succeeds with only toolchain files staged.
+Expected: user can run the suggested commit after review with only toolchain files staged.
 
 ## Task 5: Capability Policy
 
@@ -943,7 +1020,7 @@ func TestCapabilityPolicy_DeniesOutsideRoleScope(t *testing.T) {
 	decision := policy.Evaluate(CapabilityRequest{
 		RunID:          "arun-1",
 		TeammateType:  "planner",
-		ToolName:      "exec_shell",
+		ToolName:      "exec",
 		CurrentAllowed: []string{"agent_wait"},
 		ToolSafety:    agent.SafetyLevelDangerous,
 	})
@@ -978,14 +1055,14 @@ func TestCapabilityPolicy_RequiresApprovalForDangerousToolInsideRoleScope(t *tes
 	decision := policy.Evaluate(CapabilityRequest{
 		RunID:          "arun-3",
 		TeammateType:  "operator",
-		ToolName:      "exec_shell",
+		ToolName:      "exec",
 		CurrentAllowed: []string{"fs_read"},
 		ToolSafety:    agent.SafetyLevelDangerous,
 	})
 
 	require.Equal(t, CapabilityDecisionNeedsApproval, decision.Kind)
 	assert.Equal(t, "dangerous tool requires approval", decision.Reason)
-	assert.Equal(t, "grant-arun-3-exec_shell", decision.GrantRequestID)
+	assert.Equal(t, "grant-arun-3-exec", decision.GrantRequestID)
 }
 
 func TestCapabilityPolicy_AllowsSafeToolInsideRoleScope(t *testing.T) {
@@ -1101,18 +1178,429 @@ go test ./internal/agentrt -run TestCapabilityPolicy -count=1
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit capability policy**
+- [ ] **Step 5: Record suggested commit capability policy**
 
-Run:
+Suggested user-run commands after review:
 
 ```bash
 git add internal/agentrt/capability_policy.go internal/agentrt/capability_policy_test.go
 git commit -m "feat: add teammate capability policy"
 ```
 
-Expected: commit succeeds with capability policy files.
+Expected: user can run the suggested commit after review with capability policy files.
 
-## Task 6: agent_wait Projected State Response
+## Task 6: Capability Runtime Wiring
+
+**Files:**
+- Create: `internal/agentrt/capability_runtime.go`
+- Create: `internal/agentrt/capability_runtime_test.go`
+- Modify: `internal/agentrt/capability_policy.go`
+- Modify: `internal/agentrt/capability_policy_test.go`
+- Modify: `internal/agentrt/control_tools.go`
+- Modify: `internal/agentrt/control_tools_test.go`
+- Modify: `internal/app/modules.go`
+- Modify: `internal/toolcatalog/catalog.go`
+- Modify: `internal/toolcatalog/catalog_test.go`
+
+- [ ] **Step 1: Write failing wiring tests**
+
+Create `internal/agentrt/capability_runtime_test.go` with:
+
+```go
+package agentrt
+
+import (
+	"context"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/langoai/lango/internal/agent"
+	"github.com/langoai/lango/internal/toolchain"
+)
+
+func TestCapabilityRuntime_BlockedDynamicAllowedToolsUpdatesProjection(t *testing.T) {
+	store := NewInMemoryAgentRunStore()
+	require.NoError(t, store.Create(&AgentRun{
+		ID:             "arun-cap",
+		Status:         AgentRunRunning,
+		RequestedAgent: "operator",
+		AllowedTools:   []string{"fs_read"},
+	}))
+
+	runtime := NewCapabilityRuntime(store, CapabilityPolicy{}, func(toolName string) agent.SafetyLevel {
+		assert.Equal(t, "exec", toolName)
+		return agent.SafetyLevelDangerous
+	})
+
+	sink := runtime.BlockedToolSinkForRun("arun-cap")
+	sink(toolchain.BlockedToolCall{
+		ToolName:    "exec",
+		AgentName:   "operator",
+		BlockReason: "tool restricted by DynamicAllowedTools",
+		Params:      map[string]interface{}{"command": "ls"},
+		Ctx:         context.Background(),
+	})
+
+	run, err := store.Get("arun-cap")
+	require.NoError(t, err)
+	assert.Equal(t, AgentRunRunning, run.Status)
+	assert.Equal(t, AgentRunConditionBlockedWaitingApproval, run.RuntimeCondition)
+	assert.Equal(t, "dangerous tool requires approval", run.BlockedReason)
+	assert.Equal(t, "grant-arun-cap-exec", run.GrantRequestID)
+}
+
+func TestCapabilityRuntime_OutsideScopeDenialDoesNotRequestApproval(t *testing.T) {
+	store := NewInMemoryAgentRunStore()
+	require.NoError(t, store.Create(&AgentRun{
+		ID:             "arun-deny",
+		Status:         AgentRunRunning,
+		RequestedAgent: "planner",
+		AllowedTools:   []string{"agent_wait"},
+	}))
+
+	runtime := NewCapabilityRuntime(store, CapabilityPolicy{}, func(string) agent.SafetyLevel {
+		return agent.SafetyLevelDangerous
+	})
+
+	runtime.BlockedToolSinkForRun("arun-deny")(toolchain.BlockedToolCall{
+		ToolName:    "exec",
+		AgentName:   "planner",
+		BlockReason: "tool restricted by DynamicAllowedTools",
+		Ctx:         context.Background(),
+	})
+
+	run, err := store.Get("arun-deny")
+	require.NoError(t, err)
+	assert.Equal(t, AgentRunConditionNone, run.RuntimeCondition)
+	assert.Contains(t, run.BlockedReason, "outside role maximum scope")
+	assert.Empty(t, run.GrantRequestID)
+}
+
+func TestCapabilityRuntime_ApplyGrantClearsBlockedProjection(t *testing.T) {
+	store := NewInMemoryAgentRunStore()
+	require.NoError(t, store.Create(&AgentRun{
+		ID:               "arun-grant",
+		Status:           AgentRunRunning,
+		RequestedAgent:   "operator",
+		AllowedTools:     []string{"fs_read"},
+		RuntimeCondition: AgentRunConditionBlockedWaitingApproval,
+		BlockedReason:    "dangerous tool requires approval",
+		GrantRequestID:   "grant-arun-grant-exec",
+	}))
+
+	runtime := NewCapabilityRuntime(store, CapabilityPolicy{}, func(string) agent.SafetyLevel {
+		return agent.SafetyLevelDangerous
+	})
+
+	require.NoError(t, runtime.ApplyGrant("arun-grant", "exec"))
+	assert.True(t, runtime.Policy.ActiveGrants["arun-grant"]["exec"])
+
+	run, err := store.Get("arun-grant")
+	require.NoError(t, err)
+	assert.Equal(t, AgentRunConditionNone, run.RuntimeCondition)
+	assert.Empty(t, run.BlockedReason)
+	assert.Empty(t, run.GrantRequestID)
+}
+
+func TestCapabilityRuntime_ContextForRunWiresBlockedHookToProjection(t *testing.T) {
+	store := NewInMemoryAgentRunStore()
+	require.NoError(t, store.Create(&AgentRun{
+		ID:             "arun-context",
+		Status:         AgentRunRunning,
+		RequestedAgent: "operator",
+		AllowedTools:   []string{"fs_read"},
+	}))
+	run, err := store.Get("arun-context")
+	require.NoError(t, err)
+
+	runtime := NewCapabilityRuntime(store, CapabilityPolicy{}, func(toolName string) agent.SafetyLevel {
+		assert.Equal(t, "exec", toolName)
+		return agent.SafetyLevelDangerous
+	})
+
+	reg := toolchain.NewHookRegistry()
+	reg.RegisterPre(toolchain.NewAgentAccessControlHook(nil))
+	tool := &agent.Tool{
+		Name: "exec",
+		Handler: func(context.Context, map[string]interface{}) (interface{}, error) {
+			t.Fatal("handler should not execute")
+			return nil, nil
+		},
+	}
+
+	ctx := runtime.ContextForRun(context.Background(), run)
+	handler := toolchain.WithHooks(reg)(tool, tool.Handler)
+	_, err = handler(ctx, map[string]interface{}{"command": "ls"})
+	require.Error(t, err)
+
+	got, err := store.Get("arun-context")
+	require.NoError(t, err)
+	assert.Equal(t, AgentRunConditionBlockedWaitingApproval, got.RuntimeCondition)
+	assert.Equal(t, "grant-arun-context-exec", got.GrantRequestID)
+}
+```
+
+- [ ] **Step 2: Run wiring tests and verify failure**
+
+Run:
+
+```bash
+go test ./internal/agentrt -run TestCapabilityRuntime -count=1
+```
+
+Expected: FAIL with undefined `NewCapabilityRuntime`.
+
+- [ ] **Step 3: Implement capability runtime wiring**
+
+Create `internal/agentrt/capability_runtime.go` with:
+
+```go
+package agentrt
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/langoai/lango/internal/agent"
+	"github.com/langoai/lango/internal/ctxkeys"
+	"github.com/langoai/lango/internal/toolchain"
+)
+
+const dynamicAllowedToolsBlockReason = "tool restricted by DynamicAllowedTools"
+
+type ToolSafetyLookup func(toolName string) agent.SafetyLevel
+
+type CapabilityRuntime struct {
+	Store      AgentRunStore
+	Policy     CapabilityPolicy
+	ToolSafety ToolSafetyLookup
+}
+
+func NewCapabilityRuntime(store AgentRunStore, policy CapabilityPolicy, lookup ToolSafetyLookup) *CapabilityRuntime {
+	if policy.ActiveGrants == nil {
+		policy.ActiveGrants = make(map[string]map[string]bool)
+	}
+	return &CapabilityRuntime{
+		Store:      store,
+		Policy:     policy,
+		ToolSafety: lookup,
+	}
+}
+
+func (r *CapabilityRuntime) BlockedToolSinkForRun(runID string) toolchain.BlockedToolCallSink {
+	return func(call toolchain.BlockedToolCall) {
+		_ = r.HandleBlockedToolCall(runID, call)
+	}
+}
+
+func (r *CapabilityRuntime) ContextForRun(ctx context.Context, run *AgentRun) context.Context {
+	ctx = ctxkeys.WithAgentName(ctx, run.RequestedAgent)
+	ctx = ctxkeys.WithDynamicAllowedTools(ctx, run.AllowedTools)
+	return toolchain.WithBlockedToolCallSink(ctx, r.BlockedToolSinkForRun(run.ID))
+}
+
+func (r *CapabilityRuntime) HandleBlockedToolCall(runID string, call toolchain.BlockedToolCall) error {
+	if call.BlockReason != dynamicAllowedToolsBlockReason {
+		return nil
+	}
+	run, err := r.Store.Get(runID)
+	if err != nil {
+		return err
+	}
+	safety := agent.SafetyLevelDangerous
+	if r.ToolSafety != nil {
+		safety = r.ToolSafety(call.ToolName)
+	}
+	decision := r.Policy.Evaluate(CapabilityRequest{
+		RunID:           run.ID,
+		TeammateType:   run.RequestedAgent,
+		ToolName:       call.ToolName,
+		CurrentAllowed: run.AllowedTools,
+		ToolSafety:     safety,
+	})
+	switch decision.Kind {
+	case CapabilityDecisionNeedsApproval:
+		return r.Store.UpdateProjection(run.ID, RunProjectionPatch{
+			RuntimeCondition: AgentRunConditionBlockedWaitingApproval,
+			BlockedReason:    decision.Reason,
+			GrantRequestID:   decision.GrantRequestID,
+		})
+	case CapabilityDecisionDeny:
+		return r.Store.UpdateProjection(run.ID, RunProjectionPatch{
+			RuntimeCondition: AgentRunConditionNone,
+			BlockedReason:    decision.Reason,
+		})
+	case CapabilityDecisionAllow:
+		return nil
+	default:
+		return fmt.Errorf("capability decision: unknown kind %q", decision.Kind)
+	}
+}
+
+func (r *CapabilityRuntime) ApplyGrant(runID, toolName string) error {
+	if r.Policy.ActiveGrants == nil {
+		r.Policy.ActiveGrants = make(map[string]map[string]bool)
+	}
+	if r.Policy.ActiveGrants[runID] == nil {
+		r.Policy.ActiveGrants[runID] = make(map[string]bool)
+	}
+	r.Policy.ActiveGrants[runID][toolName] = true
+	return r.Store.UpdateProjection(runID, RunProjectionPatch{})
+}
+```
+
+- [ ] **Step 4: Wire `agent_spawn` to the submitter context**
+
+Modify `internal/agentrt/control_tools.go`:
+
+```go
+type AgentRunSubmitter interface {
+	Submit(context.Context, string, background.Origin) (string, error)
+}
+
+type AgentControlPlane struct {
+	RunStore          AgentRunStore
+	Projection        *AgentRunProjection
+	Submitter         AgentRunSubmitter
+	CapabilityRuntime *CapabilityRuntime
+}
+```
+
+After `cp.Projection.RegisterPending(agentID)`, submit the child run when a submitter is configured:
+
+```go
+			if cp.Submitter != nil {
+				childCtx := ctx
+				if cp.CapabilityRuntime != nil {
+					childCtx = cp.CapabilityRuntime.ContextForRun(ctx, run)
+				}
+				if _, err := cp.Submitter.Submit(childCtx, enrichedInstruction, background.Origin{
+					Channel: "agent_control",
+					Session: agentID,
+				}); err != nil {
+					_ = cp.RunStore.UpdateStatus(agentID, AgentRunFailed, "", err.Error())
+					return nil, fmt.Errorf("agent spawn submit: %w", err)
+				}
+			}
+```
+
+Append this submitter test to `internal/agentrt/control_tools_test.go`:
+
+```go
+type recordingAgentRunSubmitter struct {
+	ctx    context.Context
+	prompt string
+	origin background.Origin
+}
+
+func (s *recordingAgentRunSubmitter) Submit(ctx context.Context, prompt string, origin background.Origin) (string, error) {
+	s.ctx = ctx
+	s.prompt = prompt
+	s.origin = origin
+	return origin.Session, nil
+}
+
+func TestAgentSpawn_SubmitsWithTeammateRuntimeContext(t *testing.T) {
+	store := NewInMemoryAgentRunStore()
+	submitter := &recordingAgentRunSubmitter{}
+	runtime := NewCapabilityRuntime(store, CapabilityPolicy{}, func(string) agent.SafetyLevel {
+		return agent.SafetyLevelDangerous
+	})
+	cp := &AgentControlPlane{
+		RunStore:          store,
+		Projection:        NewAgentRunProjection(store),
+		Submitter:         submitter,
+		CapabilityRuntime: runtime,
+	}
+	tools := BuildControlTools(cp)
+	spawnTool := findControlTool(t, tools, "agent_spawn")
+
+	result, err := spawnTool.call(context.Background(), map[string]interface{}{
+		"instruction":   "inspect files",
+		"agent":         "operator",
+		"allowed_tools": []interface{}{"fs_read"},
+	})
+	require.NoError(t, err)
+
+	m := result.(map[string]interface{})
+	assert.Equal(t, m["agent_id"], submitter.origin.Session)
+	assert.Equal(t, "agent_control", submitter.origin.Channel)
+	assert.Contains(t, submitter.prompt, "inspect files")
+	assert.Equal(t, "operator", ctxkeys.AgentNameFromContext(submitter.ctx))
+	assert.Equal(t, []string{"fs_read"}, ctxkeys.DynamicAllowedToolsFromContext(submitter.ctx))
+}
+```
+
+Update the imports in `internal/agentrt/control_tools.go` and `internal/agentrt/control_tools_test.go` to include `internal/background` and any newly referenced packages.
+
+- [ ] **Step 5: Wire app module dependencies**
+
+Add this read-only helper to `internal/toolcatalog/catalog.go`:
+
+```go
+func (c *Catalog) ToolSafetyLevel(name string) agent.SafetyLevel {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	entry, ok := c.tools[name]
+	if !ok || entry.Tool == nil {
+		return agent.SafetyLevelDangerous
+	}
+	return entry.Tool.SafetyLevel
+}
+```
+
+Add this test to `internal/toolcatalog/catalog_test.go`:
+
+```go
+func TestCatalog_ToolSafetyLevel(t *testing.T) {
+	c := New()
+	c.RegisterCategory(Category{Name: "exec"})
+	c.Register("exec", []*agent.Tool{{Name: "exec", SafetyLevel: agent.SafetyLevelModerate}})
+
+	assert.Equal(t, agent.SafetyLevelModerate, c.ToolSafetyLevel("exec"))
+	assert.Equal(t, agent.SafetyLevelDangerous, c.ToolSafetyLevel("missing"))
+}
+```
+
+Modify `internal/app/modules.go` where the control plane is built:
+
+```go
+capabilityRuntime := agentrt.NewCapabilityRuntime(agentRunStore, agentrt.CapabilityPolicy{}, func(toolName string) agent.SafetyLevel {
+	return catalog.ToolSafetyLevel(toolName)
+})
+controlPlane := &agentrt.AgentControlPlane{
+	RunStore:          agentRunStore,
+	Projection:        agentRunProjection,
+	Submitter:         bg,
+	CapabilityRuntime: capabilityRuntime,
+}
+```
+
+- [ ] **Step 6: Run wiring tests**
+
+Run:
+
+```bash
+go test ./internal/agentrt -run 'Test(CapabilityRuntime|AgentSpawn_SubmitsWithTeammateRuntimeContext)' -count=1
+go test ./internal/toolcatalog -run TestCatalog_ToolSafetyLevel -count=1
+```
+
+Expected: PASS.
+
+- [ ] **Step 7: Record suggested commit capability wiring**
+
+Suggested user-run commands after review:
+
+```bash
+git add internal/agentrt/capability_runtime.go internal/agentrt/capability_runtime_test.go internal/agentrt/capability_policy.go internal/agentrt/capability_policy_test.go internal/agentrt/control_tools.go internal/agentrt/control_tools_test.go internal/app/modules.go internal/toolcatalog/catalog.go internal/toolcatalog/catalog_test.go
+git commit -m "feat: wire teammate capability projection"
+```
+
+Expected: user can run the suggested commit after review with capability runtime wiring files.
+
+## Task 7: agent_wait Projected State Response
 
 **Files:**
 - Modify: `internal/agentrt/control_tools.go`
@@ -1175,8 +1663,12 @@ func agentRunResponse(run *AgentRun) map[string]interface{} {
 	resp := map[string]interface{}{
 		"agent_id": run.ID,
 		"status":   string(run.Status),
-		"result":   run.Result,
-		"error":    run.Error,
+	}
+	if run.Result != "" {
+		resp["result"] = run.Result
+	}
+	if run.Error != "" {
+		resp["error"] = run.Error
 	}
 	if run.RuntimeCondition != AgentRunConditionNone {
 		resp["condition"] = string(run.RuntimeCondition)
@@ -1221,18 +1713,18 @@ go test ./internal/agentrt -count=1
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit wait projection response**
+- [ ] **Step 5: Record suggested commit wait projection response**
 
-Run:
+Suggested user-run commands after review:
 
 ```bash
 git add internal/agentrt/control_tools.go internal/agentrt/control_tools_test.go
 git commit -m "feat: surface teammate run projection in wait"
 ```
 
-Expected: commit succeeds with control tool files.
+Expected: user can run the suggested commit after review with control tool files.
 
-## Task 7: Prompt Compatibility Rule
+## Task 8: Prompt Compatibility Rule
 
 **Files:**
 - Modify: `internal/orchestration/tools.go`
@@ -1281,7 +1773,7 @@ Modify `internal/orchestration/tools.go` inside `buildOrchestratorInstruction` a
 Also replace the old hard statement:
 
 ```go
-	b.WriteString("You do NOT have tools. You MUST delegate all tool-requiring tasks to the best-matching sub-agent using transfer_to_agent.\n")
+	b.WriteString("You do NOT have tools. You MUST delegate all tool-requiring tasks to the appropriate sub-agent using transfer_to_agent.\n")
 ```
 
 with:
@@ -1298,7 +1790,46 @@ Run:
 go test ./internal/orchestration -count=1
 ```
 
-Expected: Existing tests that assert tool-less orchestrator wording may fail. Update those tests in the same file to assert the new dynamic teammate wording and preserve `transfer_to_agent` compatibility assertions where the fallback remains intentional.
+Expected: `TestBuildOrchestratorInstruction_DelegateOnly`, `TestBuildOrchestratorInstruction_HasAssessStep`, `TestBuildOrchestratorInstruction_HasReRoutingProtocol`, or `TestBuildOrchestratorInstruction_DelegationRulesOrder` may fail if their old assertions assume a tool-less, transfer-only orchestrator.
+
+Apply these assertion updates in `internal/orchestration/orchestrator_test.go`:
+
+```go
+func TestBuildOrchestratorInstruction_DelegateOnly(t *testing.T) {
+	got := buildOrchestratorInstruction("base", nil, 5, nil)
+
+	assert.Contains(t, got, "You coordinate work, answer directly when no teammate is needed")
+	assert.Contains(t, got, "Use agent_spawn for new dynamic teammate work.")
+	assert.NotContains(t, got, "You do NOT have tools")
+	// Output Awareness section replaces the old Diagnostics section.
+	assert.Contains(t, got, "Output Awareness")
+	assert.NotContains(t, got, "builtin_health")
+}
+```
+
+In `TestBuildOrchestratorInstruction_HasAssessStep`, keep the direct-answer and no-function-call guard assertions unchanged. Add:
+
+```go
+assert.Contains(t, got, "Use agent_spawn for new dynamic teammate work.")
+```
+
+In `TestBuildOrchestratorInstruction_HasReRoutingProtocol`, keep the re-routing assertions unchanged and add:
+
+```go
+assert.Contains(t, got, "Use transfer_to_agent only for legacy ADK static sub-agent fallback")
+```
+
+In `TestBuildOrchestratorInstruction_DelegationRulesOrder`, replace the old delegation search:
+
+```go
+delegateIdx := strings.Index(got, "delegate to the sub-agent")
+```
+
+with:
+
+```go
+delegateIdx := strings.Index(got, "Use agent_spawn for new dynamic teammate work.")
+```
 
 - [ ] **Step 5: Run orchestration tests again**
 
@@ -1310,18 +1841,18 @@ go test ./internal/orchestration -count=1
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit prompt guidance**
+- [ ] **Step 6: Record suggested commit prompt guidance**
 
-Run:
+Suggested user-run commands after review:
 
 ```bash
 git add internal/orchestration/tools.go internal/orchestration/orchestrator_test.go
 git commit -m "feat: guide dynamic teammate routing"
 ```
 
-Expected: commit succeeds with orchestration prompt files.
+Expected: user can run the suggested commit after review with orchestration prompt files.
 
-## Task 8: CLI Status And Public Docs
+## Task 9: CLI Status And Public Docs
 
 **Files:**
 - Modify: `internal/cli/agent/status.go`
@@ -1350,7 +1881,7 @@ import (
 
 func TestStatusCmd_JSONIncludesTeammateRuntime(t *testing.T) {
 	cmd := newStatusCmd(func() (*config.Config, error) {
-		cfg := config.Default()
+		cfg := config.DefaultConfig()
 		cfg.Agent.MultiAgent = true
 		cfg.Agent.Provider = "test-provider"
 		cfg.Agent.Model = "test-model"
@@ -1466,21 +1997,21 @@ go test ./internal/cli/agent ./internal/agentrt ./internal/toolchain ./internal/
 
 Expected: PASS.
 
-- [ ] **Step 8: Commit CLI and docs**
+- [ ] **Step 8: Record suggested commit CLI and docs**
 
-Run:
+Suggested user-run commands after review:
 
 ```bash
 git add internal/cli/agent/status.go internal/cli/agent/status_test.go docs/features/multi-agent.md openspec/changes/production-teammate-runtime/tasks.md
 git commit -m "docs: describe dynamic teammate runtime v1"
 ```
 
-Expected: commit succeeds with CLI status, docs, and task checklist changes.
+Expected: user can run the suggested commit after review with CLI status, docs, and task checklist changes.
 
-## Task 9: Full Verification, OpenSpec Sync, Archive
+## Task 10: Full Verification And OpenSpec Archive
 
 **Files:**
-- Modify: `openspec/specs/*` through OpenSpec sync
+- Modify: `openspec/specs/*` through OpenSpec archive
 - Move: `openspec/changes/production-teammate-runtime` to archive through OpenSpec archive
 
 - [ ] **Step 1: Run focused package tests**
@@ -1530,49 +2061,50 @@ Invoke `superpowers:verification-before-completion` and `.codex/skills/openspec-
 
 Expected: verification reports no critical issues. Any warning with a missing test or spec mismatch is fixed before continuing.
 
-- [ ] **Step 6: Sync specs**
+- [ ] **Step 6: Archive change and update main specs**
 
 Run:
 
 ```bash
-openspec sync production-teammate-runtime
+openspec archive -y production-teammate-runtime
 ```
 
-Expected: affected main specs under `openspec/specs/` update with the approved delta requirements.
+Expected: affected main specs under `openspec/specs/` update with the approved delta requirements, and the change moves to `openspec/changes/archive/<date>-production-teammate-runtime/`.
 
-- [ ] **Step 7: Archive change**
+- [ ] **Step 7: Verify archived OpenSpec state**
 
 Run:
 
 ```bash
-openspec archive production-teammate-runtime
+openspec list
+openspec validate --all
 ```
 
-Expected: change moves to `openspec/changes/archive/<date>-production-teammate-runtime/`.
+Expected: the active change is gone, archived specs validate, and no `production-teammate-runtime` active change remains.
 
-- [ ] **Step 8: Commit sync and archive**
+- [ ] **Step 8: Record suggested commit archive**
 
-Run:
+Suggested user-run commands after review:
 
 ```bash
 git add openspec
 git commit -m "spec: archive production teammate runtime"
 ```
 
-Expected: commit succeeds with only OpenSpec sync/archive changes.
+Expected: user can run the suggested commit after review with only OpenSpec archive and main-spec changes.
 
 ## Self-Review
 
 ### Spec Coverage
 
-- Dynamic teammate run creation under `agent.multiAgent=true`: Task 1, Task 3, Task 7.
-- Main-agent direct answer and spawn decision protocol: Task 1, Task 7.
-- Spawn reason audit/projection: Task 2, Task 3, Task 8.
+- Dynamic teammate run creation under `agent.multiAgent=true`: Task 1, Task 3, Task 6, Task 8.
+- Main-agent direct answer and spawn decision protocol: Task 1, Task 8.
+- Spawn reason audit/projection: Task 2, Task 3, Task 9.
 - Role maximum scope plus spawn-time `AllowedTools`: Task 3.
 - Capability request and policy-first approval: Task 4, Task 5, Task 6.
 - ChildSession isolation: preserved by design and OpenSpec scope; no new code in this plan changes the existing ChildSession primitive.
 - RunLedger/background projection: preserved by Task 2; this v1 plan does not add durable RunLedger columns.
-- CLI/TUI inspection: Task 8 covers CLI status; cockpit projection is deferred until runtime exposes a stable shared read model.
+- CLI inspection: Task 9 covers CLI status. Cockpit/TUI projection is explicitly out of this v1 plan and requires a follow-up plan once the runtime exposes a stable shared read model.
 - Recovery behavior: Task 2 adds projection fields; existing `RecoveryPolicy` remains the recovery authority.
 - Worker process/sandbox: excluded by scope.
 
@@ -1583,7 +2115,8 @@ The plan was scanned for banned marker patterns and vague test instructions; non
 ### Type Consistency
 
 - `AgentRunConditionBlockedWaitingApproval` is defined in Task 2 and reused in Tasks 2 and 6.
-- `RunProjectionPatch` is defined in Task 2 and used only through `AgentRunStore.UpdateProjection`.
+- `RunProjectionPatch` is defined in Task 2 and used through `AgentRunStore.UpdateProjection` in Tasks 2 and 6.
 - `SpawnReason` is added to `AgentRun` in Task 2 and used by `agent_spawn` in Task 3.
-- `BlockedToolCall` and `WithBlockedToolCallSink` are defined in Task 4 and used only by `WithHooks`.
-- `CapabilityPolicy`, `CapabilityRequest`, and `CapabilityDecisionKind` are defined in Task 5 and are not referenced before definition.
+- `BlockedToolCall` and `WithBlockedToolCallSink` are defined in Task 4, emitted by `WithHooks`, and consumed by `CapabilityRuntime` in Task 6.
+- `CapabilityPolicy`, `CapabilityRequest`, and `CapabilityDecisionKind` are defined in Task 5 and first consumed by `CapabilityRuntime` in Task 6.
+- `ToolSafetyLevel` is added to `toolcatalog.Catalog` in Task 6 before `internal/app/modules.go` wires the lookup into `CapabilityRuntime`.
