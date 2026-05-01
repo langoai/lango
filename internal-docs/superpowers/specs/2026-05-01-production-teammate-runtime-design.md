@@ -1,7 +1,7 @@
 # Production Teammate Runtime Design
 
 Date: 2026-05-01
-Revision: 3
+Revision: 4
 
 ## Purpose
 
@@ -25,6 +25,8 @@ The repository already has several pieces of the target runtime:
 - `internal/session/child.go` defines `ChildSession` and `ChildSessionStore`.
 - `openspec/specs/sub-session-isolation/spec.md` defines isolated child-session behavior, summary-only merge, and raw child history isolation.
 - `openspec/specs/run-ledger/spec.md` defines RunLedger as the Task OS durable execution engine.
+- `openspec/specs/tool-execution-hooks/spec.md` defines pre-hook blocking and block reasons.
+- `openspec/specs/tool-capability-layer/spec.md` defines DynamicAllowedTools behavior and runtime essentials.
 - `internal/cli/cockpit` and `internal/cli/agent` expose runtime, task, status, trace, graph, and agent inspection surfaces.
 - `openspec/specs/multi-agent-orchestration/spec.md` currently defines the static tool-less orchestrator/sub-agent model.
 - `docs/features/multi-agent.md` documents the current hierarchical model and role names.
@@ -121,7 +123,7 @@ The implementation should extend existing symbols first.
 | Teammate run ID | `AgentRun.ID`, `background.Task.ID`, RunLedger `run_id` | Keep and extend | Preserve the existing canonical ID unification. |
 | Teammate status | `AgentRunStatus`, `background.Status`, RunLedger snapshot status | Extend via fields/projection before adding many enum states | Avoid a premature 11-state enum unless producer/consumer wiring requires it. |
 | Teammate type | `AgentRun.RequestedAgent`, agent registry definitions | Extend/rename later | `RequestedAgent` can represent teammate type in v1. A later rename can follow after spec rewrite. |
-| Spawn instruction | `AgentRun.Instruction`, background prompt | Keep | Spawn reason is stored as a new `AgentRun.SpawnReason` projection field for operator views and emitted as trace/audit data. When RunLedger is enabled, the same reason is also recorded in the run journal. |
+| Spawn instruction | `AgentRun.Instruction`, background prompt | Keep | Spawn reason is carried on `AgentRun` for projection and emitted as trace/audit data. Durable versus derived storage is decided in Slice B. When RunLedger is enabled, the same reason is also recorded in the run journal. |
 | Tool subset | `AgentRun.AllowedTools`, DynamicAllowedTools context | Keep and enforce | Add role maximum scope validation before storing. |
 | Context isolation | `AgentRun.ChildSession`, `ChildSessionStore` | Keep and require | Every isolated teammate run should carry the child session key. |
 | In-process execution | `background.Manager`, `AgentRunProjection` | Keep | This is the v1 execution path. |
@@ -202,9 +204,16 @@ The flow is:
 
 This keeps the v1 LLM tool surface limited to `agent_spawn`, `agent_wait`, and `agent_stop` while still giving teammates a production path for requesting additional capability.
 
+Slice D must define two contract details before implementation:
+
+1. The approval-required decision matrix, using role maximum scope, tool safety level, existing session grants, always-allow grants, deny policy, and request argument risk.
+2. The structured wiring path from hook block metadata to capability policy. `WithHooks` currently converts `PreHookResult.BlockReason` into an error, so the teammate runtime must preserve tool name, agent/run identity, block reason, and original parameters before the block is reduced to plain text.
+
 ### Transfer-To-Agent Compatibility
 
 `transfer_to_agent` remains as a legacy ADK specialist fallback in v1 because current built-in prompts, tests, and A2A routing still depend on it. The dynamic teammate path should become the primary path for new multi-agent work, but `transfer_to_agent` removal requires a later compatibility change with prompt, registry, and test updates.
+
+The main-agent prompt must include a temporary v1 selection rule: new dynamic teammate work uses `agent_spawn`; `transfer_to_agent` is only for legacy ADK static sub-agent fallback, specialist re-routing, or existing remote A2A paths until a compatibility wave removes or narrows that surface.
 
 ### Operational Surfaces
 
@@ -288,7 +297,7 @@ The main agent's spawn decision must include a reason that is stored in audit or
 - Child session key when isolation is active.
 - Audit correlation ID or trace ID.
 
-The spawn path validates role maximum scope and budget before registering the ID with `AgentRunProjection` and submitting the in-process background task. `SpawnReason` is also stored on `AgentRun` for projection, emitted into trace/eventbus audit events, and mirrored into RunLedger journal events when RunLedger is enabled.
+The spawn path validates role maximum scope and budget before registering the ID with `AgentRunProjection` and submitting the in-process background task. `SpawnReason` is carried through the `AgentRun` projection path, emitted into trace/eventbus audit events, and mirrored into RunLedger journal events when RunLedger is enabled.
 
 ### Work And Report Flow
 
@@ -308,6 +317,8 @@ Teammate results should preserve:
 When a teammate needs a tool outside its current allowed subset but inside role maximum scope, the runtime emits a capability request from the blocked tool attempt. Teammates do not receive a new model-facing capability request tool in v1.
 
 The policy layer evaluates the request. If allowed, a grant event updates the run's effective permissions. If user approval is required, the projected condition becomes `blocked_waiting_approval`. If denied or outside role scope, the teammate receives a structured denial and can reroute, summarize partial work, or escalate to the main agent.
+
+While a run is projected as `blocked_waiting_approval`, its base status remains non-terminal. In v1, `agent_wait` timeout continues to count wall-clock polling time and returns `timeout: true` without cancelling the run. Approval timeout, blocked-time recovery, and background task timeout are separate policies; they must be visible in projection so a user does not confuse an `agent_wait` timeout with teammate cancellation.
 
 ### Completion And Recovery Flow
 
@@ -392,11 +403,11 @@ Extend `AgentRun`, `AgentRunProjection`, and the existing `agent_*` tools as nee
 
 ### Slice C: Main-Agent Prompt And Dynamic Spawn Policy
 
-Update the main-agent multi-agent prompt so `agent.multiAgent=true` means coordinator-capable main agent plus dynamic teammate spawning. Ensure spawn decisions include a recorded reason and respect role maximum scope.
+Update the main-agent multi-agent prompt so `agent.multiAgent=true` means coordinator-capable main agent plus dynamic teammate spawning. Ensure spawn decisions include a recorded reason and respect role maximum scope. The prompt must define the temporary v1 selection rule between `agent_spawn` and `transfer_to_agent`: use `agent_spawn` for dynamic teammate work, and reserve `transfer_to_agent` for legacy ADK static sub-agent fallback, specialist re-routing, or existing remote A2A paths.
 
 ### Slice D: Capability Escalation And Approval
 
-Implement runtime-emitted capability requests from blocked `DynamicAllowedTools` attempts, policy evaluation, approval integration, grant audit events, and blocked approval projection.
+Implement runtime-emitted capability requests from blocked `DynamicAllowedTools` attempts, policy evaluation, approval integration, grant audit events, and blocked approval projection. This slice must define the approval-required decision matrix and the hook `BlockReason` to capability-policy wiring path before implementation changes the runtime contract.
 
 ### Slice E: Operator Projection
 
@@ -418,6 +429,8 @@ Secondary impacted specs:
 - `agent-runtime`
 - `sub-session-isolation`
 - `run-ledger`
+- `tool-execution-hooks`
+- `tool-capability-layer`
 - `agent-turn-tracing`
 - `approval-flow`
 - `approval-policy`
@@ -450,3 +463,5 @@ Documentation must describe the new dynamic teammate runtime without claiming wo
 13. Any new durable run-state column ships with reversible migration requirements.
 14. Capability escalation in v1 is emitted by runtime interception of blocked tool attempts, not by adding a new model-facing capability request tool.
 15. Remote A2A agents keep existing v1 routing behavior; dynamic teammate-provider integration for remotes is deferred.
+16. `agent_wait` timeout during `blocked_waiting_approval` returns a non-terminal timeout response without cancelling the run.
+17. Capability escalation wiring preserves structured hook block metadata before converting blocked tool calls into user-facing errors.
