@@ -46,8 +46,6 @@ This plan intentionally covers one production slice: in-process dynamic teammate
 - Modify `internal/toolchain/mw_hooks_test.go`: verify blocked metadata includes tool, agent, session, params, and block reason.
 - Modify `internal/orchestration/tools.go`: add temporary v1 selection rule for `agent_spawn` versus `transfer_to_agent`.
 - Modify `internal/orchestration/orchestrator_test.go`: lock prompt guidance.
-- Modify `internal/toolcatalog/catalog.go`: expose read-only tool safety lookup for capability policy.
-- Modify `internal/toolcatalog/catalog_test.go`: cover tool safety lookup fallback.
 - Modify `internal/app/modules.go`: wire background submitter and capability runtime into the agent control plane.
 - Modify `internal/cli/agent/status.go`: expose teammate runtime mode details.
 - Modify `docs/features/multi-agent.md`: document current v1 dynamic teammate behavior accurately after code changes.
@@ -258,6 +256,7 @@ The `agent_spawn` tool SHALL accept optional `spawn_reason` and `allowed_tools` 
 - **WHEN** `agent_spawn` creates an operator teammate with `allowed_tools: ["fs_read"]`
 - **THEN** the background submitter SHALL receive a context carrying agent name `operator`
 - **AND** the same context SHALL carry DynamicAllowedTools `["fs_read"]`
+- **AND** the background origin session SHALL preserve the parent session key rather than replacing it with the child AgentRun ID
 - **AND** blocked DynamicAllowedTools attempts in that context SHALL update the matching AgentRun projection
 
 ### Requirement: agent_wait polls AgentRunStore until terminal status
@@ -308,6 +307,13 @@ When `AgentAccessControlHook` blocks a teammate tool call with reason `tool rest
 - **WHEN** the teammate attempts `exec`
 - **THEN** the runtime SHALL deny the request
 - **AND** no approval request SHALL be surfaced
+
+#### Scenario: Approved capability extends dynamic allowlist
+- **GIVEN** an operator teammate has DynamicAllowedTools `["fs_read"]`
+- **AND** the teammate requests dangerous tool `exec`
+- **WHEN** the user or policy approves the capability request
+- **THEN** the runtime SHALL append `exec` to the run's `AllowedTools` once
+- **AND** the next teammate context built for that run SHALL include `exec` in DynamicAllowedTools
 ```
 
 - [ ] **Step 11: Write `cli-agent-inspection` delta spec**
@@ -421,6 +427,22 @@ func TestAgentRunStore_UpdateProjection(t *testing.T) {
 	assert.Equal(t, "grant-456", got.GrantRequestID)
 }
 
+func TestAgentRunStore_UpdateProjectionAddsAllowedToolOnce(t *testing.T) {
+	store := NewInMemoryAgentRunStore()
+	require.NoError(t, store.Create(&AgentRun{
+		ID:           "arun-grant",
+		Status:       AgentRunRunning,
+		AllowedTools: []string{"fs_read"},
+	}))
+
+	require.NoError(t, store.UpdateProjection("arun-grant", RunProjectionPatch{AddAllowedTool: "exec"}))
+	require.NoError(t, store.UpdateProjection("arun-grant", RunProjectionPatch{AddAllowedTool: "exec"}))
+
+	got, err := store.Get("arun-grant")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"fs_read", "exec"}, got.AllowedTools)
+}
+
 func TestAgentRunStore_UpdateProjectionRejectsTerminalRun(t *testing.T) {
 	store := NewInMemoryAgentRunStore()
 	require.NoError(t, store.Create(&AgentRun{
@@ -488,6 +510,7 @@ type RunProjectionPatch struct {
 	GrantRequestID   string
 	WaitingOnRunID   string
 	RecoveryState    string
+	AddAllowedTool   string
 }
 ```
 
@@ -517,7 +540,19 @@ func (s *InMemoryAgentRunStore) UpdateProjection(id string, patch RunProjectionP
 	run.GrantRequestID = patch.GrantRequestID
 	run.WaitingOnRunID = patch.WaitingOnRunID
 	run.RecoveryState = patch.RecoveryState
+	if patch.AddAllowedTool != "" && !stringSliceContains(run.AllowedTools, patch.AddAllowedTool) {
+		run.AllowedTools = append(run.AllowedTools, patch.AddAllowedTool)
+	}
 	return nil
+}
+
+func stringSliceContains(values []string, needle string) bool {
+	for _, value := range values {
+		if value == needle {
+			return true
+		}
+	}
+	return false
 }
 ```
 
@@ -1079,6 +1114,13 @@ func TestCapabilityPolicy_AllowsSafeToolInsideRoleScope(t *testing.T) {
 	assert.Equal(t, CapabilityDecisionAllow, decision.Kind)
 	assert.Equal(t, "safe tool inside role maximum scope", decision.Reason)
 }
+
+func TestCapabilityPolicy_GrantInitializesActiveGrantMap(t *testing.T) {
+	policy := CapabilityPolicy{}
+	policy.Grant("arun-5", "exec")
+
+	assert.True(t, policy.ActiveGrants["arun-5"]["exec"])
+}
 ```
 
 - [ ] **Step 2: Run tests and verify failure**
@@ -1158,6 +1200,16 @@ func (p CapabilityPolicy) hasGrant(runID, toolName string) bool {
 	return grants[toolName]
 }
 
+func (p *CapabilityPolicy) Grant(runID, toolName string) {
+	if p.ActiveGrants == nil {
+		p.ActiveGrants = make(map[string]map[string]bool)
+	}
+	if p.ActiveGrants[runID] == nil {
+		p.ActiveGrants[runID] = make(map[string]bool)
+	}
+	p.ActiveGrants[runID][toolName] = true
+}
+
 func teammateAllowsTool(teammateType, toolName string) bool {
 	types := BuiltinTeammateTypes()
 	tt, ok := types[teammateType]
@@ -1194,13 +1246,9 @@ Expected: user can run the suggested commit after review with capability policy 
 **Files:**
 - Create: `internal/agentrt/capability_runtime.go`
 - Create: `internal/agentrt/capability_runtime_test.go`
-- Modify: `internal/agentrt/capability_policy.go`
-- Modify: `internal/agentrt/capability_policy_test.go`
 - Modify: `internal/agentrt/control_tools.go`
 - Modify: `internal/agentrt/control_tools_test.go`
 - Modify: `internal/app/modules.go`
-- Modify: `internal/toolcatalog/catalog.go`
-- Modify: `internal/toolcatalog/catalog_test.go`
 
 - [ ] **Step 1: Write failing wiring tests**
 
@@ -1217,6 +1265,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/langoai/lango/internal/agent"
+	"github.com/langoai/lango/internal/ctxkeys"
 	"github.com/langoai/lango/internal/toolchain"
 )
 
@@ -1229,7 +1278,7 @@ func TestCapabilityRuntime_BlockedDynamicAllowedToolsUpdatesProjection(t *testin
 		AllowedTools:   []string{"fs_read"},
 	}))
 
-	runtime := NewCapabilityRuntime(store, CapabilityPolicy{}, func(toolName string) agent.SafetyLevel {
+	runtime := NewCapabilityRuntime(store, &CapabilityPolicy{}, func(toolName string) agent.SafetyLevel {
 		assert.Equal(t, "exec", toolName)
 		return agent.SafetyLevelDangerous
 	})
@@ -1260,7 +1309,7 @@ func TestCapabilityRuntime_OutsideScopeDenialDoesNotRequestApproval(t *testing.T
 		AllowedTools:   []string{"agent_wait"},
 	}))
 
-	runtime := NewCapabilityRuntime(store, CapabilityPolicy{}, func(string) agent.SafetyLevel {
+	runtime := NewCapabilityRuntime(store, &CapabilityPolicy{}, func(string) agent.SafetyLevel {
 		return agent.SafetyLevelDangerous
 	})
 
@@ -1290,7 +1339,7 @@ func TestCapabilityRuntime_ApplyGrantClearsBlockedProjection(t *testing.T) {
 		GrantRequestID:   "grant-arun-grant-exec",
 	}))
 
-	runtime := NewCapabilityRuntime(store, CapabilityPolicy{}, func(string) agent.SafetyLevel {
+	runtime := NewCapabilityRuntime(store, &CapabilityPolicy{}, func(string) agent.SafetyLevel {
 		return agent.SafetyLevelDangerous
 	})
 
@@ -1302,6 +1351,10 @@ func TestCapabilityRuntime_ApplyGrantClearsBlockedProjection(t *testing.T) {
 	assert.Equal(t, AgentRunConditionNone, run.RuntimeCondition)
 	assert.Empty(t, run.BlockedReason)
 	assert.Empty(t, run.GrantRequestID)
+	assert.Equal(t, []string{"fs_read", "exec"}, run.AllowedTools)
+
+	ctx := runtime.ContextForRun(context.Background(), run)
+	assert.Equal(t, []string{"fs_read", "exec"}, ctxkeys.DynamicAllowedToolsFromContext(ctx))
 }
 
 func TestCapabilityRuntime_ContextForRunWiresBlockedHookToProjection(t *testing.T) {
@@ -1315,7 +1368,7 @@ func TestCapabilityRuntime_ContextForRunWiresBlockedHookToProjection(t *testing.
 	run, err := store.Get("arun-context")
 	require.NoError(t, err)
 
-	runtime := NewCapabilityRuntime(store, CapabilityPolicy{}, func(toolName string) agent.SafetyLevel {
+	runtime := NewCapabilityRuntime(store, &CapabilityPolicy{}, func(toolName string) agent.SafetyLevel {
 		assert.Equal(t, "exec", toolName)
 		return agent.SafetyLevelDangerous
 	})
@@ -1374,11 +1427,14 @@ type ToolSafetyLookup func(toolName string) agent.SafetyLevel
 
 type CapabilityRuntime struct {
 	Store      AgentRunStore
-	Policy     CapabilityPolicy
+	Policy     *CapabilityPolicy
 	ToolSafety ToolSafetyLookup
 }
 
-func NewCapabilityRuntime(store AgentRunStore, policy CapabilityPolicy, lookup ToolSafetyLookup) *CapabilityRuntime {
+func NewCapabilityRuntime(store AgentRunStore, policy *CapabilityPolicy, lookup ToolSafetyLookup) *CapabilityRuntime {
+	if policy == nil {
+		policy = &CapabilityPolicy{}
+	}
 	if policy.ActiveGrants == nil {
 		policy.ActiveGrants = make(map[string]map[string]bool)
 	}
@@ -1440,14 +1496,8 @@ func (r *CapabilityRuntime) HandleBlockedToolCall(runID string, call toolchain.B
 }
 
 func (r *CapabilityRuntime) ApplyGrant(runID, toolName string) error {
-	if r.Policy.ActiveGrants == nil {
-		r.Policy.ActiveGrants = make(map[string]map[string]bool)
-	}
-	if r.Policy.ActiveGrants[runID] == nil {
-		r.Policy.ActiveGrants[runID] = make(map[string]bool)
-	}
-	r.Policy.ActiveGrants[runID][toolName] = true
-	return r.Store.UpdateProjection(runID, RunProjectionPatch{})
+	r.Policy.Grant(runID, toolName)
+	return r.Store.UpdateProjection(runID, RunProjectionPatch{AddAllowedTool: toolName})
 }
 ```
 
@@ -1476,9 +1526,10 @@ After `cp.Projection.RegisterPending(agentID)`, submit the child run when a subm
 				if cp.CapabilityRuntime != nil {
 					childCtx = cp.CapabilityRuntime.ContextForRun(ctx, run)
 				}
+				parentSession := session.SessionKeyFromContext(ctx)
 				if _, err := cp.Submitter.Submit(childCtx, enrichedInstruction, background.Origin{
 					Channel: "agent_control",
-					Session: agentID,
+					Session: parentSession,
 				}); err != nil {
 					_ = cp.RunStore.UpdateStatus(agentID, AgentRunFailed, "", err.Error())
 					return nil, fmt.Errorf("agent spawn submit: %w", err)
@@ -1505,7 +1556,7 @@ func (s *recordingAgentRunSubmitter) Submit(ctx context.Context, prompt string, 
 func TestAgentSpawn_SubmitsWithTeammateRuntimeContext(t *testing.T) {
 	store := NewInMemoryAgentRunStore()
 	submitter := &recordingAgentRunSubmitter{}
-	runtime := NewCapabilityRuntime(store, CapabilityPolicy{}, func(string) agent.SafetyLevel {
+	runtime := NewCapabilityRuntime(store, &CapabilityPolicy{}, func(string) agent.SafetyLevel {
 		return agent.SafetyLevelDangerous
 	})
 	cp := &AgentControlPlane{
@@ -1517,7 +1568,8 @@ func TestAgentSpawn_SubmitsWithTeammateRuntimeContext(t *testing.T) {
 	tools := BuildControlTools(cp)
 	spawnTool := findControlTool(t, tools, "agent_spawn")
 
-	result, err := spawnTool.call(context.Background(), map[string]interface{}{
+	ctx := session.WithSessionKey(context.Background(), "sess-parent")
+	result, err := spawnTool.call(ctx, map[string]interface{}{
 		"instruction":   "inspect files",
 		"agent":         "operator",
 		"allowed_tools": []interface{}{"fs_read"},
@@ -1525,7 +1577,8 @@ func TestAgentSpawn_SubmitsWithTeammateRuntimeContext(t *testing.T) {
 	require.NoError(t, err)
 
 	m := result.(map[string]interface{})
-	assert.Equal(t, m["agent_id"], submitter.origin.Session)
+	assert.NotEmpty(t, m["agent_id"])
+	assert.Equal(t, "sess-parent", submitter.origin.Session)
 	assert.Equal(t, "agent_control", submitter.origin.Channel)
 	assert.Contains(t, submitter.prompt, "inspect files")
 	assert.Equal(t, "operator", ctxkeys.AgentNameFromContext(submitter.ctx))
@@ -1533,42 +1586,29 @@ func TestAgentSpawn_SubmitsWithTeammateRuntimeContext(t *testing.T) {
 }
 ```
 
-Update the imports in `internal/agentrt/control_tools.go` and `internal/agentrt/control_tools_test.go` to include `internal/background` and any newly referenced packages.
+Update imports explicitly:
 
-- [ ] **Step 5: Wire app module dependencies**
+- `internal/agentrt/control_tools.go`: add `github.com/langoai/lango/internal/background` and `github.com/langoai/lango/internal/session`.
+- `internal/agentrt/control_tools_test.go`: add `github.com/langoai/lango/internal/background` and `github.com/langoai/lango/internal/session`; `ctxkeys` is already imported in the existing file.
 
-Add this read-only helper to `internal/toolcatalog/catalog.go`:
+- [ ] **Step 5: Locate existing app wiring symbols**
 
-```go
-func (c *Catalog) ToolSafetyLevel(name string) agent.SafetyLevel {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	entry, ok := c.tools[name]
-	if !ok || entry.Tool == nil {
-		return agent.SafetyLevelDangerous
-	}
-	return entry.Tool.SafetyLevel
-}
+Run:
+
+```bash
+rg -n 'agentRunStore|agentRunProjection|controlPlane|bg :=|catalog\.|GetToolSafetyLevel|background\.NewManager' internal/app/modules.go internal/toolcatalog/catalog.go
 ```
 
-Add this test to `internal/toolcatalog/catalog_test.go`:
+Expected: `internal/app/modules.go` shows `bg`, `agentRunStore`, `agentRunProjection`, and `controlPlane`; `internal/toolcatalog/catalog.go` shows existing `GetToolSafetyLevel(name) (agent.SafetyLevel, bool)`. If any symbol differs, update the next code block to use the actual names before editing.
 
-```go
-func TestCatalog_ToolSafetyLevel(t *testing.T) {
-	c := New()
-	c.RegisterCategory(Category{Name: "exec"})
-	c.Register("exec", []*agent.Tool{{Name: "exec", SafetyLevel: agent.SafetyLevelModerate}})
-
-	assert.Equal(t, agent.SafetyLevelModerate, c.ToolSafetyLevel("exec"))
-	assert.Equal(t, agent.SafetyLevelDangerous, c.ToolSafetyLevel("missing"))
-}
-```
+- [ ] **Step 6: Wire app module dependencies**
 
 Modify `internal/app/modules.go` where the control plane is built:
 
 ```go
-capabilityRuntime := agentrt.NewCapabilityRuntime(agentRunStore, agentrt.CapabilityPolicy{}, func(toolName string) agent.SafetyLevel {
-	return catalog.ToolSafetyLevel(toolName)
+capabilityRuntime := agentrt.NewCapabilityRuntime(agentRunStore, &agentrt.CapabilityPolicy{}, func(toolName string) agent.SafetyLevel {
+	level, _ := catalog.GetToolSafetyLevel(toolName)
+	return level
 })
 controlPlane := &agentrt.AgentControlPlane{
 	RunStore:          agentRunStore,
@@ -1578,23 +1618,33 @@ controlPlane := &agentrt.AgentControlPlane{
 }
 ```
 
-- [ ] **Step 6: Run wiring tests**
+- [ ] **Step 7: Verify import boundary before running tests**
+
+Run:
+
+```bash
+go list -f '{{.Imports}}' ./internal/agentrt
+go list -f '{{.Imports}}' ./internal/toolchain
+```
+
+Expected: `internal/agentrt` may import `internal/toolchain` after this task, but `internal/toolchain` must not import `internal/agentrt`. If both directions appear, stop and split the shared `BlockedToolCall` contract into a lower-level package before continuing.
+
+- [ ] **Step 8: Run wiring tests**
 
 Run:
 
 ```bash
 go test ./internal/agentrt -run 'Test(CapabilityRuntime|AgentSpawn_SubmitsWithTeammateRuntimeContext)' -count=1
-go test ./internal/toolcatalog -run TestCatalog_ToolSafetyLevel -count=1
 ```
 
 Expected: PASS.
 
-- [ ] **Step 7: Record suggested commit capability wiring**
+- [ ] **Step 9: Record suggested commit capability wiring**
 
 Suggested user-run commands after review:
 
 ```bash
-git add internal/agentrt/capability_runtime.go internal/agentrt/capability_runtime_test.go internal/agentrt/capability_policy.go internal/agentrt/capability_policy_test.go internal/agentrt/control_tools.go internal/agentrt/control_tools_test.go internal/app/modules.go internal/toolcatalog/catalog.go internal/toolcatalog/catalog_test.go
+git add internal/agentrt/capability_runtime.go internal/agentrt/capability_runtime_test.go internal/agentrt/control_tools.go internal/agentrt/control_tools_test.go internal/app/modules.go
 git commit -m "feat: wire teammate capability projection"
 ```
 
@@ -2050,10 +2100,10 @@ Run:
 
 ```bash
 openspec status --change production-teammate-runtime
-openspec instructions apply --change production-teammate-runtime --json
+openspec validate production-teammate-runtime --strict
 ```
 
-Expected: status shows all artifacts present, and apply instructions show no missing context files.
+Expected: status shows all artifacts present, and strict validation passes.
 
 - [ ] **Step 5: Use OpenSpec verify skill**
 
@@ -2119,4 +2169,4 @@ The plan was scanned for banned marker patterns and vague test instructions; non
 - `SpawnReason` is added to `AgentRun` in Task 2 and used by `agent_spawn` in Task 3.
 - `BlockedToolCall` and `WithBlockedToolCallSink` are defined in Task 4, emitted by `WithHooks`, and consumed by `CapabilityRuntime` in Task 6.
 - `CapabilityPolicy`, `CapabilityRequest`, and `CapabilityDecisionKind` are defined in Task 5 and first consumed by `CapabilityRuntime` in Task 6.
-- `ToolSafetyLevel` is added to `toolcatalog.Catalog` in Task 6 before `internal/app/modules.go` wires the lookup into `CapabilityRuntime`.
+- Existing `toolcatalog.Catalog.GetToolSafetyLevel` is verified in Task 6 before `internal/app/modules.go` wires the lookup into `CapabilityRuntime`.
