@@ -4,22 +4,19 @@ Agent Control Plane Tools provide the tool-level interface for agent lifecycle m
 ## Requirements
 ### Requirement: agent_spawn tool creates AgentRun with enriched prompt and advisory routing
 
-The existing `agent_spawn` response shape and basic ID semantics remain preserved unless explicitly changed by this requirement: it still creates an `AgentRun`, still returns the spawned run identifier, and still uses the pre-registered `AgentRun.ID` as the canonical control-plane ID. In addition, `agent_spawn` SHALL accept optional `spawn_reason` and `allowed_tools` fields alongside the existing instruction and advisory routing parameters. For built-in teammate types, `allowed_tools` SHALL be validated against the teammate role max scope before execution begins. The runtime SHALL store `spawn_reason` in the projected `AgentRun` state and, when a submitter is configured, SHALL submit the teammate prompt through the existing background manager using the pre-registered `AgentRun.ID`.
+The existing `agent_spawn` response shape and basic ID semantics remain preserved unless explicitly changed by this requirement. Advisory teammate routing SHALL now be carried by `RequestedAgent` metadata rather than by rewriting the stored `Instruction` with an advisory system prefix. The stored `Instruction` SHALL remain the raw user instruction text.
 
-#### Scenario: Spawn reason is stored in projection
-- **WHEN** `agent_spawn` is called with `spawn_reason: "need file-only helper for manifest audit"`
-- **THEN** the created `AgentRun` projection SHALL persist that spawn reason for later inspection
+Built-in teammate types SHALL still validate `allowed_tools` against their role maximum scope before execution begins. Custom or non-built-in teammate paths SHALL continue to accept spawn-time `allowed_tools`, but their effective runtime ceiling is defined by the current allowlist rather than a built-in role registry.
 
-#### Scenario: Allowed tools outside role scope are rejected
-- **WHEN** a built-in teammate is spawned with an `allowed_tools` entry outside its role max scope
-- **THEN** `agent_spawn` SHALL fail before background submission
-- **AND** no `AgentRun` SHALL transition into execution
+#### Scenario: Requested agent remains advisory metadata
+- **WHEN** `agent_spawn` is called with `agent: "researcher"`
+- **THEN** the created run SHALL persist `RequestedAgent: "researcher"`
+- **AND** no code-level enforcement SHALL guarantee routing to `"researcher"`
 
-#### Scenario: Spawn submits through existing in-process execution path
-- **WHEN** a submitter and projection are configured for spawned teammates
-- **THEN** the runtime SHALL register the pending `AgentRun.ID`
-- **AND** SHALL submit the teammate prompt through the existing background manager
-- **AND** SHALL preserve parent session linkage and the dynamic allowlist in the child execution context
+#### Scenario: Stored instruction remains raw
+- **WHEN** `agent_spawn` is called with `instruction: "fix the bug"` and `agent: "researcher"`
+- **THEN** the stored `Instruction` SHALL remain exactly `"fix the bug"`
+- **AND** the advisory routing signal SHALL be carried outside the raw instruction text
 
 ### Requirement: agent_wait polls AgentRunStore until terminal status
 
@@ -178,16 +175,13 @@ The system SHALL enforce per-agent tool restrictions at runtime using a `Dynamic
 - **THEN** it SHALL return nil (self-spawn check is skipped for empty spawner)
 
 ### Requirement: RequestedAgent routing is advisory via enriched prompt
-The `RequestedAgent` field on `AgentRun` SHALL be advisory only — it influences routing through an enriched system prompt prefix, not through code-level enforcement. The supervisor or orchestrator is free to route to any available agent regardless of the `RequestedAgent` value.
 
-#### Scenario: Enriched prompt contains advisory routing hint
-- **WHEN** `agent_spawn` is called with `agent: "researcher"`
-- **THEN** the stored `Instruction` SHALL contain the prefix `"[System: This task is best handled by the 'researcher' specialist.]"`
-- **AND** no code-level enforcement SHALL guarantee routing to `"researcher"`
+`RequestedAgent` SHALL remain advisory, but the advisory signal is now expressed through metadata and runtime context rather than through an enriched prompt prefix stored in `AgentRun.Instruction`.
 
-#### Scenario: No advisory routing without agent parameter
-- **WHEN** `agent_spawn` is called without an `agent` parameter
-- **THEN** the stored `Instruction` SHALL equal the raw instruction without any system prefix
+#### Scenario: No advisory prefix is stored in AgentRun instruction
+- **WHEN** `agent_spawn` is called with an `agent` parameter
+- **THEN** the stored `Instruction` SHALL NOT gain a synthetic `"[System: This task is best handled by ...]"` prefix
+- **AND** the runtime MAY still use `RequestedAgent` metadata for routing and teammate context
 
 ### Requirement: AgentRunStore provides lifecycle management with terminal status guards
 `AgentRunStore` SHALL provide `Create`, `Get`, `List`, `UpdateStatus`, and `Cancel` operations. `UpdateStatus` and `Cancel` SHALL reject updates to runs that are already in a terminal status (`completed`, `failed`, `cancelled`). `Cancel` SHALL invoke the run's `CancelFn` if set. `Get` SHALL return a copy of the run with `CancelFn` deliberately set to nil to prevent external cancellation through snapshots.

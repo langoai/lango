@@ -81,8 +81,7 @@ func TestAgentSpawn_WithAgent(t *testing.T) {
 
 	run, err := store.Get(m["agent_id"].(string))
 	require.NoError(t, err)
-	assert.Contains(t, run.Instruction, "[System: This task is best handled by the 'debugger' specialist.]")
-	assert.Contains(t, run.Instruction, "fix the bug")
+	assert.Equal(t, "fix the bug", run.Instruction)
 	assert.Equal(t, "debugger", run.RequestedAgent)
 }
 

@@ -62,15 +62,6 @@ func buildAgentSpawn(cp *AgentControlPlane) *agent.Tool {
 				return nil, err
 			}
 
-			// Build the enriched prompt when an agent specialist is requested.
-			enrichedInstruction := instruction
-			if requestedAgent != "" {
-				enrichedInstruction = fmt.Sprintf(
-					"[System: This task is best handled by the '%s' specialist.]\n\n%s",
-					requestedAgent, instruction,
-				)
-			}
-
 			agentID, err := generateAgentRunID()
 			if err != nil {
 				return nil, err
@@ -81,7 +72,7 @@ func buildAgentSpawn(cp *AgentControlPlane) *agent.Tool {
 			run := &AgentRun{
 				ID:             agentID,
 				RequestedAgent: requestedAgent,
-				Instruction:    enrichedInstruction,
+				Instruction:    instruction,
 				Status:         AgentRunSpawned,
 				SpawnDepth:     parentDepth + 1,
 				AllowedTools:   allowedTools,
@@ -105,7 +96,7 @@ func buildAgentSpawn(cp *AgentControlPlane) *agent.Tool {
 				}
 
 				parentSession := session.SessionKeyFromContext(ctx)
-				submittedID, err := cp.Submitter.Submit(childCtx, enrichedInstruction, background.Origin{
+				submittedID, err := cp.Submitter.Submit(childCtx, instruction, background.Origin{
 					Channel: "agent_control",
 					Session: parentSession,
 				})
