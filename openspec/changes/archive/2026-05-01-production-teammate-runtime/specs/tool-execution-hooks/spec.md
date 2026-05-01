@@ -12,3 +12,12 @@ The package SHALL provide a `WithHooks(registry)` middleware that preserves stru
 - **WHEN** a caller receives a blocked-tool error from the middleware chain
 - **THEN** the existing error contract SHALL remain intact for callers that only inspect the returned error
 - **AND** structured metadata SHALL still be available to capability policy consumers
+
+### Requirement: Shared pattern matching
+
+A `matchPattern()` helper SHALL be used by both block and observe paths to eliminate code duplication. It SHALL accept pre-lowered pattern slices and compound patterns.
+
+#### Scenario: Shared matcher serves both block and observe paths
+- **WHEN** the hook layer evaluates blocked and observe-level command patterns
+- **THEN** both paths SHALL use the shared `matchPattern()` helper
+- **AND** the helper SHALL accept pre-lowered simple patterns and compound patterns

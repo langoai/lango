@@ -232,20 +232,22 @@ func agentRunResponse(run *AgentRun) map[string]interface{} {
 	if run.Error != "" {
 		resp["error"] = run.Error
 	}
-	if run.RuntimeCondition != AgentRunConditionNone {
-		resp["condition"] = string(run.RuntimeCondition)
-	}
-	if run.BlockedReason != "" {
-		resp["blocked_reason"] = run.BlockedReason
-	}
-	if run.GrantRequestID != "" {
-		resp["grant_request_id"] = run.GrantRequestID
-	}
-	if run.WaitingOnRunID != "" {
-		resp["waiting_on_run_id"] = run.WaitingOnRunID
-	}
-	if run.RecoveryState != "" {
-		resp["recovery_state"] = run.RecoveryState
+	if !run.Status.isTerminal() {
+		if run.RuntimeCondition != AgentRunConditionNone {
+			resp["condition"] = string(run.RuntimeCondition)
+		}
+		if run.BlockedReason != "" {
+			resp["blocked_reason"] = run.BlockedReason
+		}
+		if run.GrantRequestID != "" {
+			resp["grant_request_id"] = run.GrantRequestID
+		}
+		if run.WaitingOnRunID != "" {
+			resp["waiting_on_run_id"] = run.WaitingOnRunID
+		}
+		if run.RecoveryState != "" {
+			resp["recovery_state"] = run.RecoveryState
+		}
 	}
 	return resp
 }

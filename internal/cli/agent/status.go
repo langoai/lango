@@ -36,6 +36,7 @@ func newStatusCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 
 			type statusOutput struct {
 				Mode                   string       `json:"mode"`
+				TeammateRuntime        string       `json:"teammate_runtime,omitempty"`
 				Provider               string       `json:"provider"`
 				Model                  string       `json:"model"`
 				MultiAgent             bool         `json:"multi_agent"`
@@ -67,6 +68,10 @@ func newStatusCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 			if maxDelegation <= 0 {
 				maxDelegation = 10
 			}
+			teammateRuntime := ""
+			if cfg.Agent.MultiAgent && cfg.Background.Enabled {
+				teammateRuntime = "dynamic-v1"
+			}
 
 			// Load registry to count agents by source.
 			reg := agentregistry.New()
@@ -83,6 +88,7 @@ func newStatusCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 
 			s := statusOutput{
 				Mode:                   mode,
+				TeammateRuntime:        teammateRuntime,
 				Provider:               cfg.Agent.Provider,
 				Model:                  cfg.Agent.Model,
 				MultiAgent:             cfg.Agent.MultiAgent,
@@ -116,6 +122,9 @@ func newStatusCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 			fmt.Printf("  Provider:          %s\n", s.Provider)
 			fmt.Printf("  Model:             %s\n", s.Model)
 			fmt.Printf("  Multi-Agent:       %v\n", s.MultiAgent)
+			if s.TeammateRuntime != "" {
+				fmt.Printf("  Teammate Runtime:  %s\n", s.TeammateRuntime)
+			}
 			fmt.Printf("  Max Turns:         %d\n", s.MaxTurns)
 			fmt.Printf("  Error Correction:  %v\n", s.ErrorCorrectionEnabled)
 			if s.MultiAgent {

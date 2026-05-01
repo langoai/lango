@@ -427,6 +427,38 @@ func TestAgentWait_TimeoutIncludesBlockedProjectionWithoutCancelling(t *testing.
 	assert.Equal(t, AgentRunRunning, run.Status)
 }
 
+func TestAgentWait_TerminalResponseOmitsStaleProjectionFields(t *testing.T) {
+	store := NewInMemoryAgentRunStore()
+	require.NoError(t, store.Create(&AgentRun{
+		ID:               "wait-terminal-stale",
+		Status:           AgentRunCompleted,
+		Result:           "done",
+		RuntimeCondition: AgentRunConditionBlockedWaitingApproval,
+		BlockedReason:    "stale block",
+		GrantRequestID:   "grant-stale",
+		WaitingOnRunID:   "run-stale",
+		RecoveryState:    "resume_pending",
+	}))
+
+	cp := &AgentControlPlane{RunStore: store}
+	tools := BuildControlTools(cp)
+	waitTool := findControlTool(t, tools, "agent_wait")
+
+	result, err := waitTool.call(context.Background(), map[string]interface{}{
+		"agent_id": "wait-terminal-stale",
+	})
+	require.NoError(t, err)
+
+	m := result.(map[string]interface{})
+	assert.Equal(t, "completed", m["status"])
+	assert.Equal(t, "done", m["result"])
+	assert.NotContains(t, m, "condition")
+	assert.NotContains(t, m, "blocked_reason")
+	assert.NotContains(t, m, "grant_request_id")
+	assert.NotContains(t, m, "waiting_on_run_id")
+	assert.NotContains(t, m, "recovery_state")
+}
+
 func TestAgentWait_ContextCancelled(t *testing.T) {
 	store := NewInMemoryAgentRunStore()
 	require.NoError(t, store.Create(&AgentRun{

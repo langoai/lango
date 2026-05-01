@@ -4,7 +4,16 @@ title: Multi-Agent Orchestration
 
 # Multi-Agent Orchestration
 
-When `agent.multiAgent` is enabled, Lango replaces the single monolithic agent with a hierarchical agent tree. An orchestrator delegates tasks to specialized sub-agents based on keyword matching and a structured decision protocol.
+When `agent.multiAgent` is enabled and the background submit path is also enabled, Lango can run new built-in teammate work through the dynamic in-process teammate runtime (`dynamic-v1`). The production model-facing control surface for that path remains `agent_spawn`, `agent_wait`, and `agent_stop`.
+
+The older `transfer_to_agent` path still exists, but it is now a compatibility route for legacy ADK static fallback, specialist re-routing, and existing remote A2A paths. It is not the primary path for new built-in teammate execution.
+
+## Runtime Model
+
+- `agent_spawn` creates an inspectable `AgentRun` for the new teammate run.
+- `agent_wait` observes that run until it reaches a terminal state, or reports a non-terminal timeout view when it is still waiting.
+- `agent_stop` cancels a spawned run through the existing run store path.
+- `transfer_to_agent` remains available for legacy fallback and remote routing compatibility.
 
 ## Architecture
 
@@ -26,7 +35,7 @@ graph TD
     style RA fill:#e67e22,color:#fff
 ```
 
-The **orchestrator** has no tools of its own. It receives user messages, classifies them, and transfers execution to the appropriate sub-agent via `transfer_to_agent`. Runtime enforcement now prevents the tool-less orchestrator from treating specialist-only tool calls as valid recovery behavior.
+The root runtime can still classify requests across the built-in specialist types shown above, but new production teammate work is expected to use `agent_spawn` rather than a required static handoff. The built-in teammate registry remains `operator`, `navigator`, `vault`, `librarian`, `automator`, `planner`, `chronicler`, and `ontologist`.
 
 ## Sub-Agent Roles
 
@@ -93,7 +102,9 @@ Manages the knowledge ontology. Defines and maintains types, entities, facts, an
 
 ## Tool Partitioning
 
-Tools are assigned to sub-agents based on their name prefix. The matching order is:
+Tools are assigned to built-in teammate roles based on their name prefix. Those partitions define default affinity and role maximum scope, not a fixed per-run allowlist. Spawn-time `allowed_tools` can narrow a built-in teammate to a smaller set, but it cannot expand beyond the role max scope.
+
+The matching order is:
 
 1. **librarian** -- checked first because `save_knowledge`, `save_learning`, `create_skill`, and `list_skills` are exact-match prefixes that must not fall through to operator
 2. **chronicler** -- `memory_*`, `observe_*`, `reflect_*`
@@ -106,16 +117,32 @@ Tools are assigned to sub-agents based on their name prefix. The matching order 
 
 Sub-agents with no matching tools are skipped (not created), except for the **planner** which is always included.
 
+Role max scope is enforced before spawn-time `allowed_tools`. Runtime capability escalation can request additional tools only when the blocked tool is still inside that role max scope.
+
+## Control Plane Tools
+
+### `agent_spawn`
+
+`agent_spawn` creates an inspectable `AgentRun`. Current projections include the requested teammate type, `spawn_reason`, and the spawn-time `allowed_tools` list. When child-session isolation is active for the selected built-in teammate, the run also carries the child session key used for isolated execution.
+
+### `agent_wait`
+
+`agent_wait` returns terminal results for completed, failed, or cancelled runs. On timeout, it keeps the run non-terminal and returns the current projected state. For approval-blocked runs, a timeout continues to report the projected blocked condition instead of coercing the run into failure.
+
+### `agent_stop`
+
+`agent_stop` cancels a spawned teammate through the existing run store cancellation path.
+
 ## Routing Protocol
 
-The orchestrator follows a 5-step decision protocol before delegating:
+The root runtime follows a 5-step decision protocol before choosing a teammate path:
 
 ```
 1. CLASSIFY  -- Identify the domain of the request
 2. MATCH     -- Compare keywords against the routing table
-3. SELECT    -- Choose the best-matching agent
-4. VERIFY    -- Check the selected agent's "Cannot" list for conflicts
-5. DELEGATE  -- Transfer to the selected agent via transfer_to_agent
+3. SELECT    -- Choose the best-matching teammate type or remote path
+4. SCOPE     -- Apply role max scope and any spawn-time `allowed_tools`
+5. EXECUTE   -- Prefer `agent_spawn` for new built-in teammate work; use `transfer_to_agent` only for legacy fallback, re-routing, or remote A2A compatibility
 ```
 
 Each sub-agent has a keyword list used for routing:
@@ -151,7 +178,7 @@ The orchestrator enforces a maximum number of delegation rounds per user turn (d
 
 ## Remote A2A Agents
 
-When [A2A protocol](a2a-protocol.md) is enabled, remote agents are appended to the sub-agent list and appear in the routing table. The orchestrator can delegate to them just like local sub-agents.
+When [A2A protocol](a2a-protocol.md) is enabled, remote agents are appended to the sub-agent list and appear in the routing table. The current remote path continues to use the existing compatibility behavior; `transfer_to_agent` remains the legacy bridge for those paths.
 
 ## Custom Agent Definitions
 
@@ -452,7 +479,7 @@ The `Selector` chooses agents for team formation using capability matching and t
 lango agent status
 ```
 
-Shows whether multi-agent mode is enabled, the orchestrator name, and the number of active sub-agents.
+Shows the current agent mode, provider/model, A2A/P2P/hook status, registry counts, and `Teammate Runtime: dynamic-v1` when the built-in teammate runtime path is configured and the background submit path is enabled.
 
 ### Agent List
 
@@ -460,7 +487,7 @@ Shows whether multi-agent mode is enabled, the orchestrator name, and the number
 lango agent list
 ```
 
-Lists all active sub-agents with their roles, tool counts, and capabilities.
+Lists registered agent definitions from the agent registry. It does not show live spawned teammate runs.
 
 ### Agent Tools
 

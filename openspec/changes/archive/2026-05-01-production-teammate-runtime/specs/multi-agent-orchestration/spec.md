@@ -1,25 +1,3 @@
-## REMOVED Requirements
-
-### Requirement: Orchestrator universal tools
-**Reason**: The production teammate runtime no longer uses a tool-less orchestrator contract as the governing execution model.
-**Migration**: Treat dynamic teammate spawning and scoped execution as the primary v1 production path. Legacy static orchestrator behavior remains a compatibility fallback only.
-
-### Requirement: Orchestrator instruction guides delegation-only execution
-**Reason**: The root runtime is no longer defined by delegation-only behavior. It may create in-process teammates through the existing control-plane surface.
-**Migration**: Move tool-requiring execution guidance to dynamic teammate spawn, capability policy, and legacy fallback rules.
-
-### Requirement: Static BuildAgentTree-only topology
-**Reason**: `BuildAgentTree` no longer acts as the sole execution topology authority for multi-agent runtime composition.
-**Migration**: Treat static tree construction as a compatibility baseline and the dynamic teammate runtime as the primary production execution topology.
-
-### Requirement: Static RoleToolSet as execution authority
-**Reason**: Prefix-partitioned role tool sets define maximum scope and default affinity, but runtime authority now comes from spawn-time narrowing plus capability policy.
-**Migration**: Use role tool sets as policy ceilings, not as the complete execution allowlist.
-
-### Requirement: transfer_to_agent as only handoff primitive
-**Reason**: `transfer_to_agent` remains available for legacy fallback, but it is no longer the only teammate handoff mechanism in v1.
-**Migration**: Use `agent_spawn` / `agent_wait` / `agent_stop` for production in-process teammates and reserve `transfer_to_agent` for compatibility paths.
-
 ## MODIFIED Requirements
 
 ### Requirement: Hierarchical agent tree with sub-agents

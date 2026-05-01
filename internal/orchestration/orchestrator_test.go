@@ -741,10 +741,30 @@ func TestBuildOrchestratorInstruction_NoUnmatchedTools(t *testing.T) {
 	assert.NotContains(t, got, "Unmatched Tools")
 }
 
+func TestOrchestratorInstruction_IncludesDynamicTeammateSelectionRule(t *testing.T) {
+	entries := []routingEntry{
+		{
+			Name:        "operator",
+			Description: "System ops",
+			Keywords:    []string{"run command"},
+			Accepts:     "A command",
+			Returns:     "Output",
+		},
+	}
+
+	got := buildOrchestratorInstruction("base", entries, 5, nil)
+
+	assert.Contains(t, got, "Use agent_spawn for new dynamic teammate work.")
+	assert.Contains(t, got, "Use transfer_to_agent only for legacy ADK static sub-agent fallback")
+	assert.Contains(t, got, "existing remote A2A paths")
+}
+
 func TestBuildOrchestratorInstruction_DelegateOnly(t *testing.T) {
 	got := buildOrchestratorInstruction("base", nil, 5, nil)
 
-	assert.Contains(t, got, "You do NOT have tools")
+	assert.Contains(t, got, "You coordinate work, answer directly when no teammate is needed")
+	assert.Contains(t, got, "Use agent_spawn for new dynamic teammate work.")
+	assert.NotContains(t, got, "You do NOT have tools")
 	// Output Awareness section replaces the old Diagnostics section.
 	assert.Contains(t, got, "Output Awareness")
 	assert.NotContains(t, got, "builtin_health")
@@ -756,6 +776,7 @@ func TestBuildOrchestratorInstruction_HasAssessStep(t *testing.T) {
 	assert.Contains(t, got, "0. ASSESS")
 	assert.Contains(t, got, "simple conversational request")
 	assert.Contains(t, got, "respond directly")
+	assert.Contains(t, got, "Use agent_spawn for new dynamic teammate work.")
 
 	// ASSESS direct-answer line must NOT list weather or general knowledge.
 	assessIdx := strings.Index(got, "0. ASSESS:")
@@ -774,6 +795,7 @@ func TestBuildOrchestratorInstruction_HasAssessStep(t *testing.T) {
 	phase1Idx := strings.Index(got[assessIdx:], "Phase 1")
 	assessBlock := got[assessIdx : assessIdx+phase1Idx]
 	assert.Contains(t, assessBlock, "MUST NOT emit any function calls")
+	assert.NotContains(t, assessBlock, "You have NO tools")
 }
 
 func TestBuildOrchestratorInstruction_DelegationRulesNoWeather(t *testing.T) {
@@ -820,17 +842,20 @@ func TestBuildOrchestratorInstruction_HasReRoutingProtocol(t *testing.T) {
 	assert.Contains(t, got, "NEVER re-delegate to an agent that already returned")
 	assert.Contains(t, got, "general-purpose assistant")
 	assert.Contains(t, got, "two consecutive agents fail")
+	assert.Contains(t, got, "Use transfer_to_agent only for legacy ADK static sub-agent fallback")
 }
 
 func TestBuildOrchestratorInstruction_DelegationRulesOrder(t *testing.T) {
 	got := buildOrchestratorInstruction("base", nil, 5, nil)
 
-	// Verify that direct response rule comes BEFORE delegation rule.
+	// Verify runtime guidance appears before later delegation rules.
 	directIdx := strings.Index(got, "respond directly WITHOUT delegation")
-	delegateIdx := strings.Index(got, "delegate to the sub-agent")
+	delegateIdx := strings.Index(got, "Use agent_spawn for new dynamic teammate work.")
 	assert.Greater(t, directIdx, 0, "direct response rule should exist")
 	assert.Greater(t, delegateIdx, 0, "delegation rule should exist")
-	assert.Less(t, directIdx, delegateIdx, "direct response should come before delegation")
+	assert.Greater(t, directIdx, delegateIdx, "runtime guidance should appear before direct response rule")
+	assert.Contains(t, got, "Prefer agent_spawn for new dynamic teammate work.")
+	assert.Contains(t, got, "Use transfer_to_agent only for legacy ADK static sub-agent fallback")
 }
 
 // --- PartitionTools builtin_ skip tests ---

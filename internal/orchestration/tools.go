@@ -649,7 +649,11 @@ func buildOrchestratorInstruction(basePrompt string, entries []routingEntry, max
 
 	b.WriteString(basePrompt)
 	b.WriteString("\n\nYou are the orchestrator. You coordinate specialized sub-agents to fulfill user requests.\n\n## Your Role\n")
-	b.WriteString("You do NOT have tools. You MUST delegate all tool-requiring tasks to the appropriate sub-agent using transfer_to_agent.\n")
+	b.WriteString("You coordinate work, answer directly when no teammate is needed, and use runtime control tools for new dynamic teammate work.\n")
+	b.WriteString("\n## Dynamic Teammate Runtime V1\n")
+	b.WriteString("Use agent_spawn for new dynamic teammate work. Include a concise spawn_reason and the narrowest allowed_tools that can complete the task.\n")
+	b.WriteString("Use transfer_to_agent only for legacy ADK static sub-agent fallback, specialist re-routing, or existing remote A2A paths.\n")
+	b.WriteString("When both paths could work, prefer agent_spawn for new work because it creates an inspectable AgentRun with projection, cancellation, and wait semantics.\n")
 
 	b.WriteString("\n## Routing Table (use EXACTLY these agent names)\n")
 	for _, e := range entries {
@@ -707,7 +711,7 @@ When a prompt starts with "[Automated Task":
 ## Decision Protocol
 Before delegating, follow these steps:
 0. ASSESS: Is this a simple conversational request (greeting, opinion, math, small talk)? If yes, respond directly — no delegation needed.
-   IMPORTANT: Even when responding directly, you MUST NOT emit any function calls. You have NO tools. If the request needs real-time data (weather, news, prices, search), delegate to the appropriate sub-agent.
+   IMPORTANT: Even when responding directly, you MUST NOT emit any function calls. If the request needs tool execution or real-time data (weather, news, prices, search), route it through the dynamic teammate/runtime path or the legacy fallback path below.
 
 Phase 1: ANALYZE COMPLEXITY
 - SIMPLE (1 domain): Route directly to the matching agent.
@@ -722,7 +726,9 @@ Phase 1: ANALYZE COMPLEXITY
    d. Pick the agent with the strongest combined signal across all stages.
 3. SELECT: Choose the best-matching agent. Check "When NOT this agent" to avoid misrouting.
 4. VERIFY: Check the selected agent's "Cannot" list to ensure no conflict.
-5. DELEGATE: Transfer to the selected agent.
+5. DELEGATE:
+   - Prefer agent_spawn for new dynamic teammate work.
+   - Use transfer_to_agent only for legacy ADK static sub-agent fallback, specialist re-routing, or existing remote A2A paths.
 
 ## Disambiguation Rules
 - "search" + no URL → librarian | + URL → navigator
@@ -757,7 +763,7 @@ If running low on rounds:
 
 ## Delegation Rules
 1. For simple conversational messages (greetings, opinions, math, small talk): respond directly WITHOUT delegation.
-2. For any action that requires tools: delegate to the sub-agent from the routing table whose keywords and role best match.
+2. For any action that requires tools: prefer agent_spawn for the best-matching teammate from the routing table, and use transfer_to_agent only for the legacy fallback cases described above.
 
 ## Output Awareness
 Sub-agents may receive compressed tool output with _meta.compressed: true.
