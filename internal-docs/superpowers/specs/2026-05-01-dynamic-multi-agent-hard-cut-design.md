@@ -161,6 +161,8 @@ The chosen approach is optimistic recheck rather than a global execution mutex:
 
 This does not require a brand-new approval model. It requires the current one to become idempotent and consistent enough for the new runtime to be the only built-in path.
 
+This procedure narrows but does not eliminate the TOCTOU window between step 3 and step 4. A grant can still arrive after the recheck and before the blocked projection write. The remaining window is treated as benign because `ApplyGrant()` is idempotent and clears the projected condition. Success is therefore measured on the final observed run state, not on every intermediate transition.
+
 ### Recovery
 
 Built-in teammate recovery is reframed around control-plane runs rather than static transfers:
@@ -253,6 +255,7 @@ This work is intended to land as **one OpenSpec change with multiple implementat
 - Reframe `adk-architecture` hallucinated-agent retry as remote/legacy compatibility behavior.
 - Update capability-related secondary specs for blocked-call and grant wiring.
 - Record RunLedger secondary impact expectations.
+- At plan time, run a concrete grep inventory for `transfer_to_agent`, `lango-orchestrator`, sub-agent escalation, and `failed to find agent` patterns across all primary and secondary specs before drafting delta text.
 
 ### Wave 2: Runtime Cutover
 
@@ -261,15 +264,19 @@ This work is intended to land as **one OpenSpec change with multiple implementat
 - Rewrite all 8 built-in embedded `AGENT.md` files to remove built-in `transfer_to_agent("lango-orchestrator")` escalation.
 - Retain `BuildAgentTree` only for the root orchestrator plus remote/legacy sub-agent composition, not as the production built-in specialist execution tree.
 - Remove built-in `transfer_to_agent('<specialist>')` guidance from `internal/skill/executor.go`.
+- Update `internal/adk/agent.go` hallucinated-agent recovery messaging so it no longer suggests built-in transfer retries; built-in routing failures must nudge toward `agent_spawn` or direct root recovery instead.
+- Verify whether `internal/skill/executor.go` can resolve `skill.Agent` against `BuiltinTeammateTypes()` at the call site; switch built-in fork guidance to `agent_spawn`-style delegation and retain transfer wording only for remote/legacy targets.
 - Tighten tool-name disambiguation to reduce hallucinated agent targets.
 - Add race mitigation in `CapabilityRuntime`.
 - Audit and patch `agent_control` observability gaps.
+- Verify ADK behavior when `BuildAgentTree` returns a root-only tree with no production built-in sub-agents and no remote A2A agents configured; ensure the root prompt remains coherent without sub-agent listings.
 
 ### Wave 3: Operator Surfaces
 
 - Update CLI/TUI/status wiring and language.
 - Update docs and skills that still describe built-in execution as legacy-compatible first.
 - Keep remote A2A execution clearly separate, and only claim shared operator visibility where concrete wiring exists.
+- Add upgrade notes for users who copied or derived custom `AGENT.md` files from the embedded defaults so they can update the old built-in escalation pattern.
 
 ## Testing and Verification
 
@@ -303,6 +310,8 @@ Mitigations:
 - require a pre-merge regression matrix that covers built-in spawn/wait/recovery, remote A2A compatibility, and hallucinated-agent regressions
 - keep the change boundary single and coherent so spec/code drift does not accumulate
 - require the RunLedger audit verdict before archive rather than leaving durability questions implicit
+
+Feature-flag and shadow-mode rollout were considered but rejected for this change. The cutover rewrites system prompts and tool-surface contracts that the LLM consumes directly. Running the old and new prompt contracts side-by-side would reintroduce the exact ambiguity the hard cut is meant to remove. The mitigation is therefore quality-of-cut, not staged prompt coexistence.
 
 ### Risk: Remote and built-in semantics blur again
 
