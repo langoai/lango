@@ -169,7 +169,7 @@ Built-in teammate recovery is reframed around control-plane runs rather than sta
 
 - fail current run and surface it
 - spawn a new eligible built-in teammate run
-- synthesize a direct root answer from available evidence
+- synthesize a direct root answer from gathered evidence, analogous to the existing `RecoveryDirectAnswer` semantics
 
 Built-in recovery must not bounce through `transfer_to_agent`.
 
@@ -265,11 +265,14 @@ This work is intended to land as **one OpenSpec change with multiple implementat
 - Retain `BuildAgentTree` only for the root orchestrator plus remote/legacy sub-agent composition, not as the production built-in specialist execution tree.
 - Remove built-in `transfer_to_agent('<specialist>')` guidance from `internal/skill/executor.go`.
 - Update `internal/adk/agent.go` hallucinated-agent recovery messaging so it no longer suggests built-in transfer retries; built-in routing failures must nudge toward `agent_spawn` or direct root recovery instead.
-- Verify whether `internal/skill/executor.go` can resolve `skill.Agent` against `BuiltinTeammateTypes()` at the call site; switch built-in fork guidance to `agent_spawn`-style delegation and retain transfer wording only for remote/legacy targets.
+- Verify whether `internal/skill/executor.go` can resolve `skill.Agent` against `BuiltinTeammateTypes()` at the call site.
+- If that resolution is feasible, switch built-in fork guidance to `agent_spawn`-style delegation and retain transfer wording only for remote/legacy targets. If it is not feasible, treat that result as a scope decision that must be resolved before runtime cutover archive.
 - Tighten tool-name disambiguation to reduce hallucinated agent targets.
 - Add race mitigation in `CapabilityRuntime`.
 - Audit and patch `agent_control` observability gaps.
 - Verify ADK behavior when `BuildAgentTree` returns a root-only tree with no production built-in sub-agents and no remote A2A agents configured; ensure the root prompt remains coherent without sub-agent listings.
+
+Note: `internal/skill/executor.go` defaults `skill.Agent` to `"operator"` when unset. That means most fork-style skill executions currently follow the built-in path, making this switch high-impact rather than peripheral cleanup.
 
 ### Wave 3: Operator Surfaces
 
