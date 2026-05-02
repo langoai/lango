@@ -193,6 +193,8 @@ func TestApplyEvent_TeammateApprovalBlockedUpdatesSnapshot(t *testing.T) {
 			RuntimeCondition: "blocked_waiting_approval",
 			BlockedReason:    "dangerous tool requires approval",
 			GrantRequestID:   "grant-run-1-exec",
+			GrantAttempt:     2,
+			GrantState:       "pending",
 		}),
 	}
 
@@ -200,6 +202,8 @@ func TestApplyEvent_TeammateApprovalBlockedUpdatesSnapshot(t *testing.T) {
 	assert.Equal(t, "blocked_waiting_approval", snap.TeammateRuntimeCondition)
 	assert.Equal(t, "dangerous tool requires approval", snap.TeammateBlockedReason)
 	assert.Equal(t, "grant-run-1-exec", snap.TeammateGrantRequestID)
+	assert.Equal(t, 2, snap.TeammateGrantAttempt)
+	assert.Equal(t, "pending", snap.TeammateGrantState)
 }
 
 func TestApplyEvent_TeammateApprovalUnblockedClearsSnapshot(t *testing.T) {
@@ -210,6 +214,8 @@ func TestApplyEvent_TeammateApprovalUnblockedClearsSnapshot(t *testing.T) {
 		TeammateRuntimeCondition: "blocked_waiting_approval",
 		TeammateBlockedReason:    "dangerous tool requires approval",
 		TeammateGrantRequestID:   "grant-run-1-exec",
+		TeammateGrantAttempt:     2,
+		TeammateGrantState:       "pending",
 	}
 	ev := JournalEvent{
 		RunID:     "run-1",
@@ -223,6 +229,8 @@ func TestApplyEvent_TeammateApprovalUnblockedClearsSnapshot(t *testing.T) {
 	assert.Empty(t, snap.TeammateRuntimeCondition)
 	assert.Empty(t, snap.TeammateBlockedReason)
 	assert.Empty(t, snap.TeammateGrantRequestID)
+	assert.Equal(t, 0, snap.TeammateGrantAttempt)
+	assert.Empty(t, snap.TeammateGrantState)
 }
 
 func TestApplyEvent_TerminalEventsClearTeammateApprovalSnapshot(t *testing.T) {
@@ -244,6 +252,8 @@ func TestApplyEvent_TerminalEventsClearTeammateApprovalSnapshot(t *testing.T) {
 				TeammateRuntimeCondition: "blocked_waiting_approval",
 				TeammateBlockedReason:    "dangerous tool requires approval",
 				TeammateGrantRequestID:   "grant-run-1-exec",
+				TeammateGrantAttempt:     2,
+				TeammateGrantState:       "pending",
 			}
 			ev := JournalEvent{
 				RunID:     "run-1",
@@ -258,6 +268,8 @@ func TestApplyEvent_TerminalEventsClearTeammateApprovalSnapshot(t *testing.T) {
 			assert.Empty(t, snap.TeammateRuntimeCondition)
 			assert.Empty(t, snap.TeammateBlockedReason)
 			assert.Empty(t, snap.TeammateGrantRequestID)
+			assert.Equal(t, 0, snap.TeammateGrantAttempt)
+			assert.Empty(t, snap.TeammateGrantState)
 		})
 	}
 }
@@ -306,6 +318,8 @@ func TestApplyPolicyToSnapshot_Abort(t *testing.T) {
 		TeammateRuntimeCondition: "blocked_waiting_approval",
 		TeammateBlockedReason:    "dangerous tool requires approval",
 		TeammateGrantRequestID:   "grant-run-1-exec",
+		TeammateGrantAttempt:     1,
+		TeammateGrantState:       "pending",
 	}
 
 	applyPolicyToSnapshot(snap, "s1", &PolicyDecision{
@@ -318,6 +332,8 @@ func TestApplyPolicyToSnapshot_Abort(t *testing.T) {
 	assert.Empty(t, snap.TeammateRuntimeCondition)
 	assert.Empty(t, snap.TeammateBlockedReason)
 	assert.Empty(t, snap.TeammateGrantRequestID)
+	assert.Equal(t, 0, snap.TeammateGrantAttempt)
+	assert.Empty(t, snap.TeammateGrantState)
 }
 
 func TestRunSnapshot_DeepCopy(t *testing.T) {
@@ -572,4 +588,6 @@ func TestRunSnapshot_JSONUnmarshalLegacySnapshotMissingTeammateFields(t *testing
 	assert.Empty(t, snap.TeammateRuntimeCondition)
 	assert.Empty(t, snap.TeammateBlockedReason)
 	assert.Empty(t, snap.TeammateGrantRequestID)
+	assert.Equal(t, 0, snap.TeammateGrantAttempt)
+	assert.Empty(t, snap.TeammateGrantState)
 }

@@ -39,6 +39,32 @@ func TestAgentRunStore_CopyIncludesProjectionFields(t *testing.T) {
 	assert.Equal(t, []string{"tool_a", "tool_b"}, fresh.AllowedTools)
 }
 
+func TestAgentRunStore_CreateSnapshotsCallerOwnedRun(t *testing.T) {
+	store := NewInMemoryAgentRunStore()
+	original := &AgentRun{
+		ID:             "create-snapshot",
+		Status:         AgentRunRunning,
+		GrantRequestID: "grant-original",
+		GrantAttempt:   1,
+		GrantState:     "pending",
+		AllowedTools:   []string{"fs_read"},
+	}
+
+	require.NoError(t, store.Create(original))
+
+	original.GrantRequestID = "grant-mutated"
+	original.GrantAttempt = 99
+	original.GrantState = "mutated"
+	original.AllowedTools[0] = "exec"
+
+	got, err := store.Get("create-snapshot")
+	require.NoError(t, err)
+	assert.Equal(t, "grant-original", got.GrantRequestID)
+	assert.Equal(t, 1, got.GrantAttempt)
+	assert.Equal(t, "pending", got.GrantState)
+	assert.Equal(t, []string{"fs_read"}, got.AllowedTools)
+}
+
 func TestAgentRunStore_UpdateProjectionSetsProjectedStateOnNonTerminalRun(t *testing.T) {
 	store := NewInMemoryAgentRunStore()
 	require.NoError(t, store.Create(&AgentRun{
@@ -67,6 +93,50 @@ func TestAgentRunStore_UpdateProjectionSetsProjectedStateOnNonTerminalRun(t *tes
 	assert.Equal(t, "grant-456", got.GrantRequestID)
 	assert.Equal(t, "run-789", got.WaitingOnRunID)
 	assert.Equal(t, "recovery-started", got.RecoveryState)
+}
+
+func TestInMemoryAgentRunStore_UpdateProjection_StoresGrantAttemptMetadata(t *testing.T) {
+	store := NewInMemoryAgentRunStore()
+	require.NoError(t, store.Create(&AgentRun{
+		ID:     "run-1",
+		Status: AgentRunRunning,
+	}))
+
+	err := store.UpdateProjection("run-1", RunProjectionPatch{
+		ApplyGrantAttempt: true,
+		ApplyGrantState:   true,
+		GrantAttempt:      2,
+		GrantState:        "pending",
+	})
+	require.NoError(t, err)
+
+	run, err := store.Get("run-1")
+	require.NoError(t, err)
+	assert.Equal(t, 2, run.GrantAttempt)
+	assert.Equal(t, "pending", run.GrantState)
+}
+
+func TestInMemoryAgentRunStore_UpdateProjection_ClearsGrantAttemptMetadata(t *testing.T) {
+	store := NewInMemoryAgentRunStore()
+	require.NoError(t, store.Create(&AgentRun{
+		ID:           "run-2",
+		Status:       AgentRunRunning,
+		GrantAttempt: 3,
+		GrantState:   "pending",
+	}))
+
+	err := store.UpdateProjection("run-2", RunProjectionPatch{
+		ApplyGrantAttempt: true,
+		ApplyGrantState:   true,
+		GrantAttempt:      0,
+		GrantState:        "",
+	})
+	require.NoError(t, err)
+
+	run, err := store.Get("run-2")
+	require.NoError(t, err)
+	assert.Equal(t, 0, run.GrantAttempt)
+	assert.Empty(t, run.GrantState)
 }
 
 func TestAgentRunStore_UpdateProjectionAddsAllowedToolExactlyOnce(t *testing.T) {

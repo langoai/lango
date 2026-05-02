@@ -20,11 +20,15 @@ type RunProjectionPatch struct {
 	ApplyRuntimeCondition bool
 	ApplyBlockedReason    bool
 	ApplyGrantRequestID   bool
+	ApplyGrantAttempt     bool
+	ApplyGrantState       bool
 	ApplyWaitingOnRunID   bool
 	ApplyRecoveryState    bool
 	RuntimeCondition      AgentRunCondition
 	BlockedReason         string
 	GrantRequestID        string
+	GrantAttempt          int
+	GrantState            string
 	WaitingOnRunID        string
 	RecoveryState         string
 	AddAllowedTool        string
@@ -57,7 +61,7 @@ func (s *InMemoryAgentRunStore) Create(run *AgentRun) error {
 	if _, exists := s.runs[run.ID]; exists {
 		return fmt.Errorf("create agent run: ID %q already exists", run.ID)
 	}
-	s.runs[run.ID] = run
+	s.runs[run.ID] = cloneRunForStorage(run)
 	return nil
 }
 
@@ -130,6 +134,12 @@ func (s *InMemoryAgentRunStore) UpdateProjection(id string, patch RunProjectionP
 	if patch.ApplyGrantRequestID {
 		run.GrantRequestID = patch.GrantRequestID
 	}
+	if patch.ApplyGrantAttempt {
+		run.GrantAttempt = patch.GrantAttempt
+	}
+	if patch.ApplyGrantState {
+		run.GrantState = patch.GrantState
+	}
 	if patch.ApplyWaitingOnRunID {
 		run.WaitingOnRunID = patch.WaitingOnRunID
 	}
@@ -170,8 +180,13 @@ func (s *InMemoryAgentRunStore) Cancel(id string) error {
 // slice. CancelFn is deliberately NOT copied to prevent external callers from
 // invoking cancellation through a returned snapshot.
 func copyRun(run *AgentRun) *AgentRun {
-	cp := *run
+	cp := cloneRunForStorage(run)
 	cp.CancelFn = nil
+	return cp
+}
+
+func cloneRunForStorage(run *AgentRun) *AgentRun {
+	cp := *run
 	if run.AllowedTools != nil {
 		cp.AllowedTools = make([]string, len(run.AllowedTools))
 		copy(cp.AllowedTools, run.AllowedTools)

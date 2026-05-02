@@ -55,6 +55,8 @@ type AgentRun struct {
 	RuntimeCondition AgentRunCondition
 	BlockedReason    string
 	GrantRequestID   string
+	GrantAttempt     int
+	GrantState       string
 	WaitingOnRunID   string
 	RecoveryState    string
 	CreatedAt        time.Time

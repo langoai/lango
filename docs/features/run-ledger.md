@@ -179,6 +179,10 @@ When both `runLedger.enabled: true` and `runLedger.writeThrough: true` are activ
 - `teammate_runtime_condition`
 - `teammate_blocked_reason`
 - `teammate_grant_request_id`
+- `teammate_grant_attempt`
+- `teammate_grant_state`
+
+The teammate approval-blocked durable mirror preserves both the stable logical `grant_request_id` and the latest attempt metadata derived from approval-block journal events. Repeated attempts for the same logical blocked request do not require rotating the request ID.
 
 This mirror is best effort. The live control-plane `AgentRun` projection remains authoritative for runtime continuity, while the RunLedger journal plus materialized snapshot provide durable reconstruction later.
 

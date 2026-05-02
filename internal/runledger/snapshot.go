@@ -19,6 +19,8 @@ type RunSnapshot struct {
 	TeammateRuntimeCondition string                `json:"teammate_runtime_condition,omitempty"`
 	TeammateBlockedReason    string                `json:"teammate_blocked_reason,omitempty"`
 	TeammateGrantRequestID   string                `json:"teammate_grant_request_id,omitempty"`
+	TeammateGrantAttempt     int                   `json:"teammate_grant_attempt,omitempty"`
+	TeammateGrantState       string                `json:"teammate_grant_state,omitempty"`
 	AcceptanceState          []AcceptanceCriterion `json:"acceptance_state"`
 	Steps                    []Step                `json:"steps"`
 	Notes                    map[string]string     `json:"notes"`
@@ -303,6 +305,8 @@ func applyEvent(snap *RunSnapshot, ev *JournalEvent) error {
 		snap.TeammateRuntimeCondition = p.RuntimeCondition
 		snap.TeammateBlockedReason = p.BlockedReason
 		snap.TeammateGrantRequestID = p.GrantRequestID
+		snap.TeammateGrantAttempt = p.GrantAttempt
+		snap.TeammateGrantState = p.GrantState
 
 	case EventTeammateApprovalUnblocked:
 		clearTeammateApprovalState(snap)
@@ -398,6 +402,8 @@ func clearTeammateApprovalState(snap *RunSnapshot) {
 	snap.TeammateRuntimeCondition = ""
 	snap.TeammateBlockedReason = ""
 	snap.TeammateGrantRequestID = ""
+	snap.TeammateGrantAttempt = 0
+	snap.TeammateGrantState = ""
 }
 
 func copyStep(step Step) Step {

@@ -45,9 +45,13 @@ func TestRunLedgerMirrorStore_ApprovalBlockedAppendsJournalEvent(t *testing.T) {
 		ApplyRuntimeCondition: true,
 		ApplyBlockedReason:    true,
 		ApplyGrantRequestID:   true,
+		ApplyGrantAttempt:     true,
+		ApplyGrantState:       true,
 		RuntimeCondition:      AgentRunConditionBlockedWaitingApproval,
 		BlockedReason:         "dangerous tool requires approval",
 		GrantRequestID:        "grant-arun-1-exec",
+		GrantAttempt:          2,
+		GrantState:            "pending",
 	})
 	require.NoError(t, err)
 
@@ -61,6 +65,8 @@ func TestRunLedgerMirrorStore_ApprovalBlockedAppendsJournalEvent(t *testing.T) {
 	assert.Equal(t, "blocked_waiting_approval", snap.TeammateRuntimeCondition)
 	assert.Equal(t, "dangerous tool requires approval", snap.TeammateBlockedReason)
 	assert.Equal(t, "grant-arun-1-exec", snap.TeammateGrantRequestID)
+	assert.Equal(t, 2, snap.TeammateGrantAttempt)
+	assert.Equal(t, "pending", snap.TeammateGrantState)
 }
 
 func TestRunLedgerMirrorStore_ApprovalUnblockedAppendsJournalEvent(t *testing.T) {
@@ -74,6 +80,8 @@ func TestRunLedgerMirrorStore_ApprovalUnblockedAppendsJournalEvent(t *testing.T)
 		RuntimeCondition: AgentRunConditionBlockedWaitingApproval,
 		BlockedReason:    "dangerous tool requires approval",
 		GrantRequestID:   "grant-arun-2-exec",
+		GrantAttempt:     1,
+		GrantState:       "pending",
 	}))
 
 	store := NewRunLedgerMirrorStore(base, ledger, nil)
@@ -87,9 +95,13 @@ func TestRunLedgerMirrorStore_ApprovalUnblockedAppendsJournalEvent(t *testing.T)
 		ApplyRuntimeCondition: true,
 		ApplyBlockedReason:    true,
 		ApplyGrantRequestID:   true,
+		ApplyGrantAttempt:     true,
+		ApplyGrantState:       true,
 		RuntimeCondition:      AgentRunConditionNone,
 		BlockedReason:         "",
 		GrantRequestID:        "",
+		GrantAttempt:          0,
+		GrantState:            "",
 	})
 	require.NoError(t, err)
 
@@ -103,6 +115,8 @@ func TestRunLedgerMirrorStore_ApprovalUnblockedAppendsJournalEvent(t *testing.T)
 	assert.Empty(t, snap.TeammateRuntimeCondition)
 	assert.Empty(t, snap.TeammateBlockedReason)
 	assert.Empty(t, snap.TeammateGrantRequestID)
+	assert.Equal(t, 0, snap.TeammateGrantAttempt)
+	assert.Empty(t, snap.TeammateGrantState)
 }
 
 func TestRunLedgerMirrorStore_ApprovalBlockedReplaceAppendsJournalEventAndRefreshesSnapshot(t *testing.T) {
@@ -116,6 +130,8 @@ func TestRunLedgerMirrorStore_ApprovalBlockedReplaceAppendsJournalEventAndRefres
 		RuntimeCondition: AgentRunConditionBlockedWaitingApproval,
 		BlockedReason:    "initial reason",
 		GrantRequestID:   "grant-arun-3-old",
+		GrantAttempt:     1,
+		GrantState:       "pending",
 	}))
 
 	store := NewRunLedgerMirrorStore(base, ledger, nil)
@@ -131,9 +147,13 @@ func TestRunLedgerMirrorStore_ApprovalBlockedReplaceAppendsJournalEventAndRefres
 		ApplyRuntimeCondition: true,
 		ApplyBlockedReason:    true,
 		ApplyGrantRequestID:   true,
+		ApplyGrantAttempt:     true,
+		ApplyGrantState:       true,
 		RuntimeCondition:      AgentRunConditionBlockedWaitingApproval,
 		BlockedReason:         "replacement reason",
 		GrantRequestID:        "grant-arun-3-new",
+		GrantAttempt:          2,
+		GrantState:            "pending",
 	})
 	require.NoError(t, err)
 
@@ -147,6 +167,8 @@ func TestRunLedgerMirrorStore_ApprovalBlockedReplaceAppendsJournalEventAndRefres
 	assert.Equal(t, "blocked_waiting_approval", snap.TeammateRuntimeCondition)
 	assert.Equal(t, "replacement reason", snap.TeammateBlockedReason)
 	assert.Equal(t, "grant-arun-3-new", snap.TeammateGrantRequestID)
+	assert.Equal(t, 2, snap.TeammateGrantAttempt)
+	assert.Equal(t, "pending", snap.TeammateGrantState)
 }
 
 func TestRunLedgerMirrorStore_MirrorFailureDoesNotFailProjection(t *testing.T) {
@@ -166,9 +188,13 @@ func TestRunLedgerMirrorStore_MirrorFailureDoesNotFailProjection(t *testing.T) {
 		ApplyRuntimeCondition: true,
 		ApplyBlockedReason:    true,
 		ApplyGrantRequestID:   true,
+		ApplyGrantAttempt:     true,
+		ApplyGrantState:       true,
 		RuntimeCondition:      AgentRunConditionBlockedWaitingApproval,
 		BlockedReason:         "dangerous tool requires approval",
 		GrantRequestID:        "grant-arun-4-exec",
+		GrantAttempt:          1,
+		GrantState:            "pending",
 	})
 	require.NoError(t, err)
 
@@ -177,6 +203,8 @@ func TestRunLedgerMirrorStore_MirrorFailureDoesNotFailProjection(t *testing.T) {
 	assert.Equal(t, AgentRunConditionBlockedWaitingApproval, run.RuntimeCondition)
 	assert.Equal(t, "dangerous tool requires approval", run.BlockedReason)
 	assert.Equal(t, "grant-arun-4-exec", run.GrantRequestID)
+	assert.Equal(t, 1, run.GrantAttempt)
+	assert.Equal(t, "pending", run.GrantState)
 }
 
 func TestRunLedgerMirrorStore_ClearToClearDoesNotAppendJournalEvent(t *testing.T) {
@@ -200,9 +228,13 @@ func TestRunLedgerMirrorStore_ClearToClearDoesNotAppendJournalEvent(t *testing.T
 		ApplyRuntimeCondition: true,
 		ApplyBlockedReason:    true,
 		ApplyGrantRequestID:   true,
+		ApplyGrantAttempt:     true,
+		ApplyGrantState:       true,
 		RuntimeCondition:      AgentRunConditionNone,
 		BlockedReason:         "",
 		GrantRequestID:        "",
+		GrantAttempt:          0,
+		GrantState:            "",
 	})
 	require.NoError(t, err)
 
@@ -223,6 +255,8 @@ func TestRunLedgerMirrorStore_BlockedToBlockedSameMetadataDoesNotAppendJournalEv
 		RuntimeCondition: AgentRunConditionBlockedWaitingApproval,
 		BlockedReason:    "same reason",
 		GrantRequestID:   "grant-arun-6",
+		GrantAttempt:     1,
+		GrantState:       "pending",
 	}))
 
 	store := NewRunLedgerMirrorStore(base, ledger, nil)
@@ -236,9 +270,13 @@ func TestRunLedgerMirrorStore_BlockedToBlockedSameMetadataDoesNotAppendJournalEv
 		ApplyRuntimeCondition: true,
 		ApplyBlockedReason:    true,
 		ApplyGrantRequestID:   true,
+		ApplyGrantAttempt:     true,
+		ApplyGrantState:       true,
 		RuntimeCondition:      AgentRunConditionBlockedWaitingApproval,
 		BlockedReason:         "same reason",
 		GrantRequestID:        "grant-arun-6",
+		GrantAttempt:          1,
+		GrantState:            "pending",
 	})
 	require.NoError(t, err)
 
@@ -246,4 +284,51 @@ func TestRunLedgerMirrorStore_BlockedToBlockedSameMetadataDoesNotAppendJournalEv
 	require.NoError(t, err)
 	assert.Len(t, events, 1)
 	assert.Equal(t, runledger.EventRunCreated, events[0].Type)
+}
+
+func TestRunLedgerMirrorStore_RepeatedBlockedRequest_AttemptOnlyUpdateStillAppendsEvent(t *testing.T) {
+	ctx := context.Background()
+	base := NewInMemoryAgentRunStore()
+	ledger := runledger.NewMemoryStore()
+
+	require.NoError(t, base.Create(&AgentRun{
+		ID:               "arun-repeat-attempt-only",
+		Status:           AgentRunRunning,
+		RuntimeCondition: AgentRunConditionBlockedWaitingApproval,
+		BlockedReason:    "same",
+		GrantRequestID:   "grant-arun-repeat-attempt-only-exec",
+		GrantAttempt:     1,
+		GrantState:       "pending",
+	}))
+
+	store := NewRunLedgerMirrorStore(base, ledger, nil)
+	require.NoError(t, ledger.AppendJournalEvent(ctx, runledger.JournalEvent{
+		RunID:   "arun-repeat-attempt-only",
+		Type:    runledger.EventRunCreated,
+		Payload: json.RawMessage(`{"goal":"teammate"}`),
+	}))
+
+	err := store.UpdateProjection("arun-repeat-attempt-only", RunProjectionPatch{
+		ApplyRuntimeCondition: true,
+		ApplyBlockedReason:    true,
+		ApplyGrantRequestID:   true,
+		ApplyGrantAttempt:     true,
+		ApplyGrantState:       true,
+		RuntimeCondition:      AgentRunConditionBlockedWaitingApproval,
+		BlockedReason:         "same",
+		GrantRequestID:        "grant-arun-repeat-attempt-only-exec",
+		GrantAttempt:          2,
+		GrantState:            "pending",
+	})
+	require.NoError(t, err)
+
+	events, err := ledger.GetJournalEvents(ctx, "arun-repeat-attempt-only")
+	require.NoError(t, err)
+	assert.Equal(t, runledger.EventTeammateApprovalBlocked, events[len(events)-1].Type)
+
+	snap, err := ledger.GetRunSnapshot(ctx, "arun-repeat-attempt-only")
+	require.NoError(t, err)
+	assert.Equal(t, "grant-arun-repeat-attempt-only-exec", snap.TeammateGrantRequestID)
+	assert.Equal(t, 2, snap.TeammateGrantAttempt)
+	assert.Equal(t, "pending", snap.TeammateGrantState)
 }

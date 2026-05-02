@@ -115,6 +115,8 @@ type TeammateApprovalBlockedPayload struct {
 	RuntimeCondition string `json:"runtime_condition"`
 	BlockedReason    string `json:"blocked_reason,omitempty"`
 	GrantRequestID   string `json:"grant_request_id,omitempty"`
+	GrantAttempt     int    `json:"grant_attempt,omitempty"`
+	GrantState       string `json:"grant_state,omitempty"`
 }
 
 // TeammateApprovalUnblockedPayload is the payload for EventTeammateApprovalUnblocked.

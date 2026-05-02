@@ -97,13 +97,22 @@ func (r *CapabilityRuntime) HandleBlockedToolCall(runID string, call toolchain.B
 			return nil
 		}
 
+		attempt := 1
+		if latest.GrantRequestID == decision.GrantRequestID && latest.GrantAttempt > 0 {
+			attempt = latest.GrantAttempt + 1
+		}
+
 		if err := r.Store.UpdateProjection(runID, RunProjectionPatch{
 			ApplyRuntimeCondition: true,
 			ApplyBlockedReason:    true,
 			ApplyGrantRequestID:   true,
+			ApplyGrantAttempt:     true,
+			ApplyGrantState:       true,
 			RuntimeCondition:      AgentRunConditionBlockedWaitingApproval,
 			BlockedReason:         decision.Reason,
 			GrantRequestID:        decision.GrantRequestID,
+			GrantAttempt:          attempt,
+			GrantState:            "pending",
 		}); err != nil {
 			return err
 		}
@@ -114,14 +123,20 @@ func (r *CapabilityRuntime) HandleBlockedToolCall(runID string, call toolchain.B
 		}
 		if r.hasGrant(runID, call.ToolName) || containsTool(latest.AllowedTools, call.ToolName) {
 			if latest.RuntimeCondition == AgentRunConditionBlockedWaitingApproval &&
-				latest.GrantRequestID == decision.GrantRequestID {
+				latest.GrantRequestID == decision.GrantRequestID &&
+				latest.GrantAttempt == attempt &&
+				latest.GrantState == "pending" {
 				return r.Store.UpdateProjection(runID, RunProjectionPatch{
 					ApplyRuntimeCondition: true,
 					ApplyBlockedReason:    true,
 					ApplyGrantRequestID:   true,
+					ApplyGrantAttempt:     true,
+					ApplyGrantState:       true,
 					RuntimeCondition:      AgentRunConditionNone,
 					BlockedReason:         "",
 					GrantRequestID:        "",
+					GrantAttempt:          0,
+					GrantState:            "",
 				})
 			}
 
@@ -134,9 +149,13 @@ func (r *CapabilityRuntime) HandleBlockedToolCall(runID string, call toolchain.B
 			ApplyRuntimeCondition: true,
 			ApplyBlockedReason:    true,
 			ApplyGrantRequestID:   true,
+			ApplyGrantAttempt:     true,
+			ApplyGrantState:       true,
 			RuntimeCondition:      AgentRunConditionNone,
 			BlockedReason:         decision.Reason,
 			GrantRequestID:        "",
+			GrantAttempt:          0,
+			GrantState:            "denied",
 		})
 	default:
 		return nil
@@ -156,9 +175,13 @@ func (r *CapabilityRuntime) ApplyGrant(runID, toolName string) error {
 		ApplyRuntimeCondition: true,
 		ApplyBlockedReason:    true,
 		ApplyGrantRequestID:   true,
+		ApplyGrantAttempt:     true,
+		ApplyGrantState:       true,
 		RuntimeCondition:      AgentRunConditionNone,
 		BlockedReason:         "",
 		GrantRequestID:        "",
+		GrantAttempt:          0,
+		GrantState:            "granted",
 		AddAllowedTool:        toolName,
 	})
 }

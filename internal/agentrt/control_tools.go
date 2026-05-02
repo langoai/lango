@@ -174,6 +174,15 @@ func buildAgentWait(cp *AgentControlPlane) *agent.Tool {
 				case <-ctx.Done():
 					return nil, fmt.Errorf("agent wait: %w", ctx.Err())
 				case <-deadline:
+					latest, latestErr := cp.RunStore.Get(agentID)
+					if latestErr == nil {
+						if latest.Status.isTerminal() {
+							return agentRunResponse(latest), nil
+						}
+						resp := agentRunResponse(latest)
+						resp["timeout"] = true
+						return resp, nil
+					}
 					resp := agentRunResponse(run)
 					resp["timeout"] = true
 					return resp, nil
@@ -232,6 +241,12 @@ func agentRunResponse(run *AgentRun) map[string]interface{} {
 		}
 		if run.GrantRequestID != "" {
 			resp["grant_request_id"] = run.GrantRequestID
+		}
+		if run.GrantAttempt > 0 {
+			resp["grant_attempt"] = run.GrantAttempt
+		}
+		if run.GrantState != "" {
+			resp["grant_state"] = run.GrantState
 		}
 		if run.WaitingOnRunID != "" {
 			resp["waiting_on_run_id"] = run.WaitingOnRunID

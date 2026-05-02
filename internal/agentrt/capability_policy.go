@@ -32,10 +32,14 @@ type CapabilityPolicy struct {
 	ActiveGrants map[string]map[string]bool
 }
 
+func grantRequestID(runID, toolName string) string {
+	return fmt.Sprintf("grant-%s-%s", runID, toolName)
+}
+
 func (p *CapabilityPolicy) Evaluate(req CapabilityRequest) CapabilityDecision {
 	if !teammateAllowsTool(req.TeammateType, req.ToolName, req.CurrentAllowed) {
 		return CapabilityDecision{
-			Kind: CapabilityDecisionDeny,
+			Kind:   CapabilityDecisionDeny,
 			Reason: fmt.Sprintf("tool %q outside role maximum scope for teammate type %q", req.ToolName, req.TeammateType),
 		}
 	}
@@ -58,7 +62,7 @@ func (p *CapabilityPolicy) Evaluate(req CapabilityRequest) CapabilityDecision {
 		return CapabilityDecision{
 			Kind:           CapabilityDecisionNeedsApproval,
 			Reason:         "dangerous tool requires approval",
-			GrantRequestID: fmt.Sprintf("grant-%s-%s", req.RunID, req.ToolName),
+			GrantRequestID: grantRequestID(req.RunID, req.ToolName),
 		}
 	}
 

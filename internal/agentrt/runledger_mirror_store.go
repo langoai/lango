@@ -74,7 +74,10 @@ func (s *RunLedgerMirrorStore) UpdateProjection(id string, patch RunProjectionPa
 
 	beforeBlocked := before.RuntimeCondition == AgentRunConditionBlockedWaitingApproval
 	afterBlocked := after.RuntimeCondition == AgentRunConditionBlockedWaitingApproval
-	changedBlockedState := before.BlockedReason != after.BlockedReason || before.GrantRequestID != after.GrantRequestID
+	changedBlockedState := before.BlockedReason != after.BlockedReason ||
+		before.GrantRequestID != after.GrantRequestID ||
+		before.GrantAttempt != after.GrantAttempt ||
+		before.GrantState != after.GrantState
 
 	switch {
 	case afterBlocked && (!beforeBlocked || changedBlockedState):
@@ -85,6 +88,8 @@ func (s *RunLedgerMirrorStore) UpdateProjection(id string, patch RunProjectionPa
 				RuntimeCondition: string(after.RuntimeCondition),
 				BlockedReason:    after.BlockedReason,
 				GrantRequestID:   after.GrantRequestID,
+				GrantAttempt:     after.GrantAttempt,
+				GrantState:       after.GrantState,
 			}),
 		})
 	case beforeBlocked && !afterBlocked:

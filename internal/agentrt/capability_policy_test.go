@@ -76,6 +76,26 @@ func TestCapabilityPolicy_RequiresApprovalForDangerousInScopeTool(t *testing.T) 
 	assert.Equal(t, "grant-run-1-exec", decision.GrantRequestID)
 }
 
+func TestCapabilityPolicy_DangerousInScopeToolReusesStableGrantRequestID(t *testing.T) {
+	policy := CapabilityPolicy{}
+
+	first := policy.Evaluate(CapabilityRequest{
+		RunID:        "run-1",
+		TeammateType: "operator",
+		ToolName:     "exec",
+		ToolSafety:   agent.SafetyLevelDangerous,
+	})
+	second := policy.Evaluate(CapabilityRequest{
+		RunID:        "run-1",
+		TeammateType: "operator",
+		ToolName:     "exec",
+		ToolSafety:   agent.SafetyLevelDangerous,
+	})
+
+	assert.Equal(t, "grant-run-1-exec", first.GrantRequestID)
+	assert.Equal(t, first.GrantRequestID, second.GrantRequestID)
+}
+
 func TestCapabilityPolicy_AllowsSafeInScopeTool(t *testing.T) {
 	policy := CapabilityPolicy{}
 

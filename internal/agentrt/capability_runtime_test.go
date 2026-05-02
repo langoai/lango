@@ -205,6 +205,8 @@ func TestCapabilityRuntime_BlockedDynamicAllowedToolsUpdatesProjection(t *testin
 	assert.Equal(t, AgentRunConditionBlockedWaitingApproval, run.RuntimeCondition)
 	assert.Equal(t, "dangerous tool requires approval", run.BlockedReason)
 	assert.Equal(t, "grant-arun-cap-exec", run.GrantRequestID)
+	assert.Equal(t, 1, run.GrantAttempt)
+	assert.Equal(t, "pending", run.GrantState)
 }
 
 func TestCapabilityRuntime_BlockedToolSinkLogsHandleErrors(t *testing.T) {
@@ -232,10 +234,15 @@ func TestCapabilityRuntime_BlockedToolSinkLogsHandleErrors(t *testing.T) {
 func TestCapabilityRuntime_OutsideScopeDenialDoesNotRequestApproval(t *testing.T) {
 	store := NewInMemoryAgentRunStore()
 	require.NoError(t, store.Create(&AgentRun{
-		ID:             "arun-plan",
-		RequestedAgent: "planner",
-		Status:         AgentRunRunning,
-		AllowedTools:   []string{"agent_wait"},
+		ID:               "arun-plan",
+		RequestedAgent:   "planner",
+		Status:           AgentRunRunning,
+		AllowedTools:     []string{"agent_wait"},
+		RuntimeCondition: AgentRunConditionBlockedWaitingApproval,
+		BlockedReason:    "dangerous tool requires approval",
+		GrantRequestID:   "grant-arun-plan-exec",
+		GrantAttempt:     2,
+		GrantState:       "pending",
 	}))
 
 	rt := NewCapabilityRuntime(store, &CapabilityPolicy{}, nil)
@@ -251,6 +258,8 @@ func TestCapabilityRuntime_OutsideScopeDenialDoesNotRequestApproval(t *testing.T
 	assert.Equal(t, AgentRunConditionNone, run.RuntimeCondition)
 	assert.Contains(t, run.BlockedReason, "outside role maximum scope")
 	assert.Empty(t, run.GrantRequestID)
+	assert.Equal(t, 0, run.GrantAttempt)
+	assert.Equal(t, "denied", run.GrantState)
 }
 
 func TestCapabilityRuntime_ApplyGrantClearsBlockedProjection(t *testing.T) {
@@ -263,6 +272,8 @@ func TestCapabilityRuntime_ApplyGrantClearsBlockedProjection(t *testing.T) {
 		RuntimeCondition: AgentRunConditionBlockedWaitingApproval,
 		BlockedReason:    "dangerous tool requires approval",
 		GrantRequestID:   "grant-arun-grant-exec",
+		GrantAttempt:     1,
+		GrantState:       "pending",
 	}))
 
 	policy := &CapabilityPolicy{}
@@ -276,6 +287,8 @@ func TestCapabilityRuntime_ApplyGrantClearsBlockedProjection(t *testing.T) {
 	assert.Equal(t, AgentRunConditionNone, run.RuntimeCondition)
 	assert.Empty(t, run.BlockedReason)
 	assert.Empty(t, run.GrantRequestID)
+	assert.Equal(t, 0, run.GrantAttempt)
+	assert.Equal(t, "granted", run.GrantState)
 	assert.Contains(t, run.AllowedTools, "exec")
 	require.True(t, policy.ActiveGrants["arun-grant"]["exec"])
 
@@ -319,6 +332,8 @@ func TestCapabilityRuntime_ContextForRunWiresBlockedHookToProjection(t *testing.
 	assert.Equal(t, AgentRunConditionBlockedWaitingApproval, updated.RuntimeCondition)
 	assert.Equal(t, "dangerous tool requires approval", updated.BlockedReason)
 	assert.Equal(t, "grant-arun-hook-exec", updated.GrantRequestID)
+	assert.Equal(t, 1, updated.GrantAttempt)
+	assert.Equal(t, "pending", updated.GrantState)
 }
 
 func TestCapabilityRuntime_SameContextSeesLiveGrantAfterApplyGrant(t *testing.T) {
@@ -356,6 +371,38 @@ func TestCapabilityRuntime_SameContextSeesLiveGrantAfterApplyGrant(t *testing.T)
 	result, err := wrapped.Handler(ctx, map[string]interface{}{"command": "echo hello"})
 	require.NoError(t, err)
 	assert.Equal(t, "ok", result)
+}
+
+func TestCapabilityRuntime_RepeatedBlockedRequestIncrementsAttemptWithoutRotatingGrantRequestID(t *testing.T) {
+	store := NewInMemoryAgentRunStore()
+	require.NoError(t, store.Create(&AgentRun{
+		ID:             "arun-repeat",
+		RequestedAgent: "operator",
+		Status:         AgentRunRunning,
+		AllowedTools:   []string{"fs_read"},
+	}))
+
+	rt := NewCapabilityRuntime(store, &CapabilityPolicy{}, func(string) agent.SafetyLevel {
+		return agent.SafetyLevelDangerous
+	})
+
+	call := toolchain.BlockedToolCall{
+		ToolName:    "exec",
+		BlockReason: dynamicAllowedToolsBlockReason,
+	}
+
+	require.NoError(t, rt.HandleBlockedToolCall("arun-repeat", call))
+	first, err := store.Get("arun-repeat")
+	require.NoError(t, err)
+
+	require.NoError(t, rt.HandleBlockedToolCall("arun-repeat", call))
+	second, err := store.Get("arun-repeat")
+	require.NoError(t, err)
+
+	assert.Equal(t, first.GrantRequestID, second.GrantRequestID)
+	assert.Equal(t, 1, first.GrantAttempt)
+	assert.Equal(t, 2, second.GrantAttempt)
+	assert.Equal(t, "pending", second.GrantState)
 }
 
 func TestHandleBlockedToolCall_AllowedToolExpansionSkipsBlockedProjection(t *testing.T) {
@@ -408,6 +455,10 @@ func TestHandleBlockedToolCall_PostWriteReconciliationClearsBlockedProjectionAft
 	run, err := store.Get("arun-2")
 	require.NoError(t, err)
 	assert.Equal(t, AgentRunConditionNone, run.RuntimeCondition)
+	assert.Empty(t, run.BlockedReason)
+	assert.Empty(t, run.GrantRequestID)
+	assert.Equal(t, 0, run.GrantAttempt)
+	assert.Empty(t, run.GrantState)
 	assert.Contains(t, run.AllowedTools, "fs_write")
 }
 
@@ -435,9 +486,13 @@ func TestHandleBlockedToolCall_PostWriteReconciliationPreservesNewerBlockedProje
 			ApplyRuntimeCondition: true,
 			ApplyBlockedReason:    true,
 			ApplyGrantRequestID:   true,
+			ApplyGrantAttempt:     true,
+			ApplyGrantState:       true,
 			RuntimeCondition:      AgentRunConditionBlockedWaitingApproval,
 			BlockedReason:         "newer blocked projection",
 			GrantRequestID:        "grant-arun-3-exec",
+			GrantAttempt:          3,
+			GrantState:            "pending",
 		})
 	}
 
@@ -451,6 +506,52 @@ func TestHandleBlockedToolCall_PostWriteReconciliationPreservesNewerBlockedProje
 	require.NoError(t, err)
 	assert.Equal(t, AgentRunConditionBlockedWaitingApproval, run.RuntimeCondition)
 	assert.Equal(t, "grant-arun-3-exec", run.GrantRequestID)
+	assert.Equal(t, 3, run.GrantAttempt)
+	assert.Equal(t, "pending", run.GrantState)
 	assert.Equal(t, "newer blocked projection", run.BlockedReason)
 	assert.Contains(t, run.AllowedTools, "fs_write")
+}
+
+func TestCapabilityRuntime_ReblockAfterDenyRestartsAttemptAtOneWithStableGrantRequestID(t *testing.T) {
+	store := NewInMemoryAgentRunStore()
+	require.NoError(t, store.Create(&AgentRun{
+		ID:             "arun-reblock",
+		RequestedAgent: "operator",
+		Status:         AgentRunRunning,
+		AllowedTools:   []string{"fs_read"},
+	}))
+
+	rt := NewCapabilityRuntime(store, &CapabilityPolicy{}, func(string) agent.SafetyLevel {
+		return agent.SafetyLevelDangerous
+	})
+
+	call := toolchain.BlockedToolCall{
+		ToolName:    "exec",
+		BlockReason: dynamicAllowedToolsBlockReason,
+	}
+
+	require.NoError(t, rt.HandleBlockedToolCall("arun-reblock", call))
+	first, err := store.Get("arun-reblock")
+	require.NoError(t, err)
+
+	require.NoError(t, store.UpdateProjection("arun-reblock", RunProjectionPatch{
+		ApplyRuntimeCondition: true,
+		ApplyBlockedReason:    true,
+		ApplyGrantRequestID:   true,
+		ApplyGrantAttempt:     true,
+		ApplyGrantState:       true,
+		RuntimeCondition:      AgentRunConditionNone,
+		BlockedReason:         "denied once",
+		GrantRequestID:        "",
+		GrantAttempt:          0,
+		GrantState:            "denied",
+	}))
+
+	require.NoError(t, rt.HandleBlockedToolCall("arun-reblock", call))
+	second, err := store.Get("arun-reblock")
+	require.NoError(t, err)
+
+	assert.Equal(t, first.GrantRequestID, second.GrantRequestID)
+	assert.Equal(t, 1, second.GrantAttempt)
+	assert.Equal(t, "pending", second.GrantState)
 }

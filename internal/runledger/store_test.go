@@ -416,6 +416,8 @@ func TestMemoryStore_GetRunSnapshot_LegacyCachedSnapshotAppliesTeammateApprovalE
 	require.Empty(t, legacySnap.TeammateRuntimeCondition)
 	require.Empty(t, legacySnap.TeammateBlockedReason)
 	require.Empty(t, legacySnap.TeammateGrantRequestID)
+	require.Equal(t, 0, legacySnap.TeammateGrantAttempt)
+	require.Empty(t, legacySnap.TeammateGrantState)
 	require.NoError(t, store.UpdateCachedSnapshot(ctx, &legacySnap))
 
 	require.NoError(t, store.AppendJournalEvent(ctx, JournalEvent{
@@ -425,6 +427,8 @@ func TestMemoryStore_GetRunSnapshot_LegacyCachedSnapshotAppliesTeammateApprovalE
 			RuntimeCondition: "blocked_waiting_approval",
 			BlockedReason:    "dangerous tool requires approval",
 			GrantRequestID:   "grant-run-legacy-exec",
+			GrantAttempt:     2,
+			GrantState:       "pending",
 		}),
 	}))
 
@@ -434,6 +438,8 @@ func TestMemoryStore_GetRunSnapshot_LegacyCachedSnapshotAppliesTeammateApprovalE
 	assert.Equal(t, "blocked_waiting_approval", snap.TeammateRuntimeCondition)
 	assert.Equal(t, "dangerous tool requires approval", snap.TeammateBlockedReason)
 	assert.Equal(t, "grant-run-legacy-exec", snap.TeammateGrantRequestID)
+	assert.Equal(t, 2, snap.TeammateGrantAttempt)
+	assert.Equal(t, "pending", snap.TeammateGrantState)
 }
 
 func TestMemoryStore_GetRunSnapshot_LegacyCachedSnapshotAppliesTeammateApprovalUnblockedTail(t *testing.T) {
@@ -475,4 +481,25 @@ func TestMemoryStore_GetRunSnapshot_LegacyCachedSnapshotAppliesTeammateApprovalU
 	assert.Empty(t, snap.TeammateRuntimeCondition)
 	assert.Empty(t, snap.TeammateBlockedReason)
 	assert.Empty(t, snap.TeammateGrantRequestID)
+	assert.Equal(t, 0, snap.TeammateGrantAttempt)
+	assert.Empty(t, snap.TeammateGrantState)
+}
+
+func TestRunSnapshot_JSONUnmarshalLegacySnapshotMissingGrantAttemptMetadata(t *testing.T) {
+	legacy := []byte(`{
+		"run_id":"run-legacy",
+		"status":"running",
+		"notes":{"k":"v"},
+		"teammate_runtime_condition":"blocked_waiting_approval",
+		"teammate_blocked_reason":"dangerous tool requires approval",
+		"teammate_grant_request_id":"grant-run-legacy-exec",
+		"last_journal_seq":7
+	}`)
+
+	var snap RunSnapshot
+	require.NoError(t, json.Unmarshal(legacy, &snap))
+
+	assert.Equal(t, "grant-run-legacy-exec", snap.TeammateGrantRequestID)
+	assert.Equal(t, 0, snap.TeammateGrantAttempt)
+	assert.Empty(t, snap.TeammateGrantState)
 }

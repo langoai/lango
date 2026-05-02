@@ -131,6 +131,8 @@ Role max scope is enforced before spawn-time `allowed_tools`. Runtime capability
 
 `agent_wait` returns terminal results for completed, failed, or cancelled runs. On timeout, it keeps the run non-terminal and returns the current projected state. For approval-blocked runs, a timeout continues to report the projected blocked condition instead of coercing the run into failure.
 
+For built-in teammate approval blocking, `grant_request_id` identifies the stable logical blocked request for a given `(run, tool)`. If the same request is surfaced again later during the same active blocked cycle, the request ID stays stable and renewed-attempt semantics appear through separate metadata such as `grant_attempt` and `grant_state`.
+
 When `runLedger.enabled: true` and `runLedger.writeThrough: true` are both active, approval-blocked built-in teammate runs also mirror their latest blocked condition into RunLedger. That durable mirror is best effort and exists for later inspection or replay; the live `agent_wait` path still reads the in-memory `AgentRun` projection first.
 
 ### `agent_stop`

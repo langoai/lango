@@ -14,6 +14,93 @@ import (
 	"github.com/langoai/lango/internal/session"
 )
 
+type terminalOnSecondGetStore struct {
+	base     *InMemoryAgentRunStore
+	targetID string
+	getCalls int
+}
+
+func (s *terminalOnSecondGetStore) Create(run *AgentRun) error {
+	return s.base.Create(run)
+}
+
+func (s *terminalOnSecondGetStore) Get(id string) (*AgentRun, error) {
+	if id == s.targetID {
+		s.getCalls++
+		if s.getCalls == 2 {
+			if err := s.base.UpdateStatus(id, AgentRunCompleted, "done", ""); err != nil {
+				return nil, err
+			}
+		}
+	}
+	return s.base.Get(id)
+}
+
+func (s *terminalOnSecondGetStore) List() []*AgentRun {
+	return s.base.List()
+}
+
+func (s *terminalOnSecondGetStore) UpdateStatus(id string, status AgentRunStatus, result, errMsg string) error {
+	return s.base.UpdateStatus(id, status, result, errMsg)
+}
+
+func (s *terminalOnSecondGetStore) UpdateProjection(id string, patch RunProjectionPatch) error {
+	return s.base.UpdateProjection(id, patch)
+}
+
+func (s *terminalOnSecondGetStore) Cancel(id string) error {
+	return s.base.Cancel(id)
+}
+
+type blockedOnSecondGetStore struct {
+	base     *InMemoryAgentRunStore
+	targetID string
+	getCalls int
+}
+
+func (s *blockedOnSecondGetStore) Create(run *AgentRun) error {
+	return s.base.Create(run)
+}
+
+func (s *blockedOnSecondGetStore) Get(id string) (*AgentRun, error) {
+	if id == s.targetID {
+		s.getCalls++
+		if s.getCalls == 2 {
+			if err := s.base.UpdateProjection(id, RunProjectionPatch{
+				ApplyRuntimeCondition: true,
+				ApplyBlockedReason:    true,
+				ApplyGrantRequestID:   true,
+				ApplyGrantAttempt:     true,
+				ApplyGrantState:       true,
+				RuntimeCondition:      AgentRunConditionBlockedWaitingApproval,
+				BlockedReason:         "late approval block",
+				GrantRequestID:        "grant-late-block-exec",
+				GrantAttempt:          3,
+				GrantState:            "pending",
+			}); err != nil {
+				return nil, err
+			}
+		}
+	}
+	return s.base.Get(id)
+}
+
+func (s *blockedOnSecondGetStore) List() []*AgentRun {
+	return s.base.List()
+}
+
+func (s *blockedOnSecondGetStore) UpdateStatus(id string, status AgentRunStatus, result, errMsg string) error {
+	return s.base.UpdateStatus(id, status, result, errMsg)
+}
+
+func (s *blockedOnSecondGetStore) UpdateProjection(id string, patch RunProjectionPatch) error {
+	return s.base.UpdateProjection(id, patch)
+}
+
+func (s *blockedOnSecondGetStore) Cancel(id string) error {
+	return s.base.Cancel(id)
+}
+
 // --- BuildControlTools ---
 
 func TestBuildControlTools_ToolCount(t *testing.T) {
@@ -402,6 +489,8 @@ func TestAgentWait_TimeoutIncludesBlockedProjectionWithoutCancelling(t *testing.
 		RuntimeCondition: AgentRunConditionBlockedWaitingApproval,
 		BlockedReason:    "capability request pending",
 		GrantRequestID:   "grant-wait-blocked-fs_write",
+		GrantAttempt:     2,
+		GrantState:       "pending",
 	}))
 
 	cp := &AgentControlPlane{RunStore: store}
@@ -420,6 +509,8 @@ func TestAgentWait_TimeoutIncludesBlockedProjectionWithoutCancelling(t *testing.
 	assert.Equal(t, "blocked_waiting_approval", m["condition"])
 	assert.Equal(t, "capability request pending", m["blocked_reason"])
 	assert.Equal(t, "grant-wait-blocked-fs_write", m["grant_request_id"])
+	assert.Equal(t, 2, m["grant_attempt"])
+	assert.Equal(t, "pending", m["grant_state"])
 
 	run, err := store.Get("wait-blocked")
 	require.NoError(t, err)
@@ -456,6 +547,66 @@ func TestAgentWait_TerminalResponseOmitsStaleProjectionFields(t *testing.T) {
 	assert.NotContains(t, m, "grant_request_id")
 	assert.NotContains(t, m, "waiting_on_run_id")
 	assert.NotContains(t, m, "recovery_state")
+}
+
+func TestAgentWait_TimeoutReturnsFreshTerminalStateIfRunCompletesAtDeadline(t *testing.T) {
+	base := NewInMemoryAgentRunStore()
+	store := &terminalOnSecondGetStore{base: base, targetID: "wait-terminal-deadline"}
+	require.NoError(t, store.Create(&AgentRun{
+		ID:               "wait-terminal-deadline",
+		Status:           AgentRunRunning,
+		RuntimeCondition: AgentRunConditionBlockedWaitingApproval,
+		BlockedReason:    "capability request pending",
+		GrantRequestID:   "grant-terminal-deadline-exec",
+		GrantAttempt:     2,
+		GrantState:       "pending",
+	}))
+
+	cp := &AgentControlPlane{RunStore: store}
+	waitTool := findControlTool(t, BuildControlTools(cp), "agent_wait")
+
+	result, err := waitTool.call(context.Background(), map[string]interface{}{
+		"agent_id": "wait-terminal-deadline",
+		"timeout":  float64(0),
+	})
+	require.NoError(t, err)
+
+	m := result.(map[string]interface{})
+	assert.Equal(t, "completed", m["status"])
+	assert.Equal(t, "done", m["result"])
+	assert.NotContains(t, m, "timeout")
+	assert.NotContains(t, m, "condition")
+	assert.NotContains(t, m, "blocked_reason")
+	assert.NotContains(t, m, "grant_request_id")
+	assert.NotContains(t, m, "grant_attempt")
+	assert.NotContains(t, m, "grant_state")
+}
+
+func TestAgentWait_TimeoutReturnsFreshBlockedProjectionIfStateChangesAtDeadline(t *testing.T) {
+	base := NewInMemoryAgentRunStore()
+	store := &blockedOnSecondGetStore{base: base, targetID: "wait-late-block"}
+	require.NoError(t, store.Create(&AgentRun{
+		ID:     "wait-late-block",
+		Status: AgentRunRunning,
+	}))
+
+	cp := &AgentControlPlane{RunStore: store}
+	waitTool := findControlTool(t, BuildControlTools(cp), "agent_wait")
+
+	result, err := waitTool.call(context.Background(), map[string]interface{}{
+		"agent_id": "wait-late-block",
+		"timeout":  float64(0),
+	})
+	require.NoError(t, err)
+
+	m := result.(map[string]interface{})
+	assert.Equal(t, true, m["timeout"])
+	assert.Equal(t, "running", m["status"])
+	assert.Equal(t, "blocked_waiting_approval", m["condition"])
+	assert.Equal(t, "late approval block", m["blocked_reason"])
+	assert.Equal(t, "grant-late-block-exec", m["grant_request_id"])
+	assert.Equal(t, 3, m["grant_attempt"])
+	assert.Equal(t, "pending", m["grant_state"])
 }
 
 func TestAgentWait_ContextCancelled(t *testing.T) {
