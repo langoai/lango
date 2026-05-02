@@ -727,15 +727,10 @@ func runCockpit(initialMode string) error {
 	}
 
 	model := cockpit.New(cockpitDeps)
-	missionComposer := chat.New(chat.Deps{
-		TurnRunner:        application.TurnRunner,
-		Config:            cfg,
-		SessionKey:        sessionKey,
-		SessionStore:      application.Store,
-		EventBus:          application.EventBus,
-		BackgroundManager: application.BackgroundManager,
-		SharedPending:     pendingApprovals,
-	})
+	missionComposer := model.ChatModel()
+	if missionComposer == nil {
+		return fmt.Errorf("cockpit chat model is not available")
+	}
 
 	// Register pages.
 	model.RegisterPage(cockpit.PageMissionControl,
@@ -783,7 +778,6 @@ func runCockpit(initialMode string) error {
 
 	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	model.SetProgram(p)
-	missionComposer.SetProgram(p)
 	model.SetChannelTracker(tracker)
 
 	// Wire runtime tracker for live token/delegation/recovery metrics.

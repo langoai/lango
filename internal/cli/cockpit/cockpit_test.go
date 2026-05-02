@@ -174,6 +174,18 @@ func TestNew_DefaultPageIsMissionControl(t *testing.T) {
 	assert.Equal(t, PageMissionControl, m.activePage)
 }
 
+func TestNew_ChatModelAccessorReturnsSharedRootChat(t *testing.T) {
+	m := New(Deps{})
+	require.NotNil(t, m.ChatModel())
+	assert.Same(t, m.child, m.ChatModel())
+}
+
+func TestChatModelAccessorReturnsNilForMockChild(t *testing.T) {
+	mock := &mockChild{}
+	m := newTestModel(mock)
+	assert.Nil(t, m.ChatModel())
+}
+
 // --- New Change-2 tests ---
 
 func TestPageRouting_SwitchToTools(t *testing.T) {

@@ -93,6 +93,17 @@ func (m *Model) SetProgram(p *tea.Program) {
 	m.child.SetProgram(p)
 }
 
+// ChatModel returns the shared cockpit chat model when the root child is the
+// production chat implementation. Tests may replace the child with a mock, in
+// which case this returns nil.
+func (m *Model) ChatModel() *chat.ChatModel {
+	if m == nil {
+		return nil
+	}
+	chatModel, _ := m.child.(*chat.ChatModel)
+	return chatModel
+}
+
 // SetChannelTracker sets the channel tracker for live channel status updates.
 // The tracker's snapshots are pushed to the context panel on each tick.
 func (m *Model) SetChannelTracker(tracker *ChannelTracker) {
