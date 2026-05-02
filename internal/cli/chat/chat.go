@@ -208,10 +208,57 @@ func (m *ChatModel) SetComposerValue(value string) {
 	m.input.SetValue(value)
 }
 
+// HasPendingApproval reports whether chat currently has a live approval.
+func (m *ChatModel) HasPendingApproval() bool {
+	return m != nil && m.currentPendingApproval() != nil
+}
+
+// HandleComposerEditingKey applies a key directly to the composer input,
+// bypassing chat state gating. Mission Control uses this so typing intent can
+// move to the Composer lane while a live decision still exists.
+func (m *ChatModel) HandleComposerEditingKey(msg tea.KeyMsg) tea.Cmd {
+	if m == nil {
+		return nil
+	}
+	focusCmd := m.input.Focus()
+	var cmd tea.Cmd
+	m.input, cmd = m.input.Update(msg)
+	return tea.Batch(focusCmd, cmd)
+}
+
+// CanHandlePendingApprovalKey reports whether the current pending approval flow
+// consumes the given key as an approval interaction.
+func (m *ChatModel) CanHandlePendingApprovalKey(msg tea.KeyMsg) bool {
+	if m == nil || m.currentPendingApproval() == nil {
+		return false
+	}
+
+	switch {
+	case key.Matches(msg, key.NewBinding(key.WithKeys("a", "s", "d", "esc"))):
+		return true
+	}
+
+	pending := m.currentPendingApproval()
+	if pending == nil || pending.ViewModel.Tier != approval.TierFullscreen {
+		return false
+	}
+
+	switch {
+	case key.Matches(msg, key.NewBinding(key.WithKeys("up", "k"))):
+		return true
+	case key.Matches(msg, key.NewBinding(key.WithKeys("down", "j"))):
+		return true
+	case key.Matches(msg, key.NewBinding(key.WithKeys("t"))):
+		return true
+	default:
+		return false
+	}
+}
+
 // HandlePendingApprovalKey routes one approval key through the existing chat
 // approval flow when a pending approval is available.
 func (m *ChatModel) HandlePendingApprovalKey(msg tea.KeyMsg) tea.Cmd {
-	if m == nil || m.currentPendingApproval() == nil {
+	if !m.CanHandlePendingApprovalKey(msg) {
 		return nil
 	}
 	if m.state != stateApproving {

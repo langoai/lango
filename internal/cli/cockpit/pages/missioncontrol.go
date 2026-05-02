@@ -173,14 +173,18 @@ func (p *MissionControlPage) View() string {
 }
 
 func (p *MissionControlPage) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch {
-	case key.Matches(msg, key.NewBinding(key.WithKeys("tab"))):
+	if key.Matches(msg, key.NewBinding(key.WithKeys("tab"))) {
 		p.focus = (p.focus + 1) % 3
 		return p, nil
-	case p.focus == missionControlFocusDecisions:
+	}
+
+	if p.focus == missionControlFocusDecisions {
 		if cmd, handled := p.forwardDecisionKey(msg); handled {
 			return p, cmd
 		}
+	}
+
+	switch {
 	case isMissionControlPrintableKey(msg):
 		p.focus = missionControlFocusComposer
 		return p.forwardComposerKey(msg)
@@ -198,17 +202,22 @@ func (p *MissionControlPage) forwardDecisionKey(msg tea.KeyMsg) (tea.Cmd, bool) 
 	if p.snapshot.Decision == nil || p.composer == nil {
 		return nil, false
 	}
-	switch {
-	case key.Matches(msg, key.NewBinding(key.WithKeys("a", "s", "d", "esc"))):
-		return p.composer.HandlePendingApprovalKey(msg), true
-	default:
+	if !p.composer.CanHandlePendingApprovalKey(msg) {
 		return nil, false
 	}
+	cmd := p.composer.HandlePendingApprovalKey(msg)
+	p.refreshSnapshot()
+	return cmd, true
 }
 
 func (p *MissionControlPage) forwardComposerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if p.composer == nil {
 		return p, nil
+	}
+	if p.composer.HasPendingApproval() && isMissionControlComposerEditingKey(msg) {
+		cmd := p.composer.HandleComposerEditingKey(msg)
+		p.refreshSnapshot()
+		return p, cmd
 	}
 	updated, cmd := p.composer.Update(msg)
 	p.composer = updated.(*chat.ChatModel)
@@ -460,6 +469,18 @@ func isMissionControlPrintableKey(msg tea.KeyMsg) bool {
 		}
 	}
 	return true
+}
+
+func isMissionControlComposerEditingKey(msg tea.KeyMsg) bool {
+	if isMissionControlPrintableKey(msg) {
+		return true
+	}
+	switch msg.Type {
+	case tea.KeyBackspace, tea.KeyDelete, tea.KeyLeft, tea.KeyRight, tea.KeyHome, tea.KeyEnd:
+		return true
+	default:
+		return false
+	}
 }
 
 func visibleActivities(items []cockpit.ActivityView, offset, limit int) []cockpit.ActivityView {

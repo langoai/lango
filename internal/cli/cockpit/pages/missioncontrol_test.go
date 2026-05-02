@@ -386,6 +386,57 @@ func TestMissionControlDecisionsFocusRoutesApprovalKeys(t *testing.T) {
 	require.NotNil(t, cmd)
 }
 
+func TestMissionControlDecisionsFocusKeepsFullscreenApprovalKeysOutOfComposer(t *testing.T) {
+	t.Parallel()
+
+	shared := &stubMissionSharedPendingStore{
+		latest: &chat.ApprovalRequestMsg{
+			Request: approval.ApprovalRequest{
+				ID:       "apr-2",
+				ToolName: "fs_write",
+			},
+			ViewModel: approval.ApprovalViewModel{
+				Tier: approval.TierFullscreen,
+				Risk: approval.RiskIndicator{Level: "critical", Label: "Writes files"},
+			},
+			Response: make(chan approval.ApprovalResponse, 1),
+		},
+	}
+	composer, _ := newMissionComposerWithDeps(t, nil, shared)
+	page := newMissionControlPage(&stubMissionControlProjector{
+		snapshot: cockpit.MissionControlSnapshot{
+			Decision: &cockpit.DecisionView{
+				ID:         "apr-2",
+				Title:      "Approve fs_write",
+				Reason:     "Filesystem writes require approval.",
+				EffectText: "Update mission control copy.",
+				RiskLabel:  "Writes files",
+			},
+		},
+	}, stubMissionTaskSource{}, composer)
+	updated, _ := page.Update(tea.WindowSizeMsg{Width: 110, Height: 30})
+	page = updated.(*MissionControlPage)
+	page.Activate()
+	updated, _ = page.Update(missionControlTickMsg(time.Now()))
+	page = updated.(*MissionControlPage)
+	page.focus = missionControlFocusDecisions
+
+	updated, _ = page.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	page = updated.(*MissionControlPage)
+	assert.Equal(t, missionControlFocusDecisions, page.focus)
+	assert.Empty(t, page.composer.ComposerValue())
+
+	updated, _ = page.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'t'}})
+	page = updated.(*MissionControlPage)
+	assert.Equal(t, missionControlFocusDecisions, page.focus)
+	assert.Empty(t, page.composer.ComposerValue())
+
+	updated, _ = page.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	page = updated.(*MissionControlPage)
+	assert.Equal(t, missionControlFocusComposer, page.focus)
+	assert.Equal(t, "x", page.composer.ComposerValue())
+}
+
 func TestMissionControlDecisionShowsRiskReasonEffectInAllModes(t *testing.T) {
 	t.Parallel()
 
@@ -428,6 +479,50 @@ func TestMissionControlEmptyStateIgnoresStandaloneActivitiesAndKeepsComposerVisi
 	view := page.View()
 	assert.Contains(t, view, "No active missions or pending decisions.")
 	assert.Contains(t, view, page.composer.ComposerPlaceholder())
+}
+
+func TestMissionControlDecisionResolutionRefreshesSnapshotImmediately(t *testing.T) {
+	t.Parallel()
+
+	shared := &stubMissionSharedPendingStore{
+		latest: &chat.ApprovalRequestMsg{
+			Request: approval.ApprovalRequest{
+				ID:       "apr-3",
+				ToolName: "fs_write",
+			},
+			ViewModel: approval.ApprovalViewModel{
+				Risk: approval.RiskIndicator{Level: "moderate", Label: "Writes files"},
+			},
+			Response: make(chan approval.ApprovalResponse, 1),
+		},
+		resolveOK: true,
+	}
+	projector := &stubMissionControlProjector{}
+	projector.snapshot = cockpit.MissionControlSnapshot{
+		Decision: &cockpit.DecisionView{
+			ID:         "apr-3",
+			Title:      "Approve fs_write",
+			Reason:     "Filesystem writes require approval.",
+			EffectText: "Update mission control copy.",
+			RiskLabel:  "Writes files",
+		},
+	}
+	composer, _ := newMissionComposerWithDeps(t, nil, shared)
+	page := newMissionControlPage(projector, stubMissionTaskSource{}, composer)
+	updated, _ := page.Update(tea.WindowSizeMsg{Width: 110, Height: 30})
+	page = updated.(*MissionControlPage)
+	page.Activate()
+	updated, _ = page.Update(missionControlTickMsg(time.Now()))
+	page = updated.(*MissionControlPage)
+	page.focus = missionControlFocusDecisions
+
+	projector.snapshot = cockpit.MissionControlSnapshot{}
+	updated, _ = page.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	page = updated.(*MissionControlPage)
+
+	view := page.View()
+	assert.NotContains(t, view, "Action: Approve fs_write")
+	assert.Contains(t, view, "No active missions or pending decisions.")
 }
 
 func TestMissionControlNarrowAndShortLayouts(t *testing.T) {
