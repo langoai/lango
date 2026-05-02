@@ -592,7 +592,7 @@ var (
 			},
 			{
 				Name:    "missionexecutionlink_execution_kind_execution_ref",
-				Unique:  false,
+				Unique:  true,
 				Columns: []*schema.Column{MissionExecutionLinksColumns[2], MissionExecutionLinksColumns[3]},
 			},
 			{

@@ -218,7 +218,7 @@ Indexes required:
 
 ```go
 index.Fields("mission_id", "execution_kind", "execution_ref").Unique()
-index.Fields("execution_kind", "execution_ref")
+index.Fields("execution_kind", "execution_ref").Unique()
 index.Fields("mission_id", "link_role")
 ```
 
