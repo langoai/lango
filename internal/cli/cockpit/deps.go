@@ -21,6 +21,17 @@ import (
 	"github.com/langoai/lango/internal/turnrunner"
 )
 
+type RunLedgerReader interface {
+	ListRuns(ctx context.Context, limit int) ([]runledger.RunSummary, error)
+	GetRunSnapshot(ctx context.Context, runID string) (*runledger.RunSnapshot, error)
+	ListRunSummariesBySession(ctx context.Context, sessionKey string, limit int) ([]runledger.RunSummary, error)
+}
+
+type AgentRunReader interface {
+	Get(id string) (*agentrt.AgentRun, error)
+	List() []*agentrt.AgentRun
+}
+
 // Deps holds the dependencies for the cockpit TUI.
 // ApprovalProvider is NOT included — type assertion for SetTTYFallback
 // is handled in cmd/lango/main.go's runCockpit().
@@ -33,9 +44,9 @@ type Deps struct {
 	MetricsCollector  *observability.MetricsCollector
 	ConfigStore       storage.ConfigProfileStore
 	ProfileName       string
-	BackgroundManager *background.Manager // optional, nil when unavailable
-	RunLedgerStore    runledger.RunLedgerStore
-	AgentRunStore     agentrt.AgentRunStore
+	BackgroundManager *background.Manager    // optional, nil when unavailable
+	RunLedgerStore    RunLedgerReader        // optional, nil when unavailable
+	AgentRunStore     AgentRunReader         // optional, nil when unavailable
 	EventBus          *eventbus.Bus          // optional, enables channel event subscription
 	ApprovalHistory   *approval.HistoryStore // optional, approval decision history
 	GrantStore        *approval.GrantStore   // optional, persistent session grants

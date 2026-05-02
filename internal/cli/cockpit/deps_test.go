@@ -8,9 +8,11 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/langoai/lango/internal/agent"
+	"github.com/langoai/lango/internal/agentrt"
 	"github.com/langoai/lango/internal/ctxkeys"
 	"github.com/langoai/lango/internal/postadjudicationstatus"
 	"github.com/langoai/lango/internal/receipts"
+	"github.com/langoai/lango/internal/runledger"
 	"github.com/langoai/lango/internal/toolcatalog"
 )
 
@@ -204,4 +206,40 @@ func TestDeadLetterToolBridge_ListOmitsAdjudicationWhenAll(t *testing.T) {
 		LatestDispatchReference:   "",
 	})
 	require.NoError(t, err)
+}
+
+type fakeRunLedgerReader struct{}
+
+func (fakeRunLedgerReader) ListRuns(context.Context, int) ([]runledger.RunSummary, error) {
+	return nil, nil
+}
+
+func (fakeRunLedgerReader) GetRunSnapshot(context.Context, string) (*runledger.RunSnapshot, error) {
+	return nil, nil
+}
+
+func (fakeRunLedgerReader) ListRunSummariesBySession(context.Context, string, int) ([]runledger.RunSummary, error) {
+	return nil, nil
+}
+
+type fakeAgentRunReader struct{}
+
+func (fakeAgentRunReader) Get(string) (*agentrt.AgentRun, error) {
+	return nil, nil
+}
+
+func (fakeAgentRunReader) List() []*agentrt.AgentRun {
+	return nil
+}
+
+func TestDepsAcceptReaderOnlyStores(t *testing.T) {
+	t.Parallel()
+
+	deps := Deps{
+		RunLedgerStore: fakeRunLedgerReader{},
+		AgentRunStore:  fakeAgentRunReader{},
+	}
+
+	require.NotNil(t, deps.RunLedgerStore)
+	require.NotNil(t, deps.AgentRunStore)
 }
