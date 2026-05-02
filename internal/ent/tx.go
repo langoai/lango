@@ -42,6 +42,12 @@ type Tx struct {
 	Learning *LearningClient
 	// Message is the client for interacting with the Message builders.
 	Message *MessageClient
+	// Mission is the client for interacting with the Mission builders.
+	Mission *MissionClient
+	// MissionExecutionLink is the client for interacting with the MissionExecutionLink builders.
+	MissionExecutionLink *MissionExecutionLinkClient
+	// MissionStateHistory is the client for interacting with the MissionStateHistory builders.
+	MissionStateHistory *MissionStateHistoryClient
 	// Observation is the client for interacting with the Observation builders.
 	Observation *ObservationClient
 	// OntologyConflict is the client for interacting with the OntologyConflict builders.
@@ -228,6 +234,9 @@ func (tx *Tx) init() {
 	tx.Knowledge = NewKnowledgeClient(tx.config)
 	tx.Learning = NewLearningClient(tx.config)
 	tx.Message = NewMessageClient(tx.config)
+	tx.Mission = NewMissionClient(tx.config)
+	tx.MissionExecutionLink = NewMissionExecutionLinkClient(tx.config)
+	tx.MissionStateHistory = NewMissionStateHistoryClient(tx.config)
 	tx.Observation = NewObservationClient(tx.config)
 	tx.OntologyConflict = NewOntologyConflictClient(tx.config)
 	tx.OntologyPredicate = NewOntologyPredicateClient(tx.config)

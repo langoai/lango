@@ -31,6 +31,9 @@ import (
 	"github.com/langoai/lango/internal/ent/knowledge"
 	"github.com/langoai/lango/internal/ent/learning"
 	"github.com/langoai/lango/internal/ent/message"
+	"github.com/langoai/lango/internal/ent/mission"
+	"github.com/langoai/lango/internal/ent/missionexecutionlink"
+	"github.com/langoai/lango/internal/ent/missionstatehistory"
 	"github.com/langoai/lango/internal/ent/observation"
 	"github.com/langoai/lango/internal/ent/ontologyconflict"
 	"github.com/langoai/lango/internal/ent/ontologypredicate"
@@ -88,6 +91,12 @@ type Client struct {
 	Learning *LearningClient
 	// Message is the client for interacting with the Message builders.
 	Message *MessageClient
+	// Mission is the client for interacting with the Mission builders.
+	Mission *MissionClient
+	// MissionExecutionLink is the client for interacting with the MissionExecutionLink builders.
+	MissionExecutionLink *MissionExecutionLinkClient
+	// MissionStateHistory is the client for interacting with the MissionStateHistory builders.
+	MissionStateHistory *MissionStateHistoryClient
 	// Observation is the client for interacting with the Observation builders.
 	Observation *ObservationClient
 	// OntologyConflict is the client for interacting with the OntologyConflict builders.
@@ -154,6 +163,9 @@ func (c *Client) init() {
 	c.Knowledge = NewKnowledgeClient(c.config)
 	c.Learning = NewLearningClient(c.config)
 	c.Message = NewMessageClient(c.config)
+	c.Mission = NewMissionClient(c.config)
+	c.MissionExecutionLink = NewMissionExecutionLinkClient(c.config)
+	c.MissionStateHistory = NewMissionStateHistoryClient(c.config)
 	c.Observation = NewObservationClient(c.config)
 	c.OntologyConflict = NewOntologyConflictClient(c.config)
 	c.OntologyPredicate = NewOntologyPredicateClient(c.config)
@@ -281,6 +293,9 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		Knowledge:             NewKnowledgeClient(cfg),
 		Learning:              NewLearningClient(cfg),
 		Message:               NewMessageClient(cfg),
+		Mission:               NewMissionClient(cfg),
+		MissionExecutionLink:  NewMissionExecutionLinkClient(cfg),
+		MissionStateHistory:   NewMissionStateHistoryClient(cfg),
 		Observation:           NewObservationClient(cfg),
 		OntologyConflict:      NewOntologyConflictClient(cfg),
 		OntologyPredicate:     NewOntologyPredicateClient(cfg),
@@ -335,6 +350,9 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		Knowledge:             NewKnowledgeClient(cfg),
 		Learning:              NewLearningClient(cfg),
 		Message:               NewMessageClient(cfg),
+		Mission:               NewMissionClient(cfg),
+		MissionExecutionLink:  NewMissionExecutionLinkClient(cfg),
+		MissionStateHistory:   NewMissionStateHistoryClient(cfg),
 		Observation:           NewObservationClient(cfg),
 		OntologyConflict:      NewOntologyConflictClient(cfg),
 		OntologyPredicate:     NewOntologyPredicateClient(cfg),
@@ -386,7 +404,8 @@ func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.ActionLog, c.AgentMemory, c.AuditLog, c.ConfigProfile, c.CronJob,
 		c.CronJobHistory, c.EntityAlias, c.EntityProperty, c.EscrowDeal, c.ExternalRef,
-		c.Inquiry, c.Key, c.Knowledge, c.Learning, c.Message, c.Observation,
+		c.Inquiry, c.Key, c.Knowledge, c.Learning, c.Message, c.Mission,
+		c.MissionExecutionLink, c.MissionStateHistory, c.Observation,
 		c.OntologyConflict, c.OntologyPredicate, c.OntologyType, c.PaymentTx,
 		c.PeerReputation, c.ProvenanceAttribution, c.ProvenanceCheckpoint,
 		c.Reflection, c.RunJournal, c.RunSnapshot, c.RunStep, c.Secret, c.Session,
@@ -403,7 +422,8 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.ActionLog, c.AgentMemory, c.AuditLog, c.ConfigProfile, c.CronJob,
 		c.CronJobHistory, c.EntityAlias, c.EntityProperty, c.EscrowDeal, c.ExternalRef,
-		c.Inquiry, c.Key, c.Knowledge, c.Learning, c.Message, c.Observation,
+		c.Inquiry, c.Key, c.Knowledge, c.Learning, c.Message, c.Mission,
+		c.MissionExecutionLink, c.MissionStateHistory, c.Observation,
 		c.OntologyConflict, c.OntologyPredicate, c.OntologyType, c.PaymentTx,
 		c.PeerReputation, c.ProvenanceAttribution, c.ProvenanceCheckpoint,
 		c.Reflection, c.RunJournal, c.RunSnapshot, c.RunStep, c.Secret, c.Session,
@@ -447,6 +467,12 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Learning.mutate(ctx, m)
 	case *MessageMutation:
 		return c.Message.mutate(ctx, m)
+	case *MissionMutation:
+		return c.Mission.mutate(ctx, m)
+	case *MissionExecutionLinkMutation:
+		return c.MissionExecutionLink.mutate(ctx, m)
+	case *MissionStateHistoryMutation:
+		return c.MissionStateHistory.mutate(ctx, m)
 	case *ObservationMutation:
 		return c.Observation.mutate(ctx, m)
 	case *OntologyConflictMutation:
@@ -2516,6 +2542,405 @@ func (c *MessageClient) mutate(ctx context.Context, m *MessageMutation) (Value, 
 		return (&MessageDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown Message mutation op: %q", m.Op())
+	}
+}
+
+// MissionClient is a client for the Mission schema.
+type MissionClient struct {
+	config
+}
+
+// NewMissionClient returns a client for the Mission from the given config.
+func NewMissionClient(c config) *MissionClient {
+	return &MissionClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `mission.Hooks(f(g(h())))`.
+func (c *MissionClient) Use(hooks ...Hook) {
+	c.hooks.Mission = append(c.hooks.Mission, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `mission.Intercept(f(g(h())))`.
+func (c *MissionClient) Intercept(interceptors ...Interceptor) {
+	c.inters.Mission = append(c.inters.Mission, interceptors...)
+}
+
+// Create returns a builder for creating a Mission entity.
+func (c *MissionClient) Create() *MissionCreate {
+	mutation := newMissionMutation(c.config, OpCreate)
+	return &MissionCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of Mission entities.
+func (c *MissionClient) CreateBulk(builders ...*MissionCreate) *MissionCreateBulk {
+	return &MissionCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *MissionClient) MapCreateBulk(slice any, setFunc func(*MissionCreate, int)) *MissionCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &MissionCreateBulk{err: fmt.Errorf("calling to MissionClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*MissionCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &MissionCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for Mission.
+func (c *MissionClient) Update() *MissionUpdate {
+	mutation := newMissionMutation(c.config, OpUpdate)
+	return &MissionUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *MissionClient) UpdateOne(_m *Mission) *MissionUpdateOne {
+	mutation := newMissionMutation(c.config, OpUpdateOne, withMission(_m))
+	return &MissionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *MissionClient) UpdateOneID(id uuid.UUID) *MissionUpdateOne {
+	mutation := newMissionMutation(c.config, OpUpdateOne, withMissionID(id))
+	return &MissionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for Mission.
+func (c *MissionClient) Delete() *MissionDelete {
+	mutation := newMissionMutation(c.config, OpDelete)
+	return &MissionDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *MissionClient) DeleteOne(_m *Mission) *MissionDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *MissionClient) DeleteOneID(id uuid.UUID) *MissionDeleteOne {
+	builder := c.Delete().Where(mission.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &MissionDeleteOne{builder}
+}
+
+// Query returns a query builder for Mission.
+func (c *MissionClient) Query() *MissionQuery {
+	return &MissionQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeMission},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a Mission entity by its id.
+func (c *MissionClient) Get(ctx context.Context, id uuid.UUID) (*Mission, error) {
+	return c.Query().Where(mission.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *MissionClient) GetX(ctx context.Context, id uuid.UUID) *Mission {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *MissionClient) Hooks() []Hook {
+	return c.hooks.Mission
+}
+
+// Interceptors returns the client interceptors.
+func (c *MissionClient) Interceptors() []Interceptor {
+	return c.inters.Mission
+}
+
+func (c *MissionClient) mutate(ctx context.Context, m *MissionMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&MissionCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&MissionUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&MissionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&MissionDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown Mission mutation op: %q", m.Op())
+	}
+}
+
+// MissionExecutionLinkClient is a client for the MissionExecutionLink schema.
+type MissionExecutionLinkClient struct {
+	config
+}
+
+// NewMissionExecutionLinkClient returns a client for the MissionExecutionLink from the given config.
+func NewMissionExecutionLinkClient(c config) *MissionExecutionLinkClient {
+	return &MissionExecutionLinkClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `missionexecutionlink.Hooks(f(g(h())))`.
+func (c *MissionExecutionLinkClient) Use(hooks ...Hook) {
+	c.hooks.MissionExecutionLink = append(c.hooks.MissionExecutionLink, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `missionexecutionlink.Intercept(f(g(h())))`.
+func (c *MissionExecutionLinkClient) Intercept(interceptors ...Interceptor) {
+	c.inters.MissionExecutionLink = append(c.inters.MissionExecutionLink, interceptors...)
+}
+
+// Create returns a builder for creating a MissionExecutionLink entity.
+func (c *MissionExecutionLinkClient) Create() *MissionExecutionLinkCreate {
+	mutation := newMissionExecutionLinkMutation(c.config, OpCreate)
+	return &MissionExecutionLinkCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of MissionExecutionLink entities.
+func (c *MissionExecutionLinkClient) CreateBulk(builders ...*MissionExecutionLinkCreate) *MissionExecutionLinkCreateBulk {
+	return &MissionExecutionLinkCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *MissionExecutionLinkClient) MapCreateBulk(slice any, setFunc func(*MissionExecutionLinkCreate, int)) *MissionExecutionLinkCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &MissionExecutionLinkCreateBulk{err: fmt.Errorf("calling to MissionExecutionLinkClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*MissionExecutionLinkCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &MissionExecutionLinkCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for MissionExecutionLink.
+func (c *MissionExecutionLinkClient) Update() *MissionExecutionLinkUpdate {
+	mutation := newMissionExecutionLinkMutation(c.config, OpUpdate)
+	return &MissionExecutionLinkUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *MissionExecutionLinkClient) UpdateOne(_m *MissionExecutionLink) *MissionExecutionLinkUpdateOne {
+	mutation := newMissionExecutionLinkMutation(c.config, OpUpdateOne, withMissionExecutionLink(_m))
+	return &MissionExecutionLinkUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *MissionExecutionLinkClient) UpdateOneID(id uuid.UUID) *MissionExecutionLinkUpdateOne {
+	mutation := newMissionExecutionLinkMutation(c.config, OpUpdateOne, withMissionExecutionLinkID(id))
+	return &MissionExecutionLinkUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for MissionExecutionLink.
+func (c *MissionExecutionLinkClient) Delete() *MissionExecutionLinkDelete {
+	mutation := newMissionExecutionLinkMutation(c.config, OpDelete)
+	return &MissionExecutionLinkDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *MissionExecutionLinkClient) DeleteOne(_m *MissionExecutionLink) *MissionExecutionLinkDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *MissionExecutionLinkClient) DeleteOneID(id uuid.UUID) *MissionExecutionLinkDeleteOne {
+	builder := c.Delete().Where(missionexecutionlink.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &MissionExecutionLinkDeleteOne{builder}
+}
+
+// Query returns a query builder for MissionExecutionLink.
+func (c *MissionExecutionLinkClient) Query() *MissionExecutionLinkQuery {
+	return &MissionExecutionLinkQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeMissionExecutionLink},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a MissionExecutionLink entity by its id.
+func (c *MissionExecutionLinkClient) Get(ctx context.Context, id uuid.UUID) (*MissionExecutionLink, error) {
+	return c.Query().Where(missionexecutionlink.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *MissionExecutionLinkClient) GetX(ctx context.Context, id uuid.UUID) *MissionExecutionLink {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *MissionExecutionLinkClient) Hooks() []Hook {
+	return c.hooks.MissionExecutionLink
+}
+
+// Interceptors returns the client interceptors.
+func (c *MissionExecutionLinkClient) Interceptors() []Interceptor {
+	return c.inters.MissionExecutionLink
+}
+
+func (c *MissionExecutionLinkClient) mutate(ctx context.Context, m *MissionExecutionLinkMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&MissionExecutionLinkCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&MissionExecutionLinkUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&MissionExecutionLinkUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&MissionExecutionLinkDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown MissionExecutionLink mutation op: %q", m.Op())
+	}
+}
+
+// MissionStateHistoryClient is a client for the MissionStateHistory schema.
+type MissionStateHistoryClient struct {
+	config
+}
+
+// NewMissionStateHistoryClient returns a client for the MissionStateHistory from the given config.
+func NewMissionStateHistoryClient(c config) *MissionStateHistoryClient {
+	return &MissionStateHistoryClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `missionstatehistory.Hooks(f(g(h())))`.
+func (c *MissionStateHistoryClient) Use(hooks ...Hook) {
+	c.hooks.MissionStateHistory = append(c.hooks.MissionStateHistory, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `missionstatehistory.Intercept(f(g(h())))`.
+func (c *MissionStateHistoryClient) Intercept(interceptors ...Interceptor) {
+	c.inters.MissionStateHistory = append(c.inters.MissionStateHistory, interceptors...)
+}
+
+// Create returns a builder for creating a MissionStateHistory entity.
+func (c *MissionStateHistoryClient) Create() *MissionStateHistoryCreate {
+	mutation := newMissionStateHistoryMutation(c.config, OpCreate)
+	return &MissionStateHistoryCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of MissionStateHistory entities.
+func (c *MissionStateHistoryClient) CreateBulk(builders ...*MissionStateHistoryCreate) *MissionStateHistoryCreateBulk {
+	return &MissionStateHistoryCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *MissionStateHistoryClient) MapCreateBulk(slice any, setFunc func(*MissionStateHistoryCreate, int)) *MissionStateHistoryCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &MissionStateHistoryCreateBulk{err: fmt.Errorf("calling to MissionStateHistoryClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*MissionStateHistoryCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &MissionStateHistoryCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for MissionStateHistory.
+func (c *MissionStateHistoryClient) Update() *MissionStateHistoryUpdate {
+	mutation := newMissionStateHistoryMutation(c.config, OpUpdate)
+	return &MissionStateHistoryUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *MissionStateHistoryClient) UpdateOne(_m *MissionStateHistory) *MissionStateHistoryUpdateOne {
+	mutation := newMissionStateHistoryMutation(c.config, OpUpdateOne, withMissionStateHistory(_m))
+	return &MissionStateHistoryUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *MissionStateHistoryClient) UpdateOneID(id uuid.UUID) *MissionStateHistoryUpdateOne {
+	mutation := newMissionStateHistoryMutation(c.config, OpUpdateOne, withMissionStateHistoryID(id))
+	return &MissionStateHistoryUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for MissionStateHistory.
+func (c *MissionStateHistoryClient) Delete() *MissionStateHistoryDelete {
+	mutation := newMissionStateHistoryMutation(c.config, OpDelete)
+	return &MissionStateHistoryDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *MissionStateHistoryClient) DeleteOne(_m *MissionStateHistory) *MissionStateHistoryDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *MissionStateHistoryClient) DeleteOneID(id uuid.UUID) *MissionStateHistoryDeleteOne {
+	builder := c.Delete().Where(missionstatehistory.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &MissionStateHistoryDeleteOne{builder}
+}
+
+// Query returns a query builder for MissionStateHistory.
+func (c *MissionStateHistoryClient) Query() *MissionStateHistoryQuery {
+	return &MissionStateHistoryQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeMissionStateHistory},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a MissionStateHistory entity by its id.
+func (c *MissionStateHistoryClient) Get(ctx context.Context, id uuid.UUID) (*MissionStateHistory, error) {
+	return c.Query().Where(missionstatehistory.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *MissionStateHistoryClient) GetX(ctx context.Context, id uuid.UUID) *MissionStateHistory {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *MissionStateHistoryClient) Hooks() []Hook {
+	return c.hooks.MissionStateHistory
+}
+
+// Interceptors returns the client interceptors.
+func (c *MissionStateHistoryClient) Interceptors() []Interceptor {
+	return c.inters.MissionStateHistory
+}
+
+func (c *MissionStateHistoryClient) mutate(ctx context.Context, m *MissionStateHistoryMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&MissionStateHistoryCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&MissionStateHistoryUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&MissionStateHistoryUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&MissionStateHistoryDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown MissionStateHistory mutation op: %q", m.Op())
 	}
 }
 
@@ -5216,19 +5641,20 @@ type (
 	hooks struct {
 		ActionLog, AgentMemory, AuditLog, ConfigProfile, CronJob, CronJobHistory,
 		EntityAlias, EntityProperty, EscrowDeal, ExternalRef, Inquiry, Key, Knowledge,
-		Learning, Message, Observation, OntologyConflict, OntologyPredicate,
-		OntologyType, PaymentTx, PeerReputation, ProvenanceAttribution,
-		ProvenanceCheckpoint, Reflection, RunJournal, RunSnapshot, RunStep, Secret,
-		Session, SessionProvenance, TokenUsage, TurnTrace, TurnTraceEvent, WorkflowRun,
-		WorkflowStepRun []ent.Hook
+		Learning, Message, Mission, MissionExecutionLink, MissionStateHistory,
+		Observation, OntologyConflict, OntologyPredicate, OntologyType, PaymentTx,
+		PeerReputation, ProvenanceAttribution, ProvenanceCheckpoint, Reflection,
+		RunJournal, RunSnapshot, RunStep, Secret, Session, SessionProvenance,
+		TokenUsage, TurnTrace, TurnTraceEvent, WorkflowRun, WorkflowStepRun []ent.Hook
 	}
 	inters struct {
 		ActionLog, AgentMemory, AuditLog, ConfigProfile, CronJob, CronJobHistory,
 		EntityAlias, EntityProperty, EscrowDeal, ExternalRef, Inquiry, Key, Knowledge,
-		Learning, Message, Observation, OntologyConflict, OntologyPredicate,
-		OntologyType, PaymentTx, PeerReputation, ProvenanceAttribution,
-		ProvenanceCheckpoint, Reflection, RunJournal, RunSnapshot, RunStep, Secret,
-		Session, SessionProvenance, TokenUsage, TurnTrace, TurnTraceEvent, WorkflowRun,
+		Learning, Message, Mission, MissionExecutionLink, MissionStateHistory,
+		Observation, OntologyConflict, OntologyPredicate, OntologyType, PaymentTx,
+		PeerReputation, ProvenanceAttribution, ProvenanceCheckpoint, Reflection,
+		RunJournal, RunSnapshot, RunStep, Secret, Session, SessionProvenance,
+		TokenUsage, TurnTrace, TurnTraceEvent, WorkflowRun,
 		WorkflowStepRun []ent.Interceptor
 	}
 )

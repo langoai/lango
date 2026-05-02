@@ -51,6 +51,15 @@ type Learning func(*sql.Selector)
 // Message is the predicate function for message builders.
 type Message func(*sql.Selector)
 
+// Mission is the predicate function for mission builders.
+type Mission func(*sql.Selector)
+
+// MissionExecutionLink is the predicate function for missionexecutionlink builders.
+type MissionExecutionLink func(*sql.Selector)
+
+// MissionStateHistory is the predicate function for missionstatehistory builders.
+type MissionStateHistory func(*sql.Selector)
+
 // Observation is the predicate function for observation builders.
 type Observation func(*sql.Selector)
 

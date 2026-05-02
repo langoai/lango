@@ -27,6 +27,9 @@ import (
 	"github.com/langoai/lango/internal/ent/knowledge"
 	"github.com/langoai/lango/internal/ent/learning"
 	"github.com/langoai/lango/internal/ent/message"
+	"github.com/langoai/lango/internal/ent/mission"
+	"github.com/langoai/lango/internal/ent/missionexecutionlink"
+	"github.com/langoai/lango/internal/ent/missionstatehistory"
 	"github.com/langoai/lango/internal/ent/observation"
 	"github.com/langoai/lango/internal/ent/ontologyconflict"
 	"github.com/langoai/lango/internal/ent/ontologypredicate"
@@ -75,6 +78,9 @@ const (
 	TypeKnowledge             = "Knowledge"
 	TypeLearning              = "Learning"
 	TypeMessage               = "Message"
+	TypeMission               = "Mission"
+	TypeMissionExecutionLink  = "MissionExecutionLink"
+	TypeMissionStateHistory   = "MissionStateHistory"
 	TypeObservation           = "Observation"
 	TypeOntologyConflict      = "OntologyConflict"
 	TypeOntologyPredicate     = "OntologyPredicate"
@@ -14476,6 +14482,2768 @@ func (m *MessageMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown Message edge %s", name)
+}
+
+// MissionMutation represents an operation that mutates the Mission nodes in the graph.
+type MissionMutation struct {
+	config
+	op                       Op
+	typ                      string
+	id                       *uuid.UUID
+	session_key              *string
+	title                    *string
+	description              *string
+	status                   *mission.Status
+	source_kind              *string
+	source_ref               *string
+	current_blocked_reason   *string
+	current_decision_kind    *string
+	current_decision_summary *string
+	created_at               *time.Time
+	updated_at               *time.Time
+	completed_at             *time.Time
+	clearedFields            map[string]struct{}
+	done                     bool
+	oldValue                 func(context.Context) (*Mission, error)
+	predicates               []predicate.Mission
+}
+
+var _ ent.Mutation = (*MissionMutation)(nil)
+
+// missionOption allows management of the mutation configuration using functional options.
+type missionOption func(*MissionMutation)
+
+// newMissionMutation creates new mutation for the Mission entity.
+func newMissionMutation(c config, op Op, opts ...missionOption) *MissionMutation {
+	m := &MissionMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeMission,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withMissionID sets the ID field of the mutation.
+func withMissionID(id uuid.UUID) missionOption {
+	return func(m *MissionMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *Mission
+		)
+		m.oldValue = func(ctx context.Context) (*Mission, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().Mission.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withMission sets the old Mission of the mutation.
+func withMission(node *Mission) missionOption {
+	return func(m *MissionMutation) {
+		m.oldValue = func(context.Context) (*Mission, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m MissionMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m MissionMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of Mission entities.
+func (m *MissionMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *MissionMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *MissionMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().Mission.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetSessionKey sets the "session_key" field.
+func (m *MissionMutation) SetSessionKey(s string) {
+	m.session_key = &s
+}
+
+// SessionKey returns the value of the "session_key" field in the mutation.
+func (m *MissionMutation) SessionKey() (r string, exists bool) {
+	v := m.session_key
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSessionKey returns the old "session_key" field's value of the Mission entity.
+// If the Mission object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MissionMutation) OldSessionKey(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSessionKey is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSessionKey requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSessionKey: %w", err)
+	}
+	return oldValue.SessionKey, nil
+}
+
+// ResetSessionKey resets all changes to the "session_key" field.
+func (m *MissionMutation) ResetSessionKey() {
+	m.session_key = nil
+}
+
+// SetTitle sets the "title" field.
+func (m *MissionMutation) SetTitle(s string) {
+	m.title = &s
+}
+
+// Title returns the value of the "title" field in the mutation.
+func (m *MissionMutation) Title() (r string, exists bool) {
+	v := m.title
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTitle returns the old "title" field's value of the Mission entity.
+// If the Mission object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MissionMutation) OldTitle(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTitle is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTitle requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTitle: %w", err)
+	}
+	return oldValue.Title, nil
+}
+
+// ResetTitle resets all changes to the "title" field.
+func (m *MissionMutation) ResetTitle() {
+	m.title = nil
+}
+
+// SetDescription sets the "description" field.
+func (m *MissionMutation) SetDescription(s string) {
+	m.description = &s
+}
+
+// Description returns the value of the "description" field in the mutation.
+func (m *MissionMutation) Description() (r string, exists bool) {
+	v := m.description
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDescription returns the old "description" field's value of the Mission entity.
+// If the Mission object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MissionMutation) OldDescription(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDescription is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDescription requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDescription: %w", err)
+	}
+	return oldValue.Description, nil
+}
+
+// ClearDescription clears the value of the "description" field.
+func (m *MissionMutation) ClearDescription() {
+	m.description = nil
+	m.clearedFields[mission.FieldDescription] = struct{}{}
+}
+
+// DescriptionCleared returns if the "description" field was cleared in this mutation.
+func (m *MissionMutation) DescriptionCleared() bool {
+	_, ok := m.clearedFields[mission.FieldDescription]
+	return ok
+}
+
+// ResetDescription resets all changes to the "description" field.
+func (m *MissionMutation) ResetDescription() {
+	m.description = nil
+	delete(m.clearedFields, mission.FieldDescription)
+}
+
+// SetStatus sets the "status" field.
+func (m *MissionMutation) SetStatus(value mission.Status) {
+	m.status = &value
+}
+
+// Status returns the value of the "status" field in the mutation.
+func (m *MissionMutation) Status() (r mission.Status, exists bool) {
+	v := m.status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStatus returns the old "status" field's value of the Mission entity.
+// If the Mission object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MissionMutation) OldStatus(ctx context.Context) (v mission.Status, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStatus: %w", err)
+	}
+	return oldValue.Status, nil
+}
+
+// ResetStatus resets all changes to the "status" field.
+func (m *MissionMutation) ResetStatus() {
+	m.status = nil
+}
+
+// SetSourceKind sets the "source_kind" field.
+func (m *MissionMutation) SetSourceKind(s string) {
+	m.source_kind = &s
+}
+
+// SourceKind returns the value of the "source_kind" field in the mutation.
+func (m *MissionMutation) SourceKind() (r string, exists bool) {
+	v := m.source_kind
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSourceKind returns the old "source_kind" field's value of the Mission entity.
+// If the Mission object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MissionMutation) OldSourceKind(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSourceKind is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSourceKind requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSourceKind: %w", err)
+	}
+	return oldValue.SourceKind, nil
+}
+
+// ResetSourceKind resets all changes to the "source_kind" field.
+func (m *MissionMutation) ResetSourceKind() {
+	m.source_kind = nil
+}
+
+// SetSourceRef sets the "source_ref" field.
+func (m *MissionMutation) SetSourceRef(s string) {
+	m.source_ref = &s
+}
+
+// SourceRef returns the value of the "source_ref" field in the mutation.
+func (m *MissionMutation) SourceRef() (r string, exists bool) {
+	v := m.source_ref
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSourceRef returns the old "source_ref" field's value of the Mission entity.
+// If the Mission object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MissionMutation) OldSourceRef(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSourceRef is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSourceRef requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSourceRef: %w", err)
+	}
+	return oldValue.SourceRef, nil
+}
+
+// ClearSourceRef clears the value of the "source_ref" field.
+func (m *MissionMutation) ClearSourceRef() {
+	m.source_ref = nil
+	m.clearedFields[mission.FieldSourceRef] = struct{}{}
+}
+
+// SourceRefCleared returns if the "source_ref" field was cleared in this mutation.
+func (m *MissionMutation) SourceRefCleared() bool {
+	_, ok := m.clearedFields[mission.FieldSourceRef]
+	return ok
+}
+
+// ResetSourceRef resets all changes to the "source_ref" field.
+func (m *MissionMutation) ResetSourceRef() {
+	m.source_ref = nil
+	delete(m.clearedFields, mission.FieldSourceRef)
+}
+
+// SetCurrentBlockedReason sets the "current_blocked_reason" field.
+func (m *MissionMutation) SetCurrentBlockedReason(s string) {
+	m.current_blocked_reason = &s
+}
+
+// CurrentBlockedReason returns the value of the "current_blocked_reason" field in the mutation.
+func (m *MissionMutation) CurrentBlockedReason() (r string, exists bool) {
+	v := m.current_blocked_reason
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCurrentBlockedReason returns the old "current_blocked_reason" field's value of the Mission entity.
+// If the Mission object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MissionMutation) OldCurrentBlockedReason(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCurrentBlockedReason is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCurrentBlockedReason requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCurrentBlockedReason: %w", err)
+	}
+	return oldValue.CurrentBlockedReason, nil
+}
+
+// ClearCurrentBlockedReason clears the value of the "current_blocked_reason" field.
+func (m *MissionMutation) ClearCurrentBlockedReason() {
+	m.current_blocked_reason = nil
+	m.clearedFields[mission.FieldCurrentBlockedReason] = struct{}{}
+}
+
+// CurrentBlockedReasonCleared returns if the "current_blocked_reason" field was cleared in this mutation.
+func (m *MissionMutation) CurrentBlockedReasonCleared() bool {
+	_, ok := m.clearedFields[mission.FieldCurrentBlockedReason]
+	return ok
+}
+
+// ResetCurrentBlockedReason resets all changes to the "current_blocked_reason" field.
+func (m *MissionMutation) ResetCurrentBlockedReason() {
+	m.current_blocked_reason = nil
+	delete(m.clearedFields, mission.FieldCurrentBlockedReason)
+}
+
+// SetCurrentDecisionKind sets the "current_decision_kind" field.
+func (m *MissionMutation) SetCurrentDecisionKind(s string) {
+	m.current_decision_kind = &s
+}
+
+// CurrentDecisionKind returns the value of the "current_decision_kind" field in the mutation.
+func (m *MissionMutation) CurrentDecisionKind() (r string, exists bool) {
+	v := m.current_decision_kind
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCurrentDecisionKind returns the old "current_decision_kind" field's value of the Mission entity.
+// If the Mission object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MissionMutation) OldCurrentDecisionKind(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCurrentDecisionKind is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCurrentDecisionKind requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCurrentDecisionKind: %w", err)
+	}
+	return oldValue.CurrentDecisionKind, nil
+}
+
+// ClearCurrentDecisionKind clears the value of the "current_decision_kind" field.
+func (m *MissionMutation) ClearCurrentDecisionKind() {
+	m.current_decision_kind = nil
+	m.clearedFields[mission.FieldCurrentDecisionKind] = struct{}{}
+}
+
+// CurrentDecisionKindCleared returns if the "current_decision_kind" field was cleared in this mutation.
+func (m *MissionMutation) CurrentDecisionKindCleared() bool {
+	_, ok := m.clearedFields[mission.FieldCurrentDecisionKind]
+	return ok
+}
+
+// ResetCurrentDecisionKind resets all changes to the "current_decision_kind" field.
+func (m *MissionMutation) ResetCurrentDecisionKind() {
+	m.current_decision_kind = nil
+	delete(m.clearedFields, mission.FieldCurrentDecisionKind)
+}
+
+// SetCurrentDecisionSummary sets the "current_decision_summary" field.
+func (m *MissionMutation) SetCurrentDecisionSummary(s string) {
+	m.current_decision_summary = &s
+}
+
+// CurrentDecisionSummary returns the value of the "current_decision_summary" field in the mutation.
+func (m *MissionMutation) CurrentDecisionSummary() (r string, exists bool) {
+	v := m.current_decision_summary
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCurrentDecisionSummary returns the old "current_decision_summary" field's value of the Mission entity.
+// If the Mission object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MissionMutation) OldCurrentDecisionSummary(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCurrentDecisionSummary is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCurrentDecisionSummary requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCurrentDecisionSummary: %w", err)
+	}
+	return oldValue.CurrentDecisionSummary, nil
+}
+
+// ClearCurrentDecisionSummary clears the value of the "current_decision_summary" field.
+func (m *MissionMutation) ClearCurrentDecisionSummary() {
+	m.current_decision_summary = nil
+	m.clearedFields[mission.FieldCurrentDecisionSummary] = struct{}{}
+}
+
+// CurrentDecisionSummaryCleared returns if the "current_decision_summary" field was cleared in this mutation.
+func (m *MissionMutation) CurrentDecisionSummaryCleared() bool {
+	_, ok := m.clearedFields[mission.FieldCurrentDecisionSummary]
+	return ok
+}
+
+// ResetCurrentDecisionSummary resets all changes to the "current_decision_summary" field.
+func (m *MissionMutation) ResetCurrentDecisionSummary() {
+	m.current_decision_summary = nil
+	delete(m.clearedFields, mission.FieldCurrentDecisionSummary)
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *MissionMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *MissionMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the Mission entity.
+// If the Mission object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MissionMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *MissionMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *MissionMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *MissionMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the Mission entity.
+// If the Mission object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MissionMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *MissionMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetCompletedAt sets the "completed_at" field.
+func (m *MissionMutation) SetCompletedAt(t time.Time) {
+	m.completed_at = &t
+}
+
+// CompletedAt returns the value of the "completed_at" field in the mutation.
+func (m *MissionMutation) CompletedAt() (r time.Time, exists bool) {
+	v := m.completed_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCompletedAt returns the old "completed_at" field's value of the Mission entity.
+// If the Mission object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MissionMutation) OldCompletedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCompletedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCompletedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCompletedAt: %w", err)
+	}
+	return oldValue.CompletedAt, nil
+}
+
+// ClearCompletedAt clears the value of the "completed_at" field.
+func (m *MissionMutation) ClearCompletedAt() {
+	m.completed_at = nil
+	m.clearedFields[mission.FieldCompletedAt] = struct{}{}
+}
+
+// CompletedAtCleared returns if the "completed_at" field was cleared in this mutation.
+func (m *MissionMutation) CompletedAtCleared() bool {
+	_, ok := m.clearedFields[mission.FieldCompletedAt]
+	return ok
+}
+
+// ResetCompletedAt resets all changes to the "completed_at" field.
+func (m *MissionMutation) ResetCompletedAt() {
+	m.completed_at = nil
+	delete(m.clearedFields, mission.FieldCompletedAt)
+}
+
+// Where appends a list predicates to the MissionMutation builder.
+func (m *MissionMutation) Where(ps ...predicate.Mission) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the MissionMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *MissionMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.Mission, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *MissionMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *MissionMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (Mission).
+func (m *MissionMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *MissionMutation) Fields() []string {
+	fields := make([]string, 0, 12)
+	if m.session_key != nil {
+		fields = append(fields, mission.FieldSessionKey)
+	}
+	if m.title != nil {
+		fields = append(fields, mission.FieldTitle)
+	}
+	if m.description != nil {
+		fields = append(fields, mission.FieldDescription)
+	}
+	if m.status != nil {
+		fields = append(fields, mission.FieldStatus)
+	}
+	if m.source_kind != nil {
+		fields = append(fields, mission.FieldSourceKind)
+	}
+	if m.source_ref != nil {
+		fields = append(fields, mission.FieldSourceRef)
+	}
+	if m.current_blocked_reason != nil {
+		fields = append(fields, mission.FieldCurrentBlockedReason)
+	}
+	if m.current_decision_kind != nil {
+		fields = append(fields, mission.FieldCurrentDecisionKind)
+	}
+	if m.current_decision_summary != nil {
+		fields = append(fields, mission.FieldCurrentDecisionSummary)
+	}
+	if m.created_at != nil {
+		fields = append(fields, mission.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, mission.FieldUpdatedAt)
+	}
+	if m.completed_at != nil {
+		fields = append(fields, mission.FieldCompletedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *MissionMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case mission.FieldSessionKey:
+		return m.SessionKey()
+	case mission.FieldTitle:
+		return m.Title()
+	case mission.FieldDescription:
+		return m.Description()
+	case mission.FieldStatus:
+		return m.Status()
+	case mission.FieldSourceKind:
+		return m.SourceKind()
+	case mission.FieldSourceRef:
+		return m.SourceRef()
+	case mission.FieldCurrentBlockedReason:
+		return m.CurrentBlockedReason()
+	case mission.FieldCurrentDecisionKind:
+		return m.CurrentDecisionKind()
+	case mission.FieldCurrentDecisionSummary:
+		return m.CurrentDecisionSummary()
+	case mission.FieldCreatedAt:
+		return m.CreatedAt()
+	case mission.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case mission.FieldCompletedAt:
+		return m.CompletedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *MissionMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case mission.FieldSessionKey:
+		return m.OldSessionKey(ctx)
+	case mission.FieldTitle:
+		return m.OldTitle(ctx)
+	case mission.FieldDescription:
+		return m.OldDescription(ctx)
+	case mission.FieldStatus:
+		return m.OldStatus(ctx)
+	case mission.FieldSourceKind:
+		return m.OldSourceKind(ctx)
+	case mission.FieldSourceRef:
+		return m.OldSourceRef(ctx)
+	case mission.FieldCurrentBlockedReason:
+		return m.OldCurrentBlockedReason(ctx)
+	case mission.FieldCurrentDecisionKind:
+		return m.OldCurrentDecisionKind(ctx)
+	case mission.FieldCurrentDecisionSummary:
+		return m.OldCurrentDecisionSummary(ctx)
+	case mission.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case mission.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case mission.FieldCompletedAt:
+		return m.OldCompletedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown Mission field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *MissionMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case mission.FieldSessionKey:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSessionKey(v)
+		return nil
+	case mission.FieldTitle:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTitle(v)
+		return nil
+	case mission.FieldDescription:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDescription(v)
+		return nil
+	case mission.FieldStatus:
+		v, ok := value.(mission.Status)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStatus(v)
+		return nil
+	case mission.FieldSourceKind:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSourceKind(v)
+		return nil
+	case mission.FieldSourceRef:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSourceRef(v)
+		return nil
+	case mission.FieldCurrentBlockedReason:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCurrentBlockedReason(v)
+		return nil
+	case mission.FieldCurrentDecisionKind:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCurrentDecisionKind(v)
+		return nil
+	case mission.FieldCurrentDecisionSummary:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCurrentDecisionSummary(v)
+		return nil
+	case mission.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case mission.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case mission.FieldCompletedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCompletedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown Mission field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *MissionMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *MissionMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *MissionMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown Mission numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *MissionMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(mission.FieldDescription) {
+		fields = append(fields, mission.FieldDescription)
+	}
+	if m.FieldCleared(mission.FieldSourceRef) {
+		fields = append(fields, mission.FieldSourceRef)
+	}
+	if m.FieldCleared(mission.FieldCurrentBlockedReason) {
+		fields = append(fields, mission.FieldCurrentBlockedReason)
+	}
+	if m.FieldCleared(mission.FieldCurrentDecisionKind) {
+		fields = append(fields, mission.FieldCurrentDecisionKind)
+	}
+	if m.FieldCleared(mission.FieldCurrentDecisionSummary) {
+		fields = append(fields, mission.FieldCurrentDecisionSummary)
+	}
+	if m.FieldCleared(mission.FieldCompletedAt) {
+		fields = append(fields, mission.FieldCompletedAt)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *MissionMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *MissionMutation) ClearField(name string) error {
+	switch name {
+	case mission.FieldDescription:
+		m.ClearDescription()
+		return nil
+	case mission.FieldSourceRef:
+		m.ClearSourceRef()
+		return nil
+	case mission.FieldCurrentBlockedReason:
+		m.ClearCurrentBlockedReason()
+		return nil
+	case mission.FieldCurrentDecisionKind:
+		m.ClearCurrentDecisionKind()
+		return nil
+	case mission.FieldCurrentDecisionSummary:
+		m.ClearCurrentDecisionSummary()
+		return nil
+	case mission.FieldCompletedAt:
+		m.ClearCompletedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown Mission nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *MissionMutation) ResetField(name string) error {
+	switch name {
+	case mission.FieldSessionKey:
+		m.ResetSessionKey()
+		return nil
+	case mission.FieldTitle:
+		m.ResetTitle()
+		return nil
+	case mission.FieldDescription:
+		m.ResetDescription()
+		return nil
+	case mission.FieldStatus:
+		m.ResetStatus()
+		return nil
+	case mission.FieldSourceKind:
+		m.ResetSourceKind()
+		return nil
+	case mission.FieldSourceRef:
+		m.ResetSourceRef()
+		return nil
+	case mission.FieldCurrentBlockedReason:
+		m.ResetCurrentBlockedReason()
+		return nil
+	case mission.FieldCurrentDecisionKind:
+		m.ResetCurrentDecisionKind()
+		return nil
+	case mission.FieldCurrentDecisionSummary:
+		m.ResetCurrentDecisionSummary()
+		return nil
+	case mission.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case mission.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case mission.FieldCompletedAt:
+		m.ResetCompletedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown Mission field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *MissionMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *MissionMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *MissionMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *MissionMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *MissionMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *MissionMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *MissionMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown Mission unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *MissionMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown Mission edge %s", name)
+}
+
+// MissionExecutionLinkMutation represents an operation that mutates the MissionExecutionLink nodes in the graph.
+type MissionExecutionLinkMutation struct {
+	config
+	op             Op
+	typ            string
+	id             *uuid.UUID
+	mission_id     *uuid.UUID
+	execution_kind *missionexecutionlink.ExecutionKind
+	execution_ref  *string
+	link_role      *missionexecutionlink.LinkRole
+	created_at     *time.Time
+	clearedFields  map[string]struct{}
+	done           bool
+	oldValue       func(context.Context) (*MissionExecutionLink, error)
+	predicates     []predicate.MissionExecutionLink
+}
+
+var _ ent.Mutation = (*MissionExecutionLinkMutation)(nil)
+
+// missionexecutionlinkOption allows management of the mutation configuration using functional options.
+type missionexecutionlinkOption func(*MissionExecutionLinkMutation)
+
+// newMissionExecutionLinkMutation creates new mutation for the MissionExecutionLink entity.
+func newMissionExecutionLinkMutation(c config, op Op, opts ...missionexecutionlinkOption) *MissionExecutionLinkMutation {
+	m := &MissionExecutionLinkMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeMissionExecutionLink,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withMissionExecutionLinkID sets the ID field of the mutation.
+func withMissionExecutionLinkID(id uuid.UUID) missionexecutionlinkOption {
+	return func(m *MissionExecutionLinkMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *MissionExecutionLink
+		)
+		m.oldValue = func(ctx context.Context) (*MissionExecutionLink, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().MissionExecutionLink.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withMissionExecutionLink sets the old MissionExecutionLink of the mutation.
+func withMissionExecutionLink(node *MissionExecutionLink) missionexecutionlinkOption {
+	return func(m *MissionExecutionLinkMutation) {
+		m.oldValue = func(context.Context) (*MissionExecutionLink, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m MissionExecutionLinkMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m MissionExecutionLinkMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of MissionExecutionLink entities.
+func (m *MissionExecutionLinkMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *MissionExecutionLinkMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *MissionExecutionLinkMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().MissionExecutionLink.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetMissionID sets the "mission_id" field.
+func (m *MissionExecutionLinkMutation) SetMissionID(u uuid.UUID) {
+	m.mission_id = &u
+}
+
+// MissionID returns the value of the "mission_id" field in the mutation.
+func (m *MissionExecutionLinkMutation) MissionID() (r uuid.UUID, exists bool) {
+	v := m.mission_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMissionID returns the old "mission_id" field's value of the MissionExecutionLink entity.
+// If the MissionExecutionLink object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MissionExecutionLinkMutation) OldMissionID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMissionID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMissionID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMissionID: %w", err)
+	}
+	return oldValue.MissionID, nil
+}
+
+// ResetMissionID resets all changes to the "mission_id" field.
+func (m *MissionExecutionLinkMutation) ResetMissionID() {
+	m.mission_id = nil
+}
+
+// SetExecutionKind sets the "execution_kind" field.
+func (m *MissionExecutionLinkMutation) SetExecutionKind(mk missionexecutionlink.ExecutionKind) {
+	m.execution_kind = &mk
+}
+
+// ExecutionKind returns the value of the "execution_kind" field in the mutation.
+func (m *MissionExecutionLinkMutation) ExecutionKind() (r missionexecutionlink.ExecutionKind, exists bool) {
+	v := m.execution_kind
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExecutionKind returns the old "execution_kind" field's value of the MissionExecutionLink entity.
+// If the MissionExecutionLink object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MissionExecutionLinkMutation) OldExecutionKind(ctx context.Context) (v missionexecutionlink.ExecutionKind, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExecutionKind is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExecutionKind requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExecutionKind: %w", err)
+	}
+	return oldValue.ExecutionKind, nil
+}
+
+// ResetExecutionKind resets all changes to the "execution_kind" field.
+func (m *MissionExecutionLinkMutation) ResetExecutionKind() {
+	m.execution_kind = nil
+}
+
+// SetExecutionRef sets the "execution_ref" field.
+func (m *MissionExecutionLinkMutation) SetExecutionRef(s string) {
+	m.execution_ref = &s
+}
+
+// ExecutionRef returns the value of the "execution_ref" field in the mutation.
+func (m *MissionExecutionLinkMutation) ExecutionRef() (r string, exists bool) {
+	v := m.execution_ref
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExecutionRef returns the old "execution_ref" field's value of the MissionExecutionLink entity.
+// If the MissionExecutionLink object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MissionExecutionLinkMutation) OldExecutionRef(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExecutionRef is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExecutionRef requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExecutionRef: %w", err)
+	}
+	return oldValue.ExecutionRef, nil
+}
+
+// ResetExecutionRef resets all changes to the "execution_ref" field.
+func (m *MissionExecutionLinkMutation) ResetExecutionRef() {
+	m.execution_ref = nil
+}
+
+// SetLinkRole sets the "link_role" field.
+func (m *MissionExecutionLinkMutation) SetLinkRole(mr missionexecutionlink.LinkRole) {
+	m.link_role = &mr
+}
+
+// LinkRole returns the value of the "link_role" field in the mutation.
+func (m *MissionExecutionLinkMutation) LinkRole() (r missionexecutionlink.LinkRole, exists bool) {
+	v := m.link_role
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLinkRole returns the old "link_role" field's value of the MissionExecutionLink entity.
+// If the MissionExecutionLink object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MissionExecutionLinkMutation) OldLinkRole(ctx context.Context) (v missionexecutionlink.LinkRole, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLinkRole is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLinkRole requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLinkRole: %w", err)
+	}
+	return oldValue.LinkRole, nil
+}
+
+// ResetLinkRole resets all changes to the "link_role" field.
+func (m *MissionExecutionLinkMutation) ResetLinkRole() {
+	m.link_role = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *MissionExecutionLinkMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *MissionExecutionLinkMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the MissionExecutionLink entity.
+// If the MissionExecutionLink object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MissionExecutionLinkMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *MissionExecutionLinkMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// Where appends a list predicates to the MissionExecutionLinkMutation builder.
+func (m *MissionExecutionLinkMutation) Where(ps ...predicate.MissionExecutionLink) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the MissionExecutionLinkMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *MissionExecutionLinkMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.MissionExecutionLink, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *MissionExecutionLinkMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *MissionExecutionLinkMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (MissionExecutionLink).
+func (m *MissionExecutionLinkMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *MissionExecutionLinkMutation) Fields() []string {
+	fields := make([]string, 0, 5)
+	if m.mission_id != nil {
+		fields = append(fields, missionexecutionlink.FieldMissionID)
+	}
+	if m.execution_kind != nil {
+		fields = append(fields, missionexecutionlink.FieldExecutionKind)
+	}
+	if m.execution_ref != nil {
+		fields = append(fields, missionexecutionlink.FieldExecutionRef)
+	}
+	if m.link_role != nil {
+		fields = append(fields, missionexecutionlink.FieldLinkRole)
+	}
+	if m.created_at != nil {
+		fields = append(fields, missionexecutionlink.FieldCreatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *MissionExecutionLinkMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case missionexecutionlink.FieldMissionID:
+		return m.MissionID()
+	case missionexecutionlink.FieldExecutionKind:
+		return m.ExecutionKind()
+	case missionexecutionlink.FieldExecutionRef:
+		return m.ExecutionRef()
+	case missionexecutionlink.FieldLinkRole:
+		return m.LinkRole()
+	case missionexecutionlink.FieldCreatedAt:
+		return m.CreatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *MissionExecutionLinkMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case missionexecutionlink.FieldMissionID:
+		return m.OldMissionID(ctx)
+	case missionexecutionlink.FieldExecutionKind:
+		return m.OldExecutionKind(ctx)
+	case missionexecutionlink.FieldExecutionRef:
+		return m.OldExecutionRef(ctx)
+	case missionexecutionlink.FieldLinkRole:
+		return m.OldLinkRole(ctx)
+	case missionexecutionlink.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown MissionExecutionLink field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *MissionExecutionLinkMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case missionexecutionlink.FieldMissionID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMissionID(v)
+		return nil
+	case missionexecutionlink.FieldExecutionKind:
+		v, ok := value.(missionexecutionlink.ExecutionKind)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExecutionKind(v)
+		return nil
+	case missionexecutionlink.FieldExecutionRef:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExecutionRef(v)
+		return nil
+	case missionexecutionlink.FieldLinkRole:
+		v, ok := value.(missionexecutionlink.LinkRole)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLinkRole(v)
+		return nil
+	case missionexecutionlink.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown MissionExecutionLink field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *MissionExecutionLinkMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *MissionExecutionLinkMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *MissionExecutionLinkMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown MissionExecutionLink numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *MissionExecutionLinkMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *MissionExecutionLinkMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *MissionExecutionLinkMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown MissionExecutionLink nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *MissionExecutionLinkMutation) ResetField(name string) error {
+	switch name {
+	case missionexecutionlink.FieldMissionID:
+		m.ResetMissionID()
+		return nil
+	case missionexecutionlink.FieldExecutionKind:
+		m.ResetExecutionKind()
+		return nil
+	case missionexecutionlink.FieldExecutionRef:
+		m.ResetExecutionRef()
+		return nil
+	case missionexecutionlink.FieldLinkRole:
+		m.ResetLinkRole()
+		return nil
+	case missionexecutionlink.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown MissionExecutionLink field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *MissionExecutionLinkMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *MissionExecutionLinkMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *MissionExecutionLinkMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *MissionExecutionLinkMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *MissionExecutionLinkMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *MissionExecutionLinkMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *MissionExecutionLinkMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown MissionExecutionLink unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *MissionExecutionLinkMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown MissionExecutionLink edge %s", name)
+}
+
+// MissionStateHistoryMutation represents an operation that mutates the MissionStateHistory nodes in the graph.
+type MissionStateHistoryMutation struct {
+	config
+	op               Op
+	typ              string
+	id               *uuid.UUID
+	mission_id       *uuid.UUID
+	seq              *int64
+	addseq           *int64
+	from_status      *missionstatehistory.FromStatus
+	to_status        *missionstatehistory.ToStatus
+	reason           *string
+	actor_kind       *string
+	actor_ref        *string
+	execution_kind   *string
+	execution_ref    *string
+	decision_kind    *string
+	decision_summary *string
+	payload          *map[string]interface{}
+	created_at       *time.Time
+	clearedFields    map[string]struct{}
+	done             bool
+	oldValue         func(context.Context) (*MissionStateHistory, error)
+	predicates       []predicate.MissionStateHistory
+}
+
+var _ ent.Mutation = (*MissionStateHistoryMutation)(nil)
+
+// missionstatehistoryOption allows management of the mutation configuration using functional options.
+type missionstatehistoryOption func(*MissionStateHistoryMutation)
+
+// newMissionStateHistoryMutation creates new mutation for the MissionStateHistory entity.
+func newMissionStateHistoryMutation(c config, op Op, opts ...missionstatehistoryOption) *MissionStateHistoryMutation {
+	m := &MissionStateHistoryMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeMissionStateHistory,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withMissionStateHistoryID sets the ID field of the mutation.
+func withMissionStateHistoryID(id uuid.UUID) missionstatehistoryOption {
+	return func(m *MissionStateHistoryMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *MissionStateHistory
+		)
+		m.oldValue = func(ctx context.Context) (*MissionStateHistory, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().MissionStateHistory.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withMissionStateHistory sets the old MissionStateHistory of the mutation.
+func withMissionStateHistory(node *MissionStateHistory) missionstatehistoryOption {
+	return func(m *MissionStateHistoryMutation) {
+		m.oldValue = func(context.Context) (*MissionStateHistory, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m MissionStateHistoryMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m MissionStateHistoryMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of MissionStateHistory entities.
+func (m *MissionStateHistoryMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *MissionStateHistoryMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *MissionStateHistoryMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().MissionStateHistory.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetMissionID sets the "mission_id" field.
+func (m *MissionStateHistoryMutation) SetMissionID(u uuid.UUID) {
+	m.mission_id = &u
+}
+
+// MissionID returns the value of the "mission_id" field in the mutation.
+func (m *MissionStateHistoryMutation) MissionID() (r uuid.UUID, exists bool) {
+	v := m.mission_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMissionID returns the old "mission_id" field's value of the MissionStateHistory entity.
+// If the MissionStateHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MissionStateHistoryMutation) OldMissionID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMissionID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMissionID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMissionID: %w", err)
+	}
+	return oldValue.MissionID, nil
+}
+
+// ResetMissionID resets all changes to the "mission_id" field.
+func (m *MissionStateHistoryMutation) ResetMissionID() {
+	m.mission_id = nil
+}
+
+// SetSeq sets the "seq" field.
+func (m *MissionStateHistoryMutation) SetSeq(i int64) {
+	m.seq = &i
+	m.addseq = nil
+}
+
+// Seq returns the value of the "seq" field in the mutation.
+func (m *MissionStateHistoryMutation) Seq() (r int64, exists bool) {
+	v := m.seq
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSeq returns the old "seq" field's value of the MissionStateHistory entity.
+// If the MissionStateHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MissionStateHistoryMutation) OldSeq(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSeq is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSeq requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSeq: %w", err)
+	}
+	return oldValue.Seq, nil
+}
+
+// AddSeq adds i to the "seq" field.
+func (m *MissionStateHistoryMutation) AddSeq(i int64) {
+	if m.addseq != nil {
+		*m.addseq += i
+	} else {
+		m.addseq = &i
+	}
+}
+
+// AddedSeq returns the value that was added to the "seq" field in this mutation.
+func (m *MissionStateHistoryMutation) AddedSeq() (r int64, exists bool) {
+	v := m.addseq
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetSeq resets all changes to the "seq" field.
+func (m *MissionStateHistoryMutation) ResetSeq() {
+	m.seq = nil
+	m.addseq = nil
+}
+
+// SetFromStatus sets the "from_status" field.
+func (m *MissionStateHistoryMutation) SetFromStatus(ms missionstatehistory.FromStatus) {
+	m.from_status = &ms
+}
+
+// FromStatus returns the value of the "from_status" field in the mutation.
+func (m *MissionStateHistoryMutation) FromStatus() (r missionstatehistory.FromStatus, exists bool) {
+	v := m.from_status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFromStatus returns the old "from_status" field's value of the MissionStateHistory entity.
+// If the MissionStateHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MissionStateHistoryMutation) OldFromStatus(ctx context.Context) (v *missionstatehistory.FromStatus, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFromStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFromStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFromStatus: %w", err)
+	}
+	return oldValue.FromStatus, nil
+}
+
+// ClearFromStatus clears the value of the "from_status" field.
+func (m *MissionStateHistoryMutation) ClearFromStatus() {
+	m.from_status = nil
+	m.clearedFields[missionstatehistory.FieldFromStatus] = struct{}{}
+}
+
+// FromStatusCleared returns if the "from_status" field was cleared in this mutation.
+func (m *MissionStateHistoryMutation) FromStatusCleared() bool {
+	_, ok := m.clearedFields[missionstatehistory.FieldFromStatus]
+	return ok
+}
+
+// ResetFromStatus resets all changes to the "from_status" field.
+func (m *MissionStateHistoryMutation) ResetFromStatus() {
+	m.from_status = nil
+	delete(m.clearedFields, missionstatehistory.FieldFromStatus)
+}
+
+// SetToStatus sets the "to_status" field.
+func (m *MissionStateHistoryMutation) SetToStatus(ms missionstatehistory.ToStatus) {
+	m.to_status = &ms
+}
+
+// ToStatus returns the value of the "to_status" field in the mutation.
+func (m *MissionStateHistoryMutation) ToStatus() (r missionstatehistory.ToStatus, exists bool) {
+	v := m.to_status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldToStatus returns the old "to_status" field's value of the MissionStateHistory entity.
+// If the MissionStateHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MissionStateHistoryMutation) OldToStatus(ctx context.Context) (v missionstatehistory.ToStatus, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldToStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldToStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldToStatus: %w", err)
+	}
+	return oldValue.ToStatus, nil
+}
+
+// ResetToStatus resets all changes to the "to_status" field.
+func (m *MissionStateHistoryMutation) ResetToStatus() {
+	m.to_status = nil
+}
+
+// SetReason sets the "reason" field.
+func (m *MissionStateHistoryMutation) SetReason(s string) {
+	m.reason = &s
+}
+
+// Reason returns the value of the "reason" field in the mutation.
+func (m *MissionStateHistoryMutation) Reason() (r string, exists bool) {
+	v := m.reason
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldReason returns the old "reason" field's value of the MissionStateHistory entity.
+// If the MissionStateHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MissionStateHistoryMutation) OldReason(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldReason is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldReason requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldReason: %w", err)
+	}
+	return oldValue.Reason, nil
+}
+
+// ClearReason clears the value of the "reason" field.
+func (m *MissionStateHistoryMutation) ClearReason() {
+	m.reason = nil
+	m.clearedFields[missionstatehistory.FieldReason] = struct{}{}
+}
+
+// ReasonCleared returns if the "reason" field was cleared in this mutation.
+func (m *MissionStateHistoryMutation) ReasonCleared() bool {
+	_, ok := m.clearedFields[missionstatehistory.FieldReason]
+	return ok
+}
+
+// ResetReason resets all changes to the "reason" field.
+func (m *MissionStateHistoryMutation) ResetReason() {
+	m.reason = nil
+	delete(m.clearedFields, missionstatehistory.FieldReason)
+}
+
+// SetActorKind sets the "actor_kind" field.
+func (m *MissionStateHistoryMutation) SetActorKind(s string) {
+	m.actor_kind = &s
+}
+
+// ActorKind returns the value of the "actor_kind" field in the mutation.
+func (m *MissionStateHistoryMutation) ActorKind() (r string, exists bool) {
+	v := m.actor_kind
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldActorKind returns the old "actor_kind" field's value of the MissionStateHistory entity.
+// If the MissionStateHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MissionStateHistoryMutation) OldActorKind(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldActorKind is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldActorKind requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldActorKind: %w", err)
+	}
+	return oldValue.ActorKind, nil
+}
+
+// ResetActorKind resets all changes to the "actor_kind" field.
+func (m *MissionStateHistoryMutation) ResetActorKind() {
+	m.actor_kind = nil
+}
+
+// SetActorRef sets the "actor_ref" field.
+func (m *MissionStateHistoryMutation) SetActorRef(s string) {
+	m.actor_ref = &s
+}
+
+// ActorRef returns the value of the "actor_ref" field in the mutation.
+func (m *MissionStateHistoryMutation) ActorRef() (r string, exists bool) {
+	v := m.actor_ref
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldActorRef returns the old "actor_ref" field's value of the MissionStateHistory entity.
+// If the MissionStateHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MissionStateHistoryMutation) OldActorRef(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldActorRef is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldActorRef requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldActorRef: %w", err)
+	}
+	return oldValue.ActorRef, nil
+}
+
+// ClearActorRef clears the value of the "actor_ref" field.
+func (m *MissionStateHistoryMutation) ClearActorRef() {
+	m.actor_ref = nil
+	m.clearedFields[missionstatehistory.FieldActorRef] = struct{}{}
+}
+
+// ActorRefCleared returns if the "actor_ref" field was cleared in this mutation.
+func (m *MissionStateHistoryMutation) ActorRefCleared() bool {
+	_, ok := m.clearedFields[missionstatehistory.FieldActorRef]
+	return ok
+}
+
+// ResetActorRef resets all changes to the "actor_ref" field.
+func (m *MissionStateHistoryMutation) ResetActorRef() {
+	m.actor_ref = nil
+	delete(m.clearedFields, missionstatehistory.FieldActorRef)
+}
+
+// SetExecutionKind sets the "execution_kind" field.
+func (m *MissionStateHistoryMutation) SetExecutionKind(s string) {
+	m.execution_kind = &s
+}
+
+// ExecutionKind returns the value of the "execution_kind" field in the mutation.
+func (m *MissionStateHistoryMutation) ExecutionKind() (r string, exists bool) {
+	v := m.execution_kind
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExecutionKind returns the old "execution_kind" field's value of the MissionStateHistory entity.
+// If the MissionStateHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MissionStateHistoryMutation) OldExecutionKind(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExecutionKind is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExecutionKind requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExecutionKind: %w", err)
+	}
+	return oldValue.ExecutionKind, nil
+}
+
+// ClearExecutionKind clears the value of the "execution_kind" field.
+func (m *MissionStateHistoryMutation) ClearExecutionKind() {
+	m.execution_kind = nil
+	m.clearedFields[missionstatehistory.FieldExecutionKind] = struct{}{}
+}
+
+// ExecutionKindCleared returns if the "execution_kind" field was cleared in this mutation.
+func (m *MissionStateHistoryMutation) ExecutionKindCleared() bool {
+	_, ok := m.clearedFields[missionstatehistory.FieldExecutionKind]
+	return ok
+}
+
+// ResetExecutionKind resets all changes to the "execution_kind" field.
+func (m *MissionStateHistoryMutation) ResetExecutionKind() {
+	m.execution_kind = nil
+	delete(m.clearedFields, missionstatehistory.FieldExecutionKind)
+}
+
+// SetExecutionRef sets the "execution_ref" field.
+func (m *MissionStateHistoryMutation) SetExecutionRef(s string) {
+	m.execution_ref = &s
+}
+
+// ExecutionRef returns the value of the "execution_ref" field in the mutation.
+func (m *MissionStateHistoryMutation) ExecutionRef() (r string, exists bool) {
+	v := m.execution_ref
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExecutionRef returns the old "execution_ref" field's value of the MissionStateHistory entity.
+// If the MissionStateHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MissionStateHistoryMutation) OldExecutionRef(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExecutionRef is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExecutionRef requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExecutionRef: %w", err)
+	}
+	return oldValue.ExecutionRef, nil
+}
+
+// ClearExecutionRef clears the value of the "execution_ref" field.
+func (m *MissionStateHistoryMutation) ClearExecutionRef() {
+	m.execution_ref = nil
+	m.clearedFields[missionstatehistory.FieldExecutionRef] = struct{}{}
+}
+
+// ExecutionRefCleared returns if the "execution_ref" field was cleared in this mutation.
+func (m *MissionStateHistoryMutation) ExecutionRefCleared() bool {
+	_, ok := m.clearedFields[missionstatehistory.FieldExecutionRef]
+	return ok
+}
+
+// ResetExecutionRef resets all changes to the "execution_ref" field.
+func (m *MissionStateHistoryMutation) ResetExecutionRef() {
+	m.execution_ref = nil
+	delete(m.clearedFields, missionstatehistory.FieldExecutionRef)
+}
+
+// SetDecisionKind sets the "decision_kind" field.
+func (m *MissionStateHistoryMutation) SetDecisionKind(s string) {
+	m.decision_kind = &s
+}
+
+// DecisionKind returns the value of the "decision_kind" field in the mutation.
+func (m *MissionStateHistoryMutation) DecisionKind() (r string, exists bool) {
+	v := m.decision_kind
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDecisionKind returns the old "decision_kind" field's value of the MissionStateHistory entity.
+// If the MissionStateHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MissionStateHistoryMutation) OldDecisionKind(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDecisionKind is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDecisionKind requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDecisionKind: %w", err)
+	}
+	return oldValue.DecisionKind, nil
+}
+
+// ClearDecisionKind clears the value of the "decision_kind" field.
+func (m *MissionStateHistoryMutation) ClearDecisionKind() {
+	m.decision_kind = nil
+	m.clearedFields[missionstatehistory.FieldDecisionKind] = struct{}{}
+}
+
+// DecisionKindCleared returns if the "decision_kind" field was cleared in this mutation.
+func (m *MissionStateHistoryMutation) DecisionKindCleared() bool {
+	_, ok := m.clearedFields[missionstatehistory.FieldDecisionKind]
+	return ok
+}
+
+// ResetDecisionKind resets all changes to the "decision_kind" field.
+func (m *MissionStateHistoryMutation) ResetDecisionKind() {
+	m.decision_kind = nil
+	delete(m.clearedFields, missionstatehistory.FieldDecisionKind)
+}
+
+// SetDecisionSummary sets the "decision_summary" field.
+func (m *MissionStateHistoryMutation) SetDecisionSummary(s string) {
+	m.decision_summary = &s
+}
+
+// DecisionSummary returns the value of the "decision_summary" field in the mutation.
+func (m *MissionStateHistoryMutation) DecisionSummary() (r string, exists bool) {
+	v := m.decision_summary
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDecisionSummary returns the old "decision_summary" field's value of the MissionStateHistory entity.
+// If the MissionStateHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MissionStateHistoryMutation) OldDecisionSummary(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDecisionSummary is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDecisionSummary requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDecisionSummary: %w", err)
+	}
+	return oldValue.DecisionSummary, nil
+}
+
+// ClearDecisionSummary clears the value of the "decision_summary" field.
+func (m *MissionStateHistoryMutation) ClearDecisionSummary() {
+	m.decision_summary = nil
+	m.clearedFields[missionstatehistory.FieldDecisionSummary] = struct{}{}
+}
+
+// DecisionSummaryCleared returns if the "decision_summary" field was cleared in this mutation.
+func (m *MissionStateHistoryMutation) DecisionSummaryCleared() bool {
+	_, ok := m.clearedFields[missionstatehistory.FieldDecisionSummary]
+	return ok
+}
+
+// ResetDecisionSummary resets all changes to the "decision_summary" field.
+func (m *MissionStateHistoryMutation) ResetDecisionSummary() {
+	m.decision_summary = nil
+	delete(m.clearedFields, missionstatehistory.FieldDecisionSummary)
+}
+
+// SetPayload sets the "payload" field.
+func (m *MissionStateHistoryMutation) SetPayload(value map[string]interface{}) {
+	m.payload = &value
+}
+
+// Payload returns the value of the "payload" field in the mutation.
+func (m *MissionStateHistoryMutation) Payload() (r map[string]interface{}, exists bool) {
+	v := m.payload
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPayload returns the old "payload" field's value of the MissionStateHistory entity.
+// If the MissionStateHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MissionStateHistoryMutation) OldPayload(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPayload is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPayload requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPayload: %w", err)
+	}
+	return oldValue.Payload, nil
+}
+
+// ClearPayload clears the value of the "payload" field.
+func (m *MissionStateHistoryMutation) ClearPayload() {
+	m.payload = nil
+	m.clearedFields[missionstatehistory.FieldPayload] = struct{}{}
+}
+
+// PayloadCleared returns if the "payload" field was cleared in this mutation.
+func (m *MissionStateHistoryMutation) PayloadCleared() bool {
+	_, ok := m.clearedFields[missionstatehistory.FieldPayload]
+	return ok
+}
+
+// ResetPayload resets all changes to the "payload" field.
+func (m *MissionStateHistoryMutation) ResetPayload() {
+	m.payload = nil
+	delete(m.clearedFields, missionstatehistory.FieldPayload)
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *MissionStateHistoryMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *MissionStateHistoryMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the MissionStateHistory entity.
+// If the MissionStateHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MissionStateHistoryMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *MissionStateHistoryMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// Where appends a list predicates to the MissionStateHistoryMutation builder.
+func (m *MissionStateHistoryMutation) Where(ps ...predicate.MissionStateHistory) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the MissionStateHistoryMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *MissionStateHistoryMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.MissionStateHistory, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *MissionStateHistoryMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *MissionStateHistoryMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (MissionStateHistory).
+func (m *MissionStateHistoryMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *MissionStateHistoryMutation) Fields() []string {
+	fields := make([]string, 0, 13)
+	if m.mission_id != nil {
+		fields = append(fields, missionstatehistory.FieldMissionID)
+	}
+	if m.seq != nil {
+		fields = append(fields, missionstatehistory.FieldSeq)
+	}
+	if m.from_status != nil {
+		fields = append(fields, missionstatehistory.FieldFromStatus)
+	}
+	if m.to_status != nil {
+		fields = append(fields, missionstatehistory.FieldToStatus)
+	}
+	if m.reason != nil {
+		fields = append(fields, missionstatehistory.FieldReason)
+	}
+	if m.actor_kind != nil {
+		fields = append(fields, missionstatehistory.FieldActorKind)
+	}
+	if m.actor_ref != nil {
+		fields = append(fields, missionstatehistory.FieldActorRef)
+	}
+	if m.execution_kind != nil {
+		fields = append(fields, missionstatehistory.FieldExecutionKind)
+	}
+	if m.execution_ref != nil {
+		fields = append(fields, missionstatehistory.FieldExecutionRef)
+	}
+	if m.decision_kind != nil {
+		fields = append(fields, missionstatehistory.FieldDecisionKind)
+	}
+	if m.decision_summary != nil {
+		fields = append(fields, missionstatehistory.FieldDecisionSummary)
+	}
+	if m.payload != nil {
+		fields = append(fields, missionstatehistory.FieldPayload)
+	}
+	if m.created_at != nil {
+		fields = append(fields, missionstatehistory.FieldCreatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *MissionStateHistoryMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case missionstatehistory.FieldMissionID:
+		return m.MissionID()
+	case missionstatehistory.FieldSeq:
+		return m.Seq()
+	case missionstatehistory.FieldFromStatus:
+		return m.FromStatus()
+	case missionstatehistory.FieldToStatus:
+		return m.ToStatus()
+	case missionstatehistory.FieldReason:
+		return m.Reason()
+	case missionstatehistory.FieldActorKind:
+		return m.ActorKind()
+	case missionstatehistory.FieldActorRef:
+		return m.ActorRef()
+	case missionstatehistory.FieldExecutionKind:
+		return m.ExecutionKind()
+	case missionstatehistory.FieldExecutionRef:
+		return m.ExecutionRef()
+	case missionstatehistory.FieldDecisionKind:
+		return m.DecisionKind()
+	case missionstatehistory.FieldDecisionSummary:
+		return m.DecisionSummary()
+	case missionstatehistory.FieldPayload:
+		return m.Payload()
+	case missionstatehistory.FieldCreatedAt:
+		return m.CreatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *MissionStateHistoryMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case missionstatehistory.FieldMissionID:
+		return m.OldMissionID(ctx)
+	case missionstatehistory.FieldSeq:
+		return m.OldSeq(ctx)
+	case missionstatehistory.FieldFromStatus:
+		return m.OldFromStatus(ctx)
+	case missionstatehistory.FieldToStatus:
+		return m.OldToStatus(ctx)
+	case missionstatehistory.FieldReason:
+		return m.OldReason(ctx)
+	case missionstatehistory.FieldActorKind:
+		return m.OldActorKind(ctx)
+	case missionstatehistory.FieldActorRef:
+		return m.OldActorRef(ctx)
+	case missionstatehistory.FieldExecutionKind:
+		return m.OldExecutionKind(ctx)
+	case missionstatehistory.FieldExecutionRef:
+		return m.OldExecutionRef(ctx)
+	case missionstatehistory.FieldDecisionKind:
+		return m.OldDecisionKind(ctx)
+	case missionstatehistory.FieldDecisionSummary:
+		return m.OldDecisionSummary(ctx)
+	case missionstatehistory.FieldPayload:
+		return m.OldPayload(ctx)
+	case missionstatehistory.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown MissionStateHistory field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *MissionStateHistoryMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case missionstatehistory.FieldMissionID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMissionID(v)
+		return nil
+	case missionstatehistory.FieldSeq:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSeq(v)
+		return nil
+	case missionstatehistory.FieldFromStatus:
+		v, ok := value.(missionstatehistory.FromStatus)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFromStatus(v)
+		return nil
+	case missionstatehistory.FieldToStatus:
+		v, ok := value.(missionstatehistory.ToStatus)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetToStatus(v)
+		return nil
+	case missionstatehistory.FieldReason:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetReason(v)
+		return nil
+	case missionstatehistory.FieldActorKind:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetActorKind(v)
+		return nil
+	case missionstatehistory.FieldActorRef:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetActorRef(v)
+		return nil
+	case missionstatehistory.FieldExecutionKind:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExecutionKind(v)
+		return nil
+	case missionstatehistory.FieldExecutionRef:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExecutionRef(v)
+		return nil
+	case missionstatehistory.FieldDecisionKind:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDecisionKind(v)
+		return nil
+	case missionstatehistory.FieldDecisionSummary:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDecisionSummary(v)
+		return nil
+	case missionstatehistory.FieldPayload:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPayload(v)
+		return nil
+	case missionstatehistory.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown MissionStateHistory field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *MissionStateHistoryMutation) AddedFields() []string {
+	var fields []string
+	if m.addseq != nil {
+		fields = append(fields, missionstatehistory.FieldSeq)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *MissionStateHistoryMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case missionstatehistory.FieldSeq:
+		return m.AddedSeq()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *MissionStateHistoryMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case missionstatehistory.FieldSeq:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddSeq(v)
+		return nil
+	}
+	return fmt.Errorf("unknown MissionStateHistory numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *MissionStateHistoryMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(missionstatehistory.FieldFromStatus) {
+		fields = append(fields, missionstatehistory.FieldFromStatus)
+	}
+	if m.FieldCleared(missionstatehistory.FieldReason) {
+		fields = append(fields, missionstatehistory.FieldReason)
+	}
+	if m.FieldCleared(missionstatehistory.FieldActorRef) {
+		fields = append(fields, missionstatehistory.FieldActorRef)
+	}
+	if m.FieldCleared(missionstatehistory.FieldExecutionKind) {
+		fields = append(fields, missionstatehistory.FieldExecutionKind)
+	}
+	if m.FieldCleared(missionstatehistory.FieldExecutionRef) {
+		fields = append(fields, missionstatehistory.FieldExecutionRef)
+	}
+	if m.FieldCleared(missionstatehistory.FieldDecisionKind) {
+		fields = append(fields, missionstatehistory.FieldDecisionKind)
+	}
+	if m.FieldCleared(missionstatehistory.FieldDecisionSummary) {
+		fields = append(fields, missionstatehistory.FieldDecisionSummary)
+	}
+	if m.FieldCleared(missionstatehistory.FieldPayload) {
+		fields = append(fields, missionstatehistory.FieldPayload)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *MissionStateHistoryMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *MissionStateHistoryMutation) ClearField(name string) error {
+	switch name {
+	case missionstatehistory.FieldFromStatus:
+		m.ClearFromStatus()
+		return nil
+	case missionstatehistory.FieldReason:
+		m.ClearReason()
+		return nil
+	case missionstatehistory.FieldActorRef:
+		m.ClearActorRef()
+		return nil
+	case missionstatehistory.FieldExecutionKind:
+		m.ClearExecutionKind()
+		return nil
+	case missionstatehistory.FieldExecutionRef:
+		m.ClearExecutionRef()
+		return nil
+	case missionstatehistory.FieldDecisionKind:
+		m.ClearDecisionKind()
+		return nil
+	case missionstatehistory.FieldDecisionSummary:
+		m.ClearDecisionSummary()
+		return nil
+	case missionstatehistory.FieldPayload:
+		m.ClearPayload()
+		return nil
+	}
+	return fmt.Errorf("unknown MissionStateHistory nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *MissionStateHistoryMutation) ResetField(name string) error {
+	switch name {
+	case missionstatehistory.FieldMissionID:
+		m.ResetMissionID()
+		return nil
+	case missionstatehistory.FieldSeq:
+		m.ResetSeq()
+		return nil
+	case missionstatehistory.FieldFromStatus:
+		m.ResetFromStatus()
+		return nil
+	case missionstatehistory.FieldToStatus:
+		m.ResetToStatus()
+		return nil
+	case missionstatehistory.FieldReason:
+		m.ResetReason()
+		return nil
+	case missionstatehistory.FieldActorKind:
+		m.ResetActorKind()
+		return nil
+	case missionstatehistory.FieldActorRef:
+		m.ResetActorRef()
+		return nil
+	case missionstatehistory.FieldExecutionKind:
+		m.ResetExecutionKind()
+		return nil
+	case missionstatehistory.FieldExecutionRef:
+		m.ResetExecutionRef()
+		return nil
+	case missionstatehistory.FieldDecisionKind:
+		m.ResetDecisionKind()
+		return nil
+	case missionstatehistory.FieldDecisionSummary:
+		m.ResetDecisionSummary()
+		return nil
+	case missionstatehistory.FieldPayload:
+		m.ResetPayload()
+		return nil
+	case missionstatehistory.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown MissionStateHistory field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *MissionStateHistoryMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *MissionStateHistoryMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *MissionStateHistoryMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *MissionStateHistoryMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *MissionStateHistoryMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *MissionStateHistoryMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *MissionStateHistoryMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown MissionStateHistory unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *MissionStateHistoryMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown MissionStateHistory edge %s", name)
 }
 
 // ObservationMutation represents an operation that mutates the Observation nodes in the graph.

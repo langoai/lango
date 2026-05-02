@@ -531,6 +531,112 @@ var (
 			},
 		},
 	}
+	// MissionsColumns holds the columns for the "missions" table.
+	MissionsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "session_key", Type: field.TypeString},
+		{Name: "title", Type: field.TypeString},
+		{Name: "description", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"prepared", "active", "waiting_decision", "blocked", "done", "cancelled"}, Default: "prepared"},
+		{Name: "source_kind", Type: field.TypeString},
+		{Name: "source_ref", Type: field.TypeString, Nullable: true},
+		{Name: "current_blocked_reason", Type: field.TypeString, Nullable: true},
+		{Name: "current_decision_kind", Type: field.TypeString, Nullable: true},
+		{Name: "current_decision_summary", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "completed_at", Type: field.TypeTime, Nullable: true},
+	}
+	// MissionsTable holds the schema information for the "missions" table.
+	MissionsTable = &schema.Table{
+		Name:       "missions",
+		Columns:    MissionsColumns,
+		PrimaryKey: []*schema.Column{MissionsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "mission_session_key_updated_at",
+				Unique:  false,
+				Columns: []*schema.Column{MissionsColumns[1], MissionsColumns[11]},
+			},
+			{
+				Name:    "mission_status",
+				Unique:  false,
+				Columns: []*schema.Column{MissionsColumns[4]},
+			},
+			{
+				Name:    "mission_source_kind_source_ref",
+				Unique:  false,
+				Columns: []*schema.Column{MissionsColumns[5], MissionsColumns[6]},
+			},
+		},
+	}
+	// MissionExecutionLinksColumns holds the columns for the "mission_execution_links" table.
+	MissionExecutionLinksColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "mission_id", Type: field.TypeUUID},
+		{Name: "execution_kind", Type: field.TypeEnum, Enums: []string{"runledger_run", "task_os_execution"}},
+		{Name: "execution_ref", Type: field.TypeString},
+		{Name: "link_role", Type: field.TypeEnum, Enums: []string{"primary", "followup", "retry", "research", "draft", "handoff"}, Default: "primary"},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// MissionExecutionLinksTable holds the schema information for the "mission_execution_links" table.
+	MissionExecutionLinksTable = &schema.Table{
+		Name:       "mission_execution_links",
+		Columns:    MissionExecutionLinksColumns,
+		PrimaryKey: []*schema.Column{MissionExecutionLinksColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "missionexecutionlink_mission_id_execution_kind_execution_ref",
+				Unique:  true,
+				Columns: []*schema.Column{MissionExecutionLinksColumns[1], MissionExecutionLinksColumns[2], MissionExecutionLinksColumns[3]},
+			},
+			{
+				Name:    "missionexecutionlink_execution_kind_execution_ref",
+				Unique:  false,
+				Columns: []*schema.Column{MissionExecutionLinksColumns[2], MissionExecutionLinksColumns[3]},
+			},
+			{
+				Name:    "missionexecutionlink_mission_id_link_role",
+				Unique:  false,
+				Columns: []*schema.Column{MissionExecutionLinksColumns[1], MissionExecutionLinksColumns[4]},
+			},
+		},
+	}
+	// MissionStateHistoriesColumns holds the columns for the "mission_state_histories" table.
+	MissionStateHistoriesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "mission_id", Type: field.TypeUUID},
+		{Name: "seq", Type: field.TypeInt64},
+		{Name: "from_status", Type: field.TypeEnum, Nullable: true, Enums: []string{"prepared", "active", "waiting_decision", "blocked", "done", "cancelled"}},
+		{Name: "to_status", Type: field.TypeEnum, Enums: []string{"prepared", "active", "waiting_decision", "blocked", "done", "cancelled"}},
+		{Name: "reason", Type: field.TypeString, Nullable: true},
+		{Name: "actor_kind", Type: field.TypeString},
+		{Name: "actor_ref", Type: field.TypeString, Nullable: true},
+		{Name: "execution_kind", Type: field.TypeString, Nullable: true},
+		{Name: "execution_ref", Type: field.TypeString, Nullable: true},
+		{Name: "decision_kind", Type: field.TypeString, Nullable: true},
+		{Name: "decision_summary", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "payload", Type: field.TypeJSON, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// MissionStateHistoriesTable holds the schema information for the "mission_state_histories" table.
+	MissionStateHistoriesTable = &schema.Table{
+		Name:       "mission_state_histories",
+		Columns:    MissionStateHistoriesColumns,
+		PrimaryKey: []*schema.Column{MissionStateHistoriesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "missionstatehistory_mission_id_seq",
+				Unique:  true,
+				Columns: []*schema.Column{MissionStateHistoriesColumns[1], MissionStateHistoriesColumns[2]},
+			},
+			{
+				Name:    "missionstatehistory_mission_id_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{MissionStateHistoriesColumns[1], MissionStateHistoriesColumns[13]},
+			},
+		},
+	}
 	// ObservationsColumns holds the columns for the "observations" table.
 	ObservationsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -1295,6 +1401,9 @@ var (
 		KnowledgesTable,
 		LearningsTable,
 		MessagesTable,
+		MissionsTable,
+		MissionExecutionLinksTable,
+		MissionStateHistoriesTable,
 		ObservationsTable,
 		OntologyConflictsTable,
 		OntologyPredicatesTable,

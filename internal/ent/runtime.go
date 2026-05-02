@@ -21,6 +21,9 @@ import (
 	"github.com/langoai/lango/internal/ent/knowledge"
 	"github.com/langoai/lango/internal/ent/learning"
 	"github.com/langoai/lango/internal/ent/message"
+	"github.com/langoai/lango/internal/ent/mission"
+	"github.com/langoai/lango/internal/ent/missionexecutionlink"
+	"github.com/langoai/lango/internal/ent/missionstatehistory"
 	"github.com/langoai/lango/internal/ent/observation"
 	"github.com/langoai/lango/internal/ent/ontologyconflict"
 	"github.com/langoai/lango/internal/ent/ontologypredicate"
@@ -444,6 +447,62 @@ func init() {
 	messageDescAuthor := messageFields[10].Descriptor()
 	// message.DefaultAuthor holds the default value on creation for the author field.
 	message.DefaultAuthor = messageDescAuthor.Default.(string)
+	missionFields := schema.Mission{}.Fields()
+	_ = missionFields
+	// missionDescSessionKey is the schema descriptor for session_key field.
+	missionDescSessionKey := missionFields[1].Descriptor()
+	// mission.SessionKeyValidator is a validator for the "session_key" field. It is called by the builders before save.
+	mission.SessionKeyValidator = missionDescSessionKey.Validators[0].(func(string) error)
+	// missionDescTitle is the schema descriptor for title field.
+	missionDescTitle := missionFields[2].Descriptor()
+	// mission.TitleValidator is a validator for the "title" field. It is called by the builders before save.
+	mission.TitleValidator = missionDescTitle.Validators[0].(func(string) error)
+	// missionDescSourceKind is the schema descriptor for source_kind field.
+	missionDescSourceKind := missionFields[5].Descriptor()
+	// mission.SourceKindValidator is a validator for the "source_kind" field. It is called by the builders before save.
+	mission.SourceKindValidator = missionDescSourceKind.Validators[0].(func(string) error)
+	// missionDescCreatedAt is the schema descriptor for created_at field.
+	missionDescCreatedAt := missionFields[10].Descriptor()
+	// mission.DefaultCreatedAt holds the default value on creation for the created_at field.
+	mission.DefaultCreatedAt = missionDescCreatedAt.Default.(func() time.Time)
+	// missionDescUpdatedAt is the schema descriptor for updated_at field.
+	missionDescUpdatedAt := missionFields[11].Descriptor()
+	// mission.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	mission.DefaultUpdatedAt = missionDescUpdatedAt.Default.(func() time.Time)
+	// mission.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	mission.UpdateDefaultUpdatedAt = missionDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// missionDescID is the schema descriptor for id field.
+	missionDescID := missionFields[0].Descriptor()
+	// mission.DefaultID holds the default value on creation for the id field.
+	mission.DefaultID = missionDescID.Default.(func() uuid.UUID)
+	missionexecutionlinkFields := schema.MissionExecutionLink{}.Fields()
+	_ = missionexecutionlinkFields
+	// missionexecutionlinkDescExecutionRef is the schema descriptor for execution_ref field.
+	missionexecutionlinkDescExecutionRef := missionexecutionlinkFields[3].Descriptor()
+	// missionexecutionlink.ExecutionRefValidator is a validator for the "execution_ref" field. It is called by the builders before save.
+	missionexecutionlink.ExecutionRefValidator = missionexecutionlinkDescExecutionRef.Validators[0].(func(string) error)
+	// missionexecutionlinkDescCreatedAt is the schema descriptor for created_at field.
+	missionexecutionlinkDescCreatedAt := missionexecutionlinkFields[5].Descriptor()
+	// missionexecutionlink.DefaultCreatedAt holds the default value on creation for the created_at field.
+	missionexecutionlink.DefaultCreatedAt = missionexecutionlinkDescCreatedAt.Default.(func() time.Time)
+	// missionexecutionlinkDescID is the schema descriptor for id field.
+	missionexecutionlinkDescID := missionexecutionlinkFields[0].Descriptor()
+	// missionexecutionlink.DefaultID holds the default value on creation for the id field.
+	missionexecutionlink.DefaultID = missionexecutionlinkDescID.Default.(func() uuid.UUID)
+	missionstatehistoryFields := schema.MissionStateHistory{}.Fields()
+	_ = missionstatehistoryFields
+	// missionstatehistoryDescActorKind is the schema descriptor for actor_kind field.
+	missionstatehistoryDescActorKind := missionstatehistoryFields[6].Descriptor()
+	// missionstatehistory.ActorKindValidator is a validator for the "actor_kind" field. It is called by the builders before save.
+	missionstatehistory.ActorKindValidator = missionstatehistoryDescActorKind.Validators[0].(func(string) error)
+	// missionstatehistoryDescCreatedAt is the schema descriptor for created_at field.
+	missionstatehistoryDescCreatedAt := missionstatehistoryFields[13].Descriptor()
+	// missionstatehistory.DefaultCreatedAt holds the default value on creation for the created_at field.
+	missionstatehistory.DefaultCreatedAt = missionstatehistoryDescCreatedAt.Default.(func() time.Time)
+	// missionstatehistoryDescID is the schema descriptor for id field.
+	missionstatehistoryDescID := missionstatehistoryFields[0].Descriptor()
+	// missionstatehistory.DefaultID holds the default value on creation for the id field.
+	missionstatehistory.DefaultID = missionstatehistoryDescID.Default.(func() uuid.UUID)
 	observationFields := schema.Observation{}.Fields()
 	_ = observationFields
 	// observationDescSessionKey is the schema descriptor for session_key field.
