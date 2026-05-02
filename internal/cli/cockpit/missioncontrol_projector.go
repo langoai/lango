@@ -74,7 +74,7 @@ func (p *MissionControlProjector) Project(taskSnapshots []background.TaskSnapsho
 
 	return MissionControlSnapshot{
 		Header: HeaderView{
-			ActiveAgentSummary:   p.buildActiveAgentSummary(),
+			ActiveAgentSummary:   buildActiveAgentSummary(missions),
 			ModelProviderSummary: p.buildModelProviderSummary(),
 			PendingDecisionCount: pendingDecisionCount(p.pendingApprovals),
 			DegradedNote:         degradedNote,
@@ -240,46 +240,38 @@ func (p *MissionControlProjector) buildDegradedNote() string {
 	return strings.Join(notes, "; ")
 }
 
-func (p *MissionControlProjector) buildActiveAgentSummary() string {
-	if p.agentRunStore == nil {
-		return ""
-	}
-	runs := p.agentRunStore.List()
-	if len(runs) == 0 {
+func buildActiveAgentSummary(missions []MissionView) string {
+	if len(missions) == 0 {
 		return ""
 	}
 
-	active := make([]*agentrt.AgentRun, 0, len(runs))
-	for _, run := range runs {
-		if run == nil {
+	owners := make([]string, 0, len(missions))
+	seen := make(map[string]struct{}, len(missions))
+	for _, mission := range missions {
+		if mission.Kind != MissionKindActive {
 			continue
 		}
-		if run.Status == agentrt.AgentRunRunning || run.Status == agentrt.AgentRunSpawned {
-			active = append(active, run)
+		if mission.Status == MissionStatusDone || mission.Status == MissionStatusFailed || mission.Status == MissionStatusCancelled {
+			continue
 		}
+		owner := strings.TrimSpace(mission.OwnerAgent)
+		if owner == "" {
+			continue
+		}
+		if _, ok := seen[owner]; ok {
+			continue
+		}
+		seen[owner] = struct{}{}
+		owners = append(owners, owner)
 	}
-	if len(active) == 0 {
+	if len(owners) == 0 {
 		return ""
 	}
-
-	sort.SliceStable(active, func(i, j int) bool {
-		if !active[i].CreatedAt.Equal(active[j].CreatedAt) {
-			return active[i].CreatedAt.After(active[j].CreatedAt)
-		}
-		if strings.TrimSpace(active[i].RequestedAgent) != strings.TrimSpace(active[j].RequestedAgent) {
-			return strings.TrimSpace(active[i].RequestedAgent) < strings.TrimSpace(active[j].RequestedAgent)
-		}
-		return active[i].ID < active[j].ID
-	})
-
-	primary := strings.TrimSpace(active[0].RequestedAgent)
-	if primary == "" {
-		primary = strings.TrimSpace(active[0].ID)
-	}
-	if len(active) == 1 {
+	if len(owners) == 1 {
+		primary := owners[0]
 		return primary + " active"
 	}
-	return fmt.Sprintf("%s +%d more active", primary, len(active)-1)
+	return fmt.Sprintf("%s +%d more active", owners[0], len(owners)-1)
 }
 
 func (p *MissionControlProjector) buildModelProviderSummary() string {
@@ -401,6 +393,11 @@ func enrichMissionFromAgentRun(mission *MissionView, run *agentrt.AgentRun) {
 	if hint := runtimeHintForAgentRun(run.RuntimeCondition, run.BlockedReason); hint != "" {
 		mission.RuntimeHint = hint
 	}
+	if reason, nextAction, blocked := blockedStateForAgentRun(run.RuntimeCondition, run.BlockedReason); blocked {
+		mission.Status = MissionStatusBlocked
+		mission.BlockedReason = reason
+		mission.NextAction = nextAction
+	}
 }
 
 func runtimeHintForAgentRun(condition agentrt.AgentRunCondition, blockedReason string) string {
@@ -419,6 +416,19 @@ func runtimeHintForAgentRun(condition agentrt.AgentRunCondition, blockedReason s
 		return "Recovering"
 	}
 	return strings.TrimSpace(blockedReason)
+}
+
+func blockedStateForAgentRun(condition agentrt.AgentRunCondition, blockedReason string) (string, string, bool) {
+	switch condition {
+	case agentrt.AgentRunConditionBlockedWaitingApproval:
+		reason := firstNonEmptyString(blockedReason, "Waiting for approval")
+		return reason, "Resolve approval request", true
+	case agentrt.AgentRunConditionBlockedWaitingMessage:
+		reason := firstNonEmptyString(blockedReason, "Waiting for message")
+		return reason, "Respond to required message", true
+	default:
+		return "", "", false
+	}
 }
 
 func compareMissionViews(left, right MissionView) bool {

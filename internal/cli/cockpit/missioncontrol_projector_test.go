@@ -197,6 +197,41 @@ func TestMissionControlProjectorRunLedgerNextActionEnrichment(t *testing.T) {
 	assert.Equal(t, now.Add(-30*time.Second), snapshot.Missions[0].UpdatedAt)
 }
 
+func TestMissionControlProjectorAgentRunBlockedEnrichment(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 5, 3, 10, 0, 0, 0, time.UTC)
+	projector := NewMissionControlProjector(Deps{
+		AgentRunStore: stubMissionControlAgentRunReader{
+			runs: map[string]*agentrt.AgentRun{
+				"task-1": {
+					ID:               "task-1",
+					RequestedAgent:   "worker-c",
+					Status:           agentrt.AgentRunRunning,
+					RuntimeCondition: agentrt.AgentRunConditionBlockedWaitingApproval,
+					BlockedReason:    "Awaiting operator approval for filesystem write",
+				},
+			},
+		},
+	})
+
+	snapshot := projector.Project([]background.TaskSnapshot{
+		{
+			ID:         "task-1",
+			StatusText: "running",
+			Prompt:     "Apply patch safely",
+			StartedAt:  now.Add(-2 * time.Minute),
+		},
+	})
+
+	require.Len(t, snapshot.Missions, 1)
+	assert.Equal(t, MissionStatusBlocked, snapshot.Missions[0].Status)
+	assert.Equal(t, "worker-c", snapshot.Missions[0].OwnerAgent)
+	assert.Equal(t, "Waiting for approval", snapshot.Missions[0].RuntimeHint)
+	assert.Equal(t, "Awaiting operator approval for filesystem write", snapshot.Missions[0].BlockedReason)
+	assert.Equal(t, "Resolve approval request", snapshot.Missions[0].NextAction)
+}
+
 func TestMissionControlDegradedNilReaders(t *testing.T) {
 	t.Parallel()
 
@@ -251,7 +286,14 @@ func TestMissionControlHeaderDerivation(t *testing.T) {
 		RunLedgerStore: stubMissionControlRunLedgerReader{},
 	})
 
-	snapshot := projector.Project(nil)
+	snapshot := projector.Project([]background.TaskSnapshot{
+		{
+			ID:         "task-1",
+			StatusText: "running",
+			Prompt:     "Build the projector",
+			StartedAt:  time.Date(2026, 5, 3, 9, 5, 0, 0, time.UTC),
+		},
+	})
 
 	assert.Equal(t, "worker-c active", snapshot.Header.ActiveAgentSummary)
 	assert.Equal(t, "openai / gpt-5", snapshot.Header.ModelProviderSummary)
@@ -259,6 +301,26 @@ func TestMissionControlHeaderDerivation(t *testing.T) {
 	assert.Empty(t, snapshot.Header.ContextSummary)
 	assert.Equal(t, "150 tokens across 1 requests", snapshot.Header.MetricsSummary)
 	assert.Empty(t, snapshot.Header.DegradedNote)
+}
+
+func TestMissionControlHeaderOmitsGlobalAgentRunSummaryWithoutProjectedMission(t *testing.T) {
+	t.Parallel()
+
+	projector := NewMissionControlProjector(Deps{
+		AgentRunStore: stubMissionControlAgentRunReader{
+			list: []*agentrt.AgentRun{
+				{
+					ID:             "foreign-task",
+					RequestedAgent: "worker-z",
+					Status:         agentrt.AgentRunRunning,
+					CreatedAt:      time.Date(2026, 5, 3, 9, 0, 0, 0, time.UTC),
+				},
+			},
+		},
+	})
+
+	snapshot := projector.Project(nil)
+	assert.Empty(t, snapshot.Header.ActiveAgentSummary)
 }
 
 func TestMissionControlOrdering(t *testing.T) {
