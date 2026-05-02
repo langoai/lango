@@ -18,15 +18,18 @@ type stubMissionLinker struct {
 	originalRequest string
 	goal            string
 	calls           int
+	missionID       string
+	err             error
 }
 
-func (s *stubMissionLinker) LinkRun(_ context.Context, runID string, sessionKey string, originalRequest string, goal string) error {
+func (s *stubMissionLinker) LinkRun(ctx context.Context, runID string, sessionKey string, originalRequest string, goal string) error {
 	s.calls++
 	s.runID = runID
 	s.sessionKey = sessionKey
 	s.originalRequest = originalRequest
 	s.goal = goal
-	return nil
+	s.missionID = ctxkeys.MissionIDFromContext(ctx)
+	return s.err
 }
 
 // orchestratorCtx returns a context that identifies the caller as the orchestrator.
@@ -70,7 +73,7 @@ func toolMap(store *MemoryStore, pev *PEVEngine, linker MissionExecutionLinker) 
 }
 
 func TestRunCreate_EndToEnd(t *testing.T) {
-	ctx := orchestratorCtx()
+	ctx := ctxkeys.WithMissionID(orchestratorCtx(), "mission-run-1")
 	execCtx := executionCtx()
 	store := NewMemoryStore()
 
@@ -113,6 +116,7 @@ func TestRunCreate_EndToEnd(t *testing.T) {
 	assert.Equal(t, "session-1", linker.sessionKey)
 	assert.Equal(t, "Build the Task OS", linker.originalRequest)
 	assert.Equal(t, "implement Task OS", linker.goal)
+	assert.Equal(t, "mission-run-1", linker.missionID)
 
 	// Read the run.
 	readResult, err := tm["run_read"].call(ctx, map[string]interface{}{"run_id": runID})
@@ -193,6 +197,32 @@ func TestRunCreate_InvalidPlan(t *testing.T) {
 	require.NoError(t, err)
 	m2 := result2.(map[string]interface{})
 	assert.Equal(t, "validation_failed", m2["error"])
+}
+
+func TestRunCreate_PropagatesMissionLinkFailure(t *testing.T) {
+	ctx := ctxkeys.WithMissionID(orchestratorCtx(), "mission-run-fail")
+	store := NewMemoryStore()
+	pev := NewPEVEngine(store, DefaultValidators())
+	linker := &stubMissionLinker{err: errors.New("link failed")}
+	tm := toolMap(store, pev, linker)
+
+	planJSON := `{
+		"goal": "implement Task OS",
+		"acceptance_criteria": [],
+		"steps": [
+			{"id": "s1", "goal": "write code", "owner_agent": "operator", "validator": {"type": "build_pass"}}
+		]
+	}`
+
+	result, err := tm["run_create"].call(ctx, map[string]interface{}{
+		"plan_json":        planJSON,
+		"session_key":      "session-1",
+		"original_request": "Build the Task OS",
+		"valid_agents":     []string{"operator"},
+	})
+	require.Error(t, err)
+	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), "link run")
 }
 
 func TestRunApplyPolicy_Retry(t *testing.T) {

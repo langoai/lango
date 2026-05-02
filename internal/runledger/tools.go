@@ -125,7 +125,9 @@ func buildRunCreate(store RunLedgerStore, linker MissionExecutionLinker) *agent.
 				return nil, fmt.Errorf("get snapshot: %w", err)
 			}
 			if linker != nil {
-				_ = linker.LinkRun(ctx, runID, sessionKey, originalRequest, plan.Goal)
+				if linkErr := linker.LinkRun(ctx, runID, sessionKey, originalRequest, plan.Goal); linkErr != nil {
+					return nil, fmt.Errorf("link run %q to mission: %w", runID, linkErr)
+				}
 			}
 
 			return map[string]interface{}{

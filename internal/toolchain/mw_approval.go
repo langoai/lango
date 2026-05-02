@@ -9,6 +9,7 @@ import (
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/approval"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/ctxkeys"
 	"github.com/langoai/lango/internal/logging"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/wallet"
@@ -172,6 +173,7 @@ func WithApproval(ic config.InterceptorConfig, ap approval.Provider, gs *approva
 				Category:    tool.Capability.Category,
 				Activity:    string(tool.Capability.Activity),
 			}
+			populateApprovalMetadata(ctx, &req)
 			if observer != nil {
 				observer.OnApprovalRequested(ctx, ApprovalRequest{Request: req})
 			}
@@ -290,6 +292,32 @@ func WithApproval(ic config.InterceptorConfig, ap approval.Provider, gs *approva
 
 			return next(ctx, params)
 		}
+	}
+}
+
+func populateApprovalMetadata(ctx context.Context, req *approval.ApprovalRequest) {
+	if req == nil || ctx == nil {
+		return
+	}
+	if missionID := ctxkeys.MissionIDFromContext(ctx); missionID != "" {
+		req.MissionID = missionID
+	}
+	if executionKind, executionRef := approvalExecutionFromContext(ctx); executionKind != "" && executionRef != "" {
+		req.ExecutionKind = executionKind
+		req.ExecutionRef = executionRef
+	}
+}
+
+func approvalExecutionFromContext(ctx context.Context) (string, string) {
+	rc := session.RunContextFromContext(ctx)
+	if rc == nil || rc.RunID == "" {
+		return "", ""
+	}
+	switch rc.SessionType {
+	case "background":
+		return "task_os_execution", rc.RunID
+	default:
+		return "", ""
 	}
 }
 

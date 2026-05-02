@@ -12,6 +12,8 @@ import (
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/approval"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/ctxkeys"
+	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/tools/browser"
 )
 
@@ -732,6 +734,35 @@ func TestWithApproval_ObserverSeesRequestAndResolution(t *testing.T) {
 	assert.Equal(t, 1, obs.resolved)
 	assert.Equal(t, "exec", obs.lastReq.Request.ToolName)
 	assert.True(t, obs.lastRes.Response.Approved)
+}
+
+func TestWithApproval_PopulatesMissionAndExecutionMetadataFromContext(t *testing.T) {
+	t.Parallel()
+
+	ap := &mockApprovalProvider{response: approval.ApprovalResponse{Approved: true, Provider: "tui"}}
+	ic := config.InterceptorConfig{ApprovalPolicy: config.ApprovalPolicyAll}
+
+	tool := &agent.Tool{
+		Name:        "exec",
+		SafetyLevel: agent.SafetyLevelDangerous,
+		Handler: func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
+			return "ok", nil
+		},
+	}
+
+	mw := WithApproval(ic, ap, nil, nil, nil, nil)
+	wrapped := Chain(tool, mw)
+	ctx := ctxkeys.WithMissionID(context.Background(), "mission-123")
+	ctx = session.WithRunContext(ctx, session.RunContext{
+		SessionType: "background",
+		RunID:       "task-456",
+	})
+	_, err := wrapped.Handler(ctx, map[string]interface{}{"command": "pwd"})
+	require.NoError(t, err)
+	require.NotNil(t, ap.received)
+	assert.Equal(t, "mission-123", ap.received.MissionID)
+	assert.Equal(t, "task_os_execution", ap.received.ExecutionKind)
+	assert.Equal(t, "task-456", ap.received.ExecutionRef)
 }
 
 // --- WithBrowserRecovery middleware tests ---

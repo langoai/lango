@@ -295,7 +295,7 @@ func TestAgentSpawn_SubmitsWithTeammateRuntimeContext(t *testing.T) {
 	tools := BuildControlTools(cp)
 	spawnTool := findControlTool(t, tools, "agent_spawn")
 
-	ctx := session.WithSessionKey(context.Background(), "sess-parent")
+	ctx := ctxkeys.WithMissionID(session.WithSessionKey(context.Background(), "sess-parent"), "mission-agent-1")
 	result, err := spawnTool.call(ctx, map[string]interface{}{
 		"instruction":   "review the logs",
 		"agent":         "operator",
@@ -312,6 +312,7 @@ func TestAgentSpawn_SubmitsWithTeammateRuntimeContext(t *testing.T) {
 	assert.Equal(t, "operator", ctxkeys.AgentNameFromContext(submitter.ctx))
 	assert.Equal(t, []string{"fs_read"}, ctxkeys.DynamicAllowedToolsFromContext(submitter.ctx))
 	assert.Equal(t, m["agent_id"], pendingAgentRunIDFromContext(submitter.ctx))
+	assert.Equal(t, "mission-agent-1", ctxkeys.MissionIDFromContext(submitter.ctx))
 }
 
 func TestAgentSpawn_SubmitterMismatchedReturnIDFails(t *testing.T) {

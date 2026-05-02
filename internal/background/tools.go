@@ -61,10 +61,20 @@ func BuildTools(mgr *Manager, defaultDeliverTo []string, linker MissionExecution
 					return nil, fmt.Errorf("submit background task: %w", err)
 				}
 				if linker != nil {
-					_ = linker.LinkBackgroundTask(ctx, taskID, Origin{
+					if linkErr := linker.LinkBackgroundTask(ctx, taskID, Origin{
 						Channel: channel,
 						Session: sessionKey,
-					}, prompt)
+					}, prompt); linkErr != nil {
+						if cancelErr := mgr.Cancel(taskID); cancelErr != nil {
+							return nil, fmt.Errorf(
+								"submit background task: mission link failed for %q: %w (cancel failed: %v)",
+								taskID,
+								linkErr,
+								cancelErr,
+							)
+						}
+						return nil, fmt.Errorf("submit background task: mission link failed for %q: %w", taskID, linkErr)
+					}
 				}
 				return map[string]interface{}{
 					"status":  "submitted",

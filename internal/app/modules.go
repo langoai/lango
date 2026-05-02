@@ -530,6 +530,38 @@ type automationModule struct {
 	bus *eventbus.Bus
 }
 
+type missionAwareSubmitter struct {
+	base   agentrt.AgentRunSubmitter
+	linker background.MissionExecutionLinker
+}
+
+type submitCanceler interface {
+	Cancel(string) error
+}
+
+func (s *missionAwareSubmitter) Submit(ctx context.Context, prompt string, origin background.Origin) (string, error) {
+	taskID, err := s.base.Submit(ctx, prompt, origin)
+	if err != nil {
+		return "", err
+	}
+	if s.linker != nil {
+		if linkErr := s.linker.LinkBackgroundTask(ctx, taskID, origin, prompt); linkErr != nil {
+			if canceler, ok := s.base.(submitCanceler); ok {
+				if cancelErr := canceler.Cancel(taskID); cancelErr != nil {
+					return "", fmt.Errorf(
+						"attach spawned child execution to mission: %w (cancel submitted task %q: %v)",
+						linkErr,
+						taskID,
+						cancelErr,
+					)
+				}
+			}
+			return "", fmt.Errorf("attach spawned child execution to mission: %w", linkErr)
+		}
+	}
+	return taskID, nil
+}
+
 func (m *automationModule) Name() string { return "automation" }
 func (m *automationModule) Provides() []appinit.Provides {
 	return []appinit.Provides{appinit.ProvidesAutomation}
@@ -638,15 +670,22 @@ func (m *automationModule) Init(ctx context.Context, r appinit.Resolver) (*appin
 		Submitter:         bg,
 		CapabilityRuntime: capabilityRuntime,
 	}
+	if bg != nil && missionLinker != nil {
+		controlPlane.Submitter = &missionAwareSubmitter{
+			base:   bg,
+			linker: missionLinker,
+		}
+	}
 	if bg != nil {
-		var runLedgerProjection *runledger.BackgroundWriteThrough
+		var projection = agentrt.NewBackgroundProjection(agentRunProjection, nil)
 		if rlv != nil && rlv.store != nil && cfg.RunLedger.Enabled && cfg.RunLedger.WriteThrough {
-			runLedgerProjection = runledger.NewBackgroundWriteThrough(
+			runLedgerProjection := runledger.NewBackgroundWriteThrough(
 				rlv.store,
 				runledger.RolloutConfig{Stage: runledger.StageWriteThrough},
 			).WithMaxHistory(cfg.RunLedger.MaxRunHistory)
+			projection = agentrt.NewBackgroundProjection(agentRunProjection, runLedgerProjection)
 		}
-		bg.WithProjection(agentrt.NewBackgroundProjection(agentRunProjection, runLedgerProjection))
+		bg.WithProjection(projection)
 	}
 	automationCategoryConfigKey := "cron.enabled|background.enabled|workflow.enabled"
 	controlTools := agentrt.BuildControlTools(controlPlane)
