@@ -86,12 +86,15 @@ func (s *stubMissionProposalReader) GetByID(proposalID string) (proposal.Proposa
 type stubMissionProposalService struct {
 	acceptCalls    int
 	dismissCalls   int
+	restoreCalls   int
 	lastAcceptID   string
 	lastDismissID  string
+	lastRestoreID  string
 	accepted       map[string]struct{}
 	dismissed      map[string]struct{}
 	acceptErr      error
 	dismissErr     error
+	restoreErr     error
 	proposalReader *stubMissionProposalReader
 }
 
@@ -126,6 +129,23 @@ func (s *stubMissionProposalService) Dismiss(_ context.Context, proposalID strin
 		delete(s.proposalReader.items, proposalID)
 	}
 	item := proposal.Proposal{ProposalID: proposalID, Status: proposal.ProposalStatusDismissed}
+	return &item, nil
+}
+
+func (s *stubMissionProposalService) RestorePrepared(_ context.Context, proposalID string) (*proposal.Proposal, error) {
+	s.restoreCalls++
+	s.lastRestoreID = proposalID
+	if s.restoreErr != nil {
+		return nil, s.restoreErr
+	}
+	if s.proposalReader != nil {
+		s.proposalReader.items[proposalID] = proposal.Proposal{
+			ProposalID: proposalID,
+			SessionKey: "mission-session",
+			Status:     proposal.ProposalStatusPrepared,
+		}
+	}
+	item := proposal.Proposal{ProposalID: proposalID, Status: proposal.ProposalStatusPrepared}
 	return &item, nil
 }
 
@@ -479,6 +499,10 @@ func TestMissionControlAcceptProposedMissionCreatesDurableRowAndRemovesOverlay(t
 					SourceSummary:             "Learning suggestion: repeated timeout retries.",
 					Reason:                    "Repeated timeout failures benefited from bounded retry.",
 					SuggestedAcceptanceEffect: "Create a mission to apply bounded retry guidance.",
+					SupportingEvidence: []string{
+						"Pattern: timeout retries",
+						"Confidence: 0.75",
+					},
 				},
 			},
 		},
@@ -518,7 +542,71 @@ func TestMissionControlAcceptProposedMissionCreatesDurableRowAndRemovesOverlay(t
 	assert.Contains(t, svc.lastAcceptInput.Description, "Learning suggestion: repeated timeout retries.")
 	assert.Contains(t, svc.lastAcceptInput.Description, "Repeated timeout failures benefited from bounded retry.")
 	assert.Contains(t, svc.lastAcceptInput.Description, "Create a mission to apply bounded retry guidance.")
+	assert.Contains(t, svc.lastAcceptInput.Description, "Evidence: Pattern: timeout retries")
+	assert.Contains(t, svc.lastAcceptInput.Description, "Evidence: Confidence: 0.75")
 	assert.Empty(t, page.snapshot.Missions)
+}
+
+func TestMissionControlAcceptProposedMissionRestoresProposalIfMissionCreateFails(t *testing.T) {
+	t.Parallel()
+
+	svc := &stubMissionLifecycleService{
+		acceptErr: assert.AnError,
+	}
+	proposalReader := &stubMissionProposalReader{
+		items: map[string]proposal.Proposal{
+			"proposal-1": {
+				ProposalID: "proposal-1",
+				SessionKey: "mission-session",
+				Source: proposal.ProposalSource{
+					Kind: "proposed_learning",
+					Ref:  "s-1",
+				},
+				Title:  "Apply bounded retry guidance",
+				Status: proposal.ProposalStatusPrepared,
+				PreparedBrief: &proposal.PreparedBrief{
+					SourceSummary: "Prepared summary",
+				},
+			},
+		},
+	}
+	proposalSvc := &stubMissionProposalService{proposalReader: proposalReader}
+	deps := cockpit.Deps{
+		Config:         &config.Config{Agent: config.AgentConfig{Provider: "openai", Model: "gpt-5"}},
+		SessionKey:     "mission-session",
+		ProposalReader: proposalReader,
+	}
+	projector := cockpit.NewMissionControlProjector(deps)
+	page := newMissionControlPage(projector, stubMissionTaskSource{}, newTestMissionComposer(t, nil))
+	page.missionService = svc
+	page.proposalReader = proposalReader
+	page.proposalSvc = proposalSvc
+	page.sessionKey = "mission-session"
+	updated, _ := page.Update(tea.WindowSizeMsg{Width: 110, Height: 30})
+	page = updated.(*MissionControlPage)
+	page.Activate()
+	updated, _ = page.Update(missionControlTickMsg(time.Now()))
+	page = updated.(*MissionControlPage)
+	require.Len(t, page.snapshot.Missions, 1)
+
+	page.focus = missionControlFocusMissions
+	updated, cmd := page.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	page = updated.(*MissionControlPage)
+
+	require.NotNil(t, cmd)
+	assert.Equal(t, 1, proposalSvc.acceptCalls)
+	assert.Equal(t, 1, proposalSvc.restoreCalls)
+	assert.Equal(t, "proposal-1", proposalSvc.lastRestoreID)
+	assert.Equal(t, 1, svc.acceptCalls)
+
+	for _, msg := range collectImmediateMsgs(cmd) {
+		updated, _ = page.Update(msg)
+		page = updated.(*MissionControlPage)
+	}
+
+	page.refreshSnapshot()
+	require.Len(t, page.snapshot.Missions, 1)
+	assert.Equal(t, "proposal-1", page.snapshot.Missions[0].ID)
 }
 
 func TestMissionControlDismissProposedMissionUsesProposalServiceAndRemovesOverlay(t *testing.T) {

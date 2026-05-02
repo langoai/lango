@@ -47,6 +47,11 @@ func (s *spyRegistry) Accept(proposalID string) (*Proposal, error) {
 	return s.inner.Accept(proposalID)
 }
 
+func (s *spyRegistry) RestorePrepared(proposalID string) (*Proposal, error) {
+	s.calls = append(s.calls, "restore-prepared")
+	return s.inner.RestorePrepared(proposalID)
+}
+
 func (s *spyRegistry) PruneExpired() int {
 	s.calls = append(s.calls, "prune")
 	return s.inner.PruneExpired()
@@ -113,4 +118,34 @@ func TestProposalServiceDismissAndAcceptUseRegistry(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{"accept"}, registry.calls)
 	assert.Equal(t, ProposalStatusAccepted, accepted.Status)
+}
+
+func TestProposalServiceRestorePreparedReturnsAcceptedProposalToVisibleState(t *testing.T) {
+	t.Parallel()
+
+	clock := &testClock{now: time.Date(2026, 5, 3, 11, 0, 0, 0, time.UTC)}
+	registry := newSpyRegistry(clock.Now)
+	service := NewService(registry, NewDeterministicPreparer())
+
+	prepared, err := service.UpsertLearningSuggestion(context.Background(), LearningSuggestionSource{
+		SessionKey:   "sess-1",
+		SuggestionID: "restore-me",
+		Pattern:      "pattern-r",
+		ProposedRule: "Rule restore",
+		Rationale:    "Keep prepared context",
+		ExpiresAt:    clock.now.Add(time.Hour),
+	})
+	require.NoError(t, err)
+	registry.calls = nil
+
+	accepted, err := service.Accept(context.Background(), prepared.ProposalID)
+	require.NoError(t, err)
+	assert.Equal(t, ProposalStatusAccepted, accepted.Status)
+
+	restored, err := service.RestorePrepared(context.Background(), prepared.ProposalID)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"accept", "restore-prepared"}, registry.calls)
+	assert.Equal(t, ProposalStatusPrepared, restored.Status)
+	require.NotNil(t, restored.PreparedBrief)
+	assert.NotEmpty(t, restored.PreparedBrief.SourceSummary)
 }

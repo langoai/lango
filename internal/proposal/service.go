@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 )
 
 type proposalRegistry interface {
@@ -13,6 +14,7 @@ type proposalRegistry interface {
 	MarkPrepared(proposalID string, brief PreparedBrief) (*Proposal, error)
 	Dismiss(proposalID string) (*Proposal, error)
 	Accept(proposalID string) (*Proposal, error)
+	RestorePrepared(proposalID string) (*Proposal, error)
 	PruneExpired() int
 }
 
@@ -118,6 +120,18 @@ func (s *Service) Accept(ctx context.Context, proposalID string) (*Proposal, err
 	return registry.Accept(proposalID)
 }
 
+// RestorePrepared rolls back a prior acceptance attempt when downstream durable
+// mission creation fails and the transient proposal must become visible again.
+func (s *Service) RestorePrepared(ctx context.Context, proposalID string) (*Proposal, error) {
+	_ = ctx
+
+	registry, err := s.requireRegistry("restore prepared proposal")
+	if err != nil {
+		return nil, err
+	}
+	return registry.RestorePrepared(strings.TrimSpace(proposalID))
+}
+
 // PruneExpired runs proposal expiration through the service boundary.
 func (s *Service) PruneExpired(ctx context.Context) (int, error) {
 	_ = ctx
@@ -141,4 +155,17 @@ func (s *Service) requirePreparer() (proposalPreparer, error) {
 		return nil, fmt.Errorf("proposal preparer is required")
 	}
 	return s.preparer, nil
+}
+
+// RestorePrepared returns an accepted proposal back to prepared state so it
+// becomes visible again after a downstream failure.
+func (r *Registry) RestorePrepared(proposalID string) (*Proposal, error) {
+	return r.transition(strings.TrimSpace(proposalID), func(p *Proposal, now time.Time) error {
+		if p.Status != ProposalStatusAccepted {
+			return fmt.Errorf("restore prepared: proposal %q is %s", p.ProposalID, p.Status)
+		}
+		p.Status = ProposalStatusPrepared
+		p.UpdatedAt = now
+		return nil
+	})
 }

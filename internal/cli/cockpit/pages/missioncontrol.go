@@ -271,6 +271,11 @@ func (p *MissionControlPage) acceptSelectedProposal() (tea.Cmd, bool) {
 			Title:       strings.TrimSpace(firstNonEmpty(proposalRow.Title, missionView.Title)),
 			Description: description,
 		}); err != nil {
+			if _, restoreErr := p.proposalSvc.RestorePrepared(context.Background(), proposalID); restoreErr != nil {
+				return func() tea.Msg {
+					return chat.SystemMsg{Text: fmt.Sprintf("Mission proposal acceptance failed: %v (restore failed: %v)", err, restoreErr)}
+				}, true
+			}
 			return func() tea.Msg {
 				return chat.SystemMsg{Text: fmt.Sprintf("Mission proposal acceptance failed: %v", err)}
 			}, true
@@ -717,6 +722,11 @@ func compactPreparedBrief(brief proposal.PreparedBrief) string {
 	}
 	if text := strings.TrimSpace(brief.SuggestedAcceptanceEffect); text != "" {
 		parts = append(parts, text)
+	}
+	for _, evidence := range brief.SupportingEvidence {
+		if text := strings.TrimSpace(evidence); text != "" {
+			parts = append(parts, "Evidence: "+text)
+		}
 	}
 	return strings.Join(parts, "\n")
 }

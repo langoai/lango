@@ -52,6 +52,7 @@ type ProposalReader interface {
 type ProposalMutationService interface {
 	Accept(ctx context.Context, proposalID string) (*proposal.Proposal, error)
 	Dismiss(ctx context.Context, proposalID string) (*proposal.Proposal, error)
+	RestorePrepared(ctx context.Context, proposalID string) (*proposal.Proposal, error)
 }
 
 // Deps holds the dependencies for the cockpit TUI.
