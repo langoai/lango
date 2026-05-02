@@ -202,6 +202,118 @@ func TestStoreFindMissionByExecutionReference(t *testing.T) {
 	assert.Equal(t, "run-42", links[0].ExecutionRef)
 }
 
+func TestStoreTransitionRejectsInvalidTransition(t *testing.T) {
+	t.Parallel()
+
+	store, client := newTestStore(t)
+	ctx := context.Background()
+
+	created, err := store.CreateMission(ctx, CreateMissionInput{
+		SessionKey: "sess-5",
+		Title:      "Invalid transition guard",
+		SourceKind: "user",
+	})
+	require.NoError(t, err)
+
+	err = store.TransitionMission(ctx, TransitionMissionInput{
+		MissionID:   created.ID.String(),
+		ToStatus:    mission.StatusDone,
+		Reason:      "Skip directly to done",
+		ActorKind:   "system",
+		ActorRef:    "test",
+		CompletedAt: nil,
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid transition")
+
+	latest, err := store.GetMission(ctx, created.ID.String())
+	require.NoError(t, err)
+	require.NotNil(t, latest)
+	assert.Equal(t, mission.StatusPrepared, latest.Status)
+	assert.Nil(t, latest.CompletedAt)
+
+	historyCount, err := client.MissionStateHistory.Query().
+		Where(missionstatehistory.MissionID(created.ID)).
+		Count(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, 0, historyCount)
+}
+
+func TestStoreLatestStateInvariantsAndTerminalTimestamp(t *testing.T) {
+	t.Parallel()
+
+	store, _ := newTestStore(t)
+	ctx := context.Background()
+
+	impossibleCompletedAt := time.Date(2026, 5, 3, 11, 0, 0, 0, time.UTC)
+	active, err := store.CreateMission(ctx, CreateMissionInput{
+		SessionKey:             "sess-6",
+		Title:                  "Normalize impossible latest state",
+		Status:                 mission.StatusActive,
+		SourceKind:             "manual",
+		CurrentBlockedReason:   "Should be cleared",
+		CurrentDecisionKind:    "tool_approval",
+		CurrentDecisionSummary: "Should be cleared",
+		CompletedAt:            &impossibleCompletedAt,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, mission.StatusActive, active.Status)
+	assert.Nil(t, active.CurrentBlockedReason)
+	assert.Nil(t, active.CurrentDecisionKind)
+	assert.Nil(t, active.CurrentDecisionSummary)
+	assert.Nil(t, active.CompletedAt)
+
+	waiting, err := store.CreateMission(ctx, CreateMissionInput{
+		SessionKey:             "sess-6",
+		Title:                  "Cancel from waiting decision",
+		Status:                 mission.StatusWaitingDecision,
+		SourceKind:             "manual",
+		CurrentBlockedReason:   "Should be cleared",
+		CurrentDecisionKind:    "tool_approval",
+		CurrentDecisionSummary: "Approve filesystem write",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, waiting.CurrentDecisionKind)
+	require.NotNil(t, waiting.CurrentDecisionSummary)
+	assert.Nil(t, waiting.CurrentBlockedReason)
+	assert.Nil(t, waiting.CompletedAt)
+
+	err = store.TransitionMission(ctx, TransitionMissionInput{
+		MissionID: waiting.ID.String(),
+		ToStatus:  mission.StatusCancelled,
+		Reason:    "User abandoned the work",
+		ActorKind: "user",
+		ActorRef:  "operator",
+	})
+	require.NoError(t, err)
+
+	cancelled, err := store.GetMission(ctx, waiting.ID.String())
+	require.NoError(t, err)
+	require.NotNil(t, cancelled)
+	assert.Equal(t, mission.StatusCancelled, cancelled.Status)
+	assert.Nil(t, cancelled.CurrentBlockedReason)
+	assert.Nil(t, cancelled.CurrentDecisionKind)
+	assert.Nil(t, cancelled.CurrentDecisionSummary)
+	require.NotNil(t, cancelled.CompletedAt)
+	assert.False(t, cancelled.CompletedAt.IsZero())
+
+	explicitCompletedAt := time.Date(2026, 5, 3, 12, 30, 0, 0, time.UTC)
+	cancelledAtCreate, err := store.CreateMission(ctx, CreateMissionInput{
+		SessionKey:             "sess-6",
+		Title:                  "Cancelled before execution",
+		Status:                 mission.StatusCancelled,
+		SourceKind:             "manual",
+		CurrentDecisionKind:    "tool_approval",
+		CurrentDecisionSummary: "Should be cleared",
+		CompletedAt:            &explicitCompletedAt,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, cancelledAtCreate.CompletedAt)
+	assert.Equal(t, explicitCompletedAt, *cancelledAtCreate.CompletedAt)
+	assert.Nil(t, cancelledAtCreate.CurrentDecisionKind)
+	assert.Nil(t, cancelledAtCreate.CurrentDecisionSummary)
+}
+
 func newTestStore(t *testing.T) (*EntStore, *ent.Client) {
 	t.Helper()
 

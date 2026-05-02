@@ -130,38 +130,39 @@ func (s *EntStore) CreateMission(ctx context.Context, in CreateMissionInput) (*M
 			return nil, fmt.Errorf("create mission: %w", err)
 		}
 	}
+	latest := normalizeLatestState(
+		in.Status,
+		in.CurrentBlockedReason,
+		in.CurrentDecisionKind,
+		in.CurrentDecisionSummary,
+		in.CompletedAt,
+		nil,
+		time.Now(),
+	)
 
 	builder := s.client.Mission.Create().
 		SetSessionKey(sessionKey).
 		SetTitle(title).
-		SetSourceKind(sourceKind)
+		SetSourceKind(sourceKind).
+		SetStatus(latest.status)
 
-	if in.Status != "" {
-		builder.SetStatus(in.Status)
-	}
 	if description := strings.TrimSpace(in.Description); description != "" {
 		builder.SetDescription(description)
 	}
 	if sourceRef := strings.TrimSpace(in.SourceRef); sourceRef != "" {
 		builder.SetSourceRef(sourceRef)
 	}
-	if blockedReason := strings.TrimSpace(in.CurrentBlockedReason); blockedReason != "" {
-		builder.SetCurrentBlockedReason(blockedReason)
+	if latest.blockedReason != nil {
+		builder.SetCurrentBlockedReason(*latest.blockedReason)
 	}
-	if decisionKind := strings.TrimSpace(in.CurrentDecisionKind); decisionKind != "" {
-		builder.SetCurrentDecisionKind(decisionKind)
+	if latest.decisionKind != nil {
+		builder.SetCurrentDecisionKind(*latest.decisionKind)
 	}
-	if decisionSummary := strings.TrimSpace(in.CurrentDecisionSummary); decisionSummary != "" {
-		builder.SetCurrentDecisionSummary(decisionSummary)
+	if latest.decisionSummary != nil {
+		builder.SetCurrentDecisionSummary(*latest.decisionSummary)
 	}
-
-	completedAt := in.CompletedAt
-	if completedAt == nil && in.Status == entmission.StatusDone {
-		now := time.Now()
-		completedAt = &now
-	}
-	if completedAt != nil {
-		builder.SetCompletedAt(*completedAt)
+	if latest.completedAt != nil {
+		builder.SetCompletedAt(*latest.completedAt)
 	}
 
 	row, err := builder.Save(ctx)
@@ -287,44 +288,34 @@ func (s *EntStore) TransitionMission(ctx context.Context, in TransitionMissionIn
 		return fmt.Errorf("transition mission %q: append history: %w", in.MissionID, err)
 	}
 
-	update := tx.Mission.UpdateOneID(missionID).SetStatus(in.ToStatus)
-	switch in.ToStatus {
-	case entmission.StatusBlocked:
-		if blockedReason := strings.TrimSpace(in.BlockedReason); blockedReason != "" {
-			update.SetCurrentBlockedReason(blockedReason)
-		} else {
-			update.ClearCurrentBlockedReason()
-		}
-		update.ClearCurrentDecisionKind()
-		update.ClearCurrentDecisionSummary()
-		update.ClearCompletedAt()
-	case entmission.StatusWaitingDecision:
+	latest := normalizeLatestState(
+		in.ToStatus,
+		in.BlockedReason,
+		in.DecisionKind,
+		in.DecisionSummary,
+		in.CompletedAt,
+		row.CompletedAt,
+		time.Now(),
+	)
+	update := tx.Mission.UpdateOneID(missionID).SetStatus(latest.status)
+	if latest.blockedReason != nil {
+		update.SetCurrentBlockedReason(*latest.blockedReason)
+	} else {
 		update.ClearCurrentBlockedReason()
-		if decisionKind := strings.TrimSpace(in.DecisionKind); decisionKind != "" {
-			update.SetCurrentDecisionKind(decisionKind)
-		} else {
-			update.ClearCurrentDecisionKind()
-		}
-		if decisionSummary := strings.TrimSpace(in.DecisionSummary); decisionSummary != "" {
-			update.SetCurrentDecisionSummary(decisionSummary)
-		} else {
-			update.ClearCurrentDecisionSummary()
-		}
-		update.ClearCompletedAt()
-	case entmission.StatusDone:
-		update.ClearCurrentBlockedReason()
+	}
+	if latest.decisionKind != nil {
+		update.SetCurrentDecisionKind(*latest.decisionKind)
+	} else {
 		update.ClearCurrentDecisionKind()
+	}
+	if latest.decisionSummary != nil {
+		update.SetCurrentDecisionSummary(*latest.decisionSummary)
+	} else {
 		update.ClearCurrentDecisionSummary()
-		completedAt := in.CompletedAt
-		if completedAt == nil {
-			now := time.Now()
-			completedAt = &now
-		}
-		update.SetCompletedAt(*completedAt)
-	default:
-		update.ClearCurrentBlockedReason()
-		update.ClearCurrentDecisionKind()
-		update.ClearCurrentDecisionSummary()
+	}
+	if latest.completedAt != nil {
+		update.SetCompletedAt(*latest.completedAt)
+	} else {
 		update.ClearCompletedAt()
 	}
 
@@ -510,4 +501,59 @@ func isAllowedMissionTransition(from, to entmission.Status) bool {
 	default:
 		return false
 	}
+}
+
+type latestState struct {
+	status          entmission.Status
+	blockedReason   *string
+	decisionKind    *string
+	decisionSummary *string
+	completedAt     *time.Time
+}
+
+func normalizeLatestState(
+	status entmission.Status,
+	blockedReason string,
+	decisionKind string,
+	decisionSummary string,
+	completedAt *time.Time,
+	existingCompletedAt *time.Time,
+	now time.Time,
+) latestState {
+	if status == "" {
+		status = entmission.StatusPrepared
+	}
+
+	normalized := latestState{status: status}
+	trimmedBlockedReason := trimStringPtr(blockedReason)
+	trimmedDecisionKind := trimStringPtr(decisionKind)
+	trimmedDecisionSummary := trimStringPtr(decisionSummary)
+
+	switch status {
+	case entmission.StatusBlocked:
+		normalized.blockedReason = trimmedBlockedReason
+	case entmission.StatusWaitingDecision:
+		normalized.decisionKind = trimmedDecisionKind
+		normalized.decisionSummary = trimmedDecisionSummary
+	case entmission.StatusDone, entmission.StatusCancelled:
+		switch {
+		case completedAt != nil:
+			normalized.completedAt = completedAt
+		case existingCompletedAt != nil:
+			normalized.completedAt = existingCompletedAt
+		default:
+			terminalAt := now
+			normalized.completedAt = &terminalAt
+		}
+	}
+
+	return normalized
+}
+
+func trimStringPtr(value string) *string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil
+	}
+	return &trimmed
 }
