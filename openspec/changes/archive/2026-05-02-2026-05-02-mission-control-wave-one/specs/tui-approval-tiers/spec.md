@@ -1,4 +1,4 @@
-## MODIFIED Requirements
+## ADDED Requirements
 
 ### Requirement: Active approvals resolve through the shared pending response path
 The TUI approval surfaces SHALL continue to use the existing approval tier rendering, but in cockpit mode the active approval request SHALL be owned by a shared pending approval registry that preserves the original response channel. Tier rendering must not create a second approval pipeline.

@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
-### Requirement: PageID routing includes Mission Control
-The cockpit SHALL define a `PageMissionControl` route alongside the existing cockpit pages and support round-trip routing between the page ID, sidebar entry, and registered page instance.
+### Requirement: PageID routing
+The cockpit SHALL define a `PageMissionControl` route alongside the existing cockpit pages and support round-trip routing between the page ID, sidebar entry, and registered page instance. Mission Control SHALL become the default landing page without forcing a broad remap of the existing cockpit global shortcuts in Wave 1.
 
 #### Scenario: Mission Control sidebar entry round-trips to page ID
 - **WHEN** the sidebar emits the Mission Control item ID
@@ -12,9 +12,6 @@ The cockpit SHALL define a `PageMissionControl` route alongside the existing coc
 - **WHEN** cockpit switches to `PageMissionControl`
 - **THEN** the registered Mission Control page SHALL receive `Activate()`
 
-### Requirement: Default page migration minimizes shortcut churn
-Mission Control SHALL become the default landing page without forcing a broad remap of the existing cockpit global shortcuts in Wave 1. Existing page shortcuts remain stable unless a specific route is intentionally reassigned.
-
 #### Scenario: Existing detail-page shortcuts remain stable
 - **WHEN** the operator uses the existing cockpit global shortcuts for detail pages
 - **THEN** the same detail pages as before SHALL still open
@@ -24,7 +21,7 @@ Mission Control SHALL become the default landing page without forcing a broad re
 - **WHEN** the operator wants to return to Mission Control from another cockpit page
 - **THEN** sidebar or page routing SHALL provide a direct path back to `PageMissionControl`
 
-### Requirement: Focus model still separates navigation from page content
+### Requirement: Focus ring between sidebar and content
 Mission Control integration SHALL preserve the existing cockpit distinction between navigation focus and page-content focus. Adding the new page SHALL NOT collapse sidebar focus and content focus into a single routing model.
 
 #### Scenario: Sidebar focus still routes navigation keys

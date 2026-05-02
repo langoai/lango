@@ -1,6 +1,6 @@
 ## MODIFIED Requirements
 
-### Requirement: Interactive TUI chat is the explicit fallback surface
+### Requirement: Interactive TUI chat on bare invocation
 Running `lango` without arguments SHALL no longer claim direct chat as the default interactive TUI surface. Focused interactive chat remains available through `lango chat`, and the chat model continues to power that direct surface.
 
 #### Scenario: Bare `lango` no longer launches direct chat
@@ -11,6 +11,8 @@ Running `lango` without arguments SHALL no longer claim direct chat as the defau
 #### Scenario: `lango chat` still launches focused chat
 - **WHEN** the user runs `lango chat`
 - **THEN** an interactive TUI chat session SHALL start
+
+## ADDED Requirements
 
 ### Requirement: ChatModel cooperates with cockpit-owned pending approvals
 When the chat model is mounted inside cockpit, pending approval ownership SHALL be shared with the cockpit-level pending approval owner rather than being duplicated inside chat. Standalone `lango chat` approval behavior remains unchanged.
@@ -24,7 +26,9 @@ When the chat model is mounted inside cockpit, pending approval ownership SHALL 
 - **WHEN** ChatModel runs through `lango chat` outside cockpit
 - **THEN** it SHALL continue to own and resolve approvals through its direct interactive path
 
-### Requirement: Learning suggestions no longer require inline approval persistence in chat
+## MODIFIED Requirements
+
+### Requirement: Learning suggestion rendering in TUI
 Wave 1 SHALL NOT require the chat transcript surface to present learning suggestions as inline approvals that persist learning directly. Mission Control becomes the required projection surface for those suggestions as actionable proposed missions, and chat may remain informational if it renders them at all.
 
 #### Scenario: Mission Control owns learning suggestion proposal semantics

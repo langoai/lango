@@ -1,4 +1,4 @@
-## MODIFIED Requirements
+## ADDED Requirements
 
 ### Requirement: Cockpit root model orchestrates Mission Control as the default first surface
 The cockpit root model SHALL treat Mission Control as the default active page for bare `lango` launches while continuing to host the existing detail pages. The sidebar remains secondary navigation and SHALL NOT be required for the user to understand the current system state on first render.

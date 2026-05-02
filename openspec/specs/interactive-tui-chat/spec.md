@@ -216,20 +216,23 @@ These entries SHALL NOT block streaming and SHALL NOT be persisted as assistant 
 - **AND** the chat viewport SHALL remain responsive
 
 ### Requirement: Learning suggestion rendering in TUI
-The TUI SHALL subscribe to `LearningSuggestionEvent` and render the suggestion as an inline approval prompt reusing the existing approval rendering path. Approval/denial SHALL route through the existing approval pipeline, producing the same persistence outcome whether the approval is resolved via TUI or a channel surface.
+Wave 1 SHALL NOT require the chat transcript surface to present learning suggestions as inline approvals that persist learning directly. Mission Control becomes the required projection surface for those suggestions as actionable proposed missions, and chat may remain informational if it renders them at all.
 
-#### Scenario: Suggestion renders as approval prompt
-- **WHEN** a `LearningSuggestionEvent` with confidence 0.6 is published while on the chat page
-- **THEN** the TUI SHALL render an approval prompt summarizing the proposed rule and confidence
-- **AND** the user SHALL be able to accept or deny via the same keys used for tool approvals (`a`/`d`/`s`)
+#### Scenario: Mission Control owns learning suggestion proposal semantics
+- **WHEN** a `LearningSuggestionEvent` occurs during a cockpit session
+- **THEN** the Wave 1 requirement SHALL be satisfied by Mission Control projecting it as a proposed mission
+- **AND** this delta SHALL replace the earlier requirement that chat itself present the suggestion as an inline approval with direct persistence semantics
+- **AND** chat SHALL NOT be required to persist the suggestion through the approval pipeline on its own
 
-#### Scenario: Acceptance persists learning via approval pipeline
-- **WHEN** the user accepts a learning suggestion prompt
-- **THEN** the approval pipeline SHALL route acceptance to the learning engine's persistence path
-- **AND** the stored confidence SHALL equal the suggestion's confidence value (not auto-boosted)
+### Requirement: ChatModel cooperates with cockpit-owned pending approvals
+When the chat model is mounted inside cockpit, pending approval ownership SHALL be shared with the cockpit-level pending approval owner rather than being duplicated inside chat. Standalone `lango chat` approval behavior remains unchanged.
 
-#### Scenario: Denial suppresses re-emission within dedup window
-- **WHEN** the user denies a learning suggestion prompt
-- **THEN** the pattern hash SHALL be recorded as "dismissed" for the configured dedup window
-- **AND** no new prompt for the same pattern SHALL appear within that window
+#### Scenario: Cockpit chat reads the shared pending request
+- **WHEN** ChatModel is running inside cockpit and a pending approval exists
+- **THEN** chat rendering and key handling SHALL read the same pending approval state owned by cockpit
+- **AND** chat SHALL NOT require a second independent pending approval copy
+
+#### Scenario: Standalone chat keeps direct approval ownership
+- **WHEN** ChatModel runs through `lango chat` outside cockpit
+- **THEN** it SHALL continue to own and resolve approvals through its direct interactive path
 
