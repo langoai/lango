@@ -628,3 +628,7 @@ When a built-in teammate run remains approval-blocked but its blocked metadata c
 - **THEN** RunLedger SHALL append a fresh approval-block journal event
 - **AND** the cached durable snapshot SHALL retain the latest blocked condition, blocked reason, and grant request ID
 
+#### Scenario: Terminal run clears teammate blocked snapshot fields
+- **WHEN** a built-in teammate run reaches a terminal status while approval-blocked
+- **THEN** the durable snapshot SHALL clear teammate `runtime_condition`, `blocked_reason`, and `grant_request_id`
+- **AND** no separate approval-unblock event SHALL be required
