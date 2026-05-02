@@ -28,3 +28,10 @@ That internal design records the substantive implementation decisions that shape
 - best-effort mirror failure policy using logs and metrics
 - state-delta rules for block, unblock, replace, and terminal precedence
 - live read model boundary (`AgentRunStore` / `AgentRunProjection` remain authoritative)
+
+In concrete terms, this archived change used:
+
+- `teammate_approval_blocked` / `teammate_approval_unblocked` as the durable transition events
+- `RunSnapshot` teammate fields as the latest durable blocked-state surface
+- best-effort mirroring from the `AgentRunStore.UpdateProjection(...)` choke point
+- terminal snapshot clearing without requiring a separate durable unblock event

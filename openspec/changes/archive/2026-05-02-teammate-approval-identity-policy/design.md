@@ -73,6 +73,8 @@ A denial does not imply a new logical request identity. If the same `(run, tool)
 
 Repeated requests for the same `(run, tool)` are treated as renewed attempts of the same logical blocked request unless a future policy explicitly defines a stronger boundary.
 
+For the current slice, `grant_attempt` counts only the latest active blocked cycle. Grant or denial clears that attempt counter, and a later fresh blocked cycle for the same `(run, tool)` reuses the stable logical `GrantRequestID` while restarting `grant_attempt` at `1`.
+
 ### Surface Semantics
 
 `agent_wait`, runtime projection, and durable RunLedger mirror should all treat `GrantRequestID` as the stable logical request key. Any UI or operational distinction between "same request, another attempt" versus "brand-new logical request" must be driven by metadata other than the request ID itself.

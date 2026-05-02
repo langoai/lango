@@ -800,6 +800,9 @@ func buildMissingAgentCorrection(
 	)
 }
 
+// containsBuiltinTargetName mirrors agentrt.BuiltinTeammateTypes() but is
+// duplicated here to avoid an adk -> agentrt import cycle. Keep this list in
+// sync when BuiltinTeammateTypes() changes.
 func containsBuiltinTargetName(name string) bool {
 	switch name {
 	case "operator", "navigator", "vault", "librarian", "automator", "planner", "chronicler", "ontologist":
