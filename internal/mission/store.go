@@ -54,7 +54,7 @@ type Store interface {
 	CreateMission(ctx context.Context, in CreateMissionInput) (*Mission, error)
 	GetMission(ctx context.Context, missionID string) (*Mission, error)
 	ListMissionsBySession(ctx context.Context, sessionKey string, limit int) ([]*Mission, error)
-	TransitionMission(ctx context.Context, in TransitionMissionInput) error
+	TransitionMission(ctx context.Context, in TransitionMissionInput) (*Mission, error)
 	AppendExecutionLink(ctx context.Context, in AppendExecutionLinkInput) error
 	ListExecutionLinks(ctx context.Context, missionID string) ([]*ExecutionLink, error)
 	FindExecutionLinkByExecution(ctx context.Context, executionKind ExecutionKind, executionRef string) (*ExecutionLink, error)
@@ -213,28 +213,28 @@ func (s *EntStore) ListMissionsBySession(ctx context.Context, sessionKey string,
 	return rows, nil
 }
 
-func (s *EntStore) TransitionMission(ctx context.Context, in TransitionMissionInput) (err error) {
+func (s *EntStore) TransitionMission(ctx context.Context, in TransitionMissionInput) (_ *Mission, err error) {
 	if s == nil || s.client == nil {
-		return fmt.Errorf("transition mission: store unavailable")
+		return nil, fmt.Errorf("transition mission: store unavailable")
 	}
 	missionID, err := parseMissionID(in.MissionID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if in.ToStatus == "" {
-		return fmt.Errorf("transition mission: to_status is required")
+		return nil, fmt.Errorf("transition mission: to_status is required")
 	}
 	if err := entmission.StatusValidator(in.ToStatus); err != nil {
-		return fmt.Errorf("transition mission: %w", err)
+		return nil, fmt.Errorf("transition mission: %w", err)
 	}
 	actorKind := strings.TrimSpace(in.ActorKind)
 	if actorKind == "" {
-		return fmt.Errorf("transition mission: actor_kind is required")
+		return nil, fmt.Errorf("transition mission: actor_kind is required")
 	}
 
 	tx, err := s.client.Tx(ctx)
 	if err != nil {
-		return fmt.Errorf("transition mission: begin tx: %w", err)
+		return nil, fmt.Errorf("transition mission: begin tx: %w", err)
 	}
 	defer func() {
 		if err != nil {
@@ -244,15 +244,15 @@ func (s *EntStore) TransitionMission(ctx context.Context, in TransitionMissionIn
 
 	row, err := tx.Mission.Get(ctx, missionID)
 	if err != nil {
-		return fmt.Errorf("transition mission %q: %w", in.MissionID, err)
+		return nil, fmt.Errorf("transition mission %q: %w", in.MissionID, err)
 	}
 	if !isAllowedMissionTransition(row.Status, in.ToStatus) {
-		return fmt.Errorf("transition mission %q: invalid transition %q -> %q", in.MissionID, row.Status, in.ToStatus)
+		return nil, fmt.Errorf("transition mission %q: invalid transition %q -> %q", in.MissionID, row.Status, in.ToStatus)
 	}
 
 	nextSeq, err := nextMissionHistorySeq(ctx, tx, missionID)
 	if err != nil {
-		return fmt.Errorf("transition mission %q: %w", in.MissionID, err)
+		return nil, fmt.Errorf("transition mission %q: %w", in.MissionID, err)
 	}
 
 	historyBuilder := tx.MissionStateHistory.Create().
@@ -285,7 +285,7 @@ func (s *EntStore) TransitionMission(ctx context.Context, in TransitionMissionIn
 		historyBuilder.SetPayload(in.Payload)
 	}
 	if _, err := historyBuilder.Save(ctx); err != nil {
-		return fmt.Errorf("transition mission %q: append history: %w", in.MissionID, err)
+		return nil, fmt.Errorf("transition mission %q: append history: %w", in.MissionID, err)
 	}
 
 	latest := normalizeLatestState(
@@ -319,13 +319,14 @@ func (s *EntStore) TransitionMission(ctx context.Context, in TransitionMissionIn
 		update.ClearCompletedAt()
 	}
 
-	if _, err := update.Save(ctx); err != nil {
-		return fmt.Errorf("transition mission %q: update latest state: %w", in.MissionID, err)
+	updatedRow, err := update.Save(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("transition mission %q: update latest state: %w", in.MissionID, err)
 	}
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("transition mission %q: commit: %w", in.MissionID, err)
+		return nil, fmt.Errorf("transition mission %q: commit: %w", in.MissionID, err)
 	}
-	return nil
+	return updatedRow.Unwrap(), nil
 }
 
 func (s *EntStore) AppendExecutionLink(ctx context.Context, in AppendExecutionLinkInput) error {

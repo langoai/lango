@@ -75,7 +75,7 @@ func TestStoreTransitionAppendsPerMissionHistorySeq(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	err = store.TransitionMission(ctx, TransitionMissionInput{
+	transitioned, err := store.TransitionMission(ctx, TransitionMissionInput{
 		MissionID:     created.ID.String(),
 		ToStatus:      mission.StatusActive,
 		Reason:        "Execution started",
@@ -85,8 +85,11 @@ func TestStoreTransitionAppendsPerMissionHistorySeq(t *testing.T) {
 		ExecutionRef:  "run-1",
 	})
 	require.NoError(t, err)
+	require.NotNil(t, transitioned)
+	assert.Equal(t, mission.StatusActive, transitioned.Status)
+	assert.Nil(t, transitioned.CompletedAt)
 
-	err = store.TransitionMission(ctx, TransitionMissionInput{
+	transitioned, err = store.TransitionMission(ctx, TransitionMissionInput{
 		MissionID:       created.ID.String(),
 		ToStatus:        mission.StatusBlocked,
 		Reason:          "Approval required",
@@ -99,6 +102,10 @@ func TestStoreTransitionAppendsPerMissionHistorySeq(t *testing.T) {
 		DecisionSummary: "Approve filesystem write for patch application",
 	})
 	require.NoError(t, err)
+	require.NotNil(t, transitioned)
+	assert.Equal(t, mission.StatusBlocked, transitioned.Status)
+	require.NotNil(t, transitioned.CurrentBlockedReason)
+	assert.Equal(t, "Waiting for filesystem approval", *transitioned.CurrentBlockedReason)
 
 	rows, err := client.MissionStateHistory.Query().
 		Where(missionstatehistory.MissionID(created.ID)).
@@ -215,7 +222,7 @@ func TestStoreTransitionRejectsInvalidTransition(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	err = store.TransitionMission(ctx, TransitionMissionInput{
+	transitioned, err := store.TransitionMission(ctx, TransitionMissionInput{
 		MissionID:   created.ID.String(),
 		ToStatus:    mission.StatusDone,
 		Reason:      "Skip directly to done",
@@ -224,6 +231,7 @@ func TestStoreTransitionRejectsInvalidTransition(t *testing.T) {
 		CompletedAt: nil,
 	})
 	require.Error(t, err)
+	assert.Nil(t, transitioned)
 	assert.Contains(t, err.Error(), "invalid transition")
 
 	latest, err := store.GetMission(ctx, created.ID.String())
@@ -278,7 +286,7 @@ func TestStoreLatestStateInvariantsAndTerminalTimestamp(t *testing.T) {
 	assert.Nil(t, waiting.CurrentBlockedReason)
 	assert.Nil(t, waiting.CompletedAt)
 
-	err = store.TransitionMission(ctx, TransitionMissionInput{
+	cancelledRow, err := store.TransitionMission(ctx, TransitionMissionInput{
 		MissionID: waiting.ID.String(),
 		ToStatus:  mission.StatusCancelled,
 		Reason:    "User abandoned the work",
@@ -286,6 +294,9 @@ func TestStoreLatestStateInvariantsAndTerminalTimestamp(t *testing.T) {
 		ActorRef:  "operator",
 	})
 	require.NoError(t, err)
+	require.NotNil(t, cancelledRow)
+	assert.Equal(t, mission.StatusCancelled, cancelledRow.Status)
+	require.NotNil(t, cancelledRow.CompletedAt)
 
 	cancelled, err := store.GetMission(ctx, waiting.ID.String())
 	require.NoError(t, err)
