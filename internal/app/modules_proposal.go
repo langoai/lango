@@ -32,6 +32,10 @@ func (m *proposalModule) DependsOn() []appinit.Provides { return nil }
 func (m *proposalModule) Enabled() bool { return m != nil && m.bus != nil }
 
 func (m *proposalModule) Init(_ context.Context, _ appinit.Resolver) (*appinit.ModuleResult, error) {
+	if m == nil || m.bus == nil {
+		return &appinit.ModuleResult{}, nil
+	}
+
 	registry := proposal.NewRegistry(time.Now)
 	preparer := proposal.NewDeterministicPreparer()
 	service := proposal.NewService(registry, preparer)
