@@ -20,10 +20,24 @@ func NewPendingApprovalRegistry() *PendingApprovalRegistry {
 
 // Register replaces the latest pending approval request.
 func (r *PendingApprovalRegistry) Register(msg chat.ApprovalRequestMsg) {
+	var superseded *chat.ApprovalRequestMsg
+
 	r.mu.Lock()
-	defer r.mu.Unlock()
+	if r.pending != nil {
+		msgCopy := *r.pending
+		superseded = &msgCopy
+	}
 	msgCopy := msg
 	r.pending = &msgCopy
+	r.mu.Unlock()
+
+	if superseded != nil {
+		superseded.Response <- approval.ApprovalResponse{
+			Approved:    false,
+			AlwaysAllow: false,
+			Provider:    "tui",
+		}
+	}
 }
 
 // Latest returns the latest pending approval request, if any.

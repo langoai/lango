@@ -677,15 +677,18 @@ func (m *ChatModel) handleApprovingKey(msg tea.KeyMsg) tea.Cmd {
 			AlwaysAllow: alwaysAllow,
 			Provider:    "tui",
 		}
-		m.approval.Clear()
-		m.chatView.appendApprovalEvent(eventText, outcome)
 		if m.sharedPending != nil {
 			if !m.sharedPending.Resolve(req.ID, resp) {
+				m.chatView.appendStatus(fmt.Sprintf("Approval resolution failed for %s", req.ToolName), "error")
 				return nil
 			}
+			m.approval.Clear()
+			m.chatView.appendApprovalEvent(eventText, outcome)
 			return m.transitionTo(stateStreaming)
 		}
 		ch := pending.Response
+		m.approval.Clear()
+		m.chatView.appendApprovalEvent(eventText, outcome)
 		return tea.Batch(
 			m.transitionTo(stateStreaming),
 			func() tea.Msg {

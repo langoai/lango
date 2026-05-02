@@ -13,9 +13,10 @@ import (
 func TestPendingApprovalRegistryLatestReplaces(t *testing.T) {
 	registry := NewPendingApprovalRegistry()
 
+	firstRespCh := make(chan approval.ApprovalResponse, 1)
 	first := chat.ApprovalRequestMsg{
 		Request:  approval.ApprovalRequest{ID: "apr-1", ToolName: "fs_read"},
-		Response: make(chan approval.ApprovalResponse, 1),
+		Response: firstRespCh,
 	}
 	second := chat.ApprovalRequestMsg{
 		Request:  approval.ApprovalRequest{ID: "apr-2", ToolName: "exec"},
@@ -30,6 +31,11 @@ func TestPendingApprovalRegistryLatestReplaces(t *testing.T) {
 	require.NotNil(t, latest)
 	assert.Equal(t, "apr-2", latest.Request.ID)
 	assert.Equal(t, "exec", latest.Request.ToolName)
+
+	superseded := <-firstRespCh
+	assert.False(t, superseded.Approved)
+	assert.False(t, superseded.AlwaysAllow)
+	assert.Equal(t, "tui", superseded.Provider)
 }
 
 func TestPendingApprovalRegistryResolveWritesExactlyOnce(t *testing.T) {
@@ -83,7 +89,7 @@ func TestPendingApprovalRegistryCockpitOwnsPendingWhenChatMounted(t *testing.T) 
 	latest := registry.Latest()
 	require.NotNil(t, latest)
 	assert.Equal(t, "apr-1", latest.Request.ID)
-	assert.Equal(t, PageTools, m.activePage)
+	assert.Equal(t, PageChat, m.activePage)
 	require.Len(t, mock.updates, 1)
 	assert.Equal(t, msg, mock.updates[0])
 }

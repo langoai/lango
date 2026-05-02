@@ -619,6 +619,50 @@ func TestCockpitApprovalSharedResolveUsesRegistry(t *testing.T) {
 	}
 }
 
+func TestCockpitApprovalSharedResolveFailureDoesNotAppendFalseSuccess(t *testing.T) {
+	shared := &stubSharedPendingStore{
+		latest: &ApprovalRequestMsg{
+			Request: approval.ApprovalRequest{
+				ID:       "apr-1",
+				ToolName: "browser_search",
+			},
+			ViewModel: approval.ApprovalViewModel{
+				Risk: approval.RiskIndicator{Level: "moderate", Label: "Reads data"},
+			},
+			Response: make(chan approval.ApprovalResponse, 1),
+		},
+		resolveOK: false,
+	}
+	m := newTestModelWithSharedPending(shared)
+	m.state = stateApproving
+
+	before := len(m.chatView.entries)
+	aKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}}
+	m.Update(aKey)
+
+	if m.state != stateApproving {
+		t.Fatalf("want stateApproving after shared resolve failure, got %v", m.state)
+	}
+	if shared.resolveCount != 1 {
+		t.Fatalf("want shared registry resolve count 1, got %d", shared.resolveCount)
+	}
+	if m.currentPendingApproval() == nil {
+		t.Fatal("pending approval should remain after shared resolve failure")
+	}
+	if len(m.chatView.entries) != before+1 {
+		t.Fatalf("want one new error status entry, got %d new entries", len(m.chatView.entries)-before)
+	}
+	last := m.chatView.entries[len(m.chatView.entries)-1]
+	if last.kind != itemStatus {
+		t.Fatalf("want status entry on resolve failure, got %q", last.kind)
+	}
+	for _, entry := range m.chatView.entries {
+		if entry.kind == itemApproval && strings.Contains(entry.content, "Approved") {
+			t.Fatalf("unexpected approval success event after resolve failure: %q", entry.content)
+		}
+	}
+}
+
 func TestCockpitActivityUserSubmissionCallback(t *testing.T) {
 	var gotSession string
 	var gotInput string

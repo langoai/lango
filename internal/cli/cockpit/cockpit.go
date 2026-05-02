@@ -178,12 +178,10 @@ func (m *Model) handleChannelMessage(msg chat.ChannelMessageMsg) (*Model, tea.Cm
 // request to the chat child for approval-state transitions and rendering when
 // the chat surface is visible.
 func (m *Model) handleApprovalRequest(msg chat.ApprovalRequestMsg) (*Model, tea.Cmd) {
-	var switchCmd tea.Cmd
 	if m.pendingApprovals != nil {
 		m.pendingApprovals.Register(msg)
-	} else {
-		switchCmd = m.switchPage(PageChat)
 	}
+	switchCmd := m.switchPage(PageChat)
 	up, childCmd := m.child.Update(msg)
 	m.child = up.(childModel)
 	return m, tea.Batch(switchCmd, childCmd)
