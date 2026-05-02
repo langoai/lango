@@ -134,6 +134,45 @@ func TestStoreTransitionAppendsPerMissionHistorySeq(t *testing.T) {
 	assert.Equal(t, "Waiting for filesystem approval", *latest.CurrentBlockedReason)
 }
 
+func TestStoreCreateMissionAppendsInitialHistoryWhenRequested(t *testing.T) {
+	t.Parallel()
+
+	store, client := newTestStore(t)
+	ctx := context.Background()
+
+	created, err := store.CreateMission(ctx, CreateMissionInput{
+		SessionKey:       "sess-init-history",
+		Title:            "Create first durable mission row",
+		Description:      "Initial creation should also write seq=1 history.",
+		Status:           mission.StatusPrepared,
+		SourceKind:       "user",
+		InitialReason:    "mission created",
+		InitialActorKind: "user",
+		InitialActorRef:  "operator",
+		InitialPayload:   map[string]any{"path": "direct_start"},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, created)
+
+	rows, err := client.MissionStateHistory.Query().
+		Where(missionstatehistory.MissionID(created.ID)).
+		Order(missionstatehistory.BySeq()).
+		All(ctx)
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+
+	assert.Equal(t, int64(1), rows[0].Seq)
+	assert.Nil(t, rows[0].FromStatus)
+	assert.Equal(t, missionstatehistory.ToStatusPrepared, rows[0].ToStatus)
+	require.NotNil(t, rows[0].Reason)
+	assert.Equal(t, "mission created", *rows[0].Reason)
+	assert.Equal(t, "user", rows[0].ActorKind)
+	require.NotNil(t, rows[0].ActorRef)
+	assert.Equal(t, "operator", *rows[0].ActorRef)
+	require.NotNil(t, rows[0].Payload)
+	assert.Equal(t, "direct_start", rows[0].Payload["path"])
+}
+
 func TestStoreAppendExecutionLinkRejectsDuplicateExecution(t *testing.T) {
 	t.Parallel()
 
@@ -323,6 +362,61 @@ func TestStoreLatestStateInvariantsAndTerminalTimestamp(t *testing.T) {
 	assert.Equal(t, explicitCompletedAt, *cancelledAtCreate.CompletedAt)
 	assert.Nil(t, cancelledAtCreate.CurrentDecisionKind)
 	assert.Nil(t, cancelledAtCreate.CurrentDecisionSummary)
+}
+
+func TestStoreTransitionAllowsWaitingDecisionSummaryRefresh(t *testing.T) {
+	t.Parallel()
+
+	store, client := newTestStore(t)
+	ctx := context.Background()
+
+	created, err := store.CreateMission(ctx, CreateMissionInput{
+		SessionKey: "sess-decision-refresh",
+		Title:      "Refresh waiting decision summary",
+		SourceKind: "user",
+	})
+	require.NoError(t, err)
+
+	waiting, err := store.TransitionMission(ctx, TransitionMissionInput{
+		MissionID:       created.ID.String(),
+		ToStatus:        mission.StatusWaitingDecision,
+		Reason:          "First approval requested",
+		ActorKind:       "system",
+		ActorRef:        "approval",
+		DecisionKind:    "tool_approval",
+		DecisionSummary: "Approve filesystem write",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, waiting)
+	assert.Equal(t, mission.StatusWaitingDecision, waiting.Status)
+
+	waiting, err = store.TransitionMission(ctx, TransitionMissionInput{
+		MissionID:       created.ID.String(),
+		ToStatus:        mission.StatusWaitingDecision,
+		Reason:          "Approval denied",
+		ActorKind:       "system",
+		ActorRef:        "approval",
+		DecisionKind:    "tool_approval",
+		DecisionSummary: "Filesystem write denied; choose a safer path",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, waiting)
+	assert.Equal(t, mission.StatusWaitingDecision, waiting.Status)
+	require.NotNil(t, waiting.CurrentDecisionSummary)
+	assert.Equal(t, "Filesystem write denied; choose a safer path", *waiting.CurrentDecisionSummary)
+
+	rows, err := client.MissionStateHistory.Query().
+		Where(missionstatehistory.MissionID(created.ID)).
+		Order(missionstatehistory.BySeq()).
+		All(ctx)
+	require.NoError(t, err)
+	require.Len(t, rows, 2)
+	assert.Equal(t, int64(2), rows[1].Seq)
+	require.NotNil(t, rows[1].FromStatus)
+	assert.Equal(t, missionstatehistory.FromStatusWaitingDecision, *rows[1].FromStatus)
+	assert.Equal(t, missionstatehistory.ToStatusWaitingDecision, rows[1].ToStatus)
+	require.NotNil(t, rows[1].DecisionSummary)
+	assert.Equal(t, "Filesystem write denied; choose a safer path", *rows[1].DecisionSummary)
 }
 
 func newTestStore(t *testing.T) (*EntStore, *ent.Client) {

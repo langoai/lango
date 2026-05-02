@@ -73,6 +73,14 @@ type CreateMissionInput struct {
 	CurrentDecisionKind    string
 	CurrentDecisionSummary string
 	CompletedAt            *time.Time
+	InitialReason          string
+	InitialActorKind       string
+	InitialActorRef        string
+	InitialExecutionKind   string
+	InitialExecutionRef    string
+	InitialDecisionKind    string
+	InitialDecisionSummary string
+	InitialPayload         map[string]any
 }
 
 // TransitionMissionInput describes a single durable mission state transition.
@@ -139,8 +147,17 @@ func (s *EntStore) CreateMission(ctx context.Context, in CreateMissionInput) (*M
 		nil,
 		time.Now(),
 	)
+	tx, err := s.client.Tx(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("create mission: begin tx: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
 
-	builder := s.client.Mission.Create().
+	builder := tx.Mission.Create().
 		SetSessionKey(sessionKey).
 		SetTitle(title).
 		SetSourceKind(sourceKind).
@@ -169,7 +186,43 @@ func (s *EntStore) CreateMission(ctx context.Context, in CreateMissionInput) (*M
 	if err != nil {
 		return nil, fmt.Errorf("create mission: %w", err)
 	}
-	return row, nil
+
+	if actorKind := strings.TrimSpace(in.InitialActorKind); actorKind != "" {
+		historyBuilder := tx.MissionStateHistory.Create().
+			SetMissionID(row.ID).
+			SetSeq(1).
+			SetToStatus(toHistoryStatus(latest.status)).
+			SetActorKind(actorKind)
+		if reason := strings.TrimSpace(in.InitialReason); reason != "" {
+			historyBuilder.SetReason(reason)
+		}
+		if actorRef := strings.TrimSpace(in.InitialActorRef); actorRef != "" {
+			historyBuilder.SetActorRef(actorRef)
+		}
+		if executionKind := strings.TrimSpace(in.InitialExecutionKind); executionKind != "" {
+			historyBuilder.SetExecutionKind(executionKind)
+		}
+		if executionRef := strings.TrimSpace(in.InitialExecutionRef); executionRef != "" {
+			historyBuilder.SetExecutionRef(executionRef)
+		}
+		if decisionKind := strings.TrimSpace(in.InitialDecisionKind); decisionKind != "" {
+			historyBuilder.SetDecisionKind(decisionKind)
+		}
+		if decisionSummary := strings.TrimSpace(in.InitialDecisionSummary); decisionSummary != "" {
+			historyBuilder.SetDecisionSummary(decisionSummary)
+		}
+		if len(in.InitialPayload) > 0 {
+			historyBuilder.SetPayload(in.InitialPayload)
+		}
+		if _, err := historyBuilder.Save(ctx); err != nil {
+			return nil, fmt.Errorf("create mission: append initial history: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("create mission: commit: %w", err)
+	}
+	return row.Unwrap(), nil
 }
 
 func (s *EntStore) GetMission(ctx context.Context, missionID string) (*Mission, error) {
@@ -496,7 +549,7 @@ func isAllowedMissionTransition(from, to entmission.Status) bool {
 	case entmission.StatusActive:
 		return to == entmission.StatusWaitingDecision || to == entmission.StatusBlocked || to == entmission.StatusDone || to == entmission.StatusCancelled
 	case entmission.StatusWaitingDecision:
-		return to == entmission.StatusActive || to == entmission.StatusBlocked || to == entmission.StatusCancelled
+		return to == entmission.StatusWaitingDecision || to == entmission.StatusActive || to == entmission.StatusBlocked || to == entmission.StatusCancelled
 	case entmission.StatusBlocked:
 		return to == entmission.StatusActive || to == entmission.StatusCancelled
 	default:

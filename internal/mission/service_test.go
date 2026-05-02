@@ -35,7 +35,7 @@ func TestServiceStartMissionCreatesPreparedMission(t *testing.T) {
 		Where(entmissionstatehistory.MissionID(row.ID)).
 		Count(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, 0, historyCount)
+	assert.Equal(t, 1, historyCount)
 }
 
 func TestServiceAcceptProposalCreatesFirstDurableMissionRow(t *testing.T) {
@@ -68,7 +68,7 @@ func TestServiceAcceptProposalCreatesFirstDurableMissionRow(t *testing.T) {
 		Where(entmissionstatehistory.MissionID(row.ID)).
 		Count(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, 0, historyCount)
+	assert.Equal(t, 1, historyCount)
 }
 
 func TestServiceMarkWaitingDecisionStoresCoarseSummary(t *testing.T) {
@@ -104,6 +104,20 @@ func TestServiceMarkWaitingDecisionStoresCoarseSummary(t *testing.T) {
 	require.NotNil(t, waiting.CurrentDecisionSummary)
 	assert.Equal(t, "Approve filesystem write for mission patch", *waiting.CurrentDecisionSummary)
 	assert.Nil(t, waiting.CurrentBlockedReason)
+
+	waiting, err = svc.MarkWaitingDecision(ctx, WaitForDecisionInput{
+		MissionID:       row.ID.String(),
+		Reason:          "Approval denied",
+		ActorKind:       "system",
+		ActorRef:        "approval-middleware",
+		DecisionKind:    "tool_approval",
+		DecisionSummary: "Filesystem write denied; waiting for revised direction",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, waiting)
+	assert.Equal(t, StatusWaitingDecision, waiting.Status)
+	require.NotNil(t, waiting.CurrentDecisionSummary)
+	assert.Equal(t, "Filesystem write denied; waiting for revised direction", *waiting.CurrentDecisionSummary)
 }
 
 func TestServiceAttachExecutionIsIdempotent(t *testing.T) {

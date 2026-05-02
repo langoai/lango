@@ -109,12 +109,14 @@ func (s *Service) StartMission(ctx context.Context, in StartMissionInput) (*Miss
 	}
 
 	return store.CreateMission(ctx, CreateMissionInput{
-		SessionKey:  strings.TrimSpace(in.SessionKey),
-		Title:       strings.TrimSpace(in.Title),
-		Description: strings.TrimSpace(in.Description),
-		Status:      status,
-		SourceKind:  sourceKind,
-		SourceRef:   strings.TrimSpace(in.SourceRef),
+		SessionKey:       strings.TrimSpace(in.SessionKey),
+		Title:            strings.TrimSpace(in.Title),
+		Description:      strings.TrimSpace(in.Description),
+		Status:           status,
+		SourceKind:       sourceKind,
+		SourceRef:        strings.TrimSpace(in.SourceRef),
+		InitialReason:    "mission created",
+		InitialActorKind: "user",
 	})
 }
 
@@ -131,12 +133,14 @@ func (s *Service) AcceptProposal(ctx context.Context, in AcceptProposalInput) (*
 	}
 
 	return store.CreateMission(ctx, CreateMissionInput{
-		SessionKey:  strings.TrimSpace(in.SessionKey),
-		Title:       strings.TrimSpace(in.Title),
-		Description: strings.TrimSpace(in.Description),
-		Status:      StatusPrepared,
-		SourceKind:  sourceKind,
-		SourceRef:   strings.TrimSpace(in.SourceRef),
+		SessionKey:       strings.TrimSpace(in.SessionKey),
+		Title:            strings.TrimSpace(in.Title),
+		Description:      strings.TrimSpace(in.Description),
+		Status:           StatusPrepared,
+		SourceKind:       sourceKind,
+		SourceRef:        strings.TrimSpace(in.SourceRef),
+		InitialReason:    "proposal accepted",
+		InitialActorKind: "user",
 	})
 }
 
