@@ -391,6 +391,18 @@ feat: extend runledger for teammate blocked durability
 Create `internal/agentrt/runledger_mirror_store_test.go` with:
 
 ```go
+type failingRunLedgerStore struct {
+	runledger.RunLedgerStore
+	appendErr error
+}
+
+func (s *failingRunLedgerStore) AppendJournalEvent(ctx context.Context, event runledger.JournalEvent) error {
+	if s.appendErr != nil {
+		return s.appendErr
+	}
+	return s.RunLedgerStore.AppendJournalEvent(ctx, event)
+}
+
 func TestRunLedgerMirrorStore_ApprovalBlockedAppendsJournalEvent(t *testing.T) {
 	ctx := context.Background()
 	base := NewInMemoryAgentRunStore()
@@ -551,8 +563,32 @@ func TestRunLedgerMirrorStore_ApprovalUnblockedAppendsJournalEvent(t *testing.T)
 }
 
 func TestRunLedgerMirrorStore_MirrorFailureDoesNotFailProjection(t *testing.T) {
-	// use a stub RunLedgerStore whose AppendJournalEvent returns error
-	// assert UpdateProjection still returns nil from the base write
+	ctx := context.Background()
+	base := NewInMemoryAgentRunStore()
+	ledger := &failingRunLedgerStore{RunLedgerStore: runledger.NewMemoryStore(), appendErr: errors.New("boom")}
+
+	require.NoError(t, base.Create(&AgentRun{
+		ID:     "arun-3",
+		Status: AgentRunRunning,
+	}))
+
+	store := NewRunLedgerMirrorStore(base, ledger, nil)
+	err := store.UpdateProjection("arun-3", RunProjectionPatch{
+		ApplyRuntimeCondition: true,
+		ApplyBlockedReason:    true,
+		ApplyGrantRequestID:   true,
+		RuntimeCondition:      AgentRunConditionBlockedWaitingApproval,
+		BlockedReason:         "dangerous tool requires approval",
+		GrantRequestID:        "grant-arun-3-exec",
+	})
+	require.NoError(t, err)
+
+	run, err := base.Get("arun-3")
+	require.NoError(t, err)
+	assert.Equal(t, AgentRunConditionBlockedWaitingApproval, run.RuntimeCondition)
+
+	_, getErr := ledger.GetJournalEvents(ctx, "arun-3")
+	require.Error(t, getErr)
 }
 ```
 
@@ -612,7 +648,6 @@ feat: mirror teammate blocked state into runledger
 
 **Files:**
 - Modify: `internal/app/modules.go`
-- Modify: `internal/app/modules_test.go`
 - Modify: `internal/app/modules_test.go`
 
 - [ ] **Step 1: Add a failing wiring test**
