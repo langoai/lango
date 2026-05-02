@@ -12,6 +12,7 @@ import (
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/mission"
+	"github.com/langoai/lango/internal/proposal"
 	"github.com/langoai/lango/internal/runledger"
 	"github.com/langoai/lango/internal/storage"
 	"github.com/langoai/lango/internal/testutil"
@@ -222,6 +223,27 @@ func TestPopulateAppFields_MissionComponents(t *testing.T) {
 	assert.Same(t, runLinker, app.missionRunLedgerLinker)
 }
 
+func TestPopulateAppFields_ProposalComponents(t *testing.T) {
+	t.Parallel()
+
+	registry := proposal.NewRegistry(nil)
+	preparer := proposal.NewDeterministicPreparer()
+	service := proposal.NewService(registry, preparer)
+
+	app := &App{}
+	populateAppFields(app, staticResolver{
+		appinit.ProvidesProposal: &proposalValues{
+			registry: registry,
+			preparer: preparer,
+			service:  service,
+		},
+	})
+
+	assert.Same(t, registry, app.ProposalRegistry)
+	assert.Same(t, preparer, app.ProposalPreparer)
+	assert.Same(t, service, app.ProposalService)
+}
+
 func TestNew_MissionApprovalObserverWiredAtCompositionSite(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Session.DatabasePath = filepath.Join(t.TempDir(), "test.db")
@@ -266,4 +288,28 @@ func TestNew_MissionApprovalObserverWiredAtCompositionSite(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, obs.requests)
 	assert.Equal(t, "exec", obs.requests[len(obs.requests)-1])
+}
+
+func TestNew_ProposalServiceAvailableForLaterMutationUse(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Session.DatabasePath = filepath.Join(t.TempDir(), "test.db")
+	cfg.Agent.Provider = "google"
+	cfg.Providers = map[string]config.ProviderConfig{
+		"google": {
+			Type:   "gemini",
+			APIKey: "test-key",
+		},
+	}
+
+	client := testutil.TestEntClient(t)
+	boot := &bootstrap.Result{
+		Config:  cfg,
+		Storage: storage.NewFacade(nil, nil, storage.WithEntClient(client)),
+	}
+
+	app, err := New(boot)
+	require.NoError(t, err)
+	require.NotNil(t, app.ProposalRegistry)
+	require.NotNil(t, app.ProposalPreparer)
+	require.NotNil(t, app.ProposalService)
 }

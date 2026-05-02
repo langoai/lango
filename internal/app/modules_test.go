@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/agentrt"
@@ -18,6 +19,7 @@ import (
 	entmissionstatehistory "github.com/langoai/lango/internal/ent/missionstatehistory"
 	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/mission"
+	"github.com/langoai/lango/internal/proposal"
 	"github.com/langoai/lango/internal/runledger"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/session"
@@ -309,6 +311,11 @@ func TestModuleProvides(t *testing.T) {
 			module:   &missionModule{},
 			wantKeys: []appinit.Provides{appinit.ProvidesMission},
 		},
+		{
+			name:     "proposal",
+			module:   &proposalModule{},
+			wantKeys: []appinit.Provides{appinit.ProvidesProposal},
+		},
 	}
 
 	for _, tt := range tests {
@@ -423,6 +430,91 @@ func TestMissionModule_DisabledWithoutDurableStorage(t *testing.T) {
 	assert.False(t, (&missionModule{}).Enabled())
 	assert.False(t, (&missionModule{boot: &bootstrap.Result{}}).Enabled())
 	assert.False(t, (&missionModule{boot: &bootstrap.Result{Storage: storage.NewFacade(nil, nil)}}).Enabled())
+}
+
+func TestProposalModule_InitProvidesRegistryPreparerAndService(t *testing.T) {
+	t.Parallel()
+
+	bus := eventbus.New()
+	mod := &proposalModule{bus: bus}
+
+	require.True(t, mod.Enabled())
+
+	result, err := mod.Init(context.Background(), nil)
+	require.NoError(t, err)
+
+	vals, ok := result.Values[appinit.ProvidesProposal].(*proposalValues)
+	require.True(t, ok)
+	require.NotNil(t, vals)
+	require.NotNil(t, vals.registry)
+	require.NotNil(t, vals.preparer)
+	require.NotNil(t, vals.service)
+}
+
+func TestProposalModule_LearningSuggestionEventCreatesAndUpdatesProposal(t *testing.T) {
+	t.Parallel()
+
+	bus := eventbus.New()
+	mod := &proposalModule{bus: bus}
+	result, err := mod.Init(context.Background(), nil)
+	require.NoError(t, err)
+
+	vals := result.Values[appinit.ProvidesProposal].(*proposalValues)
+	require.NotNil(t, vals.registry)
+
+	bus.Publish(eventbus.LearningSuggestionEvent{
+		SessionKey:   "sess-1",
+		SuggestionID: "suggestion-1",
+		Pattern:      "timeout retries",
+		ProposedRule: "Use bounded retry",
+		Confidence:   0.61,
+		Rationale:    "Repeated timeout failures benefited from bounded retry.",
+		Timestamp:    time.Date(2026, 5, 3, 12, 0, 0, 0, time.UTC),
+	})
+
+	items := vals.registry.ListBySession("sess-1")
+	require.Len(t, items, 1)
+	assert.Equal(t, proposal.ProposalStatusPrepared, items[0].Status)
+	require.NotNil(t, items[0].PreparedBrief)
+	assert.Equal(t, "Apply learning rule: Use bounded retry", items[0].Title)
+
+	bus.Publish(eventbus.LearningSuggestionEvent{
+		SessionKey:   "sess-1",
+		SuggestionID: "suggestion-1",
+		Pattern:      "timeout retries",
+		ProposedRule: "Use bounded retry",
+		Confidence:   0.84,
+		Rationale:    "Updated rationale.",
+		Timestamp:    time.Date(2026, 5, 3, 12, 5, 0, 0, time.UTC),
+	})
+
+	items = vals.registry.ListBySession("sess-1")
+	require.Len(t, items, 1)
+	assert.Equal(t, 0.84, items[0].Confidence)
+	assert.Equal(t, "Updated rationale.", items[0].Reason)
+}
+
+func TestProposalModule_DeferredProducersStayInactive(t *testing.T) {
+	t.Parallel()
+
+	bus := eventbus.New()
+	mod := &proposalModule{bus: bus}
+	result, err := mod.Init(context.Background(), nil)
+	require.NoError(t, err)
+
+	vals := result.Values[appinit.ProvidesProposal].(*proposalValues)
+
+	bus.Publish(eventbus.SpecDriftDetectedEvent{
+		ToolName:     "exec",
+		ErrorClass:   "timeout",
+		Occurrences:  3,
+		SampleError:  "timed out",
+		AffectedSpec: "spec-a",
+		Timestamp:    time.Date(2026, 5, 3, 12, 0, 0, 0, time.UTC),
+	})
+
+	assert.Empty(t, vals.registry.ListBySession("sess-1"))
+	assert.Empty(t, vals.registry.ListBySession("librarian-session"))
 }
 
 func TestMissionApprovalObserver_GrantedTransitionsMissionBackToActive(t *testing.T) {

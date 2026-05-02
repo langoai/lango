@@ -37,6 +37,7 @@ import (
 	"github.com/langoai/lango/internal/p2p/agentpool"
 	"github.com/langoai/lango/internal/p2p/team"
 	"github.com/langoai/lango/internal/payment"
+	"github.com/langoai/lango/internal/proposal"
 	"github.com/langoai/lango/internal/provenance"
 	"github.com/langoai/lango/internal/receipts"
 	"github.com/langoai/lango/internal/runledger"
@@ -161,6 +162,11 @@ type App struct {
 	// Mission Components (optional, durable mission lifecycle)
 	MissionStore   mission.Store
 	MissionService *mission.Service
+
+	// Proposal Components (optional, transient proactive proposal lifecycle)
+	ProposalRegistry *proposal.Registry
+	ProposalPreparer proposal.Preparer
+	ProposalService  *proposal.Service
 
 	// Provenance Components (optional)
 	ProvenanceCheckpoints *provenance.CheckpointService

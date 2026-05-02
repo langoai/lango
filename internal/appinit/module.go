@@ -33,6 +33,7 @@ const (
 	ProvidesMCP           Provides = "mcp"
 	ProvidesRunLedger     Provides = "run_ledger"
 	ProvidesMission       Provides = "mission"
+	ProvidesProposal      Provides = "proposal"
 	ProvidesProvenance    Provides = "provenance"
 	ProvidesWorkspace     Provides = "workspace"
 	ProvidesBaseTools     Provides = "base_tools"

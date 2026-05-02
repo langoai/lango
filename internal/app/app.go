@@ -109,6 +109,7 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 	builder := appinit.NewBuilder()
 	builder.AddModule(&foundationModule{cfg: cfg, boot: boot})
 	builder.AddModule(&missionModule{boot: boot})
+	builder.AddModule(&proposalModule{bus: bus})
 	builder.AddModule(&intelligenceModule{cfg: cfg, boot: boot, bus: bus, extReg: app.ExtensionRegistry})
 	builder.AddModule(&automationModule{cfg: cfg, app: app, bus: bus})
 	builder.AddModule(&networkModule{cfg: cfg, boot: boot, bus: bus, app: app})
@@ -491,6 +492,13 @@ func populateAppFields(app *App, r appinit.Resolver) {
 		app.missionApprovalObserver = mv.approvalObserver
 		app.missionBackgroundLinker = mv.backgroundLinker
 		app.missionRunLedgerLinker = mv.runLedgerLinker
+	}
+
+	// Proposal.
+	if pv, ok := r.Resolve(appinit.ProvidesProposal).(*proposalValues); ok && pv != nil {
+		app.ProposalRegistry = pv.registry
+		app.ProposalPreparer = pv.preparer
+		app.ProposalService = pv.service
 	}
 
 	// Provenance.
