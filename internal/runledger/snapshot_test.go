@@ -181,6 +181,87 @@ func TestApplyTail(t *testing.T) {
 	assert.Empty(t, snap.Notes) // old note should be skipped
 }
 
+func TestApplyEvent_TeammateApprovalBlockedUpdatesSnapshot(t *testing.T) {
+	now := time.Now()
+	snap := &RunSnapshot{RunID: "run-1", Notes: map[string]string{}}
+	ev := JournalEvent{
+		RunID:     "run-1",
+		Seq:       1,
+		Type:      EventTeammateApprovalBlocked,
+		Timestamp: now,
+		Payload: marshalPayload(TeammateApprovalBlockedPayload{
+			RuntimeCondition: "blocked_waiting_approval",
+			BlockedReason:    "dangerous tool requires approval",
+			GrantRequestID:   "grant-run-1-exec",
+		}),
+	}
+
+	require.NoError(t, applyEvent(snap, &ev))
+	assert.Equal(t, "blocked_waiting_approval", snap.TeammateRuntimeCondition)
+	assert.Equal(t, "dangerous tool requires approval", snap.TeammateBlockedReason)
+	assert.Equal(t, "grant-run-1-exec", snap.TeammateGrantRequestID)
+}
+
+func TestApplyEvent_TeammateApprovalUnblockedClearsSnapshot(t *testing.T) {
+	now := time.Now()
+	snap := &RunSnapshot{
+		RunID:                    "run-1",
+		Notes:                    map[string]string{},
+		TeammateRuntimeCondition: "blocked_waiting_approval",
+		TeammateBlockedReason:    "dangerous tool requires approval",
+		TeammateGrantRequestID:   "grant-run-1-exec",
+	}
+	ev := JournalEvent{
+		RunID:     "run-1",
+		Seq:       2,
+		Type:      EventTeammateApprovalUnblocked,
+		Timestamp: now,
+		Payload:   marshalPayload(TeammateApprovalUnblockedPayload{}),
+	}
+
+	require.NoError(t, applyEvent(snap, &ev))
+	assert.Empty(t, snap.TeammateRuntimeCondition)
+	assert.Empty(t, snap.TeammateBlockedReason)
+	assert.Empty(t, snap.TeammateGrantRequestID)
+}
+
+func TestApplyEvent_TerminalEventsClearTeammateApprovalSnapshot(t *testing.T) {
+	tests := []struct {
+		name   string
+		evType JournalEventType
+		status RunStatus
+	}{
+		{name: "completed", evType: EventRunCompleted, status: RunStatusCompleted},
+		{name: "failed", evType: EventRunFailed, status: RunStatusFailed},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			snap := &RunSnapshot{
+				RunID:                    "run-1",
+				Notes:                    map[string]string{},
+				Status:                   RunStatusRunning,
+				TeammateRuntimeCondition: "blocked_waiting_approval",
+				TeammateBlockedReason:    "dangerous tool requires approval",
+				TeammateGrantRequestID:   "grant-run-1-exec",
+			}
+			ev := JournalEvent{
+				RunID:     "run-1",
+				Seq:       3,
+				Type:      tt.evType,
+				Timestamp: time.Now(),
+				Payload:   marshalPayload(struct{}{}),
+			}
+
+			require.NoError(t, applyEvent(snap, &ev))
+			assert.Equal(t, tt.status, snap.Status)
+			assert.Empty(t, snap.TeammateRuntimeCondition)
+			assert.Empty(t, snap.TeammateBlockedReason)
+			assert.Empty(t, snap.TeammateGrantRequestID)
+		})
+	}
+}
+
 func TestApplyPolicyToSnapshot_Retry(t *testing.T) {
 	snap := &RunSnapshot{
 		Steps: []Step{
@@ -222,6 +303,9 @@ func TestApplyPolicyToSnapshot_Abort(t *testing.T) {
 		Steps: []Step{
 			{StepID: "s1", Status: StepStatusFailed},
 		},
+		TeammateRuntimeCondition: "blocked_waiting_approval",
+		TeammateBlockedReason:    "dangerous tool requires approval",
+		TeammateGrantRequestID:   "grant-run-1-exec",
 	}
 
 	applyPolicyToSnapshot(snap, "s1", &PolicyDecision{
@@ -231,6 +315,9 @@ func TestApplyPolicyToSnapshot_Abort(t *testing.T) {
 
 	assert.Equal(t, RunStatusFailed, snap.Status)
 	assert.Equal(t, "unrecoverable", snap.CurrentBlocker)
+	assert.Empty(t, snap.TeammateRuntimeCondition)
+	assert.Empty(t, snap.TeammateBlockedReason)
+	assert.Empty(t, snap.TeammateGrantRequestID)
 }
 
 func TestRunSnapshot_DeepCopy(t *testing.T) {
@@ -465,4 +552,24 @@ func TestFindStep_AfterJSONRehydrate(t *testing.T) {
 	assert.Equal(t, "json-step-2", step2.Goal)
 
 	assert.Nil(t, rehydrated.FindStep("nonexistent"))
+}
+
+func TestRunSnapshot_JSONUnmarshalLegacySnapshotMissingTeammateFields(t *testing.T) {
+	legacy := []byte(`{
+		"run_id":"run-legacy",
+		"status":"running",
+		"notes":{"k":"v"},
+		"last_journal_seq":7
+	}`)
+
+	var snap RunSnapshot
+	require.NoError(t, json.Unmarshal(legacy, &snap))
+
+	assert.Equal(t, "run-legacy", snap.RunID)
+	assert.Equal(t, RunStatusRunning, snap.Status)
+	assert.Equal(t, int64(7), snap.LastJournalSeq)
+	assert.Equal(t, map[string]string{"k": "v"}, snap.Notes)
+	assert.Empty(t, snap.TeammateRuntimeCondition)
+	assert.Empty(t, snap.TeammateBlockedReason)
+	assert.Empty(t, snap.TeammateGrantRequestID)
 }

@@ -596,3 +596,35 @@ Before archive, the implementation SHALL classify built-in teammate durability f
 - **THEN** the implementation SHALL record one verdict for each audited built-in teammate durability item
 - **AND** each verdict SHALL be one of: recorded, not recorded but harmless, or not recorded and follow-up required
 
+### Requirement: Teammate approval-blocked durability mirror
+The system SHALL durably mirror built-in teammate approval-blocked state into RunLedger. The durable mirror SHALL cover `runtime_condition`, `blocked_reason`, and `grant_request_id` for approval-blocked teammate runs. This mirror uses best-effort semantics: live projection writes remain authoritative for runtime continuity, while journal plus snapshot state provide durable reconstruction.
+
+#### Scenario: Approval-blocked teammate state is reconstructible
+- **WHEN** a built-in teammate run enters `blocked_waiting_approval`
+- **THEN** RunLedger SHALL append a durable approval-block journal event
+- **AND** the RunLedger snapshot SHALL retain the latest blocked condition, blocked reason, and grant request ID
+
+#### Scenario: Approval unblock clears durable blocked state
+- **WHEN** a built-in teammate run leaves approval-blocked state
+- **THEN** RunLedger SHALL append a durable approval-unblocked journal event
+- **AND** the latest durable blocked snapshot fields SHALL be cleared
+
+#### Scenario: Mirror failure does not fail-close runtime
+- **WHEN** the durable mirror write fails
+- **THEN** the live control-plane projection write SHALL still succeed
+- **AND** the failure SHALL be observable through logs and metrics
+
+#### Scenario: RunLedger disabled skips mirror silently
+- **WHEN** RunLedger or write-through mirroring is disabled
+- **THEN** approval-blocked mirroring SHALL be skipped
+- **AND** the live control-plane projection SHALL remain the only state source
+
+### Requirement: Approval-blocked replacement stays durable
+When a built-in teammate run remains approval-blocked but its blocked metadata changes, the durable mirror SHALL record the replacement and refresh the latest snapshot values.
+
+#### Scenario: Approval-blocked metadata changes while the run stays blocked
+- **WHEN** a built-in teammate run remains `blocked_waiting_approval`
+- **AND** either `blocked_reason` or `grant_request_id` changes
+- **THEN** RunLedger SHALL append a fresh approval-block journal event
+- **AND** the cached durable snapshot SHALL retain the latest blocked condition, blocked reason, and grant request ID
+

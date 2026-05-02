@@ -9,20 +9,22 @@ import (
 type JournalEventType string
 
 const (
-	EventRunCreated            JournalEventType = "run_created"
-	EventPlanAttached          JournalEventType = "plan_attached"
-	EventStepStarted           JournalEventType = "step_started"
-	EventStepResultProposed    JournalEventType = "step_result_proposed"
-	EventStepValidationPassed  JournalEventType = "step_validation_passed"
-	EventStepValidationFailed  JournalEventType = "step_validation_failed"
-	EventPolicyDecisionApplied JournalEventType = "policy_decision_applied"
-	EventNoteWritten           JournalEventType = "note_written"
-	EventRunPaused             JournalEventType = "run_paused"
-	EventRunResumed            JournalEventType = "run_resumed"
-	EventRunCompleted          JournalEventType = "run_completed"
-	EventRunFailed             JournalEventType = "run_failed"
-	EventProjectionSynced      JournalEventType = "projection_synced"
-	EventCriterionMet          JournalEventType = "criterion_met"
+	EventRunCreated                JournalEventType = "run_created"
+	EventPlanAttached              JournalEventType = "plan_attached"
+	EventStepStarted               JournalEventType = "step_started"
+	EventStepResultProposed        JournalEventType = "step_result_proposed"
+	EventStepValidationPassed      JournalEventType = "step_validation_passed"
+	EventStepValidationFailed      JournalEventType = "step_validation_failed"
+	EventPolicyDecisionApplied     JournalEventType = "policy_decision_applied"
+	EventNoteWritten               JournalEventType = "note_written"
+	EventRunPaused                 JournalEventType = "run_paused"
+	EventRunResumed                JournalEventType = "run_resumed"
+	EventRunCompleted              JournalEventType = "run_completed"
+	EventRunFailed                 JournalEventType = "run_failed"
+	EventProjectionSynced          JournalEventType = "projection_synced"
+	EventCriterionMet              JournalEventType = "criterion_met"
+	EventTeammateApprovalBlocked   JournalEventType = "teammate_approval_blocked"
+	EventTeammateApprovalUnblocked JournalEventType = "teammate_approval_unblocked"
 )
 
 // JournalEvent is a single append-only record in the RunLedger journal.
@@ -47,7 +49,7 @@ type RunCreatedPayload struct {
 
 // PlanAttachedPayload is the payload for EventPlanAttached.
 type PlanAttachedPayload struct {
-	Steps              []Step              `json:"steps"`
+	Steps              []Step                `json:"steps"`
 	AcceptanceCriteria []AcceptanceCriterion `json:"acceptance_criteria"`
 }
 
@@ -107,6 +109,16 @@ type RunCompletedPayload struct {
 type RunFailedPayload struct {
 	Reason string `json:"reason"`
 }
+
+// TeammateApprovalBlockedPayload is the payload for EventTeammateApprovalBlocked.
+type TeammateApprovalBlockedPayload struct {
+	RuntimeCondition string `json:"runtime_condition"`
+	BlockedReason    string `json:"blocked_reason,omitempty"`
+	GrantRequestID   string `json:"grant_request_id,omitempty"`
+}
+
+// TeammateApprovalUnblockedPayload is the payload for EventTeammateApprovalUnblocked.
+type TeammateApprovalUnblockedPayload struct{}
 
 // CriterionMetPayload is the payload for EventCriterionMet.
 type CriterionMetPayload struct {

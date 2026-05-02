@@ -168,9 +168,19 @@ The journal is an append-only event log. Every mutation to run state is captured
 | `run_resumed` | Run resumed from paused state |
 | `run_completed` | All steps and criteria satisfied |
 | `run_failed` | Run terminated with failures |
+| `teammate_approval_blocked` | Built-in teammate entered or replaced an approval-blocked runtime condition |
+| `teammate_approval_unblocked` | Built-in teammate left the approval-blocked runtime condition |
 | `projection_synced` | Write-through projection sync marker |
 
 Snapshots are materialized by replaying the full journal, or by applying a tail of new events to a cached snapshot.
+
+When the built-in teammate runtime is active and the automation module is using a RunLedger-backed mirrored `AgentRunStore`, the cached snapshot also preserves the latest approval-blocked teammate fields:
+
+- `teammate_runtime_condition`
+- `teammate_blocked_reason`
+- `teammate_grant_request_id`
+
+This mirror is best effort. The live control-plane `AgentRun` projection remains authoritative for runtime continuity, while the RunLedger journal plus cached snapshot provide durable reconstruction later.
 
 ## Workspace Isolation
 

@@ -526,6 +526,7 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 type automationModule struct {
 	cfg *config.Config
 	app *App // needed for AgentRunner interface at runtime
+	bus *eventbus.Bus
 }
 
 func (m *automationModule) Name() string { return "automation" }
@@ -537,6 +538,18 @@ func (m *automationModule) DependsOn() []appinit.Provides {
 }
 func (m *automationModule) Enabled() bool {
 	return m.cfg.Cron.Enabled || m.cfg.Background.Enabled || m.cfg.Workflow.Enabled
+}
+
+func newAutomationAgentRunStore(
+	cfg *config.Config,
+	rlv *runLedgerValues,
+	bus *eventbus.Bus,
+) agentrt.AgentRunStore {
+	base := agentrt.NewInMemoryAgentRunStore()
+	if rlv != nil && rlv.store != nil && cfg.RunLedger.Enabled && cfg.RunLedger.WriteThrough {
+		return agentrt.NewRunLedgerMirrorStore(base, rlv.store, bus)
+	}
+	return base
 }
 
 func (m *automationModule) Init(ctx context.Context, r appinit.Resolver) (*appinit.ModuleResult, error) {
@@ -598,7 +611,7 @@ func (m *automationModule) Init(ctx context.Context, r appinit.Resolver) (*appin
 	}
 
 	// Agent lifecycle tools (always available when automation module is active).
-	agentRunStore := agentrt.NewInMemoryAgentRunStore()
+	agentRunStore := newAutomationAgentRunStore(cfg, rlv, m.bus)
 	agentRunProjection := agentrt.NewAgentRunProjection(agentRunStore)
 	capabilityRuntime := agentrt.NewCapabilityRuntime(
 		agentRunStore,

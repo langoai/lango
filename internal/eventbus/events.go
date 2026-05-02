@@ -4,25 +4,26 @@ import "time"
 
 // Event name constants for core domain events.
 const (
-	EventContentSaved      = "content.saved"
-	EventTriplesExtracted  = "triples.extracted"
-	EventTurnCompleted     = "turn.completed"
-	EventReputationChanged = "reputation.changed"
-	EventMemoryGraph       = "memory.graph"
-	EventToolExecutionPaid = "tool.execution.paid"
-	EventAgentDiscovered   = "agent.discovered"
-	EventTaskDelegated     = "task.delegated"
-	EventTaskCompleted     = "task.completed"
-	EventTaskFailed        = "task.failed"
-	EventPaymentNegotiated = "payment.negotiated"
-	EventPaymentSettled    = "payment.settled"
-	EventTrustUpdated      = "trust.updated"
-	EventSchemaExchanged   = "schema.exchanged"
-	EventPolicyDecision          = "policy.decision"
-	EventAlertTriggered          = "alert.triggered"
-	EventChannelMessageReceived  = "channel.message.received"
-	EventChannelMessageSent      = "channel.message.sent"
-	EventSandboxDecision         = "sandbox.decision"
+	EventContentSaved           = "content.saved"
+	EventTriplesExtracted       = "triples.extracted"
+	EventTurnCompleted          = "turn.completed"
+	EventReputationChanged      = "reputation.changed"
+	EventMemoryGraph            = "memory.graph"
+	EventToolExecutionPaid      = "tool.execution.paid"
+	EventAgentDiscovered        = "agent.discovered"
+	EventTaskDelegated          = "task.delegated"
+	EventTaskCompleted          = "task.completed"
+	EventTaskFailed             = "task.failed"
+	EventPaymentNegotiated      = "payment.negotiated"
+	EventPaymentSettled         = "payment.settled"
+	EventTrustUpdated           = "trust.updated"
+	EventSchemaExchanged        = "schema.exchanged"
+	EventPolicyDecision         = "policy.decision"
+	EventAlertTriggered         = "alert.triggered"
+	EventChannelMessageReceived = "channel.message.received"
+	EventChannelMessageSent     = "channel.message.sent"
+	EventSandboxDecision        = "sandbox.decision"
+	EventRunLedgerMirrorFailure = "runledger.mirror.failure"
 )
 
 // ContentSavedEvent is published when knowledge or memory content is saved.
@@ -212,13 +213,24 @@ func (e PolicyDecisionEvent) EventName() string { return EventPolicyDecision }
 
 // AlertEvent is published when an operational alert condition is detected.
 type AlertEvent struct {
-	Type       string                 // "policy_block_rate", "recovery_retries", "circuit_breaker"; "config_drift" is planned
-	Severity   string                 // "warning", "critical"
+	Type       string // "policy_block_rate", "recovery_retries", "circuit_breaker"; "config_drift" is planned
+	Severity   string // "warning", "critical"
 	Message    string
 	Details    map[string]interface{}
 	SessionKey string
 	Timestamp  time.Time
 }
+
+// RunLedgerMirrorFailureEvent is published when a best-effort RunLedger mirror write fails.
+type RunLedgerMirrorFailureEvent struct {
+	Target string
+	Phase  string
+	RunID  string
+	Error  string
+}
+
+// EventName implements Event.
+func (e RunLedgerMirrorFailureEvent) EventName() string { return EventRunLedgerMirrorFailure }
 
 // EventName implements Event.
 func (e AlertEvent) EventName() string { return EventAlertTriggered }
@@ -228,11 +240,11 @@ func (e AlertEvent) EventName() string { return EventAlertTriggered }
 // ChannelMessageReceivedEvent is published when an inbound message arrives
 // from a channel platform (Telegram, Discord, Slack, etc.).
 type ChannelMessageReceivedEvent struct {
-	Channel    string            // "telegram", "discord", "slack"
-	SessionKey string            // e.g., "telegram:123:456"
-	SenderName string            // username or display name
-	SenderID   string            // platform user ID
-	Text       string            // message content
+	Channel    string // "telegram", "discord", "slack"
+	SessionKey string // e.g., "telegram:123:456"
+	SenderName string // username or display name
+	SenderID   string // platform user ID
+	Text       string // message content
 	Timestamp  time.Time
 	Metadata   map[string]string // platform-specific extras (ThreadTS, GuildID, etc.)
 }

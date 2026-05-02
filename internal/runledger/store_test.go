@@ -2,6 +2,7 @@ package runledger
 
 import (
 	"context"
+	"encoding/json"
 	"sync"
 	"testing"
 	"time"
@@ -389,4 +390,89 @@ func TestMemoryStore_SetAppendHook_Chaining(t *testing.T) {
 	}))
 
 	assert.Equal(t, []string{"first", "second"}, calls)
+}
+
+func TestMemoryStore_GetRunSnapshot_LegacyCachedSnapshotAppliesTeammateApprovalEvent(t *testing.T) {
+	ctx := context.Background()
+	store := NewMemoryStore()
+
+	require.NoError(t, store.AppendJournalEvent(ctx, JournalEvent{
+		RunID:   "run-legacy",
+		Type:    EventRunCreated,
+		Payload: marshalPayload(RunCreatedPayload{SessionKey: "s1", Goal: "legacy"}),
+	}))
+
+	legacyData := []byte(`{
+		"run_id":"run-legacy",
+		"session_key":"s1",
+		"goal":"legacy",
+		"status":"planning",
+		"notes":{},
+		"last_journal_seq":1
+	}`)
+
+	var legacySnap RunSnapshot
+	require.NoError(t, json.Unmarshal(legacyData, &legacySnap))
+	require.Empty(t, legacySnap.TeammateRuntimeCondition)
+	require.Empty(t, legacySnap.TeammateBlockedReason)
+	require.Empty(t, legacySnap.TeammateGrantRequestID)
+	require.NoError(t, store.UpdateCachedSnapshot(ctx, &legacySnap))
+
+	require.NoError(t, store.AppendJournalEvent(ctx, JournalEvent{
+		RunID: "run-legacy",
+		Type:  EventTeammateApprovalBlocked,
+		Payload: marshalPayload(TeammateApprovalBlockedPayload{
+			RuntimeCondition: "blocked_waiting_approval",
+			BlockedReason:    "dangerous tool requires approval",
+			GrantRequestID:   "grant-run-legacy-exec",
+		}),
+	}))
+
+	snap, err := store.GetRunSnapshot(ctx, "run-legacy")
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), snap.LastJournalSeq)
+	assert.Equal(t, "blocked_waiting_approval", snap.TeammateRuntimeCondition)
+	assert.Equal(t, "dangerous tool requires approval", snap.TeammateBlockedReason)
+	assert.Equal(t, "grant-run-legacy-exec", snap.TeammateGrantRequestID)
+}
+
+func TestMemoryStore_GetRunSnapshot_LegacyCachedSnapshotAppliesTeammateApprovalUnblockedTail(t *testing.T) {
+	ctx := context.Background()
+	store := NewMemoryStore()
+
+	require.NoError(t, store.AppendJournalEvent(ctx, JournalEvent{
+		RunID:   "run-legacy-unblock",
+		Type:    EventRunCreated,
+		Payload: marshalPayload(RunCreatedPayload{SessionKey: "s1", Goal: "legacy-unblock"}),
+	}))
+
+	legacyData := []byte(`{
+		"run_id":"run-legacy-unblock",
+		"session_key":"s1",
+		"goal":"legacy-unblock",
+		"status":"planning",
+		"teammate_runtime_condition":"blocked_waiting_approval",
+		"teammate_blocked_reason":"dangerous tool requires approval",
+		"teammate_grant_request_id":"grant-run-legacy-unblock-exec",
+		"notes":{},
+		"last_journal_seq":1
+	}`)
+
+	var legacySnap RunSnapshot
+	require.NoError(t, json.Unmarshal(legacyData, &legacySnap))
+	require.NoError(t, store.UpdateCachedSnapshot(ctx, &legacySnap))
+
+	require.NoError(t, store.AppendJournalEvent(ctx, JournalEvent{
+		RunID:     "run-legacy-unblock",
+		Type:      EventTeammateApprovalUnblocked,
+		Timestamp: time.Now(),
+		Payload:   marshalPayload(TeammateApprovalUnblockedPayload{}),
+	}))
+
+	snap, err := store.GetRunSnapshot(ctx, "run-legacy-unblock")
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), snap.LastJournalSeq)
+	assert.Empty(t, snap.TeammateRuntimeCondition)
+	assert.Empty(t, snap.TeammateBlockedReason)
+	assert.Empty(t, snap.TeammateGrantRequestID)
 }
