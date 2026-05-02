@@ -12,6 +12,7 @@ import (
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/mission"
 	"github.com/langoai/lango/internal/observability"
+	"github.com/langoai/lango/internal/proposal"
 	"github.com/langoai/lango/internal/runledger"
 )
 
@@ -31,6 +32,7 @@ type MissionControlProjector struct {
 	runLedgerStore   RunLedgerReader
 	agentRunStore    AgentRunReader
 	missionReader    MissionReader
+	proposalReader   ProposalReader
 	missionLimit     int
 	activityLimit    int
 	nowFn            func() time.Time
@@ -48,6 +50,7 @@ func NewMissionControlProjector(deps Deps) *MissionControlProjector {
 		runLedgerStore:   deps.RunLedgerStore,
 		agentRunStore:    deps.AgentRunStore,
 		missionReader:    deps.MissionReader,
+		proposalReader:   deps.ProposalReader,
 		missionLimit:     defaultMissionControlMissionLimit,
 		activityLimit:    defaultMissionControlActivityLimit,
 		nowFn:            time.Now,
@@ -63,7 +66,7 @@ func (p *MissionControlProjector) Project(taskSnapshots []background.TaskSnapsho
 	generatedAt := p.now()
 	durableMissions, linkedTaskIDs, missionStoreUnavailable, missionDetailsDegraded, runLedgerDegraded, agentRunDegraded := p.projectDurableMissions(taskSnapshots)
 	runtimeOverlays, overlayRunLedgerDegraded, overlayAgentRunDegraded := p.projectBackgroundTasks(taskSnapshots, linkedTaskIDs)
-	proposedMissions := p.projectLearningSuggestions()
+	proposedMissions, proposalRegistryUnavailable := p.projectProposals()
 	sort.SliceStable(durableMissions, func(i, j int) bool {
 		return compareMissionViews(durableMissions[i], durableMissions[j])
 	})
@@ -78,6 +81,7 @@ func (p *MissionControlProjector) Project(taskSnapshots []background.TaskSnapsho
 	degradedNote := p.buildDegradedNote(
 		missionStoreUnavailable,
 		missionDetailsDegraded,
+		proposalRegistryUnavailable,
 		runLedgerDegraded || overlayRunLedgerDegraded,
 		agentRunDegraded || overlayAgentRunDegraded,
 	)
@@ -304,6 +308,60 @@ func (p *MissionControlProjector) projectLearningSuggestions() []MissionView {
 	return missions
 }
 
+func (p *MissionControlProjector) projectProposals() ([]MissionView, bool) {
+	if p.proposalReader == nil {
+		fallback := p.projectLearningSuggestions()
+		if len(fallback) == 0 {
+			return nil, false
+		}
+		return fallback, true
+	}
+	items := p.proposalReader.ListBySession(p.sessionKey)
+	if len(items) == 0 {
+		return nil, false
+	}
+
+	missions := make([]MissionView, 0, len(items))
+	for _, item := range items {
+		view := MissionView{
+			ID:         strings.TrimSpace(item.ProposalID),
+			Kind:       MissionKindProposed,
+			Status:     missionStatusFromProposal(item.Status),
+			Title:      strings.TrimSpace(item.Title),
+			SourceKind: strings.TrimSpace(item.Source.Kind),
+			SourceRef:  strings.TrimSpace(item.Source.Ref),
+			UpdatedAt:  item.UpdatedAt,
+		}
+		if view.Title == "" {
+			view.Title = "Inspect proposal"
+		}
+		switch item.Status {
+		case proposal.ProposalStatusPrepared:
+			view.NextAction = "Review prepared proposal"
+		case proposal.ProposalStatusPreparing:
+			view.NextAction = "Finish proposal preparation"
+		default:
+			view.NextAction = "Review proposal"
+		}
+		if item.PreparedBrief != nil {
+			view.Detail = strings.TrimSpace(item.PreparedBrief.SourceSummary)
+			view.RuntimeHint = strings.TrimSpace(item.PreparedBrief.Reason)
+		}
+		if view.Detail == "" {
+			view.Detail = strings.TrimSpace(item.Summary)
+		}
+		if view.RuntimeHint == "" {
+			view.RuntimeHint = strings.TrimSpace(item.Source.Kind)
+		}
+		missions = append(missions, view)
+	}
+
+	sort.SliceStable(missions, func(i, j int) bool {
+		return compareMissionViews(missions[i], missions[j])
+	})
+	return missions, false
+}
+
 func (p *MissionControlProjector) projectActivities() []ActivityView {
 	if p.activityBuffer == nil {
 		return nil
@@ -330,12 +388,15 @@ func (p *MissionControlProjector) projectActivities() []ActivityView {
 	return views
 }
 
-func (p *MissionControlProjector) buildDegradedNote(missionStoreUnavailable, missionDetailsDegraded, runLedgerDegraded, agentRunDegraded bool) string {
+func (p *MissionControlProjector) buildDegradedNote(missionStoreUnavailable, missionDetailsDegraded, proposalRegistryUnavailable, runLedgerDegraded, agentRunDegraded bool) string {
 	var notes []string
 	if missionStoreUnavailable {
 		notes = append(notes, "Mission store unavailable")
 	} else if missionDetailsDegraded {
 		notes = append(notes, "Mission details unavailable")
+	}
+	if proposalRegistryUnavailable {
+		notes = append(notes, "Proposal registry unavailable")
 	}
 	if p.runLedgerStore == nil || runLedgerDegraded {
 		notes = append(notes, "RunLedger unavailable")
@@ -400,6 +461,17 @@ func missionStatusFromDurable(status mission.Status) MissionStatus {
 		return MissionStatusDone
 	case mission.StatusCancelled:
 		return MissionStatusCancelled
+	default:
+		return MissionStatusUnknown
+	}
+}
+
+func missionStatusFromProposal(status proposal.ProposalStatus) MissionStatus {
+	switch status {
+	case proposal.ProposalStatusPrepared:
+		return MissionStatusPrepared
+	case proposal.ProposalStatusPreparing, proposal.ProposalStatusSuggested:
+		return MissionStatusPending
 	default:
 		return MissionStatusUnknown
 	}

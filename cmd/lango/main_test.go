@@ -15,6 +15,7 @@ import (
 	"github.com/langoai/lango/internal/cli/cockpit/pages"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/mission"
+	"github.com/langoai/lango/internal/proposal"
 )
 
 type fakeServeApp struct {
@@ -136,7 +137,8 @@ func TestRunCockpitBuildDepsCarriesMissionService(t *testing.T) {
 
 	svc := mission.NewService(nil)
 	store := &stubMainMissionStore{}
-	application := &app.App{MissionService: svc, MissionStore: store}
+	registry := proposal.NewRegistry(nil)
+	application := &app.App{MissionService: svc, MissionStore: store, ProposalRegistry: registry}
 	cfg := &config.Config{}
 	pending := cockpit.NewPendingApprovalRegistry()
 	learning := cockpit.NewLearningSuggestionBuffer(nil)
@@ -146,6 +148,7 @@ func TestRunCockpitBuildDepsCarriesMissionService(t *testing.T) {
 
 	assert.Same(t, svc, deps.MissionService)
 	assert.Same(t, store, deps.MissionReader)
+	assert.Same(t, registry, deps.ProposalReader)
 	assert.Same(t, learning, deps.LearningBuffer)
 	assert.Same(t, activity, deps.ActivityBuffer)
 }

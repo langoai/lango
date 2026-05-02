@@ -18,6 +18,7 @@ import (
 	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/mission"
 	"github.com/langoai/lango/internal/observability"
+	"github.com/langoai/lango/internal/proposal"
 	"github.com/langoai/lango/internal/runledger"
 )
 
@@ -91,6 +92,17 @@ func (s stubMissionControlMissionReader) ListMissionsBySession(_ context.Context
 		out = append(out, &cp)
 	}
 	return out, nil
+}
+
+type stubMissionControlProposalReader struct {
+	items map[string][]proposal.Proposal
+}
+
+func (s stubMissionControlProposalReader) ListBySession(sessionKey string) []proposal.Proposal {
+	items := s.items[sessionKey]
+	out := make([]proposal.Proposal, len(items))
+	copy(out, items)
+	return out
 }
 
 func (s stubMissionControlMissionReader) ListExecutionLinks(_ context.Context, missionID string) ([]*mission.ExecutionLink, error) {
@@ -200,6 +212,94 @@ func TestMissionControlProjectorLearningSuggestionDerivation(t *testing.T) {
 	assert.Equal(t, "learn:older", snapshot.Missions[1].ID)
 	assert.Equal(t, "proposed_learning", snapshot.Missions[1].SourceKind)
 	assert.Equal(t, "older", snapshot.Missions[1].SourceRef)
+}
+
+func TestMissionControlProposalRegistryPreparedProposalRendersFirstClass(t *testing.T) {
+	t.Parallel()
+
+	projector := NewMissionControlProjector(Deps{
+		SessionKey: "sess-1",
+		ProposalReader: stubMissionControlProposalReader{
+			items: map[string][]proposal.Proposal{
+				"sess-1": {
+					{
+						ProposalID: "proposal-1",
+						SessionKey: "sess-1",
+						Source: proposal.ProposalSource{
+							Kind: "proposed_learning",
+							Ref:  "suggestion-1",
+						},
+						Title:  "Apply bounded retry guidance",
+						Status: proposal.ProposalStatusPrepared,
+						PreparedBrief: &proposal.PreparedBrief{
+							SourceSummary:             "Learning suggestion: repeated timeout retries.",
+							Reason:                    "Repeated timeout failures benefited from bounded retry.",
+							SuggestedAcceptanceEffect: "Create a mission to apply bounded retry guidance.",
+						},
+						UpdatedAt: time.Date(2026, 5, 3, 12, 0, 0, 0, time.UTC),
+						CreatedAt: time.Date(2026, 5, 3, 11, 0, 0, 0, time.UTC),
+					},
+				},
+			},
+		},
+	})
+
+	snapshot := projector.Project(nil)
+
+	require.Len(t, snapshot.Missions, 1)
+	assert.Equal(t, "proposal-1", snapshot.Missions[0].ID)
+	assert.Equal(t, MissionKindProposed, snapshot.Missions[0].Kind)
+	assert.Equal(t, MissionStatusPrepared, snapshot.Missions[0].Status)
+	assert.Equal(t, "Apply bounded retry guidance", snapshot.Missions[0].Title)
+	assert.Equal(t, "Learning suggestion: repeated timeout retries.", snapshot.Missions[0].Detail)
+	assert.Equal(t, "Review prepared proposal", snapshot.Missions[0].NextAction)
+	assert.Equal(t, "proposed_learning", snapshot.Missions[0].SourceKind)
+	assert.Equal(t, "suggestion-1", snapshot.Missions[0].SourceRef)
+	assert.Equal(t, "Repeated timeout failures benefited from bounded retry.", snapshot.Missions[0].RuntimeHint)
+}
+
+func TestMissionControlProposalRegistrySessionScoping(t *testing.T) {
+	t.Parallel()
+
+	projector := NewMissionControlProjector(Deps{
+		SessionKey: "sess-1",
+		ProposalReader: stubMissionControlProposalReader{
+			items: map[string][]proposal.Proposal{
+				"sess-1": {{ProposalID: "proposal-1", SessionKey: "sess-1", Title: "Visible", Status: proposal.ProposalStatusPrepared}},
+				"sess-2": {{ProposalID: "proposal-2", SessionKey: "sess-2", Title: "Hidden", Status: proposal.ProposalStatusPrepared}},
+			},
+		},
+	})
+
+	snapshot := projector.Project(nil)
+
+	require.Len(t, snapshot.Missions, 1)
+	assert.Equal(t, "proposal-1", snapshot.Missions[0].ID)
+}
+
+func TestMissionControlProposalRegistryUnavailableFallsBackHonestly(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 5, 3, 10, 35, 0, 0, time.UTC)
+	buffer := NewLearningSuggestionBuffer(func() time.Time { return now })
+	buffer.Append(eventbus.LearningSuggestionEvent{
+		SuggestionID: "fallback",
+		ProposedRule: "Keep fallback honest.",
+		Rationale:    "Proposal registry unavailable.",
+		Timestamp:    now,
+	})
+
+	projector := NewMissionControlProjector(Deps{
+		SessionKey:     "sess-1",
+		LearningBuffer: buffer,
+	})
+
+	snapshot := projector.Project(nil)
+
+	assert.True(t, snapshot.Degraded)
+	assert.Contains(t, snapshot.Header.DegradedNote, "Proposal registry unavailable")
+	require.Len(t, snapshot.Missions, 1)
+	assert.Equal(t, "learn:fallback", snapshot.Missions[0].ID)
 }
 
 func TestMissionControlProjectorRunLedgerNextActionEnrichment(t *testing.T) {

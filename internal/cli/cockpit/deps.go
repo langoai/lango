@@ -15,6 +15,7 @@ import (
 	"github.com/langoai/lango/internal/mission"
 	"github.com/langoai/lango/internal/observability"
 	"github.com/langoai/lango/internal/postadjudicationstatus"
+	"github.com/langoai/lango/internal/proposal"
 	"github.com/langoai/lango/internal/runledger"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/storage"
@@ -43,6 +44,10 @@ type MissionReader interface {
 	ListExecutionLinks(ctx context.Context, missionID string) ([]*mission.ExecutionLink, error)
 }
 
+type ProposalReader interface {
+	ListBySession(sessionKey string) []proposal.Proposal
+}
+
 // Deps holds the dependencies for the cockpit TUI.
 // ApprovalProvider is NOT included — type assertion for SetTTYFallback
 // is handled in cmd/lango/main.go's runCockpit().
@@ -62,6 +67,7 @@ type Deps struct {
 	ApprovalHistory   *approval.HistoryStore // optional, approval decision history
 	GrantStore        *approval.GrantStore   // optional, persistent session grants
 	MissionReader     MissionReader
+	ProposalReader    ProposalReader
 	MissionService    MissionLifecycleService
 	PendingApprovals  *PendingApprovalRegistry
 	LearningBuffer    *LearningSuggestionBuffer

@@ -12,6 +12,7 @@ import (
 	"github.com/langoai/lango/internal/ctxkeys"
 	"github.com/langoai/lango/internal/mission"
 	"github.com/langoai/lango/internal/postadjudicationstatus"
+	"github.com/langoai/lango/internal/proposal"
 	"github.com/langoai/lango/internal/receipts"
 	"github.com/langoai/lango/internal/runledger"
 	"github.com/langoai/lango/internal/toolcatalog"
@@ -249,8 +250,16 @@ func TestDepsAcceptMissionService(t *testing.T) {
 	t.Parallel()
 
 	svc := mission.NewService(nil)
-	deps := Deps{MissionService: svc, MissionReader: stubMissionControlMissionReader{}}
+	deps := Deps{
+		MissionService: svc,
+		MissionReader:  stubMissionControlMissionReader{},
+		ProposalReader: stubMissionControlProposalReader{},
+	}
 
 	require.NotNil(t, deps.MissionService)
 	require.NotNil(t, deps.MissionReader)
+	require.NotNil(t, deps.ProposalReader)
 }
+
+var _ ProposalReader = stubMissionControlProposalReader{}
+var _ = proposal.Proposal{}
