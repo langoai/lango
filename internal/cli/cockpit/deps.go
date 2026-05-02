@@ -50,6 +50,9 @@ type Deps struct {
 	EventBus          *eventbus.Bus          // optional, enables channel event subscription
 	ApprovalHistory   *approval.HistoryStore // optional, approval decision history
 	GrantStore        *approval.GrantStore   // optional, persistent session grants
+	PendingApprovals  *PendingApprovalRegistry
+	LearningBuffer    *LearningSuggestionBuffer
+	ActivityBuffer    *MissionActivityBuffer
 }
 
 type DeadLetterToolBridge struct {

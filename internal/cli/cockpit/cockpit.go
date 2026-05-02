@@ -1,6 +1,8 @@
 package cockpit
 
 import (
+	"time"
+
 	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
@@ -25,20 +27,23 @@ var _ childModel = (*chat.ChatModel)(nil)
 
 // Model is the root cockpit tea.Model.
 type Model struct {
-	child           childModel
-	cfg             *config.Config
-	pages           map[PageID]Page
-	activePage      PageID
-	sidebar         sidebar.Model
-	contextPanel    *ContextPanel
-	channelTracker  *ChannelTracker
-	runtimeTracker  *RuntimeTracker
-	keymap          keyMap
-	sidebarVisible  bool
-	sidebarFocused  bool
-	contextVisible  bool
-	width           int
-	height          int
+	child            childModel
+	cfg              *config.Config
+	pages            map[PageID]Page
+	activePage       PageID
+	sidebar          sidebar.Model
+	contextPanel     *ContextPanel
+	channelTracker   *ChannelTracker
+	runtimeTracker   *RuntimeTracker
+	keymap           keyMap
+	sidebarVisible   bool
+	sidebarFocused   bool
+	contextVisible   bool
+	width            int
+	height           int
+	pendingApprovals *PendingApprovalRegistry
+	learningBuffer   *LearningSuggestionBuffer
+	activityBuffer   *MissionActivityBuffer
 }
 
 // New creates a cockpit Model wrapping a ChatModel.
@@ -50,17 +55,31 @@ func New(deps Deps) *Model {
 		SessionStore:      deps.SessionStore,
 		EventBus:          deps.EventBus,
 		BackgroundManager: deps.BackgroundManager,
+		SharedPending:     deps.PendingApprovals,
+		OnUserSubmission: func(sessionKey, input string) {
+			if deps.ActivityBuffer != nil {
+				deps.ActivityBuffer.Append(newUserSubmissionActivity(sessionKey, input, time.Now()))
+			}
+		},
+		OnTurnSummary: func(sessionKey string, msg chat.TurnTokenUsageMsg) {
+			if deps.ActivityBuffer != nil {
+				deps.ActivityBuffer.Append(newTurnSummaryActivity(sessionKey, msg, time.Now()))
+			}
+		},
 	})
 
 	return &Model{
-		child:          chatModel,
-		cfg:            deps.Config,
-		pages:          make(map[PageID]Page),
-		activePage:     PageChat,
-		sidebar:        sidebar.New(AllPageMetas()),
-		contextPanel:   NewContextPanel(deps.MetricsCollector),
-		keymap:         defaultKeyMap(),
-		sidebarVisible: true,
+		child:            chatModel,
+		cfg:              deps.Config,
+		pages:            make(map[PageID]Page),
+		activePage:       PageChat,
+		sidebar:          sidebar.New(AllPageMetas()),
+		contextPanel:     NewContextPanel(deps.MetricsCollector),
+		keymap:           defaultKeyMap(),
+		sidebarVisible:   true,
+		pendingApprovals: deps.PendingApprovals,
+		learningBuffer:   deps.LearningBuffer,
+		activityBuffer:   deps.ActivityBuffer,
 	}
 }
 
@@ -147,18 +166,24 @@ func (m *Model) handleContextTick(msg contextTickMsg) (*Model, tea.Cmd) {
 // (Settings, Status, etc.) is active. Otherwise traffic arriving while the
 // user browses non-chat pages is lost.
 func (m *Model) handleChannelMessage(msg chat.ChannelMessageMsg) (*Model, tea.Cmd) {
+	if m.activityBuffer != nil {
+		m.activityBuffer.Append(newChannelMessageActivity(msg))
+	}
 	up, cmd := m.child.Update(msg)
 	m.child = up.(childModel)
 	return m, cmd
 }
 
-// handleApprovalRequest switches to the chat page and forwards to the chat child.
-// Approval requests must always reach the chat model AND switch to the chat
-// page so the user can see and respond to the prompt. Without the page switch,
-// approvals raised by background tasks retried from the Tasks page would
-// remain invisible and time out.
+// handleApprovalRequest registers the latest pending approval and forwards the
+// request to the chat child for approval-state transitions and rendering when
+// the chat surface is visible.
 func (m *Model) handleApprovalRequest(msg chat.ApprovalRequestMsg) (*Model, tea.Cmd) {
-	switchCmd := m.switchPage(PageChat)
+	var switchCmd tea.Cmd
+	if m.pendingApprovals != nil {
+		m.pendingApprovals.Register(msg)
+	} else {
+		switchCmd = m.switchPage(PageChat)
+	}
 	up, childCmd := m.child.Update(msg)
 	m.child = up.(childModel)
 	return m, tea.Batch(switchCmd, childCmd)
@@ -179,6 +204,9 @@ func (m *Model) markTurnStarted() {
 // update the active-agent label (no counter bump), so the context panel shows
 // the correct agent during the final phase.
 func (m *Model) handleDelegation(msg chat.DelegationMsg) (*Model, tea.Cmd) {
+	if m.activityBuffer != nil {
+		m.activityBuffer.Append(newDelegationActivity(msg, time.Now()))
+	}
 	if m.runtimeTracker != nil {
 		if msg.To == "lango-orchestrator" {
 			m.runtimeTracker.SetActiveAgent(msg.To)
@@ -196,6 +224,9 @@ func (m *Model) handleDelegation(msg chat.DelegationMsg) (*Model, tea.Cmd) {
 
 // handleBudgetWarning always forwards to the chat child from any page.
 func (m *Model) handleBudgetWarning(msg chat.BudgetWarningMsg) (*Model, tea.Cmd) {
+	if m.activityBuffer != nil {
+		m.activityBuffer.Append(newBudgetWarningActivity(msg, time.Now()))
+	}
 	up, cmd := m.child.Update(msg)
 	m.child = up.(childModel)
 	return m, cmd
@@ -203,6 +234,9 @@ func (m *Model) handleBudgetWarning(msg chat.BudgetWarningMsg) (*Model, tea.Cmd)
 
 // handleRecovery always forwards to the chat child from any page.
 func (m *Model) handleRecovery(msg chat.RecoveryMsg) (*Model, tea.Cmd) {
+	if m.activityBuffer != nil {
+		m.activityBuffer.Append(newRecoveryActivity(msg, time.Now()))
+	}
 	up, cmd := m.child.Update(msg)
 	m.child = up.(childModel)
 	return m, cmd

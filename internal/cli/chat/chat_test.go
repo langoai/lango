@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -33,6 +34,12 @@ func newTestModel() *ChatModel {
 		_ = cmd
 	}
 	m.recalcLayout()
+	return m
+}
+
+func newTestModelWithSharedPending(shared PendingApprovalStore) *ChatModel {
+	m := newTestModel()
+	m.sharedPending = shared
 	return m
 }
 
@@ -556,6 +563,137 @@ func TestRedirect_DoneMsgWithoutRedirectPreservesExistingBehavior(t *testing.T) 
 	if m.state != stateFailed {
 		t.Fatalf("want stateFailed without redirect, got %v", m.state)
 	}
+}
+
+func TestApprovalSharedRenderUsesRegistry(t *testing.T) {
+	shared := &stubSharedPendingStore{
+		latest: &ApprovalRequestMsg{
+			Request: approval.ApprovalRequest{
+				ID:       "apr-1",
+				ToolName: "exec",
+				Summary:  "Run command",
+			},
+			ViewModel: approval.ApprovalViewModel{
+				Risk: approval.RiskIndicator{Level: "moderate", Label: "Runs command"},
+			},
+			Response: make(chan approval.ApprovalResponse, 1),
+		},
+	}
+	m := newTestModelWithSharedPending(shared)
+	m.state = stateApproving
+
+	view := m.View()
+	if !strings.Contains(view, "Tool Approval Required") {
+		t.Fatal("shared pending approval should be rendered")
+	}
+}
+
+func TestCockpitApprovalSharedResolveUsesRegistry(t *testing.T) {
+	shared := &stubSharedPendingStore{
+		latest: &ApprovalRequestMsg{
+			Request: approval.ApprovalRequest{
+				ID:       "apr-1",
+				ToolName: "browser_search",
+			},
+			ViewModel: approval.ApprovalViewModel{
+				Risk: approval.RiskIndicator{Level: "moderate", Label: "Reads data"},
+			},
+			Response: make(chan approval.ApprovalResponse, 1),
+		},
+		resolveOK: true,
+	}
+	m := newTestModelWithSharedPending(shared)
+	m.state = stateApproving
+
+	aKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}}
+	m.Update(aKey)
+
+	if shared.resolveCount != 1 {
+		t.Fatalf("want shared registry resolve count 1, got %d", shared.resolveCount)
+	}
+	if shared.lastResolvedID != "apr-1" {
+		t.Fatalf("want resolve id apr-1, got %q", shared.lastResolvedID)
+	}
+	if m.state != stateStreaming {
+		t.Fatalf("want stateStreaming after shared approval, got %v", m.state)
+	}
+}
+
+func TestCockpitActivityUserSubmissionCallback(t *testing.T) {
+	var gotSession string
+	var gotInput string
+	m := newTestModel()
+	m.onUserSubmission = func(sessionKey, input string) {
+		gotSession = sessionKey
+		gotInput = input
+	}
+
+	m.input.textarea.SetValue("ship it")
+	m.handleIdleKey(tea.KeyMsg{Type: tea.KeyEnter})
+
+	if gotSession != "test-session" {
+		t.Fatalf("want session test-session, got %q", gotSession)
+	}
+	if gotInput != "ship it" {
+		t.Fatalf("want input ship it, got %q", gotInput)
+	}
+}
+
+func TestCockpitActivityTurnSummaryCallback(t *testing.T) {
+	var gotSession string
+	var got TurnTokenUsageMsg
+	m := newTestModel()
+	m.onTurnSummary = func(sessionKey string, msg TurnTokenUsageMsg) {
+		gotSession = sessionKey
+		got = msg
+	}
+
+	m.Update(TurnTokenUsageMsg{
+		InputTokens:      12,
+		OutputTokens:     18,
+		TotalTokens:      30,
+		CacheTokens:      4,
+		EstimatedCostUSD: 0.42,
+	})
+
+	if gotSession != "test-session" {
+		t.Fatalf("want session test-session, got %q", gotSession)
+	}
+	if got.TotalTokens != 30 {
+		t.Fatalf("want total tokens 30, got %d", got.TotalTokens)
+	}
+}
+
+type stubSharedPendingStore struct {
+	latest         *ApprovalRequestMsg
+	resolveCount   int
+	lastResolvedID string
+	lastResponse   approval.ApprovalResponse
+	resolveOK      bool
+}
+
+func (s *stubSharedPendingStore) Latest() *ApprovalRequestMsg {
+	return s.latest
+}
+
+func (s *stubSharedPendingStore) HasPending() bool {
+	return s.latest != nil
+}
+
+func (s *stubSharedPendingStore) Resolve(id string, resp approval.ApprovalResponse) bool {
+	s.resolveCount++
+	s.lastResolvedID = id
+	s.lastResponse = resp
+	if s.resolveOK {
+		s.latest = nil
+	}
+	return s.resolveOK
+}
+
+func (s *stubSharedPendingStore) Register(_ ApprovalRequestMsg) {}
+
+func (s *stubSharedPendingStore) CurrentTime() time.Time {
+	return time.Now()
 }
 
 func TestCPRTimeoutFlushesEsc(t *testing.T) {

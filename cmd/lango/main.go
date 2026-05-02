@@ -702,6 +702,10 @@ func runCockpit(initialMode string) error {
 		}
 	}
 
+	pendingApprovals := cockpit.NewPendingApprovalRegistry()
+	learningBuffer := cockpit.NewLearningSuggestionBuffer(nil)
+	activityBuffer := cockpit.NewMissionActivityBuffer()
+
 	model := cockpit.New(cockpit.Deps{
 		TurnRunner:        application.TurnRunner,
 		Config:            cfg,
@@ -715,6 +719,9 @@ func runCockpit(initialMode string) error {
 		EventBus:          application.EventBus,
 		ApprovalHistory:   application.ApprovalHistory,
 		GrantStore:        application.GrantStore,
+		PendingApprovals:  pendingApprovals,
+		LearningBuffer:    learningBuffer,
+		ActivityBuffer:    activityBuffer,
 	})
 
 	// Register pages.
@@ -766,6 +773,10 @@ func runCockpit(initialMode string) error {
 	// Wire runtime tracker for live token/delegation/recovery metrics.
 	runtimeTracker := cockpit.NewRuntimeTracker(application.EventBus, p, sessionKey)
 	model.SetRuntimeTracker(runtimeTracker)
+
+	// Wire cockpit-lifetime shared state subscriptions before runtime starts
+	// emitting session events.
+	cockpit.SubscribeMissionControlEvents(application.EventBus, sessionKey, learningBuffer, activityBuffer)
 
 	// Wire channel events from EventBus to TUI — BEFORE starting channels
 	// so no early inbound messages are dropped (EventBus drops unhandled events).
