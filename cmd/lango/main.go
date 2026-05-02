@@ -631,6 +631,7 @@ func buildCockpitDeps(
 		GrantStore:        application.GrantStore,
 		MissionReader:     application.MissionStore,
 		ProposalReader:    application.ProposalRegistry,
+		ProposalService:   application.ProposalService,
 		MissionService:    application.MissionService,
 		PendingApprovals:  pendingApprovals,
 		LearningBuffer:    learningBuffer,

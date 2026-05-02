@@ -46,6 +46,12 @@ type MissionReader interface {
 
 type ProposalReader interface {
 	ListBySession(sessionKey string) []proposal.Proposal
+	GetByID(proposalID string) (proposal.Proposal, bool)
+}
+
+type ProposalMutationService interface {
+	Accept(ctx context.Context, proposalID string) (*proposal.Proposal, error)
+	Dismiss(ctx context.Context, proposalID string) (*proposal.Proposal, error)
 }
 
 // Deps holds the dependencies for the cockpit TUI.
@@ -68,6 +74,7 @@ type Deps struct {
 	GrantStore        *approval.GrantStore   // optional, persistent session grants
 	MissionReader     MissionReader
 	ProposalReader    ProposalReader
+	ProposalService   ProposalMutationService
 	MissionService    MissionLifecycleService
 	PendingApprovals  *PendingApprovalRegistry
 	LearningBuffer    *LearningSuggestionBuffer

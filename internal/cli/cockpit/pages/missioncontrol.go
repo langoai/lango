@@ -19,6 +19,7 @@ import (
 	"github.com/langoai/lango/internal/ctxkeys"
 	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/mission"
+	"github.com/langoai/lango/internal/proposal"
 )
 
 const missionControlTickInterval = 2 * time.Second
@@ -49,6 +50,8 @@ type MissionControlPage struct {
 
 	sessionKey     string
 	missionService cockpit.MissionLifecycleService
+	proposalReader cockpit.ProposalReader
+	proposalSvc    cockpit.ProposalMutationService
 	learningBuffer *cockpit.LearningSuggestionBuffer
 
 	width      int
@@ -68,6 +71,8 @@ func NewMissionControlPage(deps cockpit.Deps, composer *chat.ChatModel) *Mission
 	page := newMissionControlPage(cockpit.NewMissionControlProjector(deps), deps.BackgroundManager, composer)
 	page.sessionKey = deps.SessionKey
 	page.missionService = deps.MissionService
+	page.proposalReader = deps.ProposalReader
+	page.proposalSvc = deps.ProposalService
 	page.learningBuffer = deps.LearningBuffer
 	return page
 }
@@ -211,6 +216,13 @@ func (p *MissionControlPage) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 	}
+	if p.focus == missionControlFocusMissions {
+		if key.Matches(msg, key.NewBinding(key.WithKeys("d"))) {
+			if cmd, handled := p.dismissSelectedProposal(); handled {
+				return p, cmd
+			}
+		}
+	}
 
 	switch {
 	case isMissionControlPrintableKey(msg):
@@ -232,6 +244,41 @@ func (p *MissionControlPage) acceptSelectedProposal() (tea.Cmd, bool) {
 		return nil, false
 	}
 
+	description := ""
+	if p.proposalReader != nil && p.proposalSvc != nil {
+		proposalID := strings.TrimSpace(missionView.ID)
+		proposalRow, ok := p.proposalReader.GetByID(proposalID)
+		if !ok {
+			return func() tea.Msg {
+				return chat.SystemMsg{Text: fmt.Sprintf("Proposal %q is no longer available", proposalID)}
+			}, true
+		}
+		if proposalRow.PreparedBrief != nil {
+			description = compactPreparedBrief(*proposalRow.PreparedBrief)
+		}
+		if description == "" {
+			description = strings.TrimSpace(firstNonEmpty(proposalRow.Summary, proposalRow.Reason))
+		}
+		if _, err := p.proposalSvc.Accept(context.Background(), proposalID); err != nil {
+			return func() tea.Msg {
+				return chat.SystemMsg{Text: fmt.Sprintf("Proposal acceptance failed: %v", err)}
+			}, true
+		}
+		if _, err := p.missionService.AcceptProposal(context.Background(), mission.AcceptProposalInput{
+			SessionKey:  strings.TrimSpace(p.sessionKey),
+			SourceKind:  strings.TrimSpace(proposalRow.Source.Kind),
+			SourceRef:   strings.TrimSpace(proposalRow.Source.Ref),
+			Title:       strings.TrimSpace(firstNonEmpty(proposalRow.Title, missionView.Title)),
+			Description: description,
+		}); err != nil {
+			return func() tea.Msg {
+				return chat.SystemMsg{Text: fmt.Sprintf("Mission proposal acceptance failed: %v", err)}
+			}, true
+		}
+		p.refreshSnapshot()
+		return nil, true
+	}
+
 	sourceKind := strings.TrimSpace(missionView.SourceKind)
 	sourceRef := strings.TrimSpace(missionView.SourceRef)
 	if sourceKind == "" || sourceRef == "" {
@@ -246,7 +293,7 @@ func (p *MissionControlPage) acceptSelectedProposal() (tea.Cmd, bool) {
 	}
 
 	title := strings.TrimSpace(missionView.Title)
-	description := strings.TrimSpace(missionView.Detail)
+	description = strings.TrimSpace(missionView.Detail)
 	if item := p.lookupLearningSuggestion(sourceRef); item != nil && description == "" {
 		description = strings.TrimSpace(item.Rationale)
 	}
@@ -265,6 +312,23 @@ func (p *MissionControlPage) acceptSelectedProposal() (tea.Cmd, bool) {
 
 	if p.learningBuffer != nil && sourceRef != "" {
 		p.learningBuffer.Dismiss(sourceRef)
+	}
+	p.refreshSnapshot()
+	return nil, true
+}
+
+func (p *MissionControlPage) dismissSelectedProposal() (tea.Cmd, bool) {
+	missionView := p.selectedMission()
+	if missionView == nil || missionView.Kind != cockpit.MissionKindProposed {
+		return nil, false
+	}
+	if p.proposalSvc == nil {
+		return nil, false
+	}
+	if _, err := p.proposalSvc.Dismiss(context.Background(), strings.TrimSpace(missionView.ID)); err != nil {
+		return func() tea.Msg {
+			return chat.SystemMsg{Text: fmt.Sprintf("Proposal dismiss failed: %v", err)}
+		}, true
 	}
 	p.refreshSnapshot()
 	return nil, true
@@ -641,6 +705,20 @@ func firstNonEmpty(items ...string) string {
 		}
 	}
 	return ""
+}
+
+func compactPreparedBrief(brief proposal.PreparedBrief) string {
+	parts := make([]string, 0, 3)
+	if text := strings.TrimSpace(brief.SourceSummary); text != "" {
+		parts = append(parts, text)
+	}
+	if text := strings.TrimSpace(brief.Reason); text != "" {
+		parts = append(parts, text)
+	}
+	if text := strings.TrimSpace(brief.SuggestedAcceptanceEffect); text != "" {
+		parts = append(parts, text)
+	}
+	return strings.Join(parts, "\n")
 }
 
 func cond(ok bool, text string) string {

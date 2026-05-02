@@ -138,7 +138,8 @@ func TestRunCockpitBuildDepsCarriesMissionService(t *testing.T) {
 	svc := mission.NewService(nil)
 	store := &stubMainMissionStore{}
 	registry := proposal.NewRegistry(nil)
-	application := &app.App{MissionService: svc, MissionStore: store, ProposalRegistry: registry}
+	psvc := proposal.NewService(registry, nil)
+	application := &app.App{MissionService: svc, MissionStore: store, ProposalRegistry: registry, ProposalService: psvc}
 	cfg := &config.Config{}
 	pending := cockpit.NewPendingApprovalRegistry()
 	learning := cockpit.NewLearningSuggestionBuffer(nil)
@@ -149,6 +150,7 @@ func TestRunCockpitBuildDepsCarriesMissionService(t *testing.T) {
 	assert.Same(t, svc, deps.MissionService)
 	assert.Same(t, store, deps.MissionReader)
 	assert.Same(t, registry, deps.ProposalReader)
+	assert.Same(t, psvc, deps.ProposalService)
 	assert.Same(t, learning, deps.LearningBuffer)
 	assert.Same(t, activity, deps.ActivityBuffer)
 }

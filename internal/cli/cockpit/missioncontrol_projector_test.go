@@ -105,6 +105,17 @@ func (s stubMissionControlProposalReader) ListBySession(sessionKey string) []pro
 	return out
 }
 
+func (s stubMissionControlProposalReader) GetByID(proposalID string) (proposal.Proposal, bool) {
+	for _, items := range s.items {
+		for _, item := range items {
+			if item.ProposalID == proposalID {
+				return item, true
+			}
+		}
+	}
+	return proposal.Proposal{}, false
+}
+
 func (s stubMissionControlMissionReader) ListExecutionLinks(_ context.Context, missionID string) ([]*mission.ExecutionLink, error) {
 	if s.linkErr != nil {
 		return nil, s.linkErr

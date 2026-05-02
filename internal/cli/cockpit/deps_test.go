@@ -250,15 +250,18 @@ func TestDepsAcceptMissionService(t *testing.T) {
 	t.Parallel()
 
 	svc := mission.NewService(nil)
+	psvc := proposal.NewService(nil, nil)
 	deps := Deps{
-		MissionService: svc,
-		MissionReader:  stubMissionControlMissionReader{},
-		ProposalReader: stubMissionControlProposalReader{},
+		MissionService:  svc,
+		MissionReader:   stubMissionControlMissionReader{},
+		ProposalReader:  stubMissionControlProposalReader{},
+		ProposalService: psvc,
 	}
 
 	require.NotNil(t, deps.MissionService)
 	require.NotNil(t, deps.MissionReader)
 	require.NotNil(t, deps.ProposalReader)
+	require.NotNil(t, deps.ProposalService)
 }
 
 var _ ProposalReader = stubMissionControlProposalReader{}

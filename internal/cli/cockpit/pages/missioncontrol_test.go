@@ -19,8 +19,8 @@ import (
 	"github.com/langoai/lango/internal/cli/cockpit"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/ctxkeys"
-	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/mission"
+	"github.com/langoai/lango/internal/proposal"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/turnrunner"
 )
@@ -62,6 +62,71 @@ type stubMissionLifecycleService struct {
 	acceptResult    *mission.Mission
 	startErr        error
 	acceptErr       error
+}
+
+type stubMissionProposalReader struct {
+	items map[string]proposal.Proposal
+}
+
+func (s *stubMissionProposalReader) ListBySession(sessionKey string) []proposal.Proposal {
+	var out []proposal.Proposal
+	for _, item := range s.items {
+		if item.SessionKey == sessionKey {
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
+func (s *stubMissionProposalReader) GetByID(proposalID string) (proposal.Proposal, bool) {
+	item, ok := s.items[proposalID]
+	return item, ok
+}
+
+type stubMissionProposalService struct {
+	acceptCalls    int
+	dismissCalls   int
+	lastAcceptID   string
+	lastDismissID  string
+	accepted       map[string]struct{}
+	dismissed      map[string]struct{}
+	acceptErr      error
+	dismissErr     error
+	proposalReader *stubMissionProposalReader
+}
+
+func (s *stubMissionProposalService) Accept(_ context.Context, proposalID string) (*proposal.Proposal, error) {
+	s.acceptCalls++
+	s.lastAcceptID = proposalID
+	if s.acceptErr != nil {
+		return nil, s.acceptErr
+	}
+	if s.accepted == nil {
+		s.accepted = make(map[string]struct{})
+	}
+	s.accepted[proposalID] = struct{}{}
+	if s.proposalReader != nil {
+		delete(s.proposalReader.items, proposalID)
+	}
+	item := proposal.Proposal{ProposalID: proposalID, Status: proposal.ProposalStatusAccepted}
+	return &item, nil
+}
+
+func (s *stubMissionProposalService) Dismiss(_ context.Context, proposalID string) (*proposal.Proposal, error) {
+	s.dismissCalls++
+	s.lastDismissID = proposalID
+	if s.dismissErr != nil {
+		return nil, s.dismissErr
+	}
+	if s.dismissed == nil {
+		s.dismissed = make(map[string]struct{})
+	}
+	s.dismissed[proposalID] = struct{}{}
+	if s.proposalReader != nil {
+		delete(s.proposalReader.items, proposalID)
+	}
+	item := proposal.Proposal{ProposalID: proposalID, Status: proposal.ProposalStatusDismissed}
+	return &item, nil
 }
 
 type stubMissionSharedPendingStore struct {
@@ -396,50 +461,140 @@ func TestMissionControlComposerSubmitCreatesMissionBeforeTurnDispatch(t *testing
 func TestMissionControlAcceptProposedMissionCreatesDurableRowAndRemovesOverlay(t *testing.T) {
 	t.Parallel()
 
-	now := time.Date(2026, 5, 3, 12, 0, 0, 0, time.UTC)
-	learning := cockpit.NewLearningSuggestionBuffer(func() time.Time { return now })
-	learning.Append(eventbus.LearningSuggestionEvent{
-		SessionKey:   "mission-session",
-		SuggestionID: "s-1",
-		Pattern:      "timeout retries",
-		ProposedRule: "Use bounded retry",
-		Rationale:    "Repeated timeout pattern",
-		Timestamp:    now,
-	})
 	svc := &stubMissionLifecycleService{
 		acceptResult: &mission.Mission{ID: uuid.MustParse("22222222-2222-2222-2222-222222222222")},
 	}
+	proposalReader := &stubMissionProposalReader{
+		items: map[string]proposal.Proposal{
+			"proposal-1": {
+				ProposalID: "proposal-1",
+				SessionKey: "mission-session",
+				Source: proposal.ProposalSource{
+					Kind: "proposed_learning",
+					Ref:  "s-1",
+				},
+				Title:  "Apply bounded retry guidance",
+				Status: proposal.ProposalStatusPrepared,
+				PreparedBrief: &proposal.PreparedBrief{
+					SourceSummary:             "Learning suggestion: repeated timeout retries.",
+					Reason:                    "Repeated timeout failures benefited from bounded retry.",
+					SuggestedAcceptanceEffect: "Create a mission to apply bounded retry guidance.",
+				},
+			},
+		},
+	}
+	proposalSvc := &stubMissionProposalService{proposalReader: proposalReader}
 	deps := cockpit.Deps{
 		Config:         &config.Config{Agent: config.AgentConfig{Provider: "openai", Model: "gpt-5"}},
 		SessionKey:     "mission-session",
-		LearningBuffer: learning,
+		ProposalReader: proposalReader,
 	}
 	projector := cockpit.NewMissionControlProjector(deps)
 	page := newMissionControlPage(projector, stubMissionTaskSource{}, newTestMissionComposer(t, nil))
 	page.missionService = svc
-	page.learningBuffer = learning
+	page.proposalReader = proposalReader
+	page.proposalSvc = proposalSvc
 	page.sessionKey = "mission-session"
 	updated, _ := page.Update(tea.WindowSizeMsg{Width: 110, Height: 30})
 	page = updated.(*MissionControlPage)
 	page.Activate()
-	updated, _ = page.Update(missionControlTickMsg(now))
+	updated, _ = page.Update(missionControlTickMsg(time.Now()))
 	page = updated.(*MissionControlPage)
 
 	require.Len(t, page.snapshot.Missions, 1)
 	require.Equal(t, cockpit.MissionKindProposed, page.snapshot.Missions[0].Kind)
-	page.snapshot.Missions[0].ID = "display-only-id"
 	page.focus = missionControlFocusMissions
 
 	updated, cmd := page.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	page = updated.(*MissionControlPage)
 
 	assert.Nil(t, cmd)
+	assert.Equal(t, 1, proposalSvc.acceptCalls)
+	assert.Equal(t, "proposal-1", proposalSvc.lastAcceptID)
 	assert.Equal(t, 1, svc.acceptCalls)
 	assert.Equal(t, "mission-session", svc.lastAcceptInput.SessionKey)
 	assert.Equal(t, "proposed_learning", svc.lastAcceptInput.SourceKind)
 	assert.Equal(t, "s-1", svc.lastAcceptInput.SourceRef)
-	assert.Empty(t, learning.Snapshot())
+	assert.Contains(t, svc.lastAcceptInput.Description, "Learning suggestion: repeated timeout retries.")
+	assert.Contains(t, svc.lastAcceptInput.Description, "Repeated timeout failures benefited from bounded retry.")
+	assert.Contains(t, svc.lastAcceptInput.Description, "Create a mission to apply bounded retry guidance.")
 	assert.Empty(t, page.snapshot.Missions)
+}
+
+func TestMissionControlDismissProposedMissionUsesProposalServiceAndRemovesOverlay(t *testing.T) {
+	t.Parallel()
+
+	proposalReader := &stubMissionProposalReader{
+		items: map[string]proposal.Proposal{
+			"proposal-1": {
+				ProposalID: "proposal-1",
+				SessionKey: "mission-session",
+				Title:      "Dismiss me",
+				Status:     proposal.ProposalStatusPrepared,
+			},
+		},
+	}
+	proposalSvc := &stubMissionProposalService{proposalReader: proposalReader}
+	deps := cockpit.Deps{
+		Config:         &config.Config{Agent: config.AgentConfig{Provider: "openai", Model: "gpt-5"}},
+		SessionKey:     "mission-session",
+		ProposalReader: proposalReader,
+	}
+	projector := cockpit.NewMissionControlProjector(deps)
+	page := newMissionControlPage(projector, stubMissionTaskSource{}, newTestMissionComposer(t, nil))
+	page.proposalReader = proposalReader
+	page.proposalSvc = proposalSvc
+	page.sessionKey = "mission-session"
+	updated, _ := page.Update(tea.WindowSizeMsg{Width: 110, Height: 30})
+	page = updated.(*MissionControlPage)
+	page.Activate()
+	updated, _ = page.Update(missionControlTickMsg(time.Now()))
+	page = updated.(*MissionControlPage)
+	require.Len(t, page.snapshot.Missions, 1)
+
+	page.focus = missionControlFocusMissions
+	updated, cmd := page.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	page = updated.(*MissionControlPage)
+
+	assert.Nil(t, cmd)
+	assert.Equal(t, 1, proposalSvc.dismissCalls)
+	assert.Equal(t, "proposal-1", proposalSvc.lastDismissID)
+	assert.Empty(t, page.snapshot.Missions)
+}
+
+func TestMissionControlPageFlowDoesNotCreateDurableMissionBeforeAcceptance(t *testing.T) {
+	t.Parallel()
+
+	svc := &stubMissionLifecycleService{}
+	proposalReader := &stubMissionProposalReader{
+		items: map[string]proposal.Proposal{
+			"proposal-1": {
+				ProposalID: "proposal-1",
+				SessionKey: "mission-session",
+				Title:      "Prepared proposal",
+				Status:     proposal.ProposalStatusPrepared,
+			},
+		},
+	}
+	deps := cockpit.Deps{
+		Config:         &config.Config{Agent: config.AgentConfig{Provider: "openai", Model: "gpt-5"}},
+		SessionKey:     "mission-session",
+		ProposalReader: proposalReader,
+	}
+	projector := cockpit.NewMissionControlProjector(deps)
+	page := newMissionControlPage(projector, stubMissionTaskSource{}, newTestMissionComposer(t, nil))
+	page.missionService = svc
+	page.proposalReader = proposalReader
+	page.proposalSvc = &stubMissionProposalService{proposalReader: proposalReader}
+	page.sessionKey = "mission-session"
+	updated, _ := page.Update(tea.WindowSizeMsg{Width: 110, Height: 30})
+	page = updated.(*MissionControlPage)
+	page.Activate()
+	updated, _ = page.Update(missionControlTickMsg(time.Now()))
+	page = updated.(*MissionControlPage)
+
+	require.Len(t, page.snapshot.Missions, 1)
+	assert.Equal(t, 0, svc.acceptCalls)
 }
 
 func TestMissionControlSharedComposerDoesNotReplayChannelMessages(t *testing.T) {
