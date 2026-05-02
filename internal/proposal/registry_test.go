@@ -108,6 +108,28 @@ func TestProposalRegistryDismissBehavior(t *testing.T) {
 	assert.Equal(t, ProposalStatusDismissed, stored.Status)
 }
 
+func TestProposalRegistryPreparingTransition(t *testing.T) {
+	t.Parallel()
+
+	clock := &testClock{now: time.Date(2026, 5, 3, 10, 0, 0, 0, time.UTC)}
+	registry := NewRegistry(clock.Now)
+
+	created, err := registry.Upsert(UpsertInput{
+		SessionKey: "sess-1",
+		Source:     ProposalSource{Kind: "proposed_learning", Ref: "s-preparing"},
+		Title:      "Prepare me",
+		ExpiresAt:  clock.now.Add(time.Hour),
+	})
+	require.NoError(t, err)
+
+	clock.now = clock.now.Add(90 * time.Second)
+	preparing, err := registry.MarkPreparing(created.ProposalID)
+	require.NoError(t, err)
+
+	assert.Equal(t, ProposalStatusPreparing, preparing.Status)
+	assert.Len(t, registry.ListBySession("sess-1"), 1)
+}
+
 func TestProposalRegistryExpirationPruneBehavior(t *testing.T) {
 	t.Parallel()
 
@@ -130,6 +152,28 @@ func TestProposalRegistryExpirationPruneBehavior(t *testing.T) {
 	stored, ok := registry.GetByID(created.ProposalID)
 	require.True(t, ok)
 	assert.Equal(t, ProposalStatusExpired, stored.Status)
+}
+
+func TestProposalRegistryExpiredNotVisibleBeforePrune(t *testing.T) {
+	t.Parallel()
+
+	clock := &testClock{now: time.Date(2026, 5, 3, 10, 0, 0, 0, time.UTC)}
+	registry := NewRegistry(clock.Now)
+
+	created, err := registry.Upsert(UpsertInput{
+		SessionKey: "sess-1",
+		Source:     ProposalSource{Kind: "proposed_learning", Ref: "s-hidden-expire"},
+		Title:      "Hide me when expired",
+		ExpiresAt:  clock.now.Add(5 * time.Minute),
+	})
+	require.NoError(t, err)
+
+	clock.now = clock.now.Add(6 * time.Minute)
+	assert.Empty(t, registry.ListBySession("sess-1"))
+
+	stored, ok := registry.GetByID(created.ProposalID)
+	require.True(t, ok)
+	assert.Equal(t, ProposalStatusSuggested, stored.Status)
 }
 
 func TestProposalRegistryAcceptTransitionsOutOfVisibleActiveSet(t *testing.T) {

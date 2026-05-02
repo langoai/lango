@@ -105,10 +105,11 @@ func (r *Registry) ListBySession(sessionKey string) []Proposal {
 		return nil
 	}
 
+	now := r.nowFn()
 	items := make([]Proposal, 0, len(ids))
 	for id := range ids {
 		proposal := r.byID[id]
-		if proposal == nil || !isVisibleActiveStatus(proposal.Status) {
+		if proposal == nil || !isVisibleActiveStatus(proposal.Status) || isExpiredAt(proposal, now) {
 			continue
 		}
 		items = append(items, *cloneProposal(proposal))
@@ -134,6 +135,17 @@ func (r *Registry) ListBySession(sessionKey string) []Proposal {
 	})
 
 	return items
+}
+
+func (r *Registry) MarkPreparing(proposalID string) (*Proposal, error) {
+	return r.transition(strings.TrimSpace(proposalID), func(p *Proposal, now time.Time) error {
+		if isTerminalStatus(p.Status) {
+			return fmt.Errorf("mark preparing: proposal %q is terminal", p.ProposalID)
+		}
+		p.Status = ProposalStatusPreparing
+		p.UpdatedAt = now
+		return nil
+	})
 }
 
 func (r *Registry) MarkPrepared(proposalID string, brief PreparedBrief) (*Proposal, error) {
@@ -228,6 +240,13 @@ func isTerminalStatus(status ProposalStatus) bool {
 	default:
 		return false
 	}
+}
+
+func isExpiredAt(proposal *Proposal, now time.Time) bool {
+	if proposal == nil || proposal.ExpiresAt.IsZero() {
+		return false
+	}
+	return !proposal.ExpiresAt.After(now)
 }
 
 func cloneProposal(p *Proposal) *Proposal {
