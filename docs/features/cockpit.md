@@ -38,7 +38,7 @@ The cockpit requires an interactive terminal with TTY support.
 
 | Page | Description | Notes |
 |------|-------------|-------|
-| **Mission Control** | Default first screen with projected active missions, one live pending decision, recent activity, and an inline composer | Chat remains available by typing here or via `lango chat` |
+| **Mission Control** | Default first screen with durable missions first, one live pending decision, recent activity, unmatched runtime overlays, and an inline composer | Chat remains available by typing here or via `lango chat` |
 | **Chat** | Focused AI conversation page inside cockpit | `Ctrl+1`; `lango chat` bypasses cockpit entirely |
 | **Settings** | Interactive configuration viewer | Always has content |
 | **Tools** | Tool inventory with agent assignments and invocation counts | Shows empty if ToolCatalog is nil |
@@ -71,18 +71,26 @@ Mission Control, Sessions, and Dead Letters are reached from the sidebar. Wave 1
 
 Mission Control is the default cockpit landing surface. It is a sidebar-first page, not a separate top-level CLI command.
 
-- **Missions lane** — active background work appears as projected `active` missions; buffered learning suggestions appear as `proposed` missions.
-- **Decisions lane** — the latest pending approval is shown as one live decision with action, reason, effect, and risk.
+- **Missions lane** — durable mission rows render first for the current cockpit session. Linked RunLedger and AgentRun data enrich those rows when available.
+- **Runtime overlays** — background/runtime work that is still unlinked to a durable mission remains visible as overlay instead of disappearing. Foreign-session background work is filtered out when it carries a different `OriginSession`.
+- **Proposed missions** — buffered learning suggestions remain transient `proposed` rows until the operator accepts them.
+- **Decisions lane** — the latest pending approval is shown as one live decision with action, reason, effect, and risk, while durable mission rows can separately show coarse `waiting_decision` state.
 - **Activity lane** — recent deterministic activity is listed as compact timeline entries.
 - **Composer** — the first-screen hint is: "Type to chat here, or use `lango chat` for focused chat."
 
-Mission Control can stay visible while a pending approval is active. Resolving that decision uses the same shared approval path as the chat surface.
+Current landed behavior:
 
-## Wave 1 Limits
+- submitting a top-level request from the Mission Control composer creates a durable mission row before the shared turn is dispatched
+- accepting a proposed learning suggestion creates a durable mission row and dismisses the transient proposal overlay
+- `waiting_decision` is a coarse durable mission state, not a durable approval queue
+- Mission Control can stay visible while a pending approval is active, and resolving that decision uses the same shared approval path as the chat surface
 
-- Mission Control does not create or persist durable mission records.
-- The activity lane is deterministic runtime projection, not LLM-generated humanized narration.
-- RunLedger and AgentRun data are optional enrichments. When those readers are unavailable, Mission Control falls back to background-task projection and shows a degraded note instead of inventing values.
+Current limits:
+
+- learning suggestions are still transient until explicitly accepted; they are not pre-persisted as durable missions
+- the activity lane remains deterministic runtime rendering, not LLM-generated humanized narration
+- task tracking stays lightweight and separate from mission truth; the Tasks page and `TaskEntry` tooling are not the authoritative durable mission checklist model
+- RunLedger and AgentRun remain enrichments for durable or unmatched runtime rows. When those readers or mission details are unavailable, Mission Control shows a degraded note instead of inventing values
 
 ## Context Panel
 
@@ -298,7 +306,7 @@ When a BackgroundManager is available, a compact task strip appears above the fo
 
 ## Approval Operations
 
-Approval handling is centered on the Chat page. When a tool call needs approval, the cockpit switches to Chat and renders either the inline strip or the fullscreen dialog depending on the tool's risk level. Operators respond with `a` to allow, `s` to allow for the session, or `d`/`Esc` to deny.
+Approval handling uses the shared cockpit approval owner. When a tool call needs approval, the live request is always forwarded into the shared chat model. If the operator is already on Mission Control, that page can stay visible and render the live decision there; other pages still switch to Chat so the approval remains actionable. Operators respond with `a` to allow, `s` to allow for the session, or `d`/`Esc` to deny.
 
 Critical-risk filesystem or automation tools still require the existing double-press confirmation before `a` or `s` takes effect. For the full policy model and approval-provider behavior, see [Tool Approval](../security/tool-approval.md) and [Approval CLI](../security/approval-cli.md).
 

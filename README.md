@@ -66,7 +66,7 @@ Single binary. <100ms startup. <250MB memory. Just Go.
 - 👥 **P2P Teams** — Task-scoped agent groups with role-based delegation, conflict resolution (trust_weighted, majority_vote, leader_decides, fail_on_conflict), assignment strategies, and payment coordination
 - 📊 **Observability** — Token usage tracking, health monitoring, audit logging, and metrics endpoints
 - 🎯 **Context Engineering** — Token-budget-aware context allocation, retrieval coordinator (FactSearch + TemporalSearch + ContextSearch), config profiles (off/lite/balanced/full), and relevance score auto-adjustment
-- 🖥️ **Cockpit TUI** — Multi-panel terminal dashboard with Mission Control as the default landing surface, followed by Chat, Settings, Tools, Status, Sessions, Tasks, Dead Letters, and Approvals in the sidebar. Context panel with live token usage, tool stats, runtime, channels, and system metrics. Two-tier approval with inline strip and fullscreen dialog. Background task management with detail view, cancel, and retry. Runtime visibility with delegation tracking, budget warnings, and recovery events
+- 🖥️ **Cockpit TUI** — Multi-panel terminal dashboard with Mission Control as the default landing surface, followed by Chat, Settings, Tools, Status, Sessions, Tasks, Dead Letters, and Approvals in the sidebar. Mission Control now reads durable mission rows first, can create durable missions from its composer, accepts proposed missions into durable rows, and still shows unmatched runtime work as overlay until it is linked. Context panel with live token usage, tool stats, runtime, channels, and system metrics. Two-tier approval with inline strip and fullscreen dialog. Background task management with detail view, cancel, and retry. Runtime visibility with delegation tracking, budget warnings, and recovery events
 - 📋 **RunLedger (Task OS)** — Durable execution engine with append-only journal, PEV verification, typed validators, and planner integration
 - 📜 **Session Provenance** — Persistent checkpoints, session lineage tree, git-aware attribution, and signed provenance bundle export/import
 - 🛡️ **OS-level Sandbox** — Process isolation via macOS Seatbelt and Linux bubblewrap (when `bwrap` is installed), network deny, workspace-scoped write access, automatic control-plane (`~/.lango`) and `.git` masking (walks up to the repo root and follows linked-worktree pointers), file-level deny via `/dev/null` bind, symlink resolution, glob patterns in deny/write lists, audit trail of every apply/skip/exclude decision
@@ -192,7 +192,7 @@ The cockpit is a multi-panel terminal dashboard launched via `lango` or `lango c
 
 | Shortcut | Page | Description |
 |----------|------|-------------|
-| — | Mission Control | Default cockpit landing surface with projected active missions, one live pending decision, recent activity, and an inline composer |
+| — | Mission Control | Default cockpit landing surface with durable missions first, one live pending decision, recent activity, unmatched runtime overlays, and an inline composer |
 | Ctrl+1 | Chat | Interactive agent conversation with streaming, tool lifecycle indicators, and two-tier approval |
 | Ctrl+2 | Settings | Runtime configuration editor |
 | Ctrl+3 | Tools | Registered tools with categories and safety levels |
@@ -202,7 +202,15 @@ The cockpit is a multi-panel terminal dashboard launched via `lango` or `lango c
 | — | Dead Letters | Dead-letter backlog and retry surface when the dead-letter bridge is available |
 | Ctrl+6 | Approvals | Approval history and active grant management with revoke controls |
 
-Mission Control keeps chat available on the first screen: type directly into the shared composer, or use `lango chat` for focused chat. In Wave 1, Mission Control projects current runtime facts only: it does not create durable mission records, it does not humanize activity with LLM-generated summaries, and RunLedger / AgentRun details appear only when those optional readers are available.
+Mission Control keeps chat available on the first screen: type directly into the shared composer, or use `lango chat` for focused chat. At current HEAD, Mission Control is durable-first rather than runtime-only:
+
+- it reads durable mission rows before runtime overlays
+- submitting a top-level request from the Mission Control composer creates a durable mission row before turn dispatch
+- accepting a proposed learning suggestion creates a durable mission row and removes the transient proposal overlay
+- unmatched runtime work still appears as overlay until it is linked to a durable mission
+- `waiting_decision` is stored as a coarse durable mission state while the live approval prompt remains session-owned
+
+Task tracking remains separate from mission truth. The Tasks page and `TaskEntry` tooling are still lightweight operational tracking surfaces, not the authoritative durable mission checklist model.
 
 **Context Panel** (Ctrl+P) — Right-side panel with 5 live sections: token usage, tool stats, runtime status, channel status, and system uptime.
 
@@ -228,9 +236,9 @@ lango/
 │   ├── agent/              # Agent types, PII redactor, secret scanner
 │   ├── agentmemory/        # Per-agent persistent memory store
 │   ├── agentregistry/      # Agent definition registry with AGENT.md loading
-│   ├── app/                # Application bootstrap, wiring, tool registration
+│   ├── app/                # Application bootstrap, wiring, tool registration, and app-layer mission adapters for approval/execution integration
 │   ├── appinit/            # Module system with topological dependency sort
-│   ├── approval/           # Composite approval provider for sensitive tools
+│   ├── approval/           # Composite approval provider for sensitive tools, with optional mission/execution attribution on live approval requests
 │   ├── asyncbuf/           # Generic async batch processor
 │   ├── bootstrap/          # Application bootstrap: DB, crypto, config profile init
 │   ├── dbmigrate/          # Legacy DB migration tombstones and remediation helpers
@@ -271,7 +279,8 @@ lango/
 │   │   └── workflow/       #   lango workflow run/list/status/cancel/history
 │   ├── config/             # Config loading, env var substitution, validation
 │   ├── configstore/        # Encrypted config profile storage (Ent-backed)
-│   ├── ctxkeys/            # Context key helpers for agent name propagation
+│   ├── ctxkeys/            # Context key helpers for agent identity, durable mission binding, dynamic tool allowlists, and spawn lineage propagation
+│   ├── mission/            # Durable mission persistence and lifecycle service (latest row, state history, mission-execution links)
 │   ├── a2a/                # A2A protocol server and remote agent loading
 │   ├── economy/             # P2P economy layer (budget, risk, pricing, negotiation, escrow)
 │   │   ├── budget/          #   Task budget allocation and tracking
@@ -315,8 +324,8 @@ lango/
 │   ├── storeutil/          # Database store utilities
 │   ├── contract/            # EVM smart contract interaction, ABI cache
 │   ├── cron/               # Cron scheduler (robfig/cron/v3), job store, executor, delivery
-│   ├── background/         # Background task manager, notifications, monitoring
-│   ├── workflow/            # DAG workflow engine, YAML parser, state persistence
+│   ├── background/         # Background task manager, notifications, monitoring, and mission-aware execution-link attachment hooks for `bg_submit`
+│   ├── workflow/           # DAG workflow engine, YAML parser, state persistence
 │   ├── turnrunner/         # Turn execution runner
 │   ├── turntrace/          # Turn trace recording and analysis
 │   ├── payment/            # Blockchain payment service (USDC on EVM chains, X402 audit trail, storage-facing tx store)
@@ -346,7 +355,7 @@ lango/
 │   ├── x402/               # X402 V2 payment protocol (Coinbase SDK, EIP-3009 signing)
 │   ├── mcp/                # MCP server connection, tool adaptation, multi-scope config
 │   ├── toolcatalog/        # Thread-safe tool registry with categories
-│   ├── toolchain/          # Middleware chain for tool wrapping
+│   ├── toolchain/          # Middleware chain for tool wrapping, including approval observer seams used by app-layer mission lifecycle adapters
 │   ├── tools/              # browser, crypto, exec, filesystem, secrets, payment
 │   └── types/              # Shared types (ProviderType, Role, RPCSenderFunc)
 ├── contracts/              # Foundry-based Solidity contracts (LangoEscrowHub, LangoVault, LangoVaultFactory)
