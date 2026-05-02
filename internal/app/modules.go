@@ -535,7 +535,7 @@ func (m *automationModule) Provides() []appinit.Provides {
 	return []appinit.Provides{appinit.ProvidesAutomation}
 }
 func (m *automationModule) DependsOn() []appinit.Provides {
-	return []appinit.Provides{appinit.ProvidesSessionStore, appinit.ProvidesRunLedger}
+	return []appinit.Provides{appinit.ProvidesSessionStore, appinit.ProvidesRunLedger, appinit.ProvidesMission}
 }
 func (m *automationModule) Enabled() bool {
 	return m.cfg.Cron.Enabled || m.cfg.Background.Enabled || m.cfg.Workflow.Enabled
@@ -558,6 +558,12 @@ func (m *automationModule) Init(ctx context.Context, r appinit.Resolver) (*appin
 	fv := r.Resolve(appinit.ProvidesSupervisor).(*foundationValues)
 	store := fv.Store
 	rlv, _ := r.Resolve(appinit.ProvidesRunLedger).(*runLedgerValues)
+	mv, _ := r.Resolve(appinit.ProvidesMission).(*missionValues)
+
+	var missionLinker missionExecutionLinkAdapter
+	if mv != nil {
+		missionLinker = mv.executionLinker
+	}
 
 	var tools []*agent.Tool
 	var entries []appinit.CatalogEntry
@@ -581,7 +587,7 @@ func (m *automationModule) Init(ctx context.Context, r appinit.Resolver) (*appin
 
 	bg := initBackground(cfg, m.app, fv.ReceiptStore)
 	if bg != nil {
-		bgTools := background.BuildTools(bg, cfg.Background.DefaultDeliverTo)
+		bgTools := buildBackgroundToolsWithMission(bg, cfg.Background.DefaultDeliverTo, missionLinker)
 		tools = append(tools, bgTools...)
 		entries = append(entries, appinit.CatalogEntry{Category: "background", Description: "Background task execution", ConfigKey: "background.enabled", Enabled: true, Tools: bgTools})
 		bm := bg // capture for closure

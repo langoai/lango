@@ -26,11 +26,11 @@ func (m *runLedgerModule) Provides() []appinit.Provides {
 	return []appinit.Provides{appinit.ProvidesRunLedger}
 }
 func (m *runLedgerModule) DependsOn() []appinit.Provides {
-	return []appinit.Provides{appinit.ProvidesSupervisor}
+	return []appinit.Provides{appinit.ProvidesSupervisor, appinit.ProvidesMission}
 }
 func (m *runLedgerModule) Enabled() bool { return m.cfg.RunLedger.Enabled }
 
-func (m *runLedgerModule) Init(_ context.Context, _ appinit.Resolver) (*appinit.ModuleResult, error) {
+func (m *runLedgerModule) Init(_ context.Context, r appinit.Resolver) (*appinit.ModuleResult, error) {
 	// Phase 2 uses an Ent-backed store when the shared app database is available.
 	// MemoryStore remains as a fallback for tests and non-bootstrapped contexts.
 	// Workspace-aware validation remains phase-gated: the PEV engine supports
@@ -48,7 +48,16 @@ func (m *runLedgerModule) Init(_ context.Context, _ appinit.Resolver) (*appinit.
 		pev.WithWorkspace(runledger.NewWorkspaceManager())
 	}
 
-	tools := runledger.BuildTools(store, pev)
+	var mv *missionValues
+	if r != nil {
+		mv, _ = r.Resolve(appinit.ProvidesMission).(*missionValues)
+	}
+	var missionLinker missionExecutionLinkAdapter
+	if mv != nil {
+		missionLinker = mv.executionLinker
+	}
+
+	tools := buildRunLedgerToolsWithMission(store, pev, missionLinker)
 
 	vals := &runLedgerValues{
 		store: store,

@@ -108,6 +108,7 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 
 	builder := appinit.NewBuilder()
 	builder.AddModule(&foundationModule{cfg: cfg, boot: boot})
+	builder.AddModule(&missionModule{boot: boot})
 	builder.AddModule(&intelligenceModule{cfg: cfg, boot: boot, bus: bus, extReg: app.ExtensionRegistry})
 	builder.AddModule(&automationModule{cfg: cfg, app: app, bus: bus})
 	builder.AddModule(&networkModule{cfg: cfg, boot: boot, bus: bus, app: app})
@@ -231,7 +232,15 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 			limiter = nv.limiter
 		}
 		tools = toolchain.ChainAll(tools,
-			toolchain.WithApproval(cfg.Security.Interceptor, composite, grantStore, limiter, historyStore))
+			buildApprovalMiddlewareWithMission(
+				cfg.Security.Interceptor,
+				composite,
+				grantStore,
+				limiter,
+				historyStore,
+				app.missionApprovalObserver,
+			),
+		)
 		logger().Infow("tool approval enabled", "policy", string(policy))
 	}
 
@@ -473,6 +482,14 @@ func populateAppFields(app *App, r appinit.Resolver) {
 	if rlv, ok := r.Resolve(appinit.ProvidesRunLedger).(*runLedgerValues); ok && rlv != nil {
 		app.RunLedgerStore = rlv.store
 		app.RunLedgerPEV = rlv.pev
+	}
+
+	// Mission.
+	if mv, ok := r.Resolve(appinit.ProvidesMission).(*missionValues); ok && mv != nil {
+		app.MissionStore = mv.store
+		app.MissionService = mv.service
+		app.missionApprovalObserver = mv.approvalObserver
+		app.missionExecutionLinker = mv.executionLinker
 	}
 
 	// Provenance.

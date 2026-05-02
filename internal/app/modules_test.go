@@ -7,11 +7,15 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/agentrt"
 	"github.com/langoai/lango/internal/appinit"
+	"github.com/langoai/lango/internal/background"
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/eventbus"
+	"github.com/langoai/lango/internal/mission"
+	"github.com/langoai/lango/internal/runledger"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/storage"
 	"github.com/langoai/lango/internal/testutil"
@@ -270,6 +274,11 @@ func TestModuleProvides(t *testing.T) {
 			module:   &automationModule{cfg: cfg},
 			wantKeys: []appinit.Provides{appinit.ProvidesAutomation},
 		},
+		{
+			name:     "mission",
+			module:   &missionModule{},
+			wantKeys: []appinit.Provides{appinit.ProvidesMission},
+		},
 	}
 
 	for _, tt := range tests {
@@ -341,4 +350,112 @@ func TestAutomationModule_InitRetainsAgentRunStoreInAutomationValues(t *testing.
 	require.True(t, ok)
 	require.NotNil(t, vals)
 	require.NotNil(t, vals.AgentRunStore)
+}
+
+func TestWithEntClientMissionAccessor(t *testing.T) {
+	t.Parallel()
+
+	client := testutil.TestEntClient(t)
+	facade := storage.NewFacade(nil, nil, storage.WithEntClient(client))
+
+	require.NotNil(t, facade.Mission())
+}
+
+func TestMissionModule_InitProvidesStoreAndService(t *testing.T) {
+	t.Parallel()
+
+	client := testutil.TestEntClient(t)
+	boot := &bootstrap.Result{
+		Storage: storage.NewFacade(nil, nil, storage.WithEntClient(client)),
+	}
+
+	mod := &missionModule{boot: boot}
+	require.True(t, mod.Enabled())
+
+	result, err := mod.Init(context.Background(), nil)
+	require.NoError(t, err)
+
+	vals, ok := result.Values[appinit.ProvidesMission].(*missionValues)
+	require.True(t, ok)
+	require.NotNil(t, vals)
+	require.NotNil(t, vals.store)
+	require.NotNil(t, vals.service)
+	require.NotNil(t, vals.approvalObserver)
+	require.NotNil(t, vals.executionLinker)
+}
+
+func TestMissionModule_DisabledWithoutDurableStorage(t *testing.T) {
+	t.Parallel()
+
+	assert.False(t, (&missionModule{}).Enabled())
+	assert.False(t, (&missionModule{boot: &bootstrap.Result{}}).Enabled())
+	assert.False(t, (&missionModule{boot: &bootstrap.Result{Storage: storage.NewFacade(nil, nil)}}).Enabled())
+}
+
+func TestAutomationModule_MissionExecutionLinkAdapterWiredToBackgroundTools(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Background.Enabled = true
+
+	client := testutil.TestEntClient(t)
+	store := mission.NewEntStore(client)
+	missionVals := &missionValues{
+		store:           store,
+		service:         mission.NewService(store),
+		executionLinker: &missionExecutionLinkHooks{service: mission.NewService(store)},
+	}
+
+	orig := buildBackgroundToolsWithMission
+	t.Cleanup(func() { buildBackgroundToolsWithMission = orig })
+
+	called := false
+	buildBackgroundToolsWithMission = func(mgr *background.Manager, defaultDeliverTo []string, linker missionExecutionLinkAdapter) []*agent.Tool {
+		called = true
+		require.NotNil(t, mgr)
+		require.NotNil(t, linker)
+		require.NotNil(t, linker.MissionService())
+		return nil
+	}
+
+	mod := &automationModule{cfg: cfg, app: &App{Config: cfg}}
+	result, err := mod.Init(context.Background(), staticResolver{
+		appinit.ProvidesSupervisor: &foundationValues{},
+		appinit.ProvidesMission:    missionVals,
+	})
+	require.NoError(t, err)
+	require.True(t, called)
+	require.NotNil(t, result)
+}
+
+func TestRunLedgerModule_MissionExecutionLinkAdapterWiredToToolBuilder(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.RunLedger.Enabled = true
+
+	client := testutil.TestEntClient(t)
+	store := mission.NewEntStore(client)
+	missionVals := &missionValues{
+		store:           store,
+		service:         mission.NewService(store),
+		executionLinker: &missionExecutionLinkHooks{service: mission.NewService(store)},
+	}
+
+	orig := buildRunLedgerToolsWithMission
+	t.Cleanup(func() { buildRunLedgerToolsWithMission = orig })
+
+	called := false
+	buildRunLedgerToolsWithMission = func(store runledger.RunLedgerStore, pev *runledger.PEVEngine, linker missionExecutionLinkAdapter) []*agent.Tool {
+		called = true
+		require.NotNil(t, store)
+		require.NotNil(t, pev)
+		require.NotNil(t, linker)
+		require.NotNil(t, linker.MissionService())
+		return nil
+	}
+
+	mod := &runLedgerModule{cfg: cfg}
+	result, err := mod.Init(context.Background(), staticResolver{
+		appinit.ProvidesMission: missionVals,
+	})
+	require.NoError(t, err)
+	require.True(t, called)
+	require.NotNil(t, result)
 }

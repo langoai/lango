@@ -29,6 +29,7 @@ import (
 	"github.com/langoai/lango/internal/lifecycle"
 	"github.com/langoai/lango/internal/mcp"
 	"github.com/langoai/lango/internal/memory"
+	"github.com/langoai/lango/internal/mission"
 	"github.com/langoai/lango/internal/observability"
 	"github.com/langoai/lango/internal/observability/health"
 	"github.com/langoai/lango/internal/observability/token"
@@ -157,6 +158,10 @@ type App struct {
 	RunLedgerStore runledger.RunLedgerStore
 	RunLedgerPEV   *runledger.PEVEngine
 
+	// Mission Components (optional, durable mission lifecycle)
+	MissionStore   mission.Store
+	MissionService *mission.Service
+
 	// Provenance Components (optional)
 	ProvenanceCheckpoints *provenance.CheckpointService
 	ProvenanceSessionTree *provenance.SessionTree
@@ -192,6 +197,10 @@ type App struct {
 
 	// FeatureStatuses holds aggregated init diagnostics for context subsystems.
 	FeatureStatuses *StatusCollector
+
+	// Mission boundary hooks remain nil when durable mission storage is unavailable.
+	missionApprovalObserver missionApprovalObserver
+	missionExecutionLinker  missionExecutionLinkAdapter
 
 	// Channels
 	Channels []Channel

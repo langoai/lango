@@ -4,11 +4,18 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/agentrt"
 	"github.com/langoai/lango/internal/appinit"
+	"github.com/langoai/lango/internal/approval"
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/mission"
 	"github.com/langoai/lango/internal/runledger"
+	"github.com/langoai/lango/internal/storage"
+	"github.com/langoai/lango/internal/testutil"
+	"github.com/langoai/lango/internal/toolchain"
+	"github.com/langoai/lango/internal/wallet"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -175,4 +182,74 @@ func TestPopulateAppFields_AutomationAbsentLeavesAgentRunStoreNil(t *testing.T) 
 	populateAppFields(app, staticResolver{})
 
 	assert.Nil(t, app.AgentRunStore)
+}
+
+func TestPopulateAppFields_MissionComponents(t *testing.T) {
+	t.Parallel()
+
+	client := testutil.TestEntClient(t)
+	store := mission.NewEntStore(client)
+	service := mission.NewService(store)
+	observer := &missionApprovalHooks{service: service}
+	linker := &missionExecutionLinkHooks{service: service}
+
+	app := &App{}
+	populateAppFields(app, staticResolver{
+		appinit.ProvidesMission: &missionValues{
+			store:            store,
+			service:          service,
+			approvalObserver: observer,
+			executionLinker:  linker,
+		},
+	})
+
+	assert.Same(t, store, app.MissionStore)
+	assert.Same(t, service, app.MissionService)
+	assert.Same(t, observer, app.missionApprovalObserver)
+	assert.Same(t, linker, app.missionExecutionLinker)
+}
+
+func TestNew_MissionApprovalObserverWiredAtCompositionSite(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Session.DatabasePath = filepath.Join(t.TempDir(), "test.db")
+	cfg.Agent.Provider = "google"
+	cfg.Providers = map[string]config.ProviderConfig{
+		"google": {
+			Type:   "gemini",
+			APIKey: "test-key",
+		},
+	}
+	cfg.Security.Interceptor.ApprovalPolicy = config.ApprovalPolicyDangerous
+
+	client := testutil.TestEntClient(t)
+	boot := &bootstrap.Result{
+		Config:  cfg,
+		Storage: storage.NewFacade(nil, nil, storage.WithEntClient(client)),
+	}
+
+	orig := buildApprovalMiddlewareWithMission
+	t.Cleanup(func() { buildApprovalMiddlewareWithMission = orig })
+
+	called := false
+	sawObserver := false
+	buildApprovalMiddlewareWithMission = func(
+		ic config.InterceptorConfig,
+		ap approval.Provider,
+		gs *approval.GrantStore,
+		limiter wallet.SpendingLimiter,
+		history *approval.HistoryStore,
+		observer missionApprovalObserver,
+	) toolchain.Middleware {
+		called = true
+		sawObserver = observer != nil
+		return func(_ *agent.Tool, next agent.ToolHandler) agent.ToolHandler {
+			return next
+		}
+	}
+
+	app, err := New(boot)
+	require.NoError(t, err)
+	assert.True(t, called)
+	assert.True(t, sawObserver)
+	require.NotNil(t, app.MissionService)
 }
