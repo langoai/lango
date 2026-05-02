@@ -44,6 +44,8 @@ This slice does **not** yet enable librarian-gap proposals or runtime-failure pr
 - Create: `internal/proposal/registry_test.go`
 - Create: `internal/proposal/preparer.go`
 - Create: `internal/proposal/preparer_test.go`
+- Create: `internal/proposal/service.go`
+- Create: `internal/proposal/service_test.go`
 - Create: `internal/app/modules_proposal.go`
 - Modify: `internal/appinit/module.go`
 - Modify: `internal/app/types.go`
@@ -124,6 +126,7 @@ Add an explicit transient proposal model with:
 - `Proposal`
 - `ProposalStatus`
 - `PreparedBrief`
+- `ProposalSource`
 
 Required statuses in this slice:
 
@@ -176,6 +179,8 @@ ok
 **Files:**
 - Create: `internal/proposal/preparer.go`
 - Create: `internal/proposal/preparer_test.go`
+- Create: `internal/proposal/service.go`
+- Create: `internal/proposal/service_test.go`
 
 - [ ] **Step 1: Define a deterministic preparer contract**
 
@@ -199,18 +204,46 @@ Rules:
 
 This is a deterministic preparation pass over existing source fields.
 
-- [ ] **Step 3: Add preparer tests**
+- [ ] **Step 3: Add a proposal service and mutation surface**
+
+The UI must not mutate the registry directly. Add an explicit `ProposalService` that owns:
+
+- create or update proposal from producer input
+- transition `suggested -> preparing -> prepared`
+- dismiss proposal
+- accept proposal
+- prune expired proposals
+
+This service is the write boundary the cockpit can call later.
+
+- [ ] **Step 4: Make lifecycle timing explicit**
+
+This slice uses deterministic preparation, so the lifecycle is:
+
+1. producer event creates or updates `suggested`
+2. service immediately transitions to `preparing`
+3. preparer generates the deterministic brief
+4. service transitions to `prepared`
+
+Expiration and pruning rules:
+
+- registry read paths should prune expired proposals opportunistically
+- the proposal module may also prune on producer writes
+
+- [ ] **Step 5: Add preparer and service tests**
 
 Cover:
 
 - learning suggestion becomes a stable prepared brief
 - empty or partial source fields degrade gracefully
 - preparation never mutates external state
+- proposal service performs `suggested -> preparing -> prepared`
+- dismiss and accept use the explicit service instead of direct registry mutation
 
 Run:
 
 ```bash
-go test ./internal/proposal -run 'TestPreparer' -count=1
+go test ./internal/proposal -run 'Test(Preparer|ProposalService)' -count=1
 ```
 
 Expected:
@@ -237,14 +270,15 @@ Expose app-level proposal components:
 
 - `ProposalRegistry`
 - `ProposalPreparer`
+- `ProposalService`
 
 - [ ] **Step 2: Add `proposalModule`**
 
 The module should:
 
 - subscribe to `LearningSuggestionEvent`
-- create or update transient proposals
-- run deterministic preparation
+- create or update transient proposals through `ProposalService`
+- run deterministic preparation through `ProposalService`
 - keep proposal state session-scoped
 
 - [ ] **Step 3: Keep non-learning producers disabled**
@@ -257,6 +291,7 @@ Cover:
 
 - proposal module enabled path
 - event subscription creates or updates a proposal
+- app exposes `ProposalService` as the write surface
 - no librarian/runtime-failure producer activation in this slice
 
 Run:
@@ -281,6 +316,8 @@ ok
 - Modify: `internal/cli/cockpit/missioncontrol_types.go`
 - Modify: `internal/cli/cockpit/missioncontrol_projector.go`
 - Modify: `internal/cli/cockpit/missioncontrol_projector_test.go`
+- Modify: `internal/cli/cockpit/pages/missioncontrol.go`
+- Modify: `internal/cli/cockpit/pages/missioncontrol_test.go`
 - Modify: `cmd/lango/main.go`
 - Modify: `cmd/lango/main_test.go`
 
@@ -288,7 +325,14 @@ ok
 
 Cockpit deps should expose a read surface for active proposals by session.
 
-- [ ] **Step 2: Render proposals from the registry**
+- [ ] **Step 2: Add a proposal mutation dependency**
+
+Cockpit deps should also expose a write surface for:
+
+- dismiss proposal
+- accept proposal
+
+- [ ] **Step 3: Render proposals from the registry**
 
 Mission Control should stop treating the learning buffer as the primary proposal source.
 
@@ -300,11 +344,11 @@ It should render transient proposals with:
 - prepared brief summary
 - source metadata
 
-- [ ] **Step 3: Keep the learning buffer only as compatibility fallback if needed**
+- [ ] **Step 4: Keep the learning buffer only as compatibility fallback if needed**
 
 If any compatibility fallback remains, it must be clearly secondary and not the main source of truth.
 
-- [ ] **Step 4: Add projector tests**
+- [ ] **Step 5: Add projector tests**
 
 Cover:
 
@@ -336,9 +380,10 @@ ok
 
 When the user accepts a prepared proposal:
 
-- call `MissionService.AcceptProposal(...)`
+- call `ProposalService.AcceptProposal(...)` first so transient proposal ownership changes through the write boundary
+- then call `MissionService.AcceptProposal(...)`
 - move the prepared brief into the durable mission description or equivalent durable user-facing field
-- mark the proposal accepted and remove it from the active proposal lane
+- remove the proposal from the active proposal lane through the proposal service, not direct registry mutation
 
 - [ ] **Step 2: Keep acceptance deterministic**
 
@@ -350,6 +395,7 @@ Cover:
 
 - prepared brief survives acceptance into durable mission data
 - proposal disappears from the active proposed lane
+- proposal dismiss path also uses the explicit proposal service
 - no durable mission row is created before acceptance
 
 Run:
