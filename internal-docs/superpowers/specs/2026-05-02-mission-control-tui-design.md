@@ -26,7 +26,8 @@ Inputs:
 | Source | Wave 1 status | Notes |
 | --- | --- | --- |
 | Background tasks | wired | `background.Manager.List()` already provides snapshots and is adapted by the existing Tasks page. |
-| Approval history and grants | wired after decision | `approval.HistoryStore` and `GrantStore` expose completed decisions and active grants, not pending requests. |
+| Approval history | wired after decision | `approval.HistoryStore` exposes completed decisions, not pending requests. |
+| Active grants | wired after decision | `GrantStore.List()` exposes current session grants for detail surfaces, not pending requests. |
 | Pending approval requests | wired to chat path, needs shared pending surface | Pending approvals currently arrive as `chat.ApprovalRequestMsg` with a response channel. Mission Control must share this path instead of resolving from history. |
 | Learning suggestions | wired as event stream, informational today | `LearningSuggestionEvent` reaches the TUI, but current handling only renders a status line. Mission Control may render it as a proposed mission; acceptance is not persistence in Wave 1. |
 | Metrics and context summaries | wired | Existing observability snapshots and context panel data can feed the header or detail panel. |
@@ -109,6 +110,12 @@ The default layout should be:
 
 The existing sidebar becomes secondary navigation. It may be opened with `Ctrl+B`, but it should not dominate the default first impression. Existing pages remain available for detail views: Chat, Tasks, Approvals, Status, Settings, Tools, and Sessions.
 
+The activity and conversation area is a split surface:
+
+- Timeline occupies the scrollable area above.
+- Composer is a fixed prompt line at the bottom of the same region.
+- Timeline retention is bounded; it is not an unbounded chat transcript clone.
+
 ## Navigation
 
 Initial keyboard model:
@@ -123,6 +130,19 @@ Initial keyboard model:
 - `Ctrl+P`: toggle context or detail panel.
 
 The user should not need to pick a page before understanding the system state.
+
+## Default Surface Migration
+
+Wave 1 changes the default `lango` surface from direct chat to Mission Control.
+
+Migration rules:
+
+- `lango` opens Mission Control first.
+- `lango chat` still opens focused chat directly.
+- Mission Control must show a persistent discoverability hint in the footer or header, such as `Tab focus  Ctrl+B nav  / palette  ? help`.
+- The first-screen copy must make the chat fallback obvious. A short inline hint is enough: `Type to talk to Lango, or use Tab to inspect missions and decisions.`
+
+Wave 1 does not introduce a legacy environment flag or parallel startup mode. The explicit fallback command is `lango chat`.
 
 ## Mission Semantics
 
@@ -143,6 +163,15 @@ Examples:
 - `Draft release follow-up`
 - `Stabilize Mission Control TUI implementation`
 
+Mission ordering rules:
+
+- Active missions sort ahead of proposed missions.
+- Within each kind, status priority is `running`, `blocked`, `pending`, `done`, `failed`, `cancelled`.
+- Within the same status, sort by `UpdatedAt` descending.
+- Width >= 120 should show up to 12 missions before overflow treatment.
+- Width < 80 should show up to 5 missions before overflow treatment.
+- Overflow is summarized as `+N more` rather than silently dropped.
+
 ## Mission Derivation Rules
 
 Wave 1 must use explicit derivation rules. It must not assume every source can provide every field.
@@ -154,7 +183,7 @@ Wave 1 must use explicit derivation rules. It must not assume every source can p
 | `ID` | `TaskSnapshot.ID` | Prefix with `bg:` to avoid collisions. |
 | `Kind` | task origin | `active`. Background tasks are already accepted work. |
 | `Title` | `TaskSnapshot.Prompt` | Use a deterministic first-line summary: trim whitespace, take the first non-empty line, strip common automation prefixes when present, truncate for display. Do not call an LLM in Wave 1. |
-| `Status` | `TaskSnapshot.StatusText` | Map directly to `pending`, `running`, `done`, `failed`, or `cancelled`. |
+| `Status` | `TaskSnapshot.StatusText` | Map directly to `MissionStatusPending`, `MissionStatusRunning`, `MissionStatusDone`, `MissionStatusFailed`, or `MissionStatusCancelled`. |
 | `NextAction` | task status | `waiting to start`, `running`, `review result`, `retry or inspect error`, or `cancelled`; leave empty if no useful text exists. |
 | `OwnerAgent` | `OriginChannel` / task source | Use `automator` for background-originated tasks unless a linked AgentRun/RunLedger source provides a better value. |
 | `Risk` | none | Empty in Wave 1. Risk belongs to approvals unless a linked source provides it. |
@@ -169,7 +198,7 @@ RunLedger-derived missions are allowed only after cockpit receives a RunLedger r
 | `ID` | `RunSnapshot.RunID` | Prefix with `run:`. |
 | `Kind` | `RunSnapshot.SourceKind` | `active`. |
 | `Title` | `RunSnapshot.Goal` then `OriginalRequest` | Prefer `Goal`; fall back to trimmed `OriginalRequest`. |
-| `Status` | `RunSnapshot.Status` and blocker fields | Use the snapshot status, with `blocked` when `CurrentBlocker` or teammate approval blocked state is present. |
+| `Status` | `RunSnapshot.Status` and blocker fields | Use the snapshot status, with `MissionStatusBlocked` when `CurrentBlocker` or teammate approval blocked state is present. |
 | `NextAction` | `NextExecutableStep()` | Use the next step goal when available; otherwise leave empty. |
 | `OwnerAgent` | current step | Use `Step.OwnerAgent` for the current or next executable step when available. |
 
@@ -179,7 +208,7 @@ RunLedger-derived missions are allowed only after cockpit receives a RunLedger r
 
 - `ID`: `learn:` + `SuggestionID`
 - `Kind`: `proposed`
-- `Title`: "Review learning suggestion" plus a short deterministic summary of `ProposedRule`
+- `Title`: "Apply learning rule" plus a short deterministic summary of `ProposedRule`
 - `Status`: `prepared`
 - `NextAction`: `accept, dismiss, or inspect`
 
@@ -208,6 +237,26 @@ Every approval decision must include:
 
 Decisions should reuse existing approval pipeline behavior where possible. Wave 1 must not bypass established approval tiers or double-confirm behavior.
 
+### Approval To DecisionView
+
+| Decision field | Source | Rule |
+| --- | --- | --- |
+| `ID` | `ApprovalRequest.ID` | Use the pending request ID directly. |
+| `Category` | fixed | `approval` in Wave 1. |
+| `Title` | `ApprovalRequest.ToolName` + short `Summary` intent | Keep concise and deterministic. |
+| `Reason` | `ApprovalViewModel.RuleExplanation` | Fall back to a generic approval-policy string if empty. |
+| `ApproveText` | fixed | `Approve`. |
+| `DenyText` | fixed | `Deny`. |
+| `AllowForSessionText` | fixed optional action | `Allow for session`; this maps to `ApprovalResponse.AlwaysAllow=true`. |
+| `RiskLabel` | `ApprovalViewModel.Risk.Label` | Use the human-readable label in compact surfaces. |
+| `RiskLevel` | `ApprovalViewModel.Risk.Level` | Use the machine-like level for styling and priority. |
+| `Effect` | `ApprovalRequest.Summary` | Treat summary as the expected effect text in Wave 1. |
+
+Wave 1 terminology should stay aligned with actual symbols:
+
+- UI label: `Allow for session`
+- Response field: `ApprovalResponse.AlwaysAllow`
+
 ## Approval Single Path
 
 Mission Control must not create a parallel approval system.
@@ -227,11 +276,27 @@ tool middleware
 
 When the user resolves an approval from Mission Control, the same pending approval must disappear from Chat and Approvals-derived surfaces on the next render. The implementation should keep one pending approval state inside cockpit and render it in multiple places, rather than copying independent pending states.
 
+Shared pending approval owner:
+
+- Type name: `cockpit.PendingApprovalRegistry`
+- Suggested file: `internal/cli/cockpit/pending_approvals.go`
+- Responsibility: retain the latest pending `ApprovalRequestMsg`, expose `Latest()`, `HasPending()`, and `Resolve(id, response)`
+- Resolve behavior: write exactly one `approval.ApprovalResponse` into the original channel, then clear the pending request
+- Consumers: Mission Control and Chat must read the same registry instance when both are rendered inside cockpit
+
 ## Composer Behavior
 
 The Wave 1 composer remains a turn submission surface. Submitting text from Mission Control should run the same `TurnRunner` path as chat mode and should echo the user input into the activity/conversation area in place.
 
 Submitting a prompt in Wave 1 must not implicitly create a durable mission. If the turn starts an existing background or run-ledger flow, that work appears in the mission list through normal projection. General agent-authored proposed missions are deferred until a producer exists; learning suggestions are the only proposed-mission event source required in Wave 1.
+
+Focus and typing intent:
+
+- Composer is the default typing target when Mission Control first opens.
+- If focus is currently on Missions or Decisions and the user presses a printable character key, focus should move to Composer before applying the keystroke.
+- List navigation stays active only after explicit focus movement such as `Tab` or arrow-key intent.
+- `/` opens the command palette only when Composer is empty.
+- `/` is treated as normal text when Composer already contains text.
 
 ## Activity Timeline
 
@@ -246,6 +311,12 @@ Examples:
 - `system: context compacted, reclaimed 4.2k tokens`
 
 Tool names, run IDs, and event types may appear in terse Wave 1 timeline entries when they are the only stable source identity. Richer humanized activity text is deferred until a later wave.
+
+Timeline retention:
+
+- Keep the most recent 200 activity items in a ring buffer.
+- Reset the timeline when the cockpit session ends.
+- Switching pages must not clear it.
 
 ## Responsive Behavior
 
@@ -264,6 +335,33 @@ Wave 1 should add a Mission Control UI projection layer plus missing UI-facing p
 Recommended types:
 
 ```go
+type MissionKind int
+
+const (
+    MissionKindUnknown MissionKind = iota
+    MissionKindActive
+    MissionKindProposed
+)
+
+type MissionStatus int
+
+const (
+    MissionStatusUnknown MissionStatus = iota
+    MissionStatusPending
+    MissionStatusRunning
+    MissionStatusBlocked
+    MissionStatusDone
+    MissionStatusFailed
+    MissionStatusCancelled
+)
+
+type DecisionCategory int
+
+const (
+    DecisionCategoryUnknown DecisionCategory = iota
+    DecisionCategoryApproval
+)
+
 type MissionControlSnapshot struct {
     Header    HeaderView
     Missions  []MissionView
@@ -275,7 +373,7 @@ type MissionView struct {
     ID         string
     Kind       MissionKind
     Title      string
-    Status     string
+    Status     MissionStatus
     NextAction string
     OwnerAgent string
     Risk       string
@@ -283,14 +381,17 @@ type MissionView struct {
 }
 
 type DecisionView struct {
-    ID          string
-    Category    DecisionCategory
-    Title       string
-    Reason      string
-    ApproveText string
-    DenyText    string
-    Risk        string
-    UpdatedAt   time.Time
+    ID                   string
+    Category             DecisionCategory
+    Title                string
+    Reason               string
+    Effect               string
+    ApproveText          string
+    DenyText             string
+    AllowForSessionText  string
+    RiskLabel            string
+    RiskLevel            string
+    UpdatedAt            time.Time
 }
 
 type ActivityView struct {
@@ -304,6 +405,8 @@ type ActivityView struct {
 
 The UI layer should introduce `MissionControlPage` as a cockpit page/root surface. It should depend on projection interfaces rather than importing concrete application internals directly. Business decisions remain in application services and existing approval/task/run-ledger code.
 
+Wave 1 status space is limited to the enum above. `blocked` is allowed in Wave 1 as a projected UI status, even though fuller lifecycle state modeling remains a Wave 2 concern.
+
 Wiring shape:
 
 ```text
@@ -313,7 +416,7 @@ cmd/lango
   -> MissionControlPage
        -> MissionControlProjector
             -> BackgroundTaskReader
-            -> PendingApprovalReader/Resolver
+            -> PendingApprovalRegistry
             -> ApprovalHistoryReader
             -> LearningSuggestionBuffer
             -> MetricsReader
@@ -323,7 +426,26 @@ cmd/lango
 
 `MissionControlPage` should satisfy the existing `cockpit.Page` interface unless replacing the cockpit root is explicitly chosen later. Wave 1 should register it as the default active page and keep Chat as a detail page.
 
-EventBus subscriptions should start and stop with the page or cockpit lifecycle. Subscriptions that feed global pending approvals must remain active even when the user switches pages, otherwise approval prompts can be missed.
+EventBus does not provide `Unsubscribe()`. Wave 1 must therefore scope subscriptions to the `cockpit` lifetime, not the page lifetime. Page activation only controls whether the page renders or ignores the latest shared state.
+
+Suggested supporting component:
+
+- Type name: `cockpit.LearningSuggestionBuffer`
+- Suggested file: `internal/cli/cockpit/learning_buffer.go`
+- Responsibility: retain recent `LearningSuggestionEvent` items for projection into proposed missions
+- Capacity: recent 20 items
+- Eviction: ring buffer semantics plus age-based expiry after 30 minutes
+- Dismissal: remove immediately when the user dismisses the corresponding proposed mission
+- Concurrency: protect with a mutex
+
+Projector lifecycle:
+
+- `cockpit` owns the long-lived subscriptions and shared buffers.
+- `MissionControlPage.Activate()` starts a `tea.Tick`-driven refresh cycle at a fixed 1 second interval.
+- `MissionControlPage.Deactivate()` stops the refresh tick but does not tear down shared subscriptions.
+- EventBus handlers should update cockpit-owned shared state or enqueue a Bubble Tea message; they must not mutate page-local state directly.
+- Shared snapshot state must be protected by a single mutex or updated only through the Bubble Tea update loop.
+- No fire-and-forget goroutines should outlive the cockpit session without an explicit owner.
 
 ## Existing Surface Integration
 
@@ -338,6 +460,20 @@ Wave 1 should reuse and reframe existing surfaces:
 - Metrics and context panel data feed the header or optional context view.
 
 Existing cockpit pages should stay reachable as details. They should not define the default mental model.
+
+## Loading And Degraded States
+
+Wave 1 must distinguish three non-happy-path UI states:
+
+- `loading`: initial render before the first projector snapshot is ready
+- `empty`: no missions and no pending decisions after data load
+- `degraded`: one or more optional readers are unavailable, such as RunLedger or AgentRun
+
+Degraded state rules:
+
+- Missing RunLedger or AgentRun readers must not block Mission Control.
+- The header and mission list should omit unavailable fields instead of showing fake values.
+- The UI should render a compact degraded note in a details area or footer when optional producers are absent.
 
 ## Relationship To Ontology
 
@@ -421,6 +557,7 @@ Expected public docs after implementation:
 - The conversation composer remains available from the default screen and submits through the existing turn path without creating durable missions implicitly.
 - Existing cockpit pages remain reachable.
 - Risky actions still route through existing approval behavior.
+- Loading, empty, and degraded states are visually distinct and covered by tests.
 - Empty states guide the user toward starting or reviewing missions.
 - Responsive behavior is defined and tested for wide, medium, narrow, and short terminal sizes.
 - Tests cover projection, rendering, keyboard focus, approval resolution, and existing page reachability.
