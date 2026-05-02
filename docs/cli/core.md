@@ -8,7 +8,7 @@ Run `lango` without arguments to launch the multi-panel TUI cockpit. This is the
 $ lango
 ```
 
-Only core components (session store, embedding, knowledge) are started. Network and automation components (gateway, channels, cron, MCP, P2P) are not active in TUI mode.
+TUI mode does not start the full live network and automation runtime by default. Gateway, live channels, cron, and P2P are not brought up as they are under `lango serve`, while other integrations such as configured MCP servers may still initialize through the local interactive bootstrap path.
 
 ---
 
