@@ -38,6 +38,11 @@ type MissionLifecycleService interface {
 	AcceptProposal(ctx context.Context, in mission.AcceptProposalInput) (*mission.Mission, error)
 }
 
+type MissionReader interface {
+	ListMissionsBySession(ctx context.Context, sessionKey string, limit int) ([]*mission.Mission, error)
+	ListExecutionLinks(ctx context.Context, missionID string) ([]*mission.ExecutionLink, error)
+}
+
 // Deps holds the dependencies for the cockpit TUI.
 // ApprovalProvider is NOT included — type assertion for SetTTYFallback
 // is handled in cmd/lango/main.go's runCockpit().
@@ -56,6 +61,7 @@ type Deps struct {
 	EventBus          *eventbus.Bus          // optional, enables channel event subscription
 	ApprovalHistory   *approval.HistoryStore // optional, approval decision history
 	GrantStore        *approval.GrantStore   // optional, persistent session grants
+	MissionReader     MissionReader
 	MissionService    MissionLifecycleService
 	PendingApprovals  *PendingApprovalRegistry
 	LearningBuffer    *LearningSuggestionBuffer

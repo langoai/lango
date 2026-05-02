@@ -2,9 +2,11 @@ package cockpit
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -14,6 +16,7 @@ import (
 	"github.com/langoai/lango/internal/cli/chat"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/eventbus"
+	"github.com/langoai/lango/internal/mission"
 	"github.com/langoai/lango/internal/observability"
 	"github.com/langoai/lango/internal/runledger"
 )
@@ -68,6 +71,39 @@ func (s stubMissionControlAgentRunReader) List() []*agentrt.AgentRun {
 		out = append(out, &cp)
 	}
 	return out
+}
+
+type stubMissionControlMissionReader struct {
+	missions map[string][]*mission.Mission
+	links    map[string][]*mission.ExecutionLink
+	listErr  error
+	linkErr  error
+}
+
+func (s stubMissionControlMissionReader) ListMissionsBySession(_ context.Context, sessionKey string, _ int) ([]*mission.Mission, error) {
+	if s.listErr != nil {
+		return nil, s.listErr
+	}
+	rows := s.missions[sessionKey]
+	out := make([]*mission.Mission, 0, len(rows))
+	for _, row := range rows {
+		cp := *row
+		out = append(out, &cp)
+	}
+	return out, nil
+}
+
+func (s stubMissionControlMissionReader) ListExecutionLinks(_ context.Context, missionID string) ([]*mission.ExecutionLink, error) {
+	if s.linkErr != nil {
+		return nil, s.linkErr
+	}
+	rows := s.links[missionID]
+	out := make([]*mission.ExecutionLink, 0, len(rows))
+	for _, row := range rows {
+		cp := *row
+		out = append(out, &cp)
+	}
+	return out, nil
 }
 
 func TestMissionControlProjectorBackgroundTaskTitleDerivation(t *testing.T) {
@@ -251,6 +287,7 @@ func TestMissionControlDegradedNilReaders(t *testing.T) {
 	snapshot := projector.Project([]background.TaskSnapshot{{ID: "task-1", StatusText: "pending", Prompt: "Queue work"}})
 
 	assert.True(t, snapshot.Degraded)
+	assert.Contains(t, snapshot.Header.DegradedNote, "Mission store unavailable")
 	assert.Contains(t, snapshot.Header.DegradedNote, "RunLedger unavailable")
 	assert.Contains(t, snapshot.Header.DegradedNote, "Agent runtime unavailable")
 	assert.Empty(t, snapshot.Missions[0].OwnerAgent)
@@ -274,6 +311,7 @@ func TestMissionControlDegradedReaderErrorsPreserveBaseMissionData(t *testing.T)
 
 	require.Len(t, snapshot.Missions, 1)
 	assert.True(t, snapshot.Degraded)
+	assert.Contains(t, snapshot.Header.DegradedNote, "Mission store unavailable")
 	assert.Contains(t, snapshot.Header.DegradedNote, "RunLedger unavailable")
 	assert.Contains(t, snapshot.Header.DegradedNote, "Agent runtime unavailable")
 	assert.Equal(t, "bg:task-1", snapshot.Missions[0].ID)
@@ -322,6 +360,11 @@ func TestMissionControlHeaderDerivation(t *testing.T) {
 			list: []*agentrt.AgentRun{agentRun},
 		},
 		RunLedgerStore: stubMissionControlRunLedgerReader{},
+		MissionReader: stubMissionControlMissionReader{
+			missions: map[string][]*mission.Mission{
+				"sess-1": {},
+			},
+		},
 	})
 
 	snapshot := projector.Project([]background.TaskSnapshot{
@@ -386,6 +429,212 @@ func TestMissionControlOrdering(t *testing.T) {
 	assert.Equal(t, "bg:pending", snapshot.Missions[1].ID)
 	assert.Equal(t, "bg:done", snapshot.Missions[2].ID)
 	assert.Equal(t, "learn:learn-1", snapshot.Missions[3].ID)
+}
+
+func TestMissionControlDurableMissionsRenderFirst(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 5, 3, 12, 0, 0, 0, time.UTC)
+	durableID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	projector := NewMissionControlProjector(Deps{
+		SessionKey: "sess-1",
+		MissionReader: stubMissionControlMissionReader{
+			missions: map[string][]*mission.Mission{
+				"sess-1": {
+					{
+						ID:         durableID,
+						SessionKey: "sess-1",
+						Title:      "Durable mission",
+						Status:     mission.StatusActive,
+						SourceKind: "user",
+						UpdatedAt:  now,
+						CreatedAt:  now.Add(-time.Minute),
+					},
+				},
+			},
+		},
+	})
+
+	snapshot := projector.Project([]background.TaskSnapshot{
+		{ID: "task-1", StatusText: "running", Prompt: "Overlay mission", OriginSession: "sess-1", StartedAt: now.Add(-2 * time.Minute)},
+	})
+
+	require.Len(t, snapshot.Missions, 2)
+	assert.Equal(t, durableID.String(), snapshot.Missions[0].ID)
+	assert.Equal(t, MissionKindActive, snapshot.Missions[0].Kind)
+	assert.Equal(t, "bg:task-1", snapshot.Missions[1].ID)
+}
+
+func TestMissionControlLinkedTaskEnrichesDurableMissionWithoutDuplicateOverlay(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 5, 3, 12, 0, 0, 0, time.UTC)
+	missionID := uuid.MustParse("22222222-2222-2222-2222-222222222222")
+	projector := NewMissionControlProjector(Deps{
+		SessionKey: "sess-1",
+		MissionReader: stubMissionControlMissionReader{
+			missions: map[string][]*mission.Mission{
+				"sess-1": {{
+					ID:         missionID,
+					SessionKey: "sess-1",
+					Title:      "Durable mission",
+					Status:     mission.StatusActive,
+					SourceKind: "user",
+					UpdatedAt:  now.Add(-time.Minute),
+					CreatedAt:  now.Add(-2 * time.Minute),
+				}},
+			},
+			links: map[string][]*mission.ExecutionLink{
+				missionID.String(): {{
+					MissionID:     missionID,
+					ExecutionKind: mission.ExecutionKindTaskOSExecution,
+					ExecutionRef:  "task-1",
+				}},
+			},
+		},
+		RunLedgerStore: stubMissionControlRunLedgerReader{
+			snapshots: map[string]*runledger.RunSnapshot{
+				"task-1": {
+					RunID:     "task-1",
+					Goal:      "Execute durable work",
+					UpdatedAt: now,
+					Steps: []runledger.Step{{
+						StepID: "next",
+						Goal:   "Render summary",
+						Status: runledger.StepStatusPending,
+					}},
+				},
+			},
+		},
+		AgentRunStore: stubMissionControlAgentRunReader{
+			runs: map[string]*agentrt.AgentRun{
+				"task-1": {
+					ID:             "task-1",
+					RequestedAgent: "worker-c",
+				},
+			},
+		},
+	})
+
+	snapshot := projector.Project([]background.TaskSnapshot{
+		{ID: "task-1", StatusText: "running", Prompt: "Overlay mission", OriginSession: "sess-1", StartedAt: now.Add(-3 * time.Minute)},
+	})
+
+	require.Len(t, snapshot.Missions, 1)
+	assert.Equal(t, missionID.String(), snapshot.Missions[0].ID)
+	assert.Equal(t, "worker-c", snapshot.Missions[0].OwnerAgent)
+	assert.Equal(t, "Next step: Render summary", snapshot.Missions[0].NextAction)
+}
+
+func TestMissionControlUnmatchedRuntimeOverlayStillRendersWhenUnlinked(t *testing.T) {
+	t.Parallel()
+
+	projector := NewMissionControlProjector(Deps{
+		SessionKey: "sess-1",
+		MissionReader: stubMissionControlMissionReader{
+			missions: map[string][]*mission.Mission{"sess-1": {}},
+		},
+	})
+
+	snapshot := projector.Project([]background.TaskSnapshot{
+		{ID: "task-1", StatusText: "running", Prompt: "Overlay mission", OriginSession: "sess-1"},
+	})
+
+	require.Len(t, snapshot.Missions, 1)
+	assert.Equal(t, "bg:task-1", snapshot.Missions[0].ID)
+}
+
+func TestMissionControlOverlayFilteringUsesCurrentSession(t *testing.T) {
+	t.Parallel()
+
+	projector := NewMissionControlProjector(Deps{
+		SessionKey: "sess-1",
+		MissionReader: stubMissionControlMissionReader{
+			missions: map[string][]*mission.Mission{"sess-1": {}},
+		},
+	})
+
+	snapshot := projector.Project([]background.TaskSnapshot{
+		{ID: "task-1", StatusText: "running", Prompt: "Current session", OriginSession: "sess-1"},
+		{ID: "task-2", StatusText: "running", Prompt: "Foreign session", OriginSession: "sess-2"},
+		{ID: "task-3", StatusText: "running", Prompt: "Legacy empty origin"},
+	})
+
+	require.Len(t, snapshot.Missions, 2)
+	assert.Equal(t, "bg:task-1", snapshot.Missions[0].ID)
+	assert.Equal(t, "bg:task-3", snapshot.Missions[1].ID)
+}
+
+func TestMissionControlDurableWaitingDecisionAndLiveApprovalRemainCoherent(t *testing.T) {
+	t.Parallel()
+
+	registry := NewPendingApprovalRegistry()
+	registry.Register(chat.ApprovalRequestMsg{
+		Request:  approval.ApprovalRequest{ID: "req-1", ToolName: "fs_write", Summary: "Write files"},
+		Response: make(chan approval.ApprovalResponse, 1),
+	})
+	missionID := uuid.MustParse("33333333-3333-3333-3333-333333333333")
+	summary := "Awaiting approval for filesystem write"
+	kind := "approval"
+	projector := NewMissionControlProjector(Deps{
+		SessionKey:       "sess-1",
+		PendingApprovals: registry,
+		MissionReader: stubMissionControlMissionReader{
+			missions: map[string][]*mission.Mission{
+				"sess-1": {{
+					ID:                     missionID,
+					SessionKey:             "sess-1",
+					Title:                  "Durable waiting mission",
+					Status:                 mission.StatusWaitingDecision,
+					SourceKind:             "user",
+					CurrentDecisionKind:    &kind,
+					CurrentDecisionSummary: &summary,
+					UpdatedAt:              time.Date(2026, 5, 3, 12, 0, 0, 0, time.UTC),
+					CreatedAt:              time.Date(2026, 5, 3, 11, 0, 0, 0, time.UTC),
+				}},
+			},
+		},
+	})
+
+	snapshot := projector.Project(nil)
+
+	require.Len(t, snapshot.Missions, 1)
+	assert.Equal(t, MissionStatusPending, snapshot.Missions[0].Status)
+	assert.Equal(t, "Resolve pending decision", snapshot.Missions[0].NextAction)
+	assert.Equal(t, "Waiting for decision", snapshot.Missions[0].RuntimeHint)
+	require.NotNil(t, snapshot.Decision)
+	assert.Equal(t, "req-1", snapshot.Decision.ID)
+}
+
+func TestMissionControlMissionReaderUnavailableDegradesTruthfully(t *testing.T) {
+	t.Parallel()
+
+	projector := NewMissionControlProjector(Deps{SessionKey: "sess-1"})
+	snapshot := projector.Project([]background.TaskSnapshot{
+		{ID: "task-1", StatusText: "running", Prompt: "Overlay mission", OriginSession: "sess-1"},
+	})
+
+	assert.True(t, snapshot.Degraded)
+	assert.Contains(t, snapshot.Header.DegradedNote, "Mission store unavailable")
+	require.Len(t, snapshot.Missions, 1)
+	assert.Equal(t, "bg:task-1", snapshot.Missions[0].ID)
+}
+
+func TestMissionControlMissionReaderErrorsDegradeTruthfully(t *testing.T) {
+	t.Parallel()
+
+	projector := NewMissionControlProjector(Deps{
+		SessionKey:    "sess-1",
+		MissionReader: stubMissionControlMissionReader{listErr: errors.New("db unavailable")},
+	})
+	snapshot := projector.Project([]background.TaskSnapshot{
+		{ID: "task-1", StatusText: "running", Prompt: "Overlay mission", OriginSession: "sess-1"},
+	})
+
+	assert.True(t, snapshot.Degraded)
+	assert.Contains(t, snapshot.Header.DegradedNote, "Mission store unavailable")
+	require.Len(t, snapshot.Missions, 1)
+	assert.Equal(t, "bg:task-1", snapshot.Missions[0].ID)
 }
 
 func TestMissionControlOverflow(t *testing.T) {

@@ -10,6 +10,7 @@ import (
 	"github.com/langoai/lango/internal/agentrt"
 	"github.com/langoai/lango/internal/background"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/mission"
 	"github.com/langoai/lango/internal/observability"
 	"github.com/langoai/lango/internal/runledger"
 )
@@ -29,6 +30,7 @@ type MissionControlProjector struct {
 	activityBuffer   *MissionActivityBuffer
 	runLedgerStore   RunLedgerReader
 	agentRunStore    AgentRunReader
+	missionReader    MissionReader
 	missionLimit     int
 	activityLimit    int
 	nowFn            func() time.Time
@@ -45,6 +47,7 @@ func NewMissionControlProjector(deps Deps) *MissionControlProjector {
 		activityBuffer:   deps.ActivityBuffer,
 		runLedgerStore:   deps.RunLedgerStore,
 		agentRunStore:    deps.AgentRunStore,
+		missionReader:    deps.MissionReader,
 		missionLimit:     defaultMissionControlMissionLimit,
 		activityLimit:    defaultMissionControlActivityLimit,
 		nowFn:            time.Now,
@@ -58,12 +61,21 @@ func (p *MissionControlProjector) Project(taskSnapshots []background.TaskSnapsho
 	}
 
 	generatedAt := p.now()
-	missions, runLedgerDegraded, agentRunDegraded := p.projectBackgroundTasks(taskSnapshots)
-	missions = append(missions, p.projectLearningSuggestions()...)
-	sort.SliceStable(missions, func(i, j int) bool {
-		return compareMissionViews(missions[i], missions[j])
+	durableMissions, linkedTaskIDs, missionDegraded, runLedgerDegraded, agentRunDegraded := p.projectDurableMissions(taskSnapshots)
+	runtimeOverlays, overlayRunLedgerDegraded, overlayAgentRunDegraded := p.projectBackgroundTasks(taskSnapshots, linkedTaskIDs)
+	proposedMissions := p.projectLearningSuggestions()
+	sort.SliceStable(durableMissions, func(i, j int) bool {
+		return compareMissionViews(durableMissions[i], durableMissions[j])
 	})
-	degradedNote := p.buildDegradedNote(runLedgerDegraded, agentRunDegraded)
+	sort.SliceStable(runtimeOverlays, func(i, j int) bool {
+		return compareMissionViews(runtimeOverlays[i], runtimeOverlays[j])
+	})
+	sort.SliceStable(proposedMissions, func(i, j int) bool {
+		return compareMissionViews(proposedMissions[i], proposedMissions[j])
+	})
+	missions := append(durableMissions, runtimeOverlays...)
+	missions = append(missions, proposedMissions...)
+	degradedNote := p.buildDegradedNote(missionDegraded, runLedgerDegraded || overlayRunLedgerDegraded, agentRunDegraded || overlayAgentRunDegraded)
 
 	activities := p.projectActivities()
 	visibleMissions, hiddenMissionCount, missionOverflow := limitMissions(missions, p.missionLimit)
@@ -92,7 +104,78 @@ func (p *MissionControlProjector) Project(taskSnapshots []background.TaskSnapsho
 	}
 }
 
-func (p *MissionControlProjector) projectBackgroundTasks(taskSnapshots []background.TaskSnapshot) ([]MissionView, bool, bool) {
+func (p *MissionControlProjector) projectDurableMissions(taskSnapshots []background.TaskSnapshot) ([]MissionView, map[string]struct{}, bool, bool, bool) {
+	linkedTaskIDs := make(map[string]struct{})
+	if p.missionReader == nil {
+		return nil, linkedTaskIDs, true, false, false
+	}
+
+	ctx := context.Background()
+	rows, err := p.missionReader.ListMissionsBySession(ctx, p.sessionKey, max(p.missionLimit*4, 24))
+	if err != nil {
+		return nil, linkedTaskIDs, true, false, false
+	}
+	if len(rows) == 0 {
+		return nil, linkedTaskIDs, false, false, false
+	}
+
+	tasksByID := make(map[string]background.TaskSnapshot, len(taskSnapshots))
+	for _, task := range taskSnapshots {
+		tasksByID[strings.TrimSpace(task.ID)] = task
+	}
+
+	missions := make([]MissionView, 0, len(rows))
+	var runLedgerDegraded bool
+	var agentRunDegraded bool
+	var missionDegraded bool
+	for _, row := range rows {
+		if row == nil {
+			continue
+		}
+		view := missionViewFromDurableRow(row)
+		links, err := p.missionReader.ListExecutionLinks(ctx, row.ID.String())
+		if err != nil {
+			missionDegraded = true
+			missions = append(missions, view)
+			continue
+		}
+		for _, link := range links {
+			if link == nil {
+				continue
+			}
+			executionRef := strings.TrimSpace(link.ExecutionRef)
+			switch link.ExecutionKind {
+			case mission.ExecutionKindTaskOSExecution:
+				if executionRef != "" {
+					linkedTaskIDs[executionRef] = struct{}{}
+				}
+				if task, ok := tasksByID[executionRef]; ok {
+					enrichDurableMissionFromTask(&view, task)
+				}
+			}
+			if p.runLedgerStore != nil {
+				snap, err := p.runLedgerStore.GetRunSnapshot(ctx, executionRef)
+				if err != nil {
+					runLedgerDegraded = true
+				} else if snap != nil {
+					enrichDurableMissionFromRunLedger(&view, snap)
+				}
+			}
+			if p.agentRunStore != nil {
+				run, err := p.agentRunStore.Get(executionRef)
+				if err != nil {
+					agentRunDegraded = true
+				} else if run != nil {
+					enrichDurableMissionFromAgentRun(&view, run)
+				}
+			}
+		}
+		missions = append(missions, view)
+	}
+	return missions, linkedTaskIDs, missionDegraded, runLedgerDegraded, agentRunDegraded
+}
+
+func (p *MissionControlProjector) projectBackgroundTasks(taskSnapshots []background.TaskSnapshot, linkedTaskIDs map[string]struct{}) ([]MissionView, bool, bool) {
 	if len(taskSnapshots) == 0 {
 		return nil, false, false
 	}
@@ -102,6 +185,12 @@ func (p *MissionControlProjector) projectBackgroundTasks(taskSnapshots []backgro
 	var runLedgerDegraded bool
 	var agentRunDegraded bool
 	for _, task := range taskSnapshots {
+		if originSession := strings.TrimSpace(task.OriginSession); originSession != "" && originSession != strings.TrimSpace(p.sessionKey) {
+			continue
+		}
+		if _, linked := linkedTaskIDs[strings.TrimSpace(task.ID)]; linked {
+			continue
+		}
 		mission := MissionView{
 			ID:         "bg:" + strings.TrimSpace(task.ID),
 			Kind:       MissionKindActive,
@@ -236,8 +325,11 @@ func (p *MissionControlProjector) projectActivities() []ActivityView {
 	return views
 }
 
-func (p *MissionControlProjector) buildDegradedNote(runLedgerDegraded, agentRunDegraded bool) string {
+func (p *MissionControlProjector) buildDegradedNote(missionDegraded, runLedgerDegraded, agentRunDegraded bool) string {
 	var notes []string
+	if p.missionReader == nil || missionDegraded {
+		notes = append(notes, "Mission store unavailable")
+	}
 	if p.runLedgerStore == nil || runLedgerDegraded {
 		notes = append(notes, "RunLedger unavailable")
 	}
@@ -245,6 +337,113 @@ func (p *MissionControlProjector) buildDegradedNote(runLedgerDegraded, agentRunD
 		notes = append(notes, "Agent runtime unavailable")
 	}
 	return strings.Join(notes, "; ")
+}
+
+func missionViewFromDurableRow(row *mission.Mission) MissionView {
+	view := MissionView{
+		ID:         row.ID.String(),
+		Kind:       MissionKindActive,
+		Status:     missionStatusFromDurable(row.Status),
+		Title:      strings.TrimSpace(row.Title),
+		SourceKind: strings.TrimSpace(row.SourceKind),
+		UpdatedAt:  row.UpdatedAt,
+	}
+	if row.SourceRef != nil {
+		view.SourceRef = strings.TrimSpace(*row.SourceRef)
+	}
+	if row.Description != nil {
+		view.Detail = strings.TrimSpace(*row.Description)
+	}
+	if row.CurrentBlockedReason != nil {
+		view.BlockedReason = strings.TrimSpace(*row.CurrentBlockedReason)
+	}
+	if row.CurrentDecisionSummary != nil && view.Detail == "" {
+		view.Detail = strings.TrimSpace(*row.CurrentDecisionSummary)
+	}
+
+	switch row.Status {
+	case mission.StatusPrepared:
+		view.NextAction = "Start mission"
+	case mission.StatusActive:
+		view.NextAction = "Continue mission"
+	case mission.StatusWaitingDecision:
+		view.NextAction = "Resolve pending decision"
+		view.RuntimeHint = "Waiting for decision"
+	case mission.StatusBlocked:
+		view.NextAction = "Resolve blocker"
+	case mission.StatusDone:
+		view.NextAction = "Review completed output"
+	case mission.StatusCancelled:
+		view.NextAction = "Restart if still needed"
+	}
+	return view
+}
+
+func missionStatusFromDurable(status mission.Status) MissionStatus {
+	switch status {
+	case mission.StatusPrepared:
+		return MissionStatusPrepared
+	case mission.StatusActive:
+		return MissionStatusRunning
+	case mission.StatusWaitingDecision:
+		return MissionStatusPending
+	case mission.StatusBlocked:
+		return MissionStatusBlocked
+	case mission.StatusDone:
+		return MissionStatusDone
+	case mission.StatusCancelled:
+		return MissionStatusCancelled
+	default:
+		return MissionStatusUnknown
+	}
+}
+
+func enrichDurableMissionFromTask(missionView *MissionView, task background.TaskSnapshot) {
+	if missionView == nil {
+		return
+	}
+	if missionView.Detail == "" {
+		missionView.Detail = firstNonEmptyLine(task.Prompt)
+	}
+	if taskTime := newestRelevantTaskTime(task); taskTime.After(missionView.UpdatedAt) {
+		missionView.UpdatedAt = taskTime
+	}
+}
+
+func enrichDurableMissionFromRunLedger(missionView *MissionView, snap *runledger.RunSnapshot) {
+	if missionView == nil || snap == nil {
+		return
+	}
+	if detail := strings.TrimSpace(snap.Goal); detail != "" {
+		missionView.Detail = detail
+	}
+	if blocker := strings.TrimSpace(firstNonEmptyString(snap.CurrentBlocker, snap.TeammateBlockedReason)); blocker != "" {
+		missionView.BlockedReason = blocker
+	}
+	if hint := strings.TrimSpace(snap.TeammateRuntimeCondition); hint != "" && missionView.RuntimeHint == "" {
+		missionView.RuntimeHint = hint
+	}
+	if step := snap.NextExecutableStep(); step != nil && missionView.NextAction != "Resolve pending decision" {
+		missionView.NextAction = "Next step: " + strings.TrimSpace(step.Goal)
+	}
+	if snap.UpdatedAt.After(missionView.UpdatedAt) {
+		missionView.UpdatedAt = snap.UpdatedAt
+	}
+}
+
+func enrichDurableMissionFromAgentRun(missionView *MissionView, run *agentrt.AgentRun) {
+	if missionView == nil || run == nil {
+		return
+	}
+	if owner := strings.TrimSpace(run.RequestedAgent); owner != "" {
+		missionView.OwnerAgent = owner
+	}
+	if hint := runtimeHintForAgentRun(run.RuntimeCondition, run.BlockedReason); hint != "" {
+		missionView.RuntimeHint = hint
+	}
+	if missionView.BlockedReason == "" {
+		missionView.BlockedReason = strings.TrimSpace(run.BlockedReason)
+	}
 }
 
 func buildActiveAgentSummary(missions []MissionView) string {

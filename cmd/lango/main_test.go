@@ -135,7 +135,8 @@ func TestRunCockpitBuildDepsCarriesMissionService(t *testing.T) {
 	t.Parallel()
 
 	svc := mission.NewService(nil)
-	application := &app.App{MissionService: svc}
+	store := &stubMainMissionStore{}
+	application := &app.App{MissionService: svc, MissionStore: store}
 	cfg := &config.Config{}
 	pending := cockpit.NewPendingApprovalRegistry()
 	learning := cockpit.NewLearningSuggestionBuffer(nil)
@@ -144,6 +145,34 @@ func TestRunCockpitBuildDepsCarriesMissionService(t *testing.T) {
 	deps := buildCockpitDeps(application, cfg, "sess-1", nil, "", nil, pending, learning, activity)
 
 	assert.Same(t, svc, deps.MissionService)
+	assert.Same(t, store, deps.MissionReader)
 	assert.Same(t, learning, deps.LearningBuffer)
 	assert.Same(t, activity, deps.ActivityBuffer)
+}
+
+type stubMainMissionStore struct{}
+
+func (*stubMainMissionStore) CreateMission(context.Context, mission.CreateMissionInput) (*mission.Mission, error) {
+	return nil, nil
+}
+func (*stubMainMissionStore) GetMission(context.Context, string) (*mission.Mission, error) {
+	return nil, nil
+}
+func (*stubMainMissionStore) ListMissionsBySession(context.Context, string, int) ([]*mission.Mission, error) {
+	return nil, nil
+}
+func (*stubMainMissionStore) TransitionMission(context.Context, mission.TransitionMissionInput) (*mission.Mission, error) {
+	return nil, nil
+}
+func (*stubMainMissionStore) AppendExecutionLink(context.Context, mission.AppendExecutionLinkInput) error {
+	return nil
+}
+func (*stubMainMissionStore) ListExecutionLinks(context.Context, string) ([]*mission.ExecutionLink, error) {
+	return nil, nil
+}
+func (*stubMainMissionStore) FindExecutionLinkByExecution(context.Context, mission.ExecutionKind, string) (*mission.ExecutionLink, error) {
+	return nil, nil
+}
+func (*stubMainMissionStore) FindMissionByExecution(context.Context, mission.ExecutionKind, string) (*mission.Mission, error) {
+	return nil, nil
 }
