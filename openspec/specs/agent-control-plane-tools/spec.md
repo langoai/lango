@@ -48,47 +48,13 @@ The `agent_message` tool SHALL NOT be included in the initial `BuildControlTools
 - **AND** no `agent_message` tool SHALL be present
 
 ### Requirement: Task management tools provide CRUD on TaskEntry
-The system SHALL provide four task management tools — `task_create`, `task_get`, `task_list`, `task_update` — backed by a `TaskStore` interface. All four tools SHALL have `SafetyLevel` set to `SafetyLevelSafe`.
 
-#### Scenario: Create a task
-- **WHEN** `task_create` is called with `title: "Implement feature X"`
-- **THEN** a `TaskEntry` SHALL be created with a random ID (prefixed `task-`), status `"todo"`, and the given title
-- **AND** the response SHALL include the generated `task_id` and `status: "todo"`
+Task management tools SHALL continue providing lightweight CRUD over `TaskEntry` in Wave 2. This change SHALL NOT promote `TaskEntry` into the durable mission checklist model or make task-tracking rows the authoritative durable mission truth.
 
-#### Scenario: Create a hierarchical task
-- **WHEN** `task_create` is called with `title: "Sub-task A"` and `parent_id: "task-parent123"`
-- **THEN** the created `TaskEntry.ParentID` SHALL be `"task-parent123"`
-
-#### Scenario: Get a task by ID
-- **GIVEN** a `TaskEntry` with ID `task-abc123`
-- **WHEN** `task_get` is called with `task_id: "task-abc123"`
-- **THEN** the response SHALL include all fields: `id`, `title`, `status`, `agent_id`, `parent_id`, `description`, `created_at`, `updated_at`
-
-#### Scenario: Get a non-existent task
-- **WHEN** `task_get` is called with a `task_id` that does not exist
-- **THEN** the tool SHALL return an error
-
-#### Scenario: List tasks with status filter
-- **GIVEN** tasks with statuses `"todo"`, `"in_progress"`, and `"done"`
-- **WHEN** `task_list` is called with `status: "todo"`
-- **THEN** the response SHALL include only tasks with status `"todo"`
-
-#### Scenario: List tasks with parent filter
-- **WHEN** `task_list` is called with `parent_id: "task-parent123"`
-- **THEN** the response SHALL include only tasks whose `ParentID` matches
-
-#### Scenario: List all tasks without filters
-- **WHEN** `task_list` is called with no filters
-- **THEN** the response SHALL include all tasks with a `count` field
-
-#### Scenario: Update task status
-- **GIVEN** a `TaskEntry` with status `"todo"`
-- **WHEN** `task_update` is called with `task_id` and `status: "in_progress"`
-- **THEN** the task's status SHALL become `"in_progress"` and `UpdatedAt` SHALL be refreshed
-
-#### Scenario: Update task description only
-- **WHEN** `task_update` is called with `task_id` and `description: "Updated details"` but no `status`
-- **THEN** the task's description SHALL change and its status SHALL remain unchanged
+#### Scenario: Task tracking remains operational rather than durable mission truth
+- **WHEN** task management tools create, list, or update `TaskEntry` rows
+- **THEN** those rows SHALL remain lightweight operational tracking records
+- **AND** Wave 2 SHALL NOT require them to serve as the authoritative durable mission checklist model
 
 ### Requirement: AgentRunProjection implements background.Projection for ID unification
 
@@ -219,4 +185,18 @@ The control-plane blocked-state surface for built-in teammate runs SHALL expose 
 - **AND** the response SHALL expose `grant_attempt`
 - **AND** the response SHALL expose `grant_state`
 - **AND** `grant_attempt` SHALL be at least `1` whenever the run is currently `blocked_waiting_approval`
+
+### Requirement: Mission-aware execution linkage attaches at execution creation sites
+
+When control-plane or mission-bound runtime work creates a new execution for an existing mission context, the system SHALL attach the durable mission-to-execution relationship at the execution creation site. `MissionExecutionLink` SHALL be the durable truth for that relationship rather than later inference from unrelated task-tracking records.
+
+#### Scenario: Mission-bound spawned execution writes link at creation time
+- **WHEN** mission-aware control-plane tooling creates a new execution for a mission
+- **THEN** the application SHALL record the `MissionExecutionLink` as part of that execution creation flow
+- **AND** the durable relationship SHALL reference the mission's `mission_id` plus the execution identity created by that flow
+
+#### Scenario: Wave 2 does not retrofit all task tracking into mission linkage truth
+- **WHEN** a `TaskEntry` exists without mission-aware execution linkage
+- **THEN** Wave 2 SHALL NOT require the system to reconstruct durable mission ownership only by retrofitting all task-tracking records
+- **AND** mission-execution linkage truth SHALL remain attached to execution creation sites
 
