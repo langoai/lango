@@ -12,7 +12,7 @@ At the same time, `RunLedger` already serves as durable execution truth. Wave 2 
 - keep `RunLedger` as execution truth while adding a mission persistence layer for user-facing work state
 - make Mission Control read durable mission rows first
 - preserve unmatched runtime overlays until the work is linked or dismissed
-- support real write paths for direct mission start and proposal acceptance
+- support four real durable write paths: direct mission start, proposal acceptance, execution-link attachment, and decision attribution
 - represent approval pauses as coarse durable `waiting_decision` state
 - keep task tracking lightweight instead of turning it into durable mission truth
 
@@ -81,7 +81,7 @@ This preserves Wave 1 honesty. Runtime work does not disappear merely because it
 
 ## Write Paths
 
-Wave 2 introduces two real mission creation paths:
+Wave 2 is only complete if all four of these durable write paths exist in the real app:
 
 ### Direct Mission Start
 
@@ -91,11 +91,26 @@ When the user starts a mission from Mission Control, the app creates a durable m
 
 When the user accepts a proposed mission, acceptance creates the first durable mission row. The transient proposal overlay is not itself durable; the durable record begins at acceptance.
 
+### Execution-Link Attachment
+
+When mission-bound work creates a background execution or a `RunLedger` execution, the app writes the `MissionExecutionLink` at that execution creation site. Wave 2 does not rely on later inference from unrelated task tracking to reconstruct mission ownership.
+
+### Decision Attribution
+
+When deterministically mission-attributed work pauses on user approval or direction, the app updates the durable mission row into `waiting_decision` and records the latest coarse decision summary. This is a real durable write path, not a read-only projection detail.
+
 ## Decision and Blocking Semantics
 
 Wave 2 stores `waiting_decision` as a coarse durable mission state. It records that the mission is paused on user direction, plus a latest decision kind/summary if available.
 
+This state is only entered when the app has deterministic mission attribution for the paused work. The durable mission row stores at most one latest decision marker:
+
+- `current_decision_kind`
+- `current_decision_summary`
+
 Wave 2 does not store a durable approval queue. Live approval rendering can still use runtime/session-owned structures while the durable mission row keeps only coarse mission state.
+
+Wave 2 also does not promise durable multi-pending approval semantics for one mission. Concurrent or queued live approval rendering stays outside durable mission state in this slice.
 
 Non-decision blockers remain `blocked`.
 

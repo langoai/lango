@@ -37,10 +37,21 @@ Mission Control SHALL add a real direct mission-start write path in Wave 2 while
 
 ### Requirement: Waiting for user direction is stored as coarse durable mission state
 
-Wave 2 SHALL represent decision-paused mission progress as coarse durable `waiting_decision` mission state. This durable state may include latest decision kind or summary, but it SHALL NOT become a durable approval queue or require Mission Control to persist every live approval request as a durable decision item.
+Wave 2 SHALL represent decision-paused mission progress as coarse durable `waiting_decision` mission state. This durable state may include latest decision kind or summary, but it SHALL NOT become a durable approval queue or require Mission Control to persist every live approval request as a durable decision item. A mission SHALL only enter this state when the paused work can be deterministically attributed to that mission, and the durable mission row SHALL store at most one latest decision marker at a time.
 
 #### Scenario: Mission pauses on user direction without durable queue semantics
 - **WHEN** mission progress is paused pending user approval or direction
 - **THEN** the durable mission row SHALL move into `waiting_decision`
 - **AND** the durable state MAY store coarse latest-decision summary fields
 - **BUT** Wave 2 SHALL NOT require a durable per-request approval queue for Mission Control
+
+#### Scenario: Decision state requires deterministic mission attribution
+- **WHEN** paused approval or direction work cannot be deterministically attributed to a durable mission
+- **THEN** Mission Control MAY still show a live runtime decision surface
+- **BUT** the system SHALL NOT invent a durable `waiting_decision` mission transition for an unrelated or ambiguous mission row
+
+#### Scenario: Durable mission row stores only the latest coarse decision marker
+- **WHEN** a mission is already in `waiting_decision`
+- **AND** a later mission-attributed approval or direction update arrives
+- **THEN** the durable mission row SHALL keep only one latest decision marker
+- **AND** Wave 2 SHALL NOT require durable multi-pending approval semantics for that mission
