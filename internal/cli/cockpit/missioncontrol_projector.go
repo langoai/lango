@@ -296,10 +296,10 @@ func (p *MissionControlProjector) projectLearningSuggestions() []MissionView {
 		missions = append(missions, MissionView{
 			ID:         "learn:" + strings.TrimSpace(item.SuggestionID),
 			Kind:       MissionKindProposed,
-			Status:     MissionStatusPrepared,
+			Status:     MissionStatusPending,
 			Title:      "Apply learning rule: " + title,
 			Detail:     strings.TrimSpace(item.Rationale),
-			NextAction: "Review suggestion",
+			NextAction: "Review raw suggestion",
 			SourceKind: "proposed_learning",
 			SourceRef:  strings.TrimSpace(item.SuggestionID),
 			UpdatedAt:  item.Timestamp,

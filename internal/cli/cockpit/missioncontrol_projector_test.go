@@ -205,7 +205,7 @@ func TestMissionControlProjectorLearningSuggestionDerivation(t *testing.T) {
 	require.Len(t, snapshot.Missions, 2)
 	assert.Equal(t, "learn:newer", snapshot.Missions[0].ID)
 	assert.Equal(t, MissionKindProposed, snapshot.Missions[0].Kind)
-	assert.Equal(t, MissionStatusPrepared, snapshot.Missions[0].Status)
+	assert.Equal(t, MissionStatusPending, snapshot.Missions[0].Status)
 	assert.Equal(t, "Apply learning rule: Collapse mission overflow into a compact summary.", snapshot.Missions[0].Title)
 	assert.Equal(t, "proposed_learning", snapshot.Missions[0].SourceKind)
 	assert.Equal(t, "newer", snapshot.Missions[0].SourceRef)
@@ -300,6 +300,8 @@ func TestMissionControlProposalRegistryUnavailableFallsBackHonestly(t *testing.T
 	assert.Contains(t, snapshot.Header.DegradedNote, "Proposal registry unavailable")
 	require.Len(t, snapshot.Missions, 1)
 	assert.Equal(t, "learn:fallback", snapshot.Missions[0].ID)
+	assert.Equal(t, MissionStatusPending, snapshot.Missions[0].Status)
+	assert.Equal(t, "Review raw suggestion", snapshot.Missions[0].NextAction)
 }
 
 func TestMissionControlProjectorRunLedgerNextActionEnrichment(t *testing.T) {
