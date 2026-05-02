@@ -12,32 +12,24 @@ import (
 type PendingApprovalRegistry struct {
 	mu      sync.RWMutex
 	pending *chat.ApprovalRequestMsg
+	queued  []chat.ApprovalRequestMsg
 }
 
 func NewPendingApprovalRegistry() *PendingApprovalRegistry {
 	return &PendingApprovalRegistry{}
 }
 
-// Register replaces the latest pending approval request.
+// Register records a pending approval request. Only one request remains
+// visible at a time; later arrivals wait in FIFO order behind the current head.
 func (r *PendingApprovalRegistry) Register(msg chat.ApprovalRequestMsg) {
-	var superseded *chat.ApprovalRequestMsg
-
 	r.mu.Lock()
-	if r.pending != nil {
-		msgCopy := *r.pending
-		superseded = &msgCopy
-	}
 	msgCopy := msg
-	r.pending = &msgCopy
-	r.mu.Unlock()
-
-	if superseded != nil {
-		superseded.Response <- approval.ApprovalResponse{
-			Approved:    false,
-			AlwaysAllow: false,
-			Provider:    "tui",
-		}
+	if r.pending == nil {
+		r.pending = &msgCopy
+	} else {
+		r.queued = append(r.queued, msgCopy)
 	}
+	r.mu.Unlock()
 }
 
 // Latest returns the latest pending approval request, if any.
@@ -67,7 +59,14 @@ func (r *PendingApprovalRegistry) Resolve(id string, resp approval.ApprovalRespo
 		return false
 	}
 	msg := *r.pending
-	r.pending = nil
+	if len(r.queued) > 0 {
+		next := r.queued[0]
+		r.queued[0] = chat.ApprovalRequestMsg{}
+		r.queued = r.queued[1:]
+		r.pending = &next
+	} else {
+		r.pending = nil
+	}
 	r.mu.Unlock()
 
 	msg.Response <- resp

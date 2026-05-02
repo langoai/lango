@@ -114,6 +114,9 @@ func (p *MissionControlPage) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		p.refreshSnapshot()
 		return p, missionControlTickCmd()
+	case cockpit.MissionControlRefreshMsg:
+		p.refreshSnapshot()
+		return p, nil
 	case tea.KeyMsg:
 		return p.handleKey(msg)
 	case chat.DoneMsg, chat.ErrorMsg, chat.WarningMsg, chat.ToolStartedMsg, chat.ToolFinishedMsg,

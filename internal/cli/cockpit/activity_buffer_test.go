@@ -72,3 +72,20 @@ func TestMissionActivityShellRuntimeEventAppend(t *testing.T) {
 	assert.Contains(t, items[2].Summary, "9/10")
 	assert.Contains(t, items[3].Summary, "retry")
 }
+
+func TestMissionActivityIgnoresRunLedgerMirrorFailureWithoutSessionScope(t *testing.T) {
+	bus := eventbus.New()
+	learning := NewLearningSuggestionBuffer(nil)
+	activity := NewMissionActivityBuffer()
+
+	SubscribeMissionControlEvents(bus, "sess-1", learning, activity)
+
+	bus.Publish(eventbus.RunLedgerMirrorFailureEvent{
+		Target: "agent_run_projection",
+		Phase:  "append_journal",
+		RunID:  "run-1",
+		Error:  "disk full",
+	})
+
+	assert.Empty(t, activity.Snapshot())
+}

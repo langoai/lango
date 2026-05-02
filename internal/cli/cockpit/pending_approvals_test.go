@@ -10,7 +10,7 @@ import (
 	"github.com/langoai/lango/internal/cli/chat"
 )
 
-func TestPendingApprovalRegistryLatestReplaces(t *testing.T) {
+func TestPendingApprovalRegistryQueuesWithoutAutoDeny(t *testing.T) {
 	registry := NewPendingApprovalRegistry()
 
 	firstRespCh := make(chan approval.ApprovalResponse, 1)
@@ -29,13 +29,32 @@ func TestPendingApprovalRegistryLatestReplaces(t *testing.T) {
 	require.True(t, registry.HasPending())
 	latest := registry.Latest()
 	require.NotNil(t, latest)
+	assert.Equal(t, "apr-1", latest.Request.ID)
+	assert.Equal(t, "fs_read", latest.Request.ToolName)
+
+	select {
+	case superseded := <-firstRespCh:
+		t.Fatalf("first approval should stay pending, got premature response: %+v", superseded)
+	default:
+	}
+
+	ok := registry.Resolve("apr-1", approval.ApprovalResponse{
+		Approved:    true,
+		AlwaysAllow: false,
+		Provider:    "tui",
+	})
+	require.True(t, ok)
+
+	firstResp := <-firstRespCh
+	assert.True(t, firstResp.Approved)
+	assert.False(t, firstResp.AlwaysAllow)
+	assert.Equal(t, "tui", firstResp.Provider)
+
+	require.True(t, registry.HasPending())
+	latest = registry.Latest()
+	require.NotNil(t, latest)
 	assert.Equal(t, "apr-2", latest.Request.ID)
 	assert.Equal(t, "exec", latest.Request.ToolName)
-
-	superseded := <-firstRespCh
-	assert.False(t, superseded.Approved)
-	assert.False(t, superseded.AlwaysAllow)
-	assert.Equal(t, "tui", superseded.Provider)
 }
 
 func TestPendingApprovalRegistryResolveWritesExactlyOnce(t *testing.T) {

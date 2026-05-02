@@ -2,10 +2,12 @@ package pages
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -313,6 +315,31 @@ func TestMissionControlComposerSubmitEchoesUserTextIntoActivity(t *testing.T) {
 	page = updated.(*MissionControlPage)
 
 	assert.Contains(t, page.View(), "User submitted: echo this")
+}
+
+func TestMissionControlSharedComposerDoesNotReplayChannelMessages(t *testing.T) {
+	t.Parallel()
+
+	deps := cockpit.Deps{
+		Config:           &config.Config{Agent: config.AgentConfig{Provider: "openai", Model: "gpt-5"}},
+		PendingApprovals: cockpit.NewPendingApprovalRegistry(),
+	}
+	model := cockpit.New(deps)
+	page := newMissionControlPage(cockpit.NewMissionControlProjector(deps), stubMissionTaskSource{}, model.ChatModel())
+	model.RegisterPage(cockpit.PageMissionControl, page)
+
+	model.Update(tea.WindowSizeMsg{Width: 110, Height: 30})
+	model.Update(chat.ChannelMessageMsg{
+		Channel:    "telegram",
+		SessionKey: "telegram:1:2",
+		SenderName: "alice",
+		Text:       "hello from channel",
+		Timestamp:  time.Date(2026, 5, 3, 12, 0, 0, 0, time.UTC),
+	})
+
+	main := ansi.Strip(model.ChatModel().RenderParts().Main)
+	assert.Equal(t, 1, strings.Count(main, "hello from channel"))
+	assert.Equal(t, 1, strings.Count(ansi.Strip(page.composer.RenderParts().Main), "hello from channel"))
 }
 
 func TestMissionControlLoadingEmptyDegradedRendering(t *testing.T) {

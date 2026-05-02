@@ -25,6 +25,11 @@ type childModel interface {
 // Compile-time interface check.
 var _ childModel = (*chat.ChatModel)(nil)
 
+// MissionControlRefreshMsg tells the Mission Control page to rebuild its
+// projection from already-updated shared state without replaying runtime
+// messages into the shared chat model.
+type MissionControlRefreshMsg struct{}
+
 // Model is the root cockpit tea.Model.
 type Model struct {
 	child            childModel
@@ -189,7 +194,7 @@ func (m *Model) handleChannelMessage(msg chat.ChannelMessageMsg) (*Model, tea.Cm
 	}
 	up, cmd := m.child.Update(msg)
 	m.child = up.(childModel)
-	return m, tea.Batch(cmd, m.forwardToMissionControlIfActive(msg))
+	return m, tea.Batch(cmd, m.refreshMissionControlIfActive())
 }
 
 // handleApprovalRequest registers the latest pending approval and forwards the
@@ -205,7 +210,7 @@ func (m *Model) handleApprovalRequest(msg chat.ApprovalRequestMsg) (*Model, tea.
 	}
 	up, childCmd := m.child.Update(msg)
 	m.child = up.(childModel)
-	return m, tea.Batch(switchCmd, childCmd, m.forwardToMissionControlIfActive(msg))
+	return m, tea.Batch(switchCmd, childCmd, m.refreshMissionControlIfActive())
 }
 
 // markTurnStarted calls runtimeTracker.StartTurn() on the first content event
@@ -238,7 +243,7 @@ func (m *Model) handleDelegation(msg chat.DelegationMsg) (*Model, tea.Cmd) {
 	}
 	up, cmd := m.child.Update(msg)
 	m.child = up.(childModel)
-	return m, tea.Batch(cmd, m.forwardToMissionControlIfActive(msg))
+	return m, tea.Batch(cmd, m.refreshMissionControlIfActive())
 }
 
 // handleBudgetWarning always forwards to the chat child from any page.
@@ -248,7 +253,7 @@ func (m *Model) handleBudgetWarning(msg chat.BudgetWarningMsg) (*Model, tea.Cmd)
 	}
 	up, cmd := m.child.Update(msg)
 	m.child = up.(childModel)
-	return m, tea.Batch(cmd, m.forwardToMissionControlIfActive(msg))
+	return m, tea.Batch(cmd, m.refreshMissionControlIfActive())
 }
 
 // handleRecovery always forwards to the chat child from any page.
@@ -258,7 +263,7 @@ func (m *Model) handleRecovery(msg chat.RecoveryMsg) (*Model, tea.Cmd) {
 	}
 	up, cmd := m.child.Update(msg)
 	m.child = up.(childModel)
-	return m, tea.Batch(cmd, m.forwardToMissionControlIfActive(msg))
+	return m, tea.Batch(cmd, m.refreshMissionControlIfActive())
 }
 
 // handleDone forwards DoneMsg to the chat child FIRST so the assistant response
@@ -297,7 +302,7 @@ func (m *Model) handleDone(msg chat.DoneMsg) (*Model, tea.Cmd) {
 			m.contextPanel.SetRuntimeStatus(runtimeStatus{IsRunning: false})
 		}
 	}
-	if missionCmd := m.forwardToMissionControlIfActive(msg); missionCmd != nil {
+	if missionCmd := m.refreshMissionControlIfActive(); missionCmd != nil {
 		cmds = append(cmds, missionCmd)
 	}
 	return m, tea.Batch(cmds...)
@@ -512,6 +517,10 @@ func (m *Model) forwardToMissionControlIfActive(msg tea.Msg) tea.Cmd {
 	up, cmd := page.Update(msg)
 	m.pages[PageMissionControl] = up.(Page)
 	return cmd
+}
+
+func (m *Model) refreshMissionControlIfActive() tea.Cmd {
+	return m.forwardToMissionControlIfActive(MissionControlRefreshMsg{})
 }
 
 func (m *Model) sidebarWidth() int {

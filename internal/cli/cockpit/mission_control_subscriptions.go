@@ -67,10 +67,4 @@ func SubscribeMissionControlEvents(bus *eventbus.Bus, sessionKey string, learnin
 		activity.Append(newAlertActivity(e))
 	})
 
-	eventbus.SubscribeTyped(bus, func(e eventbus.RunLedgerMirrorFailureEvent) {
-		if activity == nil {
-			return
-		}
-		activity.Append(newRunLedgerMirrorFailureActivity(e, time.Now()))
-	})
 }
