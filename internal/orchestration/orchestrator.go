@@ -9,6 +9,7 @@ import (
 	adk_tool "google.golang.org/adk/tool"
 
 	"github.com/langoai/lango/internal/agent"
+	"github.com/langoai/lango/internal/agentrt"
 	"github.com/langoai/lango/internal/p2p/agentpool"
 )
 
@@ -85,6 +86,10 @@ func BuildAgentTree(cfg Config) (adk_agent.Agent, error) {
 
 		for _, spec := range specs {
 			tools := ds[spec.Name]
+			if isBuiltinProductionSpecName(spec.Name) {
+				routingEntries = append(routingEntries, buildRoutingEntry(spec, capabilityDescription(tools), tools))
+				continue
+			}
 			if len(tools) == 0 && !spec.AlwaysInclude {
 				continue
 			}
@@ -102,6 +107,10 @@ func BuildAgentTree(cfg Config) (adk_agent.Agent, error) {
 
 		for _, spec := range specs {
 			tools := toolsForSpec(spec, rs)
+			if isBuiltinProductionSpecName(spec.Name) {
+				routingEntries = append(routingEntries, buildRoutingEntry(spec, capabilityDescription(tools), tools))
+				continue
+			}
 			if len(tools) == 0 && !spec.AlwaysInclude {
 				continue
 			}
@@ -213,4 +222,9 @@ func adaptTools(adapt ToolAdapter, agentName string, tools []*agent.Tool) ([]adk
 		result = append(result, adapted)
 	}
 	return result, nil
+}
+
+func isBuiltinProductionSpecName(name string) bool {
+	_, ok := agentrt.BuiltinTeammateTypes()[name]
+	return ok
 }

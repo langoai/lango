@@ -100,6 +100,30 @@ func TestContainsBuiltinTargetName(t *testing.T) {
 	}
 }
 
+func TestShouldRetryMissingAgent(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		badAgent      string
+		subAgentCount int
+		want          bool
+	}{
+		{name: "empty bad agent", badAgent: "", subAgentCount: 0, want: false},
+		{name: "builtin with zero subagents", badAgent: "operator", subAgentCount: 0, want: true},
+		{name: "remote with zero subagents", badAgent: "remote-researcher", subAgentCount: 0, want: false},
+		{name: "remote with listed subagents", badAgent: "remote-researcher", subAgentCount: 2, want: true},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, shouldRetryMissingAgent(tt.badAgent, tt.subAgentCount))
+		})
+	}
+}
+
 func TestHasFunctionCalls(t *testing.T) {
 	t.Parallel()
 

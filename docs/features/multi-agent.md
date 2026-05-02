@@ -37,6 +37,8 @@ graph TD
 
 The root runtime can still classify requests across the built-in specialist types shown above, but built-in production teammate work uses `agent_spawn` rather than static built-in handoff. The built-in teammate registry remains `operator`, `navigator`, `vault`, `librarian`, `automator`, `planner`, `chronicler`, and `ontologist`.
 
+In production, those built-in teammate types are routing targets, not attached ADK sub-agents. The orchestrator's actual ADK `SubAgents` list is reserved for remote A2A agents and explicit non-built-in compatibility specs.
+
 ## Sub-Agent Roles
 
 | Agent | Role | Tool Prefixes |

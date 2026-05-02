@@ -544,7 +544,7 @@ func (a *Agent) RunAndCollect(ctx context.Context, sessionID, input string, opts
 	}
 
 	badAgent := extractMissingAgent(err)
-	if badAgent == "" || len(a.adkAgent.SubAgents()) == 0 {
+	if !shouldRetryMissingAgent(badAgent, len(a.adkAgent.SubAgents())) {
 		// Tool churn recovery: if a sub-agent was stopped due to repeated
 		// same-tool calls, discard the stuck child session and let the
 		// orchestrator respond using whatever information was gathered.
@@ -807,6 +807,16 @@ func containsBuiltinTargetName(name string) bool {
 	default:
 		return false
 	}
+}
+
+func shouldRetryMissingAgent(badAgent string, subAgentCount int) bool {
+	if badAgent == "" {
+		return false
+	}
+	if subAgentCount == 0 && !containsBuiltinTargetName(badAgent) {
+		return false
+	}
+	return true
 }
 
 // subAgentNames returns the names of all immediate sub-agents.
