@@ -2,7 +2,7 @@
 
 ## lango
 
-Run `lango` without arguments to launch the multi-panel TUI cockpit. This is the default entry point and is equivalent to `lango cockpit`.
+Run `lango` without arguments to launch the multi-panel TUI cockpit. This is the default entry point and is equivalent to `lango cockpit`. The first page is Mission Control, while `lango chat` remains the direct focused-chat fallback.
 
 ```bash
 $ lango
@@ -14,9 +14,9 @@ Only core components (session store, embedding, knowledge) are started. Network 
 
 ## lango cockpit
 
-Launch the multi-panel TUI dashboard explicitly. Same behavior as bare `lango`. The cockpit provides:
+Launch the multi-panel TUI dashboard explicitly. Same behavior as bare `lango`: Mission Control opens first, chat remains available as a cockpit detail page, and `lango chat` still bypasses the cockpit for focused chat. The cockpit provides:
 
-- Multi-page layout with Chat, Tools, Status, Sessions, and Settings pages
+- Mission Control as the default first surface, plus Chat, Settings, Tools, Status, Sessions, Tasks, Dead Letters, and Approvals in the sidebar
 - Transcript viewport with assistant markdown reflow on resize
 - Clear visual separation between user, assistant, status, and approval transcript blocks
 - Dedicated turn status strip for ready/streaming/approval/failure states
@@ -32,7 +32,7 @@ $ lango cockpit
 
 ## lango chat
 
-Launch the plain chat TUI. A simpler, transcript-first experience without the multi-panel cockpit layout. Suitable for quick interactions that don't require the full dashboard.
+Launch the plain chat TUI. A simpler, transcript-first experience without the multi-panel cockpit layout or Mission Control landing page. Suitable for quick interactions that don't require the full dashboard.
 
 ```bash
 $ lango chat

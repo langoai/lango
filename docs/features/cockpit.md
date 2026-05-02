@@ -6,14 +6,14 @@ title: Cockpit TUI
 
 ## Overview
 
-The cockpit is a multi-panel terminal dashboard and the default entry point when running `lango` with no arguments. Built with [Bubble Tea](https://github.com/charmbracelet/bubbletea), it wraps the chat interface in a full-featured layout with sidebar navigation, multiple pages, and a live context panel.
+The cockpit is a multi-panel terminal dashboard and the default entry point when running `lango` with no arguments. Built with [Bubble Tea](https://github.com/charmbracelet/bubbletea), it opens on Mission Control first, keeps direct chat available inside the cockpit, and adds sidebar navigation, multiple detail pages, and a live context panel around that shared session.
 
 ## Launch
 
 ```bash
-lango            # launch cockpit (default)
+lango            # launch cockpit on Mission Control (default)
 lango cockpit    # explicit cockpit launch
-lango chat       # plain single-panel chat (no sidebar, no pages)
+lango chat       # focused single-panel chat fallback (no sidebar, no pages)
 ```
 
 The cockpit requires an interactive terminal with TTY support.
@@ -31,22 +31,24 @@ The cockpit requires an interactive terminal with TTY support.
 ```
 
 - **Sidebar** -- page navigation list, toggled with `Ctrl+B`
-- **Main content** -- active page rendering (chat, settings, tools, status, sessions, tasks, or approvals)
+- **Main content** -- active page rendering (Mission Control, chat, settings, tools, status, sessions, tasks, dead letters, or approvals)
 - **Context panel** -- live system metrics, toggled with `Ctrl+P`
 
 ## Pages
 
 | Page | Description | Notes |
 |------|-------------|-------|
-| **Chat** | The primary AI conversation interface (same as `lango chat`) | Always has content |
+| **Mission Control** | Default first screen with projected active missions, one live pending decision, recent activity, and an inline composer | Chat remains available by typing here or via `lango chat` |
+| **Chat** | Focused AI conversation page inside cockpit | `Ctrl+1`; `lango chat` bypasses cockpit entirely |
 | **Settings** | Interactive configuration viewer | Always has content |
 | **Tools** | Tool inventory with agent assignments and invocation counts | Shows empty if ToolCatalog is nil |
 | **Status** | System status dashboard (health, features, agent state) | Always has content |
 | **Sessions** | Session history and management | Always has content |
 | **Tasks** | Background task status and management | Shows empty if BackgroundManager is nil |
+| **Dead Letters** | Dead-letter backlog and retry surface | Dedicated page requires the dead-letter bridge to be ready |
 | **Approvals** | Approval history and grant management | Shows empty if ApprovalHistory is nil |
 
-All 7 pages always appear in the sidebar navigation regardless of whether their backing data source is available. The chat page is the default active page on startup.
+The current sidebar order is Mission Control, Chat, Settings, Tools, Status, Sessions, Tasks, Dead Letters, and Approvals. Mission Control is the default active page on startup.
 
 ## Keyboard Shortcuts
 
@@ -63,7 +65,24 @@ All 7 pages always appear in the sidebar navigation regardless of whether their 
 | `Ctrl+5` | Switch to Tasks page |
 | `Ctrl+6` | Switch to Approvals page |
 
-Sessions is accessible via sidebar navigation only (no keyboard shortcut).
+Mission Control, Sessions, and Dead Letters are reached from the sidebar. Wave 1 intentionally keeps the existing `Ctrl+1` through `Ctrl+6` mappings for the detail pages instead of remapping them around Mission Control.
+
+## Mission Control
+
+Mission Control is the default cockpit landing surface. It is a sidebar-first page, not a separate top-level CLI command.
+
+- **Missions lane** — active background work appears as projected `active` missions; buffered learning suggestions appear as `proposed` missions.
+- **Decisions lane** — the latest pending approval is shown as one live decision with action, reason, effect, and risk.
+- **Activity lane** — recent deterministic activity is listed as compact timeline entries.
+- **Composer** — the first-screen hint is: "Type to chat here, or use `lango chat` for focused chat."
+
+Mission Control can stay visible while a pending approval is active. Resolving that decision uses the same shared approval path as the chat surface.
+
+## Wave 1 Limits
+
+- Mission Control does not create or persist durable mission records.
+- The activity lane is deterministic runtime projection, not LLM-generated humanized narration.
+- RunLedger and AgentRun data are optional enrichments. When those readers are unavailable, Mission Control falls back to background-task projection and shows a degraded note instead of inventing values.
 
 ## Context Panel
 
@@ -111,7 +130,7 @@ When the observability collector is unavailable, placeholder text is shown.
 | Feature | Cockpit (`lango`) | Chat (`lango chat`) |
 |---------|-------------------|---------------------|
 | Sidebar navigation | Yes | No |
-| Multiple pages | Yes (7 pages) | No (chat only) |
+| Multiple pages | Yes (Mission Control + 8 detail/sidebar pages) | No (chat only) |
 | Context panel | Yes | No |
 | Keyboard shortcuts | Full set | Chat-only |
 | Terminal width | Recommended 120+ cols | Any width |

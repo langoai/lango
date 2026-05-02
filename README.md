@@ -66,7 +66,7 @@ Single binary. <100ms startup. <250MB memory. Just Go.
 - 👥 **P2P Teams** — Task-scoped agent groups with role-based delegation, conflict resolution (trust_weighted, majority_vote, leader_decides, fail_on_conflict), assignment strategies, and payment coordination
 - 📊 **Observability** — Token usage tracking, health monitoring, audit logging, and metrics endpoints
 - 🎯 **Context Engineering** — Token-budget-aware context allocation, retrieval coordinator (FactSearch + TemporalSearch + ContextSearch), config profiles (off/lite/balanced/full), and relevance score auto-adjustment
-- 🖥️ **Cockpit TUI** — Multi-panel terminal dashboard with 7 pages (Chat, Settings, Tools, Status, Sessions, Tasks, Approvals). Context panel with live token usage, tool stats, runtime, channels, and system metrics. Two-tier approval with inline strip and fullscreen dialog. Background task management with detail view, cancel, and retry. Runtime visibility with delegation tracking, budget warnings, and recovery events
+- 🖥️ **Cockpit TUI** — Multi-panel terminal dashboard with Mission Control as the default landing surface, followed by Chat, Settings, Tools, Status, Sessions, Tasks, Dead Letters, and Approvals in the sidebar. Context panel with live token usage, tool stats, runtime, channels, and system metrics. Two-tier approval with inline strip and fullscreen dialog. Background task management with detail view, cancel, and retry. Runtime visibility with delegation tracking, budget warnings, and recovery events
 - 📋 **RunLedger (Task OS)** — Durable execution engine with append-only journal, PEV verification, typed validators, and planner integration
 - 📜 **Session Provenance** — Persistent checkpoints, session lineage tree, git-aware attribution, and signed provenance bundle export/import
 - 🛡️ **OS-level Sandbox** — Process isolation via macOS Seatbelt and Linux bubblewrap (when `bwrap` is installed), network deny, workspace-scoped write access, automatic control-plane (`~/.lango`) and `.git` masking (walks up to the repo root and follows linked-worktree pointers), file-level deny via `/dev/null` bind, symlink resolution, glob patterns in deny/write lists, audit trail of every apply/skip/exclude decision
@@ -157,10 +157,10 @@ For the full configuration editor with all options, use `lango settings`.
 See the full [CLI Reference](docs/cli/index.md) for the complete command set.
 
 ```
-lango                            Launch cockpit TUI (interactive terminal)
+lango                            Launch cockpit TUI with Mission Control as the default surface
 lango cockpit                    Launch multi-panel TUI dashboard
 lango serve                      Start the gateway server
-lango chat                       Launch plain chat TUI
+lango chat                       Launch focused chat TUI
 lango onboard                    Guided 5-step setup wizard
 lango settings                   Full interactive configuration editor
 lango doctor [--fix]             Diagnostics and health checks
@@ -188,17 +188,21 @@ lango doctor --json
 
 ## Cockpit TUI
 
-The cockpit is a multi-panel terminal dashboard launched via `lango` or `lango cockpit`. It provides real-time visibility into agent operations with a sidebar, context panel, and 7 switchable pages:
+The cockpit is a multi-panel terminal dashboard launched via `lango` or `lango cockpit`. Bare `lango` opens the cockpit with Mission Control as the default first screen, while `lango chat` remains the focused chat fallback. The sidebar order is currently Mission Control, Chat, Settings, Tools, Status, Sessions, Tasks, Dead Letters, and Approvals. Existing `Ctrl+1` through `Ctrl+6` page shortcuts were intentionally preserved for the detail pages.
 
 | Shortcut | Page | Description |
 |----------|------|-------------|
+| — | Mission Control | Default cockpit landing surface with projected active missions, one live pending decision, recent activity, and an inline composer |
 | Ctrl+1 | Chat | Interactive agent conversation with streaming, tool lifecycle indicators, and two-tier approval |
 | Ctrl+2 | Settings | Runtime configuration editor |
 | Ctrl+3 | Tools | Registered tools with categories and safety levels |
 | Ctrl+4 | Status | System health and component status |
 | — | Sessions | Session history browser (accessible via sidebar) |
 | Ctrl+5 | Tasks | Background task management with detail view, cancel, and retry |
+| — | Dead Letters | Dead-letter backlog and retry surface when the dead-letter bridge is available |
 | Ctrl+6 | Approvals | Approval history and active grant management with revoke controls |
+
+Mission Control keeps chat available on the first screen: type directly into the shared composer, or use `lango chat` for focused chat. In Wave 1, Mission Control projects current runtime facts only: it does not create durable mission records, it does not humanize activity with LLM-generated summaries, and RunLedger / AgentRun details appear only when those optional readers are available.
 
 **Context Panel** (Ctrl+P) — Right-side panel with 5 live sections: token usage, tool stats, runtime status, channel status, and system uptime.
 
