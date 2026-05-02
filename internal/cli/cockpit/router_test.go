@@ -12,6 +12,7 @@ func TestPageIDString(t *testing.T) {
 		give PageID
 		want string
 	}{
+		{give: PageMissionControl, want: "mission-control"},
 		{give: PageChat, want: "chat"},
 		{give: PageSettings, want: "settings"},
 		{give: PageTools, want: "tools"},
@@ -34,6 +35,7 @@ func TestPageIDFromString(t *testing.T) {
 		give string
 		want PageID
 	}{
+		{give: "mission-control", want: PageMissionControl},
 		{give: "chat", want: PageChat},
 		{give: "settings", want: PageSettings},
 		{give: "tools", want: PageTools},
@@ -53,7 +55,7 @@ func TestPageIDFromString(t *testing.T) {
 
 func TestAllPageMetas_Count(t *testing.T) {
 	metas := AllPageMetas()
-	assert.Len(t, metas, 8, "AllPageMetas should return exactly 8 items (Chat + 7 pages)")
+	assert.Len(t, metas, 9, "AllPageMetas should return exactly 9 items (Mission Control, Chat, and 7 detail pages)")
 }
 
 func TestAllPageMetas_AllPageIDsCovered(t *testing.T) {
@@ -65,6 +67,7 @@ func TestAllPageMetas_AllPageIDsCovered(t *testing.T) {
 
 	// Every non-Chat PageID must have an entry.
 	nonChatPages := []PageID{
+		PageMissionControl,
 		PageSettings, PageTools, PageStatus,
 		PageSessions, PageTasks, PageDeadLetters, PageApprovals,
 	}
@@ -74,6 +77,13 @@ func TestAllPageMetas_AllPageIDsCovered(t *testing.T) {
 	}
 	// Chat must also be present.
 	assert.True(t, metaIDs[PageChat.String()], "AllPageMetas should contain entry for chat")
+}
+
+func TestAllPageMetas_MissionControlFirst(t *testing.T) {
+	metas := AllPageMetas()
+	require.NotEmpty(t, metas)
+	assert.Equal(t, PageMissionControl.String(), metas[0].ID)
+	assert.Equal(t, "Mission Control", metas[0].Label)
 }
 
 func TestAllPageMetas_RoundTrip(t *testing.T) {

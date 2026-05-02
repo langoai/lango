@@ -79,6 +79,14 @@ func newTestModelWithCollector(mock *mockChild) *Model {
 	}
 }
 
+func newDefaultTestModel(mock *mockChild) *Model {
+	m := New(Deps{})
+	m.child = mock
+	m.width = 120
+	m.height = 40
+	return m
+}
+
 func ctrlB() tea.KeyMsg {
 	return tea.KeyMsg{Type: tea.KeyCtrlB}
 }
@@ -159,6 +167,11 @@ func TestSetProgram_Delegation(t *testing.T) {
 	m := newTestModel(mock)
 	m.SetProgram(nil)
 	assert.True(t, mock.programSet)
+}
+
+func TestNew_DefaultPageIsMissionControl(t *testing.T) {
+	m := New(Deps{})
+	assert.Equal(t, PageMissionControl, m.activePage)
 }
 
 // --- New Change-2 tests ---
@@ -341,6 +354,27 @@ func TestApprovalRequestMsg_SwitchesToChatAndForwards(t *testing.T) {
 	require.Len(t, mock.updates, 1, "ApprovalRequestMsg must reach chat child")
 	// Tools page should NOT receive the message.
 	assert.Empty(t, toolsPage.updates)
+}
+
+func TestApprovalRequestMsg_MissionControlRemainsVisibleAndUsesSharedOwner(t *testing.T) {
+	mock := &mockChild{}
+	registry := NewPendingApprovalRegistry()
+	m := newDefaultTestModel(mock)
+	m.pendingApprovals = registry
+	m.RegisterPage(PageMissionControl, &mockPage{title: "Mission Control"})
+
+	msg := chat.ApprovalRequestMsg{
+		Request:  approval.ApprovalRequest{ID: "apr-1", ToolName: "exec"},
+		Response: make(chan approval.ApprovalResponse, 1),
+	}
+	m.Update(msg)
+
+	assert.Equal(t, PageMissionControl, m.activePage, "Mission Control should remain active for approval visibility")
+	require.True(t, registry.HasPending(), "shared pending owner should record the approval")
+	require.NotNil(t, registry.Latest())
+	assert.Equal(t, "apr-1", registry.Latest().Request.ID)
+	require.Len(t, mock.updates, 1, "chat child should still receive the approval request")
+	assert.Equal(t, msg, mock.updates[0])
 }
 
 func TestApprovalRequestMsg_AlreadyOnChat(t *testing.T) {
@@ -657,4 +691,42 @@ func TestSidebarClick_UnregisteredPage_NoOp(t *testing.T) {
 	// Child should NOT have received any messages (no Activate forwarded).
 	assert.Empty(t, mock.updates,
 		"no messages should reach child for an unregistered page switch")
+}
+
+func TestMissionControlIntegration_DetailPagesRemainReachable(t *testing.T) {
+	mock := &mockChild{}
+	m := newDefaultTestModel(mock)
+	m.RegisterPage(PageMissionControl, &mockPage{title: "Mission Control"})
+	m.RegisterPage(PageSettings, &mockPage{title: "Settings"})
+	m.RegisterPage(PageTools, &mockPage{title: "Tools"})
+	m.RegisterPage(PageStatus, &mockPage{title: "Status"})
+	m.RegisterPage(PageSessions, &mockPage{title: "Sessions"})
+	m.RegisterPage(PageTasks, &mockPage{title: "Tasks"})
+	m.RegisterPage(PageApprovals, &mockPage{title: "Approvals"})
+
+	assert.Equal(t, PageMissionControl, m.activePage)
+
+	m.switchPage(PageChat)
+	assert.Equal(t, PageChat, m.activePage)
+
+	m.switchPage(PageSettings)
+	assert.Equal(t, PageSettings, m.activePage)
+
+	m.switchPage(PageTools)
+	assert.Equal(t, PageTools, m.activePage)
+
+	m.switchPage(PageStatus)
+	assert.Equal(t, PageStatus, m.activePage)
+
+	m.switchPage(PageTasks)
+	assert.Equal(t, PageTasks, m.activePage)
+
+	m.switchPage(PageApprovals)
+	assert.Equal(t, PageApprovals, m.activePage)
+
+	m.Update(sidebar.PageSelectedMsg{ID: "sessions"})
+	assert.Equal(t, PageSessions, m.activePage)
+
+	m.Update(sidebar.PageSelectedMsg{ID: "mission-control"})
+	assert.Equal(t, PageMissionControl, m.activePage)
 }

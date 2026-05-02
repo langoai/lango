@@ -72,7 +72,7 @@ func New(deps Deps) *Model {
 		child:            chatModel,
 		cfg:              deps.Config,
 		pages:            make(map[PageID]Page),
-		activePage:       PageChat,
+		activePage:       PageMissionControl,
 		sidebar:          sidebar.New(AllPageMetas()),
 		contextPanel:     NewContextPanel(deps.MetricsCollector),
 		keymap:           defaultKeyMap(),
@@ -107,7 +107,14 @@ func (m *Model) SetRuntimeTracker(tracker *RuntimeTracker) {
 
 // Init implements tea.Model.
 func (m *Model) Init() tea.Cmd {
-	return m.child.Init()
+	cmds := []tea.Cmd{m.child.Init()}
+	m.sidebar.SetActive(m.activePage.String())
+	if m.activePage != PageChat {
+		if page, ok := m.pages[m.activePage]; ok {
+			cmds = append(cmds, page.Activate())
+		}
+	}
+	return tea.Batch(cmds...)
 }
 
 // Update implements tea.Model.
@@ -171,7 +178,7 @@ func (m *Model) handleChannelMessage(msg chat.ChannelMessageMsg) (*Model, tea.Cm
 	}
 	up, cmd := m.child.Update(msg)
 	m.child = up.(childModel)
-	return m, cmd
+	return m, tea.Batch(cmd, m.forwardToMissionControlIfActive(msg))
 }
 
 // handleApprovalRequest registers the latest pending approval and forwards the
@@ -181,10 +188,13 @@ func (m *Model) handleApprovalRequest(msg chat.ApprovalRequestMsg) (*Model, tea.
 	if m.pendingApprovals != nil {
 		m.pendingApprovals.Register(msg)
 	}
-	switchCmd := m.switchPage(PageChat)
+	var switchCmd tea.Cmd
+	if m.activePage != PageMissionControl {
+		switchCmd = m.switchPage(PageChat)
+	}
 	up, childCmd := m.child.Update(msg)
 	m.child = up.(childModel)
-	return m, tea.Batch(switchCmd, childCmd)
+	return m, tea.Batch(switchCmd, childCmd, m.forwardToMissionControlIfActive(msg))
 }
 
 // markTurnStarted calls runtimeTracker.StartTurn() on the first content event
@@ -217,7 +227,7 @@ func (m *Model) handleDelegation(msg chat.DelegationMsg) (*Model, tea.Cmd) {
 	}
 	up, cmd := m.child.Update(msg)
 	m.child = up.(childModel)
-	return m, cmd
+	return m, tea.Batch(cmd, m.forwardToMissionControlIfActive(msg))
 }
 
 // handleBudgetWarning always forwards to the chat child from any page.
@@ -227,7 +237,7 @@ func (m *Model) handleBudgetWarning(msg chat.BudgetWarningMsg) (*Model, tea.Cmd)
 	}
 	up, cmd := m.child.Update(msg)
 	m.child = up.(childModel)
-	return m, cmd
+	return m, tea.Batch(cmd, m.forwardToMissionControlIfActive(msg))
 }
 
 // handleRecovery always forwards to the chat child from any page.
@@ -237,7 +247,7 @@ func (m *Model) handleRecovery(msg chat.RecoveryMsg) (*Model, tea.Cmd) {
 	}
 	up, cmd := m.child.Update(msg)
 	m.child = up.(childModel)
-	return m, cmd
+	return m, tea.Batch(cmd, m.forwardToMissionControlIfActive(msg))
 }
 
 // handleDone forwards DoneMsg to the chat child FIRST so the assistant response
@@ -275,6 +285,9 @@ func (m *Model) handleDone(msg chat.DoneMsg) (*Model, tea.Cmd) {
 		if m.contextPanel != nil {
 			m.contextPanel.SetRuntimeStatus(runtimeStatus{IsRunning: false})
 		}
+	}
+	if missionCmd := m.forwardToMissionControlIfActive(msg); missionCmd != nil {
+		cmds = append(cmds, missionCmd)
 	}
 	return m, tea.Batch(cmds...)
 }
@@ -475,6 +488,19 @@ func (m *Model) forwardToActive(msg tea.Msg) (*Model, tea.Cmd) {
 		return m, cmd
 	}
 	return m, nil
+}
+
+func (m *Model) forwardToMissionControlIfActive(msg tea.Msg) tea.Cmd {
+	if m.activePage != PageMissionControl {
+		return nil
+	}
+	page, ok := m.pages[PageMissionControl]
+	if !ok {
+		return nil
+	}
+	up, cmd := page.Update(msg)
+	m.pages[PageMissionControl] = up.(Page)
+	return cmd
 }
 
 func (m *Model) sidebarWidth() int {

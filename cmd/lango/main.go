@@ -706,7 +706,7 @@ func runCockpit(initialMode string) error {
 	learningBuffer := cockpit.NewLearningSuggestionBuffer(nil)
 	activityBuffer := cockpit.NewMissionActivityBuffer()
 
-	model := cockpit.New(cockpit.Deps{
+	cockpitDeps := cockpit.Deps{
 		TurnRunner:        application.TurnRunner,
 		Config:            cfg,
 		SessionKey:        sessionKey,
@@ -722,9 +722,24 @@ func runCockpit(initialMode string) error {
 		PendingApprovals:  pendingApprovals,
 		LearningBuffer:    learningBuffer,
 		ActivityBuffer:    activityBuffer,
+		RunLedgerStore:    application.RunLedgerStore,
+		AgentRunStore:     application.AgentRunStore,
+	}
+
+	model := cockpit.New(cockpitDeps)
+	missionComposer := chat.New(chat.Deps{
+		TurnRunner:        application.TurnRunner,
+		Config:            cfg,
+		SessionKey:        sessionKey,
+		SessionStore:      application.Store,
+		EventBus:          application.EventBus,
+		BackgroundManager: application.BackgroundManager,
+		SharedPending:     pendingApprovals,
 	})
 
 	// Register pages.
+	model.RegisterPage(cockpit.PageMissionControl,
+		pages.NewMissionControlPage(cockpitDeps, missionComposer))
 	if application.ToolCatalog != nil {
 		model.RegisterPage(cockpit.PageTools,
 			pages.NewToolsPage(application.ToolCatalog))
@@ -768,6 +783,7 @@ func runCockpit(initialMode string) error {
 
 	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	model.SetProgram(p)
+	missionComposer.SetProgram(p)
 	model.SetChannelTracker(tracker)
 
 	// Wire runtime tracker for live token/delegation/recovery metrics.
