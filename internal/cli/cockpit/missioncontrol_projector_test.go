@@ -159,7 +159,11 @@ func TestMissionControlProjectorLearningSuggestionDerivation(t *testing.T) {
 	assert.Equal(t, MissionKindProposed, snapshot.Missions[0].Kind)
 	assert.Equal(t, MissionStatusPrepared, snapshot.Missions[0].Status)
 	assert.Equal(t, "Apply learning rule: Collapse mission overflow into a compact summary.", snapshot.Missions[0].Title)
+	assert.Equal(t, "proposed_learning", snapshot.Missions[0].SourceKind)
+	assert.Equal(t, "newer", snapshot.Missions[0].SourceRef)
 	assert.Equal(t, "learn:older", snapshot.Missions[1].ID)
+	assert.Equal(t, "proposed_learning", snapshot.Missions[1].SourceKind)
+	assert.Equal(t, "older", snapshot.Missions[1].SourceRef)
 }
 
 func TestMissionControlProjectorRunLedgerNextActionEnrichment(t *testing.T) {

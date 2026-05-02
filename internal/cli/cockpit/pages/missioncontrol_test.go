@@ -427,6 +427,7 @@ func TestMissionControlAcceptProposedMissionCreatesDurableRowAndRemovesOverlay(t
 
 	require.Len(t, page.snapshot.Missions, 1)
 	require.Equal(t, cockpit.MissionKindProposed, page.snapshot.Missions[0].Kind)
+	page.snapshot.Missions[0].ID = "display-only-id"
 	page.focus = missionControlFocusMissions
 
 	updated, cmd := page.Update(tea.KeyMsg{Type: tea.KeyEnter})

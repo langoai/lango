@@ -202,6 +202,8 @@ func (p *MissionControlProjector) projectLearningSuggestions() []MissionView {
 			Title:      "Apply learning rule: " + title,
 			Detail:     strings.TrimSpace(item.Rationale),
 			NextAction: "Review suggestion",
+			SourceKind: "proposed_learning",
+			SourceRef:  strings.TrimSpace(item.SuggestionID),
 			UpdatedAt:  item.Timestamp,
 		})
 	}

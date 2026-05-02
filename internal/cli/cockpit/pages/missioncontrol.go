@@ -232,13 +232,17 @@ func (p *MissionControlPage) acceptSelectedProposal() (tea.Cmd, bool) {
 		return nil, false
 	}
 
-	sourceRef := strings.TrimSpace(missionView.SourceRef)
-	if sourceRef == "" && strings.HasPrefix(missionView.ID, "learn:") {
-		sourceRef = strings.TrimSpace(strings.TrimPrefix(missionView.ID, "learn:"))
-	}
 	sourceKind := strings.TrimSpace(missionView.SourceKind)
-	if sourceKind == "" {
-		sourceKind = "proposed_learning"
+	sourceRef := strings.TrimSpace(missionView.SourceRef)
+	if sourceKind == "" || sourceRef == "" {
+		// Backward compatibility for stale snapshots created before explicit
+		// proposal metadata was carried on MissionView.
+		if sourceKind == "" {
+			sourceKind = "proposed_learning"
+		}
+		if sourceRef == "" && strings.HasPrefix(missionView.ID, "learn:") {
+			sourceRef = strings.TrimSpace(strings.TrimPrefix(missionView.ID, "learn:"))
+		}
 	}
 
 	title := strings.TrimSpace(missionView.Title)
