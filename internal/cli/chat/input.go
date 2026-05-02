@@ -80,6 +80,14 @@ func (m *inputModel) Value() string {
 	return m.textarea.Value()
 }
 
+func (m *inputModel) Placeholder() string {
+	return m.textarea.Placeholder
+}
+
+func (m *inputModel) SetValue(value string) {
+	m.textarea.SetValue(value)
+}
+
 func (m *inputModel) Reset() {
 	m.textarea.Reset()
 }

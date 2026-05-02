@@ -184,6 +184,30 @@ func (m *ChatModel) SetProgram(p *tea.Program) {
 	m.program = p
 }
 
+// ComposerValue returns the current composer contents.
+func (m *ChatModel) ComposerValue() string {
+	if m == nil {
+		return ""
+	}
+	return m.input.Value()
+}
+
+// ComposerPlaceholder returns the current composer placeholder copy.
+func (m *ChatModel) ComposerPlaceholder() string {
+	if m == nil {
+		return ""
+	}
+	return m.input.Placeholder()
+}
+
+// SetComposerValue replaces the current composer contents.
+func (m *ChatModel) SetComposerValue(value string) {
+	if m == nil {
+		return
+	}
+	m.input.SetValue(value)
+}
+
 // Init implements tea.Model.
 func (m *ChatModel) Init() tea.Cmd {
 	cmds := []tea.Cmd{
