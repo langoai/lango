@@ -144,16 +144,17 @@ func (p *MissionControlPage) View() string {
 		return joinNonEmpty(header, body, footer)
 	}
 
-	if p.height < 24 {
-		body := p.renderFocusedLane(true)
+	if p.isEmpty() {
+		body := joinNonEmpty(
+			p.renderEmpty(),
+			p.renderActivityPane(false),
+			p.renderComposerLine(),
+		)
 		return joinNonEmpty(header, body, footer)
 	}
 
-	if p.isEmpty() {
-		body := p.renderEmpty()
-		if p.focus == missionControlFocusComposer || p.composerVisibleInCompact() {
-			body = joinNonEmpty(body, p.renderComposerLine())
-		}
+	if p.height < 24 {
+		body := p.renderFocusedLane(true)
 		return joinNonEmpty(header, body, footer)
 	}
 
@@ -176,6 +177,10 @@ func (p *MissionControlPage) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, key.NewBinding(key.WithKeys("tab"))):
 		p.focus = (p.focus + 1) % 3
 		return p, nil
+	case p.focus == missionControlFocusDecisions:
+		if cmd, handled := p.forwardDecisionKey(msg); handled {
+			return p, cmd
+		}
 	case isMissionControlPrintableKey(msg):
 		p.focus = missionControlFocusComposer
 		return p.forwardComposerKey(msg)
@@ -187,6 +192,18 @@ func (p *MissionControlPage) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		p.moveCursor(1)
 	}
 	return p, nil
+}
+
+func (p *MissionControlPage) forwardDecisionKey(msg tea.KeyMsg) (tea.Cmd, bool) {
+	if p.snapshot.Decision == nil || p.composer == nil {
+		return nil, false
+	}
+	switch {
+	case key.Matches(msg, key.NewBinding(key.WithKeys("a", "s", "d", "esc"))):
+		return p.composer.HandlePendingApprovalKey(msg), true
+	default:
+		return nil, false
+	}
 }
 
 func (p *MissionControlPage) forwardComposerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -241,6 +258,7 @@ func (p *MissionControlPage) renderHeader() string {
 	if text := strings.TrimSpace(p.snapshot.Header.ActiveAgentSummary); text != "" {
 		lines = append(lines, "Agents: "+text)
 	}
+	lines = append(lines, fmt.Sprintf("Pending decisions: %d", p.snapshot.Header.PendingDecisionCount))
 	if text := strings.TrimSpace(p.snapshot.Header.ModelProviderSummary); text != "" {
 		lines = append(lines, "Model: "+text)
 	}
@@ -327,24 +345,19 @@ func (p *MissionControlPage) renderMissionPane() string {
 	return strings.Join(lines, "\n")
 }
 
-func (p *MissionControlPage) renderDecisionPane(compact bool) string {
+func (p *MissionControlPage) renderDecisionPane(_ bool) string {
 	title := p.sectionTitle("Decisions", p.focus == missionControlFocusDecisions)
 	if p.snapshot.Decision == nil {
 		return joinNonEmpty(title, "No pending decisions.")
 	}
 
 	decision := p.snapshot.Decision
-	lines := []string{title, "> " + decision.Title}
-	if reason := strings.TrimSpace(decision.Reason); reason != "" {
-		lines = append(lines, "  "+reason)
-	}
-	if effect := strings.TrimSpace(decision.EffectText); effect != "" {
-		lines = append(lines, "  "+effect)
-	}
-	if !compact {
-		if risk := strings.TrimSpace(firstNonEmpty(decision.RiskLabel, decision.RiskLevel)); risk != "" {
-			lines = append(lines, "  Risk: "+risk)
-		}
+	lines := []string{
+		title,
+		"> Action: " + firstNonEmpty(decision.Title, "Pending approval"),
+		"  Reason: " + firstNonEmpty(decision.Reason, "—"),
+		"  Effect: " + firstNonEmpty(decision.EffectText, "—"),
+		"  Risk: " + firstNonEmpty(decision.RiskLabel, decision.RiskLevel, "—"),
 	}
 	return strings.Join(lines, "\n")
 }
@@ -428,7 +441,7 @@ func (p *MissionControlPage) sectionTitle(label string, focused bool) string {
 }
 
 func (p *MissionControlPage) isEmpty() bool {
-	return len(p.snapshot.Missions) == 0 && p.snapshot.Decision == nil && len(p.snapshot.Activities) == 0
+	return len(p.snapshot.Missions) == 0 && p.snapshot.Decision == nil
 }
 
 func missionControlTickCmd() tea.Cmd {

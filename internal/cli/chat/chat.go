@@ -208,6 +208,20 @@ func (m *ChatModel) SetComposerValue(value string) {
 	m.input.SetValue(value)
 }
 
+// HandlePendingApprovalKey routes one approval key through the existing chat
+// approval flow when a pending approval is available.
+func (m *ChatModel) HandlePendingApprovalKey(msg tea.KeyMsg) tea.Cmd {
+	if m == nil || m.currentPendingApproval() == nil {
+		return nil
+	}
+	if m.state != stateApproving {
+		if cmd := m.transitionTo(stateApproving); cmd != nil {
+			return tea.Batch(cmd, m.handleApprovingKey(msg))
+		}
+	}
+	return m.handleApprovingKey(msg)
+}
+
 // Init implements tea.Model.
 func (m *ChatModel) Init() tea.Cmd {
 	cmds := []tea.Cmd{
