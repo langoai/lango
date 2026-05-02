@@ -58,13 +58,12 @@ func (p *MissionControlProjector) Project(taskSnapshots []background.TaskSnapsho
 	}
 
 	generatedAt := p.now()
-	degradedNote := p.buildDegradedNote()
-
-	missions := p.projectBackgroundTasks(taskSnapshots)
+	missions, runLedgerDegraded, agentRunDegraded := p.projectBackgroundTasks(taskSnapshots)
 	missions = append(missions, p.projectLearningSuggestions()...)
 	sort.SliceStable(missions, func(i, j int) bool {
 		return compareMissionViews(missions[i], missions[j])
 	})
+	degradedNote := p.buildDegradedNote(runLedgerDegraded, agentRunDegraded)
 
 	activities := p.projectActivities()
 	visibleMissions, hiddenMissionCount, missionOverflow := limitMissions(missions, p.missionLimit)
@@ -93,13 +92,15 @@ func (p *MissionControlProjector) Project(taskSnapshots []background.TaskSnapsho
 	}
 }
 
-func (p *MissionControlProjector) projectBackgroundTasks(taskSnapshots []background.TaskSnapshot) []MissionView {
+func (p *MissionControlProjector) projectBackgroundTasks(taskSnapshots []background.TaskSnapshot) ([]MissionView, bool, bool) {
 	if len(taskSnapshots) == 0 {
-		return nil
+		return nil, false, false
 	}
 
 	ctx := context.Background()
 	missions := make([]MissionView, 0, len(taskSnapshots))
+	var runLedgerDegraded bool
+	var agentRunDegraded bool
 	for _, task := range taskSnapshots {
 		mission := MissionView{
 			ID:         "bg:" + strings.TrimSpace(task.ID),
@@ -115,21 +116,25 @@ func (p *MissionControlProjector) projectBackgroundTasks(taskSnapshots []backgro
 
 		if p.runLedgerStore != nil {
 			snap, err := p.runLedgerStore.GetRunSnapshot(ctx, task.ID)
-			if err == nil && snap != nil {
+			if err != nil {
+				runLedgerDegraded = true
+			} else if snap != nil {
 				enrichMissionFromRunLedger(&mission, snap)
 			}
 		}
 
 		if p.agentRunStore != nil {
 			run, err := p.agentRunStore.Get(task.ID)
-			if err == nil && run != nil {
+			if err != nil {
+				agentRunDegraded = true
+			} else if run != nil {
 				enrichMissionFromAgentRun(&mission, run)
 			}
 		}
 
 		missions = append(missions, mission)
 	}
-	return missions
+	return missions, runLedgerDegraded, agentRunDegraded
 }
 
 func (p *MissionControlProjector) projectDecision() *DecisionView {
@@ -229,12 +234,12 @@ func (p *MissionControlProjector) projectActivities() []ActivityView {
 	return views
 }
 
-func (p *MissionControlProjector) buildDegradedNote() string {
+func (p *MissionControlProjector) buildDegradedNote(runLedgerDegraded, agentRunDegraded bool) string {
 	var notes []string
-	if p.runLedgerStore == nil {
+	if p.runLedgerStore == nil || runLedgerDegraded {
 		notes = append(notes, "RunLedger unavailable")
 	}
-	if p.agentRunStore == nil {
+	if p.agentRunStore == nil || agentRunDegraded {
 		notes = append(notes, "Agent runtime unavailable")
 	}
 	return strings.Join(notes, "; ")

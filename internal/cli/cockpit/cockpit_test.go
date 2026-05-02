@@ -271,6 +271,19 @@ func TestPageSelectedMsg_SwitchesToDeadLettersPage(t *testing.T) {
 	assert.False(t, m.sidebarFocused, "focus should return to content")
 }
 
+func TestPageSelectedMsg_UnregisteredOptionalPageKeepsCurrentPage(t *testing.T) {
+	mock := &mockChild{}
+	m := newTestModel(mock)
+	toolsPage := &mockPage{title: "Tools"}
+	m.RegisterPage(PageTools, toolsPage)
+	m.switchPage(PageTools)
+
+	m.Update(sidebar.PageSelectedMsg{ID: "sessions"})
+
+	assert.Equal(t, PageTools, m.activePage)
+	assert.False(t, toolsPage.deactivated, "current page should remain active")
+}
+
 func TestViewDispatchesToActivePage(t *testing.T) {
 	mock := &mockChild{viewContent: "chat-view"}
 	m := newTestModel(mock)
@@ -691,16 +704,18 @@ func TestCtrlP_ResizePropagatesAllPages(t *testing.T) {
 func TestSidebarClick_UnregisteredPage_NoOp(t *testing.T) {
 	mock := &mockChild{}
 	m := newTestModel(mock)
-	// Do NOT register PageTools — it remains unregistered.
+	toolsPage := &mockPage{title: "Tools"}
+	m.RegisterPage(PageTools, toolsPage)
+	m.switchPage(PageTools)
 
-	// Simulate sidebar click selecting "tools".
-	m.Update(sidebar.PageSelectedMsg{ID: "tools"})
+	// Simulate sidebar click selecting an optional page that is not registered.
+	m.Update(sidebar.PageSelectedMsg{ID: "sessions"})
 
-	// activePage should change (switchPage sets it), but no crash.
 	assert.Equal(t, PageTools, m.activePage,
-		"activePage should update even for unregistered page")
+		"activePage should remain on the registered page when target is unavailable")
+	assert.False(t, toolsPage.deactivated,
+		"current page should not be deactivated when the target page is unavailable")
 
-	// Child should NOT have received any messages (no Activate forwarded).
 	assert.Empty(t, mock.updates,
 		"no messages should reach child for an unregistered page switch")
 }

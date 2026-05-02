@@ -541,6 +541,12 @@ func (m *Model) switchPage(target PageID) tea.Cmd {
 	if target == m.activePage {
 		return nil
 	}
+	if target != PageChat {
+		if _, ok := m.pages[target]; !ok {
+			m.sidebar.SetActive(m.activePage.String())
+			return nil
+		}
+	}
 	// Deactivate old page.
 	if m.activePage != PageChat {
 		if old, ok := m.pages[m.activePage]; ok {

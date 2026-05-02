@@ -769,6 +769,9 @@ func (m *ChatModel) handleApprovingKey(msg tea.KeyMsg) tea.Cmd {
 			}
 			m.approval.Clear()
 			m.chatView.appendApprovalEvent(eventText, outcome)
+			if m.currentPendingApproval() != nil {
+				return m.transitionTo(stateApproving)
+			}
 			return m.transitionTo(stateStreaming)
 		}
 		ch := pending.Response

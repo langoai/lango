@@ -20,6 +20,7 @@ import (
 
 type stubMissionControlRunLedgerReader struct {
 	snapshots map[string]*runledger.RunSnapshot
+	getErr    error
 }
 
 func (s stubMissionControlRunLedgerReader) ListRuns(context.Context, int) ([]runledger.RunSummary, error) {
@@ -27,6 +28,9 @@ func (s stubMissionControlRunLedgerReader) ListRuns(context.Context, int) ([]run
 }
 
 func (s stubMissionControlRunLedgerReader) GetRunSnapshot(_ context.Context, runID string) (*runledger.RunSnapshot, error) {
+	if s.getErr != nil {
+		return nil, s.getErr
+	}
 	if snap, ok := s.snapshots[runID]; ok {
 		return snap.DeepCopy(), nil
 	}
@@ -38,11 +42,15 @@ func (s stubMissionControlRunLedgerReader) ListRunSummariesBySession(context.Con
 }
 
 type stubMissionControlAgentRunReader struct {
-	runs map[string]*agentrt.AgentRun
-	list []*agentrt.AgentRun
+	runs   map[string]*agentrt.AgentRun
+	list   []*agentrt.AgentRun
+	getErr error
 }
 
 func (s stubMissionControlAgentRunReader) Get(id string) (*agentrt.AgentRun, error) {
+	if s.getErr != nil {
+		return nil, s.getErr
+	}
 	if run, ok := s.runs[id]; ok {
 		cp := *run
 		return &cp, nil
@@ -241,6 +249,32 @@ func TestMissionControlDegradedNilReaders(t *testing.T) {
 	assert.True(t, snapshot.Degraded)
 	assert.Contains(t, snapshot.Header.DegradedNote, "RunLedger unavailable")
 	assert.Contains(t, snapshot.Header.DegradedNote, "Agent runtime unavailable")
+	assert.Empty(t, snapshot.Missions[0].OwnerAgent)
+	assert.Empty(t, snapshot.Missions[0].RuntimeHint)
+}
+
+func TestMissionControlDegradedReaderErrorsPreserveBaseMissionData(t *testing.T) {
+	t.Parallel()
+
+	projector := NewMissionControlProjector(Deps{
+		RunLedgerStore: stubMissionControlRunLedgerReader{getErr: context.DeadlineExceeded},
+		AgentRunStore:  stubMissionControlAgentRunReader{getErr: context.Canceled},
+	})
+
+	snapshot := projector.Project([]background.TaskSnapshot{{
+		ID:         "task-1",
+		StatusText: "running",
+		Prompt:     "Queue follow-up approval",
+		StartedAt:  time.Date(2026, 5, 3, 10, 0, 0, 0, time.UTC),
+	}})
+
+	require.Len(t, snapshot.Missions, 1)
+	assert.True(t, snapshot.Degraded)
+	assert.Contains(t, snapshot.Header.DegradedNote, "RunLedger unavailable")
+	assert.Contains(t, snapshot.Header.DegradedNote, "Agent runtime unavailable")
+	assert.Equal(t, "bg:task-1", snapshot.Missions[0].ID)
+	assert.Equal(t, "Queue follow-up approval", snapshot.Missions[0].Title)
+	assert.Equal(t, MissionStatusRunning, snapshot.Missions[0].Status)
 	assert.Empty(t, snapshot.Missions[0].OwnerAgent)
 	assert.Empty(t, snapshot.Missions[0].RuntimeHint)
 }

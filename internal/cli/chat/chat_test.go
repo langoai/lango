@@ -619,6 +619,47 @@ func TestCockpitApprovalSharedResolveUsesRegistry(t *testing.T) {
 	}
 }
 
+func TestCockpitApprovalSharedResolveKeepsApprovingForNextPending(t *testing.T) {
+	shared := &stubSharedPendingStore{
+		latest: &ApprovalRequestMsg{
+			Request: approval.ApprovalRequest{
+				ID:       "apr-1",
+				ToolName: "browser_search",
+			},
+			ViewModel: approval.ApprovalViewModel{
+				Risk: approval.RiskIndicator{Level: "moderate", Label: "Reads data"},
+			},
+			Response: make(chan approval.ApprovalResponse, 1),
+		},
+		next: &ApprovalRequestMsg{
+			Request: approval.ApprovalRequest{
+				ID:       "apr-2",
+				ToolName: "fs_write",
+			},
+			ViewModel: approval.ApprovalViewModel{
+				Risk: approval.RiskIndicator{Level: "high", Label: "Writes data"},
+			},
+			Response: make(chan approval.ApprovalResponse, 1),
+		},
+		resolveOK: true,
+	}
+	m := newTestModelWithSharedPending(shared)
+	m.state = stateApproving
+
+	aKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}}
+	m.Update(aKey)
+
+	if shared.resolveCount != 1 {
+		t.Fatalf("want shared registry resolve count 1, got %d", shared.resolveCount)
+	}
+	if m.state != stateApproving {
+		t.Fatalf("want stateApproving when another pending request is promoted, got %v", m.state)
+	}
+	if pending := m.currentPendingApproval(); pending == nil || pending.Request.ID != "apr-2" {
+		t.Fatalf("want next pending approval apr-2, got %#v", pending)
+	}
+}
+
 func TestCockpitApprovalSharedResolveFailureDoesNotAppendFalseSuccess(t *testing.T) {
 	shared := &stubSharedPendingStore{
 		latest: &ApprovalRequestMsg{
@@ -710,6 +751,7 @@ func TestCockpitActivityTurnSummaryCallback(t *testing.T) {
 
 type stubSharedPendingStore struct {
 	latest         *ApprovalRequestMsg
+	next           *ApprovalRequestMsg
 	resolveCount   int
 	lastResolvedID string
 	lastResponse   approval.ApprovalResponse
@@ -729,7 +771,8 @@ func (s *stubSharedPendingStore) Resolve(id string, resp approval.ApprovalRespon
 	s.lastResolvedID = id
 	s.lastResponse = resp
 	if s.resolveOK {
-		s.latest = nil
+		s.latest = s.next
+		s.next = nil
 	}
 	return s.resolveOK
 }
