@@ -427,6 +427,9 @@ func populateAppFields(app *App, r appinit.Resolver) {
 		if bm, ok := av.BackgroundManager.(*background.Manager); ok {
 			app.BackgroundManager = bm
 		}
+		if ars, ok := av.AgentRunStore.(agentrt.AgentRunStore); ok {
+			app.AgentRunStore = ars
+		}
 		if we, ok := av.WorkflowEngine.(*workflow.Engine); ok {
 			app.WorkflowEngine = we
 		}

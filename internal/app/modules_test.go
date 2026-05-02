@@ -324,3 +324,21 @@ func TestAutomationModule_WrapsAgentRunStoreWithRunLedgerMirrorWhenWriteThroughE
 	_, ok := store.(*agentrt.RunLedgerMirrorStore)
 	require.True(t, ok)
 }
+
+func TestAutomationModule_InitRetainsAgentRunStoreInAutomationValues(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.DefaultConfig()
+	cfg.Background.Enabled = true
+
+	mod := &automationModule{cfg: cfg, app: &App{}}
+	result, err := mod.Init(context.Background(), staticResolver{
+		appinit.ProvidesSupervisor: &foundationValues{},
+	})
+	require.NoError(t, err)
+
+	vals, ok := result.Values[appinit.ProvidesAutomation].(*automationValues)
+	require.True(t, ok)
+	require.NotNil(t, vals)
+	require.NotNil(t, vals.AgentRunStore)
+}

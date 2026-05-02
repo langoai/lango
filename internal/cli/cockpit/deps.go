@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/langoai/lango/internal/agentrt"
 	"github.com/langoai/lango/internal/approval"
 	"github.com/langoai/lango/internal/background"
 	"github.com/langoai/lango/internal/config"
@@ -13,6 +14,7 @@ import (
 	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/observability"
 	"github.com/langoai/lango/internal/postadjudicationstatus"
+	"github.com/langoai/lango/internal/runledger"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/storage"
 	"github.com/langoai/lango/internal/toolcatalog"
@@ -31,7 +33,9 @@ type Deps struct {
 	MetricsCollector  *observability.MetricsCollector
 	ConfigStore       storage.ConfigProfileStore
 	ProfileName       string
-	BackgroundManager *background.Manager    // optional, nil when unavailable
+	BackgroundManager *background.Manager // optional, nil when unavailable
+	RunLedgerStore    runledger.RunLedgerStore
+	AgentRunStore     agentrt.AgentRunStore
 	EventBus          *eventbus.Bus          // optional, enables channel event subscription
 	ApprovalHistory   *approval.HistoryStore // optional, approval decision history
 	GrantStore        *approval.GrantStore   // optional, persistent session grants

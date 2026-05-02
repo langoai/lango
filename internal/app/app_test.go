@@ -4,11 +4,20 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/langoai/lango/internal/agentrt"
+	"github.com/langoai/lango/internal/appinit"
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/runledger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+type staticResolver map[appinit.Provides]interface{}
+
+func (r staticResolver) Resolve(key appinit.Provides) interface{} {
+	return r[key]
+}
 
 // testBoot creates a minimal bootstrap.Result for testing.
 func testBoot(t *testing.T, cfg *config.Config) *bootstrap.Result {
@@ -130,4 +139,40 @@ func TestNew_PhaseBRollback_AgentCreationFailure(t *testing.T) {
 
 	_, err := New(testBoot(t, cfg))
 	require.Error(t, err, "expected error when agent creation fails")
+}
+
+func TestPopulateAppFields_RunLedgerStoreStillAvailable(t *testing.T) {
+	t.Parallel()
+
+	app := &App{}
+	store := runledger.NewMemoryStore()
+
+	populateAppFields(app, staticResolver{
+		appinit.ProvidesRunLedger: &runLedgerValues{store: store},
+	})
+
+	assert.Same(t, store, app.RunLedgerStore)
+}
+
+func TestPopulateAppFields_AgentRunStoreFromAutomation(t *testing.T) {
+	t.Parallel()
+
+	app := &App{}
+	store := agentrt.NewInMemoryAgentRunStore()
+
+	populateAppFields(app, staticResolver{
+		appinit.ProvidesAutomation: &automationValues{AgentRunStore: store},
+	})
+
+	assert.Same(t, store, app.AgentRunStore)
+}
+
+func TestPopulateAppFields_AutomationAbsentLeavesAgentRunStoreNil(t *testing.T) {
+	t.Parallel()
+
+	app := &App{}
+
+	populateAppFields(app, staticResolver{})
+
+	assert.Nil(t, app.AgentRunStore)
 }

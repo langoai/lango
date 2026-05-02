@@ -86,6 +86,7 @@ type intelligenceValues struct {
 type automationValues struct {
 	CronScheduler     interface{}
 	BackgroundManager interface{}
+	AgentRunStore     interface{}
 	WorkflowEngine    interface{}
 }
 
@@ -685,6 +686,7 @@ func (m *automationModule) Init(ctx context.Context, r appinit.Resolver) (*appin
 			appinit.ProvidesAutomation: &automationValues{
 				CronScheduler:     cron,
 				BackgroundManager: bg,
+				AgentRunStore:     agentRunStore,
 				WorkflowEngine:    wf,
 			},
 		},

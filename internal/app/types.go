@@ -8,6 +8,7 @@ import (
 	"github.com/langoai/lango/internal/adk"
 	"github.com/langoai/lango/internal/agentmemory"
 	"github.com/langoai/lango/internal/agentregistry"
+	"github.com/langoai/lango/internal/agentrt"
 	"github.com/langoai/lango/internal/approval"
 	"github.com/langoai/lango/internal/background"
 	"github.com/langoai/lango/internal/config"
@@ -126,6 +127,7 @@ type App struct {
 
 	// Background Task Components (optional)
 	BackgroundManager *background.Manager
+	AgentRunStore     agentrt.AgentRunStore
 
 	// Workflow Engine Components (optional)
 	WorkflowEngine *workflow.Engine
