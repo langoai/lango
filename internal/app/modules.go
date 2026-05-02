@@ -33,6 +33,7 @@ import (
 	"github.com/langoai/lango/internal/p2p/reputation"
 	"github.com/langoai/lango/internal/p2p/team"
 	"github.com/langoai/lango/internal/receipts"
+	"github.com/langoai/lango/internal/runledger"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/storage"
@@ -525,6 +526,7 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 type automationModule struct {
 	cfg *config.Config
 	app *App // needed for AgentRunner interface at runtime
+	bus *eventbus.Bus
 }
 
 func (m *automationModule) Name() string { return "automation" }
@@ -536,6 +538,18 @@ func (m *automationModule) DependsOn() []appinit.Provides {
 }
 func (m *automationModule) Enabled() bool {
 	return m.cfg.Cron.Enabled || m.cfg.Background.Enabled || m.cfg.Workflow.Enabled
+}
+
+func newAutomationAgentRunStore(
+	cfg *config.Config,
+	rlv *runLedgerValues,
+	bus *eventbus.Bus,
+) agentrt.AgentRunStore {
+	base := agentrt.NewInMemoryAgentRunStore()
+	if rlv != nil && rlv.store != nil && cfg.RunLedger.Enabled && cfg.RunLedger.WriteThrough {
+		return agentrt.NewRunLedgerMirrorStore(base, rlv.store, bus)
+	}
+	return base
 }
 
 func (m *automationModule) Init(ctx context.Context, r appinit.Resolver) (*appinit.ModuleResult, error) {
@@ -597,18 +611,43 @@ func (m *automationModule) Init(ctx context.Context, r appinit.Resolver) (*appin
 	}
 
 	// Agent lifecycle tools (always available when automation module is active).
-	agentRunStore := agentrt.NewInMemoryAgentRunStore()
+	agentRunStore := newAutomationAgentRunStore(cfg, rlv, m.bus)
 	agentRunProjection := agentrt.NewAgentRunProjection(agentRunStore)
+	capabilityRuntime := agentrt.NewCapabilityRuntime(
+		agentRunStore,
+		&agentrt.CapabilityPolicy{},
+		func(toolName string) agent.SafetyLevel {
+			if m.app != nil && m.app.ToolCatalog != nil {
+				if level, found := m.app.ToolCatalog.GetToolSafetyLevel(toolName); found {
+					return level
+				}
+			}
+			return agent.SafetyLevelDangerous
+		},
+	)
 	controlPlane := &agentrt.AgentControlPlane{
-		RunStore:   agentRunStore,
-		Projection: agentRunProjection,
+		RunStore:          agentRunStore,
+		Projection:        agentRunProjection,
+		Submitter:         bg,
+		CapabilityRuntime: capabilityRuntime,
 	}
+	if bg != nil {
+		var runLedgerProjection *runledger.BackgroundWriteThrough
+		if rlv != nil && rlv.store != nil && cfg.RunLedger.Enabled && cfg.RunLedger.WriteThrough {
+			runLedgerProjection = runledger.NewBackgroundWriteThrough(
+				rlv.store,
+				runledger.RolloutConfig{Stage: runledger.StageWriteThrough},
+			).WithMaxHistory(cfg.RunLedger.MaxRunHistory)
+		}
+		bg.WithProjection(agentrt.NewBackgroundProjection(agentRunProjection, runLedgerProjection))
+	}
+	automationCategoryConfigKey := "cron.enabled|background.enabled|workflow.enabled"
 	controlTools := agentrt.BuildControlTools(controlPlane)
 	tools = append(tools, controlTools...)
 	entries = append(entries, appinit.CatalogEntry{
 		Category:    "agent_control",
 		Description: "Agent lifecycle management (spawn, wait, stop)",
-		ConfigKey:   "agent.orchestration.mode",
+		ConfigKey:   automationCategoryConfigKey,
 		Enabled:     true,
 		Tools:       controlTools,
 	})

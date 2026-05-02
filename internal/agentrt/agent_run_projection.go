@@ -2,14 +2,18 @@ package agentrt
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 
+	"github.com/google/uuid"
 	"github.com/langoai/lango/internal/background"
 )
 
 // Compile-time interface satisfaction check.
 var _ background.Projection = (*AgentRunProjection)(nil)
+
+type pendingAgentRunContextKey struct{}
 
 // AgentRunProjection implements background.Projection to synchronize
 // background task lifecycle events to AgentRunStore.
@@ -23,12 +27,45 @@ type AgentRunProjection struct {
 	pending map[string]string // agentRunID → agentRunID (identity map for PrepareTask)
 }
 
+type backgroundRunLedgerProjection interface {
+	PrepareTask(context.Context, string, background.Origin) (string, error)
+	PrepareTaskWithID(context.Context, string, background.Origin, string) error
+	SyncTask(context.Context, background.TaskSnapshot) error
+}
+
+type BackgroundProjection struct {
+	agentRuns   *AgentRunProjection
+	runLedger   backgroundRunLedgerProjection
+	mu          sync.Mutex
+	agentRunIDs map[string]bool
+}
+
 // NewAgentRunProjection creates a new AgentRunProjection backed by the given store.
 func NewAgentRunProjection(store AgentRunStore) *AgentRunProjection {
 	return &AgentRunProjection{
 		store:   store,
 		pending: make(map[string]string),
 	}
+}
+
+func NewBackgroundProjection(
+	agentRuns *AgentRunProjection,
+	runLedgerProjection backgroundRunLedgerProjection,
+) *BackgroundProjection {
+	return &BackgroundProjection{
+		agentRuns:   agentRuns,
+		runLedger:   runLedgerProjection,
+		agentRunIDs: make(map[string]bool),
+	}
+}
+
+func withPendingAgentRunID(ctx context.Context, runID string) context.Context {
+	return context.WithValue(ctx, pendingAgentRunContextKey{}, runID)
+}
+
+func pendingAgentRunIDFromContext(ctx context.Context) string {
+	runID, _ := ctx.Value(pendingAgentRunContextKey{}).(string)
+	return runID
 }
 
 // RegisterPending pre-registers an AgentRun ID so that the next PrepareTask
@@ -40,21 +77,102 @@ func (p *AgentRunProjection) RegisterPending(agentRunID string) {
 	p.pending[agentRunID] = agentRunID
 }
 
+func (p *AgentRunProjection) consumePending() (string, bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	for id := range p.pending {
+		delete(p.pending, id)
+		return id, true
+	}
+
+	return "", false
+}
+
 // PrepareTask implements background.Projection. It returns a pre-assigned
 // AgentRun ID if one was registered via RegisterPending. If no pending ID
 // exists, it returns an error — callers must always register before submit.
 //
 // PrepareTask does NOT change AgentRun status; the run stays in its current
 // state (typically Spawned) until SyncTask is called by the manager.
-func (p *AgentRunProjection) PrepareTask(_ context.Context, _ string, _ background.Origin) (string, error) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	for id := range p.pending {
-		delete(p.pending, id)
+func (p *AgentRunProjection) PrepareTask(ctx context.Context, _ string, _ background.Origin) (string, error) {
+	if id := pendingAgentRunIDFromContext(ctx); id != "" {
+		return id, nil
+	}
+	if id, ok := p.consumePending(); ok {
 		return id, nil
 	}
 	return "", fmt.Errorf("prepare task: no pending agent run ID registered")
+}
+
+func (p *BackgroundProjection) PrepareTask(
+	ctx context.Context,
+	prompt string,
+	origin background.Origin,
+) (string, error) {
+	if id := pendingAgentRunIDFromContext(ctx); id != "" {
+		if p.runLedger != nil {
+			if err := p.runLedger.PrepareTaskWithID(ctx, prompt, origin, id); err != nil {
+				return "", err
+			}
+		}
+		p.mu.Lock()
+		p.agentRunIDs[id] = true
+		p.mu.Unlock()
+		return id, nil
+	}
+
+	if p.agentRuns != nil {
+		if id, ok := p.agentRuns.consumePending(); ok {
+			if p.runLedger != nil {
+				if err := p.runLedger.PrepareTaskWithID(ctx, prompt, origin, id); err != nil {
+					return "", err
+				}
+			}
+			p.mu.Lock()
+			p.agentRunIDs[id] = true
+			p.mu.Unlock()
+			return id, nil
+		}
+	}
+
+	if p.runLedger != nil {
+		return p.runLedger.PrepareTask(ctx, prompt, origin)
+	}
+
+	return uuid.NewString(), nil
+}
+
+func (p *BackgroundProjection) SyncTask(ctx context.Context, snap background.TaskSnapshot) error {
+	var errs []error
+
+	if p.isAgentRun(snap.ID) && p.agentRuns != nil {
+		if err := p.agentRuns.SyncTask(ctx, snap); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if p.runLedger != nil {
+		if err := p.runLedger.SyncTask(ctx, snap); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if snap.Status == background.Done || snap.Status == background.Failed || snap.Status == background.Cancelled {
+		p.clearAgentRun(snap.ID)
+	}
+
+	return errors.Join(errs...)
+}
+
+func (p *BackgroundProjection) isAgentRun(id string) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.agentRunIDs[id]
+}
+
+func (p *BackgroundProjection) clearAgentRun(id string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	delete(p.agentRunIDs, id)
 }
 
 // SyncTask implements background.Projection. It maps background task status

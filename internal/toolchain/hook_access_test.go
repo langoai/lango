@@ -2,6 +2,7 @@ package toolchain
 
 import (
 	"context"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -132,12 +133,12 @@ func TestAgentAccessControlHook_DynamicAllowedTools(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		give         string
-		dynAllowed   []string
-		toolName     string
-		agentName    string
-		wantAction   PreHookAction
-		wantReason   string
+		give       string
+		dynAllowed []string
+		toolName   string
+		agentName  string
+		wantAction PreHookAction
+		wantReason string
 	}{
 		{
 			give:       "allowed tool passes through",
@@ -205,11 +206,19 @@ func TestAgentAccessControlHook_DynamicAllowedTools(t *testing.T) {
 			wantAction: Continue,
 		},
 		{
-			give:       "no agent name skips dynamic check entirely",
+			give:       "no agent name still allows explicitly allowed tool",
+			dynAllowed: []string{"fs_read"},
+			toolName:   "fs_read",
+			agentName:  "",
+			wantAction: Continue,
+		},
+		{
+			give:       "no agent name still blocks disallowed tool",
 			dynAllowed: []string{"fs_read"},
 			toolName:   "exec",
 			agentName:  "",
-			wantAction: Continue,
+			wantAction: Block,
+			wantReason: "tool restricted by DynamicAllowedTools",
 		},
 	}
 
@@ -237,4 +246,62 @@ func TestAgentAccessControlHook_DynamicAllowedTools(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRuntimeEssentialToolNames(t *testing.T) {
+	t.Parallel()
+
+	names := RuntimeEssentialToolNames()
+	slices.Sort(names)
+
+	assert.Equal(t, []string{
+		"builtin_health",
+		"builtin_list",
+		"builtin_search",
+		"tool_output_get",
+	}, names)
+	assert.NotContains(t, names, "builtin_invoke")
+}
+
+func TestAgentAccessControlHook_DynamicAllowedToolsHonorsLiveGrantChecker(t *testing.T) {
+	t.Parallel()
+
+	hook := &AgentAccessControlHook{}
+	ctx := ctxkeys.WithDynamicAllowedTools(context.Background(), []string{"fs_read"})
+	ctx = WithToolGrantChecker(ctx, func(toolName string) bool {
+		return toolName == "exec"
+	})
+
+	result, err := hook.Pre(HookContext{
+		ToolName: "exec",
+		Ctx:      ctx,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, Continue, result.Action)
+}
+
+func TestAgentAccessControlHook_DenyListPrecedesLiveGrantChecker(t *testing.T) {
+	t.Parallel()
+
+	hook := &AgentAccessControlHook{
+		DeniedTools: map[string]map[string]bool{
+			"operator": {"exec": true},
+		},
+	}
+
+	ctx := ctxkeys.WithDynamicAllowedTools(context.Background(), []string{"fs_read"})
+	ctx = WithToolGrantChecker(ctx, func(toolName string) bool {
+		return toolName == "exec"
+	})
+
+	result, err := hook.Pre(HookContext{
+		ToolName:  "exec",
+		AgentName: "operator",
+		Ctx:       ctx,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, Block, result.Action)
+	assert.Equal(t, "agent 'operator' is denied access to tool 'exec'", result.BlockReason)
 }

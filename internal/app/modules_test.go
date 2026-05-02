@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/langoai/lango/internal/agentrt"
 	"github.com/langoai/lango/internal/appinit"
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
@@ -303,4 +304,23 @@ func TestRunLedgerModule_WorkspaceIsolationGate(t *testing.T) {
 	require.NotNil(t, vals)
 	require.NotNil(t, vals.pev)
 	assert.True(t, vals.pev.WorkspaceEnabled())
+}
+
+func TestAutomationModule_WrapsAgentRunStoreWithRunLedgerMirrorWhenWriteThroughEnabled(t *testing.T) {
+	t.Parallel()
+
+	client := testutil.TestEntClient(t)
+	cfg := config.DefaultConfig()
+	cfg.RunLedger.Enabled = true
+	cfg.RunLedger.WriteThrough = true
+	cfg.Background.Enabled = true
+
+	boot := &bootstrap.Result{
+		Storage: storage.NewFacade(nil, nil, storage.WithEntClient(client)),
+	}
+
+	runLedgerVals := &runLedgerValues{store: boot.Storage.RunLedger()}
+	store := newAutomationAgentRunStore(cfg, runLedgerVals, nil)
+	_, ok := store.(*agentrt.RunLedgerMirrorStore)
+	require.True(t, ok)
 }

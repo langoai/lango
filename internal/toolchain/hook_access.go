@@ -11,6 +11,16 @@ var runtimeEssentials = map[string]bool{
 	"builtin_health":  true,
 }
 
+// RuntimeEssentialToolNames returns the canonical tool names that remain
+// allowed under DynamicAllowedTools. builtin_invoke is intentionally excluded.
+func RuntimeEssentialToolNames() []string {
+	names := make([]string, 0, len(runtimeEssentials))
+	for name := range runtimeEssentials {
+		names = append(names, name)
+	}
+	return names
+}
+
 // AgentAccessControlHook enforces per-agent tool ACL.
 // Priority: 20 (runs after security filter but before execution).
 type AgentAccessControlHook struct {
@@ -41,32 +51,19 @@ func (h *AgentAccessControlHook) Priority() int { return 20 }
 // Pre checks whether the current agent is allowed to use the tool.
 func (h *AgentAccessControlHook) Pre(ctx HookContext) (PreHookResult, error) {
 	agentName := ctx.AgentName
-	if agentName == "" {
-		// No agent context — allow (backwards compatible with non-agent execution).
-		return PreHookResult{Action: Continue}, nil
-	}
 
-	// Check deny list first (takes precedence).
-	if denied, ok := h.DeniedTools[agentName]; ok {
-		if denied[ctx.ToolName] {
-			return PreHookResult{
-				Action:      Block,
-				BlockReason: "agent '" + agentName + "' is denied access to tool '" + ctx.ToolName + "'",
-			}, nil
+	// Check deny list first (takes precedence whenever an agent identity exists).
+	if agentName != "" {
+		if denied, ok := h.DeniedTools[agentName]; ok {
+			if denied[ctx.ToolName] {
+				return PreHookResult{
+					Action:      Block,
+					BlockReason: "agent '" + agentName + "' is denied access to tool '" + ctx.ToolName + "'",
+				}, nil
+			}
 		}
 	}
 
-	// Check allow list — if configured, agent can only use listed tools.
-	if allowed, ok := h.AllowedTools[agentName]; ok && len(allowed) > 0 {
-		if !allowed[ctx.ToolName] {
-			return PreHookResult{
-				Action:      Block,
-				BlockReason: "agent '" + agentName + "' does not have access to tool '" + ctx.ToolName + "'",
-			}, nil
-		}
-	}
-
-	// Check context-level dynamic tool restrictions.
 	if dynAllowed := ctxkeys.DynamicAllowedToolsFromContext(ctx.Ctx); len(dynAllowed) > 0 {
 		if runtimeEssentials[ctx.ToolName] {
 			return PreHookResult{Action: Continue}, nil
@@ -76,9 +73,27 @@ func (h *AgentAccessControlHook) Pre(ctx HookContext) (PreHookResult, error) {
 			allowSet[t] = true
 		}
 		if !allowSet[ctx.ToolName] {
+			if checker := toolGrantCheckerFromContext(ctx.Ctx); checker != nil && checker(ctx.ToolName) {
+				return PreHookResult{Action: Continue}, nil
+			}
 			return PreHookResult{
 				Action:      Block,
 				BlockReason: "tool restricted by DynamicAllowedTools",
+			}, nil
+		}
+	}
+
+	if agentName == "" {
+		// No agent context — allow (backwards compatible with non-agent execution).
+		return PreHookResult{Action: Continue}, nil
+	}
+
+	// Check allow list — if configured, agent can only use listed tools.
+	if allowed, ok := h.AllowedTools[agentName]; ok && len(allowed) > 0 {
+		if !allowed[ctx.ToolName] {
+			return PreHookResult{
+				Action:      Block,
+				BlockReason: "agent '" + agentName + "' does not have access to tool '" + ctx.ToolName + "'",
 			}, nil
 		}
 	}

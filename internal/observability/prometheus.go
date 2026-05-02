@@ -16,11 +16,12 @@ type PrometheusExporter struct {
 	registry  *prometheus.Registry
 	collector *MetricsCollector
 
-	tokenUsage      *prometheus.CounterVec
-	toolExecutions  *prometheus.CounterVec
-	toolDuration    *prometheus.HistogramVec
-	policyDecisions *prometheus.CounterVec
-	trackedSessions prometheus.Gauge
+	tokenUsage              *prometheus.CounterVec
+	toolExecutions          *prometheus.CounterVec
+	toolDuration            *prometheus.HistogramVec
+	policyDecisions         *prometheus.CounterVec
+	runLedgerMirrorFailures *prometheus.CounterVec
+	trackedSessions         prometheus.Gauge
 }
 
 // NewPrometheusExporter creates a new exporter with registered metrics.
@@ -46,6 +47,10 @@ func NewPrometheusExporter() *PrometheusExporter {
 			Name: "lango_policy_decisions_total",
 			Help: "Total policy decisions by verdict (allow, observe, block).",
 		}, []string{"verdict"}),
+		runLedgerMirrorFailures: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "lango_runledger_mirror_failures_total",
+			Help: "Total RunLedger mirror failures by target and phase.",
+		}, []string{"target", "phase"}),
 		trackedSessions: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "lango_tracked_sessions",
 			Help: "Number of sessions currently tracked by the metrics collector.",
@@ -56,6 +61,7 @@ func NewPrometheusExporter() *PrometheusExporter {
 	reg.MustRegister(e.toolExecutions)
 	reg.MustRegister(e.toolDuration)
 	reg.MustRegister(e.policyDecisions)
+	reg.MustRegister(e.runLedgerMirrorFailures)
 	reg.MustRegister(e.trackedSessions)
 
 	return e
@@ -83,6 +89,10 @@ func (e *PrometheusExporter) Subscribe(bus *eventbus.Bus) {
 			e.tokenUsage.WithLabelValues("cache").Add(float64(evt.CacheTokens))
 		}
 		e.updateSessionGauge()
+	})
+
+	eventbus.SubscribeTyped[eventbus.RunLedgerMirrorFailureEvent](bus, func(evt eventbus.RunLedgerMirrorFailureEvent) {
+		e.runLedgerMirrorFailures.WithLabelValues(evt.Target, evt.Phase).Inc()
 	})
 }
 

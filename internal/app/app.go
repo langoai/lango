@@ -109,7 +109,7 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 	builder := appinit.NewBuilder()
 	builder.AddModule(&foundationModule{cfg: cfg, boot: boot})
 	builder.AddModule(&intelligenceModule{cfg: cfg, boot: boot, bus: bus, extReg: app.ExtensionRegistry})
-	builder.AddModule(&automationModule{cfg: cfg, app: app})
+	builder.AddModule(&automationModule{cfg: cfg, app: app, bus: bus})
 	builder.AddModule(&networkModule{cfg: cfg, boot: boot, bus: bus, app: app})
 	builder.AddModule(&extensionModule{cfg: cfg, boot: boot, bus: bus})
 	builder.AddModule(&runLedgerModule{cfg: cfg, boot: boot})

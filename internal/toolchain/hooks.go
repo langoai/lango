@@ -15,6 +15,46 @@ type HookContext struct {
 	Ctx        context.Context
 }
 
+// BlockedToolCall captures structured metadata for a tool invocation blocked by a hook.
+type BlockedToolCall struct {
+	ToolName    string
+	AgentName   string
+	SessionKey  string
+	BlockReason string
+	Params      map[string]interface{}
+	Ctx         context.Context
+}
+
+// BlockedToolCallSink receives blocked tool call metadata emitted by hook middleware.
+type BlockedToolCallSink func(BlockedToolCall)
+type ToolGrantChecker func(toolName string) bool
+
+type blockedToolCallSinkContextKey struct{}
+type toolGrantCheckerContextKey struct{}
+
+// WithBlockedToolCallSink stores a sink used to observe blocked tool call metadata.
+func WithBlockedToolCallSink(ctx context.Context, sink BlockedToolCallSink) context.Context {
+	return context.WithValue(ctx, blockedToolCallSinkContextKey{}, sink)
+}
+
+func emitBlockedToolCall(ctx context.Context, call BlockedToolCall) {
+	sink, ok := ctx.Value(blockedToolCallSinkContextKey{}).(BlockedToolCallSink)
+	if !ok || sink == nil {
+		return
+	}
+	sink(call)
+}
+
+// WithToolGrantChecker stores a live grant checker used by access-control hooks.
+func WithToolGrantChecker(ctx context.Context, checker ToolGrantChecker) context.Context {
+	return context.WithValue(ctx, toolGrantCheckerContextKey{}, checker)
+}
+
+func toolGrantCheckerFromContext(ctx context.Context) ToolGrantChecker {
+	checker, _ := ctx.Value(toolGrantCheckerContextKey{}).(ToolGrantChecker)
+	return checker
+}
+
 // PreHookAction determines what happens after a pre-hook runs.
 type PreHookAction int
 

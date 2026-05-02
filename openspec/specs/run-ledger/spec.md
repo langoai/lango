@@ -587,3 +587,62 @@ The system SHALL document the boundary between application-layer resume (opt-in 
 - **WHEN** this change is implemented
 - **THEN** no runtime code paths for session handling, resume, or bootstrap are modified
 - **AND** the change is limited to design documentation and diagnostic tooling
+
+### Requirement: Built-in teammate durability audit
+Before archive, the implementation SHALL classify built-in teammate durability for spawn submission, run status transitions, projection sync markers, approval-blocked conditions, and recovery states using one of three verdicts: recorded, not recorded but harmless, or not recorded and follow-up required.
+
+#### Scenario: Audit verdict is recorded before archive
+- **WHEN** the hard-cut change is prepared for archive
+- **THEN** the implementation SHALL record one verdict for each audited built-in teammate durability item
+- **AND** each verdict SHALL be one of: recorded, not recorded but harmless, or not recorded and follow-up required
+
+### Requirement: Teammate approval-blocked durability mirror
+The system SHALL durably mirror built-in teammate approval-blocked state into RunLedger. The durable mirror SHALL cover `runtime_condition`, `blocked_reason`, and `grant_request_id` for approval-blocked teammate runs. This mirror uses best-effort semantics: live projection writes remain authoritative for runtime continuity, while journal plus snapshot state provide durable reconstruction.
+
+#### Scenario: Approval-blocked teammate state is reconstructible
+- **WHEN** a built-in teammate run enters `blocked_waiting_approval`
+- **THEN** RunLedger SHALL append a durable approval-block journal event
+- **AND** the RunLedger snapshot SHALL retain the latest blocked condition, blocked reason, and grant request ID
+
+#### Scenario: Approval unblock clears durable blocked state
+- **WHEN** a built-in teammate run leaves approval-blocked state
+- **THEN** RunLedger SHALL append a durable approval-unblocked journal event
+- **AND** the latest durable blocked snapshot fields SHALL be cleared
+
+#### Scenario: Mirror failure does not fail-close runtime
+- **WHEN** the durable mirror write fails
+- **THEN** the live control-plane projection write SHALL still succeed
+- **AND** the failure SHALL be observable through logs and metrics
+
+#### Scenario: RunLedger disabled skips mirror silently
+- **WHEN** RunLedger or write-through mirroring is disabled
+- **THEN** approval-blocked mirroring SHALL be skipped
+- **AND** the live control-plane projection SHALL remain the only state source
+
+### Requirement: Approval-blocked replacement stays durable
+When a built-in teammate run remains approval-blocked but its blocked metadata changes, the durable mirror SHALL record the replacement and refresh the latest snapshot values.
+
+#### Scenario: Approval-blocked metadata changes while the run stays blocked
+- **WHEN** a built-in teammate run remains `blocked_waiting_approval`
+- **AND** either `blocked_reason` or `grant_request_id` changes
+- **THEN** RunLedger SHALL append a fresh approval-block journal event
+- **AND** the cached durable snapshot SHALL retain the latest blocked condition, blocked reason, and grant request ID
+
+#### Scenario: Terminal run clears teammate blocked snapshot fields
+- **WHEN** a built-in teammate run reaches a terminal status while approval-blocked
+- **THEN** the durable snapshot SHALL clear teammate `runtime_condition`, `blocked_reason`, and `grant_request_id`
+- **AND** no separate approval-unblock event SHALL be required
+
+### Requirement: Durable mirror preserves approval identity semantics
+The RunLedger durable mirror for built-in teammate approval blocking SHALL preserve both the stable logical `grant_request_id` and the latest attempt metadata for that logical request.
+
+#### Scenario: Durable snapshot reflects renewed attempt without rotating request ID
+- **WHEN** a built-in teammate approval-blocked request is re-issued for the same run and tool while the latest active blocked cycle is still in progress
+- **THEN** the durable mirror SHALL preserve the same logical `grant_request_id`
+- **AND** the latest durable snapshot SHALL reflect the new attempt metadata
+
+#### Scenario: Durable mirror preserves only the latest active blocked cycle
+- **WHEN** a prior blocked cycle for a logical request has already been cleared by grant or denial
+- **THEN** a later blocked cycle for the same logical request MAY reuse the same `grant_request_id`
+- **AND** the durable mirror SHALL only preserve the latest active cycle metadata for that logical request in the snapshot
+

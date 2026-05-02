@@ -1,19 +1,29 @@
 ## Purpose
 
 Define the CLI commands for inspecting agent mode, configuration, and listing local/remote agents.
-
 ## Requirements
-
 ### Requirement: Agent status command
-The system SHALL provide a `lango agent status` command that displays agent mode (single/multi-agent), provider, model, and A2A configuration. The command SHALL support a `--json` flag.
 
-#### Scenario: Single agent mode
-- **WHEN** user runs `lango agent status` with multiAgent=false
-- **THEN** system displays mode as "single" with provider and model info
+The existing `lango agent status` command contract remains preserved unless explicitly changed by this requirement: current status fields continue to be shown in table and JSON output, and this change only adds teammate runtime reporting. The command SHALL expose `teammate_runtime` when multi-agent mode is enabled. For the production in-process teammate runtime defined by this change, `dynamic-v1` means the built-in teammate runtime path is configured and available for built-in teammates under multi-agent mode; it does not imply that legacy static fallback or remote A2A paths are disabled. If that built-in runtime path is not configured or not available, the command SHALL omit the `teammate_runtime` field rather than reporting `dynamic-v1`.
 
-#### Scenario: Multi-agent with A2A
-- **WHEN** user runs `lango agent status` with multiAgent=true and A2A enabled
-- **THEN** system displays mode as "multi-agent" with A2A base URL and agent name
+#### Scenario: Table output shows dynamic teammate runtime
+- **WHEN** `lango agent status` is run with `agent.multiAgent: true`
+- **AND** the built-in dynamic teammate runtime path is configured and available
+- **THEN** the command SHALL display a `Teammate Runtime` field with value `dynamic-v1`
+
+#### Scenario: JSON output shows dynamic teammate runtime
+- **WHEN** `lango agent status --json` is run with `agent.multiAgent: true`
+- **AND** the built-in dynamic teammate runtime path is configured and available
+- **THEN** the output SHALL include `"teammate_runtime": "dynamic-v1"`
+
+#### Scenario: Single-agent output omits teammate runtime
+- **WHEN** `lango agent status` is run with `agent.multiAgent: false`
+- **THEN** the command SHALL omit the teammate runtime field
+
+#### Scenario: Multi-agent without built-in dynamic runtime omits teammate runtime
+- **WHEN** `lango agent status` is run with `agent.multiAgent: true`
+- **AND** the built-in dynamic teammate runtime path is not configured or not available
+- **THEN** the command SHALL omit the teammate runtime field
 
 ### Requirement: Performance fields in agent status
 `lango agent status` SHALL display MaxTurns, ErrorCorrectionEnabled, and MaxDelegationRounds (multi-agent only) with their effective values (config or default).
@@ -68,3 +78,4 @@ The `lango agent status` command SHALL display registry information including bu
 #### Scenario: JSON status includes registry
 - **WHEN** `lango agent status --json` is run
 - **THEN** the output SHALL include a "registry" object with builtin, user, active counts
+

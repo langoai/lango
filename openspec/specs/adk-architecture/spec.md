@@ -2,9 +2,7 @@
 ## Purpose
 
 Capability spec for adk-architecture. See requirements below for scope and behavior contracts.
-
 ## Requirements
-
 ### Requirement: ADK Agent Abstraction
 The system SHALL wrap the Google ADK Agent (v1.0.0) to integrate with the application.
 
@@ -95,6 +93,7 @@ The system SHALL adapt existing internal tools to the ADK Tool interface.
 #### Scenario: Execute Legacy Tool
 - **WHEN** ADK invokes a tool
 - **THEN** the adapter SHALL translate the inputs and call the internal tool implementation
+
 ### Requirement: History Management
 The system SHALL manage session history using token-budget-based dynamic truncation to prevent context overflow and optimize token usage.
 
@@ -125,13 +124,19 @@ The system SHALL manage session history using token-budget-based dynamic truncat
 - **AND** the author SHALL NOT produce "Event from an unknown agent" warnings
 
 ### Requirement: Agent hallucination retry in RunAndCollect
-`RunAndCollect` SHALL detect "failed to find agent" errors, extract the hallucinated agent name, send a correction message with valid sub-agent names, and retry once. If the retry also fails, the original error SHALL be returned.
+`RunAndCollect` SHALL continue to detect `"failed to find agent"` errors, send a correction message, and retry exactly once when sub-agents are registered. The correction message SHALL continue to exist, but the hard cut narrows its built-in semantics: remote/legacy transfer recovery MAY still name compatible transfer targets, while built-in teammate recovery SHALL steer the root runtime toward `agent_spawn` or direct root answer behavior instead of teaching built-in static transfer retries.
 
 #### Scenario: Hallucinated agent name triggers retry
 - **WHEN** a `RunAndCollect` call yields an error matching `"failed to find agent: <name>"`
 - **AND** the agent has sub-agents registered
-- **THEN** the system SHALL send a correction message: `[System: Agent "<name>" does not exist. Valid agents: <list>. Please retry using one of the valid agent names listed above.]`
-- **AND** retry the run exactly once with the correction message
+- **THEN** the system SHALL send a correction message for the invalid target
+- **AND** retry the run exactly once with that correction message
+
+#### Scenario: Built-in hallucinated target produces spawn-oriented recovery
+- **WHEN** built-in routing fails with a hallucinated target name
+- **AND** the agent has sub-agents registered
+- **THEN** the correction message SHALL steer the root runtime toward `agent_spawn` or direct root answer behavior
+- **AND** it SHALL NOT suggest retrying a built-in `transfer_to_agent` target
 
 #### Scenario: Retry succeeds
 - **WHEN** the correction message retry produces a successful response
@@ -142,11 +147,11 @@ The system SHALL manage session history using token-budget-based dynamic truncat
 - **THEN** `RunAndCollect` SHALL return the retry error
 
 #### Scenario: Non-hallucination error is not retried
-- **WHEN** `RunAndCollect` encounters an error that does not match "failed to find agent"
+- **WHEN** `RunAndCollect` encounters an error that does not match `"failed to find agent"`
 - **THEN** the error SHALL be returned immediately without retry
 
 #### Scenario: No sub-agents means no retry
-- **WHEN** `RunAndCollect` encounters a "failed to find agent" error
+- **WHEN** `RunAndCollect` encounters a `"failed to find agent"` error
 - **AND** the agent has no sub-agents
 - **THEN** the error SHALL be returned immediately without retry
 
@@ -307,3 +312,13 @@ The agent creation functions in `internal/adk/agent.go` SHALL accept an optional
 - **WHEN** `NewAgent()` or `NewAgentStreaming()` is called without plugin options
 - **THEN** `runner.Config.PluginConfig` SHALL be zero value
 - **AND** behavior SHALL be identical to current implementation
+
+### Requirement: Hallucinated built-in targets still retry once without built-in sub-agents
+The hallucinated-agent recovery path SHALL permit one correction attempt for built-in target names even when the production ADK tree has zero built-in sub-agents attached.
+
+#### Scenario: Built-in hallucinated target retries under zero-subagent steady state
+- **WHEN** a missing agent error references a built-in teammate target
+- **AND** the ADK tree has zero built-in sub-agents attached
+- **THEN** the runtime SHALL still emit the built-in correction hint and retry once
+- **AND** it SHALL NOT suppress the correction path solely because `len(SubAgents()) == 0`
+

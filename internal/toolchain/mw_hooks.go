@@ -30,6 +30,14 @@ func WithHooks(registry *HookRegistry) Middleware {
 
 			switch preResult.Action {
 			case Block:
+				emitBlockedToolCall(ctx, BlockedToolCall{
+					ToolName:    hctx.ToolName,
+					AgentName:   hctx.AgentName,
+					SessionKey:  hctx.SessionKey,
+					BlockReason: preResult.BlockReason,
+					Params:      hctx.Params,
+					Ctx:         hctx.Ctx,
+				})
 				return nil, fmt.Errorf("tool '%s' blocked by hook: %s", tool.Name, preResult.BlockReason)
 			case Modify:
 				params = preResult.ModifiedParams

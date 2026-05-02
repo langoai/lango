@@ -1,22 +1,7 @@
 ## Purpose
 
 Hierarchical multi-agent orchestration for Lango. Defines how the tool-less orchestrator routes work to specialist sub-agents, how tools are partitioned, and what runtime delegation guarantees the system must uphold.
-
 ## Requirements
-
-### Requirement: Orchestrator universal tools
-The orchestration `Config` struct SHALL include a `UniversalTools` field. In multi-agent mode, the orchestrator SHALL NOT receive universal tools. `BuildAgentTree` SHALL NOT adapt or assign `UniversalTools` to the orchestrator agent. The orchestrator SHALL have no direct tools and MUST delegate all tasks to sub-agents.
-
-#### Scenario: Multi-agent orchestrator has no tools
-- **WHEN** `BuildAgentTree` is called (multi-agent mode)
-- **THEN** the orchestrator agent SHALL have no tools (Tools is nil/empty)
-- **AND** the orchestrator instruction SHALL state "You do NOT have tools"
-- **AND** the instruction SHALL NOT mention builtin_list or builtin_invoke
-
-#### Scenario: Config.UniversalTools field preserved
-- **WHEN** `Config.UniversalTools` is set
-- **THEN** the field SHALL be accepted without error but SHALL NOT be wired to the orchestrator
-
 ### Requirement: Builtin prefix exclusion from partitioning
 `PartitionTools` SHALL skip any tool whose name starts with `builtin_`. These tools SHALL NOT appear in any sub-agent's tool set or in the Unmatched list.
 
@@ -26,73 +11,48 @@ The orchestration `Config` struct SHALL include a `UniversalTools` field. In mul
 - **AND** `builtin_*` tools SHALL not appear in any RoleToolSet field
 
 ### Requirement: Hierarchical agent tree with sub-agents
-The system SHALL support a multi-agent mode (`agent.multiAgent: true`) that creates an orchestrator root agent with specialized sub-agents: operator, navigator, vault, librarian, automator, planner, chronicler, and ontologist. The orchestrator SHALL have NO direct tools (`Tools: nil`) and MUST delegate all tool-requiring tasks to sub-agents. Each sub-agent SHALL include an Escalation Protocol section in its instruction that directs it to call `transfer_to_agent` with agent_name `lango-orchestrator` when it receives an out-of-scope request. Sub-agents SHALL NOT emit `[REJECT]` text or tell users to ask another agent.
+The system SHALL continue to support a hierarchical dynamic teammate path when `agent.multiAgent` is true. For built-in teammate production execution, the normal path SHALL enter through the control plane with `agent_spawn` rather than requiring static ADK specialist delegation. The static specialist tree remains available as a documented compatibility baseline where it already applies, and the production execution path SHALL continue to preserve parent-child session isolation and the canonical run identity chain.
 
-#### Scenario: Multi-agent mode enabled
-- **WHEN** `agent.multiAgent` is true
-- **THEN** BuildAgentTree SHALL create an orchestrator that has NO direct tools AND has sub-agents (operator, navigator, vault, librarian, automator, planner, chronicler, ontologist)
+The authoritative built-in teammate registry SHALL be `operator`, `navigator`, `vault`, `librarian`, `automator`, `planner`, `chronicler`, and `ontologist`. Spawn-time validation, prompt defaults, and role max scope for built-in teammates SHALL derive from that registry. Remote A2A agents remain a separate execution model.
 
-#### Scenario: Orchestrator has no direct tools
-- **WHEN** the orchestrator is created
-- **THEN** the orchestrator's `Tools` field SHALL be `nil`
-- **AND** tools SHALL only be adapted for their respective sub-agents (each tool adapted exactly once)
+#### Scenario: Built-in work uses spawn-only production execution
+- **WHEN** the runtime routes built-in specialist work under multi-agent mode
+- **THEN** the production path SHALL begin with `agent_spawn`
+- **AND** built-in `transfer_to_agent` delegation SHALL NOT be required as the normal production path
 
-#### Scenario: Single-agent fallback
-- **WHEN** `agent.multiAgent` is false
-- **THEN** the system SHALL create a single flat agent with all tools
+#### Scenario: Parent and child sessions remain isolated
+- **WHEN** a teammate is spawned from an active parent run
+- **THEN** the child execution SHALL run in its own `ChildSession`
+- **AND** the parent session SHALL remain the submission and observation anchor
 
-#### Scenario: Sub-agent escalation via transfer_to_agent
-- **WHEN** a sub-agent receives a request outside its capabilities
-- **THEN** the sub-agent instruction SHALL direct it to call `transfer_to_agent` with agent_name `lango-orchestrator`
-- **AND** the sub-agent SHALL NOT emit any text before the transfer call
-- **AND** the sub-agent instruction SHALL contain `## Escalation Protocol` section
+#### Scenario: Legacy static fallback remains available
+- **WHEN** the dynamic teammate runtime is unavailable or a legacy static path is already active
+- **THEN** the system MAY continue through the existing static specialist routing behavior
 
-#### Scenario: All sub-agents have escalation protocol
-- **WHEN** agentSpecs are defined for all 8 sub-agents
-- **THEN** every spec's Instruction SHALL contain `transfer_to_agent` and `lango-orchestrator`
-- **AND** every spec's Instruction SHALL contain `## Escalation Protocol`
+#### Scenario: Remote A2A remains separate
+- **WHEN** a configured remote A2A agent is selected
+- **THEN** the runtime MAY still use the remote compatibility path
+- **AND** this SHALL NOT re-open built-in static delegation as the normal production path
 
-#### Scenario: Navigator fallback protocol
-- **WHEN** the navigator receives a live web query and `browser_search` is unavailable in the current runtime
-- **THEN** its instruction SHALL direct it to continue with `browser_navigate` to a search URL and `browser_extract` in `search_results` mode
-- **AND** if those higher-level tools are also unavailable, it SHALL continue with low-level `browser_action` or `eval` rather than stopping while browser browsing remains in scope
-
-#### Scenario: Navigator bounded search protocol
-- **WHEN** the navigator handles a topic-based live web request
-- **THEN** its instruction SHALL direct it to run `browser_search` once and then prefer current-page extraction over repeated search
-- **AND** it SHALL allow at most one search reformulation when the first results are empty or clearly unrelated
-- **AND** it SHALL stop once the requested count of credible results has been collected
+#### Scenario: Built-in teammate registry is authoritative
+- **WHEN** the runtime resolves a built-in teammate type for spawn or policy evaluation
+- **THEN** it SHALL use the authoritative built-in registry of `operator`, `navigator`, `vault`, `librarian`, `automator`, `planner`, `chronicler`, and `ontologist`
 
 ### Requirement: Tool partitioning by prefix
-Tools SHALL be partitioned to sub-agents based on name prefixes with matching order Librarian → Chronicler → Ontologist → Navigator → Vault → Operator → Unmatched: `exec/fs_/skill_` → operator, `browser_` → navigator, `crypto_/secrets_/payment_` → vault, `search_/rag_/graph_/save_knowledge/save_learning/create_skill/list_skills` → librarian, `memory_/observe_/reflect_` → chronicler, `ontology_` → ontologist, unmatched → Unmatched bucket (not assigned to any agent).
 
-#### Scenario: Operator gets shell, file, and skill tools
-- **WHEN** tools named `exec_shell`, `fs_read`, `skill_deploy` are registered
-- **THEN** they SHALL be assigned to the operator sub-agent
+Tool prefix partitioning SHALL define role maximum scope and default teammate affinity, not a fixed execution authority. Spawn-time `allowed_tools` may narrow the role scope, but the runtime SHALL reject any request that attempts to widen beyond the role max scope.
 
-#### Scenario: Navigator gets browser tools
-- **WHEN** tools named `browser_navigate`, `browser_screenshot` are registered
-- **THEN** they SHALL be assigned to the navigator sub-agent
+#### Scenario: Prefix partition defines max scope
+- **WHEN** a built-in teammate type resolves to the operator role
+- **THEN** operator-prefixed tools SHALL define the maximum tool scope available for that teammate type
 
-#### Scenario: Vault gets crypto, secrets, and payment tools
-- **WHEN** tools named `crypto_sign`, `secrets_get`, `payment_send` are registered
-- **THEN** they SHALL be assigned to the vault sub-agent
+#### Scenario: Spawn-time allowlist narrows scope
+- **WHEN** a caller spawns an operator teammate with `allowed_tools: ["fs_read"]`
+- **THEN** the teammate SHALL run with only `fs_read` plus runtime essentials even if the operator role supports additional tools
 
-#### Scenario: Librarian gets search, RAG, graph, and skill management tools
-- **WHEN** tools named `search_web`, `rag_query`, `graph_traverse`, `save_knowledge_item`, `create_skill_x`, `list_skills` are registered
-- **THEN** they SHALL be assigned to the librarian sub-agent
-
-#### Scenario: Chronicler gets memory tools
-- **WHEN** tools named `memory_store`, `observe_event`, `reflect_summary` are registered
-- **THEN** they SHALL be assigned to the chronicler sub-agent
-
-#### Scenario: Unmatched tools tracked separately
-- **WHEN** a tool with an unrecognized prefix is present
-- **THEN** it SHALL be placed in the Unmatched bucket and NOT assigned to any sub-agent
-
-#### Scenario: Librarian prefix priority over operator
-- **WHEN** tools like `save_knowledge_data` or `create_skill_new` are registered
-- **THEN** they SHALL match librarian prefixes before reaching operator matching
+#### Scenario: Spawn-time allowlist cannot widen scope
+- **WHEN** a caller spawns a librarian teammate with `allowed_tools` containing an operator-only tool
+- **THEN** the runtime SHALL reject the spawn request before execution begins
 
 ### Requirement: Graph, RAG, and Memory agent tools
 The system SHALL provide dedicated tools for sub-agents: `graph_traverse`, `graph_query` (graph store), `rag_retrieve` (RAG service), `memory_list_observations`, `memory_list_reflections` (memory store).
@@ -110,15 +70,20 @@ The system SHALL provide dedicated tools for sub-agents: `graph_traverse`, `grap
 - **THEN** `memory_list_observations` and `memory_list_reflections` tools SHALL be added
 
 ### Requirement: Remote agents as sub-agents
-The orchestrator SHALL accept remote A2A agents and append them to its sub-agent list. Remote agent names and descriptions SHALL be included in the orchestrator instruction.
 
-#### Scenario: Remote agents loaded and wired
-- **WHEN** `a2a.enabled: true` and `a2a.remoteAgents` contains entries
-- **THEN** LoadRemoteAgents SHALL create ADK agents and they SHALL appear as sub-agents in the orchestrator
+Remote A2A routing SHALL be preserved in v1. The dynamic teammate runtime applies to in-process built-in teammate types, while existing remote A2A sub-agent paths continue to use the current routing and compatibility behavior.
 
-#### Scenario: Remote agent load failure
-- **WHEN** a remote agent card URL is unreachable
-- **THEN** the agent SHALL be skipped with a warning log, and the orchestrator SHALL continue with local sub-agents
+#### Scenario: Remote A2A path remains unchanged
+- **WHEN** a request is routed to a configured remote A2A agent in v1
+- **THEN** the system SHALL continue to use the existing remote routing behavior without forcing the in-process teammate runtime
+
+#### Scenario: Built-in dynamic runtime and remote A2A coexist
+- **WHEN** both built-in teammate types and remote A2A agents are configured
+- **THEN** the runtime SHALL support the dynamic in-process path for built-ins and preserve the current remote path for A2A agents
+
+#### Scenario: Dynamic runtime status reflects built-in availability only
+- **WHEN** multi-agent mode is enabled and the built-in in-process teammate runtime path is configured
+- **THEN** status surfaces MAY report `dynamic-v1` even if legacy fallback and remote A2A paths also remain available
 
 ### Requirement: Capability-based sub-agent descriptions
 Sub-agent descriptions in the orchestrator prompt SHALL use human-readable capability summaries instead of raw tool names. The `capabilityMap` SHALL include entries for all tool prefixes including `secrets_`, `create_skill`, and `list_skills`. The `capabilityDescription()` function SHALL deduplicate capabilities across a tool set.
@@ -144,33 +109,6 @@ Sub-agent descriptions in the orchestrator prompt SHALL use human-readable capab
 - **WHEN** capabilityDescription is called for a tool set containing `librarian_pending_inquiries`
 - **THEN** the description includes "knowledge inquiries and gap detection"
 
-### Requirement: Orchestrator instruction guides delegation-only execution
-The orchestrator instruction SHALL enforce mandatory delegation for all tool-requiring tasks. It SHALL include a routing table with exact agent names, a decision protocol, and rejection handling. Sub-agent entries SHALL use capability descriptions, not raw tool name lists. The instruction SHALL NOT contain words that could be confused with agent names. The instruction SHALL always state the orchestrator has no tools.
-
-#### Scenario: Tool-requiring task
-- **WHEN** a user requests any task requiring tool execution
-- **THEN** the orchestrator SHALL delegate to the appropriate sub-agent using its exact registered name
-
-#### Scenario: Delegation-only prompt
-- **WHEN** the orchestrator instruction is built
-- **THEN** it SHALL contain "You do NOT have tools"
-- **AND** it SHALL contain "MUST delegate all tool-requiring tasks"
-- **AND** it SHALL NOT contain "builtin_list" or "builtin_invoke"
-
-#### Scenario: Agent name exactness
-- **WHEN** the orchestrator delegates to a sub-agent
-- **THEN** it SHALL use the EXACT name (e.g. "operator", NOT "exec", "browser", or any abbreviation)
-
-#### Scenario: Invalid agent name prevention
-- **WHEN** the orchestrator instruction is generated
-- **THEN** it SHALL contain the text "NEVER invent or abbreviate agent names"
-- **AND** it SHALL list only the exact names of registered sub-agents
-
-#### Scenario: Sub-agent descriptions use capabilities not tool names
-- **WHEN** the orchestrator instruction lists sub-agents
-- **THEN** each sub-agent entry SHALL describe capabilities (e.g., "command execution, file operations")
-- **AND** SHALL NOT contain raw tool names (e.g., "exec_shell", "browser_navigate")
-
 ### Requirement: Orchestrator system prompt isolation
 The orchestrator system prompt SHALL NOT include tool-category descriptions (SectionIdentity from AGENTS.md) or tool-usage guidelines (SectionToolUsage from TOOL_USAGE.md). These sections reference tool names like "Exec", "Browser", "Crypto" that the LLM may misinterpret as agent names.
 
@@ -184,19 +122,16 @@ The orchestrator system prompt SHALL NOT include tool-category descriptions (Sec
 - **THEN** the single-agent prompt SHALL retain all sections including SectionIdentity and SectionToolUsage
 
 ### Requirement: Event Author Identity
-The EventsAdapter SHALL use the stored `msg.Author` when available, falling back to the `rootAgentName` for assistant messages when no stored author exists. The author SHALL NOT be hardcoded to a fixed agent name.
 
-#### Scenario: Multi-agent mode with stored author
-- **WHEN** a message has `Author: "lango-orchestrator"` stored in history
-- **THEN** the EventsAdapter SHALL use `"lango-orchestrator"` as the event author
+Assistant-side event author identity SHALL preserve the runtime identity chain. Event authoring SHALL use the active teammate or root run identity projected from `AgentRun` and background execution state, falling back to the configured root identity only for legacy messages that lack stored author metadata.
 
-#### Scenario: Multi-agent mode without stored author (legacy messages)
-- **WHEN** a message has no stored Author and role is "assistant"
-- **THEN** the EventsAdapter SHALL use the configured `rootAgentName` as the event author
+#### Scenario: Spawned teammate emits authored events
+- **WHEN** a spawned teammate produces assistant events during execution
+- **THEN** those events SHALL use the teammate's projected runtime identity rather than a hardcoded orchestrator name
 
-#### Scenario: Single-agent mode
-- **WHEN** the agent is created via `NewAgent()` (single-agent mode)
-- **THEN** the rootAgentName SHALL be `"lango-agent"` and used for assistant events
+#### Scenario: Legacy assistant message falls back cleanly
+- **WHEN** a legacy assistant message lacks stored author metadata
+- **THEN** the system SHALL fall back to the configured root agent name
 
 ### Requirement: Conditional Sub-Agent Creation
 The `BuildAgentTree` function SHALL create sub-agents data-driven from the agentSpecs registry. Agents with no tools SHALL be skipped unless AlwaysInclude is set. The planner sub-agent SHALL always be created as it is LLM-only.
@@ -248,16 +183,20 @@ The orchestrator's Decision Protocol SHALL include a Step 0 (ASSESS) that evalua
 - **AND** the ASSESS instruction SHALL contain "MUST NOT emit any function calls"
 
 ### Requirement: Orchestrator re-routing protocol
-The orchestrator instruction SHALL include a "Re-Routing Protocol" section. When a sub-agent transfers control back to the orchestrator, the orchestrator SHALL NOT re-send the same request to the same agent. It SHALL re-evaluate using the Decision Protocol (starting from Step 0) and either route to a different agent or answer directly as a general-purpose assistant.
 
-#### Scenario: Sub-agent transfers back
-- **WHEN** a sub-agent calls `transfer_to_agent` to return control to the orchestrator
-- **THEN** the orchestrator SHALL re-evaluate the request using the Decision Protocol from Step 0
-- **AND** SHALL NOT re-send to the same sub-agent
+The orchestrator re-routing protocol SHALL be reframed as a recovery and synthesis policy. When a teammate or legacy specialist returns control, the root runtime SHALL re-evaluate the state, avoid immediate same-target repetition, and either spawn or route to a different eligible specialist, synthesize a direct answer, or preserve the current failure state for operator visibility.
 
-#### Scenario: No matching agent after re-evaluation
-- **WHEN** re-evaluation determines no sub-agent can handle the request
-- **THEN** the orchestrator SHALL answer the question itself as a general-purpose assistant
+#### Scenario: Re-routing avoids same teammate loop
+- **WHEN** a teammate returns without resolving the request
+- **THEN** the root runtime SHALL NOT immediately re-send the request to the same teammate without new recovery context
+
+#### Scenario: Recovery synthesizes direct answer
+- **WHEN** no eligible teammate remains after re-evaluation
+- **THEN** the runtime SHALL be allowed to synthesize a direct response from the available state instead of forcing another handoff
+
+#### Scenario: Recovery preserves observable failure state
+- **WHEN** the runtime stops after a blocked or failed teammate path
+- **THEN** the current recovery condition SHALL remain visible to operators through projected run state
 
 ### Requirement: Delegation rules prioritize direct response
 The orchestrator's Delegation Rules SHALL list direct response for simple conversational messages BEFORE the rule about delegating tool-requiring tasks.
@@ -382,17 +321,6 @@ Each sub-agent instruction SHALL include guidance to report results clearly afte
 #### Scenario: Chronicler result reporting
 - **WHEN** the chronicler sub-agent completes memory operations
 - **THEN** its instruction SHALL guide it to report what was stored or retrieved
-
-### Requirement: RoleToolSet has eight roles plus Unmatched
-The RoleToolSet struct SHALL have fields: Operator, Navigator, Vault, Librarian, Planner, Chronicler, Automator, Ontologist, and Unmatched. Each field is a slice of `*agent.Tool`.
-
-#### Scenario: RoleToolSet structure
-- **WHEN** PartitionTools is called
-- **THEN** it SHALL return a RoleToolSet with nine fields (eight roles + Unmatched)
-
-#### Scenario: Planner tools always empty
-- **WHEN** PartitionTools is called with any input
-- **THEN** the Planner field SHALL always be nil/empty
 
 ### Requirement: Librarian Agent Specification
 The librarian sub-agent SHALL handle knowledge management including: search, RAG, graph traversal, knowledge/skill persistence, and knowledge inquiries. The agent spec SHALL include `librarian_` in its Prefixes list and `inquiry`, `question`, `gap` in its Keywords list. The Instruction SHALL include a "Proactive Behavior" section instructing the agent to weave pending inquiries naturally into responses.
@@ -664,3 +592,24 @@ The automator agent spec SHALL include `"agent_"` and `"task_"` in its Prefixes 
 - **WHEN** `toolCapability` is called for an `agent_` prefixed tool
 - **THEN** it SHALL return "agent lifecycle management"
 - **AND** `toolCapability` for a `task_` prefixed tool SHALL return "structured task management"
+
+### Requirement: Built-in teammate blocked-state durability
+Built-in teammate approval-blocked state SHALL be durably reconstructible through the RunLedger mirror while the live runtime continues using the control-plane projection.
+
+#### Scenario: Hard-cut audit closure is recorded by cross-reference
+- **WHEN** the transient-state durability change completes
+- **THEN** the archived hard-cut `approval-blocked conditions` follow-up SHALL be closed by cross-reference in the new change
+- **AND** the archived `recovery states` follow-up SHALL remain open until a production writer exists
+
+### Requirement: Production ADK tree excludes built-in teammates
+The production ADK agent tree SHALL keep built-in teammate types in the routing table while excluding them from `SubAgents`. Remote A2A agents and explicit non-built-in custom specs may still be attached as sub-agents.
+
+#### Scenario: Built-in-only tree has zero production sub-agents
+- **WHEN** `BuildAgentTree()` is called with only built-in teammate specs
+- **THEN** the returned orchestrator SHALL expose zero built-in production sub-agents
+- **AND** built-in routing information SHALL still be available to the orchestrator instruction
+
+#### Scenario: Remote agents remain attached
+- **WHEN** `BuildAgentTree()` is called with built-in teammate specs and one remote A2A agent
+- **THEN** the returned orchestrator SHALL expose only the remote A2A agent as a sub-agent
+

@@ -51,6 +51,79 @@ func TestExtractMissingAgent(t *testing.T) {
 	}
 }
 
+func TestBuildMissingAgentCorrection_BuiltinDoesNotSuggestTransferRetry(t *testing.T) {
+	t.Parallel()
+
+	got := buildMissingAgentCorrection(
+		"web_search",
+		[]string{"operator", "vault"},
+		func(name string) bool { return name == "web_search" },
+	)
+
+	assert.NotContains(t, got, "Valid agents:")
+	assert.Contains(t, got, "Use agent_spawn")
+	assert.Contains(t, got, "answer directly from gathered evidence")
+}
+
+func TestBuildMissingAgentCorrection_RemoteLegacyStillShowsValidAgents(t *testing.T) {
+	t.Parallel()
+
+	got := buildMissingAgentCorrection(
+		"remote-researcher",
+		[]string{"remote-researcher", "vault"},
+		func(name string) bool { return false },
+	)
+	assert.Contains(t, got, "Valid agents:")
+	assert.Contains(t, got, "remote-researcher, vault")
+	assert.Contains(t, got, "Please retry using one of the valid agent names listed above.")
+}
+
+func TestContainsBuiltinTargetName(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		want bool
+	}{
+		{name: "operator", want: true},
+		{name: "planner", want: true},
+		{name: "remote-researcher", want: false},
+		{name: "web_search", want: false},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, containsBuiltinTargetName(tt.name))
+		})
+	}
+}
+
+func TestShouldRetryMissingAgent(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		badAgent      string
+		subAgentCount int
+		want          bool
+	}{
+		{name: "empty bad agent", badAgent: "", subAgentCount: 0, want: false},
+		{name: "builtin with zero subagents", badAgent: "operator", subAgentCount: 0, want: true},
+		{name: "remote with zero subagents", badAgent: "remote-researcher", subAgentCount: 0, want: false},
+		{name: "remote with listed subagents", badAgent: "remote-researcher", subAgentCount: 2, want: true},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, shouldRetryMissingAgent(tt.badAgent, tt.subAgentCount))
+		})
+	}
+}
+
 func TestHasFunctionCalls(t *testing.T) {
 	t.Parallel()
 

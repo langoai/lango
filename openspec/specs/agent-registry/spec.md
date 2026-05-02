@@ -1,9 +1,7 @@
 ## Purpose
 
 Capability spec for agent-registry. See requirements below for scope and behavior contracts.
-
 ## Requirements
-
 ### Requirement: AgentDefinition type
 The `agentregistry` package SHALL define an `AgentDefinition` struct with fields: Name, Description, Status, Capabilities, Prefixes, Keywords, AlwaysInclude, Instruction, Source, and metadata (Version, Author, Tags).
 
@@ -59,11 +57,15 @@ The `FileStore` SHALL load AGENT.md files from a directory structure: `<base>/<n
 - **THEN** it SHALL return two AgentDefinitions with names "operator" and "custom" and Source set to SourceUser
 
 ### Requirement: EmbeddedStore for default agents
-The `EmbeddedStore` SHALL load AGENT.md files from an `embed.FS` containing the 8 default agent definitions (operator, navigator, vault, librarian, automator, planner, chronicler, ontologist).
+The embedded built-in `AGENT.md` set SHALL remain the authoritative default inventory for built-in teammates: `operator`, `navigator`, `vault`, `librarian`, `automator`, `planner`, `chronicler`, and `ontologist`. This requirement owns which built-in defaults exist and where they come from; prompt escalation and output-handling behavior for those defaults remain governed by `agent-routing`.
 
 #### Scenario: Load embedded defaults
 - **WHEN** EmbeddedStore loads agents
-- **THEN** it SHALL return 8 AgentDefinitions with Source set to SourceEmbedded
+- **THEN** it SHALL return 8 built-in AgentDefinitions with Source set to SourceEmbedded
+
+#### Scenario: Embedded built-in defaults remain authoritative inventory
+- **WHEN** the runtime resolves which teammate definitions are the built-in defaults
+- **THEN** it SHALL use the embedded built-in inventory of `operator`, `navigator`, `vault`, `librarian`, `automator`, `planner`, `chronicler`, and `ontologist`
 
 ### Requirement: Store interface
 The package SHALL define a `Store` interface with `Load() ([]AgentDefinition, error)` method. Both FileStore and EmbeddedStore SHALL implement this interface.
@@ -71,3 +73,4 @@ The package SHALL define a `Store` interface with `Load() ([]AgentDefinition, er
 #### Scenario: Store implementations
 - **WHEN** FileStore and EmbeddedStore are used
 - **THEN** both SHALL implement the Store interface
+

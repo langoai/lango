@@ -8,6 +8,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	adk_agent "google.golang.org/adk/agent"
+	"google.golang.org/adk/agent/llmagent"
 	adk_tool "google.golang.org/adk/tool"
 
 	"github.com/langoai/lango/internal/agent"
@@ -220,20 +222,7 @@ func TestBuildAgentTree_Success(t *testing.T) {
 	require.NotNil(t, root)
 
 	assert.Equal(t, "lango-orchestrator", root.Name())
-	// operator, navigator, vault, librarian, planner (always), chronicler, ontologist = 7
-	assert.Len(t, root.SubAgents(), 7, "orchestrator should have 7 sub-agents")
-
-	subNames := make([]string, len(root.SubAgents()))
-	for i, sa := range root.SubAgents() {
-		subNames[i] = sa.Name()
-	}
-	assert.Contains(t, subNames, "operator")
-	assert.Contains(t, subNames, "navigator")
-	assert.Contains(t, subNames, "vault")
-	assert.Contains(t, subNames, "librarian")
-	assert.Contains(t, subNames, "planner")
-	assert.Contains(t, subNames, "chronicler")
-	assert.Contains(t, subNames, "ontologist")
+	assert.Len(t, root.SubAgents(), 0, "built-in specialists should not be attached as production ADK sub-agents")
 }
 
 func TestBuildAgentTree_NoTools(t *testing.T) {
@@ -246,8 +235,19 @@ func TestBuildAgentTree_NoTools(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	assert.Len(t, root.SubAgents(), 1)
-	assert.Equal(t, "planner", root.SubAgents()[0].Name())
+	assert.Len(t, root.SubAgents(), 0)
+}
+
+func TestBuildAgentTree_RootOnlyAllowed(t *testing.T) {
+	root, err := BuildAgentTree(Config{
+		Tools:        nil,
+		Model:        nil,
+		SystemPrompt: "base",
+		AdaptTool:    stubAdapter,
+		Specs:        []AgentSpec{},
+	})
+	require.NoError(t, err)
+	assert.Len(t, root.SubAgents(), 0)
 }
 
 func TestBuildAgentTree_PartialAgents(t *testing.T) {
@@ -265,19 +265,7 @@ func TestBuildAgentTree_PartialAgents(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// operator + librarian + planner (always) = 3
-	assert.Len(t, root.SubAgents(), 3)
-
-	subNames := make([]string, len(root.SubAgents()))
-	for i, sa := range root.SubAgents() {
-		subNames[i] = sa.Name()
-	}
-	assert.Contains(t, subNames, "operator")
-	assert.Contains(t, subNames, "librarian")
-	assert.Contains(t, subNames, "planner")
-	assert.NotContains(t, subNames, "navigator")
-	assert.NotContains(t, subNames, "vault")
-	assert.NotContains(t, subNames, "chronicler")
+	assert.Len(t, root.SubAgents(), 0)
 }
 
 func TestBuildAgentTree_UnmatchedToolsNotAssigned(t *testing.T) {
@@ -301,10 +289,42 @@ func TestBuildAgentTree_UnmatchedToolsNotAssigned(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Only planner (always included), no tools adapted since unmatched.
-	assert.Len(t, root.SubAgents(), 1)
-	assert.Equal(t, "planner", root.SubAgents()[0].Name())
+	assert.Len(t, root.SubAgents(), 0)
 	assert.Empty(t, adaptedTools, "unmatched tools should not be adapted")
+}
+
+func TestBuildAgentTree_DefaultBuiltinSpecsDoNotAttachProductionSubAgents(t *testing.T) {
+	root, err := BuildAgentTree(Config{
+		Tools:        []*agent.Tool{newTestTool("exec_shell"), newTestTool("search_web")},
+		Model:        nil,
+		SystemPrompt: "test prompt",
+		AdaptTool:    stubAdapter,
+		Specs:        DefaultAgentSpecs(),
+	})
+	require.NoError(t, err)
+	assert.Len(t, root.SubAgents(), 0)
+}
+
+func TestBuildAgentTree_RemoteAgentsRemainAttachedWhenBuiltinsAreSkipped(t *testing.T) {
+	remote, err := llmagent.New(llmagent.Config{
+		Name:        "remote-researcher",
+		Description: "Remote researcher",
+		Model:       nil,
+		Instruction: "Remote",
+	})
+	require.NoError(t, err)
+
+	root, err := BuildAgentTree(Config{
+		Tools:        []*agent.Tool{newTestTool("exec_shell"), newTestTool("search_web")},
+		Model:        nil,
+		SystemPrompt: "test prompt",
+		AdaptTool:    stubAdapter,
+		Specs:        DefaultAgentSpecs(),
+		RemoteAgents: []adk_agent.Agent{remote},
+	})
+	require.NoError(t, err)
+	require.Len(t, root.SubAgents(), 1)
+	assert.Equal(t, "remote-researcher", root.SubAgents()[0].Name())
 }
 
 func TestBuildAgentTree_RoutingTableInInstruction(t *testing.T) {
@@ -349,7 +369,7 @@ func TestBuildAgentTree_RoutingTableInInstruction(t *testing.T) {
 
 	// Should contain re-routing protocol.
 	assert.Contains(t, inst, "Re-Routing Protocol")
-	assert.Contains(t, inst, "sub-agent transfers control back")
+	assert.Contains(t, inst, "returns control to the root runtime")
 }
 
 func TestBuildAgentTree_EscalationProtocolInInstructions(t *testing.T) {
@@ -369,24 +389,37 @@ func TestBuildAgentTree_EscalationProtocolInInstructions(t *testing.T) {
 		if len(st) == 0 && !spec.AlwaysInclude {
 			continue
 		}
-		assert.Contains(t, spec.Instruction, "transfer_to_agent",
-			"spec %q should have transfer_to_agent escalation in instruction", spec.Name)
-		assert.Contains(t, spec.Instruction, "lango-orchestrator",
-			"spec %q should escalate to lango-orchestrator", spec.Name)
+		assert.Contains(t, spec.Instruction, "Return control cleanly to the root runtime",
+			"spec %q should return control to the root runtime", spec.Name)
+		assert.Contains(t, spec.Instruction, "Do not call transfer_to_agent for built-in teammate escalation",
+			"spec %q should forbid built-in transfer_to_agent escalation", spec.Name)
 	}
 }
 
 func TestBuildAgentTree_AdapterError(t *testing.T) {
 	tools := []*agent.Tool{newTestTool("exec_shell")}
+	customSpecs := []AgentSpec{
+		{
+			Name:         "api-handler",
+			Description:  "Handles API operations",
+			Instruction:  "API handler.",
+			Prefixes:     []string{"exec_"},
+			Keywords:     []string{"api"},
+			Capabilities: []string{"API operations"},
+			Accepts:      "API task",
+			Returns:      "API result",
+		},
+	}
 
 	_, err := BuildAgentTree(Config{
 		Tools:        tools,
 		Model:        nil,
 		SystemPrompt: "test",
 		AdaptTool:    failingAdapter,
+		Specs:        customSpecs,
 	})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "adapt operator tools")
+	assert.Contains(t, err.Error(), "adapt api-handler tools")
 }
 
 func TestBuildAgentTree_OrchestratorHasNoDirectTools(t *testing.T) {
@@ -412,27 +445,38 @@ func TestBuildAgentTree_OrchestratorHasNoDirectTools(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	assert.Len(t, root.SubAgents(), 6,
-		"orchestrator should have 6 sub-agents")
+	assert.Len(t, root.SubAgents(), 0,
+		"orchestrator should not attach built-in specialists as ADK sub-agents")
 
-	// Each tool adapted exactly once (for its sub-agent, not the orchestrator).
-	toolAdaptCounts := make(map[string]int, len(tools))
-	for _, name := range adaptedTools {
-		toolAdaptCounts[name]++
-	}
-	for _, tool := range tools {
-		assert.Equal(t, 1, toolAdaptCounts[tool.Name],
-			"tool %q should be adapted only once (for sub-agent)", tool.Name)
-	}
+	assert.Empty(t, adaptedTools, "built-in teammate tools should not be adapted into production ADK sub-agents")
 }
 
 func TestBuildAgentTree_DescriptionsUseCapabilities(t *testing.T) {
 	tools := []*agent.Tool{
 		newTestTool("exec_shell"),
 		newTestTool("browser_navigate"),
-		newTestTool("crypto_sign"),
-		newTestTool("search_web"),
-		newTestTool("memory_store"),
+	}
+	customSpecs := []AgentSpec{
+		{
+			Name:         "api-handler",
+			Description:  "API operations",
+			Instruction:  "API handler.",
+			Prefixes:     []string{"exec_"},
+			Keywords:     []string{"api"},
+			Capabilities: []string{"API operations"},
+			Accepts:      "API task",
+			Returns:      "API result",
+		},
+		{
+			Name:         "browser-handler",
+			Description:  "Browser operations",
+			Instruction:  "Browser handler.",
+			Prefixes:     []string{"browser_"},
+			Keywords:     []string{"browser"},
+			Capabilities: []string{"Browser operations"},
+			Accepts:      "Browser task",
+			Returns:      "Browser result",
+		},
 	}
 
 	root, err := BuildAgentTree(Config{
@@ -440,6 +484,7 @@ func TestBuildAgentTree_DescriptionsUseCapabilities(t *testing.T) {
 		Model:        nil,
 		SystemPrompt: "test prompt",
 		AdaptTool:    stubAdapter,
+		Specs:        customSpecs,
 	})
 	require.NoError(t, err)
 
@@ -462,7 +507,27 @@ func TestBuildAgentTree_DescriptionsUseCapabilities(t *testing.T) {
 func TestBuildAgentTree_SubAgentPromptFunc(t *testing.T) {
 	tools := []*agent.Tool{
 		newTestTool("exec_shell"),
-		newTestTool("search_web"),
+	}
+	customSpecs := []AgentSpec{
+		{
+			Name:         "api-handler",
+			Description:  "Handles API operations",
+			Instruction:  "## What You Do\nHandle API.\n",
+			Prefixes:     []string{"exec_"},
+			Keywords:     []string{"api"},
+			Capabilities: []string{"API operations"},
+			Accepts:      "API task",
+			Returns:      "API result",
+		},
+		{
+			Name:          "thinker",
+			Description:   "Reasoning agent",
+			Instruction:   "## What You Do\nThink.\n",
+			Keywords:      []string{"think"},
+			AlwaysInclude: true,
+			Accepts:       "Problem",
+			Returns:       "Answer",
+		},
 	}
 
 	// Track which agent names and default instructions the func receives.
@@ -478,23 +543,43 @@ func TestBuildAgentTree_SubAgentPromptFunc(t *testing.T) {
 		SystemPrompt:   "test prompt",
 		AdaptTool:      stubAdapter,
 		SubAgentPrompt: promptFunc,
+		Specs:          customSpecs,
 	})
 	require.NoError(t, err)
 	require.NotNil(t, root)
 
-	// operator, librarian, planner should all have been called.
-	assert.Contains(t, calls, "operator")
-	assert.Contains(t, calls, "librarian")
-	assert.Contains(t, calls, "planner")
+	assert.Contains(t, calls, "api-handler")
+	assert.Contains(t, calls, "thinker")
 
 	// Default instructions should have been passed through.
-	assert.Contains(t, calls["operator"], "## What You Do")
-	assert.Contains(t, calls["planner"], "## What You Do")
+	assert.Contains(t, calls["api-handler"], "## What You Do")
+	assert.Contains(t, calls["thinker"], "## What You Do")
 }
 
 func TestBuildAgentTree_NilSubAgentPromptFunc(t *testing.T) {
 	// With nil SubAgentPrompt, agents should use spec.Instruction unchanged.
 	tools := []*agent.Tool{newTestTool("exec_shell")}
+	customSpecs := []AgentSpec{
+		{
+			Name:         "api-handler",
+			Description:  "Handles API operations",
+			Instruction:  "API handler.",
+			Prefixes:     []string{"exec_"},
+			Keywords:     []string{"api"},
+			Capabilities: []string{"API operations"},
+			Accepts:      "API task",
+			Returns:      "API result",
+		},
+		{
+			Name:          "thinker",
+			Description:   "Reasoning agent",
+			Instruction:   "Thinker.",
+			Keywords:      []string{"think"},
+			AlwaysInclude: true,
+			Accepts:       "Problem",
+			Returns:       "Answer",
+		},
+	}
 
 	root, err := BuildAgentTree(Config{
 		Tools:          tools,
@@ -502,11 +587,11 @@ func TestBuildAgentTree_NilSubAgentPromptFunc(t *testing.T) {
 		SystemPrompt:   "test prompt",
 		AdaptTool:      stubAdapter,
 		SubAgentPrompt: nil,
+		Specs:          customSpecs,
 	})
 	require.NoError(t, err)
 	require.NotNil(t, root)
 
-	// operator + planner = 2 agents
 	assert.Len(t, root.SubAgents(), 2)
 }
 
@@ -514,9 +599,37 @@ func TestBuildAgentTree_SubAgentPromptFunc_AllAgents(t *testing.T) {
 	tools := []*agent.Tool{
 		newTestTool("exec_shell"),
 		newTestTool("browser_open"),
-		newTestTool("crypto_sign"),
-		newTestTool("search_web"),
-		newTestTool("memory_store"),
+	}
+	customSpecs := []AgentSpec{
+		{
+			Name:         "api-handler",
+			Description:  "API operations",
+			Instruction:  "API handler.",
+			Prefixes:     []string{"exec_"},
+			Keywords:     []string{"api"},
+			Capabilities: []string{"API operations"},
+			Accepts:      "API task",
+			Returns:      "API result",
+		},
+		{
+			Name:         "browser-handler",
+			Description:  "Browser operations",
+			Instruction:  "Browser handler.",
+			Prefixes:     []string{"browser_"},
+			Keywords:     []string{"browser"},
+			Capabilities: []string{"Browser operations"},
+			Accepts:      "Browser task",
+			Returns:      "Browser result",
+		},
+		{
+			Name:          "thinker",
+			Description:   "Reasoning agent",
+			Instruction:   "Thinker.",
+			Keywords:      []string{"think"},
+			AlwaysInclude: true,
+			Accepts:       "Problem",
+			Returns:       "Answer",
+		},
 	}
 
 	var calledAgents []string
@@ -531,19 +644,16 @@ func TestBuildAgentTree_SubAgentPromptFunc_AllAgents(t *testing.T) {
 		SystemPrompt:   "test prompt",
 		AdaptTool:      stubAdapter,
 		SubAgentPrompt: promptFunc,
+		Specs:          customSpecs,
 	})
 	require.NoError(t, err)
 
-	// All 6 agents should have been processed.
-	assert.Len(t, calledAgents, 6)
-	assert.Contains(t, calledAgents, "operator")
-	assert.Contains(t, calledAgents, "navigator")
-	assert.Contains(t, calledAgents, "vault")
-	assert.Contains(t, calledAgents, "librarian")
-	assert.Contains(t, calledAgents, "planner")
-	assert.Contains(t, calledAgents, "chronicler")
+	assert.Len(t, calledAgents, 3)
+	assert.Contains(t, calledAgents, "api-handler")
+	assert.Contains(t, calledAgents, "browser-handler")
+	assert.Contains(t, calledAgents, "thinker")
 
-	assert.Len(t, root.SubAgents(), 6)
+	assert.Len(t, root.SubAgents(), 3)
 }
 
 // --- buildRoutingEntry tests ---
@@ -741,10 +851,36 @@ func TestBuildOrchestratorInstruction_NoUnmatchedTools(t *testing.T) {
 	assert.NotContains(t, got, "Unmatched Tools")
 }
 
+func TestOrchestratorInstruction_IncludesDynamicTeammateSelectionRule(t *testing.T) {
+	entries := []routingEntry{
+		{
+			Name:        "operator",
+			Description: "System ops",
+			Keywords:    []string{"run command"},
+			Accepts:     "A command",
+			Returns:     "Output",
+		},
+	}
+
+	got := buildOrchestratorInstruction("base", entries, 5, nil)
+
+	assert.Contains(t, got, "Built-in teammate work MUST use agent_spawn.")
+	assert.Contains(t, got, "Do not use transfer_to_agent for built-in teammates.")
+	assert.Contains(t, got, "Use transfer_to_agent only for remote A2A or tightly documented legacy compatibility paths.")
+}
+
+func TestOrchestratorInstruction_BuiltinUsesSpawnOnly(t *testing.T) {
+	got := buildOrchestratorInstruction("base", nil, 10, nil)
+	assert.Contains(t, got, "Built-in teammate work MUST use agent_spawn")
+	assert.NotContains(t, got, "Use transfer_to_agent only for legacy ADK static sub-agent fallback, specialist re-routing")
+}
+
 func TestBuildOrchestratorInstruction_DelegateOnly(t *testing.T) {
 	got := buildOrchestratorInstruction("base", nil, 5, nil)
 
-	assert.Contains(t, got, "You do NOT have tools")
+	assert.Contains(t, got, "You coordinate work, answer directly when no teammate is needed")
+	assert.Contains(t, got, "Built-in teammate work MUST use agent_spawn.")
+	assert.NotContains(t, got, "You do NOT have tools")
 	// Output Awareness section replaces the old Diagnostics section.
 	assert.Contains(t, got, "Output Awareness")
 	assert.NotContains(t, got, "builtin_health")
@@ -756,6 +892,7 @@ func TestBuildOrchestratorInstruction_HasAssessStep(t *testing.T) {
 	assert.Contains(t, got, "0. ASSESS")
 	assert.Contains(t, got, "simple conversational request")
 	assert.Contains(t, got, "respond directly")
+	assert.Contains(t, got, "Built-in teammate work MUST use agent_spawn.")
 
 	// ASSESS direct-answer line must NOT list weather or general knowledge.
 	assessIdx := strings.Index(got, "0. ASSESS:")
@@ -774,6 +911,7 @@ func TestBuildOrchestratorInstruction_HasAssessStep(t *testing.T) {
 	phase1Idx := strings.Index(got[assessIdx:], "Phase 1")
 	assessBlock := got[assessIdx : assessIdx+phase1Idx]
 	assert.Contains(t, assessBlock, "MUST NOT emit any function calls")
+	assert.NotContains(t, assessBlock, "You have NO tools")
 }
 
 func TestBuildOrchestratorInstruction_DelegationRulesNoWeather(t *testing.T) {
@@ -816,21 +954,24 @@ func TestBuildOrchestratorInstruction_HasReRoutingProtocol(t *testing.T) {
 	got := buildOrchestratorInstruction("base", nil, 5, nil)
 
 	assert.Contains(t, got, "Re-Routing Protocol")
-	assert.Contains(t, got, "sub-agent transfers control back")
+	assert.Contains(t, got, "returns control to the root runtime")
 	assert.Contains(t, got, "NEVER re-delegate to an agent that already returned")
 	assert.Contains(t, got, "general-purpose assistant")
 	assert.Contains(t, got, "two consecutive agents fail")
+	assert.Contains(t, got, "Use transfer_to_agent only for remote A2A or tightly documented legacy compatibility paths")
 }
 
 func TestBuildOrchestratorInstruction_DelegationRulesOrder(t *testing.T) {
 	got := buildOrchestratorInstruction("base", nil, 5, nil)
 
-	// Verify that direct response rule comes BEFORE delegation rule.
+	// Verify runtime guidance appears before later delegation rules.
 	directIdx := strings.Index(got, "respond directly WITHOUT delegation")
-	delegateIdx := strings.Index(got, "delegate to the sub-agent")
+	delegateIdx := strings.Index(got, "Built-in teammate work MUST use agent_spawn.")
 	assert.Greater(t, directIdx, 0, "direct response rule should exist")
 	assert.Greater(t, delegateIdx, 0, "delegation rule should exist")
-	assert.Less(t, directIdx, delegateIdx, "direct response should come before delegation")
+	assert.Greater(t, directIdx, delegateIdx, "runtime guidance should appear before direct response rule")
+	assert.Contains(t, got, "Do not use transfer_to_agent for built-in teammates.")
+	assert.Contains(t, got, "Use transfer_to_agent only for remote A2A or tightly documented legacy compatibility paths.")
 }
 
 // --- PartitionTools builtin_ skip tests ---
@@ -869,10 +1010,10 @@ func TestAgentSpecs_AllHaveEscalationProtocol(t *testing.T) {
 	for _, spec := range agentSpecs {
 		assert.Contains(t, spec.Instruction, "## Escalation Protocol",
 			"spec %q must have escalation protocol section", spec.Name)
-		assert.Contains(t, spec.Instruction, `transfer_to_agent`,
-			"spec %q must use transfer_to_agent for escalation", spec.Name)
-		assert.Contains(t, spec.Instruction, `lango-orchestrator`,
-			"spec %q must escalate to lango-orchestrator", spec.Name)
+		assert.Contains(t, spec.Instruction, "Return control cleanly to the root runtime",
+			"spec %q must return control to the root runtime", spec.Name)
+		assert.Contains(t, spec.Instruction, "Do not call transfer_to_agent for built-in teammate escalation",
+			"spec %q must forbid built-in transfer_to_agent escalation", spec.Name)
 	}
 }
 

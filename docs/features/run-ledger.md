@@ -168,9 +168,23 @@ The journal is an append-only event log. Every mutation to run state is captured
 | `run_resumed` | Run resumed from paused state |
 | `run_completed` | All steps and criteria satisfied |
 | `run_failed` | Run terminated with failures |
+| `teammate_approval_blocked` | Built-in teammate entered or replaced an approval-blocked runtime condition |
+| `teammate_approval_unblocked` | Built-in teammate left the approval-blocked runtime condition |
 | `projection_synced` | Write-through projection sync marker |
 
 Snapshots are materialized by replaying the full journal, or by applying a tail of new events to a cached snapshot.
+
+When both `runLedger.enabled: true` and `runLedger.writeThrough: true` are active, RunLedger also records `teammate_approval_blocked` / `teammate_approval_unblocked` transitions for built-in teammate approval blocking. The materialized snapshot exposes the latest teammate approval-blocked fields derived from those events:
+
+- `teammate_runtime_condition`
+- `teammate_blocked_reason`
+- `teammate_grant_request_id`
+- `teammate_grant_attempt`
+- `teammate_grant_state`
+
+The teammate approval-blocked durable mirror preserves both the stable logical `grant_request_id` and the latest attempt metadata derived from approval-block journal events. Repeated attempts for the same logical blocked request do not require rotating the request ID.
+
+This mirror is best effort. The live control-plane `AgentRun` projection remains authoritative for runtime continuity, while the RunLedger journal plus materialized snapshot provide durable reconstruction later.
 
 ## Workspace Isolation
 
