@@ -149,9 +149,52 @@ func TestMissionControlProjectorLearningSuggestionDerivation(t *testing.T) {
 	require.Len(t, snapshot.Missions, 2)
 	assert.Equal(t, "learn:newer", snapshot.Missions[0].ID)
 	assert.Equal(t, MissionKindProposed, snapshot.Missions[0].Kind)
-	assert.Equal(t, MissionStatusPending, snapshot.Missions[0].Status)
+	assert.Equal(t, MissionStatusPrepared, snapshot.Missions[0].Status)
 	assert.Equal(t, "Apply learning rule: Collapse mission overflow into a compact summary.", snapshot.Missions[0].Title)
 	assert.Equal(t, "learn:older", snapshot.Missions[1].ID)
+}
+
+func TestMissionControlProjectorRunLedgerNextActionEnrichment(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 5, 3, 10, 0, 0, 0, time.UTC)
+	projector := NewMissionControlProjector(Deps{
+		RunLedgerStore: stubMissionControlRunLedgerReader{
+			snapshots: map[string]*runledger.RunSnapshot{
+				"task-1": {
+					RunID:     "task-1",
+					Status:    runledger.RunStatusRunning,
+					UpdatedAt: now.Add(-30 * time.Second),
+					Steps: []runledger.Step{
+						{
+							StepID: "done",
+							Goal:   "Collect runtime facts",
+							Status: runledger.StepStatusCompleted,
+						},
+						{
+							StepID:    "next",
+							Goal:      "Render Mission Control lane",
+							Status:    runledger.StepStatusPending,
+							DependsOn: []string{"done"},
+						},
+					},
+				},
+			},
+		},
+	})
+
+	snapshot := projector.Project([]background.TaskSnapshot{
+		{
+			ID:         "task-1",
+			StatusText: "running",
+			Prompt:     "Build the projector",
+			StartedAt:  now.Add(-2 * time.Minute),
+		},
+	})
+
+	require.Len(t, snapshot.Missions, 1)
+	assert.Equal(t, "Next step: Render Mission Control lane", snapshot.Missions[0].NextAction)
+	assert.Equal(t, now.Add(-30*time.Second), snapshot.Missions[0].UpdatedAt)
 }
 
 func TestMissionControlDegradedNilReaders(t *testing.T) {
@@ -213,7 +256,8 @@ func TestMissionControlHeaderDerivation(t *testing.T) {
 	assert.Equal(t, "worker-c active", snapshot.Header.ActiveAgentSummary)
 	assert.Equal(t, "openai / gpt-5", snapshot.Header.ModelProviderSummary)
 	assert.Equal(t, 1, snapshot.Header.PendingDecisionCount)
-	assert.Equal(t, "150 tokens across 1 requests", snapshot.Header.ContextSummary)
+	assert.Empty(t, snapshot.Header.ContextSummary)
+	assert.Equal(t, "150 tokens across 1 requests", snapshot.Header.MetricsSummary)
 	assert.Empty(t, snapshot.Header.DegradedNote)
 }
 

@@ -79,7 +79,7 @@ func (p *MissionControlProjector) Project(taskSnapshots []background.TaskSnapsho
 			PendingDecisionCount: pendingDecisionCount(p.pendingApprovals),
 			DegradedNote:         degradedNote,
 			ContextSummary:       p.buildContextSummary(),
-			MetricsSummary:       p.buildContextSummary(),
+			MetricsSummary:       p.buildMetricsSummary(),
 		},
 		Missions:                visibleMissions,
 		Decision:                decision,
@@ -193,7 +193,7 @@ func (p *MissionControlProjector) projectLearningSuggestions() []MissionView {
 		missions = append(missions, MissionView{
 			ID:         "learn:" + strings.TrimSpace(item.SuggestionID),
 			Kind:       MissionKindProposed,
-			Status:     MissionStatusPending,
+			Status:     MissionStatusPrepared,
 			Title:      "Apply learning rule: " + title,
 			Detail:     strings.TrimSpace(item.Rationale),
 			NextAction: "Review suggestion",
@@ -299,6 +299,10 @@ func (p *MissionControlProjector) buildModelProviderSummary() string {
 }
 
 func (p *MissionControlProjector) buildContextSummary() string {
+	return ""
+}
+
+func (p *MissionControlProjector) buildMetricsSummary() string {
 	if p.metricsCollector == nil || strings.TrimSpace(p.sessionKey) == "" {
 		return ""
 	}
@@ -379,7 +383,7 @@ func enrichMissionFromRunLedger(mission *MissionView, snap *runledger.RunSnapsho
 	if hint := strings.TrimSpace(snap.TeammateRuntimeCondition); hint != "" && mission.RuntimeHint == "" {
 		mission.RuntimeHint = hint
 	}
-	if step := snap.NextExecutableStep(); step != nil && mission.NextAction == "" {
+	if step := snap.NextExecutableStep(); step != nil && mission.Status != MissionStatusBlocked {
 		mission.NextAction = "Next step: " + strings.TrimSpace(step.Goal)
 	}
 	if snap.UpdatedAt.After(mission.UpdatedAt) {
@@ -447,16 +451,18 @@ func missionStatusPriority(status MissionStatus) int {
 		return 0
 	case MissionStatusBlocked:
 		return 1
-	case MissionStatusPending:
+	case MissionStatusPrepared:
 		return 2
-	case MissionStatusDone:
+	case MissionStatusPending:
 		return 3
-	case MissionStatusFailed:
+	case MissionStatusDone:
 		return 4
-	case MissionStatusCancelled:
+	case MissionStatusFailed:
 		return 5
-	default:
+	case MissionStatusCancelled:
 		return 6
+	default:
+		return 7
 	}
 }
 

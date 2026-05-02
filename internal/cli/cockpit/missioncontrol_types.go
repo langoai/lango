@@ -16,6 +16,7 @@ type MissionStatus string
 
 const (
 	MissionStatusUnknown   MissionStatus = "unknown"
+	MissionStatusPrepared  MissionStatus = "prepared"
 	MissionStatusPending   MissionStatus = "pending"
 	MissionStatusRunning   MissionStatus = "running"
 	MissionStatusBlocked   MissionStatus = "blocked"
