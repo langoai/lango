@@ -14,7 +14,8 @@ This change introduces Mission Control as the default `lango` TUI surface and de
 - `lango chat` remains the direct chat fallback
 - active missions are projected from existing background and optional runtime sources
 - the latest pending approval becomes a live decision through a shared pending-response owner
-- learning suggestions become proposed missions as UI proposals only
+- Wave 1 promises exactly one visible pending approval at a time; additional concurrent pending approvals are out of scope for this change
+- learning suggestions become actionable proposed missions in the UI and may route into an existing prompt or approval flow, but do not create durable mission state or direct learning persistence by themselves
 - cockpit keeps shared subscriptions and buffers for mission projections during the TUI session
 
 ## Scope Guardrails

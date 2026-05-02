@@ -42,12 +42,13 @@ Mission Control is a UI projection, not a mission engine.
 
 - background tasks project to active missions
 - optional RunLedger and AgentRun readers may enrich status, blockers, and owner summaries
-- learning suggestions project to proposed missions only as UI proposals
-- accepting a proposed mission may route to existing prompt or approval flows, but does not create durable mission state in Wave 1
+- learning suggestions project to actionable proposed missions in the UI
+- accepting a proposed mission may route to existing prompt or approval flows, but does not create durable mission state or direct learning persistence in Wave 1
 
 ### Decision
 
 - the latest pending approval request is the only required live decision in Wave 1
+- Wave 1 promises exactly one visible pending approval at a time; if a second approval arrives while one is already pending, this change does not promise queueing, ordering, or concurrent rendering behavior
 - approval history remains history-only data
 - active approvals must resolve through the original pending response channel
 
@@ -57,6 +58,13 @@ Mission Control is a UI projection, not a mission engine.
 - retention is bounded to the latest 200 items
 - switching pages does not clear the timeline
 - session end resets the timeline
+- the timeline is a recent activity surface, not a message-by-message transcript contract
+
+### Header
+
+- the header summarizes only runtime state already available to cockpit
+- at minimum, Wave 1 may surface compact status such as active-agent summary, pending-decision count, and degraded-reader notice when that data is already available
+- the header does not promise new synthesized context beyond existing cockpit-owned data
 
 ## Ownership Boundaries
 
@@ -107,5 +115,6 @@ The change is valid only if the OpenSpec delta stays inside Wave 1:
 
 - Mission Control is the default surface, but not a new mission engine
 - live approvals use the shared pending channel path
-- learning suggestions stay informational until a later mission lifecycle slice exists
+- Wave 1 promises only one visible pending approval at a time
+- learning suggestions remain actionable UI proposals, but not durable mission or direct learning-persistence semantics
 - no spec text implies durable mission storage, transcript event streaming, or page-lifetime unsubscribe support
