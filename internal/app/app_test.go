@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"path/filepath"
 	"testing"
 
@@ -15,7 +16,6 @@ import (
 	"github.com/langoai/lango/internal/storage"
 	"github.com/langoai/lango/internal/testutil"
 	"github.com/langoai/lango/internal/toolchain"
-	"github.com/langoai/lango/internal/wallet"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -25,6 +25,16 @@ type staticResolver map[appinit.Provides]interface{}
 func (r staticResolver) Resolve(key appinit.Provides) interface{} {
 	return r[key]
 }
+
+type appTestApprovalProvider struct {
+	response approval.ApprovalResponse
+}
+
+func (p *appTestApprovalProvider) RequestApproval(_ context.Context, _ approval.ApprovalRequest) (approval.ApprovalResponse, error) {
+	return p.response, nil
+}
+
+func (p *appTestApprovalProvider) CanHandle(_ string) bool { return true }
 
 // testBoot creates a minimal bootstrap.Result for testing.
 func testBoot(t *testing.T, cfg *config.Config) *bootstrap.Result {
@@ -191,7 +201,8 @@ func TestPopulateAppFields_MissionComponents(t *testing.T) {
 	store := mission.NewEntStore(client)
 	service := mission.NewService(store)
 	observer := &missionApprovalHooks{service: service}
-	linker := &missionExecutionLinkHooks{service: service}
+	bgLinker := &missionBackgroundLinkHooks{service: service}
+	runLinker := &missionRunLedgerLinkHooks{service: service}
 
 	app := &App{}
 	populateAppFields(app, staticResolver{
@@ -199,14 +210,16 @@ func TestPopulateAppFields_MissionComponents(t *testing.T) {
 			store:            store,
 			service:          service,
 			approvalObserver: observer,
-			executionLinker:  linker,
+			backgroundLinker: bgLinker,
+			runLedgerLinker:  runLinker,
 		},
 	})
 
 	assert.Same(t, store, app.MissionStore)
 	assert.Same(t, service, app.MissionService)
 	assert.Same(t, observer, app.missionApprovalObserver)
-	assert.Same(t, linker, app.missionExecutionLinker)
+	assert.Same(t, bgLinker, app.missionBackgroundLinker)
+	assert.Same(t, runLinker, app.missionRunLedgerLinker)
 }
 
 func TestNew_MissionApprovalObserverWiredAtCompositionSite(t *testing.T) {
@@ -227,29 +240,30 @@ func TestNew_MissionApprovalObserverWiredAtCompositionSite(t *testing.T) {
 		Storage: storage.NewFacade(nil, nil, storage.WithEntClient(client)),
 	}
 
-	orig := buildApprovalMiddlewareWithMission
-	t.Cleanup(func() { buildApprovalMiddlewareWithMission = orig })
-
-	called := false
-	sawObserver := false
-	buildApprovalMiddlewareWithMission = func(
-		ic config.InterceptorConfig,
-		ap approval.Provider,
-		gs *approval.GrantStore,
-		limiter wallet.SpendingLimiter,
-		history *approval.HistoryStore,
-		observer missionApprovalObserver,
-	) toolchain.Middleware {
-		called = true
-		sawObserver = observer != nil
-		return func(_ *agent.Tool, next agent.ToolHandler) agent.ToolHandler {
-			return next
-		}
-	}
-
 	app, err := New(boot)
 	require.NoError(t, err)
-	assert.True(t, called)
-	assert.True(t, sawObserver)
 	require.NotNil(t, app.MissionService)
+
+	obs, ok := app.missionApprovalObserver.(*missionApprovalHooks)
+	require.True(t, ok)
+	mw := toolchain.WithApproval(
+		cfg.Security.Interceptor,
+		&appTestApprovalProvider{response: approval.ApprovalResponse{Approved: true, Provider: "tui"}},
+		nil,
+		nil,
+		nil,
+		app.missionApprovalObserver,
+	)
+	tool := &agent.Tool{
+		Name:        "exec",
+		SafetyLevel: agent.SafetyLevelDangerous,
+		Handler: func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
+			return "ok", nil
+		},
+	}
+	wrapped := toolchain.Chain(tool, mw)
+	_, err = wrapped.Handler(context.Background(), map[string]interface{}{"command": "pwd"})
+	require.NoError(t, err)
+	require.NotEmpty(t, obs.requests)
+	assert.Equal(t, "exec", obs.requests[len(obs.requests)-1])
 }

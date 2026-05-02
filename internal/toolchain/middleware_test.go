@@ -385,6 +385,24 @@ func (m *sequenceApprovalProvider) RequestApproval(_ context.Context, _ approval
 
 func (m *sequenceApprovalProvider) CanHandle(_ string) bool { return true }
 
+type mockApprovalObserver struct {
+	requested int
+	resolved  int
+	lastReq   ApprovalRequest
+	lastRes   ApprovalResolution
+}
+
+func (m *mockApprovalObserver) OnApprovalRequested(_ context.Context, req ApprovalRequest) {
+	m.requested++
+	m.lastReq = req
+}
+
+func (m *mockApprovalObserver) OnApprovalResolved(_ context.Context, req ApprovalRequest, resolution ApprovalResolution) {
+	m.resolved++
+	m.lastReq = req
+	m.lastRes = resolution
+}
+
 func TestWithApproval_DeniedExecution(t *testing.T) {
 	t.Parallel()
 
@@ -400,7 +418,7 @@ func TestWithApproval_DeniedExecution(t *testing.T) {
 		},
 	}
 
-	mw := WithApproval(ic, ap, nil, nil, nil)
+	mw := WithApproval(ic, ap, nil, nil, nil, nil)
 	wrapped := Chain(tool, mw)
 	_, err := wrapped.Handler(context.Background(), nil)
 
@@ -424,7 +442,7 @@ func TestWithApproval_ApprovedExecution(t *testing.T) {
 		},
 	}
 
-	mw := WithApproval(ic, ap, nil, nil, nil)
+	mw := WithApproval(ic, ap, nil, nil, nil, nil)
 	wrapped := Chain(tool, mw)
 	result, err := wrapped.Handler(context.Background(), nil)
 
@@ -451,7 +469,7 @@ func TestWithApproval_GrantStoreAutoApproves(t *testing.T) {
 		},
 	}
 
-	mw := WithApproval(ic, ap, gs, nil, nil)
+	mw := WithApproval(ic, ap, gs, nil, nil, nil)
 	wrapped := Chain(tool, mw)
 	_, err := wrapped.Handler(context.Background(), nil)
 
@@ -475,7 +493,7 @@ func TestWithApproval_AlwaysAllowRecordsGrant(t *testing.T) {
 		},
 	}
 
-	mw := WithApproval(ic, ap, gs, nil, nil)
+	mw := WithApproval(ic, ap, gs, nil, nil, nil)
 	wrapped := Chain(tool, mw)
 	_, _ = wrapped.Handler(context.Background(), nil)
 
@@ -501,7 +519,7 @@ func TestWithApproval_TurnLocalGrantReusesApprove(t *testing.T) {
 	ctx := approval.WithTurnApprovalState(context.Background(), approval.NewTurnApprovalState())
 	params := map[string]interface{}{"url": "https://example.com"}
 
-	mw := WithApproval(ic, ap, nil, nil, nil)
+	mw := WithApproval(ic, ap, nil, nil, nil, nil)
 	wrapped := Chain(tool, mw)
 
 	_, err := wrapped.Handler(ctx, params)
@@ -531,7 +549,7 @@ func TestWithApproval_TurnLocalDeniedReplayBlocked(t *testing.T) {
 	ctx := approval.WithTurnApprovalState(context.Background(), approval.NewTurnApprovalState())
 	params := map[string]interface{}{"url": "https://example.com"}
 
-	mw := WithApproval(ic, ap, nil, nil, nil)
+	mw := WithApproval(ic, ap, nil, nil, nil, nil)
 	wrapped := Chain(tool, mw)
 
 	_, err := wrapped.Handler(ctx, params)
@@ -569,7 +587,7 @@ func TestWithApproval_TurnLocalTimeoutReplayBlockedAfterBudget(t *testing.T) {
 	ctx := approval.WithTurnApprovalState(context.Background(), approval.NewTurnApprovalState())
 	params := map[string]interface{}{"url": "https://example.com"}
 
-	mw := WithApproval(ic, ap, nil, nil, nil)
+	mw := WithApproval(ic, ap, nil, nil, nil, nil)
 	wrapped := Chain(tool, mw)
 
 	_, err := wrapped.Handler(ctx, params)
@@ -617,7 +635,7 @@ func TestWithApproval_BrowserSearchTimeoutRecoveryUsesCanonicalKey(t *testing.T)
 	}
 
 	ctx := approval.WithTurnApprovalState(context.Background(), approval.NewTurnApprovalState())
-	mw := WithApproval(ic, ap, nil, nil, nil)
+	mw := WithApproval(ic, ap, nil, nil, nil, nil)
 	wrapped := Chain(tool, mw)
 
 	_, err := wrapped.Handler(ctx, map[string]interface{}{"query": "Trump latest news"})
@@ -651,7 +669,7 @@ func TestWithApproval_DifferentParamsRequireNewApproval(t *testing.T) {
 	}
 
 	ctx := approval.WithTurnApprovalState(context.Background(), approval.NewTurnApprovalState())
-	mw := WithApproval(ic, ap, nil, nil, nil)
+	mw := WithApproval(ic, ap, nil, nil, nil, nil)
 	wrapped := Chain(tool, mw)
 
 	_, err := wrapped.Handler(ctx, map[string]interface{}{"url": "https://example.com/1"})
@@ -681,12 +699,39 @@ func TestWithApproval_ExemptToolSkipsApproval(t *testing.T) {
 		},
 	}
 
-	mw := WithApproval(ic, ap, nil, nil, nil)
+	mw := WithApproval(ic, ap, nil, nil, nil, nil)
 	wrapped := Chain(tool, mw)
 	_, err := wrapped.Handler(context.Background(), nil)
 
 	require.NoError(t, err)
 	assert.True(t, called, "exempt tool should bypass approval")
+}
+
+func TestWithApproval_ObserverSeesRequestAndResolution(t *testing.T) {
+	t.Parallel()
+
+	ap := &mockApprovalProvider{response: approval.ApprovalResponse{Approved: true, Provider: "tui"}}
+	obs := &mockApprovalObserver{}
+	ic := config.InterceptorConfig{ApprovalPolicy: config.ApprovalPolicyAll}
+
+	tool := &agent.Tool{
+		Name:        "exec",
+		SafetyLevel: agent.SafetyLevelDangerous,
+		Handler: func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
+			return "ok", nil
+		},
+	}
+
+	mw := WithApproval(ic, ap, nil, nil, nil, obs)
+	wrapped := Chain(tool, mw)
+	result, err := wrapped.Handler(context.Background(), map[string]interface{}{"command": "pwd"})
+
+	require.NoError(t, err)
+	assert.Equal(t, "ok", result)
+	assert.Equal(t, 1, obs.requested)
+	assert.Equal(t, 1, obs.resolved)
+	assert.Equal(t, "exec", obs.lastReq.Request.ToolName)
+	assert.True(t, obs.lastRes.Response.Approved)
 }
 
 // --- WithBrowserRecovery middleware tests ---

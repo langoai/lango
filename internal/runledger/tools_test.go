@@ -12,6 +12,23 @@ import (
 	"github.com/langoai/lango/internal/ctxkeys"
 )
 
+type stubMissionLinker struct {
+	runID           string
+	sessionKey      string
+	originalRequest string
+	goal            string
+	calls           int
+}
+
+func (s *stubMissionLinker) LinkRun(_ context.Context, runID string, sessionKey string, originalRequest string, goal string) error {
+	s.calls++
+	s.runID = runID
+	s.sessionKey = sessionKey
+	s.originalRequest = originalRequest
+	s.goal = goal
+	return nil
+}
+
 // orchestratorCtx returns a context that identifies the caller as the orchestrator.
 func orchestratorCtx() context.Context {
 	return ctxkeys.WithAgentName(context.Background(), "orchestrator")
@@ -25,7 +42,7 @@ func executionCtx() context.Context {
 func TestBuildTools_Count(t *testing.T) {
 	store := NewMemoryStore()
 	pev := NewPEVEngine(store, DefaultValidators())
-	tools := BuildTools(store, pev)
+	tools := BuildTools(store, pev, nil)
 	assert.Len(t, tools, 8)
 
 	names := make(map[string]bool, len(tools))
@@ -43,8 +60,8 @@ func TestBuildTools_Count(t *testing.T) {
 }
 
 // toolMap builds a map of tool name -> handler for convenient test calls.
-func toolMap(store *MemoryStore, pev *PEVEngine) map[string]*runCreateHelper {
-	tools := BuildTools(store, pev)
+func toolMap(store *MemoryStore, pev *PEVEngine, linker MissionExecutionLinker) map[string]*runCreateHelper {
+	tools := BuildTools(store, pev, linker)
 	m := make(map[string]*runCreateHelper, len(tools))
 	for _, tool := range tools {
 		m[tool.Name] = &runCreateHelper{tool.Handler}
@@ -64,7 +81,8 @@ func TestRunCreate_EndToEnd(t *testing.T) {
 		ValidatorOrchestratorApproval: &OrchestratorApprovalValidator{},
 	}
 	pev := NewPEVEngine(store, mockValidators)
-	tm := toolMap(store, pev)
+	linker := &stubMissionLinker{}
+	tm := toolMap(store, pev, linker)
 
 	// Create a run with a valid plan.
 	planJSON := `{
@@ -90,6 +108,11 @@ func TestRunCreate_EndToEnd(t *testing.T) {
 	runID := m["run_id"].(string)
 	assert.NotEmpty(t, runID)
 	assert.Equal(t, 2, m["step_count"])
+	assert.Equal(t, 1, linker.calls)
+	assert.Equal(t, runID, linker.runID)
+	assert.Equal(t, "session-1", linker.sessionKey)
+	assert.Equal(t, "Build the Task OS", linker.originalRequest)
+	assert.Equal(t, "implement Task OS", linker.goal)
 
 	// Read the run.
 	readResult, err := tm["run_read"].call(ctx, map[string]interface{}{"run_id": runID})
@@ -149,7 +172,7 @@ func TestRunCreate_InvalidPlan(t *testing.T) {
 	ctx := orchestratorCtx()
 	store := NewMemoryStore()
 	pev := NewPEVEngine(store, DefaultValidators())
-	tm := toolMap(store, pev)
+	tm := toolMap(store, pev, nil)
 
 	// Malformed JSON.
 	result, err := tm["run_create"].call(ctx, map[string]interface{}{
@@ -176,7 +199,7 @@ func TestRunApplyPolicy_Retry(t *testing.T) {
 	ctx := orchestratorCtx()
 	store := NewMemoryStore()
 	pev := NewPEVEngine(store, DefaultValidators())
-	tm := toolMap(store, pev)
+	tm := toolMap(store, pev, nil)
 
 	planJSON := `{
 		"goal": "test retry",
@@ -249,7 +272,7 @@ func TestRunApproveStep(t *testing.T) {
 
 	// orchestrator_approval never auto-passes, so PEV returns verification_failed.
 	pev := NewPEVEngine(store, DefaultValidators())
-	tm := toolMap(store, pev)
+	tm := toolMap(store, pev, nil)
 
 	planJSON := `{
 		"goal": "test approval",
@@ -315,7 +338,7 @@ func TestRunApproveStep_OrchestratorApproval(t *testing.T) {
 	execCtx := executionCtx()
 	store := NewMemoryStore()
 	pev := NewPEVEngine(store, DefaultValidators())
-	tm := toolMap(store, pev)
+	tm := toolMap(store, pev, nil)
 
 	planJSON := `{
 		"goal": "test approval",
@@ -417,7 +440,7 @@ func TestProposeStepResult_OrchestratorBlocked(t *testing.T) {
 	ctx := orchestratorCtx()
 	store := NewMemoryStore()
 	pev := NewPEVEngine(store, DefaultValidators())
-	tm := toolMap(store, pev)
+	tm := toolMap(store, pev, nil)
 
 	_, err := tm["run_propose_step_result"].call(ctx, map[string]interface{}{
 		"run_id": "any", "step_id": "any", "result": "test",
@@ -434,7 +457,7 @@ func TestProposeStepResult_RejectWrongOwnerBeforeJournaling(t *testing.T) {
 		ValidatorBuildPass: &mockValidator{result: &ValidationResult{Passed: true, Reason: "ok"}},
 	}
 	pev := NewPEVEngine(store, mockValidators)
-	tm := toolMap(store, pev)
+	tm := toolMap(store, pev, nil)
 
 	planJSON := `{
 		"goal": "owner check",
@@ -476,7 +499,7 @@ func TestProposeStepResult_RejectWrongStateBeforeJournaling(t *testing.T) {
 		ValidatorBuildPass: &mockValidator{result: &ValidationResult{Passed: true, Reason: "ok"}},
 	}
 	pev := NewPEVEngine(store, mockValidators)
-	tm := toolMap(store, pev)
+	tm := toolMap(store, pev, nil)
 
 	planJSON := `{
 		"goal": "state check",
@@ -510,7 +533,7 @@ func TestProposeStepResult_RejectUnknownStepBeforeJournaling(t *testing.T) {
 		ValidatorBuildPass: &mockValidator{result: &ValidationResult{Passed: true, Reason: "ok"}},
 	}
 	pev := NewPEVEngine(store, mockValidators)
-	tm := toolMap(store, pev)
+	tm := toolMap(store, pev, nil)
 
 	planJSON := `{
 		"goal": "unknown step",
@@ -546,7 +569,7 @@ func TestApproveStep_RejectNonOrchestratorApprovalType(t *testing.T) {
 		ValidatorBuildPass: &mockValidator{result: &ValidationResult{Passed: false, Reason: "build failed"}},
 	}
 	pev := NewPEVEngine(store, mockValidators)
-	tm := toolMap(store, pev)
+	tm := toolMap(store, pev, nil)
 
 	planJSON := `{
 		"goal": "test",
@@ -580,7 +603,7 @@ func TestApproveStep_RejectWrongStatus(t *testing.T) {
 	ctx := orchestratorCtx()
 	store := NewMemoryStore()
 	pev := NewPEVEngine(store, DefaultValidators())
-	tm := toolMap(store, pev)
+	tm := toolMap(store, pev, nil)
 
 	planJSON := `{
 		"goal": "test",
@@ -610,7 +633,7 @@ func TestProposeResult_AutoVerify_Pass(t *testing.T) {
 		ValidatorBuildPass: &mockValidator{result: &ValidationResult{Passed: true, Reason: "ok"}},
 	}
 	pev := NewPEVEngine(store, mockValidators)
-	tm := toolMap(store, pev)
+	tm := toolMap(store, pev, nil)
 
 	planJSON := `{
 		"goal": "test verify",
@@ -650,7 +673,7 @@ func TestProposeResult_AutoVerify_RunCompletion(t *testing.T) {
 		ValidatorBuildPass: &mockValidator{result: &ValidationResult{Passed: true, Reason: "ok"}},
 	}
 	pev := NewPEVEngine(store, mockValidators)
-	tm := toolMap(store, pev)
+	tm := toolMap(store, pev, nil)
 
 	planJSON := `{
 		"goal": "single step",
@@ -745,7 +768,7 @@ func TestProposeResult_AutoVerify_CriteriaUnmet(t *testing.T) {
 		ValidatorTestPass:  &mockValidator{result: &ValidationResult{Passed: false, Reason: "tests fail"}},
 	}
 	pev := NewPEVEngine(store, mockValidators)
-	tm := toolMap(store, pev)
+	tm := toolMap(store, pev, nil)
 
 	planJSON := `{
 		"goal": "criteria test",
@@ -782,7 +805,7 @@ func TestProposeResult_OrchestratorApproval_Flow(t *testing.T) {
 	execCtx := executionCtx()
 	store := NewMemoryStore()
 	pev := NewPEVEngine(store, DefaultValidators())
-	tm := toolMap(store, pev)
+	tm := toolMap(store, pev, nil)
 
 	planJSON := `{
 		"goal": "approval flow",
@@ -815,7 +838,7 @@ func TestProposeResult_InfraError(t *testing.T) {
 	store := NewMemoryStore()
 	// No validators registered -> unknown type = infra error.
 	pev := NewPEVEngine(store, map[ValidatorType]Validator{})
-	tm := toolMap(store, pev)
+	tm := toolMap(store, pev, nil)
 
 	planJSON := `{
 		"goal": "infra error",

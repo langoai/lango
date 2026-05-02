@@ -199,8 +199,9 @@ type App struct {
 	FeatureStatuses *StatusCollector
 
 	// Mission boundary hooks remain nil when durable mission storage is unavailable.
-	missionApprovalObserver missionApprovalObserver
-	missionExecutionLinker  missionExecutionLinkAdapter
+	missionApprovalObserver toolchain.ApprovalObserver
+	missionBackgroundLinker background.MissionExecutionLinker
+	missionRunLedgerLinker  runledger.MissionExecutionLinker
 
 	// Channels
 	Channels []Channel

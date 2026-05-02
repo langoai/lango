@@ -232,7 +232,7 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 			limiter = nv.limiter
 		}
 		tools = toolchain.ChainAll(tools,
-			buildApprovalMiddlewareWithMission(
+			toolchain.WithApproval(
 				cfg.Security.Interceptor,
 				composite,
 				grantStore,
@@ -489,7 +489,8 @@ func populateAppFields(app *App, r appinit.Resolver) {
 		app.MissionStore = mv.store
 		app.MissionService = mv.service
 		app.missionApprovalObserver = mv.approvalObserver
-		app.missionExecutionLinker = mv.executionLinker
+		app.missionBackgroundLinker = mv.backgroundLinker
+		app.missionRunLedgerLinker = mv.runLedgerLinker
 	}
 
 	// Provenance.

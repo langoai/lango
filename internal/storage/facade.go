@@ -160,7 +160,6 @@ type Facade struct {
 	keyRegistry      func() *security.KeyRegistry
 	secretsStore     func(crypto security.CryptoProvider) *security.SecretsStore
 	runLedger        func() runledger.RunLedgerStore
-	missionStore     func() any
 	cronStore        func() cron.Store
 	turnTrace        func() turntrace.Store
 	agentMemory      func() agentmemory.Store
@@ -182,8 +181,6 @@ type Facade struct {
 	spendingLimiter  func(maxPerTx, maxDaily, autoApproveBelow string) (wallet.SpendingLimiter, error)
 	closeFn          func() error
 }
-
-var entMissionStoreFactory func(*ent.Client) any
 
 // NewFacade constructs a storage facade from capability implementations.
 func NewFacade(configProfiles ConfigProfileStore, securityState SecurityStateStore, opts ...Option) *Facade {
@@ -228,13 +225,6 @@ func (f *Facade) RunLedger() runledger.RunLedgerStore {
 		return nil
 	}
 	return f.runLedger()
-}
-
-func (f *Facade) Mission() any {
-	if f == nil || f.missionStore == nil {
-		return nil
-	}
-	return f.missionStore()
 }
 
 func (f *Facade) Cron() cron.Store {
@@ -414,11 +404,6 @@ func WithEntClient(client *ent.Client) Option {
 		}
 		f.runLedger = func() runledger.RunLedgerStore {
 			return runledger.NewEntStore(client)
-		}
-		if entMissionStoreFactory != nil {
-			f.missionStore = func() any {
-				return entMissionStoreFactory(client)
-			}
 		}
 		f.cronStore = func() cron.Store {
 			return cron.NewEntStore(client)
@@ -642,10 +627,14 @@ func WithEntClient(client *ent.Client) Option {
 	}
 }
 
-// RegisterEntMissionStoreFactory wires the Ent-backed mission store constructor
-// without forcing the storage package to import the mission package directly.
-func RegisterEntMissionStoreFactory(fn func(*ent.Client) any) {
-	entMissionStoreFactory = fn
+// ResolveEntBacked derives a typed capability from the shared ent client
+// without exposing the raw client outside the storage boundary.
+func ResolveEntBacked[T any](f *Facade, build func(*ent.Client) T) (T, bool) {
+	var zero T
+	if f == nil || f.client == nil || build == nil {
+		return zero, false
+	}
+	return build(f.client), true
 }
 
 func storageStartOfToday() time.Time {

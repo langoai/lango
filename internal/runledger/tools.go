@@ -14,6 +14,12 @@ import (
 	"github.com/langoai/lango/internal/toolparam"
 )
 
+// MissionExecutionLinker links newly created runs to a mission.
+// Implementations may be no-op until mission-native orchestration lands.
+type MissionExecutionLinker interface {
+	LinkRun(ctx context.Context, runID string, sessionKey string, originalRequest string, goal string) error
+}
+
 // callerRole identifies who is invoking a tool for access control.
 type callerRole string
 
@@ -27,9 +33,9 @@ const (
 const SystemCallerName = "system"
 
 // BuildTools creates all run_* tools with access control.
-func BuildTools(store RunLedgerStore, pev *PEVEngine) []*agent.Tool {
+func BuildTools(store RunLedgerStore, pev *PEVEngine, linker MissionExecutionLinker) []*agent.Tool {
 	return []*agent.Tool{
-		buildRunCreate(store),
+		buildRunCreate(store, linker),
 		buildRunRead(store),
 		buildRunActive(store),
 		buildRunNote(store),
@@ -40,7 +46,7 @@ func BuildTools(store RunLedgerStore, pev *PEVEngine) []*agent.Tool {
 	}
 }
 
-func buildRunCreate(store RunLedgerStore) *agent.Tool {
+func buildRunCreate(store RunLedgerStore, linker MissionExecutionLinker) *agent.Tool {
 	return &agent.Tool{
 		Name:        "run_create",
 		Description: "Create a new Run from a planner's JSON plan. Only the orchestrator may call this.",
@@ -117,6 +123,9 @@ func buildRunCreate(store RunLedgerStore) *agent.Tool {
 			snap, err := store.GetRunSnapshot(ctx, runID)
 			if err != nil {
 				return nil, fmt.Errorf("get snapshot: %w", err)
+			}
+			if linker != nil {
+				_ = linker.LinkRun(ctx, runID, sessionKey, originalRequest, plan.Goal)
 			}
 
 			return map[string]interface{}{

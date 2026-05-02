@@ -59,7 +59,7 @@ func buildTestChain(t *testing.T, ap approval.Provider) (*agent.Tool, *atomic.In
 	// Apply in production order: approval first (inner), then policy (outer).
 	ic := config.InterceptorConfig{ApprovalPolicy: config.ApprovalPolicyDangerous}
 	gs := approval.NewGrantStore()
-	tool = toolchain.Chain(tool, toolchain.WithApproval(ic, ap, gs, nil, nil))
+	tool = toolchain.Chain(tool, toolchain.WithApproval(ic, ap, gs, nil, nil, nil))
 	tool = toolchain.Chain(tool, execpkg.WithPolicy(pe))
 
 	return tool, &executorCalled
@@ -69,9 +69,9 @@ func TestPolicyIntegration_CatastrophicBlockedBeforeApproval(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		give           string
-		wantApproval   bool
-		wantExecution  bool
+		give          string
+		wantApproval  bool
+		wantExecution bool
 	}{
 		// Catastrophic: blocked by policy before approval
 		{give: "rm -rf /", wantApproval: false, wantExecution: false},

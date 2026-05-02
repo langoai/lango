@@ -52,12 +52,12 @@ func (m *runLedgerModule) Init(_ context.Context, r appinit.Resolver) (*appinit.
 	if r != nil {
 		mv, _ = r.Resolve(appinit.ProvidesMission).(*missionValues)
 	}
-	var missionLinker missionExecutionLinkAdapter
+	var missionLinker runledger.MissionExecutionLinker
 	if mv != nil {
-		missionLinker = mv.executionLinker
+		missionLinker = mv.runLedgerLinker
 	}
 
-	tools := buildRunLedgerToolsWithMission(store, pev, missionLinker)
+	tools := runledger.BuildTools(store, pev, missionLinker)
 
 	vals := &runLedgerValues{
 		store: store,

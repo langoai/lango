@@ -7,12 +7,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/agentrt"
 	"github.com/langoai/lango/internal/appinit"
-	"github.com/langoai/lango/internal/background"
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/ctxkeys"
 	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/mission"
 	"github.com/langoai/lango/internal/runledger"
@@ -358,7 +357,9 @@ func TestWithEntClientMissionAccessor(t *testing.T) {
 	client := testutil.TestEntClient(t)
 	facade := storage.NewFacade(nil, nil, storage.WithEntClient(client))
 
-	require.NotNil(t, facade.Mission())
+	store, ok := storage.ResolveEntBacked(facade, mission.NewEntStore)
+	require.True(t, ok)
+	require.NotNil(t, store)
 }
 
 func TestMissionModule_InitProvidesStoreAndService(t *testing.T) {
@@ -381,7 +382,8 @@ func TestMissionModule_InitProvidesStoreAndService(t *testing.T) {
 	require.NotNil(t, vals.store)
 	require.NotNil(t, vals.service)
 	require.NotNil(t, vals.approvalObserver)
-	require.NotNil(t, vals.executionLinker)
+	require.NotNil(t, vals.backgroundLinker)
+	require.NotNil(t, vals.runLedgerLinker)
 }
 
 func TestMissionModule_DisabledWithoutDurableStorage(t *testing.T) {
@@ -395,35 +397,45 @@ func TestMissionModule_DisabledWithoutDurableStorage(t *testing.T) {
 func TestAutomationModule_MissionExecutionLinkAdapterWiredToBackgroundTools(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Background.Enabled = true
+	cfg.RunLedger.Enabled = true
+	cfg.RunLedger.WriteThrough = true
 
 	client := testutil.TestEntClient(t)
 	store := mission.NewEntStore(client)
-	missionVals := &missionValues{
-		store:           store,
-		service:         mission.NewService(store),
-		executionLinker: &missionExecutionLinkHooks{service: mission.NewService(store)},
+	bgLinker := &missionBackgroundLinkHooks{service: mission.NewService(store)}
+	rlStore := runledger.NewMemoryStore()
+	rlVals := &runLedgerValues{
+		store: rlStore,
+		pev:   runledger.NewPEVEngine(rlStore, runledger.DefaultValidators()),
 	}
-
-	orig := buildBackgroundToolsWithMission
-	t.Cleanup(func() { buildBackgroundToolsWithMission = orig })
-
-	called := false
-	buildBackgroundToolsWithMission = func(mgr *background.Manager, defaultDeliverTo []string, linker missionExecutionLinkAdapter) []*agent.Tool {
-		called = true
-		require.NotNil(t, mgr)
-		require.NotNil(t, linker)
-		require.NotNil(t, linker.MissionService())
-		return nil
+	missionVals := &missionValues{
+		store:            store,
+		service:          mission.NewService(store),
+		backgroundLinker: bgLinker,
 	}
 
 	mod := &automationModule{cfg: cfg, app: &App{Config: cfg}}
 	result, err := mod.Init(context.Background(), staticResolver{
 		appinit.ProvidesSupervisor: &foundationValues{},
 		appinit.ProvidesMission:    missionVals,
+		appinit.ProvidesRunLedger:  rlVals,
 	})
 	require.NoError(t, err)
-	require.True(t, called)
 	require.NotNil(t, result)
+	var submitFound bool
+	for _, tool := range result.Tools {
+		if tool.Name != "bg_submit" {
+			continue
+		}
+		submitFound = true
+		resp, err := tool.Handler(context.Background(), map[string]interface{}{"prompt": "mission task"})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		break
+	}
+	require.True(t, submitFound)
+	require.Len(t, bgLinker.taskIDs, 1)
+	require.Equal(t, "mission task", bgLinker.prompts[0])
 }
 
 func TestRunLedgerModule_MissionExecutionLinkAdapterWiredToToolBuilder(t *testing.T) {
@@ -432,23 +444,11 @@ func TestRunLedgerModule_MissionExecutionLinkAdapterWiredToToolBuilder(t *testin
 
 	client := testutil.TestEntClient(t)
 	store := mission.NewEntStore(client)
+	runLinker := &missionRunLedgerLinkHooks{service: mission.NewService(store)}
 	missionVals := &missionValues{
 		store:           store,
 		service:         mission.NewService(store),
-		executionLinker: &missionExecutionLinkHooks{service: mission.NewService(store)},
-	}
-
-	orig := buildRunLedgerToolsWithMission
-	t.Cleanup(func() { buildRunLedgerToolsWithMission = orig })
-
-	called := false
-	buildRunLedgerToolsWithMission = func(store runledger.RunLedgerStore, pev *runledger.PEVEngine, linker missionExecutionLinkAdapter) []*agent.Tool {
-		called = true
-		require.NotNil(t, store)
-		require.NotNil(t, pev)
-		require.NotNil(t, linker)
-		require.NotNil(t, linker.MissionService())
-		return nil
+		runLedgerLinker: runLinker,
 	}
 
 	mod := &runLedgerModule{cfg: cfg}
@@ -456,6 +456,25 @@ func TestRunLedgerModule_MissionExecutionLinkAdapterWiredToToolBuilder(t *testin
 		appinit.ProvidesMission: missionVals,
 	})
 	require.NoError(t, err)
-	require.True(t, called)
 	require.NotNil(t, result)
+	var createFound bool
+	for _, tool := range result.Tools {
+		if tool.Name != "run_create" {
+			continue
+		}
+		createFound = true
+		planJSON := `{"goal":"wire mission","acceptance_criteria":[],"steps":[{"id":"s1","goal":"do work","owner_agent":"operator","validator":{"type":"build_pass"}}]}`
+		resp, err := tool.Handler(ctxkeys.WithAgentName(context.Background(), "orchestrator"), map[string]interface{}{
+			"plan_json":        planJSON,
+			"session_key":      "sess-1",
+			"original_request": "wire mission",
+			"valid_agents":     []string{"operator"},
+		})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		break
+	}
+	require.True(t, createFound)
+	require.Len(t, runLinker.runIDs, 1)
+	require.Equal(t, "sess-1", runLinker.sessionKeys[0])
 }
