@@ -2,7 +2,7 @@
 
 ## Problem
 
-The cockpit already exposes chat, tasks, approvals, sessions, status, and other operational pages, but the default experience still makes users hunt for current work and pending decisions. At the same time, the runtime does not yet have a durable mission domain model, so the UI cannot honestly pretend that one already exists.
+The cockpit already exposes chat, tasks, approvals, sessions, status, and other operational pages, but the default experience still makes users hunt for current work and the latest pending decision. At the same time, the runtime does not yet have a durable mission domain model, so the UI cannot honestly pretend that one already exists.
 
 The design must therefore deliver a mission-first surface using only existing runtime facts plus narrowly-scoped producer hardening.
 
@@ -10,7 +10,7 @@ The design must therefore deliver a mission-first surface using only existing ru
 
 - make Mission Control the default `lango` surface
 - keep `lango chat` as a direct fallback
-- project active missions, proposed missions, live decisions, and recent activity from existing data
+- project active missions, proposed missions, the latest live decision, and recent activity from existing data
 - keep approvals on the existing pending response path
 - keep the implementation cockpit-owned and session-scoped
 
@@ -27,10 +27,10 @@ The design must therefore deliver a mission-first surface using only existing ru
 Wave 1 adds a Mission Control page that becomes the default first screen for `lango`. The page renders:
 
 - current missions derived primarily from background tasks and optional runtime readers
-- live decisions derived from pending approval requests
+- the latest live decision derived from the latest pending approval request
 - proposed missions derived from learning suggestion events
 - a deterministic activity timeline plus the shared chat composer path
-- header context from existing runtime and observability state
+- a narrow header summary from runtime state already available to cockpit
 
 Existing cockpit detail pages remain reachable. They are no longer the default mental model.
 
@@ -45,9 +45,9 @@ Mission Control is a UI projection, not a mission engine.
 - learning suggestions project to proposed missions only as UI proposals
 - accepting a proposed mission may route to existing prompt or approval flows, but does not create durable mission state in Wave 1
 
-### Decisions
+### Decision
 
-- pending approvals are the only required live decision category in Wave 1
+- the latest pending approval request is the only required live decision in Wave 1
 - approval history remains history-only data
 - active approvals must resolve through the original pending response channel
 
@@ -80,24 +80,24 @@ The chat model remains the direct conversation surface, but when mounted inside 
 
 Mission Control must define responsive behavior before code lands:
 
-- width `>= 120`: missions and decisions render side by side above the timeline/composer region
-- width `80-119`: missions render first, decisions collapse into a compact stacked section
+- width `>= 120`: missions and the latest live decision render side by side above the timeline/composer region
+- width `80-119`: missions render first, then the latest live decision in a compact stacked section
 - width `< 80`: one focused lane renders at a time and `Tab` cycles lanes
-- height `< 24`: the page prioritizes header, focused lane, and footer; composer becomes inline on typing intent
+- height `< 24`: the page prioritizes header, focused lane, and footer; the composer path stays available but the input opens inline on typing intent instead of remaining persistently visible
 
 ## Failure and Degraded States
 
 Wave 1 distinguishes:
 
 - `loading`: before the first projector snapshot is ready
-- `empty`: no missions and no pending decisions after data load
+- `empty`: no missions and no pending live decision after data load
 - `degraded`: optional readers such as RunLedger or AgentRun are unavailable
 
 Degraded state must omit unavailable details rather than inventing placeholder runtime facts.
 
 ## Risks
 
-- if cockpit and chat each own separate pending approval state, approvals can diverge across surfaces
+- if cockpit and chat each own separate pending approval state, the latest approval can diverge across surfaces
 - if Mission Control claims mission persistence semantics too early, the UI will overpromise behavior the runtime cannot sustain
 - if keyboard routing is changed too aggressively, operators lose established cockpit muscle memory
 

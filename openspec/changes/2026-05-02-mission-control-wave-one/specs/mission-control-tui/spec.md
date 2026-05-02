@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Mission Control is the default `lango` TUI surface
-Running `lango` on an interactive terminal SHALL open Mission Control as the default cockpit surface. The page SHALL make ongoing work, pending decisions, recent activity, and the shared composer visible without requiring the user to navigate to another page first. `lango chat` SHALL remain the direct focused-chat fallback.
+Running `lango` on an interactive terminal SHALL open Mission Control as the default cockpit surface. The page SHALL make ongoing work, the latest live decision, recent activity, and the shared composer path available without requiring the user to navigate to another page first. `lango chat` SHALL remain the direct focused-chat fallback.
 
 #### Scenario: Bare `lango` enters Mission Control
 - **WHEN** the user runs `lango` on an interactive terminal
@@ -25,12 +25,13 @@ Mission Control SHALL derive active mission rows from existing runtime producers
 - **THEN** Mission Control MAY enrich owner, blocked-state, or next-action fields
 - **AND** their absence SHALL NOT prevent background-task missions from rendering
 
-### Requirement: Pending approvals render as live decisions
-Mission Control SHALL render the latest pending approval request as a live decision using the shared pending approval owner. Resolving the decision SHALL write to the original approval response channel and remove the pending item from other cockpit surfaces on the next render.
+### Requirement: The latest pending approval renders as one live decision
+Mission Control SHALL render the latest pending approval request as one live decision using the shared pending approval owner. Resolving the decision SHALL write to the original approval response channel and remove the pending item from other cockpit surfaces on the next render.
 
 #### Scenario: Pending approval appears as live decision
 - **WHEN** cockpit receives a pending `ApprovalRequestMsg`
 - **THEN** Mission Control SHALL render a live decision row showing the requested action, reason, effect summary, and risk
+- **AND** Wave 1 SHALL NOT require Mission Control to queue or render multiple simultaneous pending approvals
 
 #### Scenario: Decision resolution uses the shared pending path
 - **WHEN** the user approves, denies, or allows for session from Mission Control
@@ -57,8 +58,8 @@ Mission Control SHALL distinguish first-load, empty-data, degraded-reader, and n
 - **THEN** the page SHALL render a loading view instead of empty-state copy
 
 #### Scenario: Empty state after data load
-- **WHEN** data has loaded and there are no missions and no pending decisions
-- **THEN** the page SHALL render an empty-state view with the shared composer still available
+- **WHEN** data has loaded and there are no missions and no pending live decision
+- **THEN** the page SHALL render an empty-state view with the shared composer path still available on the page
 
 #### Scenario: Degraded state omits unavailable optional fields
 - **WHEN** optional readers such as RunLedger or AgentRun are unavailable
@@ -69,3 +70,8 @@ Mission Control SHALL distinguish first-load, empty-data, degraded-reader, and n
 - **WHEN** terminal width is less than 80 columns
 - **THEN** Mission Control SHALL render one focused lane at a time
 - **AND** `Tab` SHALL cycle the focused lane while the footer reports the active lane and pending decision count
+
+#### Scenario: Compact height opens composer inline
+- **WHEN** terminal height is less than 24 rows
+- **THEN** Mission Control SHALL prioritize header, focused lane, and footer
+- **AND** the composer SHALL open inline on typing intent instead of remaining persistently visible

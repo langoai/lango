@@ -7,6 +7,7 @@ The TUI approval surfaces SHALL continue to use the existing approval tier rende
 - **WHEN** a pending approval is displayed from Mission Control or cockpit chat
 - **THEN** both surfaces SHALL render from the same underlying pending approval request
 - **AND** they SHALL present the same risk, reason, and action labels
+- **AND** Wave 1 SHALL treat that shared request as the single live approval decision in cockpit state
 
 #### Scenario: Approval resolves through the original response channel
 - **WHEN** the user approves, denies, or allows for session from any cockpit TUI approval surface
@@ -14,7 +15,7 @@ The TUI approval surfaces SHALL continue to use the existing approval tier rende
 - **AND** no parallel pending-approval queue or history-only resolution path SHALL be introduced
 
 ### Requirement: Approval history remains completed-decision data
-Completed approval history and grants MAY still inform detail surfaces, but they SHALL NOT be treated as the pending source of truth for live decisions in Mission Control.
+Completed approval history and grants MAY still inform detail surfaces, but they SHALL NOT be treated as the pending source of truth for the live decision in Mission Control.
 
 #### Scenario: History does not satisfy a pending live decision
 - **WHEN** Mission Control needs to render a currently pending approval

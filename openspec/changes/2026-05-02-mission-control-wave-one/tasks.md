@@ -1,6 +1,6 @@
 # Tasks
 
-- [ ] Create the Mission Control Wave 1 OpenSpec change artifacts
+- [x] Create the Mission Control Wave 1 OpenSpec change artifacts
 - [ ] Add the `mission-control-tui` capability spec for the new default surface
 - [ ] Update `cockpit-shell` for default Mission Control routing and cockpit-lifetime shared state ownership
 - [ ] Update `cockpit-pages` for Mission Control page registration and routing with minimal shortcut churn
