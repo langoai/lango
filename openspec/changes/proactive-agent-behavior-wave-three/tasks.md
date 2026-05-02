@@ -1,0 +1,10 @@
+# Tasks
+
+- [x] Create the Proactive Agent Behavior Wave 3 OpenSpec change artifacts
+- [x] Add the `mission-control-tui` delta for transient proposals, deterministic preparation, and durable acceptance preserving prepared context
+- [ ] Add the transient proposal domain with explicit proposal lifecycle and session-scoped registry
+- [ ] Add deterministic learning-suggestion preparation with prepared brief output
+- [ ] Wire the proposal registry into the app using learning suggestion as the only active producer
+- [ ] Make Mission Control read and render prepared proposals from the proposal registry
+- [ ] Accept prepared proposals into durable mission state while preserving the prepared brief context
+- [ ] Verify the change with `openspec validate proactive-agent-behavior-wave-three --strict`
