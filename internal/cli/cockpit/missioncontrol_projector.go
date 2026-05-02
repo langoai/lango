@@ -61,7 +61,7 @@ func (p *MissionControlProjector) Project(taskSnapshots []background.TaskSnapsho
 	}
 
 	generatedAt := p.now()
-	durableMissions, linkedTaskIDs, missionDegraded, runLedgerDegraded, agentRunDegraded := p.projectDurableMissions(taskSnapshots)
+	durableMissions, linkedTaskIDs, missionStoreUnavailable, missionDetailsDegraded, runLedgerDegraded, agentRunDegraded := p.projectDurableMissions(taskSnapshots)
 	runtimeOverlays, overlayRunLedgerDegraded, overlayAgentRunDegraded := p.projectBackgroundTasks(taskSnapshots, linkedTaskIDs)
 	proposedMissions := p.projectLearningSuggestions()
 	sort.SliceStable(durableMissions, func(i, j int) bool {
@@ -75,7 +75,12 @@ func (p *MissionControlProjector) Project(taskSnapshots []background.TaskSnapsho
 	})
 	missions := append(durableMissions, runtimeOverlays...)
 	missions = append(missions, proposedMissions...)
-	degradedNote := p.buildDegradedNote(missionDegraded, runLedgerDegraded || overlayRunLedgerDegraded, agentRunDegraded || overlayAgentRunDegraded)
+	degradedNote := p.buildDegradedNote(
+		missionStoreUnavailable,
+		missionDetailsDegraded,
+		runLedgerDegraded || overlayRunLedgerDegraded,
+		agentRunDegraded || overlayAgentRunDegraded,
+	)
 
 	activities := p.projectActivities()
 	visibleMissions, hiddenMissionCount, missionOverflow := limitMissions(missions, p.missionLimit)
@@ -104,19 +109,19 @@ func (p *MissionControlProjector) Project(taskSnapshots []background.TaskSnapsho
 	}
 }
 
-func (p *MissionControlProjector) projectDurableMissions(taskSnapshots []background.TaskSnapshot) ([]MissionView, map[string]struct{}, bool, bool, bool) {
+func (p *MissionControlProjector) projectDurableMissions(taskSnapshots []background.TaskSnapshot) ([]MissionView, map[string]struct{}, bool, bool, bool, bool) {
 	linkedTaskIDs := make(map[string]struct{})
 	if p.missionReader == nil {
-		return nil, linkedTaskIDs, true, false, false
+		return nil, linkedTaskIDs, true, false, false, false
 	}
 
 	ctx := context.Background()
 	rows, err := p.missionReader.ListMissionsBySession(ctx, p.sessionKey, max(p.missionLimit*4, 24))
 	if err != nil {
-		return nil, linkedTaskIDs, true, false, false
+		return nil, linkedTaskIDs, true, false, false, false
 	}
 	if len(rows) == 0 {
-		return nil, linkedTaskIDs, false, false, false
+		return nil, linkedTaskIDs, false, false, false, false
 	}
 
 	tasksByID := make(map[string]background.TaskSnapshot, len(taskSnapshots))
@@ -127,7 +132,7 @@ func (p *MissionControlProjector) projectDurableMissions(taskSnapshots []backgro
 	missions := make([]MissionView, 0, len(rows))
 	var runLedgerDegraded bool
 	var agentRunDegraded bool
-	var missionDegraded bool
+	var missionDetailsDegraded bool
 	for _, row := range rows {
 		if row == nil {
 			continue
@@ -135,7 +140,7 @@ func (p *MissionControlProjector) projectDurableMissions(taskSnapshots []backgro
 		view := missionViewFromDurableRow(row)
 		links, err := p.missionReader.ListExecutionLinks(ctx, row.ID.String())
 		if err != nil {
-			missionDegraded = true
+			missionDetailsDegraded = true
 			missions = append(missions, view)
 			continue
 		}
@@ -172,7 +177,7 @@ func (p *MissionControlProjector) projectDurableMissions(taskSnapshots []backgro
 		}
 		missions = append(missions, view)
 	}
-	return missions, linkedTaskIDs, missionDegraded, runLedgerDegraded, agentRunDegraded
+	return missions, linkedTaskIDs, false, missionDetailsDegraded, runLedgerDegraded, agentRunDegraded
 }
 
 func (p *MissionControlProjector) projectBackgroundTasks(taskSnapshots []background.TaskSnapshot, linkedTaskIDs map[string]struct{}) ([]MissionView, bool, bool) {
@@ -325,10 +330,12 @@ func (p *MissionControlProjector) projectActivities() []ActivityView {
 	return views
 }
 
-func (p *MissionControlProjector) buildDegradedNote(missionDegraded, runLedgerDegraded, agentRunDegraded bool) string {
+func (p *MissionControlProjector) buildDegradedNote(missionStoreUnavailable, missionDetailsDegraded, runLedgerDegraded, agentRunDegraded bool) string {
 	var notes []string
-	if p.missionReader == nil || missionDegraded {
+	if missionStoreUnavailable {
 		notes = append(notes, "Mission store unavailable")
+	} else if missionDetailsDegraded {
+		notes = append(notes, "Mission details unavailable")
 	}
 	if p.runLedgerStore == nil || runLedgerDegraded {
 		notes = append(notes, "RunLedger unavailable")

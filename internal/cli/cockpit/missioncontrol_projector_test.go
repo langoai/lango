@@ -637,6 +637,37 @@ func TestMissionControlMissionReaderErrorsDegradeTruthfully(t *testing.T) {
 	assert.Equal(t, "bg:task-1", snapshot.Missions[0].ID)
 }
 
+func TestMissionControlMissionLinkErrorsDegradeWithoutClaimingStoreUnavailable(t *testing.T) {
+	t.Parallel()
+
+	missionID := uuid.MustParse("44444444-4444-4444-4444-444444444444")
+	projector := NewMissionControlProjector(Deps{
+		SessionKey: "sess-1",
+		MissionReader: stubMissionControlMissionReader{
+			missions: map[string][]*mission.Mission{
+				"sess-1": {{
+					ID:         missionID,
+					SessionKey: "sess-1",
+					Title:      "Durable mission",
+					Status:     mission.StatusActive,
+					SourceKind: "user",
+					UpdatedAt:  time.Date(2026, 5, 3, 12, 0, 0, 0, time.UTC),
+					CreatedAt:  time.Date(2026, 5, 3, 11, 0, 0, 0, time.UTC),
+				}},
+			},
+			linkErr: errors.New("link query failed"),
+		},
+	})
+
+	snapshot := projector.Project(nil)
+
+	assert.True(t, snapshot.Degraded)
+	assert.Contains(t, snapshot.Header.DegradedNote, "Mission details unavailable")
+	assert.NotContains(t, snapshot.Header.DegradedNote, "Mission store unavailable")
+	require.Len(t, snapshot.Missions, 1)
+	assert.Equal(t, missionID.String(), snapshot.Missions[0].ID)
+}
+
 func TestMissionControlOverflow(t *testing.T) {
 	t.Parallel()
 
