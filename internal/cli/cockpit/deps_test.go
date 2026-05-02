@@ -10,6 +10,7 @@ import (
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/agentrt"
 	"github.com/langoai/lango/internal/ctxkeys"
+	"github.com/langoai/lango/internal/mission"
 	"github.com/langoai/lango/internal/postadjudicationstatus"
 	"github.com/langoai/lango/internal/receipts"
 	"github.com/langoai/lango/internal/runledger"
@@ -242,4 +243,13 @@ func TestDepsAcceptReaderOnlyStores(t *testing.T) {
 
 	require.NotNil(t, deps.RunLedgerStore)
 	require.NotNil(t, deps.AgentRunStore)
+}
+
+func TestDepsAcceptMissionService(t *testing.T) {
+	t.Parallel()
+
+	svc := mission.NewService(nil)
+	deps := Deps{MissionService: svc}
+
+	require.NotNil(t, deps.MissionService)
 }

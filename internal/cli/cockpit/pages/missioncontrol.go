@@ -1,6 +1,7 @@
 package pages
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -15,6 +16,9 @@ import (
 	"github.com/langoai/lango/internal/cli/cockpit"
 	"github.com/langoai/lango/internal/cli/cockpit/theme"
 	"github.com/langoai/lango/internal/cli/tui"
+	"github.com/langoai/lango/internal/ctxkeys"
+	"github.com/langoai/lango/internal/eventbus"
+	"github.com/langoai/lango/internal/mission"
 )
 
 const missionControlTickInterval = 2 * time.Second
@@ -43,6 +47,10 @@ type MissionControlPage struct {
 	taskSource missionControlTaskSource
 	composer   *chat.ChatModel
 
+	sessionKey     string
+	missionService cockpit.MissionLifecycleService
+	learningBuffer *cockpit.LearningSuggestionBuffer
+
 	width      int
 	height     int
 	tickActive bool
@@ -57,7 +65,11 @@ type MissionControlPage struct {
 
 // NewMissionControlPage creates a Mission Control page backed by the shared projector.
 func NewMissionControlPage(deps cockpit.Deps, composer *chat.ChatModel) *MissionControlPage {
-	return newMissionControlPage(cockpit.NewMissionControlProjector(deps), deps.BackgroundManager, composer)
+	page := newMissionControlPage(cockpit.NewMissionControlProjector(deps), deps.BackgroundManager, composer)
+	page.sessionKey = deps.SessionKey
+	page.missionService = deps.MissionService
+	page.learningBuffer = deps.LearningBuffer
+	return page
 }
 
 func newMissionControlPage(
@@ -187,6 +199,19 @@ func (p *MissionControlPage) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	if key.Matches(msg, key.NewBinding(key.WithKeys("enter"))) {
+		if p.focus == missionControlFocusMissions {
+			if cmd, handled := p.acceptSelectedProposal(); handled {
+				return p, cmd
+			}
+		}
+		if p.focus == missionControlFocusComposer {
+			if cmd, handled := p.submitComposerFromMissionControl(); handled {
+				return p, cmd
+			}
+		}
+	}
+
 	switch {
 	case isMissionControlPrintableKey(msg):
 		p.focus = missionControlFocusComposer
@@ -199,6 +224,46 @@ func (p *MissionControlPage) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		p.moveCursor(1)
 	}
 	return p, nil
+}
+
+func (p *MissionControlPage) acceptSelectedProposal() (tea.Cmd, bool) {
+	missionView := p.selectedMission()
+	if missionView == nil || missionView.Kind != cockpit.MissionKindProposed || p.missionService == nil {
+		return nil, false
+	}
+
+	sourceRef := strings.TrimSpace(missionView.SourceRef)
+	if sourceRef == "" && strings.HasPrefix(missionView.ID, "learn:") {
+		sourceRef = strings.TrimSpace(strings.TrimPrefix(missionView.ID, "learn:"))
+	}
+	sourceKind := strings.TrimSpace(missionView.SourceKind)
+	if sourceKind == "" {
+		sourceKind = "proposed_learning"
+	}
+
+	title := strings.TrimSpace(missionView.Title)
+	description := strings.TrimSpace(missionView.Detail)
+	if item := p.lookupLearningSuggestion(sourceRef); item != nil && description == "" {
+		description = strings.TrimSpace(item.Rationale)
+	}
+
+	if _, err := p.missionService.AcceptProposal(context.Background(), mission.AcceptProposalInput{
+		SessionKey:  strings.TrimSpace(p.sessionKey),
+		SourceKind:  sourceKind,
+		SourceRef:   sourceRef,
+		Title:       title,
+		Description: description,
+	}); err != nil {
+		return func() tea.Msg {
+			return chat.SystemMsg{Text: fmt.Sprintf("Mission proposal acceptance failed: %v", err)}
+		}, true
+	}
+
+	if p.learningBuffer != nil && sourceRef != "" {
+		p.learningBuffer.Dismiss(sourceRef)
+	}
+	p.refreshSnapshot()
+	return nil, true
 }
 
 func (p *MissionControlPage) forwardDecisionKey(msg tea.KeyMsg) (tea.Cmd, bool) {
@@ -228,6 +293,41 @@ func (p *MissionControlPage) forwardComposerKey(msg tea.KeyMsg) (tea.Model, tea.
 	return p, cmd
 }
 
+func (p *MissionControlPage) submitComposerFromMissionControl() (tea.Cmd, bool) {
+	if p.composer == nil {
+		return nil, false
+	}
+	input := strings.TrimSpace(p.composer.ComposerValue())
+	if input == "" {
+		return nil, true
+	}
+	if !p.composer.CanStartTurnFromComposer() {
+		return nil, false
+	}
+	if strings.HasPrefix(input, "/") || p.missionService == nil {
+		cmd := p.composer.SubmitComposerWithParent(context.Background())
+		p.refreshSnapshot()
+		return cmd, true
+	}
+
+	row, err := p.missionService.StartMission(context.Background(), mission.StartMissionInput{
+		SessionKey:  strings.TrimSpace(p.sessionKey),
+		Title:       input,
+		Description: "",
+		SourceKind:  "user",
+		StartActive: true,
+	})
+	if err != nil {
+		return func() tea.Msg {
+			return chat.SystemMsg{Text: fmt.Sprintf("Mission start failed: %v", err)}
+		}, true
+	}
+
+	cmd := p.composer.SubmitComposerWithParent(ctxkeys.WithMissionID(context.Background(), row.ID.String()))
+	p.refreshSnapshot()
+	return cmd, true
+}
+
 func (p *MissionControlPage) moveCursor(delta int) {
 	switch p.focus {
 	case missionControlFocusMissions:
@@ -245,6 +345,14 @@ func (p *MissionControlPage) moveCursor(delta int) {
 	}
 }
 
+func (p *MissionControlPage) selectedMission() *cockpit.MissionView {
+	if len(p.snapshot.Missions) == 0 {
+		return nil
+	}
+	idx := clamp(p.missionCursor, 0, len(p.snapshot.Missions)-1)
+	return &p.snapshot.Missions[idx]
+}
+
 func (p *MissionControlPage) refreshSnapshot() {
 	if p.projector == nil {
 		p.snapshot = cockpit.MissionControlSnapshot{}
@@ -258,6 +366,13 @@ func (p *MissionControlPage) refreshSnapshot() {
 	}
 	p.snapshot = p.projector.Project(tasks)
 	p.hasLoaded = true
+}
+
+func (p *MissionControlPage) lookupLearningSuggestion(id string) *eventbus.LearningSuggestionEvent {
+	if p.learningBuffer == nil || id == "" {
+		return nil
+	}
+	return p.learningBuffer.Find(id)
 }
 
 func (p *MissionControlPage) renderHeader() string {

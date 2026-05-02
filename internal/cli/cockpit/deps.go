@@ -12,6 +12,7 @@ import (
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/ctxkeys"
 	"github.com/langoai/lango/internal/eventbus"
+	"github.com/langoai/lango/internal/mission"
 	"github.com/langoai/lango/internal/observability"
 	"github.com/langoai/lango/internal/postadjudicationstatus"
 	"github.com/langoai/lango/internal/runledger"
@@ -32,6 +33,11 @@ type AgentRunReader interface {
 	List() []*agentrt.AgentRun
 }
 
+type MissionLifecycleService interface {
+	StartMission(ctx context.Context, in mission.StartMissionInput) (*mission.Mission, error)
+	AcceptProposal(ctx context.Context, in mission.AcceptProposalInput) (*mission.Mission, error)
+}
+
 // Deps holds the dependencies for the cockpit TUI.
 // ApprovalProvider is NOT included — type assertion for SetTTYFallback
 // is handled in cmd/lango/main.go's runCockpit().
@@ -50,6 +56,7 @@ type Deps struct {
 	EventBus          *eventbus.Bus          // optional, enables channel event subscription
 	ApprovalHistory   *approval.HistoryStore // optional, approval decision history
 	GrantStore        *approval.GrantStore   // optional, persistent session grants
+	MissionService    MissionLifecycleService
 	PendingApprovals  *PendingApprovalRegistry
 	LearningBuffer    *LearningSuggestionBuffer
 	ActivityBuffer    *MissionActivityBuffer

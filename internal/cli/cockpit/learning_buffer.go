@@ -55,6 +55,24 @@ func (b *LearningSuggestionBuffer) Snapshot() []eventbus.LearningSuggestionEvent
 	return out
 }
 
+func (b *LearningSuggestionBuffer) Find(id string) *eventbus.LearningSuggestionEvent {
+	if id == "" {
+		return nil
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	b.pruneLocked()
+	for _, item := range b.items {
+		if item.SuggestionID != id {
+			continue
+		}
+		itemCopy := item
+		return &itemCopy
+	}
+	return nil
+}
+
 func (b *LearningSuggestionBuffer) Dismiss(id string) {
 	if id == "" {
 		return

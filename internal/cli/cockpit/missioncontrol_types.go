@@ -55,6 +55,8 @@ type MissionView struct {
 	Title         string
 	Detail        string
 	NextAction    string
+	SourceKind    string
+	SourceRef     string
 	UpdatedAt     time.Time
 	OwnerAgent    string
 	RuntimeHint   string

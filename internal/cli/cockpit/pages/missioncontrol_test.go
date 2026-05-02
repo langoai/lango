@@ -8,6 +8,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -17,6 +18,9 @@ import (
 	"github.com/langoai/lango/internal/cli/chat"
 	"github.com/langoai/lango/internal/cli/cockpit"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/ctxkeys"
+	"github.com/langoai/lango/internal/eventbus"
+	"github.com/langoai/lango/internal/mission"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/turnrunner"
 )
@@ -43,9 +47,21 @@ func (s stubMissionTaskSource) List() []background.TaskSnapshot {
 
 type stubMissionExecutor struct {
 	calls     int
+	ctx       context.Context
 	sessionID string
 	input     string
 	response  string
+}
+
+type stubMissionLifecycleService struct {
+	startCalls      int
+	acceptCalls     int
+	lastStartInput  mission.StartMissionInput
+	lastAcceptInput mission.AcceptProposalInput
+	startResult     *mission.Mission
+	acceptResult    *mission.Mission
+	startErr        error
+	acceptErr       error
 }
 
 type stubMissionSharedPendingStore struct {
@@ -75,18 +91,43 @@ func (s *stubMissionSharedPendingStore) Resolve(id string, resp approval.Approva
 }
 
 func (s *stubMissionExecutor) RunStreamingDetailed(
-	_ context.Context,
+	ctx context.Context,
 	sessionID, input string,
 	onChunk adk.ChunkCallback,
 	_ ...adk.RunOption,
 ) (adk.RunReport, error) {
 	s.calls++
+	s.ctx = ctx
 	s.sessionID = sessionID
 	s.input = input
 	if onChunk != nil && s.response != "" {
 		onChunk(s.response)
 	}
 	return adk.RunReport{Response: s.response}, nil
+}
+
+func (s *stubMissionLifecycleService) StartMission(_ context.Context, in mission.StartMissionInput) (*mission.Mission, error) {
+	s.startCalls++
+	s.lastStartInput = in
+	if s.startErr != nil {
+		return nil, s.startErr
+	}
+	if s.startResult != nil {
+		return s.startResult, nil
+	}
+	return &mission.Mission{ID: uuid.New()}, nil
+}
+
+func (s *stubMissionLifecycleService) AcceptProposal(_ context.Context, in mission.AcceptProposalInput) (*mission.Mission, error) {
+	s.acceptCalls++
+	s.lastAcceptInput = in
+	if s.acceptErr != nil {
+		return nil, s.acceptErr
+	}
+	if s.acceptResult != nil {
+		return s.acceptResult, nil
+	}
+	return &mission.Mission{ID: uuid.New()}, nil
 }
 
 type stubMissionSessionStore struct{}
@@ -315,6 +356,89 @@ func TestMissionControlComposerSubmitEchoesUserTextIntoActivity(t *testing.T) {
 	page = updated.(*MissionControlPage)
 
 	assert.Contains(t, page.View(), "User submitted: echo this")
+}
+
+func TestMissionControlComposerSubmitCreatesMissionBeforeTurnDispatch(t *testing.T) {
+	t.Parallel()
+
+	activity := cockpit.NewMissionActivityBuffer()
+	composer, executor := newMissionComposerWithExecutor(t, activity)
+	svc := &stubMissionLifecycleService{
+		startResult: &mission.Mission{ID: uuid.MustParse("11111111-1111-1111-1111-111111111111")},
+	}
+	page := newMissionControlPage(&stubMissionControlProjector{}, stubMissionTaskSource{}, composer)
+	page.missionService = svc
+	page.sessionKey = "mission-session"
+	updated, _ := page.Update(tea.WindowSizeMsg{Width: 110, Height: 30})
+	page = updated.(*MissionControlPage)
+	page.Activate()
+
+	page.composer.SetComposerValue("ship mission control")
+	page.focus = missionControlFocusComposer
+	updated, cmd := page.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	page = updated.(*MissionControlPage)
+
+	require.NotNil(t, cmd)
+	assert.Equal(t, 1, svc.startCalls)
+	assert.Equal(t, "mission-session", svc.lastStartInput.SessionKey)
+	assert.Equal(t, "ship mission control", svc.lastStartInput.Title)
+	assert.True(t, svc.lastStartInput.StartActive)
+
+	for _, msg := range collectImmediateMsgs(cmd) {
+		updated, _ = page.Update(msg)
+		page = updated.(*MissionControlPage)
+	}
+
+	assert.Equal(t, 1, executor.calls)
+	assert.Equal(t, "11111111-1111-1111-1111-111111111111", ctxkeys.MissionIDFromContext(executor.ctx))
+}
+
+func TestMissionControlAcceptProposedMissionCreatesDurableRowAndRemovesOverlay(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 5, 3, 12, 0, 0, 0, time.UTC)
+	learning := cockpit.NewLearningSuggestionBuffer(func() time.Time { return now })
+	learning.Append(eventbus.LearningSuggestionEvent{
+		SessionKey:   "mission-session",
+		SuggestionID: "s-1",
+		Pattern:      "timeout retries",
+		ProposedRule: "Use bounded retry",
+		Rationale:    "Repeated timeout pattern",
+		Timestamp:    now,
+	})
+	svc := &stubMissionLifecycleService{
+		acceptResult: &mission.Mission{ID: uuid.MustParse("22222222-2222-2222-2222-222222222222")},
+	}
+	deps := cockpit.Deps{
+		Config:         &config.Config{Agent: config.AgentConfig{Provider: "openai", Model: "gpt-5"}},
+		SessionKey:     "mission-session",
+		LearningBuffer: learning,
+	}
+	projector := cockpit.NewMissionControlProjector(deps)
+	page := newMissionControlPage(projector, stubMissionTaskSource{}, newTestMissionComposer(t, nil))
+	page.missionService = svc
+	page.learningBuffer = learning
+	page.sessionKey = "mission-session"
+	updated, _ := page.Update(tea.WindowSizeMsg{Width: 110, Height: 30})
+	page = updated.(*MissionControlPage)
+	page.Activate()
+	updated, _ = page.Update(missionControlTickMsg(now))
+	page = updated.(*MissionControlPage)
+
+	require.Len(t, page.snapshot.Missions, 1)
+	require.Equal(t, cockpit.MissionKindProposed, page.snapshot.Missions[0].Kind)
+	page.focus = missionControlFocusMissions
+
+	updated, cmd := page.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	page = updated.(*MissionControlPage)
+
+	assert.Nil(t, cmd)
+	assert.Equal(t, 1, svc.acceptCalls)
+	assert.Equal(t, "mission-session", svc.lastAcceptInput.SessionKey)
+	assert.Equal(t, "proposed_learning", svc.lastAcceptInput.SourceKind)
+	assert.Equal(t, "s-1", svc.lastAcceptInput.SourceRef)
+	assert.Empty(t, learning.Snapshot())
+	assert.Empty(t, page.snapshot.Missions)
 }
 
 func TestMissionControlSharedComposerDoesNotReplayChannelMessages(t *testing.T) {

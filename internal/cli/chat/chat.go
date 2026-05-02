@@ -200,6 +200,18 @@ func (m *ChatModel) ComposerPlaceholder() string {
 	return m.input.Placeholder()
 }
 
+// CanStartTurnFromComposer reports whether the current composer contents can
+// begin a new top-level turn immediately.
+func (m *ChatModel) CanStartTurnFromComposer() bool {
+	if m == nil {
+		return false
+	}
+	if m.state != stateIdle && m.state != stateFailed {
+		return false
+	}
+	return strings.TrimSpace(m.input.Value()) != ""
+}
+
 // SetComposerValue replaces the current composer contents.
 func (m *ChatModel) SetComposerValue(value string) {
 	if m == nil {
@@ -267,6 +279,12 @@ func (m *ChatModel) HandlePendingApprovalKey(msg tea.KeyMsg) tea.Cmd {
 		}
 	}
 	return m.handleApprovingKey(msg)
+}
+
+// SubmitComposerWithParent submits the current composer value through the
+// existing turn path while using the provided parent context for this turn.
+func (m *ChatModel) SubmitComposerWithParent(parent context.Context) tea.Cmd {
+	return m.submitCurrentInput(parent)
 }
 
 // Init implements tea.Model.
@@ -414,7 +432,7 @@ func (m *ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.pending.Activate()
 			return m, tea.Batch(
 				m.transitionTo(stateStreaming),
-				m.submitCmd(redirect),
+				m.submitCmd(context.Background(), redirect),
 				m.pending.TickCmd(),
 			)
 		}
@@ -690,27 +708,7 @@ func (m *ChatModel) handleIdleKey(msg tea.KeyMsg) tea.Cmd {
 		}
 
 	case key.Matches(msg, key.NewBinding(key.WithKeys("enter"))):
-		input := strings.TrimSpace(m.input.Value())
-		if input == "" {
-			return nil
-		}
-		m.input.Reset()
-
-		if handled, cmd := dispatchSlash(m, input); handled {
-			return cmd
-		}
-
-		if m.onUserSubmission != nil {
-			m.onUserSubmission(m.sessionKey, input)
-		}
-		m.chatView.appendUser(input)
-		// Set pending state before transition so recalcLayout accounts for the strip.
-		m.pending.Activate()
-		return tea.Batch(
-			m.transitionTo(stateStreaming),
-			m.submitCmd(input),
-			m.pending.TickCmd(),
-		)
+		return m.submitCurrentInput(context.Background())
 	}
 
 	return nil
@@ -855,8 +853,11 @@ func (m *ChatModel) resetApprovalOwner(msg *ApprovalRequestMsg) {
 }
 
 // submitCmd creates a tea.Cmd that runs a turn via the TurnRunner.
-func (m *ChatModel) submitCmd(input string) tea.Cmd {
-	ctx, cancel := context.WithCancel(context.Background())
+func (m *ChatModel) submitCmd(parent context.Context, input string) tea.Cmd {
+	if parent == nil {
+		parent = context.Background()
+	}
+	ctx, cancel := context.WithCancel(parent)
 	m.runCtx = ctx
 	m.cancelFn = cancel
 
@@ -892,6 +893,29 @@ func (m *ChatModel) submitCmd(input string) tea.Cmd {
 		}
 		return DoneMsg{Result: result}
 	}
+}
+
+func (m *ChatModel) submitCurrentInput(parent context.Context) tea.Cmd {
+	input := strings.TrimSpace(m.input.Value())
+	if input == "" {
+		return nil
+	}
+	m.input.Reset()
+
+	if handled, cmd := dispatchSlash(m, input); handled {
+		return cmd
+	}
+
+	if m.onUserSubmission != nil {
+		m.onUserSubmission(m.sessionKey, input)
+	}
+	m.chatView.appendUser(input)
+	m.pending.Activate()
+	return tea.Batch(
+		m.transitionTo(stateStreaming),
+		m.submitCmd(parent, input),
+		m.pending.TickCmd(),
+	)
 }
 
 func (m *ChatModel) recalcLayout() {

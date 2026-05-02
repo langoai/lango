@@ -61,6 +61,7 @@ import (
 	"github.com/langoai/lango/internal/postadjudicationstatus"
 	"github.com/langoai/lango/internal/sandbox"
 	"github.com/langoai/lango/internal/session"
+	"github.com/langoai/lango/internal/storage"
 	"github.com/langoai/lango/internal/storagebroker"
 	"github.com/langoai/lango/internal/types"
 	"go.uber.org/zap"
@@ -604,6 +605,39 @@ func chatCmd() *cobra.Command {
 	}
 }
 
+func buildCockpitDeps(
+	application *app.App,
+	cfg *config.Config,
+	sessionKey string,
+	store session.Store,
+	profileName string,
+	configStore storage.ConfigProfileStore,
+	pendingApprovals *cockpit.PendingApprovalRegistry,
+	learningBuffer *cockpit.LearningSuggestionBuffer,
+	activityBuffer *cockpit.MissionActivityBuffer,
+) cockpit.Deps {
+	return cockpit.Deps{
+		TurnRunner:        application.TurnRunner,
+		Config:            cfg,
+		SessionKey:        sessionKey,
+		SessionStore:      store,
+		ToolCatalog:       application.ToolCatalog,
+		MetricsCollector:  application.MetricsCollector,
+		ConfigStore:       configStore,
+		ProfileName:       profileName,
+		BackgroundManager: application.BackgroundManager,
+		EventBus:          application.EventBus,
+		ApprovalHistory:   application.ApprovalHistory,
+		GrantStore:        application.GrantStore,
+		MissionService:    application.MissionService,
+		PendingApprovals:  pendingApprovals,
+		LearningBuffer:    learningBuffer,
+		ActivityBuffer:    activityBuffer,
+		RunLedgerStore:    application.RunLedgerStore,
+		AgentRunStore:     application.AgentRunStore,
+	}
+}
+
 func runCockpit(initialMode string) error {
 	boot, err := cliboot.BootResult()
 	if err != nil {
@@ -706,25 +740,17 @@ func runCockpit(initialMode string) error {
 	learningBuffer := cockpit.NewLearningSuggestionBuffer(nil)
 	activityBuffer := cockpit.NewMissionActivityBuffer()
 
-	cockpitDeps := cockpit.Deps{
-		TurnRunner:        application.TurnRunner,
-		Config:            cfg,
-		SessionKey:        sessionKey,
-		SessionStore:      application.Store,
-		ToolCatalog:       application.ToolCatalog,
-		MetricsCollector:  application.MetricsCollector,
-		ConfigStore:       boot.Storage.ConfigProfiles(),
-		ProfileName:       boot.ProfileName,
-		BackgroundManager: application.BackgroundManager,
-		EventBus:          application.EventBus,
-		ApprovalHistory:   application.ApprovalHistory,
-		GrantStore:        application.GrantStore,
-		PendingApprovals:  pendingApprovals,
-		LearningBuffer:    learningBuffer,
-		ActivityBuffer:    activityBuffer,
-		RunLedgerStore:    application.RunLedgerStore,
-		AgentRunStore:     application.AgentRunStore,
-	}
+	cockpitDeps := buildCockpitDeps(
+		application,
+		cfg,
+		sessionKey,
+		application.Store,
+		boot.ProfileName,
+		boot.Storage.ConfigProfiles(),
+		pendingApprovals,
+		learningBuffer,
+		activityBuffer,
+	)
 
 	model := cockpit.New(cockpitDeps)
 	missionComposer := model.ChatModel()

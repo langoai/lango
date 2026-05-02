@@ -55,3 +55,24 @@ func TestLearningSuggestionBufferDismiss(t *testing.T) {
 	require.Len(t, items, 1)
 	assert.Equal(t, "s-2", items[0].SuggestionID)
 }
+
+func TestLearningSuggestionBufferFind(t *testing.T) {
+	now := time.Date(2026, 5, 3, 12, 0, 0, 0, time.UTC)
+	buf := NewLearningSuggestionBuffer(func() time.Time { return now })
+
+	buf.Append(eventbus.LearningSuggestionEvent{
+		SessionKey:   "sess-1",
+		SuggestionID: "s-1",
+		Pattern:      "retry timeout",
+		ProposedRule: "Use bounded retry",
+		Rationale:    "Pattern repeated",
+		Timestamp:    now,
+	})
+
+	found := buf.Find("s-1")
+	require.NotNil(t, found)
+	assert.Equal(t, "retry timeout", found.Pattern)
+	assert.Equal(t, "Use bounded retry", found.ProposedRule)
+
+	assert.Nil(t, buf.Find("missing"))
+}

@@ -10,8 +10,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
 
+	"github.com/langoai/lango/internal/app"
 	"github.com/langoai/lango/internal/cli/cockpit"
 	"github.com/langoai/lango/internal/cli/cockpit/pages"
+	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/mission"
 )
 
 type fakeServeApp struct {
@@ -126,4 +129,21 @@ func TestCockpitDeadLetterListOptions_MapsAllFields(t *testing.T) {
 		DeadLetterReasonQuery:     "worker exhausted",
 		LatestDispatchReference:   "dispatch-7",
 	}, got)
+}
+
+func TestRunCockpitBuildDepsCarriesMissionService(t *testing.T) {
+	t.Parallel()
+
+	svc := mission.NewService(nil)
+	application := &app.App{MissionService: svc}
+	cfg := &config.Config{}
+	pending := cockpit.NewPendingApprovalRegistry()
+	learning := cockpit.NewLearningSuggestionBuffer(nil)
+	activity := cockpit.NewMissionActivityBuffer()
+
+	deps := buildCockpitDeps(application, cfg, "sess-1", nil, "", nil, pending, learning, activity)
+
+	assert.Same(t, svc, deps.MissionService)
+	assert.Same(t, learning, deps.LearningBuffer)
+	assert.Same(t, activity, deps.ActivityBuffer)
 }

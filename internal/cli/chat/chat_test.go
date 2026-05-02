@@ -10,10 +10,47 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/langoai/lango/internal/adk"
 	"github.com/langoai/lango/internal/approval"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/ctxkeys"
+	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/turnrunner"
 )
+
+type submitCaptureExecutor struct {
+	ctx       context.Context
+	sessionID string
+	input     string
+}
+
+func (s *submitCaptureExecutor) RunStreamingDetailed(
+	ctx context.Context,
+	sessionID, input string,
+	_ adk.ChunkCallback,
+	_ ...adk.RunOption,
+) (adk.RunReport, error) {
+	s.ctx = ctx
+	s.sessionID = sessionID
+	s.input = input
+	return adk.RunReport{Response: "ok"}, nil
+}
+
+type submitTestSessionStore struct{}
+
+func (submitTestSessionStore) Create(*session.Session) error               { return nil }
+func (submitTestSessionStore) Get(string) (*session.Session, error)        { return nil, nil }
+func (submitTestSessionStore) Update(*session.Session) error               { return nil }
+func (submitTestSessionStore) Delete(string) error                         { return nil }
+func (submitTestSessionStore) AppendMessage(string, session.Message) error { return nil }
+func (submitTestSessionStore) AnnotateTimeout(string, string) error        { return nil }
+func (submitTestSessionStore) End(string) error                            { return nil }
+func (submitTestSessionStore) Close() error                                { return nil }
+func (submitTestSessionStore) ListSessions(context.Context) ([]session.SessionSummary, error) {
+	return nil, nil
+}
+func (submitTestSessionStore) GetSalt(string) ([]byte, error) { return nil, nil }
+func (submitTestSessionStore) SetSalt(string, []byte) error   { return nil }
 
 func newTestModel() *ChatModel {
 	m := &ChatModel{
@@ -749,6 +786,63 @@ func TestCockpitActivityTurnSummaryCallback(t *testing.T) {
 	}
 }
 
+func TestSubmitComposerWithParentUsesProvidedMissionContext(t *testing.T) {
+	executor := &submitCaptureExecutor{}
+	runner := turnrunner.New(turnrunner.Config{}, executor, submitTestSessionStore{}, nil)
+	m := New(Deps{
+		TurnRunner: runner,
+		Config: &config.Config{
+			Agent: config.AgentConfig{Provider: "openai", Model: "gpt-test"},
+		},
+		SessionKey: "test-session",
+	})
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	m = updated.(*ChatModel)
+	m.SetComposerValue("start mission")
+
+	cmd := m.SubmitComposerWithParent(ctxkeys.WithMissionID(context.Background(), "mission-123"))
+	for _, msg := range collectImmediateMsgs(cmd) {
+		updated, _ = m.Update(msg)
+		m = updated.(*ChatModel)
+	}
+
+	if executor.input != "start mission" {
+		t.Fatalf("want captured input start mission, got %q", executor.input)
+	}
+	if got := ctxkeys.MissionIDFromContext(executor.ctx); got != "mission-123" {
+		t.Fatalf("want mission id mission-123, got %q", got)
+	}
+}
+
+func TestComposerEnterDoesNotImplicitlyBindMission(t *testing.T) {
+	executor := &submitCaptureExecutor{}
+	runner := turnrunner.New(turnrunner.Config{}, executor, submitTestSessionStore{}, nil)
+	m := New(Deps{
+		TurnRunner: runner,
+		Config: &config.Config{
+			Agent: config.AgentConfig{Provider: "openai", Model: "gpt-test"},
+		},
+		SessionKey: "test-session",
+	})
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	m = updated.(*ChatModel)
+	m.SetComposerValue("plain chat")
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(*ChatModel)
+	for _, msg := range collectImmediateMsgs(cmd) {
+		updated, _ = m.Update(msg)
+		m = updated.(*ChatModel)
+	}
+
+	if executor.input != "plain chat" {
+		t.Fatalf("want captured input plain chat, got %q", executor.input)
+	}
+	if got := ctxkeys.MissionIDFromContext(executor.ctx); got != "" {
+		t.Fatalf("want no mission binding for normal chat submit, got %q", got)
+	}
+}
+
 type stubSharedPendingStore struct {
 	latest         *ApprovalRequestMsg
 	next           *ApprovalRequestMsg
@@ -778,6 +872,35 @@ func (s *stubSharedPendingStore) Resolve(id string, resp approval.ApprovalRespon
 }
 
 func (s *stubSharedPendingStore) Register(_ ApprovalRequestMsg) {}
+
+func collectImmediateMsgs(cmd tea.Cmd) []tea.Msg {
+	if cmd == nil {
+		return nil
+	}
+
+	ch := make(chan tea.Msg, 1)
+	go func() {
+		ch <- cmd()
+	}()
+
+	select {
+	case msg := <-ch:
+		switch msg := msg.(type) {
+		case nil:
+			return nil
+		case tea.BatchMsg:
+			var out []tea.Msg
+			for _, child := range msg {
+				out = append(out, collectImmediateMsgs(child)...)
+			}
+			return out
+		default:
+			return []tea.Msg{msg}
+		}
+	case <-time.After(25 * time.Millisecond):
+		return nil
+	}
+}
 
 func (s *stubSharedPendingStore) CurrentTime() time.Time {
 	return time.Now()

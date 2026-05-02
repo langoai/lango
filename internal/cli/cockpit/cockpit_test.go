@@ -1,18 +1,26 @@
 package cockpit
 
 import (
+	"context"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/langoai/lango/internal/adk"
 	"github.com/langoai/lango/internal/approval"
 	"github.com/langoai/lango/internal/cli/chat"
 	"github.com/langoai/lango/internal/cli/cockpit/sidebar"
 	"github.com/langoai/lango/internal/cli/cockpit/theme"
+	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/ctxkeys"
+	"github.com/langoai/lango/internal/mission"
 	"github.com/langoai/lango/internal/observability"
+	"github.com/langoai/lango/internal/session"
+	"github.com/langoai/lango/internal/turnrunner"
 )
 
 // mockChild implements childModel for testing without real ChatModel.
@@ -49,6 +57,51 @@ func (p *mockPage) Title() string            { return p.title }
 func (p *mockPage) ShortHelp() []key.Binding { return nil }
 func (p *mockPage) Activate() tea.Cmd        { p.activated = true; return nil }
 func (p *mockPage) Deactivate()              { p.deactivated = true }
+
+type captureTurnExecutor struct {
+	ctx   context.Context
+	input string
+}
+
+func (c *captureTurnExecutor) RunStreamingDetailed(
+	ctx context.Context,
+	_, input string,
+	_ adk.ChunkCallback,
+	_ ...adk.RunOption,
+) (adk.RunReport, error) {
+	c.ctx = ctx
+	c.input = input
+	return adk.RunReport{Response: "ok"}, nil
+}
+
+type cockpitTestSessionStore struct{}
+
+func (cockpitTestSessionStore) Create(*session.Session) error               { return nil }
+func (cockpitTestSessionStore) Get(string) (*session.Session, error)        { return nil, nil }
+func (cockpitTestSessionStore) Update(*session.Session) error               { return nil }
+func (cockpitTestSessionStore) Delete(string) error                         { return nil }
+func (cockpitTestSessionStore) AppendMessage(string, session.Message) error { return nil }
+func (cockpitTestSessionStore) AnnotateTimeout(string, string) error        { return nil }
+func (cockpitTestSessionStore) End(string) error                            { return nil }
+func (cockpitTestSessionStore) Close() error                                { return nil }
+func (cockpitTestSessionStore) ListSessions(context.Context) ([]session.SessionSummary, error) {
+	return nil, nil
+}
+func (cockpitTestSessionStore) GetSalt(string) ([]byte, error) { return nil, nil }
+func (cockpitTestSessionStore) SetSalt(string, []byte) error   { return nil }
+
+type cockpitMissionServiceStub struct {
+	startCalls int
+}
+
+func (s *cockpitMissionServiceStub) StartMission(context.Context, mission.StartMissionInput) (*mission.Mission, error) {
+	s.startCalls++
+	return &mission.Mission{}, nil
+}
+
+func (s *cockpitMissionServiceStub) AcceptProposal(context.Context, mission.AcceptProposalInput) (*mission.Mission, error) {
+	return &mission.Mission{}, nil
+}
 
 func newTestModel(mock *mockChild) *Model {
 	return &Model{
@@ -756,4 +809,61 @@ func TestMissionControlIntegration_DetailPagesRemainReachable(t *testing.T) {
 
 	m.Update(sidebar.PageSelectedMsg{ID: "mission-control"})
 	assert.Equal(t, PageMissionControl, m.activePage)
+}
+
+func TestChatPageSubmitDoesNotCreateMission(t *testing.T) {
+	executor := &captureTurnExecutor{}
+	runner := turnrunner.New(turnrunner.Config{}, executor, cockpitTestSessionStore{}, nil)
+	svc := &cockpitMissionServiceStub{}
+	m := New(Deps{
+		TurnRunner:     runner,
+		Config:         &config.Config{Agent: config.AgentConfig{Provider: "openai", Model: "gpt-5"}},
+		SessionKey:     "sess-1",
+		SessionStore:   cockpitTestSessionStore{},
+		MissionService: svc,
+	})
+	m.activePage = PageChat
+	m.ChatModel().SetComposerValue("plain chat")
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(*Model)
+	require.NotNil(t, cmd)
+
+	for _, msg := range collectCockpitImmediateMsgs(cmd) {
+		updated, _ = m.Update(msg)
+		m = updated.(*Model)
+	}
+
+	assert.Equal(t, 0, svc.startCalls)
+	assert.Equal(t, "plain chat", executor.input)
+	assert.Equal(t, "", ctxkeys.MissionIDFromContext(executor.ctx))
+}
+
+func collectCockpitImmediateMsgs(cmd tea.Cmd) []tea.Msg {
+	if cmd == nil {
+		return nil
+	}
+
+	ch := make(chan tea.Msg, 1)
+	go func() {
+		ch <- cmd()
+	}()
+
+	select {
+	case msg := <-ch:
+		switch msg := msg.(type) {
+		case nil:
+			return nil
+		case tea.BatchMsg:
+			var out []tea.Msg
+			for _, child := range msg {
+				out = append(out, collectCockpitImmediateMsgs(child)...)
+			}
+			return out
+		default:
+			return []tea.Msg{msg}
+		}
+	case <-time.After(25 * time.Millisecond):
+		return nil
+	}
 }
