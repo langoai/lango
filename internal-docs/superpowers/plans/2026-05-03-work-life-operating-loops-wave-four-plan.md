@@ -15,6 +15,12 @@ First-slice source contract:
 - scheduled automation: `cron jobs` only
 - workflow-run loops: deferred until a dedicated adapter exists
 
+Source scoping contract:
+
+- `missions`, `inquiries`, and deterministic follow-up signals are session-scoped
+- `cron jobs` and `dead-letter backlog` are operator-global operational sources in the first slice
+- operator-global loops may appear in every cockpit session until a later identity model exists
+
 **Tech Stack:** Go, Bubble Tea, `internal/loopview`, `internal/app`, `internal/cli/cockpit`, OpenSpec, Zensical docs
 
 ## Scope Guardrails
@@ -154,6 +160,13 @@ The first slice should support:
 
 Workflow runs are explicitly deferred in this slice.
 
+Required source adapter shapes:
+
+- `LoopMissionReader`
+- `LoopInquiryReader`
+- `LoopDeadLetterReader`
+- `LoopCronReader`
+
 - [ ] **Step 4: Add projection tests**
 
 Cover:
@@ -195,7 +208,7 @@ Expose only what Mission Control needs for the first slice:
 - durable mission reader
 - proposal registry access
 - librarian inquiry store or a narrow inquiry reader
-- dead-letter tool bridge or equivalent read path
+- a narrow dead-letter reader instead of raw cockpit-specific bridge behavior
 - cron job reader as the scheduled automation source
 
 - [ ] **Step 2: Keep unsupported sources absent**
@@ -256,13 +269,18 @@ The first slice should prefer a compact loop lane or agenda band rather than a w
 
 Deterministic follow-up predicates for the first slice:
 
-- accepted proposal with no active linked execution yet
-- mission in `done` state updated within a recent threshold and still needing review
-- pending inquiry older than a threshold
-- cron job whose most recent execution failed
+- accepted proposal with no active linked execution after `10m`
+- mission in `done` state updated within `24h` and still needing review
+- pending inquiry older than `24h`
+- cron job whose most recent execution failed within `24h`
 - dead-letter entry that remains retryable
 
 No other heuristic follow-up generation is allowed in this slice.
+
+Threshold handling rule:
+
+- these thresholds are fixed constants inside `internal/loopview` in the first slice
+- projector code must use an injectable/test-controlled clock so boundary tests stay deterministic
 
 - [ ] **Step 4: Add Mission Control loop tests**
 
