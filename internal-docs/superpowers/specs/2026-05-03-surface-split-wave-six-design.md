@@ -153,14 +153,14 @@ Therefore the recommended first slice is:
 
 - keep current cockpit page set
 - keep Mission Control available inside cockpit
-- optionally switch cockpit's default active page to a more operator-oriented page such as `Status`
+- keep the current cockpit startup page in the first slice to avoid unnecessary churn
 
 However, the **minimum required** distinction is:
 
 - bare `lango` is a standalone workbench
 - `lango cockpit` is the multi-page shell
 
-If changing the cockpit default page creates excessive churn, that can remain a secondary refinement within Wave 6 rather than the core contract.
+Diagnostics-first positioning in the first slice comes from explicit command/shell separation, page availability, and docs/help copy rather than from a forced page-order reset.
 
 ## Architecture Shape
 
