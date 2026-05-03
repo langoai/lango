@@ -380,8 +380,10 @@ This document is a design memo, not an implementation contract by itself. Before
 Recommended split:
 
 - Change A: admission boundary hardening
-  - Phase A1: observe-only admission instrumentation with no write-path enforcement
-  - Phase A2: enforce admission routing on dynamic producers
+  - Phase A1: runtime app observe-only sub-slice
+  - Includes: `TriplesExtractedEvent` producer observation, `GraphEngine` direct-write observation, shared validator-source telemetry, and internal status surfaces
+  - Excludes: `CLI import`, `AssertFact` growth-enabled paths, and any write filtering or dropping
+  - Phase A2: broader producer migration and enforcing admission routing on dynamic producers
   - producer inventory
   - single source of truth validation
   - event and direct-store rerouting

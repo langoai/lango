@@ -12,7 +12,7 @@
 
 ## Scope
 
-This plan covers only the **observe-only runtime app sub-slice**:
+This plan covers only the **observe-only runtime app sub-slice** from `Change A / Phase A1`:
 
 - `TriplesExtractedEvent` producers that already flow through `internal/app/wiring_graph.go`
 - `GraphEngine` direct store writes when the event-bus handoff is not used
@@ -21,7 +21,6 @@ This plan covers only the **observe-only runtime app sub-slice**:
 
 This plan explicitly does **not** cover:
 
-- `content.saved` extractor output changing behavior
 - `content.saved` extractor prompt widening or allowlist bypass
 - `CLI graph import`
 - `AssertFact`, ontology tools, ontology actions, and P2P fact assertion paths
@@ -142,6 +141,7 @@ This change implements only `Change A / Phase A1`.
 The runtime computes admission decisions for:
 - `TriplesExtractedEvent` batches
 - `GraphEngine` direct store writes
+- app-path extracted triples only where the current runtime already surfaces them without widening extractor behavior
 
 In all cases, current write routing remains unchanged. The policy is observe-only: it records what would be admitted or rejected, emits telemetry, and lets the existing enqueue/store path continue unchanged.
 ```
@@ -449,6 +449,7 @@ type AdmissionObserveResult struct {
 type AdmissionConfig struct {
 	Validator         PredicateValidatorFunc
 	DefaultConfidence map[AdmissionProducer]float64
+	Observe           func(AdmissionBatchEvent)
 }
 
 type AdmissionPolicy struct {
@@ -494,6 +495,9 @@ func (p *AdmissionPolicy) ObserveBatch(candidates []AdmissionCandidate) Admissio
 		"known", result.Event.ObservedKnown,
 		"unknown", result.Event.ObservedUnknown,
 	)
+	if p.cfg.Observe != nil {
+		p.cfg.Observe(result.Event)
+	}
 	return result
 }
 
@@ -505,6 +509,22 @@ func (p *AdmissionPolicy) defaultConfidence(c AdmissionCandidate) float64 {
 		return v
 	}
 	return 0.50
+}
+
+func ObserveTriples(policy *AdmissionPolicy, producer AdmissionProducer, source string, triples []Triple) []Triple {
+	if policy == nil {
+		return triples
+	}
+	candidates := make([]AdmissionCandidate, 0, len(triples))
+	for _, triple := range triples {
+		candidates = append(candidates, AdmissionCandidate{
+			Triple:   triple,
+			Producer: producer,
+			Source:   source,
+		})
+	}
+	result := policy.ObserveBatch(candidates)
+	return result.Forwarded
 }
 ```
 
@@ -558,6 +578,7 @@ Add tests like these:
 func TestProducerForExtractedEvent_MapsKnownSources(t *testing.T) {
 	assert.Equal(t, graph.ProducerConversationAnalysis, producerForExtractedEvent("conversation_analysis"))
 	assert.Equal(t, graph.ProducerSessionLearning, producerForExtractedEvent("session_learning"))
+	assert.Equal(t, graph.ProducerGraphEngine, producerForExtractedEvent("learning"))
 	assert.Equal(t, graph.ProducerLibrarianEvent, producerForExtractedEvent("proactive_librarian"))
 }
 
@@ -610,6 +631,8 @@ func producerForExtractedEvent(source string) graph.AdmissionProducer {
 		return graph.ProducerConversationAnalysis
 	case "session_learning":
 		return graph.ProducerSessionLearning
+	case "learning":
+		return graph.ProducerGraphEngine
 	case "proactive_librarian":
 		return graph.ProducerLibrarianEvent
 	default:
@@ -629,22 +652,6 @@ func publishAdmissionObservation(bus *eventbus.Bus, evt graph.AdmissionBatchEven
 	})
 }
 
-func observeTriples(policy *graph.AdmissionPolicy, producer graph.AdmissionProducer, source string, triples []graph.Triple) []graph.Triple {
-	if policy == nil {
-		return triples
-	}
-	candidates := make([]graph.AdmissionCandidate, 0, len(triples))
-	for _, triple := range triples {
-		candidates = append(candidates, graph.AdmissionCandidate{
-			Triple:   triple,
-			Producer: producer,
-			Source:   source,
-		})
-	}
-	result := policy.ObserveBatch(candidates)
-	return result.Forwarded
-}
-
 func observeExtractedTriples(policy *graph.AdmissionPolicy, evt eventbus.TriplesExtractedEvent) []graph.Triple {
 	graphTriples := make([]graph.Triple, len(evt.Triples))
 	for i, t := range evt.Triples {
@@ -657,7 +664,7 @@ func observeExtractedTriples(policy *graph.AdmissionPolicy, evt eventbus.Triples
 			Metadata:    t.Metadata,
 		}
 	}
-	return observeTriples(policy, producerForExtractedEvent(evt.Source), evt.Source, graphTriples)
+	return graph.ObserveTriples(policy, producerForExtractedEvent(evt.Source), evt.Source, graphTriples)
 }
 ```
 
@@ -671,6 +678,9 @@ if gc != nil && ontologyResult != nil && ontologyResult.Service != nil && cfg.On
 			graph.ProducerSessionLearning:      cfg.Ontology.Governance.LearningDefaultConfidence,
 			graph.ProducerLibrarianEvent:       cfg.Ontology.Governance.LibrarianDefaultConfidence,
 			graph.ProducerGraphEngine:          cfg.Ontology.Governance.LearningDefaultConfidence,
+		},
+		Observe: func(evt graph.AdmissionBatchEvent) {
+			publishAdmissionObservation(m.bus, evt)
 		},
 	}, logger())
 }
@@ -810,7 +820,7 @@ func (e *GraphEngine) observeTriples(triples []graph.Triple) []graph.Triple {
 	if e.admissionPolicy == nil {
 		return triples
 	}
-	return observeTriples(e.admissionPolicy, graph.ProducerGraphEngine, "graph_engine", triples)
+	return graph.ObserveTriples(e.admissionPolicy, graph.ProducerGraphEngine, "graph_engine", triples)
 }
 ```
 
