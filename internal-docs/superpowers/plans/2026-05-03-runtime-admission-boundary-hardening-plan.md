@@ -817,6 +817,7 @@ Add extractor-local baseline telemetry without widening extraction behavior:
 // internal/graph/extractor.go
 type DroppedUnknownPredicateEvent struct {
 	SourceID  string
+	SourceTag string
 	Predicate string
 	Subject   string
 	Object    string
@@ -833,11 +834,16 @@ type Extractor struct {
 	logger           *zap.SugaredLogger
 }
 
+func (e *Extractor) Extract(ctx context.Context, content, sourceID, sourceTag string) ([]Triple, error) {
+	// existing behavior plus sourceTag forwarded into parseResponse
+}
+
 // inside parseResponse unknown-predicate branch
 if !e.isValidPredicate(predicate) {
 	if e.onDroppedUnknown != nil {
 	e.onDroppedUnknown(DroppedUnknownPredicateEvent{
 			SourceID:  sourceID,
+			SourceTag: sourceTag,
 			Predicate: predicate,
 			Subject:   subject,
 			Object:    object,
@@ -873,7 +879,9 @@ extractor = graph.NewExtractor(generator, logger(),
 )
 
 // inside content.saved extraction goroutine after extractor.Extract(...)
-observed := graph.ObserveTriples(gc.admissionPolicy, graph.ProducerContentSavedExtractor, fmt.Sprintf("content_saved_extractor:%s:%s", evt.Source, evt.Collection), triples)
+sourceTag := fmt.Sprintf("content_saved_extractor:%s:%s", evt.Source, evt.Collection)
+triples, err := extractor.Extract(ctx, evt.Content, evt.ID, sourceTag)
+observed := graph.ObserveTriples(gc.admissionPolicy, graph.ProducerContentSavedExtractor, sourceTag, triples)
 if len(observed) > 0 {
 	gc.buffer.Enqueue(graph.GraphRequest{Triples: observed})
 }
@@ -918,7 +926,7 @@ func TestCollector_RecordGraphAdmissionBatch(t *testing.T) {
 	c := NewCollector()
 	c.RecordGraphAdmissionBatch("conversation_analysis", "conversation_analysis", 3, 2, 1, 1, "ontology_predicate_validator_closure")
 	c.RecordGraphExtractorDrop()
-	c.RecordGraphAdmissionWriteFailure()
+	c.RecordGraphAdmissionWriteFailure(3)
 	snap := c.Snapshot()
 	assert.Equal(t, int64(1), snap.GraphAdmission.Batches)
 	assert.Equal(t, int64(3), snap.GraphAdmission.Candidates)
