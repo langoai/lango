@@ -61,6 +61,7 @@ func (r *collaborationAgentRunReader) ListAgentRuns() []CollaborationAgentRunVie
 			BlockedReason:    run.BlockedReason,
 			WaitingOnRunID:   run.WaitingOnRunID,
 			RecoveryState:    run.RecoveryState,
+			UpdatedAt:        run.CreatedAt,
 		})
 	}
 	return out

@@ -173,4 +173,5 @@ func TestCollaborationMissionAndAgentRunReadersAreNarrow(t *testing.T) {
 	require.Len(t, runs, 1)
 	assert.Equal(t, "researcher", runs[0].RequestedAgent)
 	assert.Equal(t, string(agentrt.AgentRunConditionWaitingOnTeammate), runs[0].RuntimeCondition)
+	assert.Equal(t, runs[0].UpdatedAt, runStore.List()[0].CreatedAt)
 }

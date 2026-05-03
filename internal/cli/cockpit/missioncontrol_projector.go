@@ -542,8 +542,34 @@ func (p *MissionControlProjector) projectCollaboration(missions []MissionView) (
 				RequestedAgent:   run.RequestedAgent,
 				RuntimeCondition: run.RuntimeCondition,
 				BlockedReason:    run.BlockedReason,
-				UpdatedAt:        p.now(),
+				UpdatedAt:        run.UpdatedAt,
 			})
+		}
+	}
+	if p.runLedgerStore != nil {
+		for _, missionView := range missions {
+			links, err := p.collabMissionLinks.ListMissionExecutionLinks(context.Background(), missionView.ID)
+			if err != nil {
+				return nil, true
+			}
+			for _, link := range links {
+				executionRef := strings.TrimSpace(link.ExecutionRef)
+				if executionRef == "" {
+					continue
+				}
+				snap, err := p.runLedgerStore.GetRunSnapshot(context.Background(), executionRef)
+				if err != nil {
+					return nil, true
+				}
+				if snap == nil {
+					continue
+				}
+				input.RunExecutions = append(input.RunExecutions, collabview.RunExecutionSource{
+					ExecutionRef:      executionRef,
+					CurrentStepStatus: currentRunStepStatus(snap),
+					UpdatedAt:         snap.UpdatedAt,
+				})
+			}
 		}
 	}
 	if p.collabDelegations != nil {
@@ -608,7 +634,7 @@ func attachCollaboration(missions []MissionView, collaboration map[string]Collab
 }
 
 func summarizeCollaboration(view collabview.CollaborationView) CollaborationView {
-	out := CollaborationView{}
+	out := CollaborationView{ActiveOwner: strings.TrimSpace(view.ActiveOwner)}
 	if len(view.Participants) > 0 {
 		names := make([]string, 0, len(view.Participants))
 		for _, participant := range view.Participants {
@@ -823,6 +849,21 @@ func valueOrZero(value *time.Time) time.Time {
 		return time.Time{}
 	}
 	return *value
+}
+
+func currentRunStepStatus(snap *runledger.RunSnapshot) string {
+	if snap == nil {
+		return ""
+	}
+	if step := snap.FindStep(strings.TrimSpace(snap.CurrentStepID)); step != nil {
+		return strings.TrimSpace(string(step.Status))
+	}
+	for _, step := range snap.Steps {
+		if step.Status == runledger.StepStatusVerifyPending {
+			return strings.TrimSpace(string(step.Status))
+		}
+	}
+	return ""
 }
 
 func enrichDurableMissionFromTask(missionView *MissionView, task background.TaskSnapshot) {

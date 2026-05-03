@@ -1268,6 +1268,90 @@ func TestMissionControlCollaborationStateHintsAndBudgetRecoveryAreAttributable(t
 	assert.Contains(t, snapshot.Missions[0].Collaboration.RecoveryHint, "retry")
 }
 
+func TestMissionControlCollaborationReviewingFromLinkedRunExecution(t *testing.T) {
+	t.Parallel()
+
+	missionID := uuid.MustParse("56565656-5656-5656-5656-565656565656")
+	projector := NewMissionControlProjector(Deps{
+		SessionKey: "sess-1",
+		MissionReader: stubMissionControlMissionReader{
+			missions: map[string][]*mission.Mission{
+				"sess-1": {{
+					ID:         missionID,
+					SessionKey: "sess-1",
+					Title:      "Review mission",
+					Status:     mission.StatusActive,
+					SourceKind: "user",
+					UpdatedAt:  time.Date(2026, 5, 3, 12, 0, 0, 0, time.UTC),
+					CreatedAt:  time.Date(2026, 5, 3, 11, 0, 0, 0, time.UTC),
+				}},
+			},
+		},
+		CollabMissionLinks: stubMissionControlCollabMissionLinkReader{
+			links: map[string][]apppkg.CollaborationMissionExecutionLink{
+				missionID.String(): {{ExecutionKind: "runledger_run", ExecutionRef: "run-1"}},
+			},
+		},
+		RunLedgerStore: stubMissionControlRunLedgerReader{
+			snapshots: map[string]*runledger.RunSnapshot{
+				"run-1": {
+					RunID:         "run-1",
+					CurrentStepID: "step-1",
+					Steps: []runledger.Step{{
+						StepID: "step-1",
+						Status: runledger.StepStatusVerifyPending,
+					}},
+					UpdatedAt: time.Date(2026, 5, 3, 12, 10, 0, 0, time.UTC),
+				},
+			},
+		},
+	})
+
+	snapshot := projector.Project(nil)
+	require.Len(t, snapshot.Missions, 1)
+	assert.Equal(t, "Reviewing", snapshot.Missions[0].Collaboration.StateHint)
+}
+
+func TestMissionControlCollaborationActiveOwnerUsesLatestRealRunTimestamp(t *testing.T) {
+	t.Parallel()
+
+	missionID := uuid.MustParse("78787878-7878-7878-7878-787878787878")
+	projector := NewMissionControlProjector(Deps{
+		SessionKey: "sess-1",
+		MissionReader: stubMissionControlMissionReader{
+			missions: map[string][]*mission.Mission{
+				"sess-1": {{
+					ID:         missionID,
+					SessionKey: "sess-1",
+					Title:      "Ownership mission",
+					Status:     mission.StatusActive,
+					SourceKind: "user",
+					UpdatedAt:  time.Date(2026, 5, 3, 12, 0, 0, 0, time.UTC),
+					CreatedAt:  time.Date(2026, 5, 3, 11, 0, 0, 0, time.UTC),
+				}},
+			},
+		},
+		CollabMissionLinks: stubMissionControlCollabMissionLinkReader{
+			links: map[string][]apppkg.CollaborationMissionExecutionLink{
+				missionID.String(): {
+					{ExecutionKind: "task_os_execution", ExecutionRef: "exec-1"},
+					{ExecutionKind: "task_os_execution", ExecutionRef: "exec-2"},
+				},
+			},
+		},
+		CollabAgentRuns: stubMissionControlCollabAgentRunReader{
+			runs: []apppkg.CollaborationAgentRunView{
+				{ID: "exec-2", RequestedAgent: "older-owner", UpdatedAt: time.Date(2026, 5, 3, 12, 1, 0, 0, time.UTC)},
+				{ID: "exec-1", RequestedAgent: "newer-owner", UpdatedAt: time.Date(2026, 5, 3, 12, 5, 0, 0, time.UTC)},
+			},
+		},
+	})
+
+	snapshot := projector.Project(nil)
+	require.Len(t, snapshot.Missions, 1)
+	assert.Equal(t, "newer-owner", snapshot.Missions[0].Collaboration.ActiveOwner)
+}
+
 func TestMissionControlCollaborationNoExternalTeamOverstatement(t *testing.T) {
 	t.Parallel()
 

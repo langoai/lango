@@ -116,6 +116,7 @@ type HeaderView struct {
 
 type CollaborationView struct {
 	ParticipantSummary string
+	ActiveOwner        string
 	StateHint          string
 	HandoffSummary     string
 	BudgetHint         string

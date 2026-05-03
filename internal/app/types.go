@@ -271,6 +271,7 @@ type CollaborationAgentRunView struct {
 	BlockedReason    string
 	WaitingOnRunID   string
 	RecoveryState    string
+	UpdatedAt        time.Time
 }
 
 type CollaborationDelegationRecord struct {
