@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a toggleable observe-only runtime admission layer for current app-path dynamic graph triple producers so Lango can classify unknown predicates, preserve original producer identity in telemetry, emit shared-validator and aggregate write-failure telemetry, and measure failure baselines without changing existing write routing yet.
+**Goal:** Add a toggleable observe-only runtime admission layer for current app-path dynamic graph triple producers so Lango can classify unknown predicates, preserve original producer identity in producer telemetry, emit shared-validator telemetry, and measure aggregate graph write-failure baselines without changing existing write routing yet.
 
 **Architecture:** This plan implements only `Change A / Phase A1` from the adaptive ontology growth design. It instruments runtime producers, computes admission decisions with the ontology validator closure, publishes graph-admission observability events, and records those metrics in the collector and status page. It does **not** filter, rewrite, or reroute writes; all existing enqueue and direct-store behavior stays intact.
 
@@ -731,6 +731,7 @@ type graphComponents struct {
 	buffer          *graph.GraphBuffer
 	ragService      *graph.GraphRAGService
 	admissionPolicy *graph.AdmissionPolicy
+	predicateValidator graph.PredicateValidatorFunc
 }
 
 func producerForExtractedEvent(source string) graph.AdmissionProducer {
@@ -782,8 +783,9 @@ func observeExtractedTriples(policy *graph.AdmissionPolicy, evt eventbus.Triples
 ```go
 // internal/app/modules.go immediately before initKnowledge(...)
 if gc != nil && ontologyResult != nil && ontologyResult.Service != nil && cfg.Ontology.Enabled && cfg.Ontology.Governance.AdmissionMode == "observe" {
+	gc.predicateValidator = ontologyResult.Service.PredicateValidator()
 	gc.admissionPolicy = graph.NewAdmissionPolicy(graph.AdmissionConfig{
-		Validator: ontologyResult.Service.PredicateValidator(),
+		Validator: gc.predicateValidator,
 		DefaultConfidence: map[graph.AdmissionProducer]float64{
 			graph.ProducerConversationAnalysis: cfg.Ontology.Governance.LearningDefaultConfidence,
 			graph.ProducerSessionLearning:      cfg.Ontology.Governance.LearningDefaultConfidence,
@@ -807,7 +809,11 @@ eventbus.SubscribeTyped(bus, func(evt eventbus.TriplesExtractedEvent) {
 	if len(graphTriples) == 0 {
 		return
 	}
-	gc.buffer.Enqueue(graph.GraphRequest{Triples: graphTriples})
+	gc.buffer.Enqueue(graph.GraphRequest{
+		Triples:     graphTriples,
+		Producer:    string(producerForExtractedEvent(evt.Source)),
+		SourceLabel: evt.Source,
+	})
 })
 ```
 
@@ -872,10 +878,10 @@ extractor = graph.NewExtractor(generator, logger(),
 			Predicate: evt.Predicate,
 			Subject:   evt.Subject,
 			Object:    evt.Object,
-			Source:    fmt.Sprintf("content_saved_extractor:%s:%s", evt.Source, evt.Collection),
+			Source:    evt.SourceTag,
 		})
 	}),
-	graph.WithPredicateValidator(ontologyValidator),
+	graph.WithPredicateValidator(gc.predicateValidator),
 )
 
 // inside content.saved extraction goroutine after extractor.Extract(...)
@@ -883,7 +889,11 @@ sourceTag := fmt.Sprintf("content_saved_extractor:%s:%s", evt.Source, evt.Collec
 triples, err := extractor.Extract(ctx, evt.Content, evt.ID, sourceTag)
 observed := graph.ObserveTriples(gc.admissionPolicy, graph.ProducerContentSavedExtractor, sourceTag, triples)
 if len(observed) > 0 {
-	gc.buffer.Enqueue(graph.GraphRequest{Triples: observed})
+	gc.buffer.Enqueue(graph.GraphRequest{
+		Triples:     observed,
+		Producer:    string(graph.ProducerContentSavedExtractor),
+		SourceLabel: sourceTag,
+	})
 }
 ```
 
@@ -1080,10 +1090,10 @@ func (b *GraphBuffer) processBatch(batch []Triple) {
 
 ```go
 // internal/app/modules.go after graph store / observability are available
-if gc != nil && gc.buffer != nil && m.bus != nil {
+if gc != nil && gc.buffer != nil && m.bus != nil && cfg.Ontology.Governance.AdmissionMode == "observe" {
 	gc.buffer.SetWriteFailureObserver(func(count int, err error) {
 		m.bus.Publish(eventbus.GraphAdmissionWriteFailureEvent{
-			Source:     "graph_buffer",
+			Source:     "graph_buffer_batch",
 			Candidates: count,
 			ErrorClass: "graph_store_add_triples_failed",
 		})
