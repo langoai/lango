@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a toggleable observe-only runtime admission layer for current app-path dynamic graph triple producers so Lango can classify unknown predicates, preserve original producer identity in producer telemetry, emit shared-validator telemetry, and measure aggregate graph write-failure baselines without changing existing write routing yet.
+**Goal:** Add a toggleable observe-only graph-store admission layer for the current supported runtime graph inputs so Lango can classify unknown predicates, preserve original producer identity in telemetry, emit validator-source telemetry, and measure aggregate graph write-failure baselines without changing existing write routing yet.
 
 **Architecture:** This plan implements only `Change A / Phase A1` from the adaptive ontology growth design. It instruments runtime producers, computes admission decisions with the ontology validator closure, publishes graph-admission observability events, and records those metrics in the collector and status page. It does **not** filter, rewrite, or reroute writes; all existing enqueue and direct-store behavior stays intact.
 
@@ -12,13 +12,12 @@
 
 ## Scope
 
-This plan covers only the **observe-only runtime app sub-slice** from `Change A / Phase A1`:
+This plan covers only the **observe-only graph-store sub-slice** from `Change A / Phase A1`:
 
-- `TriplesExtractedEvent` producers that already flow through `internal/app/wiring_graph.go`
-- `GraphEngine` event-bus publish path with `Source: "learning"`
-- successful `content.saved` extracted triples via observe-only admission
-- extractor-local dropped-unknown telemetry for the `content.saved` async extraction path
-- graph admission, validator-source, and aggregate graph-write-failure telemetry and status surfaces
+- event-bus `TriplesExtractedEvent` batches whose source is one of `conversation_analysis`, `session_learning`, `learning`, or `proactive_librarian`
+- successful `content.saved` extracted triples, with observe-only telemetry emitted under the synthetic `content_saved_extractor` source label
+- extractor-local dropped-unknown telemetry for the `content.saved` extraction path
+- graph admission, `unmapped-source`, validator-source, and aggregate graph-write-failure telemetry plus cockpit status surfacing
 - config and settings needed to turn the observe-only slice off or on
 
 This plan explicitly does **not** cover:
@@ -36,7 +35,7 @@ This plan explicitly does **not** cover:
 ### New Files
 
 - `internal/graph/admission.go`
-  Observe-only admission policy primitives, producer enums, decision records, and telemetry event payloads.
+  Observe-only admission policy primitives, producer enums, and decision records.
 - `internal/graph/admission_test.go`
   Unit tests for producer confidence fallback and observe-mode decision recording.
 - `internal/eventbus/observability_events_test.go`
@@ -63,7 +62,7 @@ This plan explicitly does **not** cover:
 - `internal/graph/buffer.go`
   Publish graph write failure baseline telemetry for batched graph writes.
 - `internal/eventbus/observability_events.go`
-  Add the graph admission event type.
+  Add the graph admission and baseline event types.
 - `internal/app/wiring_observability.go`
   Subscribe the metrics collector to graph admission events.
 - `internal/observability/types.go`
@@ -77,7 +76,7 @@ This plan explicitly does **not** cover:
 - `docs/features/ontology.md`
   Document that A1 is observe-only and does not change routing.
 - `docs/features/knowledge-graph.md`
-  Document graph admission telemetry for dynamic runtime producers.
+  Document graph admission telemetry for the supported runtime graph inputs.
 - `README.md`
   Update the high-level feature list.
 
@@ -94,7 +93,10 @@ This plan explicitly does **not** cover:
 - Create: `openspec/changes/runtime-admission-boundary-hardening/proposal.md`
 - Create: `openspec/changes/runtime-admission-boundary-hardening/design.md`
 - Create: `openspec/changes/runtime-admission-boundary-hardening/tasks.md`
-- Create: `openspec/changes/runtime-admission-boundary-hardening/specs/knowledge-graph/spec.md`
+- Create: `openspec/changes/runtime-admission-boundary-hardening/specs/graph-store/spec.md`
+- Create: `openspec/changes/runtime-admission-boundary-hardening/specs/eventbus/spec.md`
+- Create: `openspec/changes/runtime-admission-boundary-hardening/specs/cockpit-status-page/spec.md`
+- Create: `openspec/changes/runtime-admission-boundary-hardening/specs/system-feedback/spec.md`
 - Create: `openspec/changes/runtime-admission-boundary-hardening/specs/ontology-registry/spec.md`
 - Create: `openspec/changes/runtime-admission-boundary-hardening/specs/cli-settings/spec.md`
 
@@ -117,13 +119,25 @@ Use this content for `openspec/changes/runtime-admission-boundary-hardening/prop
 
 ## Why
 
-Dynamic runtime graph producers currently produce unknown-predicate failures that surface too late at graph validation time. Before changing write behavior, the runtime needs an observe-only admission layer to classify those batches and measure where the failures come from.
+Dynamic runtime graph inputs currently surface unknown-predicate failures only after graph-store validation runs. Before changing write behavior, the runtime needs an observe-only admission boundary that classifies the supported event-bus producer sources and the `content.saved` extraction path without changing current write routing.
 
 ## What Changes
 
-- Add an observe-only graph admission policy for runtime app producers.
-- Publish graph admission telemetry, dropped-unknown extractor telemetry, and graph write failure baselines to observability and cockpit status.
-- Share one ontology predicate validator closure across graph admission and graph-store validation.
+- Add an observe-only graph admission policy for the supported runtime graph inputs in this slice.
+- Publish graph admission telemetry, extractor dropped-unknown baselines, graph write-failure baselines, `unmapped-source` telemetry, event-bus producer-source / producer-group attribution, the synthetic `content_saved_extractor` source label, and validator-source tags to observability and cockpit status.
+- Reuse one ontology predicate validator closure as the primary predicate-validity source across admission classification and graph-store validation when ontology is available. If ontology is unavailable, graph-store validation falls back to the built-in hardcoded graph predicate validator and observe-only admission degrades to an `unvalidated` observation mode.
+- Fix the observe-only admission decision taxonomy at the batch level and record triple-level counts for `known`, `unknown`, and `unvalidated` predicates.
+
+## Terminology
+
+- **Producer source**: the stable runtime label taken from `TriplesExtractedEvent.Source`.
+- **Telemetry source label**: a stable non-event-bus telemetry label. In this slice the only synthetic label is `content_saved_extractor`.
+- **Producer group**: the fallback-confidence configuration group used for event-bus producer sources. In this slice the only groups are `learning` and `librarian`.
+- **Validator-source tag**: the stable telemetry tag naming the predicate validator source used for observe-only classification.
+- The stable ontology-backed validator-source value in this slice is `ontology_registry`.
+- **Unmapped source**: a raw `TriplesExtractedEvent.Source` label that is outside the supported event-bus producer-source set in this slice and therefore is not assigned to one of the known producer groups.
+- **Admission decision taxonomy**: `known`, `unknown`, and `unvalidated` triple counts computed for each observed batch. `unvalidated` is used only when validator-based classification is unavailable.
+- **Unavailable validator source**: the stable `validator-source` value used when validator-based classification is unavailable and the batch is observed as fully `unvalidated`.
 
 ## Out Of Scope
 
@@ -142,12 +156,38 @@ Use this content for `openspec/changes/runtime-admission-boundary-hardening/desi
 
 This change implements only `Change A / Phase A1`.
 
-The runtime computes admission decisions for:
-- `TriplesExtractedEvent` batches
-- app-path extracted triples only where the current runtime already surfaces them without widening extractor behavior
-- extractor-local dropped-unknown events for the current `content.saved` extraction path
+Producer terminology in this slice is fixed as follows:
+- **Producer source** = the stable runtime source label taken from `TriplesExtractedEvent.Source`.
+- **Telemetry source label** = a stable synthetic label for a non-event-bus observed path.
+- **Producer group** = the fallback-confidence configuration group for event-bus producer sources.
+- `conversation_analysis`, `session_learning`, and `learning` map to the `learning` producer group.
+- `proactive_librarian` maps to the `librarian` producer group.
+- `content_saved_extractor` is the only synthetic telemetry source label in this slice and is used on observe-only telemetry emitted for returned triples and dropped-unknown baselines produced by the `content.saved` extraction path.
+- Any other raw `TriplesExtractedEvent.Source` value remains visible as an `unmapped-source` telemetry signal and still follows the same graph write operation without observe-only admission classification.
 
-In all cases, current write routing remains unchanged. The policy is observe-only: it records what would be admitted or rejected, emits telemetry, and then forwards the **original triple slice** through the existing enqueue/store path unchanged.
+The runtime computes observe-only admission decisions for:
+- supported event-bus batches whose `TriplesExtractedEvent.Source` is one of `conversation_analysis`, `session_learning`, `learning`, or `proactive_librarian`
+- triples returned from the `content.saved` extraction path; observe-only telemetry for that path SHALL use the synthetic `content_saved_extractor` source label and SHALL publish those telemetry events on the runtime event bus
+
+Separately, this slice records a pre-admission extractor baseline for dropped-unknown events emitted by the `content.saved` extraction path before graph admission runs and tagged with the stable `content_saved_extractor` telemetry source label.
+
+Each observe-only admission decision is batch-scoped. For every observed triple slice, the runtime computes:
+- `batch_count = 1` for the observed slice
+- `known_count` = number of triples whose predicate is accepted by validator-based classification
+- `unknown_count` = number of triples whose predicate is rejected as unknown by validator-based classification
+- `unvalidated_count` = number of triples left unclassified because validator-based classification is unavailable
+
+`known_count + unknown_count + unvalidated_count` SHALL equal the number of triples in the observed slice.
+
+When validator-based classification is unavailable, the runtime still emits one observe-only admission observation for the batch with:
+- `known_count = 0`
+- `unknown_count = 0`
+- `unvalidated_count = len(observed slice)`
+- `validator_source = "unavailable"`
+
+This slice does not introduce new producer families or new source adapters. Runtime admission config is limited to mode selection (`off` or `observe`) plus fallback confidence defaults for the learning producer group and the librarian producer group. These settings are stored under the existing `ontology.governance.*` namespace for config compatibility, but they always remain directly visible and editable on the runtime admission settings surface rather than inheriting governance-enabled gating semantics.
+
+In all cases, observe-only mode MUST NOT drop, rewrite, or reroute the original triple slice. The policy classifies that **original triple slice** against the shared predicate-validity source, emits event-bus admission telemetry tagged with stable producer-source values plus producer-group identifiers and validator-source tags, emits `content.saved` admission telemetry tagged with the synthetic `content_saved_extractor` telemetry source label and validator-source tag, preserves unknown event-bus source labels as `unmapped-source` signals instead of collapsing them, and then leaves the original triple slice to proceed through the same graph write operation it would have used without observe-only admission. Extractor dropped-unknown baselines and aggregate graph write-failure baselines remain separate telemetry families rather than admission decisions.
 ```
 
 - [ ] **Step 4: Write the delta specs**
@@ -155,43 +195,190 @@ In all cases, current write routing remains unchanged. The policy is observe-onl
 Use these deltas:
 
 ```markdown
-<!-- openspec/changes/runtime-admission-boundary-hardening/specs/knowledge-graph/spec.md -->
-### Requirement: Observe-only admission for runtime dynamic producers
-The Phase A1 runtime app observe slice SHALL compute admission decisions only for the current `TriplesExtractedEvent` producer set plus `content.saved` extractor outcomes already surfaced in app wiring, while preserving current write routing in observe mode.
+<!-- openspec/changes/runtime-admission-boundary-hardening/specs/graph-store/spec.md -->
+## ADDED Requirements
 
-#### Scenario: TriplesExtractedEvent observe path
-- **WHEN** a `TriplesExtractedEvent` batch is processed
-- **THEN** the runtime SHALL record graph-admission telemetry
-- **AND** the runtime SHALL still enqueue the original triples
+### Requirement: Observe-only admission for supported runtime graph inputs
+The Phase A1 graph store observe slice SHALL compute admission decisions only for the supported runtime graph inputs in this slice: event-bus `TriplesExtractedEvent` batches whose `Source` is `conversation_analysis`, `session_learning`, `learning`, or `proactive_librarian`, plus triples already returned from the `content.saved` extraction path. Observe-only telemetry for that extraction path SHALL use the synthetic `content_saved_extractor` source label. Observe mode SHALL NOT drop, rewrite, or reroute the original triple slice before graph write execution.
 
-#### Scenario: Extracted triples observe path
-- **WHEN** `content.saved` extraction returns triples
-- **THEN** the runtime SHALL record observe-only admission telemetry for those returned triples
-- **AND** the runtime SHALL still enqueue the original extracted triples
+For this slice, `conversation_analysis`, `session_learning`, and `learning` are the supported learning-group producer sources, `proactive_librarian` is the supported librarian-group producer source, and `content_saved_extractor` is a separate synthetic telemetry source label for the extraction path.
 
-#### Scenario: Extractor dropped-unknown baseline
-- **WHEN** the current `content.saved` extraction path rejects an unknown predicate before admission
-- **THEN** the runtime SHALL record dropped-unknown baseline telemetry for that extractor path
+For every observed triple slice in this requirement:
+- `batch_count` SHALL equal `1`
+- `known_count + unknown_count + unvalidated_count` SHALL equal the number of triples in that slice
 
-#### Scenario: GraphBuffer write-failure baseline
-- **WHEN** a batched graph write fails in observe mode
-- **THEN** the runtime SHALL record a graph write-failure baseline event without changing existing error handling
+#### Scenario: Event-bus triple producer source is observed
+- **WHEN** a supported `TriplesExtractedEvent` producer-source batch is processed in observe mode
+- **THEN** the runtime SHALL compute an observe-only admission decision for the original triple slice
+- **AND** that decision SHALL classify the slice into `known_count`, `unknown_count`, and `unvalidated_count`
+- **AND** the runtime SHALL preserve the original triples unchanged for graph write execution
+
+#### Scenario: Content-saved extraction source is observed
+- **WHEN** the `content.saved` extraction path returns triples in observe mode
+- **THEN** the runtime SHALL compute an observe-only admission decision for the original extracted triple slice
+- **AND** that decision SHALL classify the slice into `known_count`, `unknown_count`, and `unvalidated_count`
+- **AND** the runtime SHALL preserve the original extracted triples unchanged for graph write execution
+
+#### Scenario: Unsupported event-bus source keeps the existing write path
+- **WHEN** observe mode receives a `TriplesExtractedEvent` batch whose `Source` is outside the supported event-bus producer-source set for this slice
+- **THEN** the runtime SHALL skip observe-only admission classification for that batch
+- **AND** the runtime SHALL preserve the original triples unchanged for graph write execution
+
+#### Scenario: Validator unavailable keeps observe-only admission in unvalidated observation mode
+- **WHEN** ontology is disabled or ontology initialization fails before observe-only admission can classify a supported runtime graph input
+- **THEN** the runtime SHALL still compute one batch-scoped observe-only admission decision for that graph input
+- **AND** all triples in that slice SHALL contribute to `unvalidated_count`
+- **AND** `known_count` and `unknown_count` SHALL both equal `0`
+- **AND** the decision SHALL use `validator_source = "unavailable"`
+- **AND** the runtime SHALL preserve the original triple slice unchanged for graph write execution
+```
+
+```markdown
+<!-- openspec/changes/runtime-admission-boundary-hardening/specs/eventbus/spec.md -->
+## ADDED Requirements
+
+### Requirement: Graph admission-related event types are defined
+The eventbus package SHALL define the event types required to represent observe-only graph admission telemetry and the related non-admission baseline signals for this slice.
+
+#### Scenario: Event-bus admission event shape carries source, group, and validator fields
+- **WHEN** a supported `TriplesExtractedEvent` producer-source batch is classified in observe mode
+- **THEN** the graph-admission event shape SHALL include that producer-source identifier, its producer-group identifier, and the validator-source identifier used for predicate checks
+- **AND** it SHALL use the stable validator-source value `ontology_registry` when classification uses the ontology service validator closure
+- **AND** it SHALL include `batch_count`, `known_count`, `unknown_count`, and `unvalidated_count` fields for that observed slice
+
+#### Scenario: Content-saved admission event shape carries synthetic source and validator fields
+- **WHEN** the `content.saved` extraction path returns triples that are classified in observe mode
+- **THEN** the graph-admission event shape SHALL include the synthetic `content_saved_extractor` source label and the validator-source identifier used for predicate checks
+- **AND** it SHALL NOT synthesize an event-bus producer-group identifier for that telemetry
+- **AND** it SHALL include `batch_count`, `known_count`, `unknown_count`, and `unvalidated_count` fields for that observed slice
+
+#### Scenario: Validator-unavailable mode emits unvalidated admission observations
+- **WHEN** ontology is disabled or ontology initialization fails before observe-only admission can classify a batch through the shared validator closure
+- **THEN** the runtime SHALL emit an `unvalidated` graph-admission observation for that batch with `validator_source = "unavailable"`
+- **AND** that observation SHALL preserve the batch-scoped `batch_count`, `known_count`, `unknown_count`, and `unvalidated_count` fields
+- **AND** it SHALL aggregate that batch under the `unavailable` validator-source grouping key
+
+### Requirement: Non-admission baseline events remain separate telemetry families
+Extractor dropped-unknown baselines, `unmapped-source` signals, and aggregate graph write-failure baselines SHALL remain separate telemetry families rather than graph-admission telemetry.
+
+#### Scenario: Unmapped event-bus source is surfaced explicitly
+- **WHEN** observe mode receives a `TriplesExtractedEvent.Source` label that is outside the supported event-bus producer-source set and therefore not assigned to a known producer group in this slice
+- **THEN** the runtime SHALL record an `unmapped-source` telemetry signal carrying the original raw source label
+- **AND** it SHALL NOT widen observe-only admission classification beyond the supported runtime graph inputs in this slice
+
+#### Scenario: Extractor dropped-unknown baseline stays pre-admission
+- **WHEN** the `content.saved` extraction path rejects an unknown predicate before graph admission runs
+- **THEN** the runtime SHALL record dropped-unknown baseline telemetry for the synthetic `content_saved_extractor` source label
+- **AND** it SHALL NOT imply that graph admission dropped the triple
+
+#### Scenario: Graph write-failure baseline stays aggregate
+- **WHEN** a batched graph write fails while observe mode is enabled
+- **THEN** the runtime SHALL record an aggregate graph write-failure baseline event for that failed batch
+- **AND** it SHALL NOT require admission source, producer-group, or validator-source tags on that aggregate failure baseline
 ```
 
 ```markdown
 <!-- openspec/changes/runtime-admission-boundary-hardening/specs/ontology-registry/spec.md -->
-### Requirement: Shared predicate validity source
-The runtime SHALL use the ontology service predicate validator closure as the shared predicate-validity source for observe-only admission decisions and graph-store validation.
+## ADDED Requirements
 
-#### Scenario: Validator source is surfaced
-- **WHEN** observe-only admission telemetry is recorded
-- **THEN** the runtime SHALL tag the telemetry with the validator source identifier used for predicate checks
+### Requirement: Shared predicate validity source
+The runtime SHALL use the ontology service predicate validator closure as the primary predicate-validity source for observe-only admission decisions and graph-store validation.
+
+#### Scenario: Graph admission and graph-store validation use the same validator closure
+- **WHEN** observe-only admission and graph-store validation both perform predicate checks
+- **THEN** the runtime SHALL obtain those checks from the same ontology service predicate validator closure
+
+#### Scenario: Ontology init failure preserves existing graph validation behavior
+- **WHEN** ontology is disabled or ontology initialization fails
+- **THEN** graph-store validation SHALL continue to use the built-in hardcoded graph predicate validator
+- **AND** observe-only admission SHALL switch to the stable validator-source value `unavailable` rather than blocking current graph writes
+```
+
+```markdown
+<!-- openspec/changes/runtime-admission-boundary-hardening/specs/system-feedback/spec.md -->
+## ADDED Requirements
+
+### Requirement: Observe-only graph admission telemetry is emitted for runtime feedback
+The runtime SHALL emit observe-only graph admission telemetry and non-admission baseline signals for the supported runtime graph inputs in this slice.
+
+#### Scenario: Supported inputs emit telemetry on the runtime event bus
+- **WHEN** observe-only admission processes a supported runtime graph input
+- **THEN** event-bus admission telemetry SHALL preserve producer-source, producer-group, and validator-source identity
+- **AND** `content_saved_extractor` telemetry SHALL preserve its synthetic source label and validator-source identity without inventing a producer-group
+
+#### Scenario: Non-admission baseline signals remain distinct
+- **WHEN** the runtime emits dropped-unknown, `unmapped-source`, or graph write-failure baseline feedback
+- **THEN** those signals SHALL remain distinct from graph-admission telemetry
+- **AND** they SHALL preserve the source identities required by their respective contracts
+
+#### Scenario: Validator-unavailable mode emits unvalidated admission observations
+- **WHEN** ontology is disabled or ontology initialization fails before observe-only admission can classify a batch through the shared validator closure
+- **THEN** the runtime SHALL emit an `unvalidated` graph-admission observation for that batch with `validator_source = "unavailable"`
+- **AND** that observation SHALL preserve the batch-scoped `batch_count`, `known_count`, `unknown_count`, and `unvalidated_count` fields
+- **AND** it SHALL aggregate that batch under the `unavailable` validator-source grouping key
+
+### Requirement: Observe-only graph admission metrics are aggregated into runtime feedback snapshots
+The runtime feedback snapshot SHALL aggregate observe-only graph admission metrics into stable metric families for downstream surfaces.
+
+#### Scenario: Admission batch metrics are aggregated by source and validator identity
+- **WHEN** graph-admission telemetry is recorded for a supported runtime graph input
+- **THEN** the runtime feedback snapshot SHALL aggregate one observed batch count for that telemetry event
+- **AND** event-bus admission metrics SHALL remain grouped by producer-source, producer-group, and validator-source identity
+- **AND** `content_saved_extractor` admission metrics SHALL remain grouped by the synthetic source label and validator-source identity without inventing a producer-group
+- **AND** the snapshot SHALL aggregate `known_count`, `unknown_count`, and `unvalidated_count` totals from those batch events
+
+#### Scenario: Non-admission baselines preserve their counting units
+- **WHEN** dropped-unknown or graph write-failure baseline telemetry is recorded
+- **THEN** extractor dropped-unknown metrics SHALL aggregate one dropped-triple count per rejected triple
+- **AND** graph write-failure baseline metrics SHALL aggregate one failed-batch count per failed graph write attempt
+
+#### Scenario: Unmapped and validator identities remain visible in snapshots
+- **WHEN** the runtime feedback snapshot is built
+- **THEN** unmapped-source metrics SHALL remain grouped by raw source label
+- **AND** validator-source metrics SHALL remain grouped by validator-source identifier, including the stable `unavailable` value when classification could not run
+- **AND** both groupings SHALL use batch counts rather than triple counts
+```
+
+```markdown
+<!-- openspec/changes/runtime-admission-boundary-hardening/specs/cockpit-status-page/spec.md -->
+## ADDED Requirements
+
+### Requirement: Graph admission metrics are surfaced on the cockpit status page
+The cockpit status page SHALL surface observe-only graph admission metrics from the runtime feedback snapshot, including graph-admission counts grouped by source and validator identity, extractor dropped-unknown baselines, unmapped-source counts, and aggregate graph write-failure baselines.
+
+#### Scenario: Status page renders graph admission metrics
+- **WHEN** the cockpit status page is rendered while observe mode metrics are available
+- **THEN** it SHALL display event-bus graph-admission counts grouped by supported producer source and producer group, plus a separate grouped view for the synthetic `content_saved_extractor` source label
+- **AND** it SHALL display validator-source as a grouping key on graph-admission metrics rather than as a separate independent metric family
+- **AND** it SHALL display extractor dropped-unknown, unmapped-source, and aggregate graph write-failure baseline counts as distinct metrics
+- **AND** it SHALL preserve raw `unmapped-source` identity by grouping those counts by raw source label
+- **AND** it SHALL preserve validator-source identity by grouping those counts by validator-source identifier
+- **AND** it SHALL display `known`, `unknown`, and `unvalidated` triple totals for graph-admission decisions
 ```
 
 ```markdown
 <!-- openspec/changes/runtime-admission-boundary-hardening/specs/cli-settings/spec.md -->
-### Requirement: Observe-mode admission settings
-The settings surface SHALL expose runtime admission configuration with values `off` and `observe`, plus fallback confidence defaults for the learning-derived producer group and the librarian-derived producer group.
+## ADDED Requirements
+
+### Requirement: Runtime admission settings
+The settings surface SHALL expose runtime admission configuration under `ontology.governance.admissionMode`, `ontology.governance.learningDefaultConfidence`, and `ontology.governance.librarianDefaultConfidence`, with values `off` and `observe` for admission mode plus fallback confidence defaults of `0.60` for the learning producer group and `0.50` for the librarian producer group.
+
+These fields SHALL use the existing `ontology.governance.*` config namespace for storage compatibility, but they SHALL always remain directly visible on the runtime admission settings surface rather than inheriting governance-enabled gating semantics.
+
+#### Scenario: Runtime admission config is editable
+- **WHEN** an operator edits runtime admission settings
+- **THEN** the runtime admission mode SHALL be configurable as `off` or `observe`
+- **AND** the learning producer group and librarian producer group SHALL each expose a fallback confidence default
+
+#### Scenario: Runtime admission settings are not hidden behind governance-only gating
+- **WHEN** the runtime admission settings surface is rendered
+- **THEN** the runtime admission mode and both fallback confidence defaults SHALL remain directly editable within that settings surface
+- **AND** the runtime SHALL NOT require a separate governance-enabled toggle before showing those fields
+
+#### Scenario: No extra producer groups are implied
+- **WHEN** the runtime admission settings surface is rendered
+- **THEN** it SHALL scope fallback confidence defaults only to the learning producer group and the librarian producer group
+- **AND** it SHALL NOT imply additional first-slice producer groups
 ```
 
 - [ ] **Step 5: Record tasks and commit**
@@ -201,11 +388,56 @@ Use this content for `openspec/changes/runtime-admission-boundary-hardening/task
 ```markdown
 # Tasks
 
-- [ ] Add observe-mode admission config and defaults
-- [ ] Add graph admission policy and telemetry event types
-- [ ] Observe runtime event-bus producer paths plus extractor dropped-unknown baseline
-- [ ] Add graph admission, dropped-unknown, unmapped-source, shared-validator-source, and graph-write-failure metrics to observability and cockpit status
-- [ ] Update docs and verify
+## 1. Runtime Admission Config Surface
+
+- [ ] Add the runtime admission mode config surface with `off` and `observe`.
+  Affected artifacts: `specs/cli-settings/spec.md`; runtime config schema and settings wiring when implementation starts.
+  Verification: `openspec validate runtime-admission-boundary-hardening --strict`; config serialization/defaulting coverage confirms the new mode values.
+- [ ] Add fallback confidence defaults for the learning producer group and the librarian producer group without introducing extra first-slice producer groups.
+  Affected artifacts: `specs/cli-settings/spec.md`; runtime config defaults when implementation starts.
+  Verification: review confirms only the learning and librarian producer groups are named in this slice and that their defaults are fixed at `0.60` and `0.50`.
+
+## 2. Graph Admission Classification Contract
+
+- [ ] Add the observe-only graph admission policy contract for the supported runtime graph inputs in this slice.
+  Affected artifacts: `specs/graph-store/spec.md`; admission policy implementation and runtime wiring when implementation starts.
+  Verification: strict OpenSpec validation passes; contract review confirms write routing remains observe-only.
+- [ ] Fix the observe-only admission decision taxonomy and counting units.
+  Affected artifacts: `proposal.md`, `design.md`, `specs/graph-store/spec.md`, `specs/eventbus/spec.md`, `specs/system-feedback/spec.md`, `specs/cockpit-status-page/spec.md`.
+  Verification: review confirms each observed slice is batch-scoped and carries `known_count`, `unknown_count`, and `unvalidated_count`, while baseline families retain their own batch/triple counting units.
+- [ ] Define graph-admission telemetry contracts around stable event-bus producer-source identifiers, event-bus producer-group identifiers, the synthetic `content_saved_extractor` telemetry source label, and validator-source tags.
+  Affected artifacts: `specs/eventbus/spec.md`; observability event types when implementation starts.
+  Verification: review confirms telemetry distinguishes admission classification from downstream write failures.
+- [ ] Define the aggregate graph write-failure baseline event contract as a separate downstream write-failure telemetry family.
+  Affected artifacts: `specs/eventbus/spec.md`; observability event types when implementation starts.
+  Verification: review confirms the aggregate write-failure baseline is not specified as carrying admission source, producer-group, or validator-source tags.
+
+## 3. Supported Producer-Source Coverage
+
+- [ ] Observe `TriplesExtractedEvent` batches only for the explicit event-bus producer-source set `conversation_analysis`, `session_learning`, `learning`, and `proactive_librarian`.
+  Affected artifacts: `specs/graph-store/spec.md`; runtime event-bus subscribers when implementation starts.
+  Verification: review confirms no other event-bus source labels are normalized into named producer groups in this slice.
+- [ ] Observe `content.saved` extraction triples and the extractor dropped-unknown baseline under the separate synthetic `content_saved_extractor` telemetry source label without changing extractor behavior.
+  Affected artifacts: `design.md`, `specs/graph-store/spec.md`, `specs/eventbus/spec.md`; extractor/graph wiring when implementation starts.
+  Verification: review confirms dropped-unknown telemetry is source-scoped and separate from graph admission decisions.
+
+## 4. Shared Validator Source And Observability Surfacing
+
+- [ ] Reuse the ontology predicate validator closure as the shared predicate-validity source for observe-only admission and graph-store validation.
+  Affected artifacts: `specs/ontology-registry/spec.md`; ontology/graph integration when implementation starts.
+  Verification: review confirms one validator source is named across both paths and that ontology init failure preserves existing graph validation behavior by degrading observe-only admission to an `unvalidated` observation mode.
+- [ ] Surface graph admission, dropped-unknown, unmapped-source, validator-source tag, and graph write-failure metrics in observability and cockpit status.
+  Affected artifacts: `specs/eventbus/spec.md`, `specs/system-feedback/spec.md`, `specs/cockpit-status-page/spec.md`, proposal/design references in this change; observability and cockpit surfacing when implementation starts.
+  Verification: review confirms event types carry the required identities; runtime feedback snapshots preserve the defined batch/triple counting units and grouped identities; and the cockpit status page renders those grouped metrics.
+
+## 5. Change Documentation And Verification
+
+- [ ] Keep proposal, design, and delta specs aligned on stable producer-source and config terminology.
+  Affected artifacts: `proposal.md`, `design.md`, `specs/cli-settings/spec.md`, `specs/graph-store/spec.md`, `specs/ontology-registry/spec.md`.
+  Verification: terminology review finds no relative scope wording that depends on transient wiring descriptions and no ambiguous fallback semantics for validator selection.
+- [ ] Validate the change scaffolding before implementation work begins.
+  Affected artifacts: the full `openspec/changes/runtime-admission-boundary-hardening/**` change set.
+  Verification: run `openspec validate runtime-admission-boundary-hardening --strict`.
 ```
 
 Run:
@@ -332,7 +564,7 @@ form.AddField(&tuicore.Field{
 	Type:        tuicore.InputText,
 	Value:       fmt.Sprintf("%.2f", cfg.Ontology.Governance.LearningDefaultConfidence),
 	Placeholder: "0.60",
-	Description: "Fallback confidence for learning-derived triple events",
+	Description: "Fallback confidence for the learning producer group",
 	VisibleWhen: admissionVisible,
 })
 form.AddField(&tuicore.Field{
@@ -341,7 +573,7 @@ form.AddField(&tuicore.Field{
 	Type:        tuicore.InputText,
 	Value:       fmt.Sprintf("%.2f", cfg.Ontology.Governance.LibrarianDefaultConfidence),
 	Placeholder: "0.50",
-	Description: "Fallback confidence for librarian-derived triple events",
+	Description: "Fallback confidence for the librarian producer group",
 	VisibleWhen: admissionVisible,
 })
 ```
@@ -1171,14 +1403,14 @@ Apply content like this:
 
 ```md
 <!-- docs/configuration.md -->
-| `ontology.governance.admissionMode` | `string` | `off` | Disabled or observe-only runtime admission mode for app-path graph producers |
-| `ontology.governance.learningDefaultConfidence` | `float64` | `0.60` | Fallback confidence for learning-derived graph events |
-| `ontology.governance.librarianDefaultConfidence` | `float64` | `0.50` | Fallback confidence for librarian-derived graph events |
+| `ontology.governance.admissionMode` | `string` | `off` | Disabled or observe-only runtime admission mode for the supported runtime graph producer sources |
+| `ontology.governance.learningDefaultConfidence` | `float64` | `0.60` | Fallback confidence for the learning producer group |
+| `ontology.governance.librarianDefaultConfidence` | `float64` | `0.50` | Fallback confidence for the librarian producer group |
 ```
 
 ```md
 <!-- docs/features/knowledge-graph.md -->
-Observe-only graph admission now records admission decisions for dynamic runtime producers before the existing graph write path runs. This phase does not drop or rewrite triples yet.
+Observe-only graph admission now records admission decisions for the supported runtime graph producer sources before the existing graph write path runs. This phase does not drop or rewrite triples yet.
 ```
 
 ```md
