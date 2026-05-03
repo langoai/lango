@@ -1,6 +1,6 @@
 ## MODIFIED Requirements
 
-### Requirement: Interactive TUI chat on explicit chat invocation
+### Requirement: Interactive TUI chat on bare invocation
 
 Running `lango chat` SHALL start the interactive terminal chat session using Bubble Tea. `lango serve` SHALL continue to work as the full gateway plus channels mode. Wave 6 SHALL remove the older bare-`lango` chat interpretation from this surface contract.
 

@@ -14,23 +14,24 @@ The cockpit SHALL define a `Page` interface extending `tea.Model` with `Title() 
 - **THEN** cockpit SHALL call `StatusPage.Deactivate()` before activating the new page
 
 ### Requirement: PageID routing
-The cockpit SHALL define a `PageMissionControl` route alongside the existing cockpit pages and support round-trip routing between the page ID, sidebar entry, and registered page instance. Mission Control SHALL become the default landing page without forcing a broad remap of the existing cockpit global shortcuts in Wave 1.
+
+The cockpit SHALL define a `PageMissionControl` route alongside the existing cockpit pages and support round-trip routing between the page ID, sidebar entry, and registered page instance. This routing contract remains internal to cockpit; Wave 6 SHALL NOT use the cockpit page system as the bare-`lango` surface contract.
 
 #### Scenario: Mission Control sidebar entry round-trips to page ID
 - **WHEN** the sidebar emits the Mission Control item ID
 - **THEN** `PageIDFromString(...)` SHALL resolve it to `PageMissionControl`
 - **AND** `PageMissionControl.String()` SHALL return the same sidebar item ID
 
-#### Scenario: Mission Control page activates through routing
-- **WHEN** cockpit switches to `PageMissionControl`
+#### Scenario: Mission Control page activates through cockpit routing
+- **WHEN** explicit cockpit switches to `PageMissionControl`
 - **THEN** the registered Mission Control page SHALL receive `Activate()`
 
 #### Scenario: Existing detail-page shortcuts remain stable
 - **WHEN** the operator uses the existing cockpit global shortcuts for detail pages
 - **THEN** the same detail pages as before SHALL still open
-- **AND** Wave 1 SHALL NOT require shifting every existing shortcut only to make room for Mission Control
+- **AND** Wave 6 SHALL NOT require shifting those shortcuts only to make the surface split happen
 
-#### Scenario: Mission Control remains reachable without shortcut remap
+#### Scenario: Mission Control remains reachable inside cockpit
 - **WHEN** the operator wants to return to Mission Control from another cockpit page
 - **THEN** sidebar or page routing SHALL provide a direct path back to `PageMissionControl`
 

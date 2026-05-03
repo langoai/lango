@@ -3,15 +3,21 @@
 Capability spec for interactive-tui-chat. See requirements below for scope and behavior contracts.
 ## Requirements
 ### Requirement: Interactive TUI chat on bare invocation
-Running `lango` without arguments SHALL start an interactive terminal chat session using bubbletea. `lango serve` SHALL continue to work as the full gateway + channels mode.
 
-#### Scenario: No-args launches TUI chat
-- **WHEN** the user runs `lango` with no arguments on an interactive TTY
+Running `lango chat` SHALL start the interactive terminal chat session using Bubble Tea. `lango serve` SHALL continue to work as the full gateway plus channels mode. Wave 6 SHALL remove the older bare-`lango` chat interpretation from this surface contract.
+
+#### Scenario: Explicit chat command launches TUI chat
+- **WHEN** the user runs `lango chat` on an interactive TTY
 - **THEN** an interactive TUI chat session starts
 
-#### Scenario: lango serve is unchanged
+#### Scenario: Bare `lango` no longer means direct chat
+- **WHEN** the user runs bare `lango`
+- **THEN** this specification SHALL NOT claim that the focused chat surface starts
+- **AND** the bare-`lango` contract SHALL belong to the mission workbench instead
+
+#### Scenario: `lango serve` is unchanged
 - **WHEN** the user runs `lango serve`
-- **THEN** the full gateway + channels server starts as before
+- **THEN** the full gateway plus channels server starts as before
 
 ### Requirement: Real-time streaming responses
 The TUI SHALL stream agent responses in real-time via `TurnRunner.Run()`. During streaming, the input composer SHALL remain focused and accept user input. If the user submits input during streaming, the current turn SHALL be cancelled and the new input SHALL be queued for immediate submission after the cancelled turn completes.

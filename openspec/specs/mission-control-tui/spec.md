@@ -4,16 +4,23 @@
 TBD - created by archiving change 2026-05-02-mission-control-wave-one. Update Purpose after archive.
 ## Requirements
 ### Requirement: Mission Control is the default `lango` TUI surface
-Running `lango` on an interactive terminal SHALL open Mission Control as the default cockpit surface. The page SHALL make ongoing work, the latest live decision, recent activity, and the shared composer path available without requiring the user to navigate to another page first. `lango chat` SHALL remain the direct focused-chat fallback.
 
-#### Scenario: Bare `lango` enters Mission Control
-- **WHEN** the user runs `lango` on an interactive terminal
-- **THEN** the initial active cockpit page SHALL be Mission Control
-- **AND** the first screen SHALL include a short hint that chat remains available through typing and through `lango chat`
+Mission Control SHALL remain the shared mission-native surface used by the interactive workbench and available inside cockpit. It SHALL continue to make ongoing work, the latest live decision, recent activity, and the shared composer path available without requiring the user to navigate to another workflow first.
+
+#### Scenario: Workbench mounts Mission Control directly
+- **WHEN** the user runs bare `lango` on an interactive terminal
+- **THEN** the workbench SHALL mount Mission Control as its primary body
+- **AND** the first screen SHALL include a short hint that `lango chat` remains available as focused chat
+- **AND** the first Wave 6 slice SHALL also hint that `lango cockpit` remains available as the explicit dashboard
 
 #### Scenario: `lango chat` remains direct chat fallback
 - **WHEN** the user runs `lango chat`
 - **THEN** the application SHALL bypass Mission Control and start the focused chat surface directly
+
+#### Scenario: Cockpit still exposes Mission Control as a page
+- **WHEN** the user runs `lango cockpit`
+- **THEN** Mission Control SHALL remain available through the cockpit page set
+- **AND** Wave 6 SHALL NOT require a second Mission Control domain or projection system
 
 ### Requirement: Active missions are projected deterministically from existing runtime facts
 

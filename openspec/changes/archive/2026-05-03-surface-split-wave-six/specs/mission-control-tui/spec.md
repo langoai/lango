@@ -1,6 +1,6 @@
 ## MODIFIED Requirements
 
-### Requirement: Mission Control is a reusable mission surface across workbench and cockpit
+### Requirement: Mission Control is the default `lango` TUI surface
 
 Mission Control SHALL remain the shared mission-native surface used by the interactive workbench and available inside cockpit. It SHALL continue to make ongoing work, the latest live decision, recent activity, and the shared composer path available without requiring the user to navigate to another workflow first.
 

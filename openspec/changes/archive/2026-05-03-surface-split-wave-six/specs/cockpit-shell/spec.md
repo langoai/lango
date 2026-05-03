@@ -20,7 +20,7 @@ The root command, `cockpit` subcommand, and `chat` subcommand SHALL detect wheth
 - **WHEN** `lango cockpit` is invoked in an interactive terminal
 - **THEN** the cockpit TUI SHALL launch normally
 
-### Requirement: Cockpit root model orchestrates Mission Control as the default first cockpit surface
+### Requirement: Cockpit root model orchestrates Mission Control as the default first surface
 
 The cockpit root model SHALL treat Mission Control as the default active page for explicit `lango cockpit` launches while continuing to host the existing detail pages. The sidebar remains secondary navigation inside cockpit, but cockpit no longer owns the bare-`lango` contract in Wave 6.
 

@@ -1,9 +1,7 @@
 ## Purpose
 
 Define the single-column coding-agent cockpit layout for the interactive `lango` TUI.
-
 ## Requirements
-
 ### Requirement: Single-column cockpit regions
 The interactive TUI SHALL render as a single-column coding-agent cockpit with four primary regions: header, turn status strip, transcript viewport, and footer.
 
@@ -27,16 +25,20 @@ Approval requests SHALL be rendered as interrupt cards within the single-column 
 - **THEN** the transcript SHALL retain a compact approval event entry describing the outcome
 
 ### Requirement: Default entry point
-Running `lango` (no subcommand) SHALL launch the multi-panel cockpit TUI instead of the single-column chat TUI. The single-column TUI SHALL remain accessible via `lango chat`.
 
-#### Scenario: Default launches cockpit
-- **WHEN** user runs `lango` without subcommand
-- **THEN** the cockpit TUI SHALL launch (sidebar + main content + optional context panel)
+Running `lango` (no subcommand) SHALL launch the mission workbench rather than the multi-panel cockpit TUI or the single-column chat TUI. The focused chat TUI SHALL remain accessible via `lango chat`, and the explicit cockpit shell SHALL remain accessible via `lango cockpit`.
 
-#### Scenario: Legacy chat accessible
-- **WHEN** user runs `lango chat`
-- **THEN** the single-column chat TUI SHALL launch with the same behavior as the previous default
+#### Scenario: Default launches the mission workbench
+- **WHEN** the user runs `lango` without a subcommand
+- **THEN** the mission workbench SHALL launch
+- **AND** bare `lango` SHALL no longer alias the cockpit shell
 
-#### Scenario: Explicit cockpit subcommand
-- **WHEN** user runs `lango cockpit`
-- **THEN** the cockpit TUI SHALL launch, identical to bare `lango`
+#### Scenario: Focused chat remains explicit
+- **WHEN** the user runs `lango chat`
+- **THEN** the single-column chat TUI SHALL launch with the same focused-chat behavior as before
+
+#### Scenario: Explicit cockpit subcommand still launches cockpit
+- **WHEN** the user runs `lango cockpit`
+- **THEN** the multi-panel cockpit TUI SHALL launch
+- **AND** it SHALL remain distinct from bare `lango`
+
