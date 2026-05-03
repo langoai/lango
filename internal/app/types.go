@@ -4,7 +4,6 @@ import (
 	"context"
 	"io"
 	"sync"
-	"time"
 
 	"github.com/langoai/lango/internal/adk"
 	"github.com/langoai/lango/internal/agentmemory"
@@ -12,6 +11,7 @@ import (
 	"github.com/langoai/lango/internal/agentrt"
 	"github.com/langoai/lango/internal/approval"
 	"github.com/langoai/lango/internal/background"
+	"github.com/langoai/lango/internal/collabview"
 	"github.com/langoai/lango/internal/config"
 	cronpkg "github.com/langoai/lango/internal/cron"
 	"github.com/langoai/lango/internal/economy/budget"
@@ -259,60 +259,27 @@ type LoopCronReader interface {
 	ListHistory(ctx context.Context, jobID string, limit int) ([]cronpkg.HistoryEntry, error)
 }
 
-type CollaborationMissionExecutionLink struct {
-	ExecutionKind string
-	ExecutionRef  string
-}
-
-type CollaborationAgentRunView struct {
-	ID               string
-	RequestedAgent   string
-	RuntimeCondition string
-	BlockedReason    string
-	WaitingOnRunID   string
-	RecoveryState    string
-	UpdatedAt        time.Time
-}
-
-type CollaborationDelegationRecord struct {
-	SessionKey    string
-	TraceID       string
-	ExecutionKind string
-	ExecutionRef  string
-	From          string
-	To            string
-	Timestamp     time.Time
-}
-
-type CollaborationBudgetRecord struct {
-	MissionID string
-	Used      int
-	Max       int
-	Timestamp time.Time
-}
-
-type CollaborationRecoveryRecord struct {
-	MissionID  string
-	Action     string
-	CauseClass string
-	Timestamp  time.Time
-}
+type CollaborationMissionExecutionLink = collabview.CollaborationMissionExecutionLink
+type CollaborationAgentRunView = collabview.CollaborationAgentRunView
+type CollaborationDelegationRecord = collabview.CollaborationDelegationRecord
+type CollaborationBudgetRecord = collabview.CollaborationBudgetRecord
+type CollaborationRecoveryRecord = collabview.CollaborationRecoveryRecord
 
 type CollaborationMissionLinkReader interface {
-	ListMissionExecutionLinks(ctx context.Context, missionID string) ([]CollaborationMissionExecutionLink, error)
+	ListMissionExecutionLinks(ctx context.Context, missionID string) ([]collabview.CollaborationMissionExecutionLink, error)
 }
 
 type CollaborationAgentRunReader interface {
-	ListAgentRuns() []CollaborationAgentRunView
+	ListAgentRuns() []collabview.CollaborationAgentRunView
 }
 
 type CollaborationDelegationReader interface {
-	ListDelegationsForSession(ctx context.Context, sessionKey string) ([]CollaborationDelegationRecord, error)
+	ListDelegationsForSession(ctx context.Context, sessionKey string) ([]collabview.CollaborationDelegationRecord, error)
 }
 
 type CollaborationRuntimeReader interface {
-	ListBudgetSignals(missionID string) []CollaborationBudgetRecord
-	ListRecoverySignals(missionID string) []CollaborationRecoveryRecord
+	ListBudgetSignals(missionID string) []collabview.CollaborationBudgetRecord
+	ListRecoverySignals(missionID string) []collabview.CollaborationRecoveryRecord
 }
 
 // Channel represents a communication channel (Telegram, Discord, Slack)

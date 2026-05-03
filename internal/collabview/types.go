@@ -53,11 +53,26 @@ type MissionSource struct {
 	UpdatedAt     time.Time
 }
 
+type CollaborationMissionExecutionLink struct {
+	ExecutionKind string
+	ExecutionRef  string
+}
+
 type AgentRunSource struct {
 	ExecutionRef     string
 	RequestedAgent   string
 	RuntimeCondition string
 	BlockedReason    string
+	UpdatedAt        time.Time
+}
+
+type CollaborationAgentRunView struct {
+	ID               string
+	RequestedAgent   string
+	RuntimeCondition string
+	BlockedReason    string
+	WaitingOnRunID   string
+	RecoveryState    string
 	UpdatedAt        time.Time
 }
 
@@ -74,6 +89,16 @@ type DelegationSource struct {
 	Timestamp    time.Time
 }
 
+type CollaborationDelegationRecord struct {
+	SessionKey    string
+	TraceID       string
+	ExecutionKind string
+	ExecutionRef  string
+	From          string
+	To            string
+	Timestamp     time.Time
+}
+
 type BudgetSignalSource struct {
 	ExecutionRef string
 	Used         int
@@ -81,11 +106,25 @@ type BudgetSignalSource struct {
 	Timestamp    time.Time
 }
 
+type CollaborationBudgetRecord struct {
+	MissionID string
+	Used      int
+	Max       int
+	Timestamp time.Time
+}
+
 type RecoverySignalSource struct {
 	ExecutionRef string
 	Action       string
 	CauseClass   string
 	Timestamp    time.Time
+}
+
+type CollaborationRecoveryRecord struct {
+	MissionID  string
+	Action     string
+	CauseClass string
+	Timestamp  time.Time
 }
 
 type ProjectionInput struct {

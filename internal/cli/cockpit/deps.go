@@ -7,9 +7,9 @@ import (
 	"strings"
 
 	"github.com/langoai/lango/internal/agentrt"
-	apppkg "github.com/langoai/lango/internal/app"
 	"github.com/langoai/lango/internal/approval"
 	"github.com/langoai/lango/internal/background"
+	"github.com/langoai/lango/internal/collabview"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/cron"
 	"github.com/langoai/lango/internal/ctxkeys"
@@ -73,20 +73,20 @@ type LoopCronReader interface {
 }
 
 type CollaborationMissionLinkReader interface {
-	ListMissionExecutionLinks(ctx context.Context, missionID string) ([]apppkg.CollaborationMissionExecutionLink, error)
+	ListMissionExecutionLinks(ctx context.Context, missionID string) ([]collabview.CollaborationMissionExecutionLink, error)
 }
 
 type CollaborationAgentRunReader interface {
-	ListAgentRuns() []apppkg.CollaborationAgentRunView
+	ListAgentRuns() []collabview.CollaborationAgentRunView
 }
 
 type CollaborationDelegationReader interface {
-	ListDelegationsForSession(ctx context.Context, sessionKey string) ([]apppkg.CollaborationDelegationRecord, error)
+	ListDelegationsForSession(ctx context.Context, sessionKey string) ([]collabview.CollaborationDelegationRecord, error)
 }
 
 type CollaborationRuntimeReader interface {
-	ListBudgetSignals(missionID string) []apppkg.CollaborationBudgetRecord
-	ListRecoverySignals(missionID string) []apppkg.CollaborationRecoveryRecord
+	ListBudgetSignals(missionID string) []collabview.CollaborationBudgetRecord
+	ListRecoverySignals(missionID string) []collabview.CollaborationRecoveryRecord
 }
 
 // Deps holds the dependencies for the cockpit TUI.

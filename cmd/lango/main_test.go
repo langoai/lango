@@ -14,6 +14,7 @@ import (
 	"github.com/langoai/lango/internal/app"
 	"github.com/langoai/lango/internal/cli/cockpit"
 	"github.com/langoai/lango/internal/cli/cockpit/pages"
+	"github.com/langoai/lango/internal/collabview"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/cron"
 	"github.com/langoai/lango/internal/librarian"
@@ -236,23 +237,25 @@ func (*stubMainLoopCronReader) ListHistory(context.Context, string, int) ([]cron
 
 type stubMainCollabMissionLinks struct{}
 
-func (*stubMainCollabMissionLinks) ListMissionExecutionLinks(context.Context, string) ([]app.CollaborationMissionExecutionLink, error) {
+func (*stubMainCollabMissionLinks) ListMissionExecutionLinks(context.Context, string) ([]collabview.CollaborationMissionExecutionLink, error) {
 	return nil, nil
 }
 
 type stubMainCollabAgentRuns struct{}
 
-func (*stubMainCollabAgentRuns) ListAgentRuns() []app.CollaborationAgentRunView { return nil }
+func (*stubMainCollabAgentRuns) ListAgentRuns() []collabview.CollaborationAgentRunView { return nil }
 
 type stubMainCollabDelegations struct{}
 
-func (*stubMainCollabDelegations) ListDelegationsForSession(context.Context, string) ([]app.CollaborationDelegationRecord, error) {
+func (*stubMainCollabDelegations) ListDelegationsForSession(context.Context, string) ([]collabview.CollaborationDelegationRecord, error) {
 	return nil, nil
 }
 
 type stubMainCollabRuntime struct{}
 
-func (*stubMainCollabRuntime) ListBudgetSignals(string) []app.CollaborationBudgetRecord { return nil }
-func (*stubMainCollabRuntime) ListRecoverySignals(string) []app.CollaborationRecoveryRecord {
+func (*stubMainCollabRuntime) ListBudgetSignals(string) []collabview.CollaborationBudgetRecord {
+	return nil
+}
+func (*stubMainCollabRuntime) ListRecoverySignals(string) []collabview.CollaborationRecoveryRecord {
 	return nil
 }

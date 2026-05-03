@@ -11,10 +11,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/langoai/lango/internal/agentrt"
-	apppkg "github.com/langoai/lango/internal/app"
 	"github.com/langoai/lango/internal/approval"
 	"github.com/langoai/lango/internal/background"
 	"github.com/langoai/lango/internal/cli/chat"
+	"github.com/langoai/lango/internal/collabview"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/cron"
 	"github.com/langoai/lango/internal/eventbus"
@@ -180,35 +180,35 @@ func (s stubMissionControlLoopCronReader) ListHistory(_ context.Context, jobID s
 }
 
 type stubMissionControlCollabMissionLinkReader struct {
-	links map[string][]apppkg.CollaborationMissionExecutionLink
+	links map[string][]collabview.CollaborationMissionExecutionLink
 	err   error
 }
 
-func (s stubMissionControlCollabMissionLinkReader) ListMissionExecutionLinks(_ context.Context, missionID string) ([]apppkg.CollaborationMissionExecutionLink, error) {
+func (s stubMissionControlCollabMissionLinkReader) ListMissionExecutionLinks(_ context.Context, missionID string) ([]collabview.CollaborationMissionExecutionLink, error) {
 	if s.err != nil {
 		return nil, s.err
 	}
-	return append([]apppkg.CollaborationMissionExecutionLink(nil), s.links[missionID]...), nil
+	return append([]collabview.CollaborationMissionExecutionLink(nil), s.links[missionID]...), nil
 }
 
 type stubMissionControlCollabAgentRunReader struct {
-	runs []apppkg.CollaborationAgentRunView
+	runs []collabview.CollaborationAgentRunView
 }
 
-func (s stubMissionControlCollabAgentRunReader) ListAgentRuns() []apppkg.CollaborationAgentRunView {
-	return append([]apppkg.CollaborationAgentRunView(nil), s.runs...)
+func (s stubMissionControlCollabAgentRunReader) ListAgentRuns() []collabview.CollaborationAgentRunView {
+	return append([]collabview.CollaborationAgentRunView(nil), s.runs...)
 }
 
 type stubMissionControlCollabDelegationReader struct {
-	items []apppkg.CollaborationDelegationRecord
+	items []collabview.CollaborationDelegationRecord
 	err   error
 }
 
-func (s stubMissionControlCollabDelegationReader) ListDelegationsForSession(_ context.Context, sessionKey string) ([]apppkg.CollaborationDelegationRecord, error) {
+func (s stubMissionControlCollabDelegationReader) ListDelegationsForSession(_ context.Context, sessionKey string) ([]collabview.CollaborationDelegationRecord, error) {
 	if s.err != nil {
 		return nil, s.err
 	}
-	out := make([]apppkg.CollaborationDelegationRecord, 0, len(s.items))
+	out := make([]collabview.CollaborationDelegationRecord, 0, len(s.items))
 	for _, item := range s.items {
 		if item.SessionKey == sessionKey {
 			out = append(out, item)
@@ -218,16 +218,16 @@ func (s stubMissionControlCollabDelegationReader) ListDelegationsForSession(_ co
 }
 
 type stubMissionControlCollabRuntimeReader struct {
-	budget   map[string][]apppkg.CollaborationBudgetRecord
-	recovery map[string][]apppkg.CollaborationRecoveryRecord
+	budget   map[string][]collabview.CollaborationBudgetRecord
+	recovery map[string][]collabview.CollaborationRecoveryRecord
 }
 
-func (s stubMissionControlCollabRuntimeReader) ListBudgetSignals(missionID string) []apppkg.CollaborationBudgetRecord {
-	return append([]apppkg.CollaborationBudgetRecord(nil), s.budget[missionID]...)
+func (s stubMissionControlCollabRuntimeReader) ListBudgetSignals(missionID string) []collabview.CollaborationBudgetRecord {
+	return append([]collabview.CollaborationBudgetRecord(nil), s.budget[missionID]...)
 }
 
-func (s stubMissionControlCollabRuntimeReader) ListRecoverySignals(missionID string) []apppkg.CollaborationRecoveryRecord {
-	return append([]apppkg.CollaborationRecoveryRecord(nil), s.recovery[missionID]...)
+func (s stubMissionControlCollabRuntimeReader) ListRecoverySignals(missionID string) []collabview.CollaborationRecoveryRecord {
+	return append([]collabview.CollaborationRecoveryRecord(nil), s.recovery[missionID]...)
 }
 
 func (s stubMissionControlMissionReader) ListExecutionLinks(_ context.Context, missionID string) ([]*mission.ExecutionLink, error) {
@@ -1172,12 +1172,12 @@ func TestMissionControlCollaborationParticipantSummaryFromLinkedLocalSignals(t *
 			},
 		},
 		CollabMissionLinks: stubMissionControlCollabMissionLinkReader{
-			links: map[string][]apppkg.CollaborationMissionExecutionLink{
+			links: map[string][]collabview.CollaborationMissionExecutionLink{
 				missionID.String(): {{ExecutionKind: "task_os_execution", ExecutionRef: "exec-1"}},
 			},
 		},
 		CollabAgentRuns: stubMissionControlCollabAgentRunReader{
-			runs: []apppkg.CollaborationAgentRunView{{ID: "exec-1", RequestedAgent: "researcher"}},
+			runs: []collabview.CollaborationAgentRunView{{ID: "exec-1", RequestedAgent: "researcher"}},
 		},
 	})
 
@@ -1207,12 +1207,12 @@ func TestMissionControlCollaborationHandoffSummaryOnlyWhenAttributable(t *testin
 			},
 		},
 		CollabMissionLinks: stubMissionControlCollabMissionLinkReader{
-			links: map[string][]apppkg.CollaborationMissionExecutionLink{
+			links: map[string][]collabview.CollaborationMissionExecutionLink{
 				missionID.String(): {{ExecutionKind: "task_os_execution", ExecutionRef: "exec-1"}},
 			},
 		},
 		CollabDelegations: stubMissionControlCollabDelegationReader{
-			items: []apppkg.CollaborationDelegationRecord{
+			items: []collabview.CollaborationDelegationRecord{
 				{SessionKey: "sess-1", ExecutionRef: "exec-1", From: "planner", To: "researcher", Timestamp: time.Date(2026, 5, 3, 12, 5, 0, 0, time.UTC)},
 				{SessionKey: "sess-1", ExecutionRef: "other", From: "planner", To: "writer", Timestamp: time.Date(2026, 5, 3, 12, 6, 0, 0, time.UTC)},
 			},
@@ -1244,18 +1244,18 @@ func TestMissionControlCollaborationStateHintsAndBudgetRecoveryAreAttributable(t
 			},
 		},
 		CollabMissionLinks: stubMissionControlCollabMissionLinkReader{
-			links: map[string][]apppkg.CollaborationMissionExecutionLink{
+			links: map[string][]collabview.CollaborationMissionExecutionLink{
 				missionID.String(): {{ExecutionKind: "task_os_execution", ExecutionRef: "exec-1"}},
 			},
 		},
 		CollabAgentRuns: stubMissionControlCollabAgentRunReader{
-			runs: []apppkg.CollaborationAgentRunView{{ID: "exec-1", RequestedAgent: "researcher", RuntimeCondition: "recovering"}},
+			runs: []collabview.CollaborationAgentRunView{{ID: "exec-1", RequestedAgent: "researcher", RuntimeCondition: "recovering"}},
 		},
 		CollabRuntime: stubMissionControlCollabRuntimeReader{
-			budget: map[string][]apppkg.CollaborationBudgetRecord{
+			budget: map[string][]collabview.CollaborationBudgetRecord{
 				missionID.String(): {{MissionID: missionID.String(), Used: 9, Max: 10, Timestamp: time.Date(2026, 5, 3, 12, 10, 0, 0, time.UTC)}},
 			},
-			recovery: map[string][]apppkg.CollaborationRecoveryRecord{
+			recovery: map[string][]collabview.CollaborationRecoveryRecord{
 				missionID.String(): {{MissionID: missionID.String(), Action: "retry", CauseClass: "rate_limit", Timestamp: time.Date(2026, 5, 3, 12, 11, 0, 0, time.UTC)}},
 			},
 		},
@@ -1288,7 +1288,7 @@ func TestMissionControlCollaborationReviewingFromLinkedRunExecution(t *testing.T
 			},
 		},
 		CollabMissionLinks: stubMissionControlCollabMissionLinkReader{
-			links: map[string][]apppkg.CollaborationMissionExecutionLink{
+			links: map[string][]collabview.CollaborationMissionExecutionLink{
 				missionID.String(): {{ExecutionKind: "runledger_run", ExecutionRef: "run-1"}},
 			},
 		},
@@ -1332,7 +1332,7 @@ func TestMissionControlCollaborationActiveOwnerUsesLatestRealRunTimestamp(t *tes
 			},
 		},
 		CollabMissionLinks: stubMissionControlCollabMissionLinkReader{
-			links: map[string][]apppkg.CollaborationMissionExecutionLink{
+			links: map[string][]collabview.CollaborationMissionExecutionLink{
 				missionID.String(): {
 					{ExecutionKind: "task_os_execution", ExecutionRef: "exec-1"},
 					{ExecutionKind: "task_os_execution", ExecutionRef: "exec-2"},
@@ -1340,7 +1340,7 @@ func TestMissionControlCollaborationActiveOwnerUsesLatestRealRunTimestamp(t *tes
 			},
 		},
 		CollabAgentRuns: stubMissionControlCollabAgentRunReader{
-			runs: []apppkg.CollaborationAgentRunView{
+			runs: []collabview.CollaborationAgentRunView{
 				{ID: "exec-2", RequestedAgent: "older-owner", UpdatedAt: time.Date(2026, 5, 3, 12, 1, 0, 0, time.UTC)},
 				{ID: "exec-1", RequestedAgent: "newer-owner", UpdatedAt: time.Date(2026, 5, 3, 12, 5, 0, 0, time.UTC)},
 			},
@@ -1372,12 +1372,12 @@ func TestMissionControlCollaborationNoExternalTeamOverstatement(t *testing.T) {
 			},
 		},
 		CollabMissionLinks: stubMissionControlCollabMissionLinkReader{
-			links: map[string][]apppkg.CollaborationMissionExecutionLink{
+			links: map[string][]collabview.CollaborationMissionExecutionLink{
 				missionID.String(): {{ExecutionKind: "task_os_execution", ExecutionRef: "exec-1"}},
 			},
 		},
 		CollabDelegations: stubMissionControlCollabDelegationReader{
-			items: []apppkg.CollaborationDelegationRecord{
+			items: []collabview.CollaborationDelegationRecord{
 				{SessionKey: "sess-1", ExecutionRef: "foreign", From: "remote-peer", To: "external-team", Timestamp: time.Date(2026, 5, 3, 12, 5, 0, 0, time.UTC)},
 			},
 		},
