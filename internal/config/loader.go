@@ -255,6 +255,11 @@ func DefaultConfig() *Config {
 			ACL: OntologyACLConfig{
 				P2PPermission: "read",
 			},
+			Governance: OntologyGovernanceConfig{
+				AdmissionMode:              "off",
+				LearningDefaultConfidence:  0.60,
+				LibrarianDefaultConfidence: 0.50,
+			},
 		},
 		Alerting: AlertingConfig{
 			Enabled:         false,

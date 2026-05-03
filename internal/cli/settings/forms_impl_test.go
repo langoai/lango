@@ -1400,6 +1400,48 @@ func TestUpdateConfigFromForm_OntologyFields(t *testing.T) {
 	}
 }
 
+func TestUpdateConfigFromForm_OntologyAdmissionObserveFields(t *testing.T) {
+	state := tuicore.NewConfigStateWith(config.DefaultConfig())
+	form := tuicore.NewFormModel("test")
+	form.AddField(&tuicore.Field{Key: "ontology_gov_admission_mode", Type: tuicore.InputSelect, Value: "observe"})
+	form.AddField(&tuicore.Field{Key: "ontology_gov_learning_conf", Type: tuicore.InputText, Value: "0.65"})
+	form.AddField(&tuicore.Field{Key: "ontology_gov_librarian_conf", Type: tuicore.InputText, Value: "0.55"})
+
+	state.UpdateConfigFromForm(&form)
+
+	if state.Current.Ontology.Governance.AdmissionMode != "observe" {
+		t.Errorf("AdmissionMode: want %q, got %q", "observe", state.Current.Ontology.Governance.AdmissionMode)
+	}
+	if state.Current.Ontology.Governance.LearningDefaultConfidence != 0.65 {
+		t.Errorf("LearningDefaultConfidence: want %.2f, got %.2f", 0.65, state.Current.Ontology.Governance.LearningDefaultConfidence)
+	}
+	if state.Current.Ontology.Governance.LibrarianDefaultConfidence != 0.55 {
+		t.Errorf("LibrarianDefaultConfidence: want %.2f, got %.2f", 0.55, state.Current.Ontology.Governance.LibrarianDefaultConfidence)
+	}
+}
+
+func TestNewOntologyForm_AdmissionFieldsVisibleWithoutGovernanceEnabled(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Ontology.Enabled = true
+	cfg.Ontology.Governance.Enabled = false
+
+	form := NewOntologyForm(cfg)
+	visible := map[string]bool{}
+	for _, field := range form.VisibleFields() {
+		visible[field.Key] = true
+	}
+
+	if !visible["ontology_gov_admission_mode"] {
+		t.Error("ontology_gov_admission_mode should remain visible when governance is disabled")
+	}
+	if !visible["ontology_gov_learning_conf"] {
+		t.Error("ontology_gov_learning_conf should remain visible when governance is disabled")
+	}
+	if !visible["ontology_gov_librarian_conf"] {
+		t.Error("ontology_gov_librarian_conf should remain visible when governance is disabled")
+	}
+}
+
 func TestUpdateConfigFromForm_AlertingFields(t *testing.T) {
 	state := tuicore.NewConfigState()
 	form := tuicore.NewFormModel("test")

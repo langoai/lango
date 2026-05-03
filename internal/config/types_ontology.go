@@ -26,6 +26,12 @@ type OntologyGovernanceConfig struct {
 	MinUsageForPromotion int `mapstructure:"minUsageForPromotion" json:"minUsageForPromotion,omitempty"`
 	// SchemaExplosionBudget is the monthly limit for new proposals.
 	SchemaExplosionBudget int `mapstructure:"schemaExplosionBudget" json:"schemaExplosionBudget,omitempty"`
+	// AdmissionMode controls runtime admission observation behavior.
+	AdmissionMode string `mapstructure:"admissionMode" json:"admissionMode,omitempty"`
+	// LearningDefaultConfidence is the fallback confidence for learning-group producers.
+	LearningDefaultConfidence float64 `mapstructure:"learningDefaultConfidence" json:"learningDefaultConfidence,omitempty"`
+	// LibrarianDefaultConfidence is the fallback confidence for librarian-group producers.
+	LibrarianDefaultConfidence float64 `mapstructure:"librarianDefaultConfidence" json:"librarianDefaultConfidence,omitempty"`
 }
 
 // OntologyACLConfig configures role-based access control for ontology operations.

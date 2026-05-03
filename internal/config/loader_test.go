@@ -19,6 +19,16 @@ func TestDefaultConfig(t *testing.T) {
 	assert.Equal(t, "info", cfg.Logging.Level)
 }
 
+func TestDefaultConfig_OntologyAdmissionObserveDefaults(t *testing.T) {
+	t.Parallel()
+
+	cfg := DefaultConfig()
+
+	assert.Equal(t, "off", cfg.Ontology.Governance.AdmissionMode)
+	assert.InDelta(t, 0.60, cfg.Ontology.Governance.LearningDefaultConfidence, 0.001)
+	assert.InDelta(t, 0.50, cfg.Ontology.Governance.LibrarianDefaultConfidence, 0.001)
+}
+
 func TestExpandEnvVars(t *testing.T) {
 	t.Parallel()
 

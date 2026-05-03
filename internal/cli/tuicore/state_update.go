@@ -604,6 +604,16 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 			if i, err := strconv.Atoi(val); err == nil {
 				s.Current.Ontology.Governance.SchemaExplosionBudget = i
 			}
+		case "ontology_gov_admission_mode":
+			s.Current.Ontology.Governance.AdmissionMode = val
+		case "ontology_gov_learning_conf":
+			if v, err := strconv.ParseFloat(val, 64); err == nil {
+				s.Current.Ontology.Governance.LearningDefaultConfidence = v
+			}
+		case "ontology_gov_librarian_conf":
+			if v, err := strconv.ParseFloat(val, 64); err == nil {
+				s.Current.Ontology.Governance.LibrarianDefaultConfidence = v
+			}
 		case "ontology_ex_enabled":
 			s.Current.Ontology.Exchange.Enabled = f.Checked
 		case "ontology_ex_min_trust_schema":
