@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add an observe/enforce admission boundary for dynamic runtime graph triple producers so unknown predicates no longer reach the graph store unchecked and no longer roll back valid triples in the same batch.
+**Goal:** Add an observe/enforce admission boundary for dynamic or untrusted runtime graph triple producers, including event-driven triples, `content.saved` extractor output, and `GraphEngine` direct writes, so unknown predicates no longer reach the graph store unchecked and no longer roll back valid triples in the same batch.
 
 **Architecture:** This plan implements only Change A from the adaptive ontology growth design. The runtime keeps fast paths for deterministic seeded-predicate emitters, and adds a single `graph.AdmissionPolicy` in front of dynamic event-driven producers. The policy runs in `observe` mode by default, emits decision telemetry, and can be switched to `enforce` mode to filter unknown predicates before they reach `GraphBuffer`.
 
@@ -15,13 +15,18 @@
 This plan intentionally covers only the **runtime app path**:
 
 - `internal/app/wiring_graph.go` dynamic `TriplesExtractedEvent` subscriber path
+- `internal/app/wiring_graph.go` `content.saved` extractor output path
+- `internal/learning/graph_engine.go` direct graph writes when the event bus handoff is not used
 - `internal/graph/*` admission policy core
+- runtime observability event emission for admission decisions
+- metrics collector and status surface updates for admission telemetry
 - ontology governance config needed to select `observe` vs `enforce`
 - runtime settings and public docs for the new config
 
 This plan does **not** cover:
 
 - CLI `internal/cli/graph/import_cmd.go`
+- `AssertFact` / ontology tool / ontology action growth-enabled paths
 - Change B adaptive shadow growth
 - Change C promotion/replay hardening
 
@@ -37,6 +42,8 @@ Those should be separate plans because they require different rollback boundarie
   Unit tests for observe mode, enforce mode, mixed batches, and producer confidence fallback.
 - `internal/app/wiring_graph_test.go`
   App-level tests for the dynamic event subscriber helper that turns `TriplesExtractedEvent` into admitted graph triples.
+- `internal/eventbus/observability_events_test.go`
+  Event type tests for graph admission observability events.
 - `openspec/changes/runtime-admission-boundary-hardening/proposal.md`
   OpenSpec change proposal for Change A runtime hardening slice.
 - `openspec/changes/runtime-admission-boundary-hardening/design.md`
@@ -61,7 +68,23 @@ Those should be separate plans because they require different rollback boundarie
 - `internal/cli/tuicore/state_update.go`
   Persist new settings fields from the form into config state.
 - `internal/app/wiring_graph.go`
-  Build a policy instance and route only dynamic event-driven triple producers through it.
+  Build a policy instance, route dynamic event-driven triples through it, and publish observe/enforce telemetry.
+- `internal/app/modules.go`
+  Build the admission policy after ontology initialization and before knowledge initialization so both `GraphEngine` and graph wiring can share it.
+- `internal/app/wiring_knowledge.go`
+  Pass the prebuilt runtime admission policy into `GraphEngine`.
+- `internal/graph/extractor.go`
+  Add an extractor mode that allows parsed triples to reach admission without pre-dropping unknown predicates.
+- `internal/eventbus/observability_events.go`
+  Add graph admission observability event types.
+- `internal/app/wiring_observability.go`
+  Subscribe the metrics collector to graph admission observability events.
+- `internal/observability/collector.go`
+  Record graph admission batch counters in the central metrics collector.
+- `internal/cli/cockpit/pages/status.go`
+  Render graph admission metrics on the status page.
+- `internal/learning/graph_engine.go`
+  Route direct runtime graph writes through the shared admission policy when configured.
 - `docs/configuration.md`
   Document the new config keys and observe/enforce semantics.
 - `docs/features/ontology.md`
@@ -76,6 +99,8 @@ Those should be separate plans because they require different rollback boundarie
 - `internal/config/loader_test.go`
 - `internal/cli/settings/forms_impl_test.go`
 - `internal/graph/bolt_store_test.go`
+- `internal/graph/extractor_test.go`
+- `internal/learning/graph_engine_test.go`
 
 ## Task 1: Scaffold The OpenSpec Change
 
@@ -112,12 +137,15 @@ Dynamic graph triples discovered by runtime LLM producers currently reach `Graph
 
 - Add a runtime admission policy with `observe` and `enforce` modes.
 - Route dynamic `TriplesExtractedEvent` paths through admission before `GraphBuffer`.
+- Route `content.saved` extractor output through the same admission boundary.
+- Publish admission observability events in `observe` and `enforce` modes.
 - Keep deterministic seeded-predicate emitters on a fast path.
 - Expose admission mode and default producer confidence in ontology governance config and settings.
 
 ## Out Of Scope
 
 - CLI `graph import`
+- `AssertFact`, ontology tools, ontology actions, and P2P fact assertion paths
 - adaptive shadow growth and schema candidate persistence
 - replay and promotion hardening
 ```
@@ -134,9 +162,11 @@ This change implements only the runtime admission boundary hardening slice from 
 Dynamic producer path:
 
 1. Convert `TriplesExtractedEvent` payloads into `graph.AdmissionCandidate` values.
-2. Evaluate candidates with `graph.AdmissionPolicy`.
-3. In `observe` mode, emit decision telemetry and pass all triples through unchanged.
-4. In `enforce` mode, drop unknown predicates before they reach `GraphBuffer`.
+2. Convert `content.saved` extractor triples into `graph.AdmissionCandidate` values without pre-dropping unknown predicates inside the extractor.
+3. Route `GraphEngine` direct writes through the same admission policy when no event-bus publish path is used.
+4. Evaluate candidates with `graph.AdmissionPolicy`.
+5. In `observe` mode, emit admission observability events and pass all triples through unchanged.
+6. In `enforce` mode, drop unknown predicates before they reach `GraphBuffer`.
 
 Deterministic seeded-predicate producers such as content-saved containment triples and memory graph hooks remain on a fast path and continue to rely on the existing ontology and graph validators.
 ```
@@ -180,8 +210,8 @@ Use this starter checklist in `openspec/changes/runtime-admission-boundary-harde
 # Tasks
 
 - [ ] Add ontology governance admission config and defaults
-- [ ] Add graph admission policy and tests
-- [ ] Route dynamic app runtime producers through admission
+- [ ] Add graph admission policy, telemetry, and tests
+- [ ] Route dynamic app runtime producers and extractor output through admission
 - [ ] Update docs and settings
 - [ ] Verify with targeted tests plus `go build ./...` and `go test ./...`
 ```
@@ -217,14 +247,14 @@ func TestDefaultConfig_OntologyAdmissionDefaults(t *testing.T) {
 	assert.InDelta(t, 0.50, cfg.Ontology.Governance.LibrarianDefaultConfidence, 0.001)
 }
 
-func TestApplyForm_OntologyAdmissionFields(t *testing.T) {
+func TestUpdateConfigFromForm_OntologyAdmissionFields(t *testing.T) {
 	form := tuicore.NewFormModel("test")
 	form.AddField(&tuicore.Field{Key: "ontology_gov_admission_mode", Type: tuicore.InputSelect, Value: "enforce"})
 	form.AddField(&tuicore.Field{Key: "ontology_gov_learning_conf", Type: tuicore.InputText, Value: "0.65"})
 	form.AddField(&tuicore.Field{Key: "ontology_gov_librarian_conf", Type: tuicore.InputText, Value: "0.55"})
 
 	s := tuicore.NewConfigStateWith(config.DefaultConfig())
-	s.ApplyForm(form)
+	s.UpdateConfigFromForm(form)
 
 	assert.Equal(t, "enforce", s.Current.Ontology.Governance.AdmissionMode)
 	assert.InDelta(t, 0.65, s.Current.Ontology.Governance.LearningDefaultConfidence, 0.001)
@@ -277,6 +307,8 @@ Ontology: OntologyConfig{
 
 ```go
 // internal/cli/settings/forms_ontology.go
+admissionVisible := func() bool { return enabled.Checked }
+
 form.AddField(&tuicore.Field{
 	Key:         "ontology_gov_admission_mode",
 	Label:       "    Admission Mode",
@@ -284,7 +316,7 @@ form.AddField(&tuicore.Field{
 	Value:       cfg.Ontology.Governance.AdmissionMode,
 	Options:     []string{"observe", "enforce"},
 	Description: "Observe only or enforce filtering for dynamic runtime graph triples",
-	VisibleWhen: isGovEnabled,
+	VisibleWhen: admissionVisible,
 })
 form.AddField(&tuicore.Field{
 	Key:         "ontology_gov_learning_conf",
@@ -293,7 +325,7 @@ form.AddField(&tuicore.Field{
 	Value:       fmt.Sprintf("%.2f", cfg.Ontology.Governance.LearningDefaultConfidence),
 	Placeholder: "0.60",
 	Description: "Fallback confidence for dynamic learning graph triples",
-	VisibleWhen: isGovEnabled,
+	VisibleWhen: admissionVisible,
 })
 form.AddField(&tuicore.Field{
 	Key:         "ontology_gov_librarian_conf",
@@ -302,7 +334,7 @@ form.AddField(&tuicore.Field{
 	Value:       fmt.Sprintf("%.2f", cfg.Ontology.Governance.LibrarianDefaultConfidence),
 	Placeholder: "0.50",
 	Description: "Fallback confidence for dynamic librarian graph triples",
-	VisibleWhen: isGovEnabled,
+	VisibleWhen: admissionVisible,
 })
 ```
 
@@ -339,11 +371,13 @@ git add internal/config/types_ontology.go internal/config/loader.go internal/cli
 git commit -m "feat: add ontology admission config"
 ```
 
-## Task 3: Implement The Admission Policy Core
+## Task 3: Implement The Admission Policy Core, Observe Telemetry, And Concurrency-Safe Stats
 
 **Files:**
 - Create: `internal/graph/admission.go`
 - Test: `internal/graph/admission_test.go`
+- Modify: `internal/eventbus/observability_events.go`
+- Test: `internal/eventbus/observability_events_test.go`
 
 - [ ] **Step 1: Write failing admission tests**
 
@@ -406,6 +440,31 @@ func TestAdmissionPolicy_DefaultConfidenceByProducer(t *testing.T) {
 
 	assert.InDelta(t, 0.50, result.Records[0].Confidence, 0.001)
 }
+
+func TestAdmissionPolicy_StatsTrackObserveAndReject(t *testing.T) {
+	p := NewAdmissionPolicy(AdmissionConfig{
+		Mode:      AdmissionModeEnforce,
+		Validator: func(name string) bool { return name == CausedBy },
+		DefaultConfidence: map[AdmissionProducer]float64{
+			ProducerLearningEvent: 0.60,
+		},
+		Observe: func(AdmissionBatchEvent) {},
+	}, zap.NewNop().Sugar())
+
+	p.AdmitBatch([]AdmissionCandidate{
+		{Triple: Triple{Subject: "ok", Predicate: CausedBy, Object: "tool"}, Producer: ProducerLearningEvent, Source: "learning"},
+		{Triple: Triple{Subject: "bad", Predicate: "invented_rel", Object: "tool"}, Producer: ProducerLearningEvent, Source: "learning"},
+	})
+
+	stats := p.Snapshot()
+	assert.Equal(t, int64(1), stats.RejectedUnknown)
+	assert.Equal(t, int64(1), stats.AdmittedKnown)
+}
+
+func TestGraphAdmissionBatchEvent_EventName(t *testing.T) {
+	evt := eventbus.GraphAdmissionBatchEvent{}
+	assert.Equal(t, eventbus.EventGraphAdmissionBatch, evt.EventName())
+}
 ```
 
 - [ ] **Step 2: Run tests to verify failure**
@@ -425,7 +484,11 @@ Create `internal/graph/admission.go` with this shape:
 ```go
 package graph
 
-import "go.uber.org/zap"
+import (
+	"sync/atomic"
+
+	"go.uber.org/zap"
+)
 
 type AdmissionMode string
 
@@ -475,15 +538,42 @@ type AdmissionResult struct {
 	Records  []AdmissionRecord
 }
 
+type AdmissionStats struct {
+	AdmittedKnown   atomic.Int64
+	ObservedUnknown atomic.Int64
+	RejectedUnknown atomic.Int64
+	TotalCandidates atomic.Int64
+	TotalBatches    atomic.Int64
+}
+
+type AdmissionStatsSnapshot struct {
+	AdmittedKnown   int64
+	ObservedUnknown int64
+	RejectedUnknown int64
+	TotalCandidates int64
+	TotalBatches    int64
+}
+
+type AdmissionBatchEvent struct {
+	Mode            AdmissionMode
+	Producer        AdmissionProducer
+	Candidates      int
+	Admitted        int
+	Rejected        int
+	ObservedUnknown int
+}
+
 type AdmissionConfig struct {
 	Mode              AdmissionMode
 	Validator         PredicateValidatorFunc
 	DefaultConfidence map[AdmissionProducer]float64
+	Observe           func(AdmissionBatchEvent)
 }
 
 type AdmissionPolicy struct {
 	cfg    AdmissionConfig
 	logger *zap.SugaredLogger
+	stats  AdmissionStats
 }
 
 func NewAdmissionPolicy(cfg AdmissionConfig, logger *zap.SugaredLogger) *AdmissionPolicy {
@@ -492,6 +582,13 @@ func NewAdmissionPolicy(cfg AdmissionConfig, logger *zap.SugaredLogger) *Admissi
 
 func (p *AdmissionPolicy) AdmitBatch(candidates []AdmissionCandidate) AdmissionResult {
 	var result AdmissionResult
+	p.stats.TotalBatches.Add(1)
+	p.stats.TotalCandidates.Add(int64(len(candidates)))
+	observedUnknown := 0
+	producer := ProducerLearningEvent
+	if len(candidates) > 0 {
+		producer = candidates[0].Producer
+	}
 	for _, c := range candidates {
 		conf := p.defaultConfidence(c)
 		known := p.cfg.Validator == nil || p.cfg.Validator(c.Triple.Predicate)
@@ -499,13 +596,35 @@ func (p *AdmissionPolicy) AdmitBatch(candidates []AdmissionCandidate) AdmissionR
 		case known:
 			result.Admitted = append(result.Admitted, c.Triple)
 			result.Records = append(result.Records, AdmissionRecord{Candidate: c, Decision: DecisionAdmitted, Confidence: conf})
+			p.stats.AdmittedKnown.Add(1)
 		case p.cfg.Mode == AdmissionModeObserve:
 			result.Admitted = append(result.Admitted, c.Triple)
 			result.Records = append(result.Records, AdmissionRecord{Candidate: c, Decision: DecisionObservedUnknown, Confidence: conf})
+			p.stats.ObservedUnknown.Add(1)
+			observedUnknown++
 		default:
 			result.Rejected = append(result.Rejected, RejectedCandidate{Candidate: c, Reason: "unknown predicate"})
 			result.Records = append(result.Records, AdmissionRecord{Candidate: c, Decision: DecisionRejectedUnknown, Confidence: conf})
+			p.stats.RejectedUnknown.Add(1)
 		}
+	}
+	event := AdmissionBatchEvent{
+		Mode:            p.cfg.Mode,
+		Producer:        producer,
+		Candidates:      len(candidates),
+		Admitted:        len(result.Admitted),
+		Rejected:        len(result.Rejected),
+		ObservedUnknown: observedUnknown,
+	}
+	p.logger.Infow("graph admission batch",
+		"mode", p.cfg.Mode,
+		"producer", producer,
+		"candidates", len(candidates),
+		"admitted", len(result.Admitted),
+		"rejected", len(result.Rejected),
+	)
+	if p.cfg.Observe != nil {
+		p.cfg.Observe(event)
 	}
 	return result
 }
@@ -519,6 +638,34 @@ func (p *AdmissionPolicy) defaultConfidence(c AdmissionCandidate) float64 {
 	}
 	return 0.50
 }
+
+func (p *AdmissionPolicy) Snapshot() AdmissionStatsSnapshot {
+	return AdmissionStatsSnapshot{
+		AdmittedKnown:   p.stats.AdmittedKnown.Load(),
+		ObservedUnknown: p.stats.ObservedUnknown.Load(),
+		RejectedUnknown: p.stats.RejectedUnknown.Load(),
+		TotalCandidates: p.stats.TotalCandidates.Load(),
+		TotalBatches:    p.stats.TotalBatches.Load(),
+	}
+}
+```
+
+Add this event type:
+
+```go
+// internal/eventbus/observability_events.go
+const EventGraphAdmissionBatch = "graph.admission.batch"
+
+type GraphAdmissionBatchEvent struct {
+	Mode            string
+	Producer        string
+	Candidates      int
+	Admitted        int
+	Rejected        int
+	ObservedUnknown int
+}
+
+func (e GraphAdmissionBatchEvent) EventName() string { return EventGraphAdmissionBatch }
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
@@ -526,7 +673,7 @@ func (p *AdmissionPolicy) defaultConfidence(c AdmissionCandidate) float64 {
 Run:
 
 ```bash
-go test ./internal/graph -run 'AdmissionPolicy'
+go test ./internal/graph ./internal/eventbus -run 'AdmissionPolicy|GraphAdmissionBatchEvent'
 ```
 
 Expected: PASS
@@ -536,15 +683,18 @@ Expected: PASS
 Run:
 
 ```bash
-git add internal/graph/admission.go internal/graph/admission_test.go
+git add internal/graph/admission.go internal/graph/admission_test.go internal/eventbus/observability_events.go internal/eventbus/observability_events_test.go
 git commit -m "feat: add graph admission policy"
 ```
 
-## Task 4: Route Dynamic Event Producers Through Admission
+## Task 4: Route Dynamic Event Producers And Extractor Output Through Admission
 
 **Files:**
 - Modify: `internal/app/wiring_graph.go`
+- Modify: `internal/app/modules.go`
+- Modify: `internal/graph/extractor.go`
 - Test: `internal/app/wiring_graph_test.go`
+- Test: `internal/graph/extractor_test.go`
 
 - [ ] **Step 1: Write failing app wiring tests**
 
@@ -591,6 +741,20 @@ func TestAdmitExtractedTriples_EnforceModeFiltersUnknown(t *testing.T) {
 	require.Len(t, admitted, 1)
 	assert.Equal(t, graph.CausedBy, admitted[0].Predicate)
 }
+
+func TestProducerForExtractedEvent_UsesSourceSpecificDefaults(t *testing.T) {
+	assert.Equal(t, graph.ProducerLearningEvent, producerForExtractedEvent("learning"))
+	assert.Equal(t, graph.ProducerLibrarianEvent, producerForExtractedEvent("proactive_librarian"))
+}
+
+func TestExtractor_PassthroughModePreservesUnknownPredicate(t *testing.T) {
+	logger := zap.NewNop().Sugar()
+	e := NewExtractor(nil, logger, WithoutPredicateValidation())
+
+	triples := e.parseResponse("a|invented_rel|b", "src")
+	require.Len(t, triples, 1)
+	assert.Equal(t, "invented_rel", triples[0].Predicate)
+}
 ```
 
 - [ ] **Step 2: Run tests to verify failure**
@@ -605,63 +769,126 @@ Expected: FAIL because `admitExtractedTriples` does not exist
 
 - [ ] **Step 3: Implement admission in `wiring_graph.go`**
 
-Add a helper and use it only for dynamic subscriber paths:
+Add helpers and use them for both dynamic event subscriber paths and `content.saved` extractor output:
 
 ```go
-func admitExtractedTriples(policy *graph.AdmissionPolicy, evt eventbus.TriplesExtractedEvent) []graph.Triple {
-	if policy == nil {
-		graphTriples := make([]graph.Triple, len(evt.Triples))
-		for i, t := range evt.Triples {
-			graphTriples[i] = graph.Triple{
-				Subject:     t.Subject,
-				Predicate:   t.Predicate,
-				Object:      t.Object,
-				SubjectType: t.SubjectType,
-				ObjectType:  t.ObjectType,
-				Metadata:    t.Metadata,
-			}
-		}
-		return graphTriples
+func producerForExtractedEvent(source string) graph.AdmissionProducer {
+	switch strings.TrimSpace(source) {
+	case "proactive_librarian":
+		return graph.ProducerLibrarianEvent
+	default:
+		return graph.ProducerLearningEvent
 	}
+}
 
-	candidates := make([]graph.AdmissionCandidate, 0, len(evt.Triples))
-	for _, t := range evt.Triples {
+func publishAdmissionObservation(bus *eventbus.Bus, evt graph.AdmissionBatchEvent) {
+	if bus == nil {
+		return
+	}
+	bus.Publish(eventbus.GraphAdmissionBatchEvent{
+		Mode:            string(evt.Mode),
+		Producer:        string(evt.Producer),
+		Candidates:      evt.Candidates,
+		Admitted:        evt.Admitted,
+		Rejected:        evt.Rejected,
+		ObservedUnknown: evt.ObservedUnknown,
+	})
+}
+
+func admitTriples(policy *graph.AdmissionPolicy, producer graph.AdmissionProducer, source string, triples []graph.Triple) []graph.Triple {
+	if policy == nil {
+		return triples
+	}
+	candidates := make([]graph.AdmissionCandidate, 0, len(triples))
+	for _, triple := range triples {
 		candidates = append(candidates, graph.AdmissionCandidate{
-			Triple: graph.Triple{
-				Subject:     t.Subject,
-				Predicate:   t.Predicate,
-				Object:      t.Object,
-				SubjectType: t.SubjectType,
-				ObjectType:  t.ObjectType,
-				Metadata:    t.Metadata,
-			},
-			Producer: graph.ProducerLearningEvent,
-			Source:   evt.Source,
+			Triple:   triple,
+			Producer: producer,
+			Source:   source,
 		})
 	}
-
 	result := policy.AdmitBatch(candidates)
 	return result.Admitted
 }
+
+func admitExtractedTriples(policy *graph.AdmissionPolicy, evt eventbus.TriplesExtractedEvent) []graph.Triple {
+	graphTriples := make([]graph.Triple, len(evt.Triples))
+	for i, t := range evt.Triples {
+		graphTriples[i] = graph.Triple{
+			Subject:     t.Subject,
+			Predicate:   t.Predicate,
+			Object:      t.Object,
+			SubjectType: t.SubjectType,
+			ObjectType:  t.ObjectType,
+			Metadata:    t.Metadata,
+		}
+	}
+	return admitTriples(policy, producerForExtractedEvent(evt.Source), evt.Source, graphTriples)
+}
 ```
 
-And in `wireGraphCallbacks`:
+Build the policy before `initKnowledge`, not inside `wireGraphCallbacks`, so both app wiring and other runtime producers can reuse it. Update `graphComponents` to carry the policy:
 
 ```go
-	var admissionPolicy *graph.AdmissionPolicy
-	if ontologyValidator != nil && cfg.Ontology.Governance.AdmissionMode != "" {
-		admissionPolicy = graph.NewAdmissionPolicy(graph.AdmissionConfig{
-			Mode:      graph.AdmissionMode(cfg.Ontology.Governance.AdmissionMode),
-			Validator: ontologyValidator,
-			DefaultConfidence: map[graph.AdmissionProducer]float64{
-				graph.ProducerLearningEvent:  cfg.Ontology.Governance.LearningDefaultConfidence,
-				graph.ProducerLibrarianEvent: cfg.Ontology.Governance.LibrarianDefaultConfidence,
-			},
-		}, logger())
-	}
+// internal/app/wiring_graph.go
+type graphComponents struct {
+	store           graph.Store
+	buffer          *graph.GraphBuffer
+	ragService      *graph.GraphRAGService
+	admissionPolicy *graph.AdmissionPolicy
+}
+```
+
+```go
+// internal/app/modules.go
+if gc != nil && ontologyResult != nil && ontologyResult.Service != nil && cfg.Ontology.Enabled {
+	gc.admissionPolicy = graph.NewAdmissionPolicy(graph.AdmissionConfig{
+		Mode:      graph.AdmissionMode(cfg.Ontology.Governance.AdmissionMode),
+		Validator: ontologyResult.Service.PredicateValidator(),
+		DefaultConfidence: map[graph.AdmissionProducer]float64{
+			graph.ProducerLearningEvent:  cfg.Ontology.Governance.LearningDefaultConfidence,
+			graph.ProducerLibrarianEvent: cfg.Ontology.Governance.LibrarianDefaultConfidence,
+		},
+		Observe: func(evt graph.AdmissionBatchEvent) {
+			publishAdmissionObservation(m.bus, evt)
+		},
+	}, logger())
+}
+```
+
+In `wireGraphCallbacks`:
+
+```go
+	eventbus.SubscribeTyped(bus, func(evt eventbus.ContentSavedEvent) {
+		if !evt.NeedsGraph {
+			return
+		}
+		gc.buffer.Enqueue(graph.GraphRequest{Triples: []graph.Triple{{
+			Subject:     evt.Collection + ":" + evt.ID,
+			SubjectType: evt.Collection,
+			Predicate:   graph.Contains,
+			Object:      "collection:" + evt.Collection,
+			Metadata:    evt.Metadata,
+		}}})
+
+		if extractor != nil && evt.Content != "" {
+			go func() {
+				ctx := context.Background()
+				triples, err := extractor.Extract(ctx, evt.Content, evt.ID)
+				if err != nil {
+					logger().Debugw("entity extraction error", "id", evt.ID, "error", err)
+					return
+				}
+				admitted := admitTriples(gc.admissionPolicy, graph.ProducerLearningEvent, "content_saved_extractor", triples)
+				if len(admitted) > 0 {
+					gc.buffer.Enqueue(graph.GraphRequest{Triples: admitted})
+				}
+			}()
+		}
+	})
 
 	eventbus.SubscribeTyped(bus, func(evt eventbus.TriplesExtractedEvent) {
-		admitted := admitExtractedTriples(admissionPolicy, evt)
+		admitted := admitExtractedTriples(gc.admissionPolicy, evt)
 		if len(admitted) == 0 {
 			return
 		}
@@ -669,12 +896,50 @@ And in `wireGraphCallbacks`:
 	})
 ```
 
+And change extractor setup so unknown predicates reach admission instead of being dropped inside `Extractor`:
+
+```go
+// internal/graph/extractor.go
+type Extractor struct {
+	generator          llm.TextGenerator
+	validator          PredicateValidatorFunc
+	skipPredicateCheck bool
+	logger             *zap.SugaredLogger
+}
+
+func WithoutPredicateValidation() ExtractorOption {
+	return func(e *Extractor) { e.skipPredicateCheck = true }
+}
+
+func (e *Extractor) isValidPredicate(p string) bool {
+	if e.skipPredicateCheck {
+		return true
+	}
+	if e.validator != nil {
+		return e.validator(p)
+	}
+	return defaultIsValidPredicate(p)
+}
+```
+
+And in `wireGraphCallbacks`:
+
+```go
+var opts []graph.ExtractorOption
+if gc != nil && gc.admissionPolicy != nil {
+	opts = append(opts, graph.WithoutPredicateValidation())
+} else if ontologyValidator != nil {
+	opts = append(opts, graph.WithPredicateValidator(ontologyValidator))
+}
+extractor = graph.NewExtractor(generator, logger(), opts...)
+```
+
 - [ ] **Step 4: Run tests**
 
 Run:
 
 ```bash
-go test ./internal/app -run 'AdmitExtractedTriples'
+go test ./internal/app ./internal/graph -run 'AdmitExtractedTriples|ProducerForExtractedEvent|PassthroughModePreservesUnknownPredicate'
 ```
 
 Expected: PASS
@@ -685,10 +950,197 @@ Run:
 
 ```bash
 git add internal/app/wiring_graph.go internal/app/wiring_graph_test.go
-git commit -m "feat: admit dynamic graph events before enqueue"
+git add internal/app/modules.go internal/graph/extractor.go internal/graph/extractor_test.go
+git commit -m "feat: admit runtime graph extraction before enqueue"
 ```
 
-## Task 5: Update Downstream Docs And Verify The Slice
+## Task 5: Wire Admission Telemetry And GraphEngine Direct Writes
+
+**Files:**
+- Modify: `internal/learning/graph_engine.go`
+- Modify: `internal/app/wiring_knowledge.go`
+- Modify: `internal/app/wiring_observability.go`
+- Modify: `internal/observability/collector.go`
+- Modify: `internal/cli/cockpit/pages/status.go`
+- Test: `internal/learning/graph_engine_test.go`
+
+- [ ] **Step 1: Write failing tests for GraphEngine and telemetry consumers**
+
+Add tests like these:
+
+```go
+func TestGraphEngine_RecordFix_AdmissionEnforceFiltersUnknown(t *testing.T) {
+	gs := &fakeGraphStore{}
+	logger := zap.NewNop().Sugar()
+	p := graph.NewAdmissionPolicy(graph.AdmissionConfig{
+		Mode:      graph.AdmissionModeEnforce,
+		Validator: func(name string) bool { return name == graph.ResolvedBy },
+		DefaultConfidence: map[graph.AdmissionProducer]float64{
+			graph.ProducerLearningEvent: 0.60,
+		},
+	}, logger)
+
+	ge := &GraphEngine{
+		Engine:          &Engine{store: nil, logger: logger},
+		graphStore:      gs,
+		admissionPolicy: p,
+		propagation:     0.3,
+		logger:          logger,
+	}
+
+	ge.RecordFix(context.Background(), "timeout error", "increase timeout", "session-1")
+	require.Len(t, gs.triples, 1, "admission should filter LearnedFrom when validator disallows it")
+}
+```
+
+```go
+func TestCollector_RecordGraphAdmissionBatch(t *testing.T) {
+	c := NewCollector()
+	c.RecordGraphAdmissionBatch("observe", "learning_event", 3, 3, 0, 1)
+
+	snap := c.Snapshot()
+	assert.Equal(t, int64(1), snap.GraphAdmission.Batches)
+	assert.Equal(t, int64(3), snap.GraphAdmission.Candidates)
+	assert.Equal(t, int64(1), snap.GraphAdmission.ObservedUnknown)
+}
+```
+
+- [ ] **Step 2: Run tests to verify failure**
+
+Run:
+
+```bash
+go test ./internal/learning ./internal/observability -run 'GraphEngine_RecordFix_AdmissionEnforceFiltersUnknown|RecordGraphAdmissionBatch'
+```
+
+Expected: FAIL because the direct-write admission path and collector metrics do not exist
+
+- [ ] **Step 3: Implement shared policy use and telemetry consumer wiring**
+
+Apply changes like these:
+
+```go
+// internal/learning/graph_engine.go
+type GraphEngine struct {
+	*Engine
+	graphStore      graph.Store
+	bus             *eventbus.Bus
+	admissionPolicy *graph.AdmissionPolicy
+	propagation     float64
+	logger          *zap.SugaredLogger
+}
+
+func (e *GraphEngine) SetAdmissionPolicy(p *graph.AdmissionPolicy) {
+	e.admissionPolicy = p
+}
+
+func (e *GraphEngine) addTriples(ctx context.Context, triples []graph.Triple) error {
+	if e.graphStore == nil {
+		return nil
+	}
+	if e.admissionPolicy == nil {
+		return e.graphStore.AddTriples(ctx, triples)
+	}
+	candidates := make([]graph.AdmissionCandidate, 0, len(triples))
+	for _, triple := range triples {
+		candidates = append(candidates, graph.AdmissionCandidate{
+			Triple:   triple,
+			Producer: graph.ProducerLearningEvent,
+			Source:   "graph_engine",
+		})
+	}
+	result := e.admissionPolicy.AdmitBatch(candidates)
+	if len(result.Admitted) == 0 {
+		return nil
+	}
+	return e.graphStore.AddTriples(ctx, result.Admitted)
+}
+```
+
+```go
+// internal/app/wiring_knowledge.go
+if gc != nil {
+	graphEngine := learning.NewGraphEngine(kStore, gc.store, kLogger)
+	if gc.admissionPolicy != nil {
+		graphEngine.SetAdmissionPolicy(gc.admissionPolicy)
+	}
+	graphEngine.SetEventBus(bus)
+	observer = graphEngine
+}
+```
+
+```go
+// internal/observability/collector.go
+type GraphAdmissionMetrics struct {
+	Batches         int64
+	Candidates      int64
+	Admitted        int64
+	Rejected        int64
+	ObservedUnknown int64
+}
+
+func (c *MetricsCollector) RecordGraphAdmissionBatch(mode, producer string, candidates, admitted, rejected, observedUnknown int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.graphAdmission.Batches++
+	c.graphAdmission.Candidates += int64(candidates)
+	c.graphAdmission.Admitted += int64(admitted)
+	c.graphAdmission.Rejected += int64(rejected)
+	c.graphAdmission.ObservedUnknown += int64(observedUnknown)
+}
+```
+
+```go
+// internal/app/wiring_observability.go
+eventbus.SubscribeTyped[eventbus.GraphAdmissionBatchEvent](bus, func(evt eventbus.GraphAdmissionBatchEvent) {
+	oc.collector.RecordGraphAdmissionBatch(
+		evt.Mode,
+		evt.Producer,
+		evt.Candidates,
+		evt.Admitted,
+		evt.Rejected,
+		evt.ObservedUnknown,
+	)
+})
+```
+
+```go
+// internal/cli/cockpit/pages/status.go
+func (m *StatusPage) renderGraphAdmission(titleStyle lipgloss.Style, divider string) string {
+	var b strings.Builder
+	b.WriteString(titleStyle.Render("Graph Admission"))
+	b.WriteByte('\n')
+	b.WriteString(divider)
+	b.WriteByte('\n')
+	ga := m.snapshot.GraphAdmission
+	b.WriteString(fmt.Sprintf("Batches: %d\n", ga.Batches))
+	b.WriteString(fmt.Sprintf("Candidates: %d\n", ga.Candidates))
+	b.WriteString(fmt.Sprintf("Rejected: %d\n", ga.Rejected))
+	b.WriteString(fmt.Sprintf("Observed unknown: %d\n", ga.ObservedUnknown))
+	return b.String()
+}
+```
+
+- [ ] **Step 4: Run tests**
+
+Run:
+
+```bash
+go test ./internal/learning ./internal/observability -run 'GraphEngine_RecordFix_AdmissionEnforceFiltersUnknown|RecordGraphAdmissionBatch'
+```
+
+Expected: PASS
+
+- [ ] **Step 5: Commit**
+
+Run:
+
+```bash
+git add internal/learning/graph_engine.go internal/learning/graph_engine_test.go internal/app/wiring_knowledge.go internal/app/wiring_observability.go internal/observability/collector.go internal/cli/cockpit/pages/status.go
+git commit -m "feat: wire graph admission telemetry and direct writes"
+```
+
+## Task 6: Update Downstream Docs And Verify The Slice
 
 **Files:**
 - Modify: `README.md`
@@ -775,15 +1227,16 @@ git commit -m "docs: document runtime graph admission boundary"
 
 Spec coverage for this plan:
 
-- Dynamic runtime producer admission boundary: covered in Tasks 3 and 4.
-- Observe vs enforce mode: covered in Tasks 2, 3, and 4.
-- Single validator source of truth: covered in Task 4 by reusing the injected ontology validator closure.
-- Batch pre-filtering while retaining atomic writes: covered in Tasks 3 and 4.
-- Downstream docs and config surfaces: covered in Tasks 2 and 5.
+- Dynamic runtime producer admission boundary: covered in Tasks 3, 4, and 5.
+- Observe vs enforce mode: covered in Tasks 2, 3, 4, and 5.
+- Single validator source of truth: covered in Tasks 4 and 5 by reusing the injected ontology validator closure.
+- Batch pre-filtering while retaining atomic writes: covered in Tasks 3, 4, and 5.
+- Downstream docs and config surfaces: covered in Tasks 2 and 6.
 
 Intentional gaps:
 
 - CLI `graph import` is not in this plan.
+- `AssertFact`, ontology tools, ontology actions, and P2P fact assertion paths are not in this plan.
 - Adaptive shadow growth, schema candidate persistence, and replay hardening are not in this plan.
 
 Placeholder scan:
@@ -796,7 +1249,8 @@ Type consistency checks:
 
 - `AdmissionModeObserve` / `AdmissionModeEnforce`
 - `ProducerLearningEvent` / `ProducerLibrarianEvent`
-- `AdmissionCandidate`, `AdmissionRecord`, `AdmissionResult`
+- `AdmissionCandidate`, `AdmissionRecord`, `AdmissionResult`, `AdmissionBatchEvent`, `AdmissionStatsSnapshot`
+- `producerForExtractedEvent`, `publishAdmissionObservation`, `admitTriples`, `WithoutPredicateValidation`
 
 ## Execution Handoff
 
