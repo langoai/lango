@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add an observe-only runtime admission layer for app-path dynamic graph triple producers so Lango can classify unknown predicates and types, emit admission telemetry, and measure failure baselines without changing existing write routing yet.
+**Goal:** Add an observe-only runtime admission layer for app-path dynamic graph triple producers so Lango can classify unknown predicates, emit shared-validator and write-failure telemetry, and measure failure baselines without changing existing write routing yet.
 
 **Architecture:** This plan implements only `Change A / Phase A1` from the adaptive ontology growth design. It instruments runtime producers, computes admission decisions with the ontology validator closure, publishes graph-admission observability events, and records those metrics in the collector and status page. It does **not** filter, rewrite, or reroute writes; all existing enqueue and direct-store behavior stays intact.
 
@@ -17,7 +17,7 @@ This plan covers only the **observe-only runtime app sub-slice** from `Change A 
 - `TriplesExtractedEvent` producers that already flow through `internal/app/wiring_graph.go`
 - `GraphEngine` direct store writes when the event-bus handoff is not used
 - extractor-local dropped-unknown telemetry for the `content.saved` async extraction path
-- graph admission telemetry and status surfaces
+- graph admission, validator-source, and graph-write-failure telemetry and status surfaces
 - config and settings needed to turn observe mode on and off
 
 This plan explicitly does **not** cover:
@@ -26,6 +26,7 @@ This plan explicitly does **not** cover:
 - `CLI graph import`
 - `AssertFact`, ontology tools, ontology actions, and P2P fact assertion paths
 - any `enforce`-mode filtering or write dropping
+- unknown type classification beyond basic type-hint observability
 - adaptive shadow growth, schema candidate persistence, or replay hardening
 
 ## File Structure
@@ -59,10 +60,10 @@ This plan explicitly does **not** cover:
   Publish observe-only dropped-unknown telemetry for the current `content.saved` extraction path without widening extraction behavior.
 - `internal/app/wiring_knowledge.go`
   Pass the shared observe-mode policy into `GraphEngine`.
-- `internal/graph/extractor.go`
-  Publish observe-only dropped-unknown telemetry for the current extractor path without widening extraction behavior.
 - `internal/learning/graph_engine.go`
   Observe direct `AddTriples` writes before existing direct-store behavior.
+- `internal/graph/buffer.go`
+  Publish graph write failure baseline telemetry for batched graph writes.
 - `internal/eventbus/observability_events.go`
   Add the graph admission event type.
 - `internal/app/wiring_observability.go`
@@ -195,7 +196,7 @@ Use this content for `openspec/changes/runtime-admission-boundary-hardening/task
 - [ ] Add observe-mode admission config and defaults
 - [ ] Add graph admission policy and telemetry event types
 - [ ] Observe runtime event-bus and direct-store producer paths plus extractor dropped-unknown baseline
-- [ ] Add graph admission, dropped-unknown, unmapped-source, and graph-write-failure metrics to observability and cockpit status
+- [ ] Add graph admission, dropped-unknown, unmapped-source, shared-validator-source, validator/cache-mismatch, and graph-write-failure metrics to observability and cockpit status
 - [ ] Update docs and verify
 ```
 
@@ -417,6 +418,7 @@ type AdmissionProducer string
 const (
 	ProducerConversationAnalysis AdmissionProducer = "conversation_analysis"
 	ProducerSessionLearning      AdmissionProducer = "session_learning"
+	ProducerContentSavedExtractor AdmissionProducer = "content_saved_extractor"
 	ProducerUnknownSource        AdmissionProducer = "unknown_source"
 	ProducerLibrarianEvent       AdmissionProducer = "proactive_librarian"
 	ProducerGraphEngine          AdmissionProducer = "graph_engine"
@@ -449,6 +451,8 @@ type AdmissionBatchEvent struct {
 	ObservedUnknown int
 	ObservedTypeHints int
 	DroppedUnknown  int
+	ValidatorSource string
+	ValidatorCacheMismatch int
 }
 
 type AdmissionObserveResult struct {
@@ -481,6 +485,7 @@ func (p *AdmissionPolicy) ObserveBatch(candidates []AdmissionCandidate) Admissio
 		result.Event.Producer = candidates[0].Producer
 	}
 	result.Event.Candidates = len(candidates)
+	result.Event.ValidatorSource = "ontology_predicate_validator_closure"
 
 	for _, c := range candidates {
 		conf := p.defaultConfidence(c)
@@ -555,6 +560,8 @@ type GraphAdmissionBatchEvent struct {
 	ObservedUnknown int
 	ObservedTypeHints int
 	DroppedUnknown int
+	ValidatorSource string
+	ValidatorCacheMismatch int
 }
 
 func (e GraphAdmissionBatchEvent) EventName() string { return EventGraphAdmissionBatch }
@@ -758,7 +765,7 @@ type Extractor struct {
 // inside parseResponse unknown-predicate branch
 if !e.isValidPredicate(predicate) {
 	if e.onDroppedUnknown != nil {
-		e.onDroppedUnknown(DroppedUnknownPredicateEvent{
+	e.onDroppedUnknown(DroppedUnknownPredicateEvent{
 			SourceID:  sourceID,
 			Predicate: predicate,
 			Subject:   subject,
@@ -783,13 +790,15 @@ extractor = graph.NewExtractor(generator, logger(),
 		if gc.admissionPolicy == nil {
 			return
 		}
-		publishAdmissionObservation(bus, graph.AdmissionBatchEvent{
-			Producer:        graph.ProducerUnknownSource,
+	publishAdmissionObservation(bus, graph.AdmissionBatchEvent{
+			Producer:        graph.ProducerContentSavedExtractor,
 			Candidates:      1,
 			ObservedKnown:   0,
 			ObservedUnknown: 1,
 			ObservedTypeHints: 0,
 			DroppedUnknown:  1,
+			ValidatorSource: "extractor_local_validator",
+			ValidatorCacheMismatch: 0,
 		})
 	}),
 	graph.WithPredicateValidator(ontologyValidator),
@@ -879,12 +888,13 @@ func TestGraphEngine_RecordErrorGraph_ObserveModePreservesDirectWrite(t *testing
 
 func TestCollector_RecordGraphAdmissionBatch(t *testing.T) {
 	c := NewCollector()
-	c.RecordGraphAdmissionBatch("conversation_analysis", 3, 2, 1)
+	c.RecordGraphAdmissionBatch("conversation_analysis", 3, 2, 1, 1, 0, "ontology_predicate_validator_closure", 0)
 	c.RecordGraphAdmissionWriteFailure()
 	snap := c.Snapshot()
 	assert.Equal(t, int64(1), snap.GraphAdmission.Batches)
 	assert.Equal(t, int64(3), snap.GraphAdmission.Candidates)
 	assert.Equal(t, int64(1), snap.GraphAdmission.ObservedUnknown)
+	assert.Equal(t, int64(1), snap.GraphAdmission.ObservedTypeHints)
 	assert.Equal(t, int64(1), snap.GraphAdmission.WriteFailures)
 }
 ```
@@ -961,6 +971,8 @@ type GraphAdmissionSummary struct {
 	UnmappedSources int64
 	DroppedUnknown int64
 	WriteFailures int64
+	ValidatorSource string
+	ValidatorCacheMismatch int64
 }
 
 type SystemSnapshot struct {
@@ -983,7 +995,7 @@ type MetricsCollector struct {
 	graphAdmission GraphAdmissionSummary
 }
 
-func (c *MetricsCollector) RecordGraphAdmissionBatch(producer string, candidates, observedKnown, observedUnknown, observedTypeHints, droppedUnknown int) {
+func (c *MetricsCollector) RecordGraphAdmissionBatch(producer string, candidates, observedKnown, observedUnknown, observedTypeHints, droppedUnknown int, validatorSource string, validatorCacheMismatch int) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.graphAdmission.Batches++
@@ -995,6 +1007,8 @@ func (c *MetricsCollector) RecordGraphAdmissionBatch(producer string, candidates
 	if producer == "unknown_source" {
 		c.graphAdmission.UnmappedSources++
 	}
+	c.graphAdmission.ValidatorSource = validatorSource
+	c.graphAdmission.ValidatorCacheMismatch += int64(validatorCacheMismatch)
 }
 
 func (c *MetricsCollector) RecordGraphAdmissionWriteFailure() {
@@ -1017,8 +1031,54 @@ eventbus.SubscribeTyped[eventbus.GraphAdmissionBatchEvent](bus, func(evt eventbu
 		evt.ObservedUnknown,
 		evt.ObservedTypeHints,
 		evt.DroppedUnknown,
+		evt.ValidatorSource,
+		evt.ValidatorCacheMismatch,
 	)
 })
+```
+
+```go
+// internal/graph/buffer.go
+type GraphWriteFailureObserver func(count int, err error)
+
+type GraphBuffer struct {
+	store                Store
+	inner                *asyncbuf.BatchBuffer[GraphRequest]
+	logger               *zap.SugaredLogger
+	writeFailureObserver GraphWriteFailureObserver
+}
+
+func (b *GraphBuffer) SetWriteFailureObserver(fn GraphWriteFailureObserver) {
+	b.writeFailureObserver = fn
+}
+
+func (b *GraphBuffer) processBatch(batch []Triple) {
+	ctx := context.Background()
+	if err := b.store.AddTriples(ctx, batch); err != nil {
+		if b.writeFailureObserver != nil {
+			b.writeFailureObserver(len(batch), err)
+		}
+		b.logger.Errorw("batch graph update error", "count", len(batch), "error", err)
+	}
+}
+```
+
+```go
+// internal/app/modules.go after graph store / observability are available
+if gc != nil && gc.buffer != nil && m.bus != nil {
+	gc.buffer.SetWriteFailureObserver(func(count int, err error) {
+		m.bus.Publish(eventbus.GraphAdmissionBatchEvent{
+			Producer:              "graph_buffer_write_failure",
+			Candidates:            count,
+			ObservedKnown:         0,
+			ObservedUnknown:       0,
+			ObservedTypeHints:     0,
+			DroppedUnknown:        0,
+			ValidatorSource:       "graph_store_write_failure",
+			ValidatorCacheMismatch: 0,
+		})
+	})
+}
 ```
 
 ```go
@@ -1046,6 +1106,8 @@ func (m *StatusPage) renderGraphAdmission(titleStyle lipgloss.Style, divider str
 	b.WriteString(fmt.Sprintf("Dropped unknown: %d\n", ga.DroppedUnknown))
 	b.WriteString(fmt.Sprintf("Unmapped sources: %d\n", ga.UnmappedSources))
 	b.WriteString(fmt.Sprintf("Write failures: %d\n", ga.WriteFailures))
+	b.WriteString(fmt.Sprintf("Validator source: %s\n", ga.ValidatorSource))
+	b.WriteString(fmt.Sprintf("Validator/cache mismatch: %d\n", ga.ValidatorCacheMismatch))
 	return b.String()
 }
 ```
@@ -1066,6 +1128,7 @@ Run:
 
 ```bash
 git add internal/learning/graph_engine.go internal/learning/graph_engine_test.go internal/app/wiring_knowledge.go internal/app/wiring_observability.go internal/observability/types.go internal/observability/collector.go internal/observability/collector_test.go internal/cli/cockpit/pages/status.go
+git add internal/graph/buffer.go internal/app/modules.go
 git commit -m "feat: observe graph admission telemetry and direct writes"
 ```
 

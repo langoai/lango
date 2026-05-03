@@ -26,7 +26,7 @@ This creates four runtime failures:
 - Reuse and extend existing ontology and graph assets instead of duplicating them.
 - Introduce a single triple admission boundary for all dynamic or untrusted triple producers before unknown-predicate validation decisions.
 - Preserve user-response continuity even when ontology growth or graph storage fails.
-- Convert unknown predicates and types into mapped, proposed, shadow, quarantined, or dead-lettered outcomes.
+- Convert unknown predicates into mapped, proposed, shadow, quarantined, or dead-lettered outcomes, and treat unknown types as a separate lifecycle concern once the runtime has explicit type validation coverage.
 - Keep graph predicate validation as a final integrity guard, but feed it from one authoritative predicate state.
 - Define the first-wave retrieval, FTS5, governance, and replay semantics for shadow predicates.
 
@@ -336,7 +336,8 @@ Unknown predicate discovery is not an application error by default.
 
 The system should expose:
 
-- unknown predicate and type discovery counts;
+- unknown predicate discovery counts;
+- type-hint observability counts until true unknown-type validation exists;
 - extractor-local dropped-unknown counts for paths that still reject before admission;
 - unmapped producer-source counts;
 - canonical mapping counts;
@@ -347,6 +348,7 @@ The system should expose:
 - graph admission rejection reasons;
 - graph write failure counts after observed or admitted batches;
 - budget ledger consumption;
+- shared validator-source telemetry;
 - validator/cache mismatch count.
 
 These should land in internal status surfaces before any public doc claims are expanded.
@@ -384,8 +386,9 @@ Recommended split:
 
 - Change A: admission boundary hardening
   - Phase A1: runtime app observe-only sub-slice
-  - Includes: `TriplesExtractedEvent` producer observation, `GraphEngine` direct-write observation, extractor-local dropped-unknown baseline telemetry for `content.saved`, shared validator-source telemetry, and internal status surfaces
+  - Includes: `TriplesExtractedEvent` producer observation, `GraphEngine` direct-write observation, `GraphBuffer` write-failure baseline telemetry, extractor-local dropped-unknown baseline telemetry for `content.saved`, shared validator-source telemetry, validator/cache mismatch telemetry, and internal status surfaces
   - Excludes: `CLI import`, `AssertFact` growth-enabled paths, and any write filtering or dropping
+  - Defers: unknown type classification beyond basic type-hint observability
   - Phase A2: broader producer migration and enforcing admission routing on dynamic producers
   - producer inventory
   - single source of truth validation
