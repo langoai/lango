@@ -227,6 +227,13 @@ func deriveExecutionAttribution(sessionKey string) (string, string, bool) {
 	if sessionKey == "" {
 		return "", "", false
 	}
+	if strings.HasPrefix(sessionKey, "bg:") {
+		executionRef := strings.TrimSpace(strings.TrimPrefix(sessionKey, "bg:"))
+		if executionRef == "" {
+			return "", "", false
+		}
+		return string(mission.ExecutionKindTaskOSExecution), executionRef, true
+	}
 	parts := strings.Split(sessionKey, ":")
 	if len(parts) == 4 && parts[0] == "workflow" {
 		runID := strings.TrimSpace(parts[2])

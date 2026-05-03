@@ -540,7 +540,8 @@ func (p *MissionControlPage) renderMissionPane() string {
 			lines = append(lines, "    "+detail)
 		}
 		if summary := compactCollaborationSummary(mission.Collaboration); summary != "" {
-			lines = append(lines, "    "+summary)
+			maxWidth := max(24, p.width-8)
+			lines = append(lines, "    "+tui.Truncate(summary, maxWidth))
 		}
 		if mission.Kind == cockpit.MissionKindProposed {
 			if sourceLabel := strings.TrimSpace(compactProposalSourceLabel(mission)); sourceLabel != "" {

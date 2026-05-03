@@ -388,6 +388,33 @@ func TestMissionControlMissionPaneRendersCollaborationContext(t *testing.T) {
 	assert.Contains(t, view, "Waiting on teammate")
 }
 
+func TestMissionControlMissionPaneCompactsLongCollaborationSummaryInNarrowWidth(t *testing.T) {
+	t.Parallel()
+
+	page := loadedMissionControlPage(t, cockpit.MissionControlSnapshot{
+		Missions: []cockpit.MissionView{{
+			ID:     "m-1",
+			Kind:   cockpit.MissionKindActive,
+			Status: cockpit.MissionStatusRunning,
+			Title:  "Collaborative mission",
+			Collaboration: cockpit.CollaborationView{
+				ParticipantSummary: "researcher +3",
+				HandoffSummary:     "planner -> researcher",
+				StateHint:          "Waiting on teammate",
+				BudgetHint:         "12/15 delegation budget",
+				RecoveryHint:       "retry_with_hint after rate_limit",
+			},
+		}},
+	})
+	page.width = 48
+	page.height = 20
+
+	view := page.renderMissionPane()
+	assert.Contains(t, view, "people: researcher +3")
+	assert.NotContains(t, view, "retry_with_hint after rate_limit")
+	assert.Contains(t, view, "...")
+}
+
 func TestMissionControlFocusCycling(t *testing.T) {
 	t.Parallel()
 

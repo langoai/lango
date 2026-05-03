@@ -91,6 +91,45 @@ func TestCollaborationRuntimeBridge_StoresOnlyMissionAttributedRecords(t *testin
 	assert.Empty(t, bridge.ListRecoverySignals("mission-2"))
 }
 
+func TestCollaborationRuntimeBridge_StoresMissionAttributedBackgroundSignals(t *testing.T) {
+	t.Parallel()
+
+	bus := eventbus.New()
+	bridge := newCollaborationRuntimeBridge(bus)
+	client := testutil.TestEntClient(t)
+	store := mission.NewEntStore(client)
+	row, err := store.CreateMission(context.Background(), mission.CreateMissionInput{
+		SessionKey: "sess-1",
+		Title:      "Background mission",
+		SourceKind: "user",
+	})
+	require.NoError(t, err)
+	err = store.AppendExecutionLink(context.Background(), mission.AppendExecutionLinkInput{
+		MissionID:     row.ID.String(),
+		ExecutionKind: mission.ExecutionKindTaskOSExecution,
+		ExecutionRef:  "task-123",
+		LinkRole:      mission.LinkRolePrimary,
+	})
+	require.NoError(t, err)
+	bridge.SetMissionStore(store)
+
+	now := time.Date(2026, 5, 3, 13, 0, 0, 0, time.UTC)
+	origNow := eventTime
+	eventTime = func() time.Time { return now }
+	t.Cleanup(func() { eventTime = origNow })
+
+	bus.Publish(agentrt.BudgetAlertEvent{SessionID: "bg:task-123", Used: 7, Limit: 10})
+	bus.Publish(agentrt.RecoveryDecisionEvent{SessionKey: "bg:task-123", Action: "retry", CauseClass: "timeout"})
+
+	budget := bridge.ListBudgetSignals(row.ID.String())
+	recovery := bridge.ListRecoverySignals(row.ID.String())
+
+	require.Len(t, budget, 1)
+	assert.Equal(t, 7, budget[0].Used)
+	require.Len(t, recovery, 1)
+	assert.Equal(t, "retry", recovery[0].Action)
+}
+
 func TestCollaborationDelegationReader_ParsesOnlyDelegationEvents(t *testing.T) {
 	t.Parallel()
 
