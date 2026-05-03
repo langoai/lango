@@ -349,7 +349,7 @@ The system should expose:
 - graph write failure counts after observed or admitted batches;
 - budget ledger consumption;
 - shared validator-source telemetry;
-- validator/cache mismatch count.
+- validator/cache mismatch count after enforcing admission or shadow promotion paths.
 
 These should land in internal status surfaces before any public doc claims are expanded.
 
@@ -386,9 +386,9 @@ Recommended split:
 
 - Change A: admission boundary hardening
   - Phase A1: runtime app observe-only sub-slice
-  - Includes: `TriplesExtractedEvent` producer observation, `GraphEngine` direct-write observation, `GraphBuffer` write-failure baseline telemetry, extractor-local dropped-unknown baseline telemetry for `content.saved`, shared validator-source telemetry, validator/cache mismatch telemetry, and internal status surfaces
+  - Includes: `TriplesExtractedEvent` producer observation, `GraphEngine` direct-write observation, `GraphBuffer` write-failure baseline telemetry, extractor-local dropped-unknown baseline telemetry for `content.saved`, shared validator-source telemetry, and internal status surfaces
   - Excludes: `CLI import`, `AssertFact` growth-enabled paths, and any write filtering or dropping
-  - Defers: unknown type classification beyond basic type-hint observability
+  - Defers: unknown type classification beyond basic type-hint observability, and validator/cache mismatch telemetry
   - Phase A2: broader producer migration and enforcing admission routing on dynamic producers
   - producer inventory
   - single source of truth validation
