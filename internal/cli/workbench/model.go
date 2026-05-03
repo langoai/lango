@@ -80,7 +80,7 @@ func New(deps cockpit.Deps) *Model {
 
 	return newModel(
 		deps.Config,
-		pages.NewMissionControlPage(deps, chatModel),
+		pages.NewWorkbenchMissionControlPage(deps, chatModel),
 		chatModel,
 		deps.PendingApprovals,
 		deps.LearningBuffer,

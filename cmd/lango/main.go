@@ -55,6 +55,7 @@ import (
 	cliaccount "github.com/langoai/lango/internal/cli/smartaccount"
 	clistatus "github.com/langoai/lango/internal/cli/status"
 	"github.com/langoai/lango/internal/cli/tui"
+	"github.com/langoai/lango/internal/cli/workbench"
 	cliworkflow "github.com/langoai/lango/internal/cli/workflow"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/logging"
@@ -72,7 +73,13 @@ var (
 	BuildTime = "unknown"
 )
 
-var exitFn = os.Exit
+var (
+	exitFn          = os.Exit
+	runWorkbenchFn  = runWorkbench
+	runCockpitFn    = runCockpit
+	runChatFn       = runChat
+	isInteractiveFn = prompt.IsInteractive
+)
 
 type stoppableApplication interface {
 	Start(ctx context.Context) error
@@ -96,16 +103,24 @@ func main() {
 	tui.SetVersionInfo(Version, BuildTime)
 	cliboot.Version = Version
 
+	rootCmd := newRootCmd()
+	if err := rootCmd.Execute(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+func newRootCmd() *cobra.Command {
 	rootCmd := &cobra.Command{
 		Use:   "lango",
 		Short: "Lango - Fast AI Agent in Go",
 		Long:  `Lango is a high-performance AI agent built with Go, supporting multiple channels and tools.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if !prompt.IsInteractive() {
+			if !isInteractiveFn() {
 				return cmd.Help()
 			}
 			modeName, _ := cmd.Flags().GetString("mode")
-			return runCockpit(modeName)
+			return runWorkbenchFn(modeName)
 		},
 	}
 	rootCmd.PersistentFlags().String("mode", "", "Initial session mode (e.g., code-review, research, debug)")
@@ -245,10 +260,7 @@ func main() {
 	healthCmd.GroupID = "sys"
 	rootCmd.AddCommand(healthCmd)
 
-	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
+	return rootCmd
 }
 
 func runChat(initialMode string) error {
@@ -573,14 +585,14 @@ var withChannels bool
 func cockpitCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "cockpit",
-		Short:   "Launch multi-panel TUI (same as bare lango)",
+		Short:   "Launch multi-panel operator dashboard",
 		GroupID: "start",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if !prompt.IsInteractive() {
+			if !isInteractiveFn() {
 				return fmt.Errorf("cockpit requires an interactive terminal")
 			}
 			modeName, _ := cmd.Flags().GetString("mode")
-			return runCockpit(modeName)
+			return runCockpitFn(modeName)
 		},
 	}
 	cmd.Flags().String("mode", "", "Initial session mode (e.g., code-review, research, debug)")
@@ -596,16 +608,16 @@ func chatCmd() *cobra.Command {
 		Short:   "Launch plain chat TUI",
 		GroupID: "start",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if !prompt.IsInteractive() {
+			if !isInteractiveFn() {
 				return fmt.Errorf("chat requires an interactive terminal")
 			}
 			modeName, _ := cmd.Flags().GetString("mode")
-			return runChat(modeName)
+			return runChatFn(modeName)
 		},
 	}
 }
 
-func buildCockpitDeps(
+func buildMissionControlDeps(
 	application *app.App,
 	cfg *config.Config,
 	sessionKey string,
@@ -750,7 +762,7 @@ func runCockpit(initialMode string) error {
 	learningBuffer := cockpit.NewLearningSuggestionBuffer(nil)
 	activityBuffer := cockpit.NewMissionActivityBuffer()
 
-	cockpitDeps := buildCockpitDeps(
+	cockpitDeps := buildMissionControlDeps(
 		application,
 		cfg,
 		sessionKey,
@@ -839,6 +851,104 @@ func runCockpit(initialMode string) error {
 			}
 		}()
 	}
+
+	if composite, ok := application.ApprovalProvider.(*approval.CompositeProvider); ok {
+		composite.SetTTYFallback(chat.NewTUIApprovalProvider(func(msg interface{}) {
+			p.Send(msg)
+		}))
+	}
+
+	if _, err := p.Run(); err != nil {
+		return fmt.Errorf("TUI: %w", err)
+	}
+
+	return nil
+}
+
+func runWorkbench(initialMode string) error {
+	boot, err := cliboot.BootResult()
+	if err != nil {
+		return fmt.Errorf("bootstrap: %w", err)
+	}
+	defer boot.Close()
+
+	cfg := boot.Config
+	logPath := filepath.Join(cfg.DataRoot, "workbench.log")
+	if err := logging.Init(logging.LogConfig{
+		Level:      cfg.Logging.Level,
+		Format:     cfg.Logging.Format,
+		OutputPath: logPath,
+	}); err != nil {
+		return fmt.Errorf("init logging: %w", err)
+	}
+	defer func() { _ = logging.Sync() }()
+
+	if logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+		defer logFile.Close()
+		log.SetOutput(logFile)
+	}
+
+	tui.SetProfile(boot.ProfileName)
+
+	fmt.Fprint(os.Stderr, tui.Banner())
+	fmt.Fprintf(os.Stderr, "\n  Logs: %s\n", logPath)
+	fmt.Fprintln(os.Stderr, "  Initializing workbench...")
+
+	application, err := app.New(boot, app.WithLocalChat())
+	if err != nil {
+		return fmt.Errorf("create application: %w", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := application.Start(ctx); err != nil {
+		return fmt.Errorf("start application: %w", err)
+	}
+	defer func() {
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer shutdownCancel()
+		_ = application.Stop(shutdownCtx)
+	}()
+
+	sessionKey := fmt.Sprintf("workbench-%d", time.Now().UnixMilli())
+	defer func() {
+		if application.Store != nil {
+			_ = application.Store.End(sessionKey)
+		}
+	}()
+
+	if initialMode != "" {
+		if _, ok := cfg.LookupMode(initialMode); !ok {
+			return fmt.Errorf("unknown mode %q; valid modes can be listed via /mode", initialMode)
+		}
+		s := &session.Session{Key: sessionKey}
+		s.SetMode(initialMode)
+		if err := application.Store.Create(s); err != nil {
+			return fmt.Errorf("create initial session: %w", err)
+		}
+	}
+
+	pendingApprovals := cockpit.NewPendingApprovalRegistry()
+	learningBuffer := cockpit.NewLearningSuggestionBuffer(nil)
+	activityBuffer := cockpit.NewMissionActivityBuffer()
+
+	deps := buildMissionControlDeps(
+		application,
+		cfg,
+		sessionKey,
+		application.Store,
+		boot.ProfileName,
+		boot.Storage.ConfigProfiles(),
+		pendingApprovals,
+		learningBuffer,
+		activityBuffer,
+	)
+
+	model := workbench.New(deps)
+	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion())
+	model.SetProgram(p)
+	model.SetRuntimeTracker(cockpit.NewRuntimeTracker(application.EventBus, p, sessionKey))
 
 	if composite, ok := application.ApprovalProvider.(*approval.CompositeProvider); ok {
 		composite.SetTTYFallback(chat.NewTUIApprovalProvider(func(msg interface{}) {

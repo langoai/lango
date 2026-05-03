@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
 	"github.com/langoai/lango/internal/app"
@@ -169,7 +170,7 @@ func TestRunCockpitBuildDepsCarriesMissionService(t *testing.T) {
 	learning := cockpit.NewLearningSuggestionBuffer(nil)
 	activity := cockpit.NewMissionActivityBuffer()
 
-	deps := buildCockpitDeps(application, cfg, "sess-1", nil, "", nil, pending, learning, activity)
+	deps := buildMissionControlDeps(application, cfg, "sess-1", nil, "", nil, pending, learning, activity)
 
 	assert.Same(t, svc, deps.MissionService)
 	assert.Same(t, store, deps.MissionReader)
@@ -184,6 +185,90 @@ func TestRunCockpitBuildDepsCarriesMissionService(t *testing.T) {
 	assert.Same(t, collabRuntime, deps.CollabRuntime)
 	assert.Same(t, learning, deps.LearningBuffer)
 	assert.Same(t, activity, deps.ActivityBuffer)
+}
+
+func TestNewRootCmdRoutesInteractiveRootToWorkbench(t *testing.T) {
+	prevInteractive := isInteractiveFn
+	prevWorkbench := runWorkbenchFn
+	defer func() {
+		isInteractiveFn = prevInteractive
+		runWorkbenchFn = prevWorkbench
+	}()
+
+	isInteractiveFn = func() bool { return true }
+	called := false
+	gotMode := ""
+	runWorkbenchFn = func(mode string) error {
+		called = true
+		gotMode = mode
+		return nil
+	}
+
+	cmd := newRootCmd()
+	cmd.SetArgs([]string{"--mode", "research"})
+
+	err := cmd.Execute()
+	require.NoError(t, err)
+	assert.True(t, called)
+	assert.Equal(t, "research", gotMode)
+}
+
+func TestCockpitCmdRoutesToExplicitCockpitRunner(t *testing.T) {
+	prevInteractive := isInteractiveFn
+	prevCockpit := runCockpitFn
+	defer func() {
+		isInteractiveFn = prevInteractive
+		runCockpitFn = prevCockpit
+	}()
+
+	isInteractiveFn = func() bool { return true }
+	called := false
+	gotMode := ""
+	runCockpitFn = func(mode string) error {
+		called = true
+		gotMode = mode
+		return nil
+	}
+
+	cmd := newRootCmd()
+	cmd.SetArgs([]string{"cockpit", "--mode", "debug"})
+
+	err := cmd.Execute()
+	require.NoError(t, err)
+	assert.True(t, called)
+	assert.Equal(t, "debug", gotMode)
+}
+
+func TestChatCmdRoutesToExplicitChatRunner(t *testing.T) {
+	prevInteractive := isInteractiveFn
+	prevChat := runChatFn
+	defer func() {
+		isInteractiveFn = prevInteractive
+		runChatFn = prevChat
+	}()
+
+	isInteractiveFn = func() bool { return true }
+	called := false
+	gotMode := ""
+	runChatFn = func(mode string) error {
+		called = true
+		gotMode = mode
+		return nil
+	}
+
+	cmd := newRootCmd()
+	cmd.SetArgs([]string{"chat", "--mode", "review"})
+
+	err := cmd.Execute()
+	require.NoError(t, err)
+	assert.True(t, called)
+	assert.Equal(t, "review", gotMode)
+}
+
+func TestCockpitCommandHelpTextNoLongerClaimsBareEquivalence(t *testing.T) {
+	cmd := cockpitCmd()
+	assert.NotContains(t, cmd.Short, "same as bare lango")
+	assert.Contains(t, cmd.Short, "operator dashboard")
 }
 
 type stubMainMissionStore struct{}
