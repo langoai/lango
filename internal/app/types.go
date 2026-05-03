@@ -37,6 +37,7 @@ import (
 	"github.com/langoai/lango/internal/p2p/agentpool"
 	"github.com/langoai/lango/internal/p2p/team"
 	"github.com/langoai/lango/internal/payment"
+	"github.com/langoai/lango/internal/postadjudicationstatus"
 	"github.com/langoai/lango/internal/proposal"
 	"github.com/langoai/lango/internal/provenance"
 	"github.com/langoai/lango/internal/receipts"
@@ -168,6 +169,13 @@ type App struct {
 	ProposalPreparer proposal.Preparer
 	ProposalService  *proposal.Service
 
+	// Loop projection readers (optional, narrow first-slice surfaces)
+	LoopMissionReader    LoopMissionReader
+	LoopProposalReader   LoopProposalReader
+	LoopInquiryReader    LoopInquiryReader
+	LoopDeadLetterReader LoopDeadLetterReader
+	LoopCronReader       LoopCronReader
+
 	// Provenance Components (optional)
 	ProvenanceCheckpoints *provenance.CheckpointService
 	ProvenanceSessionTree *provenance.SessionTree
@@ -221,6 +229,26 @@ type App struct {
 
 	// wg tracks background goroutines for graceful shutdown
 	wg sync.WaitGroup
+}
+
+type LoopMissionReader interface {
+	ListMissionsBySession(ctx context.Context, sessionKey string, limit int) ([]*mission.Mission, error)
+}
+
+type LoopProposalReader interface {
+	ListBySession(sessionKey string) []proposal.Proposal
+}
+
+type LoopInquiryReader interface {
+	ListPendingInquiries(ctx context.Context, sessionKey string, limit int) ([]librarian.Inquiry, error)
+}
+
+type LoopDeadLetterReader interface {
+	ListCurrentDeadLetters(ctx context.Context) ([]postadjudicationstatus.DeadLetterBacklogEntry, error)
+}
+
+type LoopCronReader interface {
+	List(ctx context.Context) ([]cronpkg.Job, error)
 }
 
 // Channel represents a communication channel (Telegram, Discord, Slack)

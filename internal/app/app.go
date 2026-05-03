@@ -27,6 +27,7 @@ import (
 	"github.com/langoai/lango/internal/logging"
 	"github.com/langoai/lango/internal/observability"
 	"github.com/langoai/lango/internal/observability/audit"
+	"github.com/langoai/lango/internal/postadjudicationstatus"
 	"github.com/langoai/lango/internal/runledger"
 	"github.com/langoai/lango/internal/sandbox"
 	"github.com/langoai/lango/internal/session"
@@ -135,6 +136,7 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 
 	// B1. Populate app fields from resolver.
 	populateAppFields(app, resolver)
+	wireLoopReaders(app, boot)
 
 	// B1a. Wire the event bus into the supervisor's exec tool so that
 	// SandboxDecisionEvent records flow into the audit recorder.
@@ -413,6 +415,7 @@ func populateAppFields(app *App, r appinit.Resolver) {
 		if iv.LC != nil {
 			app.LibrarianInquiryStore = iv.LC.inquiryStore
 			app.LibrarianProactiveBuffer = iv.LC.proactiveBuffer
+			app.LoopInquiryReader = iv.LC.inquiryStore
 		}
 		if iv.AB != nil {
 			if ab, ok := iv.AB.(*learning.AnalysisBuffer); ok {
@@ -489,6 +492,7 @@ func populateAppFields(app *App, r appinit.Resolver) {
 	if mv, ok := r.Resolve(appinit.ProvidesMission).(*missionValues); ok && mv != nil {
 		app.MissionStore = mv.store
 		app.MissionService = mv.service
+		app.LoopMissionReader = mv.store
 		app.missionApprovalObserver = mv.approvalObserver
 		app.missionBackgroundLinker = mv.backgroundLinker
 		app.missionRunLedgerLinker = mv.runLedgerLinker
@@ -499,6 +503,7 @@ func populateAppFields(app *App, r appinit.Resolver) {
 		app.ProposalRegistry = pv.registry
 		app.ProposalPreparer = pv.preparer
 		app.ProposalService = pv.service
+		app.LoopProposalReader = pv.registry
 	}
 
 	// Provenance.
@@ -507,6 +512,20 @@ func populateAppFields(app *App, r appinit.Resolver) {
 		app.ProvenanceSessionTree = pv.sessionTree
 		app.ProvenanceAttribution = pv.attribution
 		app.ProvenanceBundle = pv.bundle
+	}
+}
+
+func wireLoopReaders(app *App, boot *bootstrap.Result) {
+	if app == nil {
+		return
+	}
+	if app.ReceiptStore != nil {
+		app.LoopDeadLetterReader = postadjudicationstatus.NewService(app.ReceiptStore)
+	}
+	if boot != nil && boot.Storage != nil {
+		if cronStore := boot.Storage.Cron(); cronStore != nil {
+			app.LoopCronReader = cronStore
+		}
 	}
 }
 

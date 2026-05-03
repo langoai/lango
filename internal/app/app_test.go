@@ -11,12 +11,15 @@ import (
 	"github.com/langoai/lango/internal/approval"
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/librarian"
 	"github.com/langoai/lango/internal/mission"
 	"github.com/langoai/lango/internal/proposal"
+	"github.com/langoai/lango/internal/receipts"
 	"github.com/langoai/lango/internal/runledger"
 	"github.com/langoai/lango/internal/storage"
 	"github.com/langoai/lango/internal/testutil"
 	"github.com/langoai/lango/internal/toolchain"
+	"github.com/langoai/lango/internal/workflow"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -242,6 +245,77 @@ func TestPopulateAppFields_ProposalComponents(t *testing.T) {
 	assert.Same(t, registry, app.ProposalRegistry)
 	assert.Same(t, preparer, app.ProposalPreparer)
 	assert.Same(t, service, app.ProposalService)
+	assert.Same(t, registry, app.LoopProposalReader)
+}
+
+func TestPopulateAppFields_LoopReadersFromMissionAndInquirySources(t *testing.T) {
+	t.Parallel()
+
+	client := testutil.TestEntClient(t)
+	missionStore := mission.NewEntStore(client)
+	proposalRegistry := proposal.NewRegistry(nil)
+
+	app := &App{}
+	populateAppFields(app, staticResolver{
+		appinit.ProvidesMission: &missionValues{
+			store:   missionStore,
+			service: mission.NewService(missionStore),
+		},
+		appinit.ProvidesProposal: &proposalValues{
+			registry: proposalRegistry,
+			preparer: proposal.NewDeterministicPreparer(),
+			service:  proposal.NewService(proposalRegistry, nil),
+		},
+		appinit.ProvidesKnowledge: &intelligenceValues{
+			LC: &librarianComponents{
+				inquiryStore: &librarian.InquiryStore{},
+			},
+		},
+	})
+
+	assert.Same(t, missionStore, app.LoopMissionReader)
+	assert.Same(t, proposalRegistry, app.LoopProposalReader)
+	assert.NotNil(t, app.LoopInquiryReader)
+}
+
+func TestWireLoopReaders_DeadLetterAndCronReadersWhenAvailable(t *testing.T) {
+	t.Parallel()
+
+	client := testutil.TestEntClient(t)
+	boot := &bootstrap.Result{
+		Storage: storage.NewFacade(nil, nil, storage.WithEntClient(client)),
+	}
+	app := &App{
+		ReceiptStore: receipts.NewStore(),
+	}
+
+	wireLoopReaders(app, boot)
+
+	require.NotNil(t, app.LoopDeadLetterReader)
+	require.NotNil(t, app.LoopCronReader)
+}
+
+func TestWireLoopReaders_UnsupportedSourcesRemainNil(t *testing.T) {
+	t.Parallel()
+
+	app := &App{}
+	wireLoopReaders(app, &bootstrap.Result{})
+
+	assert.Nil(t, app.LoopDeadLetterReader)
+	assert.Nil(t, app.LoopCronReader)
+}
+
+func TestPopulateAppFields_WorkflowDoesNotFabricateCronLoopReader(t *testing.T) {
+	t.Parallel()
+
+	app := &App{}
+	populateAppFields(app, staticResolver{
+		appinit.ProvidesAutomation: &automationValues{
+			WorkflowEngine: &workflow.Engine{},
+		},
+	})
+
+	assert.Nil(t, app.LoopCronReader)
 }
 
 func TestNew_MissionApprovalObserverWiredAtCompositionSite(t *testing.T) {
@@ -312,4 +386,8 @@ func TestNew_ProposalServiceAvailableForLaterMutationUse(t *testing.T) {
 	require.NotNil(t, app.ProposalRegistry)
 	require.NotNil(t, app.ProposalPreparer)
 	require.NotNil(t, app.ProposalService)
+	require.NotNil(t, app.LoopProposalReader)
+	require.NotNil(t, app.LoopMissionReader)
+	require.NotNil(t, app.LoopDeadLetterReader)
+	require.NotNil(t, app.LoopCronReader)
 }
