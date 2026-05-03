@@ -38,7 +38,7 @@ The cockpit requires an interactive terminal with TTY support.
 
 | Page | Description | Notes |
 |------|-------------|-------|
-| **Mission Control** | Default first screen with durable missions first, one live pending decision, recent activity, unmatched runtime overlays, and an inline composer | Chat remains available by typing here or via `lango chat` |
+| **Mission Control** | Default first screen with durable missions first, one live pending decision, a compact agenda/loops layer, recent activity, unmatched runtime overlays, and an inline composer | Chat remains available by typing here or via `lango chat` |
 | **Chat** | Focused AI conversation page inside cockpit | `Ctrl+1`; `lango chat` bypasses cockpit entirely |
 | **Settings** | Interactive configuration viewer | Always has content |
 | **Tools** | Tool inventory with agent assignments and invocation counts | Shows empty if ToolCatalog is nil |
@@ -75,6 +75,7 @@ Mission Control is the default cockpit landing surface. It is a sidebar-first pa
 - **Runtime overlays** — background/runtime work that is still unlinked to a durable mission remains visible as overlay instead of disappearing. Foreign-session background work is filtered out when it carries a different `OriginSession`.
 - **Proactive proposals** — transient, session-scoped proposal records now render as first-class proposed rows. In the current slice, only learning suggestions actively create proposals.
 - **Decisions lane** — the latest pending approval is shown as one live decision with action, reason, effect, and risk, while durable mission rows can separately show coarse `waiting_decision` state.
+- **Agenda lane** — a compact loop surface renders operator loops in deterministic priority order without replacing the mission board.
 - **Activity lane** — recent deterministic activity is listed as compact timeline entries.
 - **Composer** — the first-screen hint is: "Type to chat here, or use `lango chat` for focused chat."
 
@@ -86,6 +87,8 @@ Current landed behavior:
 - accepting a prepared proposal creates the first durable mission row and preserves the prepared brief context on the mission path before the transient proposal leaves the active set
 - `waiting_decision` is a coarse durable mission state, not a durable approval queue
 - Mission Control can stay visible while a pending approval is active, and resolving that decision uses the same shared approval path as the chat surface
+- loops are projected only from real existing sources already wired into the app: durable missions, pending inquiries, dead-letter backlog, cron jobs, and deterministic follow-up signals
+- agenda ordering is deterministic: waiting-user, blocked, active, scheduled, needs-review, then resolved; ties break by newer updates first
 
 Current limits:
 
@@ -94,6 +97,9 @@ Current limits:
 - the activity lane remains deterministic runtime rendering, not LLM-generated humanized narration
 - task tracking stays lightweight and separate from mission truth; the Tasks page and `TaskEntry` tooling are not the authoritative durable mission checklist model
 - RunLedger and AgentRun remain enrichments for durable or unmatched runtime rows. When those readers or mission details are unavailable, Mission Control shows a degraded note instead of inventing values
+- scheduled automation loops mean cron jobs only in this slice; workflow runs are not projected as scheduled loops yet
+- dead-letter loops and cron loops are operator-global in the current slice, while mission loops, inquiry loops, and follow-up loops are scoped to the current cockpit session
+- no calendar, inbox, or external task-system loop integrations exist yet; the loop slice only renders sources that already exist in code
 
 ## Context Panel
 
