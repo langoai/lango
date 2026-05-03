@@ -105,6 +105,7 @@ Important Wave 1 constraint:
 - The default design assumption for Wave 1 is the existing-API two-step path: register as `proposed`, then promote to `shadow`, then admit only after the shared validator closure recognizes the refreshed shadow predicate.
 - This shadow-promotion path is part of the broader admission-hardening program, not the `Phase A1 observe-only runtime app sub-slice`.
 - Any future runtime that performs `PromotePredicate(proposed -> shadow)` automatically must define which internal admin-capable principal or API performs that transition when ACL is enabled.
+- That execution identity is explicitly deferred beyond `Phase A1`; no automatic schema mutation occurs in the observe-only slice.
 
 ## Producer Call-Site Inventory
 
@@ -390,7 +391,7 @@ Recommended split:
   - Phase A1: runtime app observe-only sub-slice
   - Includes: current runtime `TriplesExtractedEvent` producer observation, aggregate `GraphBuffer` write-failure baseline telemetry, extractor-local dropped-unknown baseline telemetry for `content.saved`, shared validator-source telemetry, and internal status surfaces
   - Excludes: `CLI import`, `AssertFact` growth-enabled paths, and any write filtering or dropping
-  - Defers: unknown type classification beyond basic type-hint observability, validator/cache mismatch telemetry, and dormant direct-store producer paths not used in the default runtime
+  - Defers: unknown type classification beyond basic type-hint observability, validator/cache mismatch telemetry, dormant direct-store producer paths not used in the default runtime, and ACL-governed shadow promotion execution identity
   - Phase A2: broader producer migration and enforcing admission routing on dynamic producers
   - producer inventory
   - single source of truth validation

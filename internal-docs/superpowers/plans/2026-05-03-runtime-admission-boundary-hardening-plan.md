@@ -196,7 +196,7 @@ Use this content for `openspec/changes/runtime-admission-boundary-hardening/task
 
 - [ ] Add observe-mode admission config and defaults
 - [ ] Add graph admission policy and telemetry event types
-- [ ] Observe runtime event-bus and direct-store producer paths plus extractor dropped-unknown baseline
+- [ ] Observe runtime event-bus producer paths plus extractor dropped-unknown baseline
 - [ ] Add graph admission, dropped-unknown, unmapped-source, shared-validator-source, and graph-write-failure metrics to observability and cockpit status
 - [ ] Update docs and verify
 ```
@@ -808,7 +808,7 @@ extractor = graph.NewExtractor(generator, logger(),
 			ObservedUnknown: 1,
 			ObservedTypeHints: 0,
 			DroppedUnknown:  1,
-			ValidatorSource: "extractor_local_validator",
+			ValidatorSource: "ontology_predicate_validator_closure",
 		})
 	}),
 	graph.WithPredicateValidator(ontologyValidator),
@@ -1068,7 +1068,7 @@ Apply content like this:
 
 ```md
 <!-- docs/configuration.md -->
-| `ontology.governance.admissionMode` | `string` | `observe` | Observe-only runtime admission mode for app-path graph producers |
+| `ontology.governance.admissionMode` | `string` | `off` | Disabled or observe-only runtime admission mode for app-path graph producers |
 | `ontology.governance.learningDefaultConfidence` | `float64` | `0.60` | Fallback confidence for learning-derived graph events |
 | `ontology.governance.librarianDefaultConfidence` | `float64` | `0.50` | Fallback confidence for librarian-derived graph events |
 ```
