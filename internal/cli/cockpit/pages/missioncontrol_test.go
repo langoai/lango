@@ -375,6 +375,7 @@ func TestMissionControlMissionPaneRendersCollaborationContext(t *testing.T) {
 			Status: cockpit.MissionStatusRunning,
 			Title:  "Collaborative mission",
 			Collaboration: cockpit.CollaborationView{
+				ActiveOwner:        "reviewer",
 				ParticipantSummary: "researcher +1",
 				HandoffSummary:     "planner -> researcher",
 				StateHint:          "Waiting on teammate",
@@ -383,6 +384,7 @@ func TestMissionControlMissionPaneRendersCollaborationContext(t *testing.T) {
 	})
 
 	view := page.View()
+	assert.Contains(t, view, "owner: reviewer")
 	assert.Contains(t, view, "people: researcher +1")
 	assert.Contains(t, view, "planner -> researcher")
 	assert.Contains(t, view, "Waiting on teammate")

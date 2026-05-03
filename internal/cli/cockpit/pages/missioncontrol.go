@@ -777,6 +777,9 @@ func compactPreparedBrief(brief proposal.PreparedBrief) string {
 
 func compactCollaborationSummary(view cockpit.CollaborationView) string {
 	parts := make([]string, 0, 5)
+	if text := strings.TrimSpace(view.ActiveOwner); text != "" {
+		parts = append(parts, "owner: "+text)
+	}
 	if text := strings.TrimSpace(view.ParticipantSummary); text != "" {
 		parts = append(parts, "people: "+text)
 	}
