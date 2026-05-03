@@ -80,6 +80,26 @@ func TestParticipantExtraction(t *testing.T) {
 	assert.Equal(t, "reviewer", views[0].ActiveOwner)
 }
 
+func TestActiveOwnerFallsBackToLatestAttributedRunWhenNoHandoffExists(t *testing.T) {
+	t.Parallel()
+
+	projector := NewProjector()
+	now := time.Date(2026, 5, 3, 12, 0, 0, 0, time.UTC)
+
+	views := projector.Project(ProjectionInput{
+		Missions: []MissionSource{
+			{MissionID: "mission-1", ExecutionRefs: []string{"exec-1", "exec-2"}, UpdatedAt: now},
+		},
+		AgentRuns: []AgentRunSource{
+			{ExecutionRef: "exec-1", RequestedAgent: "researcher", UpdatedAt: now.Add(-2 * time.Minute)},
+			{ExecutionRef: "exec-2", RequestedAgent: "reviewer", UpdatedAt: now.Add(-time.Minute)},
+		},
+	})
+
+	require.Len(t, views, 1)
+	assert.Equal(t, "reviewer", views[0].ActiveOwner)
+}
+
 func TestBlockedOnApprovalWaitingOnTeammateRecoveringStates(t *testing.T) {
 	t.Parallel()
 

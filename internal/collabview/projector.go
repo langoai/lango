@@ -3,6 +3,7 @@ package collabview
 import (
 	"slices"
 	"strings"
+	"time"
 )
 
 type Projector struct{}
@@ -30,11 +31,18 @@ func (p *Projector) Project(in ProjectionInput) []CollaborationView {
 		}
 
 		participantSet := make(map[string]struct{})
+		var latestAttributedOwner string
+		var latestAttributedOwnerAt time.Time
 		for _, run := range in.AgentRuns {
 			if !attributed(execRefs, run.ExecutionRef) {
 				continue
 			}
-			addParticipant(participantSet, strings.TrimSpace(run.RequestedAgent))
+			owner := strings.TrimSpace(run.RequestedAgent)
+			addParticipant(participantSet, owner)
+			if owner != "" && (latestAttributedOwner == "" || run.UpdatedAt.After(latestAttributedOwnerAt)) {
+				latestAttributedOwner = owner
+				latestAttributedOwnerAt = run.UpdatedAt
+			}
 			if run.UpdatedAt.After(view.UpdatedAt) {
 				view.UpdatedAt = run.UpdatedAt
 			}
@@ -142,12 +150,7 @@ func (p *Projector) Project(in ProjectionInput) []CollaborationView {
 		}
 
 		if view.ActiveOwner == "" {
-			for _, run := range in.AgentRuns {
-				if attributed(execRefs, run.ExecutionRef) && strings.TrimSpace(run.RequestedAgent) != "" {
-					view.ActiveOwner = strings.TrimSpace(run.RequestedAgent)
-					break
-				}
-			}
+			view.ActiveOwner = latestAttributedOwner
 		}
 
 		if len(participantSet) > 0 {
