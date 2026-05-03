@@ -782,8 +782,10 @@ func observeExtractedTriples(policy *graph.AdmissionPolicy, evt eventbus.Triples
 
 ```go
 // internal/app/modules.go immediately before initKnowledge(...)
-if gc != nil && ontologyResult != nil && ontologyResult.Service != nil && cfg.Ontology.Enabled && cfg.Ontology.Governance.AdmissionMode == "observe" {
+if gc != nil && ontologyResult != nil && ontologyResult.Service != nil && cfg.Ontology.Enabled {
 	gc.predicateValidator = ontologyResult.Service.PredicateValidator()
+}
+if gc != nil && gc.predicateValidator != nil && cfg.Ontology.Governance.AdmissionMode == "observe" {
 	gc.admissionPolicy = graph.NewAdmissionPolicy(graph.AdmissionConfig{
 		Validator: gc.predicateValidator,
 		DefaultConfidence: map[graph.AdmissionProducer]float64{
@@ -809,11 +811,7 @@ eventbus.SubscribeTyped(bus, func(evt eventbus.TriplesExtractedEvent) {
 	if len(graphTriples) == 0 {
 		return
 	}
-	gc.buffer.Enqueue(graph.GraphRequest{
-		Triples:     graphTriples,
-		Producer:    string(producerForExtractedEvent(evt.Source)),
-		SourceLabel: evt.Source,
-	})
+	gc.buffer.Enqueue(graph.GraphRequest{Triples: graphTriples})
 })
 ```
 
@@ -889,11 +887,7 @@ sourceTag := fmt.Sprintf("content_saved_extractor:%s:%s", evt.Source, evt.Collec
 triples, err := extractor.Extract(ctx, evt.Content, evt.ID, sourceTag)
 observed := graph.ObserveTriples(gc.admissionPolicy, graph.ProducerContentSavedExtractor, sourceTag, triples)
 if len(observed) > 0 {
-	gc.buffer.Enqueue(graph.GraphRequest{
-		Triples:     observed,
-		Producer:    string(graph.ProducerContentSavedExtractor),
-		SourceLabel: sourceTag,
-	})
+	gc.buffer.Enqueue(graph.GraphRequest{Triples: observed})
 }
 ```
 
