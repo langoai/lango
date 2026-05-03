@@ -2,221 +2,352 @@
 
 ## Context
 
-Lango's knowledge, learning, ontology, graph, and FTS5 systems are intended to support an agent that can collect, classify, organize, retrieve, and evolve knowledge over time. The current graph ingestion path treats unknown predicates as storage errors. This makes the ontology act like a static allowlist instead of a self-improving schema layer.
+Lango's knowledge, learning, ontology, graph, and FTS5 systems are meant to support an agent that can collect, classify, organize, retrieve, and evolve knowledge over time. The runtime already contains most of the ontology lifecycle primitives needed for that goal, including predicate lifecycle statuses, graph buffering, truth maintenance, entity alias resolution, and governance configuration.
 
-The observed failure mode is a batch graph update error such as `unknown predicate "includes"` or `unknown predicate "defines"`. These predicates are semantically useful discoveries, but they are not part of the seeded ontology predicate set. Because graph writes are batched, one unknown predicate can reject an entire graph update batch.
+The current failure mode is not the absence of ontology infrastructure. The problem is that unknown predicates discovered by LLM-driven producers reach existing validation gates before they are normalized, proposed, shadowed, or quarantined. As a result, semantically useful discoveries such as `includes` or `defines` are treated as graph write errors instead of schema growth signals.
 
-## Problem
+## Problem Statement
 
-Unknown ontology terms are currently handled too late in the pipeline. They reach the graph store validator before they have been normalized, proposed, shadowed, or quarantined.
+Unknown ontology terms are currently rejected too late and at multiple boundaries:
 
-This causes three product-level failures:
+- `OntologyService.ValidateTriple` rejects unknown or deprecated predicates.
+- `graph.BoltStore.putTriple` rejects unknown predicates when a validator is injected.
+- Several producers and tool paths write directly to `GraphBuffer`, `graph.Store.AddTriples`, or `AssertFact` without a single admission path.
 
-- User-facing agent behavior becomes coupled to background knowledge growth failures.
-- LLM-discovered schema extensions are treated as errors instead of growth signals.
-- Valid triples in the same batch can be lost because one invalid predicate aborts the batch transaction.
+This creates four runtime failures:
+
+- Background knowledge growth can fail noisily even when the user-facing response succeeds.
+- LLM-discovered schema extensions are treated as hard errors instead of governance candidates.
+- One invalid triple can roll back an entire BoltDB batch transaction.
+- The current behavior depends on which producer path emitted the triple.
 
 ## Goals
 
-- Preserve user response continuity even when ontology or graph growth fails.
-- Convert unknown predicates and types into ontology growth candidates.
-- Allow high-confidence schema discoveries to become usable through `shadow` status.
-- Normalize obvious semantic aliases such as `includes` to canonical predicates such as `contains`.
-- Keep graph storage validation as a final integrity guard, not the first discovery mechanism.
-- Provide observable metrics and operator review surfaces for automatic schema growth.
+- Reuse and extend existing ontology and graph assets instead of duplicating them.
+- Introduce a single triple admission boundary before all unknown-predicate validation decisions.
+- Preserve user-response continuity even when ontology growth or graph storage fails.
+- Convert unknown predicates and types into mapped, proposed, shadow, quarantined, or dead-lettered outcomes.
+- Keep graph predicate validation as a final integrity guard, but feed it from one authoritative predicate state.
+- Define the first-wave retrieval, FTS5, governance, and replay semantics for shadow predicates.
 
 ## Non-Goals
 
-- Do not make every LLM-created relation immediately active.
-- Do not remove graph predicate validation.
-- Do not bypass ontology governance or schema lifecycle rules.
-- Do not make public documentation claims before the feature is implemented and wired.
+- Do not replace the existing ontology lifecycle FSM.
+- Do not remove `ValidateTriple` or graph store predicate validation.
+- Do not invent a second independent dead-letter subsystem unrelated to existing replay/status patterns.
+- Do not assume automatic active promotion is already implemented everywhere because config and docs mention it.
+
+## Existing Assets And Change Scope
+
+| Asset | Exists Today | Role In This Design | Change Scope |
+|---|---|---|---|
+| `PredicateDefinition.Status` with `proposed/quarantined/shadow/active/deprecated` | Yes | Reused as the only schema lifecycle model | No new status model; admission feeds existing statuses |
+| `OntologyService.RegisterPredicate`, `PromotePredicate`, `PredicateValidator` | Yes | Reused as authoritative schema and validation API | Extend usage, not replace API |
+| `CandidateTriple` in truth maintenance | Yes | Stays as conflict snapshot model | No reuse for ingestion; new admission candidate type is separate and narrower in purpose |
+| `AliasStore`, `DeclareSameAs`, `Merge`, `Split` | Yes | Reused for entity canonicalization patterns | Predicate aliasing may extend the pattern, but does not replace entity alias storage |
+| `GraphBuffer` | Yes | Remains the batch write stage after admission | Inputs change; buffer remains the batcher |
+| `graph.BoltStore` validator injection | Yes | Remains final store-level guard | No independent predicate state inside store; it consumes the ontology validator closure |
+| Post-adjudication dead-letter status and replay surfaces | Yes | Reused as architectural pattern for inspect/replay UX | New admission dead letters may reuse storage/replay conventions, not the receipt-domain records themselves |
+| `GovernancePolicy` fields such as `MaxNewPerDay`, `SchemaExplosionBudget`, `MinUsageForPromotion` | Yes | Reused as policy knobs | Runtime enforcement must be clarified and extended where not yet implemented |
 
 ## Recommended Policy
 
-Use an `adaptive-shadow` policy.
+Use an `adaptive-shadow` policy, but ground it in existing ontology governance rather than a new parallel schema system.
 
-Unknown ontology terms move through a deterministic admission process:
+Unknown ontology terms move through one deterministic admission sequence:
 
-1. Check whether the predicate or type is already known.
-2. Try semantic normalization against existing canonical schema entries.
-3. Score confidence from source, repetition, subject/object type evidence, and lexical similarity.
-4. Check governance rate limits and schema growth budgets.
-5. Admit, map, shadow, propose, quarantine, or dead-letter the candidate.
+1. Resolve whether the predicate or type is already `active` or `shadow`.
+2. Attempt canonical mapping to an existing predicate.
+3. Evaluate confidence and source evidence.
+4. Check governance and schema growth budgets.
+5. Decide one of `known`, `mapped`, `shadow`, `proposed`, `quarantined`, or `dead-lettered`.
 
-The default decisions are:
+Decision meanings:
 
-- `known`: Store the triple as-is.
-- `mapped`: Rewrite to a canonical predicate and store the mapped triple.
-- `shadow`: Register a high-confidence new predicate or type as `shadow`, refresh validation, and store the triple.
-- `proposed`: Persist the schema candidate and sample evidence, but do not store the graph triple.
-- `quarantined`: Persist evidence for suspicious, generic, conflicting, or explosive schema candidates.
-- `dead-lettered`: Persist failed admission or storage attempts for later replay.
+- `known`: existing `active` or `shadow` schema entry; admit unchanged.
+- `mapped`: rewrite to a canonical predicate and admit the rewritten triple.
+- `shadow`: register or import a new predicate/type into existing `shadow` lifecycle state, then admit.
+- `proposed`: persist the candidate and evidence, but do not admit the triple to the graph.
+- `quarantined`: persist the candidate and rejection reason because it is too generic, conflicting, or explosive.
+- `dead-lettered`: admission already decided the triple should be admitted, but a later storage or consistency step failed.
 
-`shadow` means "usable but experimental." Shadow predicates may participate in graph storage and retrieval, but they are reported separately from active schema and require evidence before promotion.
+`shadow` continues to mean "usable but experimental." The design does not create a second shadow concept.
 
-## Architecture
+## Authoritative Validation Model
 
-Introduce an ontology admission layer between all raw triple producers and the graph buffer.
+There must be one source of truth for predicate validity.
+
+- The authoritative predicate state is the ontology service predicate cache behind `PredicateValidator()`.
+- `ValidateTriple` and the graph store validator must both consume that same predicate truth.
+- The graph store must not maintain a separate predicate set.
+- "Refresh predicate validator immediately" means refreshing the ontology service cache and continuing to use the same closure already injected into `BoltStore`.
+
+This matters because the current runtime rejects unknown predicates in two places. The design is valid only if both gates read from the same refreshed ontology state.
+
+## Producer Call-Site Inventory
+
+The admission boundary is only meaningful if it covers the real producer set.
+
+| Producer Path | Current Entry | Current Validation Path | Confidence Available Today | First-Wave Action |
+|---|---|---|---|---|
+| `internal/learning/parse.go` -> `TriplesExtractedEvent` -> `internal/app/wiring_graph.go` | Event bus to `GraphBuffer` | Graph store validator only | No explicit numeric confidence on event triple | Route through admission in event subscriber; add confidence/source metadata or default producer policy |
+| `internal/librarian/proactive_buffer.go` -> `TriplesExtractedEvent` | Event bus to `GraphBuffer` | Graph store validator only | No explicit numeric confidence on event triple | Same as learning event path |
+| `internal/learning/graph_engine.go` direct graph writes | `graph.Store.AddTriples` | Graph store validator only | Producer-local knowledge of source exists; no shared admission shape | Reroute through admission batch API before direct store writes |
+| `internal/ontology/truth.go` via `AssertFact` | `ValidateTriple` before truth maintenance | Ontology validator first | Yes, `AssertionInput.Confidence` exists today | Reuse confidence; route schema discovery before `ValidateTriple` hard rejection |
+| `internal/app/wiring_graph.go` content saved containment triples | `GraphBuffer` | Known seeded predicates | Deterministic | May bypass dynamic admission if producer is restricted to seeded predicates |
+| `internal/memory/graph_hooks.go` | `GraphBuffer` | Known seeded predicates | Deterministic | May bypass dynamic admission if producer is restricted to seeded predicates |
+| `internal/cli/graph/import_cmd.go` | Direct `AddTriples` | Graph store validator only | Import payload dependent | Route import through admission batch API |
+| Ontology tools and actions using `AssertFact` | `OntologyService.AssertFact` | `ValidateTriple` first | Tool input controlled | Admission must sit before unknown-predicate rejection for growth-enabled flows |
+
+The key boundary decision is this: deterministic internal producers that emit only seeded predicates may keep a fast path, but every path that can emit LLM- or user-supplied arbitrary predicates must use the same admission API.
+
+## Admission Architecture
+
+This is an extend-not-duplicate design.
 
 ```text
-Knowledge / Learning / Librarian / Extractor
-  -> raw TripleCandidate
+raw producer
   -> TripleAdmissionPolicy
-  -> OntologyGrowthEngine
-  -> AdmissionResult
-  -> accepted triples only
-  -> GraphBuffer
-  -> GraphStore
+  -> ontology-backed decision
+  -> admitted triples only
+  -> existing GraphBuffer
+  -> existing graph.Store
 ```
 
 ### Components
 
-`TripleCandidate`
+`AdmissionCandidate`
 
-Represents a raw triple emitted by an LLM, learning engine, librarian process, or extractor. It includes subject, predicate, object, optional types, source, confidence, session key, turn ID, and producer name.
+New narrow input model for graph admission. This is not a replacement for truth-maintenance `CandidateTriple`. It carries raw subject, predicate, object, optional types, source, producer, session key, turn ID, confidence, and evidence metadata.
 
 `TripleAdmissionPolicy`
 
-Provides the single entry point for graph admission. It accepts a `TripleCandidate` and returns an `AdmissionResult`. It is responsible for normalizing, filtering, and routing candidates before they reach `GraphBuffer`.
+New single entry point for graph-bound triples. It is responsible for canonical mapping, governance-aware admission, and routing to proposal/quarantine/dead-letter outcomes.
 
 `OntologyGrowthEngine`
 
-Evaluates unknown predicates and types. It checks existing ontology state, alias rules, semantic similarity, confidence, governance policy, and schema growth budget. It may create proposed or shadow schema entries through `OntologyService`.
+New orchestration layer that reuses existing ontology service operations. It does not own lifecycle state. It decides whether to call `RegisterPredicate`, `PromotePredicate`, or only persist candidate evidence.
 
-`SchemaProposalStore`
+`SchemaCandidateStore`
 
-Persists discovered candidates, source evidence, sample triples, status, counts, last seen time, last error, and promotion hints. This store is the review and replay substrate.
+New or extended persistence for schema candidates and evidence. This records unknown predicate/type discoveries, source evidence, confidence, counts, rejection reasons, and schema version observations.
 
 `GraphAdmissionDeadLetterStore`
 
-Records admission or graph write failures that should not interrupt user response flow. Dead letters include enough data to replay the candidate after schema repair.
+New admission-domain dead-letter persistence. This is not the existing receipt dead-letter store. It should reuse the replay/status pattern and naming discipline from post-adjudication dead letters, but it stores graph admission failures, not payment execution failures.
+
+`SchemaBudgetLedger`
+
+Required extension for budget enforcement if automatic shadow admission is enabled. Existing `GovernancePolicy` fields already define daily and monthly budgets, but current governance runtime only has an in-memory daily counter. Persisted budget accounting is needed before production auto-shadow mode.
+
+## Batch And Transaction Model
+
+First wave chooses one batch model explicitly:
+
+- Admission pre-filters and rewrites candidates before they reach `GraphBuffer`.
+- `GraphBuffer` continues to submit one atomic BoltDB transaction per admitted batch.
+- Invalid or deferred candidates are removed before batch write.
+- The system does not split normal batches into per-triple transactions in first wave.
+
+This means the primary fix for batch rollback is not retry fan-out. The fix is that `GraphBuffer` no longer receives raw unknown predicates from dynamic producers.
+
+Dead letters therefore narrow to two cases:
+
+- admission accepted a triple but later storage failed;
+- ontology state changed or was inconsistent between admission and storage.
 
 ## Data Flow
 
-Known predicate path:
-
-```text
-raw triple: user_preference related_to coding_style
-  -> validator recognizes related_to
-  -> accepted
-  -> GraphBuffer
-```
-
-Alias mapping path:
+Canonical mapping path:
 
 ```text
 raw triple: project includes module
-  -> includes is unknown
-  -> semantic alias maps includes -> contains
-  -> mapped triple: project contains module
-  -> GraphBuffer
+  -> admission sees unknown predicate
+  -> predicate alias policy maps includes -> contains
+  -> admitted triple uses contains
+  -> existing GraphBuffer writes batch atomically
 ```
 
-Adaptive shadow path:
+Shadow growth path:
 
 ```text
 raw triple: term defines concept
-  -> defines is unknown
-  -> high confidence, repeated, not a generic predicate
-  -> register PredicateDefinition{Name: "defines", Status: shadow}
-  -> refresh predicate validator
-  -> GraphBuffer
+  -> admission sees unknown predicate
+  -> confidence and evidence clear governance checks
+  -> existing ontology service registers defines as shadow
+  -> ontology predicate cache refreshes
+  -> same validator closure now recognizes defines
+  -> admitted triple reaches GraphBuffer
 ```
 
-Low-confidence path:
+Proposed-only path:
 
 ```text
 raw triple: thing uses stuff
-  -> uses is unknown and too generic
-  -> proposed or quarantined
-  -> graph storage skipped
-  -> user response continues
+  -> admission sees unknown generic predicate
+  -> candidate evidence stored
+  -> predicate remains proposed or quarantined
+  -> triple never enters GraphBuffer
+  -> user response path continues
 ```
 
-Storage failure path:
+## Retrieval And FTS5 Semantics
 
-```text
-admitted triple
-  -> GraphBuffer write fails
-  -> retry per triple or dead-letter
-  -> valid independent triples are not lost silently
-```
+The current FTS5 indexes are attached to knowledge and learning stores, not to graph triples directly. That means shadow predicate behavior must be defined in graph retrieval terms, not by pretending predicates create direct FTS5 rows.
+
+First-wave semantics:
+
+- Shadow predicates are usable for graph storage and graph traversal because they are valid ontology predicates in `shadow` state.
+- GraphRAG may traverse shadow predicates, but retrieval results expanded through shadow predicates must be marked experimental in provenance metadata and should apply a score penalty relative to `active` predicate edges.
+- Knowledge-store FTS5 and learning-store FTS5 behavior does not change solely because a predicate is shadow. Existing FTS5 sync stays tied to knowledge and learning writes.
+- If a future wave wants shadow-aware lexical search, that is a separate design because current FTS5 indexes do not index graph predicates as first-class rows.
+
+This preserves the meaning of "usable but experimental" without falsely implying that shadow predicates are identical to active predicates in retrieval.
+
+## Governance And Promotion Boundaries
+
+The design must distinguish between existing policy surface and verified runtime behavior.
+
+Existing surface already includes:
+
+- lifecycle statuses;
+- governance config for daily and monthly budgets;
+- `ontology_promote_predicate`;
+- documented `minUsageForPromotion` and shadow duration fields.
+
+First-wave design assumptions:
+
+- manual promotion through existing governance surfaces is the reliable promotion path;
+- automatic active promotion should not be a prerequisite for this admission change;
+- if auto-promotion runtime is incomplete or unverified, the change must state that shadow-to-active automation is a follow-up wave.
+
+Therefore:
+
+- Wave 1 uses manual promotion plus status/usage observability.
+- Wave 2 may implement or harden automatic shadow-to-active promotion using the already defined `MinUsageForPromotion` policy and shadow usage counters.
+
+## Budget Enforcement
+
+Existing `GovernancePolicy` already defines `MaxNewPerDay` and `SchemaExplosionBudget`, but the current governance engine only persists an in-memory daily count per process restart boundary.
+
+The design therefore requires:
+
+- UTC-day keyed daily accounting for proposal intake;
+- UTC-month keyed accounting for schema explosion budget;
+- a persisted ledger if auto-shadow is enabled beyond observe-only mode;
+- explicit behavior for multi-process or restarted runtimes.
+
+Boundary rule:
+
+- observe-only and proposed-only modes may temporarily reuse process-local counters;
+- auto-shadow admission must not rely only on process-local counters.
+
+## Replay And Idempotency
+
+Admission dead-letter replay must remain auditable when schema changes between failure and replay.
+
+Each dead-letter record must store:
+
+- the original admission candidate;
+- the schema version observed during admission;
+- the decision snapshot, if any;
+- the failure stage and error.
+
+Replay rules:
+
+- if schema version is unchanged, replay should attempt the same admission decision first;
+- if schema version advanced, replay reruns admission against the latest schema but preserves the original snapshot for audit;
+- replay deduplication uses candidate hash plus observed schema version to avoid repeated duplicate admissions.
+
+## Generic Predicate Policy
+
+The generic predicate denylist must be operational, not an undocumented hardcoded bag of strings.
+
+First-wave rule:
+
+- generic-predicate heuristics live in one policy module with config-backed defaults;
+- the initial defaults may include values such as `has`, `is`, `uses`, `related`, `thing`, and `misc`;
+- additions and removals must be configuration-driven rather than scattered hardcoded checks;
+- the policy must not assume English-only future inputs, even if the first default list is English.
 
 ## Error Handling
 
-Ontology growth failures are not user-response failures. They are contained as knowledge-write outcomes.
+Unknown predicate discovery is not an application error by default.
 
-- Unknown predicates should not be logged as graph update `ERROR` unless they reach the graph store after admission.
-- Candidate creation, mapping, proposal, and quarantine should be logged as structured schema events.
-- Validator/cache inconsistency after shadow registration is an `ERROR`.
-- Batch graph failures should include source counts and should attempt triple-level isolation or dead-lettering.
-- All dead-letter records must be replayable after schema repair.
-
-## Governance And Safety
-
-Automatic growth requires hard budgets.
-
-- Daily auto-shadow budget limits how many new predicates or types can become usable without review.
-- Monthly schema explosion budget limits total new schema growth.
-- Generic predicates such as `has`, `is`, `uses`, `related`, `thing`, and `misc` are quarantined by default unless explicit mapping rules exist.
-- Shadow entries must track source evidence and usage before active promotion.
-- Active promotion remains a governance transition, not an ingestion side effect.
+- unknown predicates handled by admission should produce structured schema-growth events, not graph write `ERROR`s;
+- validator/cache mismatch after successful shadow registration is an `ERROR`;
+- graph write failure after successful admission is a dead-letter event;
+- user response generation is independent from admission and graph write outcomes.
 
 ## Observability
 
-The system should expose these counters and status fields:
+The system should expose:
 
-- Unknown predicate discoveries.
-- Unknown type discoveries.
-- Canonical mapping count.
-- Auto-shadow creation count.
-- Proposed, quarantined, and dead-lettered candidate counts.
-- Top unknown predicates by frequency.
-- Shadow predicate usage count.
-- Graph admission rejection reasons.
-- Schema budget remaining.
-- Validator/cache mismatch count.
+- unknown predicate and type discovery counts;
+- canonical mapping counts;
+- shadow creation counts;
+- proposed/quarantined/dead-letter counts;
+- top schema candidates by frequency;
+- shadow edge retrieval counts;
+- graph admission rejection reasons;
+- budget ledger consumption;
+- validator/cache mismatch count.
 
-These metrics should be available to internal status surfaces before public documentation is expanded.
+These should land in internal status surfaces before any public doc claims are expanded.
 
 ## Testing Strategy
 
 Unit tests:
 
-- `includes` maps to `contains`.
-- `defines` can be auto-registered as `shadow` when confidence and budget allow.
-- Low-confidence unknown predicates become proposed-only.
-- Generic predicates are quarantined.
-- Existing active and shadow predicates pass admission unchanged.
-- Governance budget exhaustion prevents auto-shadow creation.
+- `includes` maps to `contains`;
+- `defines` can register into `shadow` and immediately pass the same validator closure;
+- low-confidence unknown predicates become proposed-only;
+- generic predicates are quarantined by policy;
+- deterministic known-predicate producers can bypass dynamic growth safely.
 
 Integration tests:
 
-- A `TriplesExtractedEvent` with an unknown predicate does not cause user-response failure.
-- A batch with one invalid candidate still stores valid admitted triples.
-- Shadow registration refreshes `PredicateValidator()` immediately.
-- Graph store validator remains a final guard for admitted triples.
-- Dead-letter replay succeeds after the relevant predicate is promoted or mapped.
+- `TriplesExtractedEvent` paths are rerouted through admission;
+- direct `AddTriples` producers no longer feed raw unknown predicates into store validation;
+- `AssertFact` growth-enabled path no longer fails before schema-admission logic runs;
+- one unknown candidate no longer rolls back valid admitted triples in the same batch;
+- graph admission dead-letter replay is auditable across schema version change.
 
 Regression tests:
 
-- Unknown predicates no longer produce repeated `batch graph update error` logs as the primary handling path.
-- Valid triples are not discarded because another candidate in the same batch is unknown.
+- repeated `batch graph update error` logs are no longer the primary unknown-predicate handling path;
+- graph store validator still rejects truly inconsistent admitted triples;
+- deterministic seeded-predicate producers keep current behavior.
 
-## Rollout
+## OpenSpec Mapping
 
-1. Add the admission layer in observe-only mode. It records decisions but does not change graph routing.
-2. Enable mapping and proposed-only handling for unknown predicates.
-3. Enable bounded auto-shadow for high-confidence candidates.
-4. Add operator status and replay surfaces.
-5. Promote stable shadow entries through existing governance workflows.
+This document is a design memo, not an implementation contract by itself. Before code changes, it should be mapped into OpenSpec changes with rollback boundaries that match runtime risk.
+
+Recommended split:
+
+- Change A: admission boundary hardening
+  - producer inventory
+  - single source of truth validation
+  - event and direct-store rerouting
+  - batch pre-filtering while keeping atomic batch writes
+- Change B: adaptive shadow growth
+  - schema candidate persistence
+  - shadow registration path
+  - budget enforcement
+  - retrieval provenance for shadow edges
+- Change C: promotion and replay hardening
+  - shadow usage metrics
+  - manual-to-automatic promotion boundary
+  - dead-letter replay idempotency
+  - operator review surfaces
+
+These should be separate changes or clearly separated waves because rollback boundaries differ. Admission boundary hardening is a safety fix. Automatic shadow growth changes runtime write behavior. Promotion automation changes governance behavior again.
 
 ## Acceptance Criteria
 
-- Unknown LLM-discovered predicates are converted into mapped, proposed, shadow, quarantined, or dead-lettered outcomes.
-- User responses continue even when ontology growth or graph storage fails.
-- `GraphBuffer` no longer receives raw unknown predicates from normal LLM extraction paths.
-- High-confidence shadow predicate registration refreshes graph validation immediately.
-- Batch graph writes no longer lose all valid triples because one candidate is unknown.
-- Operators can inspect top schema candidates, shadow usage, and dead-lettered graph admissions.
+- The design explicitly reuses current ontology lifecycle, graph buffering, and governance primitives.
+- There is one authoritative predicate validity source consumed by both `ValidateTriple` and graph store validation.
+- All dynamic producer call sites are inventoried and assigned an admission migration path.
+- Batch rollback is addressed by pre-admission filtering while retaining atomic admitted-batch writes.
+- Shadow predicate retrieval and FTS5 semantics are defined for first wave.
+- Promotion, budget, replay, and generic-predicate policy boundaries are explicit rather than implied.
