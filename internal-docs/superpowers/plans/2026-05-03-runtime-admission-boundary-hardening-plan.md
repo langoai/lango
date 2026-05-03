@@ -769,10 +769,11 @@ func TestExtractor_PassthroughPromptOmitsFixedAllowlist(t *testing.T) {
 Run:
 
 ```bash
-go test ./internal/app -run 'AdmitExtractedTriples'
+go test ./internal/app -run 'AdmitExtractedTriples|ProducerForExtractedEvent'
+go test ./internal/graph -run 'PassthroughModePreservesUnknownPredicate|PassthroughPromptOmitsFixedAllowlist'
 ```
 
-Expected: FAIL because `admitExtractedTriples` does not exist
+Expected: FAIL because `admitExtractedTriples`, `producerForExtractedEvent`, `WithoutPredicateValidation`, and `systemPrompt()` do not exist yet
 
 - [ ] **Step 3: Implement admission in `wiring_graph.go`**
 
@@ -976,6 +977,7 @@ Run:
 
 ```bash
 go test ./internal/app ./internal/graph -run 'AdmitExtractedTriples|ProducerForExtractedEvent|PassthroughModePreservesUnknownPredicate'
+go test ./internal/graph -run 'PassthroughPromptOmitsFixedAllowlist'
 ```
 
 Expected: PASS
