@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/langoai/lango/internal/agentrt"
+	apppkg "github.com/langoai/lango/internal/app"
 	"github.com/langoai/lango/internal/approval"
 	"github.com/langoai/lango/internal/background"
 	"github.com/langoai/lango/internal/config"
@@ -71,34 +72,55 @@ type LoopCronReader interface {
 	ListHistory(ctx context.Context, jobID string, limit int) ([]cron.HistoryEntry, error)
 }
 
+type CollaborationMissionLinkReader interface {
+	ListMissionExecutionLinks(ctx context.Context, missionID string) ([]apppkg.CollaborationMissionExecutionLink, error)
+}
+
+type CollaborationAgentRunReader interface {
+	ListAgentRuns() []apppkg.CollaborationAgentRunView
+}
+
+type CollaborationDelegationReader interface {
+	ListDelegationsForSession(ctx context.Context, sessionKey string) ([]apppkg.CollaborationDelegationRecord, error)
+}
+
+type CollaborationRuntimeReader interface {
+	ListBudgetSignals(missionID string) []apppkg.CollaborationBudgetRecord
+	ListRecoverySignals(missionID string) []apppkg.CollaborationRecoveryRecord
+}
+
 // Deps holds the dependencies for the cockpit TUI.
 // ApprovalProvider is NOT included — type assertion for SetTTYFallback
 // is handled in cmd/lango/main.go's runCockpit().
 type Deps struct {
-	TurnRunner        *turnrunner.Runner
-	Config            *config.Config
-	SessionKey        string
-	SessionStore      session.Store // optional; enables /mode to persist session mode
-	ToolCatalog       *toolcatalog.Catalog
-	MetricsCollector  *observability.MetricsCollector
-	ConfigStore       storage.ConfigProfileStore
-	ProfileName       string
-	BackgroundManager *background.Manager    // optional, nil when unavailable
-	RunLedgerStore    RunLedgerReader        // optional, nil when unavailable
-	AgentRunStore     AgentRunReader         // optional, nil when unavailable
-	EventBus          *eventbus.Bus          // optional, enables channel event subscription
-	ApprovalHistory   *approval.HistoryStore // optional, approval decision history
-	GrantStore        *approval.GrantStore   // optional, persistent session grants
-	MissionReader     MissionReader
-	ProposalReader    ProposalReader
-	ProposalService   ProposalMutationService
-	LoopInquiryReader LoopInquiryReader
-	LoopDeadReader    LoopDeadLetterReader
-	LoopCronReader    LoopCronReader
-	MissionService    MissionLifecycleService
-	PendingApprovals  *PendingApprovalRegistry
-	LearningBuffer    *LearningSuggestionBuffer
-	ActivityBuffer    *MissionActivityBuffer
+	TurnRunner         *turnrunner.Runner
+	Config             *config.Config
+	SessionKey         string
+	SessionStore       session.Store // optional; enables /mode to persist session mode
+	ToolCatalog        *toolcatalog.Catalog
+	MetricsCollector   *observability.MetricsCollector
+	ConfigStore        storage.ConfigProfileStore
+	ProfileName        string
+	BackgroundManager  *background.Manager    // optional, nil when unavailable
+	RunLedgerStore     RunLedgerReader        // optional, nil when unavailable
+	AgentRunStore      AgentRunReader         // optional, nil when unavailable
+	EventBus           *eventbus.Bus          // optional, enables channel event subscription
+	ApprovalHistory    *approval.HistoryStore // optional, approval decision history
+	GrantStore         *approval.GrantStore   // optional, persistent session grants
+	MissionReader      MissionReader
+	ProposalReader     ProposalReader
+	ProposalService    ProposalMutationService
+	LoopInquiryReader  LoopInquiryReader
+	LoopDeadReader     LoopDeadLetterReader
+	LoopCronReader     LoopCronReader
+	CollabMissionLinks CollaborationMissionLinkReader
+	CollabAgentRuns    CollaborationAgentRunReader
+	CollabDelegations  CollaborationDelegationReader
+	CollabRuntime      CollaborationRuntimeReader
+	MissionService     MissionLifecycleService
+	PendingApprovals   *PendingApprovalRegistry
+	LearningBuffer     *LearningSuggestionBuffer
+	ActivityBuffer     *MissionActivityBuffer
 }
 
 type DeadLetterToolBridge struct {

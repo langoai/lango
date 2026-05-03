@@ -9,6 +9,7 @@ import (
 
 	"github.com/langoai/lango/internal/agentrt"
 	"github.com/langoai/lango/internal/background"
+	"github.com/langoai/lango/internal/collabview"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/loopview"
 	"github.com/langoai/lango/internal/mission"
@@ -24,43 +25,51 @@ const (
 
 // MissionControlProjector derives a deterministic Wave 1 Mission Control view.
 type MissionControlProjector struct {
-	cfg               *config.Config
-	sessionKey        string
-	metricsCollector  *observability.MetricsCollector
-	pendingApprovals  *PendingApprovalRegistry
-	learningBuffer    *LearningSuggestionBuffer
-	activityBuffer    *MissionActivityBuffer
-	runLedgerStore    RunLedgerReader
-	agentRunStore     AgentRunReader
-	missionReader     MissionReader
-	proposalReader    ProposalReader
-	loopInquiryReader LoopInquiryReader
-	loopDeadReader    LoopDeadLetterReader
-	loopCronReader    LoopCronReader
-	missionLimit      int
-	activityLimit     int
-	nowFn             func() time.Time
+	cfg                *config.Config
+	sessionKey         string
+	metricsCollector   *observability.MetricsCollector
+	pendingApprovals   *PendingApprovalRegistry
+	learningBuffer     *LearningSuggestionBuffer
+	activityBuffer     *MissionActivityBuffer
+	runLedgerStore     RunLedgerReader
+	agentRunStore      AgentRunReader
+	missionReader      MissionReader
+	proposalReader     ProposalReader
+	loopInquiryReader  LoopInquiryReader
+	loopDeadReader     LoopDeadLetterReader
+	loopCronReader     LoopCronReader
+	collabMissionLinks CollaborationMissionLinkReader
+	collabAgentRuns    CollaborationAgentRunReader
+	collabDelegations  CollaborationDelegationReader
+	collabRuntime      CollaborationRuntimeReader
+	missionLimit       int
+	activityLimit      int
+	nowFn              func() time.Time
 }
 
 // NewMissionControlProjector creates a deterministic projector from cockpit deps.
 func NewMissionControlProjector(deps Deps) *MissionControlProjector {
 	return &MissionControlProjector{
-		cfg:               deps.Config,
-		sessionKey:        deps.SessionKey,
-		metricsCollector:  deps.MetricsCollector,
-		pendingApprovals:  deps.PendingApprovals,
-		learningBuffer:    deps.LearningBuffer,
-		activityBuffer:    deps.ActivityBuffer,
-		runLedgerStore:    deps.RunLedgerStore,
-		agentRunStore:     deps.AgentRunStore,
-		missionReader:     deps.MissionReader,
-		proposalReader:    deps.ProposalReader,
-		loopInquiryReader: deps.LoopInquiryReader,
-		loopDeadReader:    deps.LoopDeadReader,
-		loopCronReader:    deps.LoopCronReader,
-		missionLimit:      defaultMissionControlMissionLimit,
-		activityLimit:     defaultMissionControlActivityLimit,
-		nowFn:             time.Now,
+		cfg:                deps.Config,
+		sessionKey:         deps.SessionKey,
+		metricsCollector:   deps.MetricsCollector,
+		pendingApprovals:   deps.PendingApprovals,
+		learningBuffer:     deps.LearningBuffer,
+		activityBuffer:     deps.ActivityBuffer,
+		runLedgerStore:     deps.RunLedgerStore,
+		agentRunStore:      deps.AgentRunStore,
+		missionReader:      deps.MissionReader,
+		proposalReader:     deps.ProposalReader,
+		loopInquiryReader:  deps.LoopInquiryReader,
+		loopDeadReader:     deps.LoopDeadReader,
+		loopCronReader:     deps.LoopCronReader,
+		collabMissionLinks: deps.CollabMissionLinks,
+		collabAgentRuns:    deps.CollabAgentRuns,
+		collabDelegations:  deps.CollabDelegations,
+		collabRuntime:      deps.CollabRuntime,
+		missionLimit:       defaultMissionControlMissionLimit,
+		activityLimit:      defaultMissionControlActivityLimit,
+		nowFn:              time.Now,
 	}
 }
 
@@ -74,6 +83,8 @@ func (p *MissionControlProjector) Project(taskSnapshots []background.TaskSnapsho
 	durableMissions, linkedTaskIDs, missionStoreUnavailable, missionDetailsDegraded, runLedgerDegraded, agentRunDegraded := p.projectDurableMissions(taskSnapshots)
 	runtimeOverlays, overlayRunLedgerDegraded, overlayAgentRunDegraded := p.projectBackgroundTasks(taskSnapshots, linkedTaskIDs)
 	proposedMissions, proposalRegistryUnavailable := p.projectProposals()
+	collaborationViews, collaborationDegraded := p.projectCollaboration(durableMissions)
+	durableMissions = attachCollaboration(durableMissions, collaborationViews)
 	sort.SliceStable(durableMissions, func(i, j int) bool {
 		return compareMissionViews(durableMissions[i], durableMissions[j])
 	})
@@ -90,6 +101,7 @@ func (p *MissionControlProjector) Project(taskSnapshots []background.TaskSnapsho
 		missionStoreUnavailable,
 		missionDetailsDegraded,
 		proposalRegistryUnavailable,
+		collaborationDegraded,
 		inquiryDegraded,
 		deadLetterDegraded,
 		cronDegraded,
@@ -493,6 +505,147 @@ func (p *MissionControlProjector) projectLoops(
 	return loops, openCount, "", inquiryDegraded, deadLetterDegraded, cronDegraded
 }
 
+func (p *MissionControlProjector) projectCollaboration(missions []MissionView) (map[string]CollaborationView, bool) {
+	if len(missions) == 0 || p.collabMissionLinks == nil {
+		return nil, false
+	}
+
+	input := collabview.ProjectionInput{}
+	firstExecByMission := make(map[string]string, len(missions))
+	for _, missionView := range missions {
+		links, err := p.collabMissionLinks.ListMissionExecutionLinks(context.Background(), missionView.ID)
+		if err != nil {
+			return nil, true
+		}
+		missionSource := collabview.MissionSource{
+			MissionID:     missionView.ID,
+			UpdatedAt:     missionView.UpdatedAt,
+			ExecutionRefs: make([]string, 0, len(links)),
+		}
+		for _, link := range links {
+			if strings.TrimSpace(link.ExecutionRef) == "" {
+				continue
+			}
+			executionRef := strings.TrimSpace(link.ExecutionRef)
+			missionSource.ExecutionRefs = append(missionSource.ExecutionRefs, executionRef)
+			if firstExecByMission[missionView.ID] == "" {
+				firstExecByMission[missionView.ID] = executionRef
+			}
+		}
+		input.Missions = append(input.Missions, missionSource)
+	}
+
+	if p.collabAgentRuns != nil {
+		for _, run := range p.collabAgentRuns.ListAgentRuns() {
+			input.AgentRuns = append(input.AgentRuns, collabview.AgentRunSource{
+				ExecutionRef:     run.ID,
+				RequestedAgent:   run.RequestedAgent,
+				RuntimeCondition: run.RuntimeCondition,
+				BlockedReason:    run.BlockedReason,
+				UpdatedAt:        p.now(),
+			})
+		}
+	}
+	if p.collabDelegations != nil {
+		records, err := p.collabDelegations.ListDelegationsForSession(context.Background(), p.sessionKey)
+		if err != nil {
+			return nil, true
+		}
+		for _, record := range records {
+			input.Delegations = append(input.Delegations, collabview.DelegationSource{
+				ExecutionRef: record.ExecutionRef,
+				From:         record.From,
+				To:           record.To,
+				Timestamp:    record.Timestamp,
+			})
+		}
+	}
+	if p.collabRuntime != nil {
+		for _, missionView := range missions {
+			executionRef := firstExecByMission[missionView.ID]
+			if executionRef == "" {
+				continue
+			}
+			for _, record := range p.collabRuntime.ListBudgetSignals(missionView.ID) {
+				input.BudgetSignals = append(input.BudgetSignals, collabview.BudgetSignalSource{
+					ExecutionRef: executionRef,
+					Used:         record.Used,
+					Max:          record.Max,
+					Timestamp:    record.Timestamp,
+				})
+			}
+			for _, record := range p.collabRuntime.ListRecoverySignals(missionView.ID) {
+				input.RecoverySignals = append(input.RecoverySignals, collabview.RecoverySignalSource{
+					ExecutionRef: executionRef,
+					Action:       record.Action,
+					CauseClass:   record.CauseClass,
+					Timestamp:    record.Timestamp,
+				})
+			}
+		}
+	}
+
+	views := collabview.NewProjector().Project(input)
+	out := make(map[string]CollaborationView, len(views))
+	for _, view := range views {
+		out[view.MissionID] = summarizeCollaboration(view)
+	}
+	return out, false
+}
+
+func attachCollaboration(missions []MissionView, collaboration map[string]CollaborationView) []MissionView {
+	if len(missions) == 0 || len(collaboration) == 0 {
+		return missions
+	}
+	out := make([]MissionView, 0, len(missions))
+	for _, missionView := range missions {
+		if collab, ok := collaboration[missionView.ID]; ok {
+			missionView.Collaboration = collab
+		}
+		out = append(out, missionView)
+	}
+	return out
+}
+
+func summarizeCollaboration(view collabview.CollaborationView) CollaborationView {
+	out := CollaborationView{}
+	if len(view.Participants) > 0 {
+		names := make([]string, 0, len(view.Participants))
+		for _, participant := range view.Participants {
+			if text := strings.TrimSpace(participant.Name); text != "" {
+				names = append(names, text)
+			}
+		}
+		if len(names) == 1 {
+			out.ParticipantSummary = names[0]
+		} else if len(names) > 1 {
+			out.ParticipantSummary = fmt.Sprintf("%s +%d", names[0], len(names)-1)
+		}
+	}
+	switch view.CollaborationState {
+	case collabview.CollaborationStateBlockedOnApproval:
+		out.StateHint = "Blocked on approval"
+	case collabview.CollaborationStateWaitingOnTeammate:
+		out.StateHint = "Waiting on teammate"
+	case collabview.CollaborationStateRecovering:
+		out.StateHint = "Recovering"
+	case collabview.CollaborationStateDelegating:
+		out.StateHint = "Delegating"
+	case collabview.CollaborationStateReviewing:
+		out.StateHint = "Reviewing"
+	}
+	if len(view.HandoffEdges) > 0 {
+		out.HandoffSummary = fmt.Sprintf("%s -> %s", strings.TrimSpace(view.HandoffEdges[0].From), strings.TrimSpace(view.HandoffEdges[0].To))
+	}
+	if view.BudgetSignal != nil {
+		out.BudgetHint = fmt.Sprintf("%d/%d delegation budget", view.BudgetSignal.Used, view.BudgetSignal.Max)
+	}
+	if view.LastRecovery != nil {
+		out.RecoveryHint = fmt.Sprintf("%s after %s", strings.TrimSpace(view.LastRecovery.Action), strings.TrimSpace(view.LastRecovery.CauseClass))
+	}
+	return out
+}
+
 func (p *MissionControlProjector) projectActivities() []ActivityView {
 	if p.activityBuffer == nil {
 		return nil
@@ -520,7 +673,7 @@ func (p *MissionControlProjector) projectActivities() []ActivityView {
 }
 
 func (p *MissionControlProjector) buildDegradedNote(
-	missionStoreUnavailable, missionDetailsDegraded, proposalRegistryUnavailable,
+	missionStoreUnavailable, missionDetailsDegraded, proposalRegistryUnavailable, collaborationDegraded,
 	inquiryDegraded, deadLetterDegraded, cronDegraded,
 	runLedgerDegraded, agentRunDegraded bool,
 ) string {
@@ -532,6 +685,9 @@ func (p *MissionControlProjector) buildDegradedNote(
 	}
 	if proposalRegistryUnavailable {
 		notes = append(notes, "Proposal registry unavailable")
+	}
+	if collaborationDegraded {
+		notes = append(notes, "Collaboration context unavailable")
 	}
 	if inquiryDegraded {
 		notes = append(notes, "Inquiry loops unavailable")

@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/langoai/lango/internal/agentrt"
+	apppkg "github.com/langoai/lango/internal/app"
 	"github.com/langoai/lango/internal/approval"
 	"github.com/langoai/lango/internal/background"
 	"github.com/langoai/lango/internal/cli/chat"
@@ -176,6 +177,57 @@ func (s stubMissionControlLoopCronReader) ListHistory(_ context.Context, jobID s
 		items = items[:limit]
 	}
 	return items, nil
+}
+
+type stubMissionControlCollabMissionLinkReader struct {
+	links map[string][]apppkg.CollaborationMissionExecutionLink
+	err   error
+}
+
+func (s stubMissionControlCollabMissionLinkReader) ListMissionExecutionLinks(_ context.Context, missionID string) ([]apppkg.CollaborationMissionExecutionLink, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	return append([]apppkg.CollaborationMissionExecutionLink(nil), s.links[missionID]...), nil
+}
+
+type stubMissionControlCollabAgentRunReader struct {
+	runs []apppkg.CollaborationAgentRunView
+}
+
+func (s stubMissionControlCollabAgentRunReader) ListAgentRuns() []apppkg.CollaborationAgentRunView {
+	return append([]apppkg.CollaborationAgentRunView(nil), s.runs...)
+}
+
+type stubMissionControlCollabDelegationReader struct {
+	items []apppkg.CollaborationDelegationRecord
+	err   error
+}
+
+func (s stubMissionControlCollabDelegationReader) ListDelegationsForSession(_ context.Context, sessionKey string) ([]apppkg.CollaborationDelegationRecord, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	out := make([]apppkg.CollaborationDelegationRecord, 0, len(s.items))
+	for _, item := range s.items {
+		if item.SessionKey == sessionKey {
+			out = append(out, item)
+		}
+	}
+	return out, nil
+}
+
+type stubMissionControlCollabRuntimeReader struct {
+	budget   map[string][]apppkg.CollaborationBudgetRecord
+	recovery map[string][]apppkg.CollaborationRecoveryRecord
+}
+
+func (s stubMissionControlCollabRuntimeReader) ListBudgetSignals(missionID string) []apppkg.CollaborationBudgetRecord {
+	return append([]apppkg.CollaborationBudgetRecord(nil), s.budget[missionID]...)
+}
+
+func (s stubMissionControlCollabRuntimeReader) ListRecoverySignals(missionID string) []apppkg.CollaborationRecoveryRecord {
+	return append([]apppkg.CollaborationRecoveryRecord(nil), s.recovery[missionID]...)
 }
 
 func (s stubMissionControlMissionReader) ListExecutionLinks(_ context.Context, missionID string) ([]*mission.ExecutionLink, error) {
@@ -1098,6 +1150,159 @@ func TestMissionControlRecentDoneMissionReviewFollowUpAppears(t *testing.T) {
 		assert.Equal(t, "Review completed mission", loop.NextAction)
 	}
 	assert.True(t, found, "expected recent done mission review follow-up loop")
+}
+
+func TestMissionControlCollaborationParticipantSummaryFromLinkedLocalSignals(t *testing.T) {
+	t.Parallel()
+
+	missionID := uuid.MustParse("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee")
+	projector := NewMissionControlProjector(Deps{
+		SessionKey: "sess-1",
+		MissionReader: stubMissionControlMissionReader{
+			missions: map[string][]*mission.Mission{
+				"sess-1": {{
+					ID:         missionID,
+					SessionKey: "sess-1",
+					Title:      "Collaborative mission",
+					Status:     mission.StatusActive,
+					SourceKind: "user",
+					UpdatedAt:  time.Date(2026, 5, 3, 12, 0, 0, 0, time.UTC),
+					CreatedAt:  time.Date(2026, 5, 3, 11, 0, 0, 0, time.UTC),
+				}},
+			},
+		},
+		CollabMissionLinks: stubMissionControlCollabMissionLinkReader{
+			links: map[string][]apppkg.CollaborationMissionExecutionLink{
+				missionID.String(): {{ExecutionKind: "task_os_execution", ExecutionRef: "exec-1"}},
+			},
+		},
+		CollabAgentRuns: stubMissionControlCollabAgentRunReader{
+			runs: []apppkg.CollaborationAgentRunView{{ID: "exec-1", RequestedAgent: "researcher"}},
+		},
+	})
+
+	snapshot := projector.Project(nil)
+
+	require.Len(t, snapshot.Missions, 1)
+	assert.Equal(t, "researcher", snapshot.Missions[0].Collaboration.ParticipantSummary)
+}
+
+func TestMissionControlCollaborationHandoffSummaryOnlyWhenAttributable(t *testing.T) {
+	t.Parallel()
+
+	missionID := uuid.MustParse("ffffffff-ffff-ffff-ffff-ffffffffffff")
+	projector := NewMissionControlProjector(Deps{
+		SessionKey: "sess-1",
+		MissionReader: stubMissionControlMissionReader{
+			missions: map[string][]*mission.Mission{
+				"sess-1": {{
+					ID:         missionID,
+					SessionKey: "sess-1",
+					Title:      "Handoff mission",
+					Status:     mission.StatusActive,
+					SourceKind: "user",
+					UpdatedAt:  time.Date(2026, 5, 3, 12, 0, 0, 0, time.UTC),
+					CreatedAt:  time.Date(2026, 5, 3, 11, 0, 0, 0, time.UTC),
+				}},
+			},
+		},
+		CollabMissionLinks: stubMissionControlCollabMissionLinkReader{
+			links: map[string][]apppkg.CollaborationMissionExecutionLink{
+				missionID.String(): {{ExecutionKind: "task_os_execution", ExecutionRef: "exec-1"}},
+			},
+		},
+		CollabDelegations: stubMissionControlCollabDelegationReader{
+			items: []apppkg.CollaborationDelegationRecord{
+				{SessionKey: "sess-1", ExecutionRef: "exec-1", From: "planner", To: "researcher", Timestamp: time.Date(2026, 5, 3, 12, 5, 0, 0, time.UTC)},
+				{SessionKey: "sess-1", ExecutionRef: "other", From: "planner", To: "writer", Timestamp: time.Date(2026, 5, 3, 12, 6, 0, 0, time.UTC)},
+			},
+		},
+	})
+
+	snapshot := projector.Project(nil)
+	require.Len(t, snapshot.Missions, 1)
+	assert.Equal(t, "planner -> researcher", snapshot.Missions[0].Collaboration.HandoffSummary)
+}
+
+func TestMissionControlCollaborationStateHintsAndBudgetRecoveryAreAttributable(t *testing.T) {
+	t.Parallel()
+
+	missionID := uuid.MustParse("12121212-1212-1212-1212-121212121212")
+	projector := NewMissionControlProjector(Deps{
+		SessionKey: "sess-1",
+		MissionReader: stubMissionControlMissionReader{
+			missions: map[string][]*mission.Mission{
+				"sess-1": {{
+					ID:         missionID,
+					SessionKey: "sess-1",
+					Title:      "Recovery mission",
+					Status:     mission.StatusActive,
+					SourceKind: "user",
+					UpdatedAt:  time.Date(2026, 5, 3, 12, 0, 0, 0, time.UTC),
+					CreatedAt:  time.Date(2026, 5, 3, 11, 0, 0, 0, time.UTC),
+				}},
+			},
+		},
+		CollabMissionLinks: stubMissionControlCollabMissionLinkReader{
+			links: map[string][]apppkg.CollaborationMissionExecutionLink{
+				missionID.String(): {{ExecutionKind: "task_os_execution", ExecutionRef: "exec-1"}},
+			},
+		},
+		CollabAgentRuns: stubMissionControlCollabAgentRunReader{
+			runs: []apppkg.CollaborationAgentRunView{{ID: "exec-1", RequestedAgent: "researcher", RuntimeCondition: "recovering"}},
+		},
+		CollabRuntime: stubMissionControlCollabRuntimeReader{
+			budget: map[string][]apppkg.CollaborationBudgetRecord{
+				missionID.String(): {{MissionID: missionID.String(), Used: 9, Max: 10, Timestamp: time.Date(2026, 5, 3, 12, 10, 0, 0, time.UTC)}},
+			},
+			recovery: map[string][]apppkg.CollaborationRecoveryRecord{
+				missionID.String(): {{MissionID: missionID.String(), Action: "retry", CauseClass: "rate_limit", Timestamp: time.Date(2026, 5, 3, 12, 11, 0, 0, time.UTC)}},
+			},
+		},
+	})
+
+	snapshot := projector.Project(nil)
+	require.Len(t, snapshot.Missions, 1)
+	assert.Equal(t, "Recovering", snapshot.Missions[0].Collaboration.StateHint)
+	assert.Contains(t, snapshot.Missions[0].Collaboration.BudgetHint, "9/10")
+	assert.Contains(t, snapshot.Missions[0].Collaboration.RecoveryHint, "retry")
+}
+
+func TestMissionControlCollaborationNoExternalTeamOverstatement(t *testing.T) {
+	t.Parallel()
+
+	missionID := uuid.MustParse("34343434-3434-3434-3434-343434343434")
+	projector := NewMissionControlProjector(Deps{
+		SessionKey: "sess-1",
+		MissionReader: stubMissionControlMissionReader{
+			missions: map[string][]*mission.Mission{
+				"sess-1": {{
+					ID:         missionID,
+					SessionKey: "sess-1",
+					Title:      "Solo mission",
+					Status:     mission.StatusActive,
+					SourceKind: "user",
+					UpdatedAt:  time.Date(2026, 5, 3, 12, 0, 0, 0, time.UTC),
+					CreatedAt:  time.Date(2026, 5, 3, 11, 0, 0, 0, time.UTC),
+				}},
+			},
+		},
+		CollabMissionLinks: stubMissionControlCollabMissionLinkReader{
+			links: map[string][]apppkg.CollaborationMissionExecutionLink{
+				missionID.String(): {{ExecutionKind: "task_os_execution", ExecutionRef: "exec-1"}},
+			},
+		},
+		CollabDelegations: stubMissionControlCollabDelegationReader{
+			items: []apppkg.CollaborationDelegationRecord{
+				{SessionKey: "sess-1", ExecutionRef: "foreign", From: "remote-peer", To: "external-team", Timestamp: time.Date(2026, 5, 3, 12, 5, 0, 0, time.UTC)},
+			},
+		},
+	})
+
+	snapshot := projector.Project(nil)
+	require.Len(t, snapshot.Missions, 1)
+	assert.Empty(t, snapshot.Missions[0].Collaboration.ParticipantSummary)
+	assert.Empty(t, snapshot.Missions[0].Collaboration.HandoffSummary)
 }
 
 func TestMissionControlLoopSourceFailureDegradesTruthfully(t *testing.T) {

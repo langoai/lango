@@ -539,6 +539,9 @@ func (p *MissionControlPage) renderMissionPane() string {
 		if detail := strings.TrimSpace(firstNonEmpty(mission.Detail, mission.NextAction, mission.BlockedReason)); detail != "" {
 			lines = append(lines, "    "+detail)
 		}
+		if summary := compactCollaborationSummary(mission.Collaboration); summary != "" {
+			lines = append(lines, "    "+summary)
+		}
 		if mission.Kind == cockpit.MissionKindProposed {
 			if sourceLabel := strings.TrimSpace(compactProposalSourceLabel(mission)); sourceLabel != "" {
 				lines = append(lines, "    source: "+sourceLabel)
@@ -769,6 +772,26 @@ func compactPreparedBrief(brief proposal.PreparedBrief) string {
 		}
 	}
 	return strings.Join(parts, "\n")
+}
+
+func compactCollaborationSummary(view cockpit.CollaborationView) string {
+	parts := make([]string, 0, 5)
+	if text := strings.TrimSpace(view.ParticipantSummary); text != "" {
+		parts = append(parts, "people: "+text)
+	}
+	if text := strings.TrimSpace(view.StateHint); text != "" {
+		parts = append(parts, text)
+	}
+	if text := strings.TrimSpace(view.HandoffSummary); text != "" {
+		parts = append(parts, text)
+	}
+	if text := strings.TrimSpace(view.BudgetHint); text != "" {
+		parts = append(parts, text)
+	}
+	if text := strings.TrimSpace(view.RecoveryHint); text != "" {
+		parts = append(parts, text)
+	}
+	return strings.Join(parts, " | ")
 }
 
 func cond(ok bool, text string) string {

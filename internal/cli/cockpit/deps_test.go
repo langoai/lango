@@ -252,13 +252,17 @@ func TestDepsAcceptMissionService(t *testing.T) {
 	svc := mission.NewService(nil)
 	psvc := proposal.NewService(nil, nil)
 	deps := Deps{
-		MissionService:    svc,
-		MissionReader:     stubMissionControlMissionReader{},
-		ProposalReader:    stubMissionControlProposalReader{},
-		ProposalService:   psvc,
-		LoopInquiryReader: stubMissionControlLoopInquiryReader{},
-		LoopDeadReader:    stubMissionControlLoopDeadReader{},
-		LoopCronReader:    stubMissionControlLoopCronReader{},
+		MissionService:     svc,
+		MissionReader:      stubMissionControlMissionReader{},
+		ProposalReader:     stubMissionControlProposalReader{},
+		ProposalService:    psvc,
+		LoopInquiryReader:  stubMissionControlLoopInquiryReader{},
+		LoopDeadReader:     stubMissionControlLoopDeadReader{},
+		LoopCronReader:     stubMissionControlLoopCronReader{},
+		CollabMissionLinks: stubMissionControlCollabMissionLinkReader{},
+		CollabAgentRuns:    stubMissionControlCollabAgentRunReader{},
+		CollabDelegations:  stubMissionControlCollabDelegationReader{},
+		CollabRuntime:      stubMissionControlCollabRuntimeReader{},
 	}
 
 	require.NotNil(t, deps.MissionService)
@@ -268,6 +272,10 @@ func TestDepsAcceptMissionService(t *testing.T) {
 	require.NotNil(t, deps.LoopInquiryReader)
 	require.NotNil(t, deps.LoopDeadReader)
 	require.NotNil(t, deps.LoopCronReader)
+	require.NotNil(t, deps.CollabMissionLinks)
+	require.NotNil(t, deps.CollabAgentRuns)
+	require.NotNil(t, deps.CollabDelegations)
+	require.NotNil(t, deps.CollabRuntime)
 }
 
 var _ ProposalReader = stubMissionControlProposalReader{}

@@ -365,6 +365,29 @@ func TestMissionControlLoopBandRendering(t *testing.T) {
 	assert.Contains(t, view, "Wait for approval")
 }
 
+func TestMissionControlMissionPaneRendersCollaborationContext(t *testing.T) {
+	t.Parallel()
+
+	page := loadedMissionControlPage(t, cockpit.MissionControlSnapshot{
+		Missions: []cockpit.MissionView{{
+			ID:     "m-1",
+			Kind:   cockpit.MissionKindActive,
+			Status: cockpit.MissionStatusRunning,
+			Title:  "Collaborative mission",
+			Collaboration: cockpit.CollaborationView{
+				ParticipantSummary: "researcher +1",
+				HandoffSummary:     "planner -> researcher",
+				StateHint:          "Waiting on teammate",
+			},
+		}},
+	})
+
+	view := page.View()
+	assert.Contains(t, view, "people: researcher +1")
+	assert.Contains(t, view, "planner -> researcher")
+	assert.Contains(t, view, "Waiting on teammate")
+}
+
 func TestMissionControlFocusCycling(t *testing.T) {
 	t.Parallel()
 

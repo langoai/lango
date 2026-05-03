@@ -146,14 +146,22 @@ func TestRunCockpitBuildDepsCarriesMissionService(t *testing.T) {
 	inquiryReader := &stubMainLoopInquiryReader{}
 	deadReader := &stubMainLoopDeadReader{}
 	cronReader := &stubMainLoopCronReader{}
+	collabMissionLinks := &stubMainCollabMissionLinks{}
+	collabAgentRuns := &stubMainCollabAgentRuns{}
+	collabDelegations := &stubMainCollabDelegations{}
+	collabRuntime := &stubMainCollabRuntime{}
 	application := &app.App{
-		MissionService:       svc,
-		MissionStore:         store,
-		ProposalRegistry:     registry,
-		ProposalService:      psvc,
-		LoopInquiryReader:    inquiryReader,
-		LoopDeadLetterReader: deadReader,
-		LoopCronReader:       cronReader,
+		MissionService:                 svc,
+		MissionStore:                   store,
+		ProposalRegistry:               registry,
+		ProposalService:                psvc,
+		LoopInquiryReader:              inquiryReader,
+		LoopDeadLetterReader:           deadReader,
+		LoopCronReader:                 cronReader,
+		CollaborationMissionLinkReader: collabMissionLinks,
+		CollaborationAgentRunReader:    collabAgentRuns,
+		CollaborationDelegationReader:  collabDelegations,
+		CollaborationRuntimeReader:     collabRuntime,
 	}
 	cfg := &config.Config{}
 	pending := cockpit.NewPendingApprovalRegistry()
@@ -169,6 +177,10 @@ func TestRunCockpitBuildDepsCarriesMissionService(t *testing.T) {
 	assert.Same(t, inquiryReader, deps.LoopInquiryReader)
 	assert.Same(t, deadReader, deps.LoopDeadReader)
 	assert.Same(t, cronReader, deps.LoopCronReader)
+	assert.Same(t, collabMissionLinks, deps.CollabMissionLinks)
+	assert.Same(t, collabAgentRuns, deps.CollabAgentRuns)
+	assert.Same(t, collabDelegations, deps.CollabDelegations)
+	assert.Same(t, collabRuntime, deps.CollabRuntime)
 	assert.Same(t, learning, deps.LearningBuffer)
 	assert.Same(t, activity, deps.ActivityBuffer)
 }
@@ -220,4 +232,27 @@ func (*stubMainLoopCronReader) List(context.Context) ([]cron.Job, error) {
 
 func (*stubMainLoopCronReader) ListHistory(context.Context, string, int) ([]cron.HistoryEntry, error) {
 	return nil, nil
+}
+
+type stubMainCollabMissionLinks struct{}
+
+func (*stubMainCollabMissionLinks) ListMissionExecutionLinks(context.Context, string) ([]app.CollaborationMissionExecutionLink, error) {
+	return nil, nil
+}
+
+type stubMainCollabAgentRuns struct{}
+
+func (*stubMainCollabAgentRuns) ListAgentRuns() []app.CollaborationAgentRunView { return nil }
+
+type stubMainCollabDelegations struct{}
+
+func (*stubMainCollabDelegations) ListDelegationsForSession(context.Context, string) ([]app.CollaborationDelegationRecord, error) {
+	return nil, nil
+}
+
+type stubMainCollabRuntime struct{}
+
+func (*stubMainCollabRuntime) ListBudgetSignals(string) []app.CollaborationBudgetRecord { return nil }
+func (*stubMainCollabRuntime) ListRecoverySignals(string) []app.CollaborationRecoveryRecord {
+	return nil
 }

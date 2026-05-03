@@ -68,6 +68,7 @@ type MissionView struct {
 	OwnerAgent    string
 	RuntimeHint   string
 	BlockedReason string
+	Collaboration CollaborationView
 }
 
 // DecisionView is the single live decision row for Wave 1.
@@ -111,4 +112,12 @@ type HeaderView struct {
 	DegradedNote         string
 	ContextSummary       string
 	MetricsSummary       string
+}
+
+type CollaborationView struct {
+	ParticipantSummary string
+	StateHint          string
+	HandoffSummary     string
+	BudgetHint         string
+	RecoveryHint       string
 }
