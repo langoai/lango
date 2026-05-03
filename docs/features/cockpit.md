@@ -72,6 +72,7 @@ Mission Control, Sessions, and Dead Letters are reached from the sidebar. Wave 1
 Mission Control is the default cockpit landing surface. It is a sidebar-first page, not a separate top-level CLI command.
 
 - **Missions lane** — durable mission rows render first for the current cockpit session. Linked RunLedger and AgentRun data enrich those rows when available.
+- **Collaboration context** — durable mission rows can now show compact local coworking context such as participants, active owner, recent handoff, blocked state, budget pressure, recovery hint, and linked review state when attribution is provable.
 - **Runtime overlays** — background/runtime work that is still unlinked to a durable mission remains visible as overlay instead of disappearing. Foreign-session background work is filtered out when it carries a different `OriginSession`.
 - **Proactive proposals** — transient, session-scoped proposal records now render as first-class proposed rows. In the current slice, only learning suggestions actively create proposals.
 - **Decisions lane** — the latest pending approval is shown as one live decision with action, reason, effect, and risk, while durable mission rows can separately show coarse `waiting_decision` state.
@@ -89,6 +90,9 @@ Current landed behavior:
 - Mission Control can stay visible while a pending approval is active, and resolving that decision uses the same shared approval path as the chat surface
 - loops are projected only from real existing sources already wired into the app: durable missions, pending inquiries, dead-letter backlog, cron jobs, and deterministic follow-up signals
 - agenda ordering is deterministic: waiting-user, blocked, active, scheduled, needs-review, then resolved; ties break by newer updates first
+- collaboration is mission-linked local coworking only in this slice; it remains attached to durable mission rows/details instead of becoming a separate dashboard or durable model
+- participants, handoffs, blocked state, budget pressure, and recovery hints appear only when attribution is provable from linked local execution data
+- reviewing appears only when linked local `RunLedger` execution state is review-needed, currently represented by `verify_pending`
 
 Current limits:
 
@@ -97,9 +101,11 @@ Current limits:
 - the activity lane remains deterministic runtime rendering, not LLM-generated humanized narration
 - task tracking stays lightweight and separate from mission truth; the Tasks page and `TaskEntry` tooling are not the authoritative durable mission checklist model
 - RunLedger and AgentRun remain enrichments for durable or unmatched runtime rows. When those readers or mission details are unavailable, Mission Control shows a degraded note instead of inventing values
+- collaboration context is not shown from generic session noise alone; unattributable delegation, budget, or recovery events stay out of mission rows
 - scheduled automation loops mean cron jobs only in this slice; workflow runs are not projected as scheduled loops yet
 - dead-letter loops and cron loops are operator-global in the current slice, while mission loops, inquiry loops, and follow-up loops are scoped to the current cockpit session
 - no calendar, inbox, or external task-system loop integrations exist yet; the loop slice only renders sources that already exist in code
+- external P2P team UX remains secondary and is not part of the main Mission Control collaboration surface in this slice
 
 ## Context Panel
 

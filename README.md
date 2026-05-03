@@ -66,7 +66,7 @@ Single binary. <100ms startup. <250MB memory. Just Go.
 - 👥 **P2P Teams** — Task-scoped agent groups with role-based delegation, conflict resolution (trust_weighted, majority_vote, leader_decides, fail_on_conflict), assignment strategies, and payment coordination
 - 📊 **Observability** — Token usage tracking, health monitoring, audit logging, and metrics endpoints
 - 🎯 **Context Engineering** — Token-budget-aware context allocation, retrieval coordinator (FactSearch + TemporalSearch + ContextSearch), config profiles (off/lite/balanced/full), and relevance score auto-adjustment
-- 🖥️ **Cockpit TUI** — Multi-panel terminal dashboard with Mission Control as the default landing surface, followed by Chat, Settings, Tools, Status, Sessions, Tasks, Dead Letters, and Approvals in the sidebar. Mission Control reads durable mission rows first, still shows unmatched runtime work as overlay until it is linked, renders transient proactive proposals from a session-scoped proposal registry, and now adds a compact loops/agenda layer built only from real existing sources. In the current slices, only learning suggestions are active proposal producers; loop sources are durable missions, pending inquiries, dead-letter backlog, cron jobs, and deterministic follow-up signals. Scheduled automation in this loop slice means cron jobs only. There are still no calendar, inbox, or external task-system integrations. Compatibility fallback to the older learning buffer remains only when the proposal registry is unavailable. Context panel with live token usage, tool stats, runtime, channels, and system metrics. Two-tier approval with inline strip and fullscreen dialog. Background task management with detail view, cancel, and retry. Runtime visibility with delegation tracking, budget warnings, and recovery events
+- 🖥️ **Cockpit TUI** — Multi-panel terminal dashboard with Mission Control as the default landing surface, followed by Chat, Settings, Tools, Status, Sessions, Tasks, Dead Letters, and Approvals in the sidebar. Mission Control reads durable mission rows first, still shows unmatched runtime work as overlay until it is linked, renders transient proactive proposals from a session-scoped proposal registry, adds a compact loops/agenda layer built only from real existing sources, and now shows compact collaboration context for mission-linked local coworking. In the current slices, only learning suggestions are active proposal producers; loop sources are durable missions, pending inquiries, dead-letter backlog, cron jobs, and deterministic follow-up signals. Collaboration context is limited to attributable local participants, handoffs, blocked state, budget pressure, recovery hints, and linked local review state. Scheduled automation in this loop slice means cron jobs only. There are still no calendar, inbox, external task-system, or full external P2P team collaboration surfaces in Mission Control. Compatibility fallback to the older learning buffer remains only when the proposal registry is unavailable. Context panel with live token usage, tool stats, runtime, channels, and system metrics. Two-tier approval with inline strip and fullscreen dialog. Background task management with detail view, cancel, and retry. Runtime visibility with delegation tracking, budget warnings, and recovery events
 - 📋 **RunLedger (Task OS)** — Durable execution engine with append-only journal, PEV verification, typed validators, and planner integration
 - 📜 **Session Provenance** — Persistent checkpoints, session lineage tree, git-aware attribution, and signed provenance bundle export/import
 - 🛡️ **OS-level Sandbox** — Process isolation via macOS Seatbelt and Linux bubblewrap (when `bwrap` is installed), network deny, workspace-scoped write access, automatic control-plane (`~/.lango`) and `.git` masking (walks up to the repo root and follows linked-worktree pointers), file-level deny via `/dev/null` bind, symlink resolution, glob patterns in deny/write lists, audit trail of every apply/skip/exclude decision
@@ -210,6 +210,7 @@ Mission Control keeps chat available on the first screen: type directly into the
 - unmatched runtime work still appears as overlay until it is linked to a durable mission
 - `waiting_decision` is stored as a coarse durable mission state while the live approval prompt remains session-owned
 - it now renders a compact **Agenda** band of loop rows in addition to missions, proposals, and decisions
+- it can now attach compact collaboration context to durable mission rows and details without replacing the mission board
 
 Current loop slice at HEAD:
 
@@ -218,6 +219,14 @@ Current loop slice at HEAD:
 - dead-letter loops and cron loops are operator-global in the current slice, while mission loops, inquiry loops, and follow-up loops remain session-scoped
 - follow-up loops are deterministic only: accepted proposal without active execution yet, completed mission still needing review, and aging inquiry follow-up
 - loops are additive coordination surfaces and do not replace durable missions as the primary owned work records
+
+Current collaboration slice at HEAD:
+
+- collaboration is limited to **mission-linked local coworking** in Mission Control
+- participants, handoffs, blocked state, budget pressure, and recovery hints appear only when attribution is provable from mission-linked local execution data
+- reviewing appears only from linked local `RunLedger` review-needed execution state such as `verify_pending`
+- the collaboration surface stays compact and additive on mission rows/details rather than becoming a separate team dashboard
+- external P2P team UX remains secondary and is not part of the main Mission Control collaboration surface
 - there are still no calendar, inbox, or external task-system integrations in Mission Control
 
 Task tracking remains separate from mission truth. The Tasks page and `TaskEntry` tooling are still lightweight operational tracking surfaces, not the authoritative durable mission checklist model.
