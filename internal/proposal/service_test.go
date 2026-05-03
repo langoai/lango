@@ -116,7 +116,7 @@ func TestProposalServiceDismissAndAcceptUseRegistry(t *testing.T) {
 
 	accepted, err := service.Accept(context.Background(), second.ProposalID)
 	require.NoError(t, err)
-	assert.Equal(t, []string{"accept"}, registry.calls)
+	assert.Equal(t, []string{"prune", "accept"}, registry.calls)
 	assert.Equal(t, ProposalStatusAccepted, accepted.Status)
 }
 
@@ -144,8 +144,37 @@ func TestProposalServiceRestorePreparedReturnsAcceptedProposalToVisibleState(t *
 
 	restored, err := service.RestorePrepared(context.Background(), prepared.ProposalID)
 	require.NoError(t, err)
-	assert.Equal(t, []string{"accept", "restore-prepared"}, registry.calls)
+	assert.Equal(t, []string{"prune", "accept", "restore-prepared"}, registry.calls)
 	assert.Equal(t, ProposalStatusPrepared, restored.Status)
 	require.NotNil(t, restored.PreparedBrief)
 	assert.NotEmpty(t, restored.PreparedBrief.SourceSummary)
+}
+
+func TestProposalServiceAcceptRejectsExpiredProposal(t *testing.T) {
+	t.Parallel()
+
+	clock := &testClock{now: time.Date(2026, 5, 3, 11, 0, 0, 0, time.UTC)}
+	registry := newSpyRegistry(clock.Now)
+	service := NewService(registry, NewDeterministicPreparer())
+
+	prepared, err := service.UpsertLearningSuggestion(context.Background(), LearningSuggestionSource{
+		SessionKey:   "sess-1",
+		SuggestionID: "expired-accept",
+		Pattern:      "pattern-expired",
+		ProposedRule: "Rule expired",
+		ExpiresAt:    clock.now.Add(2 * time.Minute),
+	})
+	require.NoError(t, err)
+
+	clock.now = clock.now.Add(3 * time.Minute)
+	registry.calls = nil
+
+	accepted, err := service.Accept(context.Background(), prepared.ProposalID)
+	require.Error(t, err)
+	assert.Nil(t, accepted)
+	assert.Equal(t, []string{"prune"}, registry.calls)
+
+	stored, ok := registry.GetByID(prepared.ProposalID)
+	require.True(t, ok)
+	assert.Equal(t, ProposalStatusExpired, stored.Status)
 }

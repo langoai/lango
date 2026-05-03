@@ -650,6 +650,30 @@ func TestMissionControlDismissProposedMissionUsesProposalServiceAndRemovesOverla
 	assert.Empty(t, page.snapshot.Missions)
 }
 
+func TestMissionControlProposalSourceMetadataIsVisibleInMissionPane(t *testing.T) {
+	t.Parallel()
+
+	page := loadedMissionControlPage(t, cockpit.MissionControlSnapshot{
+		Missions: []cockpit.MissionView{
+			{
+				ID:         "proposal-1",
+				Kind:       cockpit.MissionKindProposed,
+				Status:     cockpit.MissionStatusPrepared,
+				Title:      "Apply bounded retry guidance",
+				Detail:     "Prepared brief available",
+				SourceKind: "proposed_learning",
+				SourceRef:  "s-1",
+			},
+		},
+	})
+	page.width = 120
+	page.height = 30
+	page.focus = missionControlFocusMissions
+
+	view := page.renderMissionPane()
+	assert.Contains(t, view, "source: proposed_learning / s-1")
+}
+
 func TestMissionControlPageFlowDoesNotCreateDurableMissionBeforeAcceptance(t *testing.T) {
 	t.Parallel()
 

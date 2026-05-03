@@ -538,6 +538,11 @@ func (p *MissionControlPage) renderMissionPane() string {
 		if detail := strings.TrimSpace(firstNonEmpty(mission.Detail, mission.NextAction, mission.BlockedReason)); detail != "" {
 			lines = append(lines, "    "+detail)
 		}
+		if mission.Kind == cockpit.MissionKindProposed {
+			if sourceLabel := strings.TrimSpace(compactProposalSourceLabel(mission)); sourceLabel != "" {
+				lines = append(lines, "    source: "+sourceLabel)
+			}
+		}
 	}
 	if extra := strings.TrimSpace(p.snapshot.MissionOverflowSummary); extra != "" {
 		lines = append(lines, "  "+extra)
@@ -648,6 +653,17 @@ func missionControlTickCmd() tea.Cmd {
 	return tea.Tick(missionControlTickInterval, func(t time.Time) tea.Msg {
 		return missionControlTickMsg(t)
 	})
+}
+
+func compactProposalSourceLabel(mission cockpit.MissionView) string {
+	parts := make([]string, 0, 2)
+	if kind := strings.TrimSpace(mission.SourceKind); kind != "" {
+		parts = append(parts, kind)
+	}
+	if ref := strings.TrimSpace(mission.SourceRef); ref != "" {
+		parts = append(parts, ref)
+	}
+	return strings.Join(parts, " / ")
 }
 
 func isMissionControlPrintableKey(msg tea.KeyMsg) bool {

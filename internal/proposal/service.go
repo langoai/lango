@@ -110,6 +110,7 @@ func (s *Service) Accept(ctx context.Context, proposalID string) (*Proposal, err
 		return nil, err
 	}
 	proposalID = strings.TrimSpace(proposalID)
+	registry.PruneExpired()
 	current, ok := registry.GetByID(proposalID)
 	if !ok {
 		return nil, fmt.Errorf("proposal %q not found", proposalID)
