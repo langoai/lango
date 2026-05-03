@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"sync"
+	"time"
 
 	"github.com/langoai/lango/internal/adk"
 	"github.com/langoai/lango/internal/agentmemory"
@@ -176,6 +177,12 @@ type App struct {
 	LoopDeadLetterReader LoopDeadLetterReader
 	LoopCronReader       LoopCronReader
 
+	// Collaboration readers (optional, narrow local coworking surfaces)
+	CollaborationMissionLinkReader CollaborationMissionLinkReader
+	CollaborationAgentRunReader    CollaborationAgentRunReader
+	CollaborationDelegationReader  CollaborationDelegationReader
+	CollaborationRuntimeReader     CollaborationRuntimeReader
+
 	// Provenance Components (optional)
 	ProvenanceCheckpoints *provenance.CheckpointService
 	ProvenanceSessionTree *provenance.SessionTree
@@ -237,7 +244,6 @@ type LoopMissionReader interface {
 
 type LoopProposalReader interface {
 	ListBySession(sessionKey string) []proposal.Proposal
-	ListLoopBySession(sessionKey string) []proposal.Proposal
 }
 
 type LoopInquiryReader interface {
@@ -251,6 +257,57 @@ type LoopDeadLetterReader interface {
 type LoopCronReader interface {
 	List(ctx context.Context) ([]cronpkg.Job, error)
 	ListHistory(ctx context.Context, jobID string, limit int) ([]cronpkg.HistoryEntry, error)
+}
+
+type CollaborationMissionExecutionLink struct {
+	ExecutionKind string
+	ExecutionRef  string
+}
+
+type CollaborationAgentRunView struct {
+	ID               string
+	RequestedAgent   string
+	RuntimeCondition string
+	BlockedReason    string
+	WaitingOnRunID   string
+	RecoveryState    string
+}
+
+type CollaborationDelegationRecord struct {
+	From      string
+	To        string
+	Timestamp time.Time
+}
+
+type CollaborationBudgetRecord struct {
+	MissionID string
+	Used      int
+	Max       int
+	Timestamp time.Time
+}
+
+type CollaborationRecoveryRecord struct {
+	MissionID  string
+	Action     string
+	CauseClass string
+	Timestamp  time.Time
+}
+
+type CollaborationMissionLinkReader interface {
+	ListMissionExecutionLinks(ctx context.Context, missionID string) ([]CollaborationMissionExecutionLink, error)
+}
+
+type CollaborationAgentRunReader interface {
+	ListAgentRuns() []CollaborationAgentRunView
+}
+
+type CollaborationDelegationReader interface {
+	ListDelegationsForSession(ctx context.Context, sessionKey string) ([]CollaborationDelegationRecord, error)
+}
+
+type CollaborationRuntimeReader interface {
+	ListBudgetSignals(missionID string) []CollaborationBudgetRecord
+	ListRecoverySignals(missionID string) []CollaborationRecoveryRecord
 }
 
 // Channel represents a communication channel (Telegram, Discord, Slack)

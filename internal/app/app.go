@@ -95,6 +95,7 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 		ctx:      ctx,
 		cancel:   cancel,
 	}
+	app.CollaborationRuntimeReader = newCollaborationRuntimeBridge(bus)
 
 	// LocalChat/Cockpit mode: skip Network and Automation lifecycle components.
 	if options.mode == AppModeLocalChat || options.mode == AppModeCockpit {
@@ -137,6 +138,7 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 	// B1. Populate app fields from resolver.
 	populateAppFields(app, resolver)
 	wireLoopReaders(app, boot)
+	wireCollaborationReaders(app)
 
 	// B1a. Wire the event bus into the supervisor's exec tool so that
 	// SandboxDecisionEvent records flow into the audit recorder.
@@ -318,6 +320,7 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 	app.Agent = adkAgent
 	app.Gateway.SetAgent(adkAgent)
 	app.TurnTraceStore = initTurnTraceStore(app.Store)
+	wireCollaborationReaders(app)
 	idleTimeout, hardCeiling := app.resolveTimeouts()
 	var errorFixProvider adk.ErrorFixProvider
 	if iv != nil && iv.KC != nil && iv.KC.engine != nil {
@@ -526,6 +529,21 @@ func wireLoopReaders(app *App, boot *bootstrap.Result) {
 		if cronStore := boot.Storage.Cron(); cronStore != nil {
 			app.LoopCronReader = cronStore
 		}
+	}
+}
+
+func wireCollaborationReaders(app *App) {
+	if app == nil {
+		return
+	}
+	if app.MissionStore != nil {
+		app.CollaborationMissionLinkReader = &collaborationMissionLinkReader{store: app.MissionStore}
+	}
+	if app.AgentRunStore != nil {
+		app.CollaborationAgentRunReader = &collaborationAgentRunReader{store: app.AgentRunStore}
+	}
+	if app.TurnTraceStore != nil {
+		app.CollaborationDelegationReader = &collaborationDelegationReader{store: app.TurnTraceStore}
 	}
 }
 

@@ -19,6 +19,7 @@ import (
 	"github.com/langoai/lango/internal/storage"
 	"github.com/langoai/lango/internal/testutil"
 	"github.com/langoai/lango/internal/toolchain"
+	"github.com/langoai/lango/internal/turntrace"
 	"github.com/langoai/lango/internal/workflow"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -316,6 +317,48 @@ func TestPopulateAppFields_WorkflowDoesNotFabricateCronLoopReader(t *testing.T) 
 	})
 
 	assert.Nil(t, app.LoopCronReader)
+}
+
+func TestWireCollaborationReaders_PopulatesLocalReadersWhenAvailable(t *testing.T) {
+	t.Parallel()
+
+	client := testutil.TestEntClient(t)
+	app := &App{
+		MissionStore:               mission.NewEntStore(client),
+		AgentRunStore:              agentrt.NewInMemoryAgentRunStore(),
+		TurnTraceStore:             &turntrace.EntStore{},
+		CollaborationRuntimeReader: newCollaborationRuntimeBridge(nil),
+	}
+
+	wireCollaborationReaders(app)
+
+	require.NotNil(t, app.CollaborationMissionLinkReader)
+	require.NotNil(t, app.CollaborationAgentRunReader)
+	require.NotNil(t, app.CollaborationDelegationReader)
+	require.NotNil(t, app.CollaborationRuntimeReader)
+}
+
+func TestNew_CollaborationDoesNotImplyExternalTeamSurface(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Session.DatabasePath = filepath.Join(t.TempDir(), "test.db")
+	cfg.Agent.Provider = "google"
+	cfg.Providers = map[string]config.ProviderConfig{
+		"google": {
+			Type:   "gemini",
+			APIKey: "test-key",
+		},
+	}
+
+	client := testutil.TestEntClient(t)
+	boot := &bootstrap.Result{
+		Config:  cfg,
+		Storage: storage.NewFacade(nil, nil, storage.WithEntClient(client)),
+	}
+
+	app, err := New(boot)
+	require.NoError(t, err)
+	require.NotNil(t, app.CollaborationRuntimeReader)
+	assert.Nil(t, app.P2PTeamCoordinator)
 }
 
 func TestNew_MissionApprovalObserverWiredAtCompositionSite(t *testing.T) {
