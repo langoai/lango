@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a toggleable observe-only runtime admission layer for app-path dynamic graph triple producers so Lango can classify unknown predicates, emit shared-validator and write-failure telemetry, and measure failure baselines without changing existing write routing yet.
+**Goal:** Add a toggleable observe-only runtime admission layer for current app-path dynamic graph triple producers so Lango can classify unknown predicates, emit shared-validator and aggregate write-failure telemetry, and measure failure baselines without changing existing write routing yet.
 
 **Architecture:** This plan implements only `Change A / Phase A1` from the adaptive ontology growth design. It instruments runtime producers, computes admission decisions with the ontology validator closure, publishes graph-admission observability events, and records those metrics in the collector and status page. It does **not** filter, rewrite, or reroute writes; all existing enqueue and direct-store behavior stays intact.
 
@@ -15,9 +15,8 @@
 This plan covers only the **observe-only runtime app sub-slice** from `Change A / Phase A1`:
 
 - `TriplesExtractedEvent` producers that already flow through `internal/app/wiring_graph.go`
-- `GraphEngine` direct store writes when the event-bus handoff is not used
 - extractor-local dropped-unknown telemetry for the `content.saved` async extraction path
-- graph admission, validator-source, and graph-write-failure telemetry and status surfaces
+- graph admission, validator-source, and aggregate graph-write-failure telemetry and status surfaces
 - config and settings needed to turn the observe-only slice off or on
 
 This plan explicitly does **not** cover:
@@ -27,6 +26,7 @@ This plan explicitly does **not** cover:
 - `AssertFact`, ontology tools, ontology actions, and P2P fact assertion paths
 - any `enforce`-mode filtering or write dropping
 - unknown type classification beyond basic type-hint observability
+- dormant direct-store producer paths not used in the default runtime
 - adaptive shadow growth, schema candidate persistence, or replay hardening
 
 ## File Structure
@@ -58,10 +58,6 @@ This plan explicitly does **not** cover:
   Observe `TriplesExtractedEvent` batches before existing enqueue behavior.
 - `internal/graph/extractor.go`
   Publish observe-only dropped-unknown telemetry for the current `content.saved` extraction path without widening extraction behavior.
-- `internal/app/wiring_knowledge.go`
-  Pass the shared observe-mode policy into `GraphEngine`.
-- `internal/learning/graph_engine.go`
-  Observe direct `AddTriples` writes before existing direct-store behavior.
 - `internal/graph/buffer.go`
   Publish graph write failure baseline telemetry for batched graph writes.
 - `internal/eventbus/observability_events.go`
@@ -87,7 +83,6 @@ This plan explicitly does **not** cover:
 
 - `internal/config/loader_test.go`
 - `internal/cli/settings/forms_impl_test.go`
-- `internal/learning/graph_engine_test.go`
 - `internal/observability/collector_test.go`
 - `internal/graph/extractor_test.go`
 
@@ -147,7 +142,6 @@ This change implements only `Change A / Phase A1`.
 
 The runtime computes admission decisions for:
 - `TriplesExtractedEvent` batches
-- `GraphEngine` direct store writes
 - app-path extracted triples only where the current runtime already surfaces them without widening extractor behavior
 - extractor-local dropped-unknown events for the current `content.saved` extraction path
 
@@ -167,11 +161,6 @@ Runtime dynamic graph triple producers SHALL compute admission decisions before 
 - **WHEN** a `TriplesExtractedEvent` batch is processed
 - **THEN** the runtime SHALL record graph-admission telemetry
 - **AND** the runtime SHALL still enqueue the original triples
-
-#### Scenario: GraphEngine direct-write observe path
-- **WHEN** `GraphEngine` writes directly to the graph store without using the event bus
-- **THEN** the runtime SHALL record graph-admission telemetry
-- **AND** the runtime SHALL still call the existing direct `AddTriples` path
 
 #### Scenario: Extractor dropped-unknown baseline
 - **WHEN** the current `content.saved` extraction path rejects an unknown predicate before admission
@@ -195,7 +184,7 @@ The runtime SHALL use the ontology service predicate validator closure as the sh
 ```markdown
 <!-- openspec/changes/runtime-admission-boundary-hardening/specs/cli-settings/spec.md -->
 ### Requirement: Observe-mode admission settings
-The settings surface SHALL expose runtime admission configuration with values `off` and `observe`, plus per-producer fallback confidence defaults.
+The settings surface SHALL expose runtime admission configuration with values `off` and `observe`, plus fallback confidence defaults for the learning-derived producer group and the librarian-derived producer group.
 ```
 
 - [ ] **Step 5: Record tasks and commit**
@@ -846,16 +835,14 @@ git add internal/app/modules.go internal/app/wiring_graph.go internal/app/wiring
 git commit -m "feat: observe runtime graph event producers"
 ```
 
-## Task 5: Observe GraphEngine Direct Writes And Wire Telemetry Consumers
+## Task 5: Wire Telemetry Consumers And GraphBuffer Failure Baselines
 
 **Files:**
-- Modify: `internal/learning/graph_engine.go`
-- Modify: `internal/app/wiring_knowledge.go`
 - Modify: `internal/app/wiring_observability.go`
 - Modify: `internal/observability/types.go`
 - Modify: `internal/observability/collector.go`
+- Modify: `internal/graph/buffer.go`
 - Modify: `internal/cli/cockpit/pages/status.go`
-- Test: `internal/learning/graph_engine_test.go`
 - Test: `internal/observability/collector_test.go`
 
 - [ ] **Step 1: Write the failing tests**
@@ -863,50 +850,6 @@ git commit -m "feat: observe runtime graph event producers"
 Add tests like these:
 
 ```go
-func TestGraphEngine_RecordFix_ObserveModePreservesDirectWrite(t *testing.T) {
-	gs := &fakeGraphStore{}
-	logger := zap.NewNop().Sugar()
-	p := graph.NewAdmissionPolicy(graph.AdmissionConfig{
-		Validator: func(name string) bool { return name == graph.ResolvedBy },
-		DefaultConfidence: map[graph.AdmissionProducer]float64{
-			graph.ProducerGraphEngine: 0.60,
-		},
-	}, logger)
-
-	ge := &GraphEngine{
-		Engine:          &Engine{store: nil, logger: logger},
-		graphStore:      gs,
-		admissionPolicy: p,
-		propagation:     0.3,
-		logger:          logger,
-	}
-
-	ge.RecordFix(context.Background(), "timeout error", "increase timeout", "session-1")
-	require.Len(t, gs.triples, 2, "observe-only path must preserve original direct write batch")
-}
-
-func TestGraphEngine_RecordErrorGraph_ObserveModePreservesDirectWrite(t *testing.T) {
-	gs := &fakeGraphStore{}
-	logger := zap.NewNop().Sugar()
-	p := graph.NewAdmissionPolicy(graph.AdmissionConfig{
-		Validator: func(name string) bool { return name == graph.CausedBy },
-		DefaultConfidence: map[graph.AdmissionProducer]float64{
-			graph.ProducerGraphEngine: 0.60,
-		},
-	}, logger)
-
-	ge := &GraphEngine{
-		Engine:          &Engine{store: nil, logger: logger},
-		graphStore:      gs,
-		admissionPolicy: p,
-		propagation:     0.3,
-		logger:          logger,
-	}
-
-	ge.recordErrorGraph(context.Background(), "s1", "tool1", fmt.Errorf("boom"))
-	require.Len(t, gs.triples, 2, "observe-only path must preserve original direct write batch")
-}
-
 func TestCollector_RecordGraphAdmissionBatch(t *testing.T) {
 	c := NewCollector()
 	c.RecordGraphAdmissionBatch("conversation_analysis", 3, 2, 1, 1, 0, "ontology_predicate_validator_closure")
@@ -925,61 +868,14 @@ func TestCollector_RecordGraphAdmissionBatch(t *testing.T) {
 Run:
 
 ```bash
-go test ./internal/learning ./internal/observability -run 'ObserveModePreservesDirectWrite|RecordGraphAdmissionBatch'
+go test ./internal/observability -run 'RecordGraphAdmissionBatch'
 ```
 
-Expected: FAIL because the direct-write observe path and graph admission metrics do not exist
+Expected: FAIL because the graph admission metrics and write-failure baseline do not exist
 
-- [ ] **Step 3: Implement GraphEngine observe path and telemetry consumers**
+- [ ] **Step 3: Implement telemetry consumers and failure baseline**
 
 Apply changes like these:
-
-```go
-// internal/learning/graph_engine.go
-type GraphEngine struct {
-	*Engine
-	graphStore      graph.Store
-	bus             *eventbus.Bus
-	admissionPolicy *graph.AdmissionPolicy
-	propagation     float64
-	logger          *zap.SugaredLogger
-}
-
-func (e *GraphEngine) SetAdmissionPolicy(p *graph.AdmissionPolicy) {
-	e.admissionPolicy = p
-}
-
-func (e *GraphEngine) observeTriples(triples []graph.Triple) []graph.Triple {
-	if e.admissionPolicy == nil {
-		return triples
-	}
-	return graph.ObserveTriples(e.admissionPolicy, graph.ProducerGraphEngine, "graph_engine", triples)
-}
-```
-
-Use that helper in both direct-write branches:
-
-```go
-if e.bus != nil {
-	e.publishTriples(triples)
-} else if e.graphStore != nil {
-	if addErr := e.graphStore.AddTriples(ctx, e.observeTriples(triples)); addErr != nil {
-		e.logger.Warnw("add error graph triples", "error", addErr)
-	}
-}
-```
-
-```go
-// internal/app/wiring_knowledge.go
-if gc != nil {
-	graphEngine := learning.NewGraphEngine(kStore, gc.store, kLogger)
-	if gc.admissionPolicy != nil {
-		graphEngine.SetAdmissionPolicy(gc.admissionPolicy)
-	}
-	graphEngine.SetEventBus(bus)
-	observer = graphEngine
-}
-```
 
 ```go
 // internal/observability/types.go
@@ -1133,7 +1029,7 @@ func (m *StatusPage) renderGraphAdmission(titleStyle lipgloss.Style, divider str
 Run:
 
 ```bash
-go test ./internal/learning ./internal/observability -run 'ObserveModePreservesDirectWrite|RecordGraphAdmissionBatch'
+go test ./internal/observability -run 'RecordGraphAdmissionBatch'
 ```
 
 Expected: PASS
@@ -1143,9 +1039,9 @@ Expected: PASS
 Run:
 
 ```bash
-git add internal/learning/graph_engine.go internal/learning/graph_engine_test.go internal/app/wiring_knowledge.go internal/app/wiring_observability.go internal/observability/types.go internal/observability/collector.go internal/observability/collector_test.go internal/cli/cockpit/pages/status.go
+git add internal/app/wiring_observability.go internal/observability/types.go internal/observability/collector.go internal/observability/collector_test.go internal/cli/cockpit/pages/status.go
 git add internal/graph/buffer.go internal/app/modules.go
-git commit -m "feat: observe graph admission telemetry and direct writes"
+git commit -m "feat: add graph admission telemetry baselines"
 ```
 
 ## Task 6: Update Downstream Docs And Verify The Slice
