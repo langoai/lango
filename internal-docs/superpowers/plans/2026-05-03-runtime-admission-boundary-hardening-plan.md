@@ -156,12 +156,17 @@ Use these deltas:
 ```markdown
 <!-- openspec/changes/runtime-admission-boundary-hardening/specs/knowledge-graph/spec.md -->
 ### Requirement: Observe-only admission for runtime dynamic producers
-Runtime dynamic graph triple producers SHALL compute admission decisions before existing graph write steps, but SHALL preserve current write routing in observe mode.
+The Phase A1 runtime app observe slice SHALL compute admission decisions only for the current `TriplesExtractedEvent` producer set plus `content.saved` extractor outcomes already surfaced in app wiring, while preserving current write routing in observe mode.
 
 #### Scenario: TriplesExtractedEvent observe path
 - **WHEN** a `TriplesExtractedEvent` batch is processed
 - **THEN** the runtime SHALL record graph-admission telemetry
 - **AND** the runtime SHALL still enqueue the original triples
+
+#### Scenario: Extracted triples observe path
+- **WHEN** `content.saved` extraction returns triples
+- **THEN** the runtime SHALL record observe-only admission telemetry for those returned triples
+- **AND** the runtime SHALL still enqueue the original extracted triples
 
 #### Scenario: Extractor dropped-unknown baseline
 - **WHEN** the current `content.saved` extraction path rejects an unknown predicate before admission
@@ -246,6 +251,22 @@ func TestUpdateConfigFromForm_OntologyAdmissionObserveFields(t *testing.T) {
 	assert.InDelta(t, 0.65, state.Current.Ontology.Governance.LearningDefaultConfidence, 0.001)
 	assert.InDelta(t, 0.55, state.Current.Ontology.Governance.LibrarianDefaultConfidence, 0.001)
 }
+
+func TestNewOntologyForm_AdmissionFieldsVisibleWithoutGovernanceEnabled(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Ontology.Enabled = true
+	cfg.Ontology.Governance.Enabled = false
+
+	form := NewOntologyForm(cfg)
+	visible := map[string]bool{}
+	for _, field := range form.VisibleFields() {
+		visible[field.Key] = true
+	}
+
+	assert.True(t, visible["ontology_gov_admission_mode"])
+	assert.True(t, visible["ontology_gov_learning_conf"])
+	assert.True(t, visible["ontology_gov_librarian_conf"])
+}
 ```
 
 - [ ] **Step 2: Run the tests to verify failure**
@@ -253,7 +274,7 @@ func TestUpdateConfigFromForm_OntologyAdmissionObserveFields(t *testing.T) {
 Run:
 
 ```bash
-go test ./internal/config ./internal/cli/settings -run 'OntologyAdmissionObserve'
+go test ./internal/config ./internal/cli/settings -run 'OntologyAdmissionObserve|AdmissionFieldsVisibleWithoutGovernanceEnabled'
 ```
 
 Expected: FAIL with missing config fields
@@ -343,7 +364,7 @@ case "ontology_gov_librarian_conf":
 Run:
 
 ```bash
-go test ./internal/config ./internal/cli/settings -run 'OntologyAdmissionObserve'
+go test ./internal/config ./internal/cli/settings -run 'OntologyAdmissionObserve|AdmissionFieldsVisibleWithoutGovernanceEnabled'
 ```
 
 Expected: PASS
@@ -654,6 +675,22 @@ func TestObserveExtractedTriples_PreservesOriginalTriples(t *testing.T) {
 	assert.Equal(t, "invented_rel", triples[0].Predicate)
 }
 
+func TestObserveExtractedContentTriples_PreservesReturnedTriples(t *testing.T) {
+	p := graph.NewAdmissionPolicy(graph.AdmissionConfig{
+		Validator: func(name string) bool { return name == graph.CausedBy },
+		DefaultConfidence: map[graph.AdmissionProducer]float64{
+			graph.ProducerContentSavedExtractor: 0.60,
+		},
+	}, zap.NewNop().Sugar())
+
+	triples := graph.ObserveTriples(p, graph.ProducerContentSavedExtractor, "content_saved_extractor", []graph.Triple{{
+		Subject: "a", Predicate: graph.CausedBy, Object: "b",
+	}})
+
+	require.Len(t, triples, 1)
+	assert.Equal(t, graph.CausedBy, triples[0].Predicate)
+}
+
 func TestExtractor_EmitDroppedUnknownObservation(t *testing.T) {
 	logger := zap.NewNop().Sugar()
 	var got []DroppedUnknownPredicateEvent
@@ -674,7 +711,7 @@ Run:
 
 ```bash
 go test ./internal/app -run 'ProducerForExtractedEvent|ObserveExtractedTriples'
-go test ./internal/graph -run 'EmitDroppedUnknownObservation'
+go test ./internal/graph -run 'ObserveExtractedContentTriples|EmitDroppedUnknownObservation'
 ```
 
 Expected: FAIL because the observe helpers do not exist
@@ -829,6 +866,12 @@ extractor = graph.NewExtractor(generator, logger(),
 	}),
 	graph.WithPredicateValidator(ontologyValidator),
 )
+
+// inside content.saved extraction goroutine after extractor.Extract(...)
+observed := graph.ObserveTriples(gc.admissionPolicy, graph.ProducerContentSavedExtractor, "content_saved_extractor", triples)
+if len(observed) > 0 {
+	gc.buffer.Enqueue(graph.GraphRequest{Triples: observed})
+}
 ```
 
 - [ ] **Step 4: Run the tests again**
@@ -837,7 +880,7 @@ Run:
 
 ```bash
 go test ./internal/app -run 'ProducerForExtractedEvent|ObserveExtractedTriples'
-go test ./internal/graph -run 'EmitDroppedUnknownObservation'
+go test ./internal/graph -run 'ObserveExtractedContentTriples|EmitDroppedUnknownObservation'
 ```
 
 Expected: PASS
