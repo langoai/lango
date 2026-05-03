@@ -15,9 +15,13 @@ import (
 	"github.com/langoai/lango/internal/background"
 	"github.com/langoai/lango/internal/cli/chat"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/cron"
 	"github.com/langoai/lango/internal/eventbus"
+	"github.com/langoai/lango/internal/librarian"
+	"github.com/langoai/lango/internal/loopview"
 	"github.com/langoai/lango/internal/mission"
 	"github.com/langoai/lango/internal/observability"
+	"github.com/langoai/lango/internal/postadjudicationstatus"
 	"github.com/langoai/lango/internal/proposal"
 	"github.com/langoai/lango/internal/runledger"
 )
@@ -114,6 +118,48 @@ func (s stubMissionControlProposalReader) GetByID(proposalID string) (proposal.P
 		}
 	}
 	return proposal.Proposal{}, false
+}
+
+type stubMissionControlLoopInquiryReader struct {
+	items []librarian.Inquiry
+	err   error
+}
+
+func (s stubMissionControlLoopInquiryReader) ListPendingInquiries(_ context.Context, sessionKey string, _ int) ([]librarian.Inquiry, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	out := make([]librarian.Inquiry, 0, len(s.items))
+	for _, item := range s.items {
+		if item.SessionKey == sessionKey {
+			out = append(out, item)
+		}
+	}
+	return out, nil
+}
+
+type stubMissionControlLoopDeadReader struct {
+	items []postadjudicationstatus.DeadLetterBacklogEntry
+	err   error
+}
+
+func (s stubMissionControlLoopDeadReader) ListCurrentDeadLetters(context.Context) ([]postadjudicationstatus.DeadLetterBacklogEntry, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	return append([]postadjudicationstatus.DeadLetterBacklogEntry(nil), s.items...), nil
+}
+
+type stubMissionControlLoopCronReader struct {
+	items []cron.Job
+	err   error
+}
+
+func (s stubMissionControlLoopCronReader) List(context.Context) ([]cron.Job, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	return append([]cron.Job(nil), s.items...), nil
 }
 
 func (s stubMissionControlMissionReader) ListExecutionLinks(_ context.Context, missionID string) ([]*mission.ExecutionLink, error) {
@@ -810,3 +856,133 @@ func TestMissionControlOverflow(t *testing.T) {
 	assert.Equal(t, "Third", snapshot.Activities[0].Summary)
 	assert.Equal(t, "Second", snapshot.Activities[1].Summary)
 }
+
+func TestMissionControlLoopRowsRenderFromRealSources(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 5, 3, 12, 0, 0, 0, time.UTC)
+	projector := NewMissionControlProjector(Deps{
+		SessionKey: "sess-1",
+		MissionReader: stubMissionControlMissionReader{
+			missions: map[string][]*mission.Mission{
+				"sess-1": {{
+					ID:         uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+					SessionKey: "sess-1",
+					Title:      "Wait for approval",
+					Status:     mission.StatusWaitingDecision,
+					SourceKind: "user",
+					UpdatedAt:  now.Add(-5 * time.Minute),
+					CreatedAt:  now.Add(-time.Hour),
+				}},
+			},
+		},
+		LoopInquiryReader: stubMissionControlLoopInquiryReader{
+			items: []librarian.Inquiry{{
+				ID:         uuid.MustParse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
+				SessionKey: "sess-1",
+				Topic:      "Need user answer",
+				Question:   "Which vendor should we use?",
+				CreatedAt:  now.Add(-25 * time.Hour),
+			}},
+		},
+		LoopCronReader: stubMissionControlLoopCronReader{
+			items: []cron.Job{{
+				ID:        "cron-1",
+				Name:      "Nightly digest",
+				Enabled:   true,
+				NextRunAt: ptrTime(now.Add(2 * time.Hour)),
+			}},
+		},
+	})
+
+	snapshot := projector.Project(nil)
+
+	require.Len(t, snapshot.Loops, 3)
+	assert.Equal(t, "mission:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", snapshot.Loops[0].ID)
+	assert.Equal(t, loopview.LoopKindMissionCluster, snapshot.Loops[0].Kind)
+	assert.Equal(t, loopview.LoopKindInquiry, snapshot.Loops[1].Kind)
+	assert.Equal(t, loopview.LoopKindScheduledAutomation, snapshot.Loops[2].Kind)
+	assert.Equal(t, 3, snapshot.OpenLoopCount)
+}
+
+func TestMissionControlAgendaOrderingIsDeterministic(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 5, 3, 12, 0, 0, 0, time.UTC)
+	projector := NewMissionControlProjector(Deps{
+		SessionKey: "sess-1",
+		MissionReader: stubMissionControlMissionReader{
+			missions: map[string][]*mission.Mission{
+				"sess-1": {
+					{
+						ID:         uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+						SessionKey: "sess-1",
+						Title:      "Active mission",
+						Status:     mission.StatusActive,
+						SourceKind: "user",
+						UpdatedAt:  now.Add(-3 * time.Minute),
+						CreatedAt:  now.Add(-time.Hour),
+					},
+					{
+						ID:         uuid.MustParse("22222222-2222-2222-2222-222222222222"),
+						SessionKey: "sess-1",
+						Title:      "Blocked mission",
+						Status:     mission.StatusBlocked,
+						SourceKind: "user",
+						UpdatedAt:  now.Add(-2 * time.Minute),
+						CreatedAt:  now.Add(-time.Hour),
+					},
+				},
+			},
+		},
+		LoopCronReader: stubMissionControlLoopCronReader{
+			items: []cron.Job{{
+				ID:        "cron-1",
+				Name:      "Nightly digest",
+				Enabled:   true,
+				NextRunAt: ptrTime(now.Add(2 * time.Hour)),
+			}},
+		},
+	})
+
+	snapshot := projector.Project(nil)
+
+	require.Len(t, snapshot.Loops, 3)
+	assert.Equal(t, "mission:22222222-2222-2222-2222-222222222222", snapshot.Loops[0].ID)
+	assert.Equal(t, "mission:11111111-1111-1111-1111-111111111111", snapshot.Loops[1].ID)
+	assert.Equal(t, "cron:cron-1", snapshot.Loops[2].ID)
+}
+
+func TestMissionControlAbsentScheduledSourceDoesNotFabricateLoops(t *testing.T) {
+	t.Parallel()
+
+	projector := NewMissionControlProjector(Deps{
+		SessionKey:    "sess-1",
+		MissionReader: stubMissionControlMissionReader{missions: map[string][]*mission.Mission{"sess-1": {}}},
+	})
+
+	snapshot := projector.Project(nil)
+
+	for _, loop := range snapshot.Loops {
+		assert.NotEqual(t, loopview.LoopKindScheduledAutomation, loop.Kind)
+	}
+}
+
+func TestMissionControlLoopSourceFailureDegradesTruthfully(t *testing.T) {
+	t.Parallel()
+
+	projector := NewMissionControlProjector(Deps{
+		SessionKey:        "sess-1",
+		MissionReader:     stubMissionControlMissionReader{missions: map[string][]*mission.Mission{"sess-1": {}}},
+		LoopInquiryReader: stubMissionControlLoopInquiryReader{err: errors.New("inquiry unavailable")},
+		LoopCronReader:    stubMissionControlLoopCronReader{err: errors.New("cron unavailable")},
+	})
+
+	snapshot := projector.Project(nil)
+
+	assert.True(t, snapshot.Degraded)
+	assert.Contains(t, snapshot.Header.DegradedNote, "Inquiry loops unavailable")
+	assert.Contains(t, snapshot.Header.DegradedNote, "Scheduled loops unavailable")
+}
+
+func ptrTime(t time.Time) *time.Time { return &t }

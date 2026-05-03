@@ -252,16 +252,22 @@ func TestDepsAcceptMissionService(t *testing.T) {
 	svc := mission.NewService(nil)
 	psvc := proposal.NewService(nil, nil)
 	deps := Deps{
-		MissionService:  svc,
-		MissionReader:   stubMissionControlMissionReader{},
-		ProposalReader:  stubMissionControlProposalReader{},
-		ProposalService: psvc,
+		MissionService:    svc,
+		MissionReader:     stubMissionControlMissionReader{},
+		ProposalReader:    stubMissionControlProposalReader{},
+		ProposalService:   psvc,
+		LoopInquiryReader: stubMissionControlLoopInquiryReader{},
+		LoopDeadReader:    stubMissionControlLoopDeadReader{},
+		LoopCronReader:    stubMissionControlLoopCronReader{},
 	}
 
 	require.NotNil(t, deps.MissionService)
 	require.NotNil(t, deps.MissionReader)
 	require.NotNil(t, deps.ProposalReader)
 	require.NotNil(t, deps.ProposalService)
+	require.NotNil(t, deps.LoopInquiryReader)
+	require.NotNil(t, deps.LoopDeadReader)
+	require.NotNil(t, deps.LoopCronReader)
 }
 
 var _ ProposalReader = stubMissionControlProposalReader{}

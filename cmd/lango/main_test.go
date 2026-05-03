@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
 
@@ -14,7 +15,10 @@ import (
 	"github.com/langoai/lango/internal/cli/cockpit"
 	"github.com/langoai/lango/internal/cli/cockpit/pages"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/cron"
+	"github.com/langoai/lango/internal/librarian"
 	"github.com/langoai/lango/internal/mission"
+	"github.com/langoai/lango/internal/postadjudicationstatus"
 	"github.com/langoai/lango/internal/proposal"
 )
 
@@ -139,7 +143,18 @@ func TestRunCockpitBuildDepsCarriesMissionService(t *testing.T) {
 	store := &stubMainMissionStore{}
 	registry := proposal.NewRegistry(nil)
 	psvc := proposal.NewService(registry, nil)
-	application := &app.App{MissionService: svc, MissionStore: store, ProposalRegistry: registry, ProposalService: psvc}
+	inquiryReader := &stubMainLoopInquiryReader{}
+	deadReader := &stubMainLoopDeadReader{}
+	cronReader := &stubMainLoopCronReader{}
+	application := &app.App{
+		MissionService:       svc,
+		MissionStore:         store,
+		ProposalRegistry:     registry,
+		ProposalService:      psvc,
+		LoopInquiryReader:    inquiryReader,
+		LoopDeadLetterReader: deadReader,
+		LoopCronReader:       cronReader,
+	}
 	cfg := &config.Config{}
 	pending := cockpit.NewPendingApprovalRegistry()
 	learning := cockpit.NewLearningSuggestionBuffer(nil)
@@ -151,6 +166,9 @@ func TestRunCockpitBuildDepsCarriesMissionService(t *testing.T) {
 	assert.Same(t, store, deps.MissionReader)
 	assert.Same(t, registry, deps.ProposalReader)
 	assert.Same(t, psvc, deps.ProposalService)
+	assert.Same(t, inquiryReader, deps.LoopInquiryReader)
+	assert.Same(t, deadReader, deps.LoopDeadReader)
+	assert.Same(t, cronReader, deps.LoopCronReader)
 	assert.Same(t, learning, deps.LearningBuffer)
 	assert.Same(t, activity, deps.ActivityBuffer)
 }
@@ -180,4 +198,22 @@ func (*stubMainMissionStore) FindExecutionLinkByExecution(context.Context, missi
 }
 func (*stubMainMissionStore) FindMissionByExecution(context.Context, mission.ExecutionKind, string) (*mission.Mission, error) {
 	return nil, nil
+}
+
+type stubMainLoopInquiryReader struct{}
+
+func (*stubMainLoopInquiryReader) ListPendingInquiries(context.Context, string, int) ([]librarian.Inquiry, error) {
+	return nil, nil
+}
+
+type stubMainLoopDeadReader struct{}
+
+func (*stubMainLoopDeadReader) ListCurrentDeadLetters(context.Context) ([]postadjudicationstatus.DeadLetterBacklogEntry, error) {
+	return nil, nil
+}
+
+type stubMainLoopCronReader struct{}
+
+func (*stubMainLoopCronReader) List(context.Context) ([]cron.Job, error) {
+	return []cron.Job{{ID: uuid.NewString(), Name: "job"}}, nil
 }

@@ -1,6 +1,10 @@
 package cockpit
 
-import "time"
+import (
+	"time"
+
+	"github.com/langoai/lango/internal/loopview"
+)
 
 // MissionKind identifies whether a projected mission is active or proposed.
 type MissionKind string
@@ -39,10 +43,13 @@ type MissionControlSnapshot struct {
 	Missions                []MissionView
 	Decision                *DecisionView
 	Activities              []ActivityView
+	Loops                   []LoopView
 	HiddenMissionCount      int
 	HiddenActivityCount     int
+	OpenLoopCount           int
 	MissionOverflowSummary  string
 	ActivityOverflowSummary string
+	LoopOverflowSummary     string
 	Degraded                bool
 	GeneratedAt             time.Time
 }
@@ -83,6 +90,17 @@ type ActivityView struct {
 	Kind      MissionActivityKind
 	Summary   string
 	Timestamp time.Time
+}
+
+// LoopView is one projected operating loop row.
+type LoopView struct {
+	ID         string
+	Kind       loopview.LoopKind
+	Status     loopview.LoopStatus
+	Title      string
+	Summary    string
+	NextAction string
+	UpdatedAt  time.Time
 }
 
 // HeaderView is the compact Mission Control header summary.

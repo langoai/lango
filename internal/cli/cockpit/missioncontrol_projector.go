@@ -10,6 +10,7 @@ import (
 	"github.com/langoai/lango/internal/agentrt"
 	"github.com/langoai/lango/internal/background"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/loopview"
 	"github.com/langoai/lango/internal/mission"
 	"github.com/langoai/lango/internal/observability"
 	"github.com/langoai/lango/internal/proposal"
@@ -23,37 +24,43 @@ const (
 
 // MissionControlProjector derives a deterministic Wave 1 Mission Control view.
 type MissionControlProjector struct {
-	cfg              *config.Config
-	sessionKey       string
-	metricsCollector *observability.MetricsCollector
-	pendingApprovals *PendingApprovalRegistry
-	learningBuffer   *LearningSuggestionBuffer
-	activityBuffer   *MissionActivityBuffer
-	runLedgerStore   RunLedgerReader
-	agentRunStore    AgentRunReader
-	missionReader    MissionReader
-	proposalReader   ProposalReader
-	missionLimit     int
-	activityLimit    int
-	nowFn            func() time.Time
+	cfg               *config.Config
+	sessionKey        string
+	metricsCollector  *observability.MetricsCollector
+	pendingApprovals  *PendingApprovalRegistry
+	learningBuffer    *LearningSuggestionBuffer
+	activityBuffer    *MissionActivityBuffer
+	runLedgerStore    RunLedgerReader
+	agentRunStore     AgentRunReader
+	missionReader     MissionReader
+	proposalReader    ProposalReader
+	loopInquiryReader LoopInquiryReader
+	loopDeadReader    LoopDeadLetterReader
+	loopCronReader    LoopCronReader
+	missionLimit      int
+	activityLimit     int
+	nowFn             func() time.Time
 }
 
 // NewMissionControlProjector creates a deterministic projector from cockpit deps.
 func NewMissionControlProjector(deps Deps) *MissionControlProjector {
 	return &MissionControlProjector{
-		cfg:              deps.Config,
-		sessionKey:       deps.SessionKey,
-		metricsCollector: deps.MetricsCollector,
-		pendingApprovals: deps.PendingApprovals,
-		learningBuffer:   deps.LearningBuffer,
-		activityBuffer:   deps.ActivityBuffer,
-		runLedgerStore:   deps.RunLedgerStore,
-		agentRunStore:    deps.AgentRunStore,
-		missionReader:    deps.MissionReader,
-		proposalReader:   deps.ProposalReader,
-		missionLimit:     defaultMissionControlMissionLimit,
-		activityLimit:    defaultMissionControlActivityLimit,
-		nowFn:            time.Now,
+		cfg:               deps.Config,
+		sessionKey:        deps.SessionKey,
+		metricsCollector:  deps.MetricsCollector,
+		pendingApprovals:  deps.PendingApprovals,
+		learningBuffer:    deps.LearningBuffer,
+		activityBuffer:    deps.ActivityBuffer,
+		runLedgerStore:    deps.RunLedgerStore,
+		agentRunStore:     deps.AgentRunStore,
+		missionReader:     deps.MissionReader,
+		proposalReader:    deps.ProposalReader,
+		loopInquiryReader: deps.LoopInquiryReader,
+		loopDeadReader:    deps.LoopDeadReader,
+		loopCronReader:    deps.LoopCronReader,
+		missionLimit:      defaultMissionControlMissionLimit,
+		activityLimit:     defaultMissionControlActivityLimit,
+		nowFn:             time.Now,
 	}
 }
 
@@ -78,10 +85,14 @@ func (p *MissionControlProjector) Project(taskSnapshots []background.TaskSnapsho
 	})
 	missions := append(durableMissions, runtimeOverlays...)
 	missions = append(missions, proposedMissions...)
+	loops, openLoopCount, loopOverflow, inquiryDegraded, deadLetterDegraded, cronDegraded := p.projectLoops(durableMissions, proposedMissions)
 	degradedNote := p.buildDegradedNote(
 		missionStoreUnavailable,
 		missionDetailsDegraded,
 		proposalRegistryUnavailable,
+		inquiryDegraded,
+		deadLetterDegraded,
+		cronDegraded,
 		runLedgerDegraded || overlayRunLedgerDegraded,
 		agentRunDegraded || overlayAgentRunDegraded,
 	)
@@ -104,10 +115,13 @@ func (p *MissionControlProjector) Project(taskSnapshots []background.TaskSnapsho
 		Missions:                visibleMissions,
 		Decision:                decision,
 		Activities:              visibleActivities,
+		Loops:                   loops,
 		HiddenMissionCount:      hiddenMissionCount,
 		HiddenActivityCount:     hiddenActivityCount,
+		OpenLoopCount:           openLoopCount,
 		MissionOverflowSummary:  missionOverflow,
 		ActivityOverflowSummary: activityOverflow,
+		LoopOverflowSummary:     loopOverflow,
 		Degraded:                degradedNote != "",
 		GeneratedAt:             generatedAt,
 	}
@@ -362,6 +376,115 @@ func (p *MissionControlProjector) projectProposals() ([]MissionView, bool) {
 	return missions, false
 }
 
+func (p *MissionControlProjector) projectLoops(
+	durableMissions []MissionView,
+	proposals []MissionView,
+) ([]LoopView, int, string, bool, bool, bool) {
+	projector := loopview.NewProjector(p.nowFn)
+	input := loopview.ProjectionInput{SessionKey: p.sessionKey}
+
+	for _, row := range durableMissions {
+		input.Missions = append(input.Missions, loopview.MissionSource{
+			MissionID:          strings.TrimSpace(row.ID),
+			SessionKey:         strings.TrimSpace(p.sessionKey),
+			Title:              strings.TrimSpace(row.Title),
+			Status:             durableMissionStatusString(row.Status),
+			UpdatedAt:          row.UpdatedAt,
+			NeedsReview:        false,
+			HasActiveExecution: strings.TrimSpace(row.RuntimeHint) != "",
+		})
+	}
+
+	for _, row := range proposals {
+		input.Proposals = append(input.Proposals, loopview.ProposalSource{
+			ProposalID:         strings.TrimSpace(row.ID),
+			SessionKey:         strings.TrimSpace(p.sessionKey),
+			Title:              strings.TrimSpace(row.Title),
+			Status:             proposalStatusString(row.Status),
+			UpdatedAt:          row.UpdatedAt,
+			HasActiveExecution: false,
+		})
+	}
+
+	var inquiryDegraded bool
+	if p.loopInquiryReader != nil {
+		items, err := p.loopInquiryReader.ListPendingInquiries(context.Background(), p.sessionKey, 10)
+		if err != nil {
+			inquiryDegraded = true
+		} else {
+			for _, item := range items {
+				input.Inquiries = append(input.Inquiries, loopview.InquirySource{
+					InquiryID:  item.ID.String(),
+					SessionKey: item.SessionKey,
+					Topic:      item.Topic,
+					Question:   item.Question,
+					CreatedAt:  item.CreatedAt,
+				})
+			}
+		}
+	}
+
+	var deadLetterDegraded bool
+	if p.loopDeadReader != nil {
+		items, err := p.loopDeadReader.ListCurrentDeadLetters(context.Background())
+		if err != nil {
+			deadLetterDegraded = true
+		} else {
+			for _, item := range items {
+				input.DeadLetters = append(input.DeadLetters, loopview.DeadLetterSource{
+					ReferenceID: item.TransactionReceiptID,
+					Title:       firstNonEmptyString(item.LatestDispatchReference, item.TransactionReceiptID),
+					Summary:     item.LatestDeadLetterReason,
+					Retryable:   item.CanRetry,
+					UpdatedAt:   parseRFC3339OrZero(item.LatestDeadLetteredAt),
+				})
+			}
+		}
+	}
+
+	var cronDegraded bool
+	if p.loopCronReader != nil {
+		items, err := p.loopCronReader.List(context.Background())
+		if err != nil {
+			cronDegraded = true
+		} else {
+			for _, item := range items {
+				var lastStatus string
+				if item.LastRunAt != nil {
+					lastStatus = "completed"
+				}
+				input.CronJobs = append(input.CronJobs, loopview.CronSource{
+					JobID:         item.ID,
+					Name:          item.Name,
+					Enabled:       item.Enabled,
+					NextRunAt:     valueOrZero(item.NextRunAt),
+					LastRunStatus: lastStatus,
+					LastRunAt:     valueOrZero(item.LastRunAt),
+				})
+			}
+		}
+	}
+
+	agenda := projector.Project(input)
+	loops := make([]LoopView, 0, len(agenda.Loops))
+	openCount := 0
+	for _, item := range agenda.Loops {
+		loops = append(loops, LoopView{
+			ID:         item.LoopID,
+			Kind:       item.LoopKind,
+			Status:     item.Status,
+			Title:      item.Title,
+			Summary:    item.Summary,
+			NextAction: item.NextAction,
+			UpdatedAt:  item.UpdatedAt,
+		})
+		if item.Status != loopview.LoopStatusResolved {
+			openCount++
+		}
+	}
+	return loops, openCount, "", inquiryDegraded, deadLetterDegraded, cronDegraded
+}
+
 func (p *MissionControlProjector) projectActivities() []ActivityView {
 	if p.activityBuffer == nil {
 		return nil
@@ -388,7 +511,11 @@ func (p *MissionControlProjector) projectActivities() []ActivityView {
 	return views
 }
 
-func (p *MissionControlProjector) buildDegradedNote(missionStoreUnavailable, missionDetailsDegraded, proposalRegistryUnavailable, runLedgerDegraded, agentRunDegraded bool) string {
+func (p *MissionControlProjector) buildDegradedNote(
+	missionStoreUnavailable, missionDetailsDegraded, proposalRegistryUnavailable,
+	inquiryDegraded, deadLetterDegraded, cronDegraded,
+	runLedgerDegraded, agentRunDegraded bool,
+) string {
 	var notes []string
 	if missionStoreUnavailable {
 		notes = append(notes, "Mission store unavailable")
@@ -397,6 +524,15 @@ func (p *MissionControlProjector) buildDegradedNote(missionStoreUnavailable, mis
 	}
 	if proposalRegistryUnavailable {
 		notes = append(notes, "Proposal registry unavailable")
+	}
+	if inquiryDegraded {
+		notes = append(notes, "Inquiry loops unavailable")
+	}
+	if deadLetterDegraded {
+		notes = append(notes, "Dead-letter loops unavailable")
+	}
+	if cronDegraded {
+		notes = append(notes, "Scheduled loops unavailable")
 	}
 	if p.runLedgerStore == nil || runLedgerDegraded {
 		notes = append(notes, "RunLedger unavailable")
@@ -475,6 +611,54 @@ func missionStatusFromProposal(status proposal.ProposalStatus) MissionStatus {
 	default:
 		return MissionStatusUnknown
 	}
+}
+
+func durableMissionStatusString(status MissionStatus) string {
+	switch status {
+	case MissionStatusPrepared:
+		return "prepared"
+	case MissionStatusRunning:
+		return "active"
+	case MissionStatusPending:
+		return "waiting_decision"
+	case MissionStatusBlocked:
+		return "blocked"
+	case MissionStatusDone:
+		return "done"
+	case MissionStatusCancelled:
+		return "cancelled"
+	default:
+		return ""
+	}
+}
+
+func proposalStatusString(status MissionStatus) string {
+	switch status {
+	case MissionStatusPrepared:
+		return "prepared"
+	case MissionStatusPending:
+		return "preparing"
+	default:
+		return ""
+	}
+}
+
+func parseRFC3339OrZero(value string) time.Time {
+	if strings.TrimSpace(value) == "" {
+		return time.Time{}
+	}
+	t, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		return time.Time{}
+	}
+	return t
+}
+
+func valueOrZero(value *time.Time) time.Time {
+	if value == nil {
+		return time.Time{}
+	}
+	return *value
 }
 
 func enrichDurableMissionFromTask(missionView *MissionView, task background.TaskSnapshot) {

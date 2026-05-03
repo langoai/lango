@@ -167,6 +167,7 @@ func (p *MissionControlPage) View() string {
 	if p.isEmpty() {
 		body := joinNonEmpty(
 			p.renderEmpty(),
+			p.renderLoopPane(),
 			p.renderActivityPane(false),
 			p.renderComposerLine(),
 		)
@@ -174,20 +175,20 @@ func (p *MissionControlPage) View() string {
 	}
 
 	if p.height < 24 {
-		body := p.renderFocusedLane(true)
+		body := joinNonEmpty(p.renderFocusedLane(true), p.renderLoopPane())
 		return joinNonEmpty(header, body, footer)
 	}
 
 	switch {
 	case p.width >= 120:
 		top := p.renderWideTop()
-		body := joinNonEmpty(top, p.renderActivityPane(true), p.renderComposerLine())
+		body := joinNonEmpty(top, p.renderLoopPane(), p.renderActivityPane(true), p.renderComposerLine())
 		return joinNonEmpty(header, body, footer)
 	case p.width >= 80:
-		body := joinNonEmpty(p.renderMissionPane(), p.renderDecisionPane(false), p.renderActivityPane(true), p.renderComposerLine())
+		body := joinNonEmpty(p.renderMissionPane(), p.renderDecisionPane(false), p.renderLoopPane(), p.renderActivityPane(true), p.renderComposerLine())
 		return joinNonEmpty(header, body, footer)
 	default:
-		body := p.renderFocusedLane(false)
+		body := joinNonEmpty(p.renderFocusedLane(false), p.renderLoopPane())
 		return joinNonEmpty(header, body, footer)
 	}
 }
@@ -591,6 +592,29 @@ func (p *MissionControlPage) renderActivityPane(includeComposerHint bool) string
 	return strings.Join(lines, "\n")
 }
 
+func (p *MissionControlPage) renderLoopPane() string {
+	if len(p.snapshot.Loops) == 0 {
+		return ""
+	}
+	lines := []string{p.sectionTitle("Agenda", false)}
+	lines = append(lines, fmt.Sprintf("Open loops: %d", p.snapshot.OpenLoopCount))
+	for _, loop := range p.snapshot.Loops {
+		meta := strings.TrimSpace(strings.Join([]string{string(loop.Kind), string(loop.Status)}, " / "))
+		line := "- " + loop.Title
+		if meta != "" {
+			line += " [" + meta + "]"
+		}
+		lines = append(lines, line)
+		if detail := strings.TrimSpace(firstNonEmpty(loop.Summary, loop.NextAction)); detail != "" {
+			lines = append(lines, "  "+detail)
+		}
+	}
+	if extra := strings.TrimSpace(p.snapshot.LoopOverflowSummary); extra != "" {
+		lines = append(lines, "- "+extra)
+	}
+	return strings.Join(lines, "\n")
+}
+
 func (p *MissionControlPage) renderComposerLine() string {
 	value := ""
 	placeholder := "Type to chat here, or use `lango chat` for focused chat."
@@ -646,7 +670,7 @@ func (p *MissionControlPage) sectionTitle(label string, focused bool) string {
 }
 
 func (p *MissionControlPage) isEmpty() bool {
-	return len(p.snapshot.Missions) == 0 && p.snapshot.Decision == nil
+	return len(p.snapshot.Missions) == 0 && p.snapshot.Decision == nil && len(p.snapshot.Loops) == 0
 }
 
 func missionControlTickCmd() tea.Cmd {

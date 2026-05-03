@@ -19,6 +19,7 @@ import (
 	"github.com/langoai/lango/internal/cli/cockpit"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/ctxkeys"
+	"github.com/langoai/lango/internal/loopview"
 	"github.com/langoai/lango/internal/mission"
 	"github.com/langoai/lango/internal/proposal"
 	"github.com/langoai/lango/internal/session"
@@ -335,6 +336,29 @@ func TestMissionControlFooterDiscoverabilityHint(t *testing.T) {
 	assert.Contains(t, view, "Composer")
 	assert.Contains(t, view, "2 pending")
 	assert.Contains(t, view, "Pending decisions: 2")
+}
+
+func TestMissionControlLoopBandRendering(t *testing.T) {
+	t.Parallel()
+
+	page := loadedMissionControlPage(t, cockpit.MissionControlSnapshot{
+		Loops: []cockpit.LoopView{
+			{
+				ID:         "mission:m-1",
+				Kind:       loopview.LoopKindMissionCluster,
+				Status:     loopview.LoopStatusWaitingUser,
+				Title:      "Wait for approval",
+				Summary:    "Waiting on user direction",
+				NextAction: "Resolve pending decision",
+			},
+		},
+		OpenLoopCount: 1,
+	})
+
+	view := page.View()
+	assert.Contains(t, view, "Agenda")
+	assert.Contains(t, view, "Open loops: 1")
+	assert.Contains(t, view, "Wait for approval")
 }
 
 func TestMissionControlFocusCycling(t *testing.T) {

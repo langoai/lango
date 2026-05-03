@@ -10,8 +10,10 @@ import (
 	"github.com/langoai/lango/internal/approval"
 	"github.com/langoai/lango/internal/background"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/cron"
 	"github.com/langoai/lango/internal/ctxkeys"
 	"github.com/langoai/lango/internal/eventbus"
+	"github.com/langoai/lango/internal/librarian"
 	"github.com/langoai/lango/internal/mission"
 	"github.com/langoai/lango/internal/observability"
 	"github.com/langoai/lango/internal/postadjudicationstatus"
@@ -55,6 +57,18 @@ type ProposalMutationService interface {
 	RestorePrepared(ctx context.Context, proposalID string) (*proposal.Proposal, error)
 }
 
+type LoopInquiryReader interface {
+	ListPendingInquiries(ctx context.Context, sessionKey string, limit int) ([]librarian.Inquiry, error)
+}
+
+type LoopDeadLetterReader interface {
+	ListCurrentDeadLetters(ctx context.Context) ([]postadjudicationstatus.DeadLetterBacklogEntry, error)
+}
+
+type LoopCronReader interface {
+	List(ctx context.Context) ([]cron.Job, error)
+}
+
 // Deps holds the dependencies for the cockpit TUI.
 // ApprovalProvider is NOT included — type assertion for SetTTYFallback
 // is handled in cmd/lango/main.go's runCockpit().
@@ -76,6 +90,9 @@ type Deps struct {
 	MissionReader     MissionReader
 	ProposalReader    ProposalReader
 	ProposalService   ProposalMutationService
+	LoopInquiryReader LoopInquiryReader
+	LoopDeadReader    LoopDeadLetterReader
+	LoopCronReader    LoopCronReader
 	MissionService    MissionLifecycleService
 	PendingApprovals  *PendingApprovalRegistry
 	LearningBuffer    *LearningSuggestionBuffer
