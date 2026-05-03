@@ -6,7 +6,7 @@ Mission Control SHALL support a collaboration projection attached to durable mis
 
 #### Scenario: Mission row can show local collaboration context
 - **WHEN** a durable mission has attributable local coworking signals
-- **THEN** Mission Control MAY surface participant, handoff, blocked, budget, or recovery context on that mission row or mission detail view
+- **THEN** Mission Control SHALL surface compact participant, handoff, blocked, budget, or recovery context on that mission row or mission detail view
 - **AND** the collaboration context SHALL remain attached to the durable mission instead of becoming a separate durable work model
 
 ### Requirement: Collaboration attribution must be mission-linked and local-first
@@ -32,7 +32,7 @@ Wave 5 collaboration visibility SHALL be grounded in real local signals such as 
 
 #### Scenario: Blocked, budget, and recovery visibility come from real local sources
 - **WHEN** a mission-linked local execution is blocked on approval, waiting on a teammate, under budget pressure, or recovering from a recent runtime action
-- **THEN** Mission Control MAY project those states in collaboration context
+- **THEN** Mission Control SHALL project those states in collaboration context
 - **AND** the projected state SHALL remain traceable to the underlying local runtime source
 
 #### Scenario: Reviewing state is not inferred from vague multi-agent activity
