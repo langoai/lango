@@ -450,8 +450,13 @@ func (p *MissionControlProjector) projectLoops(
 		} else {
 			for _, item := range items {
 				var lastStatus string
-				if item.LastRunAt != nil {
-					lastStatus = "completed"
+				var lastRunAt time.Time
+				history, err := p.loopCronReader.ListHistory(context.Background(), item.ID, 1)
+				if err != nil {
+					cronDegraded = true
+				} else if len(history) > 0 {
+					lastStatus = strings.TrimSpace(history[0].Status)
+					lastRunAt = history[0].StartedAt
 				}
 				input.CronJobs = append(input.CronJobs, loopview.CronSource{
 					JobID:         item.ID,
@@ -459,7 +464,7 @@ func (p *MissionControlProjector) projectLoops(
 					Enabled:       item.Enabled,
 					NextRunAt:     valueOrZero(item.NextRunAt),
 					LastRunStatus: lastStatus,
-					LastRunAt:     valueOrZero(item.LastRunAt),
+					LastRunAt:     lastRunAt,
 				})
 			}
 		}

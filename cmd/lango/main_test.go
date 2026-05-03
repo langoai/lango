@@ -217,3 +217,7 @@ type stubMainLoopCronReader struct{}
 func (*stubMainLoopCronReader) List(context.Context) ([]cron.Job, error) {
 	return []cron.Job{{ID: uuid.NewString(), Name: "job"}}, nil
 }
+
+func (*stubMainLoopCronReader) ListHistory(context.Context, string, int) ([]cron.HistoryEntry, error) {
+	return nil, nil
+}

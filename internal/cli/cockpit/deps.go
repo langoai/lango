@@ -67,6 +67,7 @@ type LoopDeadLetterReader interface {
 
 type LoopCronReader interface {
 	List(ctx context.Context) ([]cron.Job, error)
+	ListHistory(ctx context.Context, jobID string, limit int) ([]cron.HistoryEntry, error)
 }
 
 // Deps holds the dependencies for the cockpit TUI.

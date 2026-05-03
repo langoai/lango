@@ -151,8 +151,9 @@ func (s stubMissionControlLoopDeadReader) ListCurrentDeadLetters(context.Context
 }
 
 type stubMissionControlLoopCronReader struct {
-	items []cron.Job
-	err   error
+	items   []cron.Job
+	history map[string][]cron.HistoryEntry
+	err     error
 }
 
 func (s stubMissionControlLoopCronReader) List(context.Context) ([]cron.Job, error) {
@@ -160,6 +161,17 @@ func (s stubMissionControlLoopCronReader) List(context.Context) ([]cron.Job, err
 		return nil, s.err
 	}
 	return append([]cron.Job(nil), s.items...), nil
+}
+
+func (s stubMissionControlLoopCronReader) ListHistory(_ context.Context, jobID string, limit int) ([]cron.HistoryEntry, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	items := append([]cron.HistoryEntry(nil), s.history[jobID]...)
+	if limit > 0 && len(items) > limit {
+		items = items[:limit]
+	}
+	return items, nil
 }
 
 func (s stubMissionControlMissionReader) ListExecutionLinks(_ context.Context, missionID string) ([]*mission.ExecutionLink, error) {
@@ -892,6 +904,14 @@ func TestMissionControlLoopRowsRenderFromRealSources(t *testing.T) {
 				Enabled:   true,
 				NextRunAt: ptrTime(now.Add(2 * time.Hour)),
 			}},
+			history: map[string][]cron.HistoryEntry{
+				"cron-1": {{
+					JobID:     "cron-1",
+					JobName:   "Nightly digest",
+					Status:    "failed",
+					StartedAt: now.Add(-time.Hour),
+				}},
+			},
 		},
 	})
 
@@ -902,6 +922,7 @@ func TestMissionControlLoopRowsRenderFromRealSources(t *testing.T) {
 	assert.Equal(t, loopview.LoopKindMissionCluster, snapshot.Loops[0].Kind)
 	assert.Equal(t, loopview.LoopKindInquiry, snapshot.Loops[1].Kind)
 	assert.Equal(t, loopview.LoopKindScheduledAutomation, snapshot.Loops[2].Kind)
+	assert.Equal(t, loopview.LoopStatusBlocked, snapshot.Loops[2].Status)
 	assert.Equal(t, 3, snapshot.OpenLoopCount)
 }
 
@@ -942,6 +963,14 @@ func TestMissionControlAgendaOrderingIsDeterministic(t *testing.T) {
 				Enabled:   true,
 				NextRunAt: ptrTime(now.Add(2 * time.Hour)),
 			}},
+			history: map[string][]cron.HistoryEntry{
+				"cron-1": {{
+					JobID:     "cron-1",
+					JobName:   "Nightly digest",
+					Status:    "completed",
+					StartedAt: now.Add(-time.Hour),
+				}},
+			},
 		},
 	})
 
@@ -966,6 +995,39 @@ func TestMissionControlAbsentScheduledSourceDoesNotFabricateLoops(t *testing.T) 
 	for _, loop := range snapshot.Loops {
 		assert.NotEqual(t, loopview.LoopKindScheduledAutomation, loop.Kind)
 	}
+}
+
+func TestMissionControlLoopCronUsesRealLatestExecutionOutcome(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 5, 3, 12, 0, 0, 0, time.UTC)
+	projector := NewMissionControlProjector(Deps{
+		SessionKey:    "sess-1",
+		MissionReader: stubMissionControlMissionReader{missions: map[string][]*mission.Mission{"sess-1": {}}},
+		LoopCronReader: stubMissionControlLoopCronReader{
+			items: []cron.Job{{
+				ID:        "cron-1",
+				Name:      "Nightly digest",
+				Enabled:   true,
+				NextRunAt: ptrTime(now.Add(2 * time.Hour)),
+			}},
+			history: map[string][]cron.HistoryEntry{
+				"cron-1": {{
+					JobID:     "cron-1",
+					JobName:   "Nightly digest",
+					Status:    "failed",
+					StartedAt: now.Add(-30 * time.Minute),
+				}},
+			},
+		},
+	})
+
+	snapshot := projector.Project(nil)
+
+	require.Len(t, snapshot.Loops, 1)
+	assert.Equal(t, "cron:cron-1", snapshot.Loops[0].ID)
+	assert.Equal(t, loopview.LoopStatusBlocked, snapshot.Loops[0].Status)
+	assert.Equal(t, "Review failed cron run", snapshot.Loops[0].NextAction)
 }
 
 func TestMissionControlLoopSourceFailureDegradesTruthfully(t *testing.T) {

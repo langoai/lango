@@ -249,6 +249,7 @@ type LoopDeadLetterReader interface {
 
 type LoopCronReader interface {
 	List(ctx context.Context) ([]cronpkg.Job, error)
+	ListHistory(ctx context.Context, jobID string, limit int) ([]cronpkg.HistoryEntry, error)
 }
 
 // Channel represents a communication channel (Telegram, Discord, Slack)
