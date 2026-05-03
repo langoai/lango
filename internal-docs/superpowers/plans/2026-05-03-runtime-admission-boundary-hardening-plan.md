@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a toggleable observe-only runtime admission layer for current app-path dynamic graph triple producers so Lango can classify unknown predicates, emit shared-validator and aggregate write-failure telemetry, and measure failure baselines without changing existing write routing yet.
+**Goal:** Add a toggleable observe-only runtime admission layer for current app-path dynamic graph triple producers so Lango can classify unknown predicates, preserve original producer identity in telemetry, emit shared-validator and aggregate write-failure telemetry, and measure failure baselines without changing existing write routing yet.
 
 **Architecture:** This plan implements only `Change A / Phase A1` from the adaptive ontology growth design. It instruments runtime producers, computes admission decisions with the ontology validator closure, publishes graph-admission observability events, and records those metrics in the collector and status page. It does **not** filter, rewrite, or reroute writes; all existing enqueue and direct-store behavior stays intact.
 
@@ -16,6 +16,7 @@ This plan covers only the **observe-only runtime app sub-slice** from `Change A 
 
 - `TriplesExtractedEvent` producers that already flow through `internal/app/wiring_graph.go`
 - `GraphEngine` event-bus publish path with `Source: "learning"`
+- successful `content.saved` extracted triples via observe-only admission
 - extractor-local dropped-unknown telemetry for the `content.saved` async extraction path
 - graph admission, validator-source, and aggregate graph-write-failure telemetry and status surfaces
 - config and settings needed to turn the observe-only slice off or on
@@ -470,6 +471,7 @@ type AdmissionRecord struct {
 
 type AdmissionBatchEvent struct {
 	Producer        AdmissionProducer
+	RawSource       string
 	Candidates      int
 	ObservedKnown   int
 	ObservedUnknown int
@@ -505,6 +507,7 @@ func (p *AdmissionPolicy) ObserveBatch(candidates []AdmissionCandidate) Admissio
 	}
 	if len(candidates) > 0 {
 		result.Event.Producer = candidates[0].Producer
+		result.Event.RawSource = candidates[0].Source
 	}
 	result.Event.Candidates = len(candidates)
 	result.Event.ValidatorSource = "ontology_predicate_validator_closure"
@@ -587,6 +590,7 @@ const EventGraphExtractorDrop = "graph.extractor.drop"
 
 type GraphAdmissionBatchEvent struct {
 	Producer        string
+	RawSource       string
 	Candidates      int
 	ObservedKnown   int
 	ObservedUnknown int
@@ -744,12 +748,13 @@ func producerForExtractedEvent(source string) graph.AdmissionProducer {
 	}
 }
 
-func publishAdmissionObservation(bus *eventbus.Bus, evt graph.AdmissionBatchEvent) {
+func publishAdmissionObservation(bus *eventbus.Bus, rawSource string, evt graph.AdmissionBatchEvent) {
 	if bus == nil {
 		return
 	}
 	bus.Publish(eventbus.GraphAdmissionBatchEvent{
 		Producer:        string(evt.Producer),
+		RawSource:       rawSource,
 		Candidates:      evt.Candidates,
 		ObservedKnown:   evt.ObservedKnown,
 		ObservedUnknown: evt.ObservedUnknown,
@@ -787,7 +792,7 @@ if gc != nil && ontologyResult != nil && ontologyResult.Service != nil && cfg.On
 			graph.ProducerUnknownSource:        cfg.Ontology.Governance.LearningDefaultConfidence,
 		},
 		Observe: func(evt graph.AdmissionBatchEvent) {
-			publishAdmissionObservation(m.bus, evt)
+			publishAdmissionObservation(m.bus, evt.RawSource, evt)
 		},
 	}, logger())
 }
@@ -911,7 +916,7 @@ Add tests like these:
 ```go
 func TestCollector_RecordGraphAdmissionBatch(t *testing.T) {
 	c := NewCollector()
-	c.RecordGraphAdmissionBatch("conversation_analysis", 3, 2, 1, 1, "ontology_predicate_validator_closure")
+	c.RecordGraphAdmissionBatch("conversation_analysis", "conversation_analysis", 3, 2, 1, 1, "ontology_predicate_validator_closure")
 	c.RecordGraphExtractorDrop()
 	c.RecordGraphAdmissionWriteFailure()
 	snap := c.Snapshot()
@@ -947,6 +952,7 @@ type GraphAdmissionSummary struct {
 	ObservedUnknown int64
 	ObservedTypeHints int64
 	UnmappedSources int64
+	UnknownSourceByName map[string]int64
 	DroppedUnknown int64
 	WriteFailures int64
 	ValidatorSource string
@@ -972,7 +978,16 @@ type MetricsCollector struct {
 	graphAdmission GraphAdmissionSummary
 }
 
-func (c *MetricsCollector) RecordGraphAdmissionBatch(producer string, candidates, observedKnown, observedUnknown, observedTypeHints int, validatorSource string) {
+func NewCollector() *MetricsCollector {
+	return &MetricsCollector{
+		// existing fields...
+		graphAdmission: GraphAdmissionSummary{
+			UnknownSourceByName: map[string]int64{},
+		},
+	}
+}
+
+func (c *MetricsCollector) RecordGraphAdmissionBatch(producer, rawSource string, candidates, observedKnown, observedUnknown, observedTypeHints int, validatorSource string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.graphAdmission.Batches++
@@ -982,6 +997,7 @@ func (c *MetricsCollector) RecordGraphAdmissionBatch(producer string, candidates
 	c.graphAdmission.ObservedTypeHints += int64(observedTypeHints)
 	if producer == "unknown_source" {
 		c.graphAdmission.UnmappedSources++
+		c.graphAdmission.UnknownSourceByName[rawSource]++
 	}
 	c.graphAdmission.ValidatorSource = validatorSource
 }
@@ -1007,6 +1023,7 @@ func (c *MetricsCollector) RecordGraphAdmissionWriteFailure() {
 eventbus.SubscribeTyped[eventbus.GraphAdmissionBatchEvent](bus, func(evt eventbus.GraphAdmissionBatchEvent) {
 	oc.collector.RecordGraphAdmissionBatch(
 		evt.Producer,
+		evt.RawSource,
 		evt.Candidates,
 		evt.ObservedKnown,
 		evt.ObservedUnknown,
@@ -1087,6 +1104,7 @@ func (m *StatusPage) renderGraphAdmission(titleStyle lipgloss.Style, divider str
 	b.WriteString(fmt.Sprintf("Type hints: %d\n", ga.ObservedTypeHints))
 	b.WriteString(fmt.Sprintf("Dropped unknown: %d\n", ga.DroppedUnknown))
 	b.WriteString(fmt.Sprintf("Unmapped sources: %d\n", ga.UnmappedSources))
+	b.WriteString(fmt.Sprintf("Unknown source labels: %v\n", ga.UnknownSourceByName))
 	b.WriteString(fmt.Sprintf("Write failures: %d\n", ga.WriteFailures))
 	b.WriteString(fmt.Sprintf("Validator source: %s\n", ga.ValidatorSource))
 	return b.String()

@@ -390,7 +390,7 @@ Recommended split:
 
 - Change A: admission boundary hardening
   - Phase A1: runtime app observe-only sub-slice
-  - Includes: current runtime `TriplesExtractedEvent` producer observation, aggregate `GraphBuffer` write-failure baseline telemetry, extractor-local dropped-unknown baseline telemetry for `content.saved`, shared validator-source telemetry, and internal status surfaces
+  - Includes: current runtime `TriplesExtractedEvent` producer observation, aggregate `GraphBuffer` write-failure baseline telemetry, successful extracted-triple observation plus extractor-local dropped-unknown baseline telemetry for `content.saved`, shared validator-source telemetry, and internal status surfaces
   - Excludes: `CLI import`, `AssertFact` growth-enabled paths, and any write filtering or dropping
   - Defers: unknown type classification beyond basic type-hint observability, validator/cache mismatch telemetry, dormant direct-store producer paths not used in the default runtime, and ACL-governed shadow promotion execution identity
   - Phase A2: broader producer migration and enforcing admission routing on dynamic producers
