@@ -24,7 +24,7 @@ This creates four runtime failures:
 ## Goals
 
 - Reuse and extend existing ontology and graph assets instead of duplicating them.
-- Introduce a single triple admission boundary before all unknown-predicate validation decisions.
+- Introduce a single triple admission boundary for all dynamic or untrusted triple producers before unknown-predicate validation decisions.
 - Preserve user-response continuity even when ontology growth or graph storage fails.
 - Convert unknown predicates and types into mapped, proposed, shadow, quarantined, or dead-lettered outcomes.
 - Keep graph predicate validation as a final integrity guard, but feed it from one authoritative predicate state.
@@ -81,6 +81,7 @@ There must be one source of truth for predicate validity.
 - `ValidateTriple` and the graph store validator must both consume that same predicate truth.
 - The graph store must not maintain a separate predicate set.
 - "Refresh predicate validator immediately" means refreshing the ontology service cache and continuing to use the same closure already injected into `BoltStore`.
+- In the current runtime, `RegisterPredicate` already performs a synchronous `refreshPredicateCache()` before returning; first-wave admission relies on that synchronous invalidation model rather than a separate publish/subscribe refresh path.
 
 This matters because the current runtime rejects unknown predicates in two places. The design is valid only if both gates read from the same refreshed ontology state.
 
@@ -94,12 +95,12 @@ The admission boundary is only meaningful if it covers the real producer set.
 | `internal/librarian/proactive_buffer.go` -> `TriplesExtractedEvent` | Event bus to `GraphBuffer` | Graph store validator only | No explicit numeric confidence on event triple | Same as learning event path |
 | `internal/learning/graph_engine.go` direct graph writes | `graph.Store.AddTriples` | Graph store validator only | Producer-local knowledge of source exists; no shared admission shape | Reroute through admission batch API before direct store writes |
 | `internal/ontology/truth.go` via `AssertFact` | `ValidateTriple` before truth maintenance | Ontology validator first | Yes, `AssertionInput.Confidence` exists today | Reuse confidence; route schema discovery before `ValidateTriple` hard rejection |
-| `internal/app/wiring_graph.go` content saved containment triples | `GraphBuffer` | Known seeded predicates | Deterministic | May bypass dynamic admission if producer is restricted to seeded predicates |
-| `internal/memory/graph_hooks.go` | `GraphBuffer` | Known seeded predicates | Deterministic | May bypass dynamic admission if producer is restricted to seeded predicates |
+| `internal/app/wiring_graph.go` content saved containment triples | `GraphBuffer` | Known seeded predicates | Deterministic | Wave 1 keeps a fast path and bypasses dynamic admission because this producer only emits seeded predicates; existing validators still apply unchanged |
+| `internal/memory/graph_hooks.go` | `GraphBuffer` | Known seeded predicates | Deterministic | Wave 1 keeps a fast path and bypasses dynamic admission because this producer only emits seeded predicates; existing validators still apply unchanged |
 | `internal/cli/graph/import_cmd.go` | Direct `AddTriples` | Graph store validator only | Import payload dependent | Route import through admission batch API |
 | Ontology tools and actions using `AssertFact` | `OntologyService.AssertFact` | `ValidateTriple` first | Tool input controlled | Admission must sit before unknown-predicate rejection for growth-enabled flows |
 
-The key boundary decision is this: deterministic internal producers that emit only seeded predicates may keep a fast path, but every path that can emit LLM- or user-supplied arbitrary predicates must use the same admission API.
+The key boundary decision is this: Wave 1 keeps a fast path for deterministic seeded-predicate producers and requires the admission API for every path that can emit LLM- or user-supplied arbitrary predicates. This does not weaken the validation model because both fast-path and admission-path triples still terminate at the same existing ontology and graph validators.
 
 ## Admission Architecture
 
@@ -118,23 +119,28 @@ raw producer
 
 `AdmissionCandidate`
 
-New narrow input model for graph admission. This is not a replacement for truth-maintenance `CandidateTriple`. It carries raw subject, predicate, object, optional types, source, producer, session key, turn ID, confidence, and evidence metadata.
+New narrow input model for graph admission. This is not a replacement for truth-maintenance `CandidateTriple`.
+
+Field split:
+
+- `AdmissionCandidate` is an ingestion model and carries producer, session key, turn ID, optional types, source, confidence, and evidence metadata.
+- truth-maintenance `CandidateTriple` is a conflict snapshot and carries only subject, object, source, confidence string, and recorded timestamp for contradiction reporting.
 
 `TripleAdmissionPolicy`
 
-New single entry point for graph-bound triples. It is responsible for canonical mapping, governance-aware admission, and routing to proposal/quarantine/dead-letter outcomes.
+New single entry point for graph-bound triples. It owns the top-level admission decision, batch pre-filtering, canonical mapping, and routing to proposal/quarantine/dead-letter outcomes.
 
 `OntologyGrowthEngine`
 
-New orchestration layer that reuses existing ontology service operations. It does not own lifecycle state. It decides whether to call `RegisterPredicate`, `PromotePredicate`, or only persist candidate evidence.
+New helper used only by `TripleAdmissionPolicy` on the unknown-predicate or unknown-type branch. It does not act as a second entrypoint and does not own lifecycle state. Its role is to execute the unknown-branch growth workflow by calling existing ontology service operations or candidate persistence.
 
 `SchemaCandidateStore`
 
-New or extended persistence for schema candidates and evidence. This records unknown predicate/type discoveries, source evidence, confidence, counts, rejection reasons, and schema version observations.
+New or extended persistence for schema candidates and evidence. Wave 1 keeps this deliberately small: one candidate row per normalized unknown term, recent `K=20` sample admissions, per-source counters, subject/object type frequency summaries, last rejection reason, and last observed schema version.
 
 `GraphAdmissionDeadLetterStore`
 
-New admission-domain dead-letter persistence. This is not the existing receipt dead-letter store. It should reuse the replay/status pattern and naming discipline from post-adjudication dead letters, but it stores graph admission failures, not payment execution failures.
+New admission-domain dead-letter persistence. This is not the existing settlement or receipt event store. It should reuse the existing dead-letter UI and replay pattern shape where useful, but it stores graph admission failures, not post-adjudication execution failures.
 
 `SchemaBudgetLedger`
 
@@ -200,7 +206,6 @@ First-wave semantics:
 - Shadow predicates are usable for graph storage and graph traversal because they are valid ontology predicates in `shadow` state.
 - GraphRAG may traverse shadow predicates, but retrieval results expanded through shadow predicates must be marked experimental in provenance metadata and should apply a score penalty relative to `active` predicate edges.
 - Knowledge-store FTS5 and learning-store FTS5 behavior does not change solely because a predicate is shadow. Existing FTS5 sync stays tied to knowledge and learning writes.
-- If a future wave wants shadow-aware lexical search, that is a separate design because current FTS5 indexes do not index graph predicates as first-class rows.
 
 This preserves the meaning of "usable but experimental" without falsely implying that shadow predicates are identical to active predicates in retrieval.
 
@@ -266,6 +271,7 @@ The generic predicate denylist must be operational, not an undocumented hardcode
 First-wave rule:
 
 - generic-predicate heuristics live in one policy module with config-backed defaults;
+- the Wave 1 config lives under the `ontology.governance` namespace as admission-policy fields, not as ontology rows;
 - the initial defaults may include values such as `has`, `is`, `uses`, `related`, `thing`, and `misc`;
 - additions and removals must be configuration-driven rather than scattered hardcoded checks;
 - the policy must not assume English-only future inputs, even if the first default list is English.
@@ -326,22 +332,31 @@ This document is a design memo, not an implementation contract by itself. Before
 Recommended split:
 
 - Change A: admission boundary hardening
+  - Phase A1: observe-only admission instrumentation with no write-path enforcement
+  - Phase A2: enforce admission routing on dynamic producers
   - producer inventory
   - single source of truth validation
   - event and direct-store rerouting
   - batch pre-filtering while keeping atomic batch writes
 - Change B: adaptive shadow growth
+  - Depends on Change A
   - schema candidate persistence
   - shadow registration path
   - budget enforcement
   - retrieval provenance for shadow edges
 - Change C: promotion and replay hardening
+  - Depends on Change B
   - shadow usage metrics
   - manual-to-automatic promotion boundary
   - dead-letter replay idempotency
   - operator review surfaces
 
 These should be separate changes or clearly separated waves because rollback boundaries differ. Admission boundary hardening is a safety fix. Automatic shadow growth changes runtime write behavior. Promotion automation changes governance behavior again.
+
+Out-of-scope follow-ups:
+
+- shadow-aware lexical search over graph predicates, because current FTS5 indexes do not index graph edges as first-class rows;
+- full automatic shadow-to-active promotion if current runtime hardening is incomplete.
 
 ## Acceptance Criteria
 
@@ -351,3 +366,5 @@ These should be separate changes or clearly separated waves because rollback bou
 - Batch rollback is addressed by pre-admission filtering while retaining atomic admitted-batch writes.
 - Shadow predicate retrieval and FTS5 semantics are defined for first wave.
 - Promotion, budget, replay, and generic-predicate policy boundaries are explicit rather than implied.
+- After implementation, unknown-predicate graph write `ERROR` logs from normal LLM producer paths should drop by at least 95% during a representative observation window.
+- After implementation, one rejected dynamic candidate must not cause loss of valid admitted triples from the same input batch.
