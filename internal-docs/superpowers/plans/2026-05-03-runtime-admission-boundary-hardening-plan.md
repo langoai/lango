@@ -15,6 +15,7 @@
 This plan covers only the **observe-only runtime app sub-slice** from `Change A / Phase A1`:
 
 - `TriplesExtractedEvent` producers that already flow through `internal/app/wiring_graph.go`
+- `GraphEngine` event-bus publish path with `Source: "learning"`
 - extractor-local dropped-unknown telemetry for the `content.saved` async extraction path
 - graph admission, validator-source, and aggregate graph-write-failure telemetry and status surfaces
 - config and settings needed to turn the observe-only slice off or on
@@ -428,8 +429,9 @@ const (
 type AdmissionDecision string
 
 const (
-	DecisionObservedKnown   AdmissionDecision = "observed_known"
-	DecisionObservedUnknown AdmissionDecision = "observed_unknown"
+	DecisionObservedKnown       AdmissionDecision = "observed_known"
+	DecisionObservedUnknown     AdmissionDecision = "observed_unknown"
+	DecisionObservedUnvalidated AdmissionDecision = "observed_unvalidated"
 )
 
 type AdmissionCandidate struct {
@@ -451,7 +453,6 @@ type AdmissionBatchEvent struct {
 	ObservedKnown   int
 	ObservedUnknown int
 	ObservedTypeHints int
-	DroppedUnknown  int
 	ValidatorSource string
 }
 
@@ -489,9 +490,12 @@ func (p *AdmissionPolicy) ObserveBatch(candidates []AdmissionCandidate) Admissio
 
 	for _, c := range candidates {
 		conf := p.defaultConfidence(c)
-		known := p.cfg.Validator == nil || p.cfg.Validator(c.Triple.Predicate)
 		decision := DecisionObservedUnknown
-		if known {
+		if p.cfg.Validator == nil {
+			decision = DecisionObservedUnvalidated
+			result.Event.ValidatorSource = "missing_validator"
+			result.Event.ObservedUnknown++
+		} else if p.cfg.Validator(c.Triple.Predicate) {
 			decision = DecisionObservedKnown
 			result.Event.ObservedKnown++
 		} else {
@@ -508,11 +512,16 @@ func (p *AdmissionPolicy) ObserveBatch(candidates []AdmissionCandidate) Admissio
 		result.Forwarded = append(result.Forwarded, c.Triple)
 	}
 
+	if result.Event.ValidatorSource == "" {
+		result.Event.ValidatorSource = "ontology_predicate_validator_closure"
+	}
+
 	p.logger.Infow("graph admission observe batch",
 		"producer", result.Event.Producer,
 		"candidates", result.Event.Candidates,
 		"known", result.Event.ObservedKnown,
 		"unknown", result.Event.ObservedUnknown,
+		"validatorSource", result.Event.ValidatorSource,
 	)
 	if p.cfg.Observe != nil {
 		p.cfg.Observe(result.Event)
@@ -553,6 +562,7 @@ And add this event:
 // internal/eventbus/observability_events.go
 const EventGraphAdmissionBatch = "graph.admission.batch"
 const EventGraphAdmissionWriteFailure = "graph.admission.write_failure"
+const EventGraphExtractorDrop = "graph.extractor.drop"
 
 type GraphAdmissionBatchEvent struct {
 	Producer        string
@@ -560,7 +570,6 @@ type GraphAdmissionBatchEvent struct {
 	ObservedKnown   int
 	ObservedUnknown int
 	ObservedTypeHints int
-	DroppedUnknown int
 	ValidatorSource string
 }
 
@@ -573,6 +582,16 @@ type GraphAdmissionWriteFailureEvent struct {
 }
 
 func (e GraphAdmissionWriteFailureEvent) EventName() string { return EventGraphAdmissionWriteFailure }
+
+type GraphExtractorDropEvent struct {
+	SourceID  string
+	Predicate string
+	Subject   string
+	Object    string
+	Source    string
+}
+
+func (e GraphExtractorDropEvent) EventName() string { return EventGraphExtractorDrop }
 ```
 
 - [ ] **Step 4: Run the tests again**
@@ -698,7 +717,6 @@ func publishAdmissionObservation(bus *eventbus.Bus, evt graph.AdmissionBatchEven
 		ObservedKnown:   evt.ObservedKnown,
 		ObservedUnknown: evt.ObservedUnknown,
 		ObservedTypeHints: evt.ObservedTypeHints,
-		DroppedUnknown: evt.DroppedUnknown,
 		ValidatorSource: evt.ValidatorSource,
 	})
 }
@@ -801,14 +819,12 @@ extractor = graph.NewExtractor(generator, logger(),
 		if gc.admissionPolicy == nil {
 			return
 		}
-		publishAdmissionObservation(bus, graph.AdmissionBatchEvent{
-			Producer:        graph.ProducerContentSavedExtractor,
-			Candidates:      1,
-			ObservedKnown:   0,
-			ObservedUnknown: 1,
-			ObservedTypeHints: 0,
-			DroppedUnknown:  1,
-			ValidatorSource: "ontology_predicate_validator_closure",
+		bus.Publish(eventbus.GraphExtractorDropEvent{
+			SourceID:  evt.SourceID,
+			Predicate: evt.Predicate,
+			Subject:   evt.Subject,
+			Object:    evt.Object,
+			Source:    "content_saved_extractor",
 		})
 	}),
 	graph.WithPredicateValidator(ontologyValidator),
@@ -852,13 +868,15 @@ Add tests like these:
 ```go
 func TestCollector_RecordGraphAdmissionBatch(t *testing.T) {
 	c := NewCollector()
-	c.RecordGraphAdmissionBatch("conversation_analysis", 3, 2, 1, 1, 0, "ontology_predicate_validator_closure")
+	c.RecordGraphAdmissionBatch("conversation_analysis", 3, 2, 1, 1, "ontology_predicate_validator_closure")
+	c.RecordGraphExtractorDrop()
 	c.RecordGraphAdmissionWriteFailure()
 	snap := c.Snapshot()
 	assert.Equal(t, int64(1), snap.GraphAdmission.Batches)
 	assert.Equal(t, int64(3), snap.GraphAdmission.Candidates)
 	assert.Equal(t, int64(1), snap.GraphAdmission.ObservedUnknown)
 	assert.Equal(t, int64(1), snap.GraphAdmission.ObservedTypeHints)
+	assert.Equal(t, int64(1), snap.GraphAdmission.DroppedUnknown)
 	assert.Equal(t, int64(1), snap.GraphAdmission.WriteFailures)
 }
 ```
@@ -911,7 +929,7 @@ type MetricsCollector struct {
 	graphAdmission GraphAdmissionSummary
 }
 
-func (c *MetricsCollector) RecordGraphAdmissionBatch(producer string, candidates, observedKnown, observedUnknown, observedTypeHints, droppedUnknown int, validatorSource string) {
+func (c *MetricsCollector) RecordGraphAdmissionBatch(producer string, candidates, observedKnown, observedUnknown, observedTypeHints int, validatorSource string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.graphAdmission.Batches++
@@ -919,11 +937,16 @@ func (c *MetricsCollector) RecordGraphAdmissionBatch(producer string, candidates
 	c.graphAdmission.ObservedKnown += int64(observedKnown)
 	c.graphAdmission.ObservedUnknown += int64(observedUnknown)
 	c.graphAdmission.ObservedTypeHints += int64(observedTypeHints)
-	c.graphAdmission.DroppedUnknown += int64(droppedUnknown)
 	if producer == "unknown_source" {
 		c.graphAdmission.UnmappedSources++
 	}
 	c.graphAdmission.ValidatorSource = validatorSource
+}
+
+func (c *MetricsCollector) RecordGraphExtractorDrop() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.graphAdmission.DroppedUnknown++
 }
 
 func (c *MetricsCollector) RecordGraphAdmissionWriteFailure() {
@@ -945,9 +968,12 @@ eventbus.SubscribeTyped[eventbus.GraphAdmissionBatchEvent](bus, func(evt eventbu
 		evt.ObservedKnown,
 		evt.ObservedUnknown,
 		evt.ObservedTypeHints,
-		evt.DroppedUnknown,
 		evt.ValidatorSource,
 	)
+})
+
+eventbus.SubscribeTyped[eventbus.GraphExtractorDropEvent](bus, func(evt eventbus.GraphExtractorDropEvent) {
+	oc.collector.RecordGraphExtractorDrop()
 })
 
 eventbus.SubscribeTyped[eventbus.GraphAdmissionWriteFailureEvent](bus, func(evt eventbus.GraphAdmissionWriteFailureEvent) {
