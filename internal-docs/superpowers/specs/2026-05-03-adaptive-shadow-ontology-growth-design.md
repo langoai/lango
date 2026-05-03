@@ -103,6 +103,8 @@ Important Wave 1 constraint:
   - `RegisterPredicate(proposed)` followed by `PromotePredicate(proposed -> shadow)` in the same admission workflow.
   - a future internal-only API that preserves shadow registration semantics without exposing a second public lifecycle surface.
 - The default design assumption for Wave 1 is the existing-API two-step path: register as `proposed`, then promote to `shadow`, then admit only after the shared validator closure recognizes the refreshed shadow predicate.
+- This shadow-promotion path is part of the broader admission-hardening program, not the `Phase A1 observe-only runtime app sub-slice`.
+- Any future runtime that performs `PromotePredicate(proposed -> shadow)` automatically must define which internal admin-capable principal or API performs that transition when ACL is enabled.
 
 ## Producer Call-Site Inventory
 

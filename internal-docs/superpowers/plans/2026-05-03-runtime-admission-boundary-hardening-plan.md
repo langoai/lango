@@ -563,6 +563,7 @@ And add this event:
 ```go
 // internal/eventbus/observability_events.go
 const EventGraphAdmissionBatch = "graph.admission.batch"
+const EventGraphAdmissionWriteFailure = "graph.admission.write_failure"
 
 type GraphAdmissionBatchEvent struct {
 	Producer        string
@@ -575,6 +576,14 @@ type GraphAdmissionBatchEvent struct {
 }
 
 func (e GraphAdmissionBatchEvent) EventName() string { return EventGraphAdmissionBatch }
+
+type GraphAdmissionWriteFailureEvent struct {
+	Source     string
+	Candidates int
+	ErrorClass string
+}
+
+func (e GraphAdmissionWriteFailureEvent) EventName() string { return EventGraphAdmissionWriteFailure }
 ```
 
 - [ ] **Step 4: Run the tests again**
@@ -722,7 +731,7 @@ func observeExtractedTriples(policy *graph.AdmissionPolicy, evt eventbus.Triples
 ```
 
 ```go
-// internal/app/modules.go
+// internal/app/modules.go immediately before initKnowledge(...)
 if gc != nil && ontologyResult != nil && ontologyResult.Service != nil && cfg.Ontology.Enabled && cfg.Ontology.Governance.AdmissionMode == "observe" {
 	gc.admissionPolicy = graph.NewAdmissionPolicy(graph.AdmissionConfig{
 		Validator: ontologyResult.Service.PredicateValidator(),
@@ -738,6 +747,8 @@ if gc != nil && ontologyResult != nil && ontologyResult.Service != nil && cfg.On
 		},
 	}, logger())
 }
+
+kc, kcStatus := initKnowledge(cfg, store, gc, m.bus, brokerAPI)
 ```
 
 ```go
@@ -1042,6 +1053,10 @@ eventbus.SubscribeTyped[eventbus.GraphAdmissionBatchEvent](bus, func(evt eventbu
 		evt.ValidatorSource,
 	)
 })
+
+eventbus.SubscribeTyped[eventbus.GraphAdmissionWriteFailureEvent](bus, func(evt eventbus.GraphAdmissionWriteFailureEvent) {
+	oc.collector.RecordGraphAdmissionWriteFailure()
+})
 ```
 
 ```go
@@ -1074,14 +1089,10 @@ func (b *GraphBuffer) processBatch(batch []Triple) {
 // internal/app/modules.go after graph store / observability are available
 if gc != nil && gc.buffer != nil && m.bus != nil {
 	gc.buffer.SetWriteFailureObserver(func(count int, err error) {
-		m.bus.Publish(eventbus.GraphAdmissionBatchEvent{
-			Producer:              "graph_buffer_write_failure",
-			Candidates:            count,
-			ObservedKnown:         0,
-			ObservedUnknown:       0,
-			ObservedTypeHints:     0,
-			DroppedUnknown:        0,
-			ValidatorSource:       "graph_store_write_failure",
+		m.bus.Publish(eventbus.GraphAdmissionWriteFailureEvent{
+			Source:     "graph_buffer",
+			Candidates: count,
+			ErrorClass: "graph_store_add_triples_failed",
 		})
 	})
 }
