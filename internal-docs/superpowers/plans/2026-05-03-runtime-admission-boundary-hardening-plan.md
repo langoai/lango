@@ -178,7 +178,7 @@ Use these minimal deltas:
 ```markdown
 <!-- openspec/changes/runtime-admission-boundary-hardening/specs/knowledge-graph/spec.md -->
 ### Requirement: Dynamic triples pass through an admission boundary
-Runtime triples emitted from `TriplesExtractedEvent` producers SHALL be evaluated by an admission policy before they are enqueued to `GraphBuffer`.
+Runtime triples emitted from `TriplesExtractedEvent` producers, `content.saved` extractor output, and `GraphEngine` direct-write paths SHALL be evaluated by an admission policy before they are enqueued to `GraphBuffer` or written directly to the graph store.
 
 #### Scenario: Observe mode preserves writes
 - **WHEN** admission mode is `observe`
@@ -254,7 +254,7 @@ func TestUpdateConfigFromForm_OntologyAdmissionFields(t *testing.T) {
 	form.AddField(&tuicore.Field{Key: "ontology_gov_librarian_conf", Type: tuicore.InputText, Value: "0.55"})
 
 	s := tuicore.NewConfigStateWith(config.DefaultConfig())
-	s.UpdateConfigFromForm(form)
+	s.UpdateConfigFromForm(&form)
 
 	assert.Equal(t, "enforce", s.Current.Ontology.Governance.AdmissionMode)
 	assert.InDelta(t, 0.65, s.Current.Ontology.Governance.LearningDefaultConfidence, 0.001)
@@ -755,6 +755,13 @@ func TestExtractor_PassthroughModePreservesUnknownPredicate(t *testing.T) {
 	require.Len(t, triples, 1)
 	assert.Equal(t, "invented_rel", triples[0].Predicate)
 }
+
+func TestExtractor_PassthroughPromptOmitsFixedAllowlist(t *testing.T) {
+	logger := zap.NewNop().Sugar()
+	e := NewExtractor(nil, logger, WithoutPredicateValidation())
+
+	assert.NotContains(t, e.systemPrompt(), "Valid predicates:")
+}
 ```
 
 - [ ] **Step 2: Run tests to verify failure**
@@ -911,6 +918,23 @@ func WithoutPredicateValidation() ExtractorOption {
 	return func(e *Extractor) { e.skipPredicateCheck = true }
 }
 
+func (e *Extractor) systemPrompt() string {
+	if e.skipPredicateCheck {
+		return `You are an entity and relationship extraction system. Given text, extract entities and relationships as triples.
+
+Output format (one triple per line):
+SUBJECT|PREDICATE|OBJECT
+
+Rules:
+- Extract factual relationships only
+- Use concise entity names and concise snake_case predicates
+- Skip trivial or obvious relationships
+- Maximum 10 triples per extraction
+- If no meaningful relationships found, output NONE`
+	}
+	return extractionSystemPrompt
+}
+
 func (e *Extractor) isValidPredicate(p string) bool {
 	if e.skipPredicateCheck {
 		return true
@@ -919,6 +943,18 @@ func (e *Extractor) isValidPredicate(p string) bool {
 		return e.validator(p)
 	}
 	return defaultIsValidPredicate(p)
+}
+
+func (e *Extractor) Extract(ctx context.Context, content, sourceID string) ([]Triple, error) {
+	if content == "" {
+		return nil, nil
+	}
+	userPrompt := fmt.Sprintf("Extract entities and relationships from:\n\n%s", content)
+	response, err := e.generator.GenerateText(ctx, e.systemPrompt(), userPrompt)
+	if err != nil {
+		return nil, fmt.Errorf("generate extraction: %w", err)
+	}
+	return e.parseResponse(response, sourceID), nil
 }
 ```
 
@@ -991,6 +1027,29 @@ func TestGraphEngine_RecordFix_AdmissionEnforceFiltersUnknown(t *testing.T) {
 	ge.RecordFix(context.Background(), "timeout error", "increase timeout", "session-1")
 	require.Len(t, gs.triples, 1, "admission should filter LearnedFrom when validator disallows it")
 }
+
+func TestGraphEngine_RecordErrorGraph_AdmissionEnforceFiltersUnknown(t *testing.T) {
+	gs := &fakeGraphStore{}
+	logger := zap.NewNop().Sugar()
+	p := graph.NewAdmissionPolicy(graph.AdmissionConfig{
+		Mode:      graph.AdmissionModeEnforce,
+		Validator: func(name string) bool { return name == graph.CausedBy },
+		DefaultConfidence: map[graph.AdmissionProducer]float64{
+			graph.ProducerLearningEvent: 0.60,
+		},
+	}, logger)
+
+	ge := &GraphEngine{
+		Engine:          &Engine{store: nil, logger: logger},
+		graphStore:      gs,
+		admissionPolicy: p,
+		propagation:     0.3,
+		logger:          logger,
+	}
+
+	ge.recordErrorGraph(context.Background(), "s1", "tool1", fmt.Errorf("boom"))
+	require.Len(t, gs.triples, 1, "admission should filter InSession when validator disallows it")
+}
 ```
 
 ```go
@@ -1010,7 +1069,7 @@ func TestCollector_RecordGraphAdmissionBatch(t *testing.T) {
 Run:
 
 ```bash
-go test ./internal/learning ./internal/observability -run 'GraphEngine_RecordFix_AdmissionEnforceFiltersUnknown|RecordGraphAdmissionBatch'
+go test ./internal/learning ./internal/observability -run 'GraphEngine_RecordFix_AdmissionEnforceFiltersUnknown|GraphEngine_RecordErrorGraph_AdmissionEnforceFiltersUnknown|RecordGraphAdmissionBatch'
 ```
 
 Expected: FAIL because the direct-write admission path and collector metrics do not exist
@@ -1079,6 +1138,21 @@ type GraphAdmissionMetrics struct {
 	ObservedUnknown int64
 }
 
+type MetricsCollector struct {
+	mu             sync.RWMutex
+	startedAt      time.Time
+	totalTokens    TokenUsageSummary
+	sessions       map[string]*SessionMetric
+	agents         map[string]*AgentMetric
+	toolExecs      int64
+	tools          map[string]*ToolMetric
+	policyBlocks   int64
+	policyObserves int64
+	policyByReason map[string]int64
+	graphAdmission GraphAdmissionMetrics
+	MaxSessions    int
+}
+
 func (c *MetricsCollector) RecordGraphAdmissionBatch(mode, producer string, candidates, admitted, rejected, observedUnknown int) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -1087,6 +1161,32 @@ func (c *MetricsCollector) RecordGraphAdmissionBatch(mode, producer string, cand
 	c.graphAdmission.Admitted += int64(admitted)
 	c.graphAdmission.Rejected += int64(rejected)
 	c.graphAdmission.ObservedUnknown += int64(observedUnknown)
+}
+
+// Extend the existing Snapshot() implementation by copying the current
+// graphAdmission counters into the returned SystemSnapshot.
+```
+
+```go
+// internal/observability/types.go
+type GraphAdmissionSummary struct {
+	Batches         int64
+	Candidates      int64
+	Admitted        int64
+	Rejected        int64
+	ObservedUnknown int64
+}
+
+type SystemSnapshot struct {
+	StartedAt        time.Time
+	Uptime           time.Duration
+	TokenUsageTotal  TokenUsageSummary
+	ToolExecutions   int64
+	ToolBreakdown    map[string]ToolMetric
+	AgentBreakdown   map[string]AgentMetric
+	SessionBreakdown map[string]SessionMetric
+	Policy           PolicyMetrics
+	GraphAdmission   GraphAdmissionSummary
 }
 ```
 
@@ -1106,6 +1206,14 @@ eventbus.SubscribeTyped[eventbus.GraphAdmissionBatchEvent](bus, func(evt eventbu
 
 ```go
 // internal/cli/cockpit/pages/status.go
+sections := []string{
+	m.renderFeatureFlags(sectionTitle, divider),
+	m.renderTokenUsage(sectionTitle, divider),
+	m.renderToolExecution(sectionTitle, divider),
+	m.renderGraphAdmission(sectionTitle, divider),
+	m.renderSystemInfo(sectionTitle, divider),
+}
+
 func (m *StatusPage) renderGraphAdmission(titleStyle lipgloss.Style, divider string) string {
 	var b strings.Builder
 	b.WriteString(titleStyle.Render("Graph Admission"))
@@ -1126,7 +1234,7 @@ func (m *StatusPage) renderGraphAdmission(titleStyle lipgloss.Style, divider str
 Run:
 
 ```bash
-go test ./internal/learning ./internal/observability -run 'GraphEngine_RecordFix_AdmissionEnforceFiltersUnknown|RecordGraphAdmissionBatch'
+go test ./internal/learning ./internal/observability -run 'GraphEngine_RecordFix_AdmissionEnforceFiltersUnknown|GraphEngine_RecordErrorGraph_AdmissionEnforceFiltersUnknown|RecordGraphAdmissionBatch'
 ```
 
 Expected: PASS
