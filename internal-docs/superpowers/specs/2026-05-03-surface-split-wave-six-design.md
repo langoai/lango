@@ -68,7 +68,7 @@ That means Wave 6 must change:
 - CLI routing
 - TUI root-shell composition
 - public command documentation
-- OpenSpec truth for `mission-control-tui`, `cockpit-shell`, `cockpit-pages`, and `interactive-tui-chat`
+- OpenSpec truth for `mission-workbench-tui`, `mission-control-tui`, `tui-cockpit-layout`, `cockpit-shell`, `cockpit-pages`, and `interactive-tui-chat`
 
 Wave 6 must also close the existing main-spec contradiction around bare `lango`. The current main OpenSpec set does not fully agree on whether bare `lango` means cockpit or direct chat. This wave should repair that truth as part of the split.
 
@@ -319,6 +319,7 @@ Wave 6 should update at least these contracts:
 
 - `mission-workbench-tui` (new main spec)
 - `mission-control-tui`
+- `tui-cockpit-layout`
 - `cockpit-shell`
 - `cockpit-pages`
 - `interactive-tui-chat`
