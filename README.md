@@ -157,8 +157,8 @@ For the full configuration editor with all options, use `lango settings`.
 See the full [CLI Reference](docs/cli/index.md) for the complete command set.
 
 ```
-lango                            Launch cockpit TUI with Mission Control as the default surface
-lango cockpit                    Launch multi-panel TUI dashboard
+lango                            Launch mission workbench TUI
+lango cockpit                    Launch multi-panel operator dashboard
 lango serve                      Start the gateway server
 lango chat                       Launch focused chat TUI
 lango onboard                    Guided 5-step setup wizard
@@ -186,9 +186,9 @@ lango doctor --fix
 lango doctor --json
 ```
 
-## Cockpit TUI
+## Workbench And Cockpit TUI
 
-The cockpit is a multi-panel terminal dashboard launched via `lango` or `lango cockpit`. Bare `lango` opens the cockpit with Mission Control as the default first screen, while `lango chat` remains the focused chat fallback. The sidebar order is currently Mission Control, Chat, Settings, Tools, Status, Sessions, Tasks, Dead Letters, and Approvals. Existing `Ctrl+1` through `Ctrl+6` page shortcuts were intentionally preserved for the detail pages.
+Bare `lango` now launches the standalone mission workbench: a mission-first surface with Mission Control content mounted directly, no sidebar chrome, and inline chat/composer access. `lango chat` remains the focused chat fallback, and `lango cockpit` remains the explicit multi-panel operator dashboard. Inside the explicit cockpit, the sidebar order is currently Mission Control, Chat, Settings, Tools, Status, Sessions, Tasks, Dead Letters, and Approvals. Existing `Ctrl+1` through `Ctrl+6` page shortcuts were intentionally preserved for the detail pages.
 
 | Shortcut | Page | Description |
 |----------|------|-------------|
@@ -202,7 +202,7 @@ The cockpit is a multi-panel terminal dashboard launched via `lango` or `lango c
 | — | Dead Letters | Dead-letter backlog and retry surface when the dead-letter bridge is available |
 | Ctrl+6 | Approvals | Approval history and active grant management with revoke controls |
 
-Mission Control keeps chat available on the first screen: type directly into the shared composer, or use `lango chat` for focused chat. At current HEAD, Mission Control is durable-first rather than runtime-only:
+Mission Control keeps chat available on the first screen: type directly into the shared composer, use `lango chat` for focused chat, or use `lango cockpit` for the advanced multi-page dashboard. At current HEAD, Mission Control is durable-first rather than runtime-only:
 
 - it reads durable mission rows before runtime overlays
 - submitting a top-level request from the Mission Control composer creates a durable mission row before turn dispatch
@@ -271,7 +271,8 @@ lango/
 │   │   ├── bg/             #   lango bg list/status/cancel/result
 │   │   ├── chat/           #   lango chat (plain TUI chat)
 │   │   ├── cliboot/        #   Shared CLI bootstrap / lazy config loading
-│   │   ├── cockpit/        #   lango cockpit (multi-panel TUI dashboard)
+│   │   ├── cockpit/        #   lango cockpit (multi-panel operator dashboard)
+│   │   ├── workbench/      #   bare lango (standalone mission workbench shell)
 │   │   ├── configcmd/      #   lango config list/create/use/delete/import/export/validate/get/set/keys
 │   │   ├── contract/       #   lango contract read/call/abi
 │   │   ├── cron/           #   lango cron add/list/delete/pause/resume/history

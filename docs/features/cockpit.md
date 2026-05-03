@@ -6,12 +6,12 @@ title: Cockpit TUI
 
 ## Overview
 
-The cockpit is a multi-panel terminal dashboard and the default entry point when running `lango` with no arguments. Built with [Bubble Tea](https://github.com/charmbracelet/bubbletea), it opens on Mission Control first, keeps direct chat available inside the cockpit, and adds sidebar navigation, multiple detail pages, and a live context panel around that shared session.
+The cockpit is the explicit multi-panel terminal dashboard launched via `lango cockpit`. Bare `lango` now launches the standalone mission workbench instead, while `lango chat` remains the focused single-panel chat fallback. Built with [Bubble Tea](https://github.com/charmbracelet/bubbletea), the cockpit still opens on Mission Control first, keeps direct chat available inside the cockpit, and adds sidebar navigation, multiple detail pages, and a live context panel around that shared session.
 
 ## Launch
 
 ```bash
-lango            # launch cockpit on Mission Control (default)
+lango            # launch standalone mission workbench
 lango cockpit    # explicit cockpit launch
 lango chat       # focused single-panel chat fallback (no sidebar, no pages)
 ```
@@ -69,7 +69,7 @@ Mission Control, Sessions, and Dead Letters are reached from the sidebar. Wave 1
 
 ## Mission Control
 
-Mission Control is the default cockpit landing surface. It is a sidebar-first page, not a separate top-level CLI command.
+Mission Control is the default cockpit landing surface. Inside the explicit cockpit shell it remains a sidebar-first page rather than a separate top-level CLI command.
 
 - **Missions lane** — durable mission rows render first for the current cockpit session. Linked RunLedger and AgentRun data enrich those rows when available.
 - **Collaboration context** — durable mission rows can now show compact local coworking context such as participants, active owner, recent handoff, blocked state, budget pressure, recovery hint, and linked review state when attribution is provable.

@@ -6,8 +6,8 @@ Lango provides a comprehensive command-line interface built with [Cobra](https:/
 
 | Command | Description |
 |---------|-------------|
-| `lango` | Launch multi-panel TUI cockpit (default entry point) |
-| `lango cockpit` | Launch multi-panel TUI (same as bare `lango`) |
+| `lango` | Launch standalone mission workbench TUI (default entry point) |
+| `lango cockpit` | Launch explicit multi-panel operator dashboard |
 | `lango chat` | Launch plain chat TUI |
 | `lango serve` | Start the gateway server |
 | `lango version` | Print version and build info |
