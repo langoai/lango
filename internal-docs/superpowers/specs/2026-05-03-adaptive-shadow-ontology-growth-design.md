@@ -47,7 +47,7 @@ This creates four runtime failures:
 | `AliasStore`, `DeclareSameAs`, `Merge`, `Split` | Yes | Reused for entity canonicalization patterns | Predicate aliasing may extend the pattern, but does not replace entity alias storage |
 | `GraphBuffer` | Yes | Remains the batch write stage after admission | Inputs change; buffer remains the batcher |
 | `graph.BoltStore` validator injection | Yes | Remains final store-level guard | No independent predicate state inside store; it consumes the ontology validator closure |
-| Post-adjudication dead-letter status and replay surfaces | Yes | Reused as architectural pattern for inspect/replay UX | New admission dead letters may reuse storage/replay conventions, not the receipt-domain records themselves |
+| Existing dead-letter UI and replay surfaces | Yes | Reused as architectural pattern for inspect/replay UX | New admission dead letters may reuse storage/replay conventions, not existing post-adjudication event records |
 | `GovernancePolicy` fields such as `MaxNewPerDay`, `SchemaExplosionBudget`, `MinUsageForPromotion` | Yes | Reused as policy knobs | Runtime enforcement must be clarified and extended where not yet implemented |
 
 ## Recommended Policy
@@ -66,12 +66,22 @@ Decision meanings:
 
 - `known`: existing `active` or `shadow` schema entry; admit unchanged.
 - `mapped`: rewrite to a canonical predicate and admit the rewritten triple.
-- `shadow`: register or import a new predicate/type into existing `shadow` lifecycle state, then admit.
+- `shadow`: move a new predicate/type into existing `shadow` lifecycle state, then admit.
 - `proposed`: persist the candidate and evidence, but do not admit the triple to the graph.
 - `quarantined`: persist the candidate and rejection reason because it is too generic, conflicting, or explosive.
 - `dead-lettered`: admission already decided the triple should be admitted, but a later storage or consistency step failed.
 
 `shadow` continues to mean "usable but experimental." The design does not create a second shadow concept.
+
+Decision table for non-admitted unknown terms in Wave 1:
+
+| Condition | Outcome |
+|---|---|
+| low confidence, first-seen, or insufficient repeated evidence | `proposed` |
+| budget exhausted but candidate is otherwise plausible | `proposed` |
+| generic predicate heuristic hit | `quarantined` |
+| conflicting semantic mapping or suspicious source/evidence | `quarantined` |
+| storage or consistency failure after admission decision | `dead-lettered` |
 
 ## Authoritative Validation Model
 
@@ -84,6 +94,15 @@ There must be one source of truth for predicate validity.
 - In the current runtime, `RegisterPredicate` already performs a synchronous `refreshPredicateCache()` before returning; first-wave admission relies on that synchronous invalidation model rather than a separate publish/subscribe refresh path.
 
 This matters because the current runtime rejects unknown predicates in two places. The design is valid only if both gates read from the same refreshed ontology state.
+
+Important Wave 1 constraint:
+
+- With governance enabled, `RegisterPredicate` forces new predicates to `proposed` status before persistence.
+- Therefore the shadow admission path cannot rely on a single `RegisterPredicate(Status=shadow)` call.
+- Wave 1 shadow admission must use one of two explicit strategies:
+  - `RegisterPredicate(proposed)` followed by `PromotePredicate(proposed -> shadow)` in the same admission workflow.
+  - a future internal-only API that preserves shadow registration semantics without exposing a second public lifecycle surface.
+- The default design assumption for Wave 1 is the existing-API two-step path: register as `proposed`, then promote to `shadow`, then admit only after the shared validator closure recognizes the refreshed shadow predicate.
 
 ## Producer Call-Site Inventory
 
@@ -99,8 +118,11 @@ The admission boundary is only meaningful if it covers the real producer set.
 | `internal/memory/graph_hooks.go` | `GraphBuffer` | Known seeded predicates | Deterministic | Wave 1 keeps a fast path and bypasses dynamic admission because this producer only emits seeded predicates; existing validators still apply unchanged |
 | `internal/cli/graph/import_cmd.go` | Direct `AddTriples` | Graph store validator only | Import payload dependent | Route import through admission batch API |
 | Ontology tools and actions using `AssertFact` | `OntologyService.AssertFact` | `ValidateTriple` first | Tool input controlled | Admission must sit before unknown-predicate rejection for growth-enabled flows |
+| Type-bearing dynamic producers | Same as the corresponding dynamic triple path | Same as predicate path | Depends on producer | Unknown type discovery follows the same admission path whenever the producer emits non-empty `SubjectType` or `ObjectType` values |
 
 The key boundary decision is this: Wave 1 keeps a fast path for deterministic seeded-predicate producers and requires the admission API for every path that can emit LLM- or user-supplied arbitrary predicates. This does not weaken the validation model because both fast-path and admission-path triples still terminate at the same existing ontology and graph validators.
+
+`internal/app/wiring_graph.go` contains both sides of this split today: it has dynamic subscriber paths that ingest `TriplesExtractedEvent` values, and it also emits deterministic containment triples locally. Wave 1 applies admission only to the dynamic subscriber side in that file.
 
 ## Admission Architecture
 
@@ -140,11 +162,11 @@ New or extended persistence for schema candidates and evidence. Wave 1 keeps thi
 
 `GraphAdmissionDeadLetterStore`
 
-New admission-domain dead-letter persistence. This is not the existing settlement or receipt event store. It should reuse the existing dead-letter UI and replay pattern shape where useful, but it stores graph admission failures, not post-adjudication execution failures.
+New admission-domain dead-letter persistence. This is not the existing post-adjudication event store. It should reuse the existing dead-letter UI and replay pattern shape where useful, but it stores graph admission failures, not post-adjudication execution failures.
 
 `SchemaBudgetLedger`
 
-Required extension for budget enforcement if automatic shadow admission is enabled. Existing `GovernancePolicy` fields already define daily and monthly budgets, but current governance runtime only has an in-memory daily counter. Persisted budget accounting is needed before production auto-shadow mode.
+Required extension for budget enforcement if automatic shadow admission is enabled. Existing `GovernancePolicy` fields already define daily and monthly budgets, but current governance runtime only has an in-memory daily counter. Persisted budget accounting is needed before production auto-shadow mode. Responsibility remains one-way: `TripleAdmissionPolicy` invokes `OntologyGrowthEngine`, and `OntologyGrowthEngine` consumes and updates the budget ledger when evaluating growth decisions.
 
 ## Batch And Transaction Model
 
@@ -180,8 +202,9 @@ Shadow growth path:
 raw triple: term defines concept
   -> admission sees unknown predicate
   -> confidence and evidence clear governance checks
-  -> existing ontology service registers defines as shadow
-  -> ontology predicate cache refreshes
+  -> existing ontology service registers defines as proposed
+  -> existing ontology service promotes defines to shadow
+  -> ontology predicate cache refreshes on both lifecycle writes
   -> same validator closure now recognizes defines
   -> admitted triple reaches GraphBuffer
 ```
@@ -231,6 +254,22 @@ Therefore:
 - Wave 1 uses manual promotion plus status/usage observability.
 - Wave 2 may implement or harden automatic shadow-to-active promotion using the already defined `MinUsageForPromotion` policy and shadow usage counters.
 
+## Observe-Only Phase
+
+Change A Phase A1 is strictly non-enforcing.
+
+| Behavior | Phase A1 |
+|---|---|
+| compute admission decision | yes |
+| emit metrics and structured logs | yes |
+| rewrite predicates via canonical mapping | no |
+| register or promote schema entries | no |
+| write admission dead letters | no |
+| change existing graph write routing | no |
+| reduce current unknown-predicate `ERROR` logs | no |
+
+This means the operational acceptance criteria about error-rate reduction apply after Phase A2 enforcement, not after Phase A1 observe-only instrumentation.
+
 ## Budget Enforcement
 
 Existing `GovernancePolicy` already defines `MaxNewPerDay` and `SchemaExplosionBudget`, but the current governance engine only persists an in-memory daily count per process restart boundary.
@@ -260,9 +299,12 @@ Each dead-letter record must store:
 
 Replay rules:
 
-- if schema version is unchanged, replay should attempt the same admission decision first;
-- if schema version advanced, replay reruns admission against the latest schema but preserves the original snapshot for audit;
-- replay deduplication uses candidate hash plus observed schema version to avoid repeated duplicate admissions.
+- the current `SchemaVersion()` value is an in-memory atomic counter and is not durable across process restarts;
+- therefore Wave 1 and Wave 2 may only use schema version as a best-effort in-process signal, not as durable replay truth;
+- if schema version is unchanged within the same process lifetime, replay should attempt the same admission decision first;
+- if schema version advanced within the same process lifetime, replay reruns admission against the latest schema but preserves the original snapshot for audit;
+- durable replay semantics across restart require a persisted schema version source and belong to Change C prerequisite work;
+- replay deduplication uses candidate hash plus the best available schema-version snapshot to avoid repeated duplicate admissions.
 
 ## Generic Predicate Policy
 
@@ -275,6 +317,11 @@ First-wave rule:
 - the initial defaults may include values such as `has`, `is`, `uses`, `related`, `thing`, and `misc`;
 - additions and removals must be configuration-driven rather than scattered hardcoded checks;
 - the policy must not assume English-only future inputs, even if the first default list is English.
+
+## Out-Of-Scope Follow-Ups
+
+- shadow-aware lexical search over graph predicates, because current FTS5 indexes do not index graph edges as first-class rows;
+- full automatic shadow-to-active promotion if current runtime hardening is incomplete.
 
 ## Error Handling
 
@@ -306,8 +353,9 @@ These should land in internal status surfaces before any public doc claims are e
 Unit tests:
 
 - `includes` maps to `contains`;
-- `defines` can register into `shadow` and immediately pass the same validator closure;
+- `defines` can complete the governance-aware `proposed -> shadow` path and then pass the same validator closure;
 - low-confidence unknown predicates become proposed-only;
+- generic predicates, suspicious sources, and conflicting mappings route to the expected proposed/quarantined outcomes;
 - generic predicates are quarantined by policy;
 - deterministic known-predicate producers can bypass dynamic growth safely.
 
@@ -315,7 +363,7 @@ Integration tests:
 
 - `TriplesExtractedEvent` paths are rerouted through admission;
 - direct `AddTriples` producers no longer feed raw unknown predicates into store validation;
-- `AssertFact` growth-enabled path no longer fails before schema-admission logic runs;
+- growth-enabled `AssertFact` paths no longer fail before schema-admission logic runs;
 - one unknown candidate no longer rolls back valid admitted triples in the same batch;
 - graph admission dead-letter replay is auditable across schema version change.
 
@@ -341,7 +389,7 @@ Recommended split:
 - Change B: adaptive shadow growth
   - Depends on Change A
   - schema candidate persistence
-  - shadow registration path
+  - governance-aware shadow registration path using `proposed -> shadow`
   - budget enforcement
   - retrieval provenance for shadow edges
 - Change C: promotion and replay hardening
@@ -353,11 +401,6 @@ Recommended split:
 
 These should be separate changes or clearly separated waves because rollback boundaries differ. Admission boundary hardening is a safety fix. Automatic shadow growth changes runtime write behavior. Promotion automation changes governance behavior again.
 
-Out-of-scope follow-ups:
-
-- shadow-aware lexical search over graph predicates, because current FTS5 indexes do not index graph edges as first-class rows;
-- full automatic shadow-to-active promotion if current runtime hardening is incomplete.
-
 ## Acceptance Criteria
 
 - The design explicitly reuses current ontology lifecycle, graph buffering, and governance primitives.
@@ -366,5 +409,23 @@ Out-of-scope follow-ups:
 - Batch rollback is addressed by pre-admission filtering while retaining atomic admitted-batch writes.
 - Shadow predicate retrieval and FTS5 semantics are defined for first wave.
 - Promotion, budget, replay, and generic-predicate policy boundaries are explicit rather than implied.
+- The design explicitly resolves the governance-enabled `RegisterPredicate` status-override conflict for shadow admission.
+- Phase A1 observe-only behavior is unambiguous and Phase A2 is the first enforcing phase.
 - After implementation, unknown-predicate graph write `ERROR` logs from normal LLM producer paths should drop by at least 95% during a representative observation window.
 - After implementation, one rejected dynamic candidate must not cause loss of valid admitted triples from the same input batch.
+
+## Growth-Enabled AssertFact Scope
+
+Wave 1 does not assume every `AssertFact` caller participates in schema growth automatically.
+
+Current direct caller families include:
+
+- ontology tools and ontology actions;
+- ontology P2P fact import paths;
+- any future callers that submit arbitrary user- or peer-supplied predicates.
+
+Definition:
+
+- `growth-enabled` means a caller path is explicitly configured to invoke admission before `ValidateTriple` rejection for unknown predicates or types.
+- deterministic internal callers that only assert already-known predicates are not automatically growth-enabled.
+- the growth-enabled switch belongs to service or runtime configuration, not ad hoc caller behavior.
