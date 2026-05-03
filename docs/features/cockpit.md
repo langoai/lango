@@ -73,7 +73,7 @@ Mission Control is the default cockpit landing surface. It is a sidebar-first pa
 
 - **Missions lane** — durable mission rows render first for the current cockpit session. Linked RunLedger and AgentRun data enrich those rows when available.
 - **Runtime overlays** — background/runtime work that is still unlinked to a durable mission remains visible as overlay instead of disappearing. Foreign-session background work is filtered out when it carries a different `OriginSession`.
-- **Proposed missions** — buffered learning suggestions remain transient `proposed` rows until the operator accepts them.
+- **Proactive proposals** — transient, session-scoped proposal records now render as first-class proposed rows. In the current slice, only learning suggestions actively create proposals.
 - **Decisions lane** — the latest pending approval is shown as one live decision with action, reason, effect, and risk, while durable mission rows can separately show coarse `waiting_decision` state.
 - **Activity lane** — recent deterministic activity is listed as compact timeline entries.
 - **Composer** — the first-screen hint is: "Type to chat here, or use `lango chat` for focused chat."
@@ -81,13 +81,16 @@ Mission Control is the default cockpit landing surface. It is a sidebar-first pa
 Current landed behavior:
 
 - submitting a top-level request from the Mission Control composer creates a durable mission row before the shared turn is dispatched
-- accepting a proposed learning suggestion creates a durable mission row and dismisses the transient proposal overlay
+- learning suggestions are the only active proactive producer in this slice; librarian-gap and runtime-failure producers remain disabled
+- proposal preparation is deterministic and source-native: the prepared brief is derived from stable learning-suggestion fields and does not launch generic proposal-owned background work or `RunLedger` work
+- accepting a prepared proposal creates the first durable mission row and preserves the prepared brief context on the mission path before the transient proposal leaves the active set
 - `waiting_decision` is a coarse durable mission state, not a durable approval queue
 - Mission Control can stay visible while a pending approval is active, and resolving that decision uses the same shared approval path as the chat surface
 
 Current limits:
 
-- learning suggestions are still transient until explicitly accepted; they are not pre-persisted as durable missions
+- proposal state is transient and session-scoped; no durable `proposed` mission row exists before acceptance
+- the proposal registry is the primary truth for rendered proposals; the older learning-buffer path remains only as compatibility fallback when the registry is unavailable
 - the activity lane remains deterministic runtime rendering, not LLM-generated humanized narration
 - task tracking stays lightweight and separate from mission truth; the Tasks page and `TaskEntry` tooling are not the authoritative durable mission checklist model
 - RunLedger and AgentRun remain enrichments for durable or unmatched runtime rows. When those readers or mission details are unavailable, Mission Control shows a degraded note instead of inventing values
