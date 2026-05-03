@@ -274,9 +274,13 @@ type CollaborationAgentRunView struct {
 }
 
 type CollaborationDelegationRecord struct {
-	From      string
-	To        string
-	Timestamp time.Time
+	SessionKey    string
+	TraceID       string
+	ExecutionKind string
+	ExecutionRef  string
+	From          string
+	To            string
+	Timestamp     time.Time
 }
 
 type CollaborationBudgetRecord struct {

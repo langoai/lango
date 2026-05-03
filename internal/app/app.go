@@ -536,6 +536,9 @@ func wireCollaborationReaders(app *App) {
 	if app == nil {
 		return
 	}
+	if bridge, ok := app.CollaborationRuntimeReader.(*collaborationRuntimeBridge); ok {
+		bridge.SetMissionStore(app.MissionStore)
+	}
 	if app.MissionStore != nil {
 		app.CollaborationMissionLinkReader = &collaborationMissionLinkReader{store: app.MissionStore}
 	}

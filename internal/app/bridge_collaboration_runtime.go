@@ -92,10 +92,15 @@ func (r *collaborationDelegationReader) ListDelegationsForSession(ctx context.Co
 			if strings.TrimSpace(to) == "" {
 				continue
 			}
+			executionKind, executionRef, _ := deriveExecutionAttribution(trace.SessionKey)
 			out = append(out, CollaborationDelegationRecord{
-				From:      ev.AgentName,
-				To:        to,
-				Timestamp: ev.CreatedAt,
+				SessionKey:    trace.SessionKey,
+				TraceID:       trace.TraceID,
+				ExecutionKind: executionKind,
+				ExecutionRef:  executionRef,
+				From:          ev.AgentName,
+				To:            to,
+				Timestamp:     ev.CreatedAt,
 			})
 		}
 	}
@@ -117,14 +122,13 @@ func extractDelegationTarget(payload string) string {
 
 type collaborationRuntimeBridge struct {
 	mu               sync.RWMutex
-	sessionMission   map[string]string
+	missionStore     mission.Store
 	budgetByMission  map[string][]CollaborationBudgetRecord
 	recoverByMission map[string][]CollaborationRecoveryRecord
 }
 
 func newCollaborationRuntimeBridge(bus *eventbus.Bus) *collaborationRuntimeBridge {
 	b := &collaborationRuntimeBridge{
-		sessionMission:   make(map[string]string),
 		budgetByMission:  make(map[string][]CollaborationBudgetRecord),
 		recoverByMission: make(map[string][]CollaborationRecoveryRecord),
 	}
@@ -140,14 +144,9 @@ func newCollaborationRuntimeBridge(bus *eventbus.Bus) *collaborationRuntimeBridg
 	return b
 }
 
-func (b *collaborationRuntimeBridge) BindSessionMission(sessionKey, missionID string) {
-	sessionKey = strings.TrimSpace(sessionKey)
-	missionID = strings.TrimSpace(missionID)
-	if sessionKey == "" || missionID == "" {
-		return
-	}
+func (b *collaborationRuntimeBridge) SetMissionStore(store mission.Store) {
 	b.mu.Lock()
-	b.sessionMission[sessionKey] = missionID
+	b.missionStore = store
 	b.mu.Unlock()
 }
 
@@ -166,13 +165,9 @@ func (b *collaborationRuntimeBridge) ListRecoverySignals(missionID string) []Col
 }
 
 func (b *collaborationRuntimeBridge) recordBudget(evt agentrt.BudgetAlertEvent) {
-	sessionKey := strings.TrimSpace(evt.SessionID)
-	if sessionKey == "" {
-		return
-	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	missionID := strings.TrimSpace(b.sessionMission[sessionKey])
+	missionID := b.resolveMissionIDLocked(context.Background(), evt.SessionID)
 	if missionID == "" {
 		return
 	}
@@ -189,13 +184,9 @@ func (b *collaborationRuntimeBridge) recordBudget(evt agentrt.BudgetAlertEvent) 
 }
 
 func (b *collaborationRuntimeBridge) recordRecovery(evt agentrt.RecoveryDecisionEvent) {
-	sessionKey := strings.TrimSpace(evt.SessionKey)
-	if sessionKey == "" {
-		return
-	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	missionID := strings.TrimSpace(b.sessionMission[sessionKey])
+	missionID := b.resolveMissionIDLocked(context.Background(), evt.SessionKey)
 	if missionID == "" {
 		return
 	}
@@ -213,4 +204,35 @@ func (b *collaborationRuntimeBridge) recordRecovery(evt agentrt.RecoveryDecision
 
 var eventTime = func() time.Time {
 	return time.Now()
+}
+
+func (b *collaborationRuntimeBridge) resolveMissionIDLocked(ctx context.Context, sessionKey string) string {
+	if b == nil || b.missionStore == nil {
+		return ""
+	}
+	executionKind, executionRef, ok := deriveExecutionAttribution(sessionKey)
+	if !ok {
+		return ""
+	}
+	row, err := b.missionStore.FindMissionByExecution(ctx, mission.ExecutionKind(executionKind), executionRef)
+	if err != nil || row == nil {
+		return ""
+	}
+	return strings.TrimSpace(row.ID.String())
+}
+
+func deriveExecutionAttribution(sessionKey string) (string, string, bool) {
+	sessionKey = strings.TrimSpace(sessionKey)
+	if sessionKey == "" {
+		return "", "", false
+	}
+	parts := strings.Split(sessionKey, ":")
+	if len(parts) == 4 && parts[0] == "workflow" {
+		runID := strings.TrimSpace(parts[2])
+		if runID == "" {
+			return "", "", false
+		}
+		return string(mission.ExecutionKindRunLedgerRun), runID, true
+	}
+	return "", "", false
 }

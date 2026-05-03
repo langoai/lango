@@ -50,23 +50,38 @@ func TestCollaborationRuntimeBridge_StoresOnlyMissionAttributedRecords(t *testin
 
 	bus := eventbus.New()
 	bridge := newCollaborationRuntimeBridge(bus)
-	bridge.BindSessionMission("sess-1", "mission-1")
+	client := testutil.TestEntClient(t)
+	store := mission.NewEntStore(client)
+	row, err := store.CreateMission(context.Background(), mission.CreateMissionInput{
+		SessionKey: "sess-1",
+		Title:      "Workflow mission",
+		SourceKind: "user",
+	})
+	require.NoError(t, err)
+	err = store.AppendExecutionLink(context.Background(), mission.AppendExecutionLinkInput{
+		MissionID:     row.ID.String(),
+		ExecutionKind: mission.ExecutionKindRunLedgerRun,
+		ExecutionRef:  "run-1",
+		LinkRole:      mission.LinkRolePrimary,
+	})
+	require.NoError(t, err)
+	bridge.SetMissionStore(store)
 
 	now := time.Date(2026, 5, 3, 12, 0, 0, 0, time.UTC)
 	origNow := eventTime
 	eventTime = func() time.Time { return now }
 	t.Cleanup(func() { eventTime = origNow })
 
-	bus.Publish(agentrt.BudgetAlertEvent{SessionID: "sess-1", Used: 12, Limit: 15})
+	bus.Publish(agentrt.BudgetAlertEvent{SessionID: "workflow:wf:run-1:step-a", Used: 12, Limit: 15})
 	bus.Publish(agentrt.BudgetAlertEvent{SessionID: "sess-2", Used: 20, Limit: 20})
 	bus.Publish(agentrt.BudgetAlertEvent{Used: 1, Limit: 2})
 
-	bus.Publish(agentrt.RecoveryDecisionEvent{SessionKey: "sess-1", Action: "retry_with_hint", CauseClass: "timeout"})
+	bus.Publish(agentrt.RecoveryDecisionEvent{SessionKey: "workflow:wf:run-1:step-a", Action: "retry_with_hint", CauseClass: "timeout"})
 	bus.Publish(agentrt.RecoveryDecisionEvent{SessionKey: "sess-2", Action: "fallback", CauseClass: "rate_limit"})
 	bus.Publish(agentrt.RecoveryDecisionEvent{Action: "retry", CauseClass: "timeout"})
 
-	budget := bridge.ListBudgetSignals("mission-1")
-	recovery := bridge.ListRecoverySignals("mission-1")
+	budget := bridge.ListBudgetSignals(row.ID.String())
+	recovery := bridge.ListRecoverySignals(row.ID.String())
 
 	require.Len(t, budget, 1)
 	assert.Equal(t, 12, budget[0].Used)
@@ -98,10 +113,25 @@ func TestCollaborationDelegationReader_ParsesOnlyDelegationEvents(t *testing.T) 
 	records, err := reader.ListDelegationsForSession(context.Background(), "sess-1")
 	require.NoError(t, err)
 	require.Len(t, records, 2)
+	assert.Equal(t, "sess-1", records[0].SessionKey)
+	assert.Equal(t, "trace-1", records[0].TraceID)
 	assert.Equal(t, "planner", records[0].From)
 	assert.Equal(t, "researcher", records[0].To)
 	assert.Equal(t, "researcher", records[1].From)
 	assert.Equal(t, "planner", records[1].To)
+}
+
+func TestCollaborationRuntimeBridge_DropsUnattributableSignalsWithoutBinding(t *testing.T) {
+	t.Parallel()
+
+	bus := eventbus.New()
+	bridge := newCollaborationRuntimeBridge(bus)
+
+	bus.Publish(agentrt.BudgetAlertEvent{SessionID: "tui-123", Used: 1, Limit: 2})
+	bus.Publish(agentrt.RecoveryDecisionEvent{SessionKey: "tui-123", Action: "retry", CauseClass: "timeout"})
+
+	assert.Empty(t, bridge.ListBudgetSignals("any-mission"))
+	assert.Empty(t, bridge.ListRecoverySignals("any-mission"))
 }
 
 func TestCollaborationMissionAndAgentRunReadersAreNarrow(t *testing.T) {
