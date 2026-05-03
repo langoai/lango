@@ -152,7 +152,8 @@ func TestFollowUpLoopsOnlyAllowedPredicates(t *testing.T) {
 			{MissionID: "m-no-review", SessionKey: "sess-1", Title: "Done no review", Status: "done", NeedsReview: false, UpdatedAt: clock.now},
 		},
 		Proposals: []ProposalSource{
-			{ProposalID: "p-accepted", SessionKey: "sess-1", Title: "Accepted proposal", Status: "accepted", UpdatedAt: clock.now.Add(-10 * time.Minute), HasActiveExecution: false},
+			{ProposalID: "p-accepted", SessionKey: "sess-1", Title: "Accepted proposal", Status: "accepted", UpdatedAt: clock.now.Add(-11 * time.Minute), HasActiveExecution: false},
+			{ProposalID: "p-too-fresh", SessionKey: "sess-1", Title: "Too fresh", Status: "accepted", UpdatedAt: clock.now.Add(-5 * time.Minute), HasActiveExecution: false},
 			{ProposalID: "p-running", SessionKey: "sess-1", Title: "Accepted with execution", Status: "accepted", UpdatedAt: clock.now.Add(-5 * time.Minute), HasActiveExecution: true},
 		},
 		Inquiries: []InquirySource{
@@ -173,6 +174,7 @@ func TestFollowUpLoopsOnlyAllowedPredicates(t *testing.T) {
 	assert.Contains(t, ids, "follow-up:proposal:p-accepted")
 	assert.Contains(t, ids, "follow-up:mission:m-review")
 	assert.Contains(t, ids, "follow-up:inquiry:i-old")
+	assert.NotContains(t, ids, "follow-up:proposal:p-too-fresh")
 	assert.NotContains(t, ids, "follow-up:proposal:p-running")
 	assert.NotContains(t, ids, "follow-up:mission:m-old")
 }
@@ -188,6 +190,7 @@ func TestCronBasedScheduledLoopsOnly(t *testing.T) {
 		CronJobs: []CronSource{
 			{JobID: "cron-ok", Name: "Digest", Enabled: true, NextRunAt: clock.now.Add(2 * time.Hour)},
 			{JobID: "cron-failed", Name: "Sync", Enabled: true, LastRunStatus: "failed", LastRunAt: clock.now.Add(-time.Hour)},
+			{JobID: "cron-stale", Name: "Stale", Enabled: true, LastRunStatus: "failed", LastRunAt: clock.now.Add(-48 * time.Hour)},
 			{JobID: "cron-disabled", Name: "Disabled", Enabled: false, NextRunAt: clock.now.Add(2 * time.Hour)},
 		},
 	})
@@ -197,6 +200,9 @@ func TestCronBasedScheduledLoopsOnly(t *testing.T) {
 	assert.Equal(t, LoopStatusBlocked, agenda.Loops[0].Status)
 	assert.Equal(t, "cron:cron-ok", agenda.Loops[1].LoopID)
 	assert.Equal(t, LoopStatusScheduled, agenda.Loops[1].Status)
+	for _, loop := range agenda.Loops {
+		assert.NotEqual(t, "cron:cron-stale", loop.LoopID)
+	}
 }
 
 func TestNoFabricatedScheduledLoopsWhenSourceUnavailable(t *testing.T) {

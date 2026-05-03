@@ -26,6 +26,8 @@ const (
 const (
 	DefaultMissionReviewThreshold = 24 * time.Hour
 	DefaultInquiryFollowUpAge     = 24 * time.Hour
+	DefaultAcceptedProposalDelay  = 10 * time.Minute
+	DefaultCronFailureAge         = 24 * time.Hour
 )
 
 type LoopView struct {

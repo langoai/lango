@@ -10,6 +10,8 @@ type Projector struct {
 	nowFn                  func() time.Time
 	missionReviewThreshold time.Duration
 	inquiryFollowUpAge     time.Duration
+	acceptedProposalDelay  time.Duration
+	cronFailureAge         time.Duration
 }
 
 func NewProjector(nowFn func() time.Time) *Projector {
@@ -20,6 +22,8 @@ func NewProjector(nowFn func() time.Time) *Projector {
 		nowFn:                  nowFn,
 		missionReviewThreshold: DefaultMissionReviewThreshold,
 		inquiryFollowUpAge:     DefaultInquiryFollowUpAge,
+		acceptedProposalDelay:  DefaultAcceptedProposalDelay,
+		cronFailureAge:         DefaultCronFailureAge,
 	}
 }
 
@@ -121,6 +125,7 @@ func (p *Projector) projectDeadLetterLoops(items []DeadLetterSource) []LoopView 
 }
 
 func (p *Projector) projectCronLoops(items []CronSource) []LoopView {
+	now := p.nowFn()
 	out := make([]LoopView, 0, len(items))
 	for _, item := range items {
 		if !item.Enabled {
@@ -131,6 +136,9 @@ func (p *Projector) projectCronLoops(items []CronSource) []LoopView {
 		updatedAt := item.NextRunAt
 		summary := "Scheduled automation"
 		if strings.EqualFold(strings.TrimSpace(item.LastRunStatus), "failed") {
+			if item.LastRunAt.IsZero() || item.LastRunAt.Add(p.cronFailureAge).Before(now) {
+				continue
+			}
 			status = LoopStatusBlocked
 			nextAction = "Review failed cron run"
 			updatedAt = item.LastRunAt
@@ -160,6 +168,9 @@ func (p *Projector) projectFollowUpLoops(sessionKey string, now time.Time, missi
 			continue
 		}
 		if strings.TrimSpace(proposal.Status) != "accepted" || proposal.HasActiveExecution {
+			continue
+		}
+		if proposal.UpdatedAt.Add(p.acceptedProposalDelay).After(now) {
 			continue
 		}
 		out = append(out, LoopView{
