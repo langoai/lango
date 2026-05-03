@@ -14,6 +14,8 @@ Mission Control SHALL back proposed missions with a transient proposal registry 
 - **THEN** the page SHALL read proposal state from the transient proposal registry
 - **AND** the learning buffer MAY remain only as a producer input or compatibility source, not the primary rendered proposal state
 
+## ADDED Requirements
+
 ### Requirement: Proposed missions can prepare a deterministic brief before acceptance
 
 Mission Control SHALL support deterministic low-risk preparation for transient proposals in this slice. Preparation SHALL generate a prepared brief from source-native evidence already available on the proposal source and SHALL NOT require broad heuristic agent work.
@@ -28,8 +30,6 @@ Mission Control SHALL support deterministic low-risk preparation for transient p
 - **WHEN** a proposal moves through `suggested`, `preparing`, or `prepared`
 - **THEN** the slice SHALL NOT require launching generic proposal-owned background execution or generic proposal-owned `RunLedger` execution
 - **AND** the prepared state SHALL still be satisfiable through deterministic brief generation alone
-
-## ADDED Requirements
 
 ### Requirement: Accepting a prepared proposal preserves prepared context in the durable mission path
 
