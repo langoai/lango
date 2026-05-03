@@ -154,6 +154,12 @@ The workbench root should forward:
 - runtime/chat messages already consumed by `MissionControlPage`
 - approval/runtime messages that must still reach the shared chat model path
 
+The workbench root must also preserve the effective runtime/refresh semantics that are currently owned by cockpit root for Mission Control visibility:
+
+- pending approval registration before Mission Control refresh
+- delegation, budget, recovery, and done/runtime-summary activity propagation
+- Mission Control refresh after runtime-affecting messages
+
 The workbench root should not grow sidebar/router/context-panel behavior.
 
 - [ ] **Step 4: Add focused workbench tests**
@@ -164,6 +170,7 @@ Cover:
 - program delegation reaches the shared chat model
 - loading/empty/root rendering works without cockpit sidebar state
 - pending approval/runtime refresh still flows through Mission Control
+- approval/delegation/budget/recovery/done messages preserve shared state and refresh ordering comparable to cockpit root
 
 Run:
 
@@ -275,6 +282,7 @@ Cover:
 - `cockpitCmd()` still selects cockpit
 - `chatCmd()` still selects chat
 - help text no longer describes bare `lango` as equivalent to cockpit
+- routed bare-`lango` workbench path still preserves Mission Control plus shared chat/approval behavior in an integration-style test
 
 Run:
 
