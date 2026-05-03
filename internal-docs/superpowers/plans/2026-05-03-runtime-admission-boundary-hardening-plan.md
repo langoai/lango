@@ -147,7 +147,7 @@ The runtime computes admission decisions for:
 - app-path extracted triples only where the current runtime already surfaces them without widening extractor behavior
 - extractor-local dropped-unknown events for the current `content.saved` extraction path
 
-In all cases, current write routing remains unchanged. The policy is observe-only: it records what would be admitted or rejected, emits telemetry, and lets the existing enqueue/store path continue unchanged.
+In all cases, current write routing remains unchanged. The policy is observe-only: it records what would be admitted or rejected, emits telemetry, and then forwards the **original triple slice** through the existing enqueue/store path unchanged.
 ```
 
 - [ ] **Step 4: Write the delta specs**
@@ -575,8 +575,8 @@ func ObserveTriples(policy *AdmissionPolicy, producer AdmissionProducer, source 
 			Source:   source,
 		})
 	}
-	result := policy.ObserveBatch(candidates)
-	return result.Forwarded
+	_ = policy.ObserveBatch(candidates)
+	return triples
 }
 ```
 
@@ -866,14 +866,14 @@ extractor = graph.NewExtractor(generator, logger(),
 			Predicate: evt.Predicate,
 			Subject:   evt.Subject,
 			Object:    evt.Object,
-			Source:    "content_saved_extractor",
+			Source:    fmt.Sprintf("content_saved_extractor:%s:%s", evt.Source, evt.Collection),
 		})
 	}),
 	graph.WithPredicateValidator(ontologyValidator),
 )
 
 // inside content.saved extraction goroutine after extractor.Extract(...)
-observed := graph.ObserveTriples(gc.admissionPolicy, graph.ProducerContentSavedExtractor, "content_saved_extractor", triples)
+observed := graph.ObserveTriples(gc.admissionPolicy, graph.ProducerContentSavedExtractor, fmt.Sprintf("content_saved_extractor:%s:%s", evt.Source, evt.Collection), triples)
 if len(observed) > 0 {
 	gc.buffer.Enqueue(graph.GraphRequest{Triples: observed})
 }
@@ -926,6 +926,7 @@ func TestCollector_RecordGraphAdmissionBatch(t *testing.T) {
 	assert.Equal(t, int64(1), snap.GraphAdmission.ObservedTypeHints)
 	assert.Equal(t, int64(1), snap.GraphAdmission.DroppedUnknown)
 	assert.Equal(t, int64(1), snap.GraphAdmission.WriteFailures)
+	assert.Equal(t, int64(3), snap.GraphAdmission.WriteFailureCandidates)
 }
 ```
 
@@ -955,6 +956,7 @@ type GraphAdmissionSummary struct {
 	UnknownSourceByName map[string]int64
 	DroppedUnknown int64
 	WriteFailures int64
+	WriteFailureCandidates int64
 	ValidatorSource string
 }
 
@@ -1008,10 +1010,11 @@ func (c *MetricsCollector) RecordGraphExtractorDrop() {
 	c.graphAdmission.DroppedUnknown++
 }
 
-func (c *MetricsCollector) RecordGraphAdmissionWriteFailure() {
+func (c *MetricsCollector) RecordGraphAdmissionWriteFailure(candidates int) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.graphAdmission.WriteFailures++
+	c.graphAdmission.WriteFailureCandidates += int64(candidates)
 }
 
 // Extend the existing Snapshot() implementation to copy c.graphAdmission.
@@ -1037,7 +1040,7 @@ eventbus.SubscribeTyped[eventbus.GraphExtractorDropEvent](bus, func(evt eventbus
 })
 
 eventbus.SubscribeTyped[eventbus.GraphAdmissionWriteFailureEvent](bus, func(evt eventbus.GraphAdmissionWriteFailureEvent) {
-	oc.collector.RecordGraphAdmissionWriteFailure()
+	oc.collector.RecordGraphAdmissionWriteFailure(evt.Candidates)
 })
 ```
 
@@ -1106,6 +1109,7 @@ func (m *StatusPage) renderGraphAdmission(titleStyle lipgloss.Style, divider str
 	b.WriteString(fmt.Sprintf("Unmapped sources: %d\n", ga.UnmappedSources))
 	b.WriteString(fmt.Sprintf("Unknown source labels: %v\n", ga.UnknownSourceByName))
 	b.WriteString(fmt.Sprintf("Write failures: %d\n", ga.WriteFailures))
+	b.WriteString(fmt.Sprintf("Failed candidates: %d\n", ga.WriteFailureCandidates))
 	b.WriteString(fmt.Sprintf("Validator source: %s\n", ga.ValidatorSource))
 	return b.String()
 }
