@@ -378,32 +378,35 @@ func (p *MissionControlProjector) projectProposals() ([]MissionView, bool) {
 
 func (p *MissionControlProjector) projectLoops(
 	durableMissions []MissionView,
-	proposals []MissionView,
+	_ []MissionView,
 ) ([]LoopView, int, string, bool, bool, bool) {
 	projector := loopview.NewProjector(p.nowFn)
 	input := loopview.ProjectionInput{SessionKey: p.sessionKey}
 
 	for _, row := range durableMissions {
+		status := durableMissionStatusString(row.Status)
 		input.Missions = append(input.Missions, loopview.MissionSource{
 			MissionID:          strings.TrimSpace(row.ID),
 			SessionKey:         strings.TrimSpace(p.sessionKey),
 			Title:              strings.TrimSpace(row.Title),
-			Status:             durableMissionStatusString(row.Status),
+			Status:             status,
 			UpdatedAt:          row.UpdatedAt,
-			NeedsReview:        false,
+			NeedsReview:        status == "done",
 			HasActiveExecution: strings.TrimSpace(row.RuntimeHint) != "",
 		})
 	}
 
-	for _, row := range proposals {
-		input.Proposals = append(input.Proposals, loopview.ProposalSource{
-			ProposalID:         strings.TrimSpace(row.ID),
-			SessionKey:         strings.TrimSpace(p.sessionKey),
-			Title:              strings.TrimSpace(row.Title),
-			Status:             proposalStatusString(row.Status),
-			UpdatedAt:          row.UpdatedAt,
-			HasActiveExecution: false,
-		})
+	if p.proposalReader != nil {
+		for _, row := range p.proposalReader.ListLoopBySession(p.sessionKey) {
+			input.Proposals = append(input.Proposals, loopview.ProposalSource{
+				ProposalID:         strings.TrimSpace(row.ProposalID),
+				SessionKey:         strings.TrimSpace(row.SessionKey),
+				Title:              strings.TrimSpace(row.Title),
+				Status:             strings.TrimSpace(string(row.Status)),
+				UpdatedAt:          row.UpdatedAt,
+				HasActiveExecution: false,
+			})
+		}
 	}
 
 	var inquiryDegraded bool

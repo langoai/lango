@@ -237,6 +237,7 @@ type LoopMissionReader interface {
 
 type LoopProposalReader interface {
 	ListBySession(sessionKey string) []proposal.Proposal
+	ListLoopBySession(sessionKey string) []proposal.Proposal
 }
 
 type LoopInquiryReader interface {

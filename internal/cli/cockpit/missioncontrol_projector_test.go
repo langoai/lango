@@ -109,6 +109,10 @@ func (s stubMissionControlProposalReader) ListBySession(sessionKey string) []pro
 	return out
 }
 
+func (s stubMissionControlProposalReader) ListLoopBySession(sessionKey string) []proposal.Proposal {
+	return s.ListBySession(sessionKey)
+}
+
 func (s stubMissionControlProposalReader) GetByID(proposalID string) (proposal.Proposal, bool) {
 	for _, items := range s.items {
 		for _, item := range items {
@@ -1028,6 +1032,72 @@ func TestMissionControlLoopCronUsesRealLatestExecutionOutcome(t *testing.T) {
 	assert.Equal(t, "cron:cron-1", snapshot.Loops[0].ID)
 	assert.Equal(t, loopview.LoopStatusBlocked, snapshot.Loops[0].Status)
 	assert.Equal(t, "Review failed cron run", snapshot.Loops[0].NextAction)
+}
+
+func TestMissionControlAcceptedProposalFollowUpLoopAppearsFromIntegratedReader(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 5, 3, 12, 0, 0, 0, time.UTC)
+	projector := NewMissionControlProjector(Deps{
+		SessionKey:    "sess-1",
+		MissionReader: stubMissionControlMissionReader{missions: map[string][]*mission.Mission{"sess-1": {}}},
+		ProposalReader: stubMissionControlProposalReader{
+			items: map[string][]proposal.Proposal{
+				"sess-1": {{
+					ProposalID: "proposal-accepted",
+					SessionKey: "sess-1",
+					Title:      "Accepted proposal follow-up",
+					Status:     proposal.ProposalStatusAccepted,
+					UpdatedAt:  now.Add(-11 * time.Minute),
+				}},
+			},
+		},
+	})
+	projector.nowFn = func() time.Time { return now }
+
+	snapshot := projector.Project(nil)
+
+	require.Len(t, snapshot.Loops, 1)
+	assert.Equal(t, "follow-up:proposal:proposal-accepted", snapshot.Loops[0].ID)
+	assert.Equal(t, loopview.LoopKindFollowUp, snapshot.Loops[0].Kind)
+	assert.Equal(t, loopview.LoopStatusActive, snapshot.Loops[0].Status)
+}
+
+func TestMissionControlRecentDoneMissionReviewFollowUpAppears(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 5, 3, 12, 0, 0, 0, time.UTC)
+	projector := NewMissionControlProjector(Deps{
+		SessionKey: "sess-1",
+		MissionReader: stubMissionControlMissionReader{
+			missions: map[string][]*mission.Mission{
+				"sess-1": {{
+					ID:          uuid.MustParse("dddddddd-dddd-dddd-dddd-dddddddddddd"),
+					SessionKey:  "sess-1",
+					Title:       "Done mission needing review",
+					Status:      mission.StatusDone,
+					SourceKind:  "user",
+					UpdatedAt:   now.Add(-2 * time.Hour),
+					CreatedAt:   now.Add(-24 * time.Hour),
+					CompletedAt: ptrTime(now.Add(-2 * time.Hour)),
+				}},
+			},
+		},
+	})
+	projector.nowFn = func() time.Time { return now }
+
+	snapshot := projector.Project(nil)
+
+	var found bool
+	for _, loop := range snapshot.Loops {
+		if loop.ID != "follow-up:mission:dddddddd-dddd-dddd-dddd-dddddddddddd" {
+			continue
+		}
+		found = true
+		assert.Equal(t, loopview.LoopStatusNeedsReview, loop.Status)
+		assert.Equal(t, "Review completed mission", loop.NextAction)
+	}
+	assert.True(t, found, "expected recent done mission review follow-up loop")
 }
 
 func TestMissionControlLoopSourceFailureDegradesTruthfully(t *testing.T) {

@@ -97,6 +97,26 @@ func (r *Registry) GetByID(proposalID string) (Proposal, bool) {
 }
 
 func (r *Registry) ListBySession(sessionKey string) []Proposal {
+	return r.listBySession(sessionKey, func(status ProposalStatus) bool {
+		return isVisibleActiveStatus(status)
+	})
+}
+
+// ListLoopBySession returns the transient proposals that are relevant to loop
+// projection. It keeps active proposals plus accepted proposals that may still
+// need follow-up, while excluding dismissed/expired terminal items.
+func (r *Registry) ListLoopBySession(sessionKey string) []Proposal {
+	return r.listBySession(sessionKey, func(status ProposalStatus) bool {
+		switch status {
+		case ProposalStatusSuggested, ProposalStatusPreparing, ProposalStatusPrepared, ProposalStatusAccepted:
+			return true
+		default:
+			return false
+		}
+	})
+}
+
+func (r *Registry) listBySession(sessionKey string, include func(ProposalStatus) bool) []Proposal {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -109,7 +129,7 @@ func (r *Registry) ListBySession(sessionKey string) []Proposal {
 	items := make([]Proposal, 0, len(ids))
 	for id := range ids {
 		proposal := r.byID[id]
-		if proposal == nil || !isVisibleActiveStatus(proposal.Status) || isExpiredAt(proposal, now) {
+		if proposal == nil || !include(proposal.Status) || isExpiredAt(proposal, now) {
 			continue
 		}
 		items = append(items, *cloneProposal(proposal))

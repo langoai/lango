@@ -79,6 +79,10 @@ func (s *stubMissionProposalReader) ListBySession(sessionKey string) []proposal.
 	return out
 }
 
+func (s *stubMissionProposalReader) ListLoopBySession(sessionKey string) []proposal.Proposal {
+	return s.ListBySession(sessionKey)
+}
+
 func (s *stubMissionProposalReader) GetByID(proposalID string) (proposal.Proposal, bool) {
 	item, ok := s.items[proposalID]
 	return item, ok

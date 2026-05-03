@@ -213,3 +213,62 @@ func TestProposalRegistryAcceptTransitionsOutOfVisibleActiveSet(t *testing.T) {
 	require.NotNil(t, stored.PreparedBrief)
 	assert.Equal(t, "effect", stored.PreparedBrief.SuggestedAcceptanceEffect)
 }
+
+func TestProposalRegistryLoopListingIncludesAcceptedButNotDismissedOrExpired(t *testing.T) {
+	t.Parallel()
+
+	clock := &testClock{now: time.Date(2026, 5, 3, 10, 0, 0, 0, time.UTC)}
+	registry := NewRegistry(clock.Now)
+
+	active, err := registry.Upsert(UpsertInput{
+		SessionKey: "sess-1",
+		Source:     ProposalSource{Kind: "proposed_learning", Ref: "s-active"},
+		Title:      "Active proposal",
+		ExpiresAt:  clock.now.Add(time.Hour),
+	})
+	require.NoError(t, err)
+
+	accepted, err := registry.Upsert(UpsertInput{
+		SessionKey: "sess-1",
+		Source:     ProposalSource{Kind: "proposed_learning", Ref: "s-accepted"},
+		Title:      "Accepted proposal",
+		ExpiresAt:  clock.now.Add(time.Hour),
+	})
+	require.NoError(t, err)
+	_, err = registry.MarkPrepared(accepted.ProposalID, PreparedBrief{SourceSummary: "summary"})
+	require.NoError(t, err)
+	_, err = registry.Accept(accepted.ProposalID)
+	require.NoError(t, err)
+
+	dismissed, err := registry.Upsert(UpsertInput{
+		SessionKey: "sess-1",
+		Source:     ProposalSource{Kind: "proposed_learning", Ref: "s-dismissed"},
+		Title:      "Dismissed proposal",
+		ExpiresAt:  clock.now.Add(time.Hour),
+	})
+	require.NoError(t, err)
+	_, err = registry.Dismiss(dismissed.ProposalID)
+	require.NoError(t, err)
+
+	expired, err := registry.Upsert(UpsertInput{
+		SessionKey: "sess-1",
+		Source:     ProposalSource{Kind: "proposed_learning", Ref: "s-expired"},
+		Title:      "Expired proposal",
+		ExpiresAt:  clock.now.Add(5 * time.Minute),
+	})
+	require.NoError(t, err)
+	clock.now = clock.now.Add(6 * time.Minute)
+
+	activeItems := registry.ListBySession("sess-1")
+	require.Len(t, activeItems, 1)
+	assert.Equal(t, active.ProposalID, activeItems[0].ProposalID)
+
+	loopItems := registry.ListLoopBySession("sess-1")
+	require.Len(t, loopItems, 2)
+	assert.Equal(t, active.ProposalID, loopItems[0].ProposalID)
+	assert.Equal(t, accepted.ProposalID, loopItems[1].ProposalID)
+	for _, item := range loopItems {
+		assert.NotEqual(t, dismissed.ProposalID, item.ProposalID)
+		assert.NotEqual(t, expired.ProposalID, item.ProposalID)
+	}
+}

@@ -48,6 +48,7 @@ type MissionReader interface {
 
 type ProposalReader interface {
 	ListBySession(sessionKey string) []proposal.Proposal
+	ListLoopBySession(sessionKey string) []proposal.Proposal
 	GetByID(proposalID string) (proposal.Proposal, bool)
 }
 
