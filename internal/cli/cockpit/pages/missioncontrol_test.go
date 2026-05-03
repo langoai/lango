@@ -288,6 +288,21 @@ func loadedMissionControlPage(t *testing.T, snapshot cockpit.MissionControlSnaps
 	return updated.(*MissionControlPage)
 }
 
+func loadedMissionControlPageForSurface(t *testing.T, snapshot cockpit.MissionControlSnapshot, workbench bool) *MissionControlPage {
+	t.Helper()
+	projector := &stubMissionControlProjector{snapshot: snapshot}
+	surface := missionControlSurfaceCockpit
+	if workbench {
+		surface = missionControlSurfaceWorkbench
+	}
+	page := newMissionControlPageWithSurface(projector, stubMissionTaskSource{}, newTestMissionComposer(t, nil), surface)
+	updated, _ := page.Update(tea.WindowSizeMsg{Width: 110, Height: 30})
+	page = updated.(*MissionControlPage)
+	page.Activate()
+	updated, _ = page.Update(missionControlTickMsg(time.Now()))
+	return updated.(*MissionControlPage)
+}
+
 func newTestMissionComposer(t *testing.T, activity *cockpit.MissionActivityBuffer) *chat.ChatModel {
 	t.Helper()
 	composer, _ := newMissionComposerWithExecutor(t, activity)
@@ -302,6 +317,17 @@ func TestMissionControlFirstScreenChatFallbackCopy(t *testing.T) {
 
 	assert.Contains(t, view, "Type to chat here")
 	assert.Contains(t, view, "lango chat")
+	assert.NotContains(t, view, "lango cockpit")
+}
+
+func TestMissionControlWorkbenchCopyMentionsAdvancedDashboard(t *testing.T) {
+	t.Parallel()
+
+	page := loadedMissionControlPageForSurface(t, cockpit.MissionControlSnapshot{}, true)
+	view := page.View()
+
+	assert.Contains(t, view, "lango chat")
+	assert.Contains(t, view, "lango cockpit")
 }
 
 func TestMissionControlHeaderContextRendering(t *testing.T) {

@@ -34,6 +34,13 @@ const (
 	missionControlFocusComposer
 )
 
+type missionControlSurface int
+
+const (
+	missionControlSurfaceCockpit missionControlSurface = iota + 1
+	missionControlSurfaceWorkbench
+)
+
 type missionControlProjector interface {
 	Project([]background.TaskSnapshot) cockpit.MissionControlSnapshot
 }
@@ -47,6 +54,7 @@ type MissionControlPage struct {
 	projector  missionControlProjector
 	taskSource missionControlTaskSource
 	composer   *chat.ChatModel
+	surface    missionControlSurface
 
 	sessionKey     string
 	missionService cockpit.MissionLifecycleService
@@ -68,7 +76,26 @@ type MissionControlPage struct {
 
 // NewMissionControlPage creates a Mission Control page backed by the shared projector.
 func NewMissionControlPage(deps cockpit.Deps, composer *chat.ChatModel) *MissionControlPage {
-	page := newMissionControlPage(cockpit.NewMissionControlProjector(deps), deps.BackgroundManager, composer)
+	return newSurfaceMissionControlPage(deps, composer, missionControlSurfaceCockpit)
+}
+
+// NewWorkbenchMissionControlPage creates a Mission Control page configured for
+// the standalone workbench shell.
+func NewWorkbenchMissionControlPage(deps cockpit.Deps, composer *chat.ChatModel) *MissionControlPage {
+	return newSurfaceMissionControlPage(deps, composer, missionControlSurfaceWorkbench)
+}
+
+func newSurfaceMissionControlPage(
+	deps cockpit.Deps,
+	composer *chat.ChatModel,
+	surface missionControlSurface,
+) *MissionControlPage {
+	page := newMissionControlPageWithSurface(
+		cockpit.NewMissionControlProjector(deps),
+		deps.BackgroundManager,
+		composer,
+		surface,
+	)
 	page.sessionKey = deps.SessionKey
 	page.missionService = deps.MissionService
 	page.proposalReader = deps.ProposalReader
@@ -82,6 +109,15 @@ func newMissionControlPage(
 	taskSource missionControlTaskSource,
 	composer *chat.ChatModel,
 ) *MissionControlPage {
+	return newMissionControlPageWithSurface(projector, taskSource, composer, missionControlSurfaceCockpit)
+}
+
+func newMissionControlPageWithSurface(
+	projector missionControlProjector,
+	taskSource missionControlTaskSource,
+	composer *chat.ChatModel,
+	surface missionControlSurface,
+) *MissionControlPage {
 	if composer == nil {
 		composer = chat.New(chat.Deps{})
 	}
@@ -90,6 +126,7 @@ func newMissionControlPage(
 		taskSource: taskSource,
 		composer:   composer,
 		focus:      missionControlFocusMissions,
+		surface:    surface,
 	}
 }
 
@@ -484,7 +521,10 @@ func (p *MissionControlPage) renderLoading() string {
 func (p *MissionControlPage) renderEmpty() string {
 	lines := []string{
 		"No active missions or pending decisions.",
-		"Type to chat here, or use `lango chat` for focused chat.",
+		p.focusedChatHint(),
+	}
+	if extra := p.dashboardHint(); extra != "" {
+		lines = append(lines, extra)
 	}
 	if text := strings.TrimSpace(p.snapshot.Header.DegradedNote); text != "" {
 		lines = append(lines, "Degraded: "+text)
@@ -577,7 +617,10 @@ func (p *MissionControlPage) renderActivityPane(includeComposerHint bool) string
 	if len(p.snapshot.Activities) == 0 {
 		lines := []string{title, "No recent activity yet."}
 		if includeComposerHint {
-			lines = append(lines, "Type to chat here, or use `lango chat` for focused chat.")
+			lines = append(lines, p.focusedChatHint())
+			if extra := p.dashboardHint(); extra != "" {
+				lines = append(lines, extra)
+			}
 		}
 		return strings.Join(lines, "\n")
 	}
@@ -621,7 +664,7 @@ func (p *MissionControlPage) renderLoopPane() string {
 
 func (p *MissionControlPage) renderComposerLine() string {
 	value := ""
-	placeholder := "Type to chat here, or use `lango chat` for focused chat."
+	placeholder := p.focusedChatHint()
 	if p.composer != nil {
 		value = p.composer.ComposerValue()
 		if text := strings.TrimSpace(p.composer.ComposerPlaceholder()); text != "" {
@@ -649,7 +692,7 @@ func (p *MissionControlPage) renderFooter() string {
 
 	pending := p.snapshot.Header.PendingDecisionCount
 	pendingText := fmt.Sprintf("%d pending", pending)
-	hint := "Tab lanes: Missions / Decisions / Composer  Type to chat here  `lango chat` fallback"
+	hint := "Tab lanes: Missions / Decisions / Composer  " + p.footerSurfaceHint()
 	return lipgloss.NewStyle().
 		Foreground(theme.TextSecondary).
 		Render(fmt.Sprintf("Focus: %s  %s  %s", lane, pendingText, hint))
@@ -830,4 +873,22 @@ func max(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func (p *MissionControlPage) focusedChatHint() string {
+	return "Type to chat here, or use `lango chat` for focused chat."
+}
+
+func (p *MissionControlPage) dashboardHint() string {
+	if p.surface != missionControlSurfaceWorkbench {
+		return ""
+	}
+	return "For the advanced multi-page dashboard, use `lango cockpit`."
+}
+
+func (p *MissionControlPage) footerSurfaceHint() string {
+	if p.surface == missionControlSurfaceWorkbench {
+		return "Type to chat here  `lango chat` focused chat  `lango cockpit` dashboard"
+	}
+	return "Type to chat here  `lango chat` focused chat"
 }
