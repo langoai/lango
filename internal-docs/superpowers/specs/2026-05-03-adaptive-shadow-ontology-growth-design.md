@@ -337,12 +337,15 @@ Unknown predicate discovery is not an application error by default.
 The system should expose:
 
 - unknown predicate and type discovery counts;
+- extractor-local dropped-unknown counts for paths that still reject before admission;
+- unmapped producer-source counts;
 - canonical mapping counts;
 - shadow creation counts;
 - proposed/quarantined/dead-letter counts;
 - top schema candidates by frequency;
 - shadow edge retrieval counts;
 - graph admission rejection reasons;
+- graph write failure counts after observed or admitted batches;
 - budget ledger consumption;
 - validator/cache mismatch count.
 
@@ -381,7 +384,7 @@ Recommended split:
 
 - Change A: admission boundary hardening
   - Phase A1: runtime app observe-only sub-slice
-  - Includes: `TriplesExtractedEvent` producer observation, `GraphEngine` direct-write observation, shared validator-source telemetry, and internal status surfaces
+  - Includes: `TriplesExtractedEvent` producer observation, `GraphEngine` direct-write observation, extractor-local dropped-unknown baseline telemetry for `content.saved`, shared validator-source telemetry, and internal status surfaces
   - Excludes: `CLI import`, `AssertFact` growth-enabled paths, and any write filtering or dropping
   - Phase A2: broader producer migration and enforcing admission routing on dynamic producers
   - producer inventory

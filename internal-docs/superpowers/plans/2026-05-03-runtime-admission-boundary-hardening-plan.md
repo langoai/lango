@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add an observe-only runtime admission layer for app-path dynamic graph triple producers so Lango can classify unknown predicates, emit admission telemetry, and measure failure baselines without changing existing write routing yet.
+**Goal:** Add an observe-only runtime admission layer for app-path dynamic graph triple producers so Lango can classify unknown predicates and types, emit admission telemetry, and measure failure baselines without changing existing write routing yet.
 
 **Architecture:** This plan implements only `Change A / Phase A1` from the adaptive ontology growth design. It instruments runtime producers, computes admission decisions with the ontology validator closure, publishes graph-admission observability events, and records those metrics in the collector and status page. It does **not** filter, rewrite, or reroute writes; all existing enqueue and direct-store behavior stays intact.
 
@@ -16,6 +16,7 @@ This plan covers only the **observe-only runtime app sub-slice** from `Change A 
 
 - `TriplesExtractedEvent` producers that already flow through `internal/app/wiring_graph.go`
 - `GraphEngine` direct store writes when the event-bus handoff is not used
+- extractor-local dropped-unknown telemetry for the `content.saved` async extraction path
 - graph admission telemetry and status surfaces
 - config and settings needed to turn observe mode on and off
 
@@ -54,8 +55,12 @@ This plan explicitly does **not** cover:
   Build the shared observe-mode admission policy after ontology init and before knowledge init.
 - `internal/app/wiring_graph.go`
   Observe `TriplesExtractedEvent` batches before existing enqueue behavior.
+- `internal/graph/extractor.go`
+  Publish observe-only dropped-unknown telemetry for the current `content.saved` extraction path without widening extraction behavior.
 - `internal/app/wiring_knowledge.go`
   Pass the shared observe-mode policy into `GraphEngine`.
+- `internal/graph/extractor.go`
+  Publish observe-only dropped-unknown telemetry for the current extractor path without widening extraction behavior.
 - `internal/learning/graph_engine.go`
   Observe direct `AddTriples` writes before existing direct-store behavior.
 - `internal/eventbus/observability_events.go`
@@ -65,7 +70,7 @@ This plan explicitly does **not** cover:
 - `internal/observability/types.go`
   Add graph admission fields to `SystemSnapshot`.
 - `internal/observability/collector.go`
-  Record graph admission metrics and include them in snapshots and reset behavior.
+  Record graph admission metrics, dropped-unknown extractor metrics, graph write failure metrics, and include them in snapshots and reset behavior.
 - `internal/cli/cockpit/pages/status.go`
   Render graph admission metrics on the status page.
 - `docs/configuration.md`
@@ -83,6 +88,7 @@ This plan explicitly does **not** cover:
 - `internal/cli/settings/forms_impl_test.go`
 - `internal/learning/graph_engine_test.go`
 - `internal/observability/collector_test.go`
+- `internal/graph/extractor_test.go`
 
 ## Task 1: Scaffold The OpenSpec Change
 
@@ -118,7 +124,7 @@ Dynamic runtime graph producers currently produce unknown-predicate failures tha
 ## What Changes
 
 - Add an observe-only graph admission policy for runtime app producers.
-- Publish graph admission telemetry to observability and cockpit status.
+- Publish graph admission telemetry, dropped-unknown extractor telemetry, and graph write failure baselines to observability and cockpit status.
 - Share one ontology predicate validator closure across graph admission and graph-store validation.
 
 ## Out Of Scope
@@ -142,6 +148,7 @@ The runtime computes admission decisions for:
 - `TriplesExtractedEvent` batches
 - `GraphEngine` direct store writes
 - app-path extracted triples only where the current runtime already surfaces them without widening extractor behavior
+- extractor-local dropped-unknown events for the current `content.saved` extraction path
 
 In all cases, current write routing remains unchanged. The policy is observe-only: it records what would be admitted or rejected, emits telemetry, and lets the existing enqueue/store path continue unchanged.
 ```
@@ -187,8 +194,8 @@ Use this content for `openspec/changes/runtime-admission-boundary-hardening/task
 
 - [ ] Add observe-mode admission config and defaults
 - [ ] Add graph admission policy and telemetry event types
-- [ ] Observe runtime event-bus and direct-store producer paths
-- [ ] Add graph admission metrics to observability and cockpit status
+- [ ] Observe runtime event-bus and direct-store producer paths plus extractor dropped-unknown baseline
+- [ ] Add graph admission, dropped-unknown, unmapped-source, and graph-write-failure metrics to observability and cockpit status
 - [ ] Update docs and verify
 ```
 
@@ -365,6 +372,7 @@ func TestAdmissionPolicy_ObserveBatchRecordsUnknown(t *testing.T) {
 		Validator: func(name string) bool { return name == CausedBy },
 		DefaultConfidence: map[AdmissionProducer]float64{
 			ProducerConversationAnalysis: 0.60,
+			ProducerUnknownSource:        0.40,
 		},
 	}, zap.NewNop().Sugar())
 
@@ -409,6 +417,7 @@ type AdmissionProducer string
 const (
 	ProducerConversationAnalysis AdmissionProducer = "conversation_analysis"
 	ProducerSessionLearning      AdmissionProducer = "session_learning"
+	ProducerUnknownSource        AdmissionProducer = "unknown_source"
 	ProducerLibrarianEvent       AdmissionProducer = "proactive_librarian"
 	ProducerGraphEngine          AdmissionProducer = "graph_engine"
 )
@@ -438,6 +447,8 @@ type AdmissionBatchEvent struct {
 	Candidates      int
 	ObservedKnown   int
 	ObservedUnknown int
+	ObservedTypeHints int
+	DroppedUnknown  int
 }
 
 type AdmissionObserveResult struct {
@@ -480,6 +491,9 @@ func (p *AdmissionPolicy) ObserveBatch(candidates []AdmissionCandidate) Admissio
 			result.Event.ObservedKnown++
 		} else {
 			result.Event.ObservedUnknown++
+		}
+		if c.Triple.SubjectType != "" || c.Triple.ObjectType != "" {
+			result.Event.ObservedTypeHints++
 		}
 		result.Records = append(result.Records, AdmissionRecord{
 			Candidate:  c,
@@ -539,6 +553,8 @@ type GraphAdmissionBatchEvent struct {
 	Candidates      int
 	ObservedKnown   int
 	ObservedUnknown int
+	ObservedTypeHints int
+	DroppedUnknown int
 }
 
 func (e GraphAdmissionBatchEvent) EventName() string { return EventGraphAdmissionBatch }
@@ -568,7 +584,9 @@ git commit -m "feat: add observe-only graph admission policy"
 **Files:**
 - Modify: `internal/app/modules.go`
 - Modify: `internal/app/wiring_graph.go`
+- Modify: `internal/graph/extractor.go`
 - Test: `internal/app/wiring_graph_test.go`
+- Test: `internal/graph/extractor_test.go`
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -580,6 +598,7 @@ func TestProducerForExtractedEvent_MapsKnownSources(t *testing.T) {
 	assert.Equal(t, graph.ProducerSessionLearning, producerForExtractedEvent("session_learning"))
 	assert.Equal(t, graph.ProducerGraphEngine, producerForExtractedEvent("learning"))
 	assert.Equal(t, graph.ProducerLibrarianEvent, producerForExtractedEvent("proactive_librarian"))
+	assert.Equal(t, graph.ProducerUnknownSource, producerForExtractedEvent("new_source"))
 }
 
 func TestObserveExtractedTriples_PreservesOriginalTriples(t *testing.T) {
@@ -600,6 +619,19 @@ func TestObserveExtractedTriples_PreservesOriginalTriples(t *testing.T) {
 	require.Len(t, triples, 1)
 	assert.Equal(t, "invented_rel", triples[0].Predicate)
 }
+
+func TestExtractor_EmitDroppedUnknownObservation(t *testing.T) {
+	logger := zap.NewNop().Sugar()
+	var got []DroppedUnknownPredicateEvent
+	e := NewExtractor(nil, logger, WithDroppedUnknownObserver(func(evt DroppedUnknownPredicateEvent) {
+		got = append(got, evt)
+	}))
+
+	triples := e.parseResponse("a|invented_rel|b", "src")
+	require.Len(t, triples, 0)
+	require.Len(t, got, 1)
+	assert.Equal(t, "invented_rel", got[0].Predicate)
+}
 ```
 
 - [ ] **Step 2: Run the tests to verify failure**
@@ -608,6 +640,7 @@ Run:
 
 ```bash
 go test ./internal/app -run 'ProducerForExtractedEvent|ObserveExtractedTriples'
+go test ./internal/graph -run 'EmitDroppedUnknownObservation'
 ```
 
 Expected: FAIL because the observe helpers do not exist
@@ -636,7 +669,7 @@ func producerForExtractedEvent(source string) graph.AdmissionProducer {
 	case "proactive_librarian":
 		return graph.ProducerLibrarianEvent
 	default:
-		return graph.ProducerConversationAnalysis
+		return graph.ProducerUnknownSource
 	}
 }
 
@@ -649,6 +682,8 @@ func publishAdmissionObservation(bus *eventbus.Bus, evt graph.AdmissionBatchEven
 		Candidates:      evt.Candidates,
 		ObservedKnown:   evt.ObservedKnown,
 		ObservedUnknown: evt.ObservedUnknown,
+		ObservedTypeHints: evt.ObservedTypeHints,
+		DroppedUnknown: evt.DroppedUnknown,
 	})
 }
 
@@ -678,6 +713,7 @@ if gc != nil && ontologyResult != nil && ontologyResult.Service != nil && cfg.On
 			graph.ProducerSessionLearning:      cfg.Ontology.Governance.LearningDefaultConfidence,
 			graph.ProducerLibrarianEvent:       cfg.Ontology.Governance.LibrarianDefaultConfidence,
 			graph.ProducerGraphEngine:          cfg.Ontology.Governance.LearningDefaultConfidence,
+			graph.ProducerUnknownSource:        cfg.Ontology.Governance.LearningDefaultConfidence,
 		},
 		Observe: func(evt graph.AdmissionBatchEvent) {
 			publishAdmissionObservation(m.bus, evt)
@@ -697,12 +733,76 @@ eventbus.SubscribeTyped(bus, func(evt eventbus.TriplesExtractedEvent) {
 })
 ```
 
+Add extractor-local baseline telemetry without widening extraction behavior:
+
+```go
+// internal/graph/extractor.go
+type DroppedUnknownPredicateEvent struct {
+	SourceID  string
+	Predicate string
+	Subject   string
+	Object    string
+}
+
+func WithDroppedUnknownObserver(fn func(DroppedUnknownPredicateEvent)) ExtractorOption {
+	return func(e *Extractor) { e.onDroppedUnknown = fn }
+}
+
+type Extractor struct {
+	generator        llm.TextGenerator
+	validator        PredicateValidatorFunc
+	onDroppedUnknown func(DroppedUnknownPredicateEvent)
+	logger           *zap.SugaredLogger
+}
+
+// inside parseResponse unknown-predicate branch
+if !e.isValidPredicate(predicate) {
+	if e.onDroppedUnknown != nil {
+		e.onDroppedUnknown(DroppedUnknownPredicateEvent{
+			SourceID:  sourceID,
+			Predicate: predicate,
+			Subject:   subject,
+			Object:    object,
+		})
+	}
+	e.logger.Warnw("rejected unknown predicate from extraction",
+		"predicate", predicate,
+		"subject", subject,
+		"object", object,
+		"source", sourceID,
+	)
+	continue
+}
+```
+
+And in `wireGraphCallbacks`:
+
+```go
+extractor = graph.NewExtractor(generator, logger(),
+	graph.WithDroppedUnknownObserver(func(evt graph.DroppedUnknownPredicateEvent) {
+		if gc.admissionPolicy == nil {
+			return
+		}
+		publishAdmissionObservation(bus, graph.AdmissionBatchEvent{
+			Producer:        graph.ProducerUnknownSource,
+			Candidates:      1,
+			ObservedKnown:   0,
+			ObservedUnknown: 1,
+			ObservedTypeHints: 0,
+			DroppedUnknown:  1,
+		})
+	}),
+	graph.WithPredicateValidator(ontologyValidator),
+)
+```
+
 - [ ] **Step 4: Run the tests again**
 
 Run:
 
 ```bash
 go test ./internal/app -run 'ProducerForExtractedEvent|ObserveExtractedTriples'
+go test ./internal/graph -run 'EmitDroppedUnknownObservation'
 ```
 
 Expected: PASS
@@ -712,7 +812,7 @@ Expected: PASS
 Run:
 
 ```bash
-git add internal/app/modules.go internal/app/wiring_graph.go internal/app/wiring_graph_test.go
+git add internal/app/modules.go internal/app/wiring_graph.go internal/app/wiring_graph_test.go internal/graph/extractor.go internal/graph/extractor_test.go
 git commit -m "feat: observe runtime graph event producers"
 ```
 
@@ -780,10 +880,12 @@ func TestGraphEngine_RecordErrorGraph_ObserveModePreservesDirectWrite(t *testing
 func TestCollector_RecordGraphAdmissionBatch(t *testing.T) {
 	c := NewCollector()
 	c.RecordGraphAdmissionBatch("conversation_analysis", 3, 2, 1)
+	c.RecordGraphAdmissionWriteFailure()
 	snap := c.Snapshot()
 	assert.Equal(t, int64(1), snap.GraphAdmission.Batches)
 	assert.Equal(t, int64(3), snap.GraphAdmission.Candidates)
 	assert.Equal(t, int64(1), snap.GraphAdmission.ObservedUnknown)
+	assert.Equal(t, int64(1), snap.GraphAdmission.WriteFailures)
 }
 ```
 
@@ -855,6 +957,10 @@ type GraphAdmissionSummary struct {
 	Candidates      int64
 	ObservedKnown   int64
 	ObservedUnknown int64
+	ObservedTypeHints int64
+	UnmappedSources int64
+	DroppedUnknown int64
+	WriteFailures int64
 }
 
 type SystemSnapshot struct {
@@ -877,13 +983,24 @@ type MetricsCollector struct {
 	graphAdmission GraphAdmissionSummary
 }
 
-func (c *MetricsCollector) RecordGraphAdmissionBatch(producer string, candidates, observedKnown, observedUnknown int) {
+func (c *MetricsCollector) RecordGraphAdmissionBatch(producer string, candidates, observedKnown, observedUnknown, observedTypeHints, droppedUnknown int) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.graphAdmission.Batches++
 	c.graphAdmission.Candidates += int64(candidates)
 	c.graphAdmission.ObservedKnown += int64(observedKnown)
 	c.graphAdmission.ObservedUnknown += int64(observedUnknown)
+	c.graphAdmission.ObservedTypeHints += int64(observedTypeHints)
+	c.graphAdmission.DroppedUnknown += int64(droppedUnknown)
+	if producer == "unknown_source" {
+		c.graphAdmission.UnmappedSources++
+	}
+}
+
+func (c *MetricsCollector) RecordGraphAdmissionWriteFailure() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.graphAdmission.WriteFailures++
 }
 
 // Extend the existing Snapshot() implementation to copy c.graphAdmission.
@@ -898,6 +1015,8 @@ eventbus.SubscribeTyped[eventbus.GraphAdmissionBatchEvent](bus, func(evt eventbu
 		evt.Candidates,
 		evt.ObservedKnown,
 		evt.ObservedUnknown,
+		evt.ObservedTypeHints,
+		evt.DroppedUnknown,
 	)
 })
 ```
@@ -923,6 +1042,10 @@ func (m *StatusPage) renderGraphAdmission(titleStyle lipgloss.Style, divider str
 	b.WriteString(fmt.Sprintf("Candidates: %d\n", ga.Candidates))
 	b.WriteString(fmt.Sprintf("Observed known: %d\n", ga.ObservedKnown))
 	b.WriteString(fmt.Sprintf("Observed unknown: %d\n", ga.ObservedUnknown))
+	b.WriteString(fmt.Sprintf("Type hints: %d\n", ga.ObservedTypeHints))
+	b.WriteString(fmt.Sprintf("Dropped unknown: %d\n", ga.DroppedUnknown))
+	b.WriteString(fmt.Sprintf("Unmapped sources: %d\n", ga.UnmappedSources))
+	b.WriteString(fmt.Sprintf("Write failures: %d\n", ga.WriteFailures))
 	return b.String()
 }
 ```
