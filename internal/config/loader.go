@@ -500,15 +500,17 @@ func PostLoad(cfg *Config) error {
 }
 
 func backfillLegacyOntologyAdmissionDefaults(cfg *Config) {
-	if cfg == nil || cfg.Ontology.Governance.AdmissionMode != "" {
+	if cfg == nil {
 		return
 	}
 
-	cfg.Ontology.Governance.AdmissionMode = OntologyAdmissionModeOff
-	if cfg.Ontology.Governance.LearningDefaultConfidence == 0 {
+	if cfg.Ontology.Governance.AdmissionMode == "" {
+		cfg.Ontology.Governance.AdmissionMode = OntologyAdmissionModeOff
+	}
+	if !cfg.Ontology.Governance.LearningDefaultConfidenceConfigured && cfg.Ontology.Governance.LearningDefaultConfidence == 0 {
 		cfg.Ontology.Governance.LearningDefaultConfidence = OntologyLearningDefaultConfidenceFallback
 	}
-	if cfg.Ontology.Governance.LibrarianDefaultConfidence == 0 {
+	if !cfg.Ontology.Governance.LibrarianDefaultConfidenceConfigured && cfg.Ontology.Governance.LibrarianDefaultConfidence == 0 {
 		cfg.Ontology.Governance.LibrarianDefaultConfidence = OntologyLibrarianDefaultConfidenceFallback
 	}
 }

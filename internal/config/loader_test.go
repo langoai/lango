@@ -191,6 +191,24 @@ func TestPostLoad(t *testing.T) {
 		assert.InDelta(t, OntologyLearningDefaultConfidenceFallback, cfg.Ontology.Governance.LearningDefaultConfidence, 0.001)
 		assert.InDelta(t, OntologyLibrarianDefaultConfidenceFallback, cfg.Ontology.Governance.LibrarianDefaultConfidence, 0.001)
 	})
+
+	t.Run("backfills in-memory admission mode defaults when confidence markers are unset", func(t *testing.T) {
+		t.Parallel()
+
+		for _, mode := range []string{OntologyAdmissionModeOff, OntologyAdmissionModeObserve} {
+			cfg := DefaultConfig()
+			cfg.Ontology.Governance.AdmissionMode = mode
+			cfg.Ontology.Governance.LearningDefaultConfidence = 0
+			cfg.Ontology.Governance.LibrarianDefaultConfidence = 0
+			cfg.Ontology.Governance.LearningDefaultConfidenceConfigured = false
+			cfg.Ontology.Governance.LibrarianDefaultConfidenceConfigured = false
+
+			require.NoError(t, PostLoad(cfg))
+			assert.Equal(t, mode, cfg.Ontology.Governance.AdmissionMode)
+			assert.InDelta(t, OntologyLearningDefaultConfidenceFallback, cfg.Ontology.Governance.LearningDefaultConfidence, 0.001)
+			assert.InDelta(t, OntologyLibrarianDefaultConfidenceFallback, cfg.Ontology.Governance.LibrarianDefaultConfidence, 0.001)
+		}
+	})
 }
 
 func TestNormalizePaths_Sandbox(t *testing.T) {
