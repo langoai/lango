@@ -79,17 +79,17 @@ func publishAdmissionObservation(bus *eventbus.Bus, result graph.AdmissionObserv
 	}
 }
 
-func observeAdmissionBatch(policy *graph.AdmissionPolicy, bus *eventbus.Bus, batch graph.AdmissionBatch) []graph.Triple {
+func observeAdmissionBatch(policy *graph.AdmissionPolicy, bus *eventbus.Bus, batch graph.AdmissionBatch) ([]graph.Triple, bool) {
 	if policy == nil {
-		return batch.Triples
+		return batch.Triples, false
 	}
 
 	result := policy.ObserveBatch(batch)
 	publishAdmissionObservation(bus, result)
-	return result.Forwarded
+	return result.Forwarded, result.Event != nil
 }
 
-func observeExtractedTriples(policy *graph.AdmissionPolicy, bus *eventbus.Bus, evt eventbus.TriplesExtractedEvent) []graph.Triple {
+func observeExtractedTriples(policy *graph.AdmissionPolicy, bus *eventbus.Bus, evt eventbus.TriplesExtractedEvent) ([]graph.Triple, bool) {
 	graphTriples := make([]graph.Triple, len(evt.Triples))
 	for i, t := range evt.Triples {
 		graphTriples[i] = graph.Triple{
@@ -109,7 +109,7 @@ func observeExtractedTriples(policy *graph.AdmissionPolicy, bus *eventbus.Bus, e
 	})
 }
 
-func observeContentSavedTriples(policy *graph.AdmissionPolicy, bus *eventbus.Bus, triples []graph.Triple) []graph.Triple {
+func observeContentSavedTriples(policy *graph.AdmissionPolicy, bus *eventbus.Bus, triples []graph.Triple) ([]graph.Triple, bool) {
 	return observeAdmissionBatch(policy, bus, graph.AdmissionBatch{
 		SourceKind: graph.AdmissionSourceKindSynthetic,
 		Source:     graph.AdmissionSourceContentSavedExtractor,
@@ -200,9 +200,12 @@ func wireGraphCallbacks(gc *graphComponents, kc *knowledgeComponents, mc *memory
 						logger().Debugw("entity extraction error", "id", evt.ID, "error", err)
 						return
 					}
-					triples = observeContentSavedTriples(gc.admissionPolicy, bus, triples)
+					triples, emitWriteFailureBaseline := observeContentSavedTriples(gc.admissionPolicy, bus, triples)
 					if len(triples) > 0 {
-						gc.buffer.Enqueue(graph.GraphRequest{Triples: triples})
+						gc.buffer.Enqueue(graph.GraphRequest{
+							Triples:                  triples,
+							EmitWriteFailureBaseline: emitWriteFailureBaseline,
+						})
 					}
 				}()
 			}
@@ -210,8 +213,11 @@ func wireGraphCallbacks(gc *graphComponents, kc *knowledgeComponents, mc *memory
 
 		// Subscribe to triples.extracted events to enqueue graph triples.
 		eventbus.SubscribeTyped(bus, func(evt eventbus.TriplesExtractedEvent) {
-			graphTriples := observeExtractedTriples(gc.admissionPolicy, bus, evt)
-			gc.buffer.Enqueue(graph.GraphRequest{Triples: graphTriples})
+			graphTriples, emitWriteFailureBaseline := observeExtractedTriples(gc.admissionPolicy, bus, evt)
+			gc.buffer.Enqueue(graph.GraphRequest{
+				Triples:                  graphTriples,
+				EmitWriteFailureBaseline: emitWriteFailureBaseline,
+			})
 		})
 	}
 

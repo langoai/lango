@@ -18,53 +18,25 @@ import (
 	"github.com/langoai/lango/internal/toolchain"
 )
 
-// wireTestObservability creates a minimal EventBus + MetricsCollector wired
-// with the same subscriptions as the real app, then returns both so tests
-// can publish events and assert on collector state.
+// wireTestObservability initializes the real observability wiring and returns
+// its event bus plus metrics collector for event-consumption assertions.
 func wireTestObservability(t *testing.T) (*eventbus.Bus, *observability.MetricsCollector) {
 	t.Helper()
 
 	bus := eventbus.New()
-	collector := observability.NewCollector()
-
 	cfg := config.DefaultConfig()
+	cfg.Observability.Enabled = true
 	cfg.Observability.Metrics.Enabled = true
+	cfg.Observability.Tokens.Enabled = false
+	cfg.Observability.Health.Enabled = false
+	cfg.Observability.Tracing.Enabled = false
+	cfg.Alerting.Enabled = false
 
-	oc := &observabilityComponents{
-		collector: collector,
-	}
+	oc := initObservability(cfg, nil, bus)
+	require.NotNil(t, oc)
+	require.NotNil(t, oc.collector)
 
-	// Replicate the wiring from wiring_observability.go (steps 5 & 6).
-	eventbus.SubscribeTyped[eventbus.PolicyDecisionEvent](bus, func(evt eventbus.PolicyDecisionEvent) {
-		oc.collector.RecordPolicyDecision(evt.Verdict, evt.Reason)
-	})
-
-	eventbus.SubscribeTyped[toolchain.ToolExecutedEvent](bus, func(evt toolchain.ToolExecutedEvent) {
-		oc.collector.RecordToolExecution(evt.ToolName, evt.AgentName, evt.Duration, evt.Success)
-	})
-
-	eventbus.SubscribeTyped[eventbus.GraphAdmissionBatchEvent](bus, func(evt eventbus.GraphAdmissionBatchEvent) {
-		oc.collector.RecordGraphAdmissionBatch(observability.GraphAdmissionBatchMetric{
-			Source:           evt.Source,
-			ProducerGroup:    evt.ProducerGroup,
-			ValidatorSource:  evt.ValidatorSource,
-			BatchCount:       int64(evt.BatchCount),
-			KnownCount:       int64(evt.KnownCount),
-			UnknownCount:     int64(evt.UnknownCount),
-			UnvalidatedCount: int64(evt.UnvalidatedCount),
-		})
-	})
-	eventbus.SubscribeTyped[eventbus.GraphAdmissionUnmappedSourceEvent](bus, func(evt eventbus.GraphAdmissionUnmappedSourceEvent) {
-		oc.collector.RecordGraphAdmissionUnmappedSource(evt.RawSource, int64(evt.BatchCount))
-	})
-	eventbus.SubscribeTyped[eventbus.GraphExtractorDroppedUnknownEvent](bus, func(evt eventbus.GraphExtractorDroppedUnknownEvent) {
-		oc.collector.RecordGraphExtractorDroppedUnknown(evt.Source, 1)
-	})
-	eventbus.SubscribeTyped[eventbus.GraphAdmissionWriteFailureEvent](bus, func(evt eventbus.GraphAdmissionWriteFailureEvent) {
-		oc.collector.RecordGraphWriteFailure(int64(evt.BatchCount))
-	})
-
-	return bus, collector
+	return bus, oc.collector
 }
 
 func TestEventContract_ToolExecuted_IncreasesCount(t *testing.T) {
@@ -248,22 +220,24 @@ func (s *failingBufferStore) AllTriples(context.Context) ([]graph.Triple, error)
 func (s *failingBufferStore) ClearAll(context.Context) error { return nil }
 func (s *failingBufferStore) Close() error                   { return nil }
 
-func TestWireGraphWriteFailureBaselineObserver_ObserveModeToggle(t *testing.T) {
+func TestGraphWriteFailureBaselineScope_ObserveModeToggle(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name          string
-		mode          string
+		policy        *graph.AdmissionPolicy
 		wantPublished bool
 	}{
 		{
-			name:          "observe mode publishes write failure baseline",
-			mode:          config.OntologyAdmissionModeObserve,
+			name: "observe mode publishes write failure baseline",
+			policy: graph.NewAdmissionPolicy(graph.AdmissionPolicyConfig{
+				Validator: func(string) bool { return true },
+			}, zap.NewNop().Sugar()),
 			wantPublished: true,
 		},
 		{
 			name:          "off mode suppresses write failure baseline",
-			mode:          config.OntologyAdmissionModeOff,
+			policy:        nil,
 			wantPublished: false,
 		},
 	}
@@ -272,22 +246,27 @@ func TestWireGraphWriteFailureBaselineObserver_ObserveModeToggle(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			cfg := config.DefaultConfig()
-			cfg.Ontology.Governance.AdmissionMode = tt.mode
-
 			bus := eventbus.New()
 			buffer := graph.NewGraphBuffer(&failingBufferStore{err: errors.New("boom")}, zap.NewNop().Sugar())
-			wireGraphWriteFailureBaselineObserver(cfg, buffer, bus)
+			buffer.SetEventBus(bus)
 
 			var got []eventbus.GraphAdmissionWriteFailureEvent
 			eventbus.SubscribeTyped(bus, func(evt eventbus.GraphAdmissionWriteFailureEvent) {
 				got = append(got, evt)
 			})
 
+			triples, emitWriteFailureBaseline := observeExtractedTriples(tt.policy, bus, eventbus.TriplesExtractedEvent{
+				Source: "learning",
+				Triples: []eventbus.Triple{
+					{Subject: "a", Predicate: graph.Contains, Object: "b"},
+				},
+			})
+
 			var wg sync.WaitGroup
 			buffer.Start(&wg)
 			buffer.Enqueue(graph.GraphRequest{
-				Triples: []graph.Triple{{Subject: "a", Predicate: graph.Contains, Object: "b"}},
+				Triples:                  triples,
+				EmitWriteFailureBaseline: emitWriteFailureBaseline,
 			})
 			buffer.Stop()
 			wg.Wait()

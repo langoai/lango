@@ -13,7 +13,8 @@ import (
 
 // GraphRequest represents a request to add triples to the graph.
 type GraphRequest struct {
-	Triples []Triple
+	Triples                  []Triple
+	EmitWriteFailureBaseline bool
 }
 
 // GraphBuffer collects graph update requests and processes them in batches
@@ -72,21 +73,23 @@ func (b *GraphBuffer) SetEventBus(bus *eventbus.Bus) {
 // processBatchRequests expands GraphRequests into triples and stores them.
 func (b *GraphBuffer) processBatchRequests(batch []GraphRequest) {
 	var triples []Triple
+	var emitWriteFailureBaseline bool
 	for _, req := range batch {
 		triples = append(triples, req.Triples...)
+		emitWriteFailureBaseline = emitWriteFailureBaseline || req.EmitWriteFailureBaseline
 	}
 	if len(triples) == 0 {
 		return
 	}
-	b.processBatch(triples)
+	b.processBatch(triples, emitWriteFailureBaseline)
 }
 
-func (b *GraphBuffer) processBatch(batch []Triple) {
+func (b *GraphBuffer) processBatch(batch []Triple, emitWriteFailureBaseline bool) {
 	ctx := context.Background()
 
 	if err := b.store.AddTriples(ctx, batch); err != nil {
 		b.logger.Errorw("batch graph update error", "count", len(batch), "error", err)
-		if b.bus != nil {
+		if emitWriteFailureBaseline && b.bus != nil {
 			b.bus.Publish(eventbus.GraphAdmissionWriteFailureEvent{BatchCount: 1})
 		}
 	}

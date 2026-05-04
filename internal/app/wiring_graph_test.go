@@ -76,7 +76,7 @@ func TestObserveExtractedTriples_PublishesAdmissionAndPreservesOriginalTriples(t
 		},
 	}, zap.NewNop().Sugar())
 
-	triples := observeExtractedTriples(policy, bus, eventbus.TriplesExtractedEvent{
+	triples, emitWriteFailureBaseline := observeExtractedTriples(policy, bus, eventbus.TriplesExtractedEvent{
 		Source: string(graph.AdmissionSourceConversationAnalysis),
 		Triples: []eventbus.Triple{{
 			Subject:   "a",
@@ -86,6 +86,7 @@ func TestObserveExtractedTriples_PublishesAdmissionAndPreservesOriginalTriples(t
 	})
 
 	require.Len(t, triples, 1)
+	assert.True(t, emitWriteFailureBaseline)
 	assert.Equal(t, "invented_rel", triples[0].Predicate)
 	assert.Equal(t, eventbus.GraphAdmissionBatchEvent{
 		Source:           string(graph.AdmissionSourceConversationAnalysis),
@@ -109,7 +110,7 @@ func TestObserveExtractedTriples_PublishesUnmappedAndPreservesOriginalTriples(t 
 
 	policy := graph.NewAdmissionPolicy(graph.AdmissionPolicyConfig{}, zap.NewNop().Sugar())
 
-	triples := observeExtractedTriples(policy, bus, eventbus.TriplesExtractedEvent{
+	triples, emitWriteFailureBaseline := observeExtractedTriples(policy, bus, eventbus.TriplesExtractedEvent{
 		Source: "future_source",
 		Triples: []eventbus.Triple{{
 			Subject:   "a",
@@ -119,6 +120,7 @@ func TestObserveExtractedTriples_PublishesUnmappedAndPreservesOriginalTriples(t 
 	})
 
 	require.Len(t, triples, 1)
+	assert.False(t, emitWriteFailureBaseline)
 	assert.Equal(t, "invented_rel", triples[0].Predicate)
 	assert.Equal(t, eventbus.GraphAdmissionUnmappedSourceEvent{
 		RawSource:  "future_source",
@@ -190,7 +192,7 @@ func TestObserveExtractedTriples_ProducerMappingCoverage(t *testing.T) {
 				gotUnmapped = &event
 			})
 
-			triples := observeExtractedTriples(policy, bus, eventbus.TriplesExtractedEvent{
+			triples, emitWriteFailureBaseline := observeExtractedTriples(policy, bus, eventbus.TriplesExtractedEvent{
 				Source: tc.source,
 				Triples: []eventbus.Triple{{
 					Subject:   "a",
@@ -203,6 +205,7 @@ func TestObserveExtractedTriples_ProducerMappingCoverage(t *testing.T) {
 			assert.Equal(t, graph.CausedBy, triples[0].Predicate)
 
 			if tc.expectBatch {
+				assert.True(t, emitWriteFailureBaseline)
 				require.NotNil(t, gotBatch)
 				assert.Equal(t, tc.source, gotBatch.Source)
 				assert.Equal(t, tc.expectedGroup, gotBatch.ProducerGroup)
@@ -215,6 +218,7 @@ func TestObserveExtractedTriples_ProducerMappingCoverage(t *testing.T) {
 				return
 			}
 
+			assert.False(t, emitWriteFailureBaseline)
 			assert.Nil(t, gotBatch)
 			require.NotNil(t, gotUnmapped)
 			assert.Equal(t, tc.expectUnmappedRaw, gotUnmapped.RawSource)
@@ -238,13 +242,14 @@ func TestObserveContentSavedTriples_PublishesAdmissionAndPreservesOriginalTriple
 		},
 	}, zap.NewNop().Sugar())
 
-	triples := observeContentSavedTriples(policy, bus, []graph.Triple{{
+	triples, emitWriteFailureBaseline := observeContentSavedTriples(policy, bus, []graph.Triple{{
 		Subject:   "a",
 		Predicate: graph.CausedBy,
 		Object:    "b",
 	}})
 
 	require.Len(t, triples, 1)
+	assert.True(t, emitWriteFailureBaseline)
 	assert.Equal(t, graph.CausedBy, triples[0].Predicate)
 	assert.Equal(t, eventbus.GraphAdmissionBatchEvent{
 		Source:           string(graph.AdmissionSourceContentSavedExtractor),
@@ -284,7 +289,7 @@ func TestGraphAdmissionWiring_UsesSharedValidatorClosure(t *testing.T) {
 
 	assert.True(t, store.validator(graph.CausedBy))
 
-	triples := observeExtractedTriples(policy, bus, eventbus.TriplesExtractedEvent{
+	triples, emitWriteFailureBaseline := observeExtractedTriples(policy, bus, eventbus.TriplesExtractedEvent{
 		Source: string(graph.AdmissionSourceConversationAnalysis),
 		Triples: []eventbus.Triple{{
 			Subject:   "a",
@@ -294,6 +299,7 @@ func TestGraphAdmissionWiring_UsesSharedValidatorClosure(t *testing.T) {
 	})
 
 	require.Len(t, triples, 1)
+	assert.True(t, emitWriteFailureBaseline)
 	assert.Equal(t, []string{graph.CausedBy, graph.CausedBy}, validatorCalls)
 	assert.Equal(t, string(graph.AdmissionValidatorSourceOntologyRegistry), got.ValidatorSource)
 }
@@ -313,7 +319,7 @@ func TestGraphAdmissionWiring_UsesUnavailableValidatorSourceWhenOntologyUnavaila
 		got = evt
 	})
 
-	triples := observeExtractedTriples(policy, bus, eventbus.TriplesExtractedEvent{
+	triples, emitWriteFailureBaseline := observeExtractedTriples(policy, bus, eventbus.TriplesExtractedEvent{
 		Source: string(graph.AdmissionSourceConversationAnalysis),
 		Triples: []eventbus.Triple{{
 			Subject:   "a",
@@ -323,6 +329,7 @@ func TestGraphAdmissionWiring_UsesUnavailableValidatorSourceWhenOntologyUnavaila
 	})
 
 	require.Len(t, triples, 1)
+	assert.True(t, emitWriteFailureBaseline)
 	assert.Equal(t, string(graph.AdmissionValidatorSourceUnavailable), got.ValidatorSource)
 	assert.Equal(t, 0, got.KnownCount)
 	assert.Equal(t, 0, got.UnknownCount)

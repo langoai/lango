@@ -54,8 +54,31 @@ func TestGraphBuffer_ProcessBatch_PublishesWriteFailureBaseline(t *testing.T) {
 		got = append(got, evt)
 	})
 
-	buffer.processBatch([]Triple{{Subject: "a", Predicate: "likes", Object: "b"}})
+	buffer.processBatchRequests([]GraphRequest{{
+		Triples:                  []Triple{{Subject: "a", Predicate: "likes", Object: "b"}},
+		EmitWriteFailureBaseline: true,
+	}})
 
 	require.Len(t, got, 1)
 	assert.Equal(t, eventbus.GraphAdmissionWriteFailureEvent{BatchCount: 1}, got[0])
+}
+
+func TestGraphBuffer_ProcessBatch_SuppressesWriteFailureBaselineWithoutFlag(t *testing.T) {
+	t.Parallel()
+
+	store := &failingGraphStore{err: errors.New("write failed")}
+	buffer := NewGraphBuffer(store, zap.NewNop().Sugar())
+	bus := eventbus.New()
+	buffer.SetEventBus(bus)
+
+	var got []eventbus.GraphAdmissionWriteFailureEvent
+	eventbus.SubscribeTyped(bus, func(evt eventbus.GraphAdmissionWriteFailureEvent) {
+		got = append(got, evt)
+	})
+
+	buffer.processBatchRequests([]GraphRequest{{
+		Triples: []Triple{{Subject: "a", Predicate: "likes", Object: "b"}},
+	}})
+
+	assert.Empty(t, got)
 }

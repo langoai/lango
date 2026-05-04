@@ -296,7 +296,7 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 	// Graph Store (before knowledge).
 	gc, gcStatus := initGraphStore(cfg)
 	if gc != nil && gc.buffer != nil {
-		wireGraphWriteFailureBaselineObserver(cfg, gc.buffer, m.bus)
+		gc.buffer.SetEventBus(m.bus)
 	}
 
 	// Ontology Registry (after graph store).
@@ -539,17 +539,6 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 			appinit.ProvidesSkills:    skillReg,
 		},
 	}, nil
-}
-
-func wireGraphWriteFailureBaselineObserver(cfg *config.Config, buffer *graph.GraphBuffer, bus *eventbus.Bus) {
-	if buffer == nil {
-		return
-	}
-	if cfg == nil || cfg.Ontology.Governance.AdmissionMode != config.OntologyAdmissionModeObserve {
-		buffer.SetEventBus(nil)
-		return
-	}
-	buffer.SetEventBus(bus)
 }
 
 // ─── Automation Module ───
