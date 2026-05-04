@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -27,6 +28,29 @@ func TestDefaultConfig_OntologyAdmissionObserveDefaults(t *testing.T) {
 	assert.Equal(t, "off", cfg.Ontology.Governance.AdmissionMode)
 	assert.InDelta(t, 0.60, cfg.Ontology.Governance.LearningDefaultConfidence, 0.001)
 	assert.InDelta(t, 0.50, cfg.Ontology.Governance.LibrarianDefaultConfidence, 0.001)
+}
+
+func TestOntologyAdmissionConfidenceJSONRoundTripPreservesZero(t *testing.T) {
+	t.Parallel()
+
+	cfg := DefaultConfig()
+	cfg.Ontology.Governance.AdmissionMode = OntologyAdmissionModeObserve
+	cfg.Ontology.Governance.LearningDefaultConfidence = 0.0
+	cfg.Ontology.Governance.LibrarianDefaultConfidence = 0.0
+
+	data, err := json.Marshal(cfg)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), `"learningDefaultConfidence":0`)
+	assert.Contains(t, string(data), `"librarianDefaultConfidence":0`)
+
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "lango.json")
+	require.NoError(t, os.WriteFile(cfgPath, data, 0644))
+
+	result, err := Load(cfgPath)
+	require.NoError(t, err)
+	assert.Equal(t, 0.0, result.Config.Ontology.Governance.LearningDefaultConfidence)
+	assert.Equal(t, 0.0, result.Config.Ontology.Governance.LibrarianDefaultConfidence)
 }
 
 func TestExpandEnvVars(t *testing.T) {

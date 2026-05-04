@@ -36,9 +36,9 @@ type OntologyGovernanceConfig struct {
 	// AdmissionMode controls runtime admission observation behavior.
 	AdmissionMode string `mapstructure:"admissionMode" json:"admissionMode,omitempty"`
 	// LearningDefaultConfidence is the fallback confidence for learning-group producers.
-	LearningDefaultConfidence float64 `mapstructure:"learningDefaultConfidence" json:"learningDefaultConfidence,omitempty"`
+	LearningDefaultConfidence float64 `mapstructure:"learningDefaultConfidence" json:"learningDefaultConfidence"`
 	// LibrarianDefaultConfidence is the fallback confidence for librarian-group producers.
-	LibrarianDefaultConfidence float64 `mapstructure:"librarianDefaultConfidence" json:"librarianDefaultConfidence,omitempty"`
+	LibrarianDefaultConfidence float64 `mapstructure:"librarianDefaultConfidence" json:"librarianDefaultConfidence"`
 }
 
 // OntologyACLConfig configures role-based access control for ontology operations.
