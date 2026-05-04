@@ -407,8 +407,8 @@ func (cfg *Config) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 
-	cfg.Ontology.Governance.LearningDefaultConfidenceBackfillNeeded = raw.Ontology.Governance["learningDefaultConfidence"] == nil
-	cfg.Ontology.Governance.LibrarianDefaultConfidenceBackfillNeeded = raw.Ontology.Governance["librarianDefaultConfidence"] == nil
+	cfg.Ontology.Governance.LearningDefaultConfidenceBackfillNeeded = raw.Ontology.Governance["learningDefaultConfidence"] == nil || isJSONNull(raw.Ontology.Governance["learningDefaultConfidence"])
+	cfg.Ontology.Governance.LibrarianDefaultConfidenceBackfillNeeded = raw.Ontology.Governance["librarianDefaultConfidence"] == nil || isJSONNull(raw.Ontology.Governance["librarianDefaultConfidence"])
 
 	if rawMode, ok := raw.Ontology.Governance["admissionMode"]; ok {
 		var mode string
@@ -419,10 +419,10 @@ func (cfg *Config) UnmarshalJSON(data []byte) error {
 		cfg.Ontology.Governance.AdmissionMode = OntologyAdmissionModeOff
 	}
 
-	if _, ok := raw.Ontology.Governance["learningDefaultConfidence"]; !ok && cfg.Ontology.Governance.LearningDefaultConfidence == 0 {
+	if cfg.Ontology.Governance.LearningDefaultConfidenceBackfillNeeded && cfg.Ontology.Governance.LearningDefaultConfidence == 0 {
 		cfg.Ontology.Governance.LearningDefaultConfidence = OntologyLearningDefaultConfidenceFallback
 	}
-	if _, ok := raw.Ontology.Governance["librarianDefaultConfidence"]; !ok && cfg.Ontology.Governance.LibrarianDefaultConfidence == 0 {
+	if cfg.Ontology.Governance.LibrarianDefaultConfidenceBackfillNeeded && cfg.Ontology.Governance.LibrarianDefaultConfidence == 0 {
 		cfg.Ontology.Governance.LibrarianDefaultConfidence = OntologyLibrarianDefaultConfidenceFallback
 	}
 
@@ -515,6 +515,10 @@ func backfillLegacyOntologyAdmissionDefaults(cfg *Config) {
 	if cfg.Ontology.Governance.LibrarianDefaultConfidenceBackfillNeeded && cfg.Ontology.Governance.LibrarianDefaultConfidence == 0 {
 		cfg.Ontology.Governance.LibrarianDefaultConfidence = OntologyLibrarianDefaultConfidenceFallback
 	}
+}
+
+func isJSONNull(raw json.RawMessage) bool {
+	return strings.TrimSpace(string(raw)) == "null"
 }
 
 // substituteEnvVars replaces ${VAR} patterns with environment variable values
