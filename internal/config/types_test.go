@@ -81,13 +81,8 @@ func TestConfigClone_PreservesExplicitZeroAdmissionConfidenceMarkers(t *testing.
 func TestOntologyGovernanceJSONMarshal_OmitsSparseConfidenceKeys(t *testing.T) {
 	t.Parallel()
 
-	cfg := &Config{
-		Ontology: OntologyConfig{
-			Governance: OntologyGovernanceConfig{
-				AdmissionMode: OntologyAdmissionModeOff,
-			},
-		},
-	}
+	var cfg Config
+	require.NoError(t, json.Unmarshal([]byte(`{"ontology":{"governance":{"admissionMode":"off"}}}`), &cfg))
 
 	data, err := json.Marshal(cfg)
 	require.NoError(t, err)
@@ -102,11 +97,11 @@ func TestOntologyGovernanceJSONMarshal_PreservesExplicitZeroConfidenceKeys(t *te
 	cfg := &Config{
 		Ontology: OntologyConfig{
 			Governance: OntologyGovernanceConfig{
-				AdmissionMode:                      OntologyAdmissionModeOff,
-				LearningDefaultConfidence:          0.0,
-				LearningDefaultConfidencePresent:   true,
-				LibrarianDefaultConfidence:         0.0,
-				LibrarianDefaultConfidencePresent:  true,
+				AdmissionMode:                     OntologyAdmissionModeOff,
+				LearningDefaultConfidence:         0.0,
+				LearningDefaultConfidencePresent:  true,
+				LibrarianDefaultConfidence:        0.0,
+				LibrarianDefaultConfidencePresent: true,
 			},
 		},
 	}
@@ -115,6 +110,24 @@ func TestOntologyGovernanceJSONMarshal_PreservesExplicitZeroConfidenceKeys(t *te
 	require.NoError(t, err)
 	assert.Contains(t, string(data), `"learningDefaultConfidence":0`)
 	assert.Contains(t, string(data), `"librarianDefaultConfidence":0`)
+}
+
+func TestOntologyGovernanceJSONMarshal_PreservesDefaultConfigZeroConfidenceRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	cfg := DefaultConfig()
+	cfg.Ontology.Governance.LearningDefaultConfidence = 0.0
+	cfg.Ontology.Governance.LibrarianDefaultConfidence = 0.0
+
+	data, err := json.Marshal(cfg)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), `"learningDefaultConfidence":0`)
+	assert.Contains(t, string(data), `"librarianDefaultConfidence":0`)
+
+	var decoded Config
+	require.NoError(t, json.Unmarshal(data, &decoded))
+	assert.Equal(t, 0.0, decoded.Ontology.Governance.LearningDefaultConfidence)
+	assert.Equal(t, 0.0, decoded.Ontology.Governance.LibrarianDefaultConfidence)
 }
 
 func TestResolveEmbeddingProvider_ByProviderMapKey(t *testing.T) {
