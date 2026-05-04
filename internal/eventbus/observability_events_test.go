@@ -112,3 +112,30 @@ func TestGraphExtractorDroppedUnknownEvent_RoundTrip(t *testing.T) {
 		Object:    "b",
 	}, got)
 }
+
+func TestGraphAdmissionWriteFailureEvent_EventName(t *testing.T) {
+	t.Parallel()
+
+	evt := GraphAdmissionWriteFailureEvent{}
+
+	assert.Equal(t, EventGraphAdmissionWriteFailure, evt.EventName())
+}
+
+func TestGraphAdmissionWriteFailureEvent_RoundTrip(t *testing.T) {
+	t.Parallel()
+
+	bus := New()
+
+	var got GraphAdmissionWriteFailureEvent
+	SubscribeTyped(bus, func(evt GraphAdmissionWriteFailureEvent) {
+		got = evt
+	})
+
+	bus.Publish(GraphAdmissionWriteFailureEvent{
+		BatchCount: 1,
+	})
+
+	assert.Equal(t, GraphAdmissionWriteFailureEvent{
+		BatchCount: 1,
+	}, got)
+}
