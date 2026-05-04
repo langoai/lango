@@ -86,7 +86,7 @@ func observeAdmissionBatch(policy *graph.AdmissionPolicy, bus *eventbus.Bus, bat
 
 	result := policy.ObserveBatch(batch)
 	publishAdmissionObservation(bus, result)
-	return result.Forwarded, result.Event != nil
+	return result.Forwarded, result.Event != nil || result.UnmappedEvent != nil
 }
 
 func observeExtractedTriples(policy *graph.AdmissionPolicy, bus *eventbus.Bus, evt eventbus.TriplesExtractedEvent) ([]graph.Triple, bool) {

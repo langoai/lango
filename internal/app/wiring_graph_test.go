@@ -120,7 +120,7 @@ func TestObserveExtractedTriples_PublishesUnmappedAndPreservesOriginalTriples(t 
 	})
 
 	require.Len(t, triples, 1)
-	assert.False(t, emitWriteFailureBaseline)
+	assert.True(t, emitWriteFailureBaseline)
 	assert.Equal(t, "invented_rel", triples[0].Predicate)
 	assert.Equal(t, eventbus.GraphAdmissionUnmappedSourceEvent{
 		RawSource:  "future_source",
@@ -218,9 +218,9 @@ func TestObserveExtractedTriples_ProducerMappingCoverage(t *testing.T) {
 				return
 			}
 
-			assert.False(t, emitWriteFailureBaseline)
 			assert.Nil(t, gotBatch)
 			require.NotNil(t, gotUnmapped)
+			assert.True(t, emitWriteFailureBaseline)
 			assert.Equal(t, tc.expectUnmappedRaw, gotUnmapped.RawSource)
 			assert.Equal(t, 1, gotUnmapped.BatchCount)
 		})

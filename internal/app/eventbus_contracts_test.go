@@ -226,6 +226,7 @@ func TestGraphWriteFailureBaselineScope_ObserveModeToggle(t *testing.T) {
 	tests := []struct {
 		name          string
 		policy        *graph.AdmissionPolicy
+		source        string
 		wantPublished bool
 	}{
 		{
@@ -233,11 +234,21 @@ func TestGraphWriteFailureBaselineScope_ObserveModeToggle(t *testing.T) {
 			policy: graph.NewAdmissionPolicy(graph.AdmissionPolicyConfig{
 				Validator: func(string) bool { return true },
 			}, zap.NewNop().Sugar()),
+			source:        "learning",
+			wantPublished: true,
+		},
+		{
+			name: "observe mode publishes write failure baseline for unsupported source",
+			policy: graph.NewAdmissionPolicy(graph.AdmissionPolicyConfig{
+				Validator: func(string) bool { return true },
+			}, zap.NewNop().Sugar()),
+			source:        "future_source",
 			wantPublished: true,
 		},
 		{
 			name:          "off mode suppresses write failure baseline",
 			policy:        nil,
+			source:        "learning",
 			wantPublished: false,
 		},
 	}
@@ -256,7 +267,7 @@ func TestGraphWriteFailureBaselineScope_ObserveModeToggle(t *testing.T) {
 			})
 
 			triples, emitWriteFailureBaseline := observeExtractedTriples(tt.policy, bus, eventbus.TriplesExtractedEvent{
-				Source: "learning",
+				Source: tt.source,
 				Triples: []eventbus.Triple{
 					{Subject: "a", Predicate: graph.Contains, Object: "b"},
 				},
