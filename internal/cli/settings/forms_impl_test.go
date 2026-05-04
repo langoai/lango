@@ -1496,11 +1496,11 @@ func TestNewOntologyForm_LegacyAdmissionConfidenceDefaultsRoundTrip(t *testing.T
 		t.Fatal("missing ontology_gov_librarian_conf field")
 	}
 
-	if learning.Value != "0.60" {
-		t.Errorf("ontology_gov_learning_conf: want %q, got %q", "0.60", learning.Value)
+	if learning.Value != "0.6" {
+		t.Errorf("ontology_gov_learning_conf: want %q, got %q", "0.6", learning.Value)
 	}
-	if librarian.Value != "0.50" {
-		t.Errorf("ontology_gov_librarian_conf: want %q, got %q", "0.50", librarian.Value)
+	if librarian.Value != "0.5" {
+		t.Errorf("ontology_gov_librarian_conf: want %q, got %q", "0.5", librarian.Value)
 	}
 
 	state := tuicore.NewConfigStateWith(result.Config)
@@ -1527,11 +1527,11 @@ func TestNewOntologyForm_SparseInMemoryAdmissionConfidenceDefaults(t *testing.T)
 		t.Fatal("missing ontology_gov_librarian_conf field")
 	}
 
-	if learning.Value != "0.60" {
-		t.Errorf("ontology_gov_learning_conf: want %q, got %q", "0.60", learning.Value)
+	if learning.Value != "0.6" {
+		t.Errorf("ontology_gov_learning_conf: want %q, got %q", "0.6", learning.Value)
 	}
-	if librarian.Value != "0.50" {
-		t.Errorf("ontology_gov_librarian_conf: want %q, got %q", "0.50", librarian.Value)
+	if librarian.Value != "0.5" {
+		t.Errorf("ontology_gov_librarian_conf: want %q, got %q", "0.5", librarian.Value)
 	}
 }
 
@@ -1567,11 +1567,11 @@ func TestNewOntologyForm_ExplicitZeroOffModeConfidenceRoundTrip(t *testing.T) {
 		t.Fatal("missing ontology_gov_librarian_conf field")
 	}
 
-	if learning.Value != "0.00" {
-		t.Errorf("ontology_gov_learning_conf: want %q, got %q", "0.00", learning.Value)
+	if learning.Value != "0" {
+		t.Errorf("ontology_gov_learning_conf: want %q, got %q", "0", learning.Value)
 	}
-	if librarian.Value != "0.00" {
-		t.Errorf("ontology_gov_librarian_conf: want %q, got %q", "0.00", librarian.Value)
+	if librarian.Value != "0" {
+		t.Errorf("ontology_gov_librarian_conf: want %q, got %q", "0", librarian.Value)
 	}
 
 	state := tuicore.NewConfigStateWith(result.Config)
@@ -1582,6 +1582,41 @@ func TestNewOntologyForm_ExplicitZeroOffModeConfidenceRoundTrip(t *testing.T) {
 	}
 	if state.Current.Ontology.Governance.LibrarianDefaultConfidence != 0.0 {
 		t.Errorf("LibrarianDefaultConfidence: want %.2f, got %.2f", 0.0, state.Current.Ontology.Governance.LibrarianDefaultConfidence)
+	}
+}
+
+func TestNewOntologyForm_PreservesExactAdmissionConfidenceRoundTrip(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Ontology.Governance.LearningDefaultConfidence = 0.555
+	cfg.Ontology.Governance.LibrarianDefaultConfidence = 0.555
+	cfg.Ontology.Governance.LearningDefaultConfidencePresent = true
+	cfg.Ontology.Governance.LibrarianDefaultConfidencePresent = true
+
+	form := NewOntologyForm(cfg)
+	learning := fieldByKey(form, "ontology_gov_learning_conf")
+	if learning == nil {
+		t.Fatal("missing ontology_gov_learning_conf field")
+	}
+	librarian := fieldByKey(form, "ontology_gov_librarian_conf")
+	if librarian == nil {
+		t.Fatal("missing ontology_gov_librarian_conf field")
+	}
+
+	if learning.Value != "0.555" {
+		t.Errorf("ontology_gov_learning_conf: want %q, got %q", "0.555", learning.Value)
+	}
+	if librarian.Value != "0.555" {
+		t.Errorf("ontology_gov_librarian_conf: want %q, got %q", "0.555", librarian.Value)
+	}
+
+	state := tuicore.NewConfigStateWith(cfg)
+	state.UpdateConfigFromForm(form)
+
+	if state.Current.Ontology.Governance.LearningDefaultConfidence != 0.555 {
+		t.Errorf("LearningDefaultConfidence: want %.3f, got %.3f", 0.555, state.Current.Ontology.Governance.LearningDefaultConfidence)
+	}
+	if state.Current.Ontology.Governance.LibrarianDefaultConfidence != 0.555 {
+		t.Errorf("LibrarianDefaultConfidence: want %.3f, got %.3f", 0.555, state.Current.Ontology.Governance.LibrarianDefaultConfidence)
 	}
 }
 
