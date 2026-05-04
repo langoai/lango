@@ -50,6 +50,23 @@ func TestConfigClone_PreservesSparseOntologyGovernanceAbsence(t *testing.T) {
 	assert.False(t, clone.Ontology.Governance.LibrarianDefaultConfidencePresent)
 }
 
+func TestConfigClone_PreservesSparseAdmissionModeOffSemantics(t *testing.T) {
+	t.Parallel()
+
+	orig := &Config{
+		Ontology: OntologyConfig{
+			Governance: OntologyGovernanceConfig{
+				AdmissionMode: OntologyAdmissionModeOff,
+			},
+		},
+	}
+
+	clone := orig.Clone()
+	require.NotNil(t, clone)
+	assert.Equal(t, OntologyAdmissionModeOff, clone.Ontology.Governance.AdmissionMode)
+	assert.False(t, clone.Ontology.Governance.AdmissionModePresent)
+}
+
 func TestConfigClone_PreservesExplicitZeroAdmissionConfidenceMarkers(t *testing.T) {
 	t.Parallel()
 

@@ -16,6 +16,7 @@ func (c *Config) Clone() *Config {
 	type cloneAlias Config
 	var clone cloneAlias
 	_ = json.Unmarshal(data, &clone)
+	clone.Ontology.Governance.AdmissionMode = c.Ontology.Governance.AdmissionMode
 	clone.Ontology.Governance.AdmissionModePresent = c.Ontology.Governance.AdmissionModePresent
 	clone.Ontology.Governance.LearningDefaultConfidenceBackfillNeeded = c.Ontology.Governance.LearningDefaultConfidenceBackfillNeeded
 	clone.Ontology.Governance.LibrarianDefaultConfidenceBackfillNeeded = c.Ontology.Governance.LibrarianDefaultConfidenceBackfillNeeded
