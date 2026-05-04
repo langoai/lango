@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -75,6 +76,45 @@ func TestConfigClone_PreservesExplicitZeroAdmissionConfidenceMarkers(t *testing.
 	assert.True(t, clone.Ontology.Governance.LibrarianDefaultConfidenceBackfillNeeded)
 	assert.True(t, clone.Ontology.Governance.LearningDefaultConfidencePresent)
 	assert.True(t, clone.Ontology.Governance.LibrarianDefaultConfidencePresent)
+}
+
+func TestOntologyGovernanceJSONMarshal_OmitsSparseConfidenceKeys(t *testing.T) {
+	t.Parallel()
+
+	cfg := &Config{
+		Ontology: OntologyConfig{
+			Governance: OntologyGovernanceConfig{
+				AdmissionMode: OntologyAdmissionModeOff,
+			},
+		},
+	}
+
+	data, err := json.Marshal(cfg)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), `"admissionMode":"off"`)
+	assert.NotContains(t, string(data), `learningDefaultConfidence`)
+	assert.NotContains(t, string(data), `librarianDefaultConfidence`)
+}
+
+func TestOntologyGovernanceJSONMarshal_PreservesExplicitZeroConfidenceKeys(t *testing.T) {
+	t.Parallel()
+
+	cfg := &Config{
+		Ontology: OntologyConfig{
+			Governance: OntologyGovernanceConfig{
+				AdmissionMode:                      OntologyAdmissionModeOff,
+				LearningDefaultConfidence:          0.0,
+				LearningDefaultConfidencePresent:   true,
+				LibrarianDefaultConfidence:         0.0,
+				LibrarianDefaultConfidencePresent:  true,
+			},
+		},
+	}
+
+	data, err := json.Marshal(cfg)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), `"learningDefaultConfidence":0`)
+	assert.Contains(t, string(data), `"librarianDefaultConfidence":0`)
 }
 
 func TestResolveEmbeddingProvider_ByProviderMapKey(t *testing.T) {

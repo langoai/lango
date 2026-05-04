@@ -1,5 +1,7 @@
 package config
 
+import "encoding/json"
+
 const (
 	OntologyAdmissionModeOff                   = "off"
 	OntologyAdmissionModeObserve               = "observe"
@@ -67,6 +69,40 @@ func (c OntologyGovernanceConfig) EffectiveLibrarianDefaultConfidence() float64 
 		return OntologyLibrarianDefaultConfidenceFallback
 	}
 	return c.LibrarianDefaultConfidence
+}
+
+func (c OntologyGovernanceConfig) MarshalJSON() ([]byte, error) {
+	type governanceJSON struct {
+		Enabled                    bool     `json:"enabled,omitempty"`
+		MaxNewPerDay               int      `json:"maxNewPerDay,omitempty"`
+		QuarantinePeriodHrs        int      `json:"quarantinePeriodHrs,omitempty"`
+		ShadowModeDurationHrs      int      `json:"shadowModeDurationHrs,omitempty"`
+		MinUsageForPromotion       int      `json:"minUsageForPromotion,omitempty"`
+		SchemaExplosionBudget      int      `json:"schemaExplosionBudget,omitempty"`
+		AdmissionMode              string   `json:"admissionMode,omitempty"`
+		LearningDefaultConfidence  *float64 `json:"learningDefaultConfidence,omitempty"`
+		LibrarianDefaultConfidence *float64 `json:"librarianDefaultConfidence,omitempty"`
+	}
+
+	out := governanceJSON{
+		Enabled:               c.Enabled,
+		MaxNewPerDay:          c.MaxNewPerDay,
+		QuarantinePeriodHrs:   c.QuarantinePeriodHrs,
+		ShadowModeDurationHrs: c.ShadowModeDurationHrs,
+		MinUsageForPromotion:  c.MinUsageForPromotion,
+		SchemaExplosionBudget: c.SchemaExplosionBudget,
+		AdmissionMode:         c.AdmissionMode,
+	}
+	if c.LearningDefaultConfidencePresent {
+		v := c.LearningDefaultConfidence
+		out.LearningDefaultConfidence = &v
+	}
+	if c.LibrarianDefaultConfidencePresent {
+		v := c.LibrarianDefaultConfidence
+		out.LibrarianDefaultConfidence = &v
+	}
+
+	return json.Marshal(out)
 }
 
 // OntologyACLConfig configures role-based access control for ontology operations.
