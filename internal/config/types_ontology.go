@@ -94,17 +94,21 @@ func (c OntologyGovernanceConfig) MarshalJSON() ([]byte, error) {
 		MinUsageForPromotion:  c.MinUsageForPromotion,
 		SchemaExplosionBudget: c.SchemaExplosionBudget,
 	}
-	if c.AdmissionModePresent || c.AdmissionMode != OntologyAdmissionModeOff {
+	if c.AdmissionModePresent || (c.AdmissionMode != "" && c.AdmissionMode != OntologyAdmissionModeOff) {
 		v := c.AdmissionMode
 		out.AdmissionMode = &v
 	}
 	if c.LearningDefaultConfidencePresent ||
-		(!c.LearningDefaultConfidenceBackfillNeeded && c.LearningDefaultConfidence != OntologyLearningDefaultConfidenceFallback) {
+		(!c.LearningDefaultConfidenceBackfillNeeded &&
+			c.AdmissionMode != "" &&
+			c.LearningDefaultConfidence != OntologyLearningDefaultConfidenceFallback) {
 		v := c.LearningDefaultConfidence
 		out.LearningDefaultConfidence = &v
 	}
 	if c.LibrarianDefaultConfidencePresent ||
-		(!c.LibrarianDefaultConfidenceBackfillNeeded && c.LibrarianDefaultConfidence != OntologyLibrarianDefaultConfidenceFallback) {
+		(!c.LibrarianDefaultConfidenceBackfillNeeded &&
+			c.AdmissionMode != "" &&
+			c.LibrarianDefaultConfidence != OntologyLibrarianDefaultConfidenceFallback) {
 		v := c.LibrarianDefaultConfidence
 		out.LibrarianDefaultConfidence = &v
 	}

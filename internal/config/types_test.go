@@ -162,6 +162,16 @@ func TestOntologyGovernanceJSONMarshal_PreservesExplicitZeroConfidenceKeys(t *te
 	assert.Contains(t, string(data), `"librarianDefaultConfidence":0`)
 }
 
+func TestOntologyGovernanceJSONMarshal_OmitsZeroValueSparseAdmissionKeys(t *testing.T) {
+	t.Parallel()
+
+	data, err := json.Marshal(OntologyGovernanceConfig{})
+	require.NoError(t, err)
+	assert.NotContains(t, string(data), `admissionMode`)
+	assert.NotContains(t, string(data), `learningDefaultConfidence`)
+	assert.NotContains(t, string(data), `librarianDefaultConfidence`)
+}
+
 func TestOntologyGovernanceJSONMarshal_PreservesDefaultConfigZeroConfidenceRoundTrip(t *testing.T) {
 	t.Parallel()
 
