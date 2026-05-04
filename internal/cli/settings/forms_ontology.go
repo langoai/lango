@@ -113,21 +113,18 @@ func NewOntologyForm(cfg *config.Config) *tuicore.FormModel {
 		Value:       admissionMode,
 		Options:     []string{config.OntologyAdmissionModeOff, config.OntologyAdmissionModeObserve},
 		Description: "Observe supported runtime graph inputs without changing write routing",
-		VisibleWhen: isEnabled,
 	})
 	form.AddField(&tuicore.Field{
 		Key: "ontology_gov_learning_conf", Label: "    Learning Default Confidence", Type: tuicore.InputText,
 		Value:       fmt.Sprintf("%.2f", learningConfidence),
 		Placeholder: "0.60",
 		Description: "Fallback confidence for the learning producer group",
-		VisibleWhen: isEnabled,
 	})
 	form.AddField(&tuicore.Field{
 		Key: "ontology_gov_librarian_conf", Label: "    Librarian Default Confidence", Type: tuicore.InputText,
 		Value:       fmt.Sprintf("%.2f", librarianConfidence),
 		Placeholder: "0.50",
 		Description: "Fallback confidence for the librarian producer group",
-		VisibleWhen: isEnabled,
 	})
 
 	// --- Exchange ---
