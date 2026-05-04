@@ -168,7 +168,7 @@ func TestAdmissionPolicy_ObserveBatch_CanonicalizesKnownEventBusSourceKind(t *te
 	assert.Nil(t, result.UnmappedEvent)
 }
 
-func TestAdmissionPolicy_ObserveBatch_EmitsUnmappedForUnknownSyntheticLabel(t *testing.T) {
+func TestAdmissionPolicy_ObserveBatch_DoesNotEmitUnmappedForUnknownSyntheticLabel(t *testing.T) {
 	t.Parallel()
 
 	policy := NewAdmissionPolicy(AdmissionPolicyConfig{}, zap.NewNop().Sugar())
@@ -186,11 +186,7 @@ func TestAdmissionPolicy_ObserveBatch_EmitsUnmappedForUnknownSyntheticLabel(t *t
 	assert.Empty(t, result.Records)
 	assert.Equal(t, triples, result.Forwarded)
 	assert.Nil(t, result.Event)
-	require.NotNil(t, result.UnmappedEvent)
-	assert.Equal(t, eventbus.GraphAdmissionUnmappedSourceEvent{
-		RawSource:  "future_synthetic_label",
-		BatchCount: 1,
-	}, *result.UnmappedEvent)
+	assert.Nil(t, result.UnmappedEvent)
 }
 
 func TestAdmissionPolicy_ObserveBatch_NormalizesContentSavedProducerGroup(t *testing.T) {
