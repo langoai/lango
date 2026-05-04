@@ -1701,9 +1701,9 @@ func TestNewOntologyForm_EditBackToFallbackPreservesSparseAdmissionConfidenceSem
 		t.Fatal("missing ontology_gov_librarian_conf field")
 	}
 
-	learning.Value = "0.6"
+	learning.Value = "0.60"
 	learning.Edited = true
-	librarian.Value = "0.5"
+	librarian.Value = "0.50"
 	librarian.Edited = true
 
 	state := tuicore.NewConfigStateWith(result.Config)
