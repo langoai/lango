@@ -313,6 +313,15 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 			ConfigKey: "ontology.enabled", Enabled: true, Tools: ontologyTools,
 		})
 	}
+	if gc != nil && cfg.Ontology.Governance.AdmissionMode == config.OntologyAdmissionModeObserve {
+		var admissionValidator graph.PredicateValidatorFunc
+		if ontologyResult != nil && ontologyResult.Service != nil && cfg.Ontology.Enabled {
+			admissionValidator = ontologyResult.Service.PredicateValidator()
+		}
+		gc.admissionPolicy = graph.NewAdmissionPolicy(graph.AdmissionPolicyConfig{
+			Validator: admissionValidator,
+		}, logger())
+	}
 
 	// Skills — resolve base tools from foundation for skill init.
 	var baseToolSlice []*agent.Tool

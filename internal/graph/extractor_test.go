@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )
 
@@ -49,4 +50,31 @@ func TestExtractor_ParseResponseRejectsInvalidPredicate(t *testing.T) {
 	assert.Len(t, triples, 2)
 	assert.Equal(t, "a", triples[0].Subject)
 	assert.Equal(t, "e", triples[1].Subject)
+}
+
+func TestExtractor_EmitDroppedUnknownObservation(t *testing.T) {
+	t.Parallel()
+
+	logger := zap.NewNop().Sugar()
+	var got []DroppedUnknownPredicateEvent
+	e := NewExtractor(nil, logger,
+		WithPredicateValidator(func(name string) bool {
+			return name == CausedBy
+		}),
+		WithDroppedUnknownObserver(func(evt DroppedUnknownPredicateEvent) {
+			got = append(got, evt)
+		}),
+	)
+
+	triples := e.parseResponse("a|invented_rel|b", "src")
+
+	assert.Len(t, triples, 0)
+	require.Len(t, got, 1)
+	assert.Equal(t, DroppedUnknownPredicateEvent{
+		Source:    string(AdmissionSourceContentSavedExtractor),
+		SourceID:  "src",
+		Subject:   "a",
+		Predicate: "invented_rel",
+		Object:    "b",
+	}, got[0])
 }

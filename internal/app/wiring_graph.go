@@ -23,9 +23,10 @@ type predicateValidatable interface {
 
 // graphComponents holds optional graph store components.
 type graphComponents struct {
-	store      graph.Store
-	buffer     *graph.GraphBuffer
-	ragService *graph.GraphRAGService
+	store           graph.Store
+	buffer          *graph.GraphBuffer
+	ragService      *graph.GraphRAGService
+	admissionPolicy *graph.AdmissionPolicy
 }
 
 // initGraphStore creates the graph store if enabled.
@@ -66,6 +67,56 @@ func initGraphStore(cfg *config.Config) (*graphComponents, *types.FeatureStatus)
 	}, &types.FeatureStatus{Name: featureName, Enabled: true, Healthy: true}
 }
 
+func publishAdmissionObservation(bus *eventbus.Bus, result graph.AdmissionObserveResult) {
+	if bus == nil {
+		return
+	}
+	if result.Event != nil {
+		bus.Publish(*result.Event)
+	}
+	if result.UnmappedEvent != nil {
+		bus.Publish(*result.UnmappedEvent)
+	}
+}
+
+func observeAdmissionBatch(policy *graph.AdmissionPolicy, bus *eventbus.Bus, batch graph.AdmissionBatch) []graph.Triple {
+	if policy == nil {
+		return batch.Triples
+	}
+
+	result := policy.ObserveBatch(batch)
+	publishAdmissionObservation(bus, result)
+	return result.Forwarded
+}
+
+func observeExtractedTriples(policy *graph.AdmissionPolicy, bus *eventbus.Bus, evt eventbus.TriplesExtractedEvent) []graph.Triple {
+	graphTriples := make([]graph.Triple, len(evt.Triples))
+	for i, t := range evt.Triples {
+		graphTriples[i] = graph.Triple{
+			Subject:     t.Subject,
+			Predicate:   t.Predicate,
+			Object:      t.Object,
+			SubjectType: t.SubjectType,
+			ObjectType:  t.ObjectType,
+			Metadata:    t.Metadata,
+		}
+	}
+
+	return observeAdmissionBatch(policy, bus, graph.AdmissionBatch{
+		SourceKind: graph.AdmissionSourceKindEventBus,
+		Source:     graph.AdmissionSource(evt.Source),
+		Triples:    graphTriples,
+	})
+}
+
+func observeContentSavedTriples(policy *graph.AdmissionPolicy, bus *eventbus.Bus, triples []graph.Triple) []graph.Triple {
+	return observeAdmissionBatch(policy, bus, graph.AdmissionBatch{
+		SourceKind: graph.AdmissionSourceKindSynthetic,
+		Source:     graph.AdmissionSourceContentSavedExtractor,
+		Triples:    triples,
+	})
+}
+
 // wireGraphCallbacks subscribes to content.saved and triples.extracted events to feed the graph buffer.
 // It also creates the Entity Extractor pipeline and Memory GraphHooks.
 func wireGraphCallbacks(gc *graphComponents, kc *knowledgeComponents, mc *memoryComponents, sv *supervisor.Supervisor, cfg *config.Config, bus *eventbus.Bus, ontologyValidator graph.PredicateValidatorFunc) {
@@ -92,6 +143,19 @@ func wireGraphCallbacks(gc *graphComponents, kc *knowledgeComponents, mc *memory
 		if ontologyValidator != nil {
 			opts = append(opts, graph.WithPredicateValidator(ontologyValidator))
 		}
+		opts = append(opts, graph.WithDroppedUnknownObserver(func(evt graph.DroppedUnknownPredicateEvent) {
+			if gc.admissionPolicy == nil || bus == nil {
+				return
+			}
+
+			bus.Publish(eventbus.GraphExtractorDroppedUnknownEvent{
+				Source:    evt.Source,
+				SourceID:  evt.SourceID,
+				Subject:   evt.Subject,
+				Predicate: evt.Predicate,
+				Object:    evt.Object,
+			})
+		}))
 		extractor = graph.NewExtractor(generator, logger(), opts...)
 		logger().Info("graph entity extractor initialized")
 	}
@@ -127,6 +191,7 @@ func wireGraphCallbacks(gc *graphComponents, kc *knowledgeComponents, mc *memory
 						logger().Debugw("entity extraction error", "id", evt.ID, "error", err)
 						return
 					}
+					triples = observeContentSavedTriples(gc.admissionPolicy, bus, triples)
 					if len(triples) > 0 {
 						gc.buffer.Enqueue(graph.GraphRequest{Triples: triples})
 					}
@@ -136,17 +201,7 @@ func wireGraphCallbacks(gc *graphComponents, kc *knowledgeComponents, mc *memory
 
 		// Subscribe to triples.extracted events to enqueue graph triples.
 		eventbus.SubscribeTyped(bus, func(evt eventbus.TriplesExtractedEvent) {
-			graphTriples := make([]graph.Triple, len(evt.Triples))
-			for i, t := range evt.Triples {
-				graphTriples[i] = graph.Triple{
-					Subject:     t.Subject,
-					Predicate:   t.Predicate,
-					Object:      t.Object,
-					SubjectType: t.SubjectType,
-					ObjectType:  t.ObjectType,
-					Metadata:    t.Metadata,
-				}
-			}
+			graphTriples := observeExtractedTriples(gc.admissionPolicy, bus, evt)
 			gc.buffer.Enqueue(graph.GraphRequest{Triples: graphTriples})
 		})
 	}
