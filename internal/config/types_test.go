@@ -29,6 +29,48 @@ func TestConfigClone_NilSafe(t *testing.T) {
 	assert.Nil(t, c.Clone())
 }
 
+func TestConfigClone_PreservesSparseOntologyGovernanceAbsence(t *testing.T) {
+	t.Parallel()
+
+	orig := &Config{
+		Ontology: OntologyConfig{
+			Governance: OntologyGovernanceConfig{},
+		},
+	}
+
+	clone := orig.Clone()
+	require.NotNil(t, clone)
+	assert.Empty(t, clone.Ontology.Governance.AdmissionMode)
+	assert.Equal(t, 0.0, clone.Ontology.Governance.LearningDefaultConfidence)
+	assert.Equal(t, 0.0, clone.Ontology.Governance.LibrarianDefaultConfidence)
+	assert.False(t, clone.Ontology.Governance.LearningDefaultConfidenceConfigured)
+	assert.False(t, clone.Ontology.Governance.LibrarianDefaultConfidenceConfigured)
+}
+
+func TestConfigClone_PreservesExplicitZeroAdmissionConfidenceMarkers(t *testing.T) {
+	t.Parallel()
+
+	orig := &Config{
+		Ontology: OntologyConfig{
+			Governance: OntologyGovernanceConfig{
+				AdmissionMode:                        OntologyAdmissionModeOff,
+				LearningDefaultConfidence:            0.0,
+				LearningDefaultConfidenceConfigured:  true,
+				LibrarianDefaultConfidence:           0.0,
+				LibrarianDefaultConfidenceConfigured: true,
+			},
+		},
+	}
+
+	clone := orig.Clone()
+	require.NotNil(t, clone)
+	assert.Equal(t, OntologyAdmissionModeOff, clone.Ontology.Governance.AdmissionMode)
+	assert.Equal(t, 0.0, clone.Ontology.Governance.LearningDefaultConfidence)
+	assert.Equal(t, 0.0, clone.Ontology.Governance.LibrarianDefaultConfidence)
+	assert.True(t, clone.Ontology.Governance.LearningDefaultConfidenceConfigured)
+	assert.True(t, clone.Ontology.Governance.LibrarianDefaultConfidenceConfigured)
+}
+
 func TestResolveEmbeddingProvider_ByProviderMapKey(t *testing.T) {
 	t.Parallel()
 

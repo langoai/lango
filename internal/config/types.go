@@ -13,9 +13,13 @@ func (c *Config) Clone() *Config {
 		return nil
 	}
 	data, _ := json.Marshal(c)
-	var clone Config
+	type cloneAlias Config
+	var clone cloneAlias
 	_ = json.Unmarshal(data, &clone)
-	return &clone
+	clone.Ontology.Governance.LearningDefaultConfidenceConfigured = c.Ontology.Governance.LearningDefaultConfidenceConfigured
+	clone.Ontology.Governance.LibrarianDefaultConfidenceConfigured = c.Ontology.Governance.LibrarianDefaultConfidenceConfigured
+	cfgClone := Config(clone)
+	return &cfgClone
 }
 
 // Config is the root configuration structure for lango
