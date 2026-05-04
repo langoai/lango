@@ -16,8 +16,8 @@ func (c *Config) Clone() *Config {
 	type cloneAlias Config
 	var clone cloneAlias
 	_ = json.Unmarshal(data, &clone)
-	clone.Ontology.Governance.LearningDefaultConfidenceConfigured = c.Ontology.Governance.LearningDefaultConfidenceConfigured
-	clone.Ontology.Governance.LibrarianDefaultConfidenceConfigured = c.Ontology.Governance.LibrarianDefaultConfidenceConfigured
+	clone.Ontology.Governance.LearningDefaultConfidenceBackfillNeeded = c.Ontology.Governance.LearningDefaultConfidenceBackfillNeeded
+	clone.Ontology.Governance.LibrarianDefaultConfidenceBackfillNeeded = c.Ontology.Governance.LibrarianDefaultConfidenceBackfillNeeded
 	cfgClone := Config(clone)
 	return &cfgClone
 }

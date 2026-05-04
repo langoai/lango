@@ -192,7 +192,7 @@ func TestPostLoad(t *testing.T) {
 		assert.InDelta(t, OntologyLibrarianDefaultConfidenceFallback, cfg.Ontology.Governance.LibrarianDefaultConfidence, 0.001)
 	})
 
-	t.Run("backfills in-memory admission mode defaults when confidence markers are unset", func(t *testing.T) {
+	t.Run("preserves explicit zero admission confidences for in-memory config", func(t *testing.T) {
 		t.Parallel()
 
 		for _, mode := range []string{OntologyAdmissionModeOff, OntologyAdmissionModeObserve} {
@@ -200,13 +200,11 @@ func TestPostLoad(t *testing.T) {
 			cfg.Ontology.Governance.AdmissionMode = mode
 			cfg.Ontology.Governance.LearningDefaultConfidence = 0
 			cfg.Ontology.Governance.LibrarianDefaultConfidence = 0
-			cfg.Ontology.Governance.LearningDefaultConfidenceConfigured = false
-			cfg.Ontology.Governance.LibrarianDefaultConfidenceConfigured = false
 
 			require.NoError(t, PostLoad(cfg))
 			assert.Equal(t, mode, cfg.Ontology.Governance.AdmissionMode)
-			assert.InDelta(t, OntologyLearningDefaultConfidenceFallback, cfg.Ontology.Governance.LearningDefaultConfidence, 0.001)
-			assert.InDelta(t, OntologyLibrarianDefaultConfidenceFallback, cfg.Ontology.Governance.LibrarianDefaultConfidence, 0.001)
+			assert.Equal(t, 0.0, cfg.Ontology.Governance.LearningDefaultConfidence)
+			assert.Equal(t, 0.0, cfg.Ontology.Governance.LibrarianDefaultConfidence)
 		}
 	})
 }

@@ -39,10 +39,10 @@ type OntologyGovernanceConfig struct {
 	LearningDefaultConfidence float64 `mapstructure:"learningDefaultConfidence" json:"learningDefaultConfidence"`
 	// LibrarianDefaultConfidence is the fallback confidence for librarian-group producers.
 	LibrarianDefaultConfidence float64 `mapstructure:"librarianDefaultConfidence" json:"librarianDefaultConfidence"`
-	// LearningDefaultConfidenceConfigured records whether the confidence key was explicitly present.
-	LearningDefaultConfidenceConfigured bool `mapstructure:"-" json:"-"`
-	// LibrarianDefaultConfidenceConfigured records whether the confidence key was explicitly present.
-	LibrarianDefaultConfidenceConfigured bool `mapstructure:"-" json:"-"`
+	// LearningDefaultConfidenceBackfillNeeded records that the confidence key was absent on decode.
+	LearningDefaultConfidenceBackfillNeeded bool `mapstructure:"-" json:"-"`
+	// LibrarianDefaultConfidenceBackfillNeeded records that the confidence key was absent on decode.
+	LibrarianDefaultConfidenceBackfillNeeded bool `mapstructure:"-" json:"-"`
 }
 
 // OntologyACLConfig configures role-based access control for ontology operations.

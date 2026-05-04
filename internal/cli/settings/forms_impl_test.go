@@ -1467,11 +1467,26 @@ func TestNewOntologyForm_AdmissionFieldsVisibleWithoutOntologyEnabled(t *testing
 }
 
 func TestNewOntologyForm_LegacyAdmissionConfidenceDefaultsRoundTrip(t *testing.T) {
-	cfg := config.DefaultConfig()
-	cfg.Ontology.Governance.LearningDefaultConfidence = 0
-	cfg.Ontology.Governance.LibrarianDefaultConfidence = 0
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "lango.json")
+	content := `{
+		"logging": { "level": "info", "format": "console" },
+		"ontology": {
+			"governance": {
+				"admissionMode": "off"
+			}
+		}
+	}`
+	if err := os.WriteFile(cfgPath, []byte(content), 0644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
 
-	form := NewOntologyForm(cfg)
+	result, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+
+	form := NewOntologyForm(result.Config)
 	learning := fieldByKey(form, "ontology_gov_learning_conf")
 	if learning == nil {
 		t.Fatal("missing ontology_gov_learning_conf field")
@@ -1488,9 +1503,7 @@ func TestNewOntologyForm_LegacyAdmissionConfidenceDefaultsRoundTrip(t *testing.T
 		t.Errorf("ontology_gov_librarian_conf: want %q, got %q", "0.50", librarian.Value)
 	}
 
-	state := tuicore.NewConfigStateWith(config.DefaultConfig())
-	state.Current.Ontology.Governance.LearningDefaultConfidence = 0
-	state.Current.Ontology.Governance.LibrarianDefaultConfidence = 0
+	state := tuicore.NewConfigStateWith(result.Config)
 	state.UpdateConfigFromForm(form)
 
 	if state.Current.Ontology.Governance.LearningDefaultConfidence != 0.60 {

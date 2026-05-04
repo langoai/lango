@@ -393,6 +393,8 @@ func (cfg *Config) UnmarshalJSON(data []byte) error {
 	}
 
 	if len(raw.Ontology.Governance) == 0 {
+		cfg.Ontology.Governance.LearningDefaultConfidenceBackfillNeeded = true
+		cfg.Ontology.Governance.LibrarianDefaultConfidenceBackfillNeeded = true
 		if cfg.Ontology.Governance.AdmissionMode == "" {
 			cfg.Ontology.Governance.AdmissionMode = OntologyAdmissionModeOff
 		}
@@ -405,8 +407,8 @@ func (cfg *Config) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 
-	cfg.Ontology.Governance.LearningDefaultConfidenceConfigured = raw.Ontology.Governance["learningDefaultConfidence"] != nil
-	cfg.Ontology.Governance.LibrarianDefaultConfidenceConfigured = raw.Ontology.Governance["librarianDefaultConfidence"] != nil
+	cfg.Ontology.Governance.LearningDefaultConfidenceBackfillNeeded = raw.Ontology.Governance["learningDefaultConfidence"] == nil
+	cfg.Ontology.Governance.LibrarianDefaultConfidenceBackfillNeeded = raw.Ontology.Governance["librarianDefaultConfidence"] == nil
 
 	if rawMode, ok := raw.Ontology.Governance["admissionMode"]; ok {
 		var mode string
@@ -461,8 +463,8 @@ func Load(configPath string) (*LoadResult, error) {
 	if err := v.Unmarshal(cfg); err != nil {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
 	}
-	cfg.Ontology.Governance.LearningDefaultConfidenceConfigured = v.InConfig("ontology.governance.learningDefaultConfidence")
-	cfg.Ontology.Governance.LibrarianDefaultConfidenceConfigured = v.InConfig("ontology.governance.librarianDefaultConfidence")
+	cfg.Ontology.Governance.LearningDefaultConfidenceBackfillNeeded = !v.InConfig("ontology.governance.learningDefaultConfidence")
+	cfg.Ontology.Governance.LibrarianDefaultConfidenceBackfillNeeded = !v.InConfig("ontology.governance.librarianDefaultConfidence")
 
 	// Detect which context-related keys the user explicitly set in their config file.
 	explicitKeys := collectExplicitKeys(configPath, contextRelatedKeys)
@@ -507,10 +509,10 @@ func backfillLegacyOntologyAdmissionDefaults(cfg *Config) {
 	if cfg.Ontology.Governance.AdmissionMode == "" {
 		cfg.Ontology.Governance.AdmissionMode = OntologyAdmissionModeOff
 	}
-	if !cfg.Ontology.Governance.LearningDefaultConfidenceConfigured && cfg.Ontology.Governance.LearningDefaultConfidence == 0 {
+	if cfg.Ontology.Governance.LearningDefaultConfidenceBackfillNeeded && cfg.Ontology.Governance.LearningDefaultConfidence == 0 {
 		cfg.Ontology.Governance.LearningDefaultConfidence = OntologyLearningDefaultConfidenceFallback
 	}
-	if !cfg.Ontology.Governance.LibrarianDefaultConfidenceConfigured && cfg.Ontology.Governance.LibrarianDefaultConfidence == 0 {
+	if cfg.Ontology.Governance.LibrarianDefaultConfidenceBackfillNeeded && cfg.Ontology.Governance.LibrarianDefaultConfidence == 0 {
 		cfg.Ontology.Governance.LibrarianDefaultConfidence = OntologyLibrarianDefaultConfidenceFallback
 	}
 }
