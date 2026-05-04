@@ -6,6 +6,10 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func stringPtr(v string) *string {
+	return &v
+}
+
 func TestGraphAdmissionBatchEvent_EventName(t *testing.T) {
 	t.Parallel()
 
@@ -26,7 +30,7 @@ func TestGraphAdmissionBatchEvent_RoundTrip(t *testing.T) {
 
 	bus.Publish(GraphAdmissionBatchEvent{
 		Source:           "conversation_analysis",
-		ProducerGroup:    "learning",
+		ProducerGroup:    stringPtr("learning"),
 		ValidatorSource:  "ontology_registry",
 		BatchCount:       1,
 		KnownCount:       2,
@@ -36,7 +40,7 @@ func TestGraphAdmissionBatchEvent_RoundTrip(t *testing.T) {
 
 	assert.Equal(t, GraphAdmissionBatchEvent{
 		Source:           "conversation_analysis",
-		ProducerGroup:    "learning",
+		ProducerGroup:    stringPtr("learning"),
 		ValidatorSource:  "ontology_registry",
 		BatchCount:       1,
 		KnownCount:       2,

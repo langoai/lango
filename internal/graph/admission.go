@@ -183,16 +183,18 @@ func newAdmissionBatchEvent(batch AdmissionBatch) *eventbus.GraphAdmissionBatchE
 	}
 }
 
-func CanonicalAdmissionProducerGroup(source AdmissionSource) string {
+func CanonicalAdmissionProducerGroup(source AdmissionSource) *string {
 	switch source {
 	case AdmissionSourceConversationAnalysis,
 		AdmissionSourceSessionLearning,
 		AdmissionSourceLearning:
-		return string(AdmissionProducerGroupLearning)
+		group := string(AdmissionProducerGroupLearning)
+		return &group
 	case AdmissionSourceProactiveLibrarian:
-		return string(AdmissionProducerGroupLibrarian)
+		group := string(AdmissionProducerGroupLibrarian)
+		return &group
 	case AdmissionSourceContentSavedExtractor:
-		return ""
+		return nil
 	}
-	return ""
+	return nil
 }

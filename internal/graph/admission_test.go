@@ -10,6 +10,10 @@ import (
 	"github.com/langoai/lango/internal/eventbus"
 )
 
+func strPtr(v string) *string {
+	return &v
+}
+
 func TestAdmissionPolicy_ObserveBatch_ClassifiesKnownUnknown(t *testing.T) {
 	t.Parallel()
 
@@ -38,7 +42,7 @@ func TestAdmissionPolicy_ObserveBatch_ClassifiesKnownUnknown(t *testing.T) {
 	require.NotNil(t, result.Event)
 	assert.Equal(t, eventbus.GraphAdmissionBatchEvent{
 		Source:           string(AdmissionSourceConversationAnalysis),
-		ProducerGroup:    string(AdmissionProducerGroupLearning),
+		ProducerGroup:    strPtr(string(AdmissionProducerGroupLearning)),
 		ValidatorSource:  string(AdmissionValidatorSourceOntologyRegistry),
 		BatchCount:       1,
 		KnownCount:       1,
@@ -66,7 +70,7 @@ func TestAdmissionPolicy_ObserveBatch_UsesUnvalidatedWhenValidatorUnavailable(t 
 	require.NotNil(t, result.Event)
 	assert.Equal(t, eventbus.GraphAdmissionBatchEvent{
 		Source:           string(AdmissionSourceContentSavedExtractor),
-		ProducerGroup:    "",
+		ProducerGroup:    nil,
 		ValidatorSource:  string(AdmissionValidatorSourceUnavailable),
 		BatchCount:       1,
 		KnownCount:       0,
@@ -104,6 +108,26 @@ func TestAdmissionPolicy_ObserveBatch_SkipsUnsupportedSource(t *testing.T) {
 	}, *result.UnmappedEvent)
 }
 
+func TestAdmissionPolicy_ObserveBatch_ZeroValueSourceKindStillEmitsUnmapped(t *testing.T) {
+	t.Parallel()
+
+	policy := NewAdmissionPolicy(AdmissionPolicyConfig{}, zap.NewNop().Sugar())
+
+	result := policy.ObserveBatch(AdmissionBatch{
+		Source: AdmissionSource("unmapped_runtime_label"),
+		Triples: []Triple{
+			{Subject: "a", Predicate: "invented_rel", Object: "b"},
+		},
+	})
+
+	assert.Nil(t, result.Event)
+	require.NotNil(t, result.UnmappedEvent)
+	assert.Equal(t, eventbus.GraphAdmissionUnmappedSourceEvent{
+		RawSource:  "unmapped_runtime_label",
+		BatchCount: 1,
+	}, *result.UnmappedEvent)
+}
+
 func TestAdmissionPolicy_ObserveBatch_CanonicalizesKnownEventBusSourceKind(t *testing.T) {
 	t.Parallel()
 
@@ -118,7 +142,8 @@ func TestAdmissionPolicy_ObserveBatch_CanonicalizesKnownEventBusSourceKind(t *te
 	})
 
 	require.NotNil(t, result.Event)
-	assert.Equal(t, string(AdmissionProducerGroupLearning), result.Event.ProducerGroup)
+	require.NotNil(t, result.Event.ProducerGroup)
+	assert.Equal(t, string(AdmissionProducerGroupLearning), *result.Event.ProducerGroup)
 	assert.Nil(t, result.UnmappedEvent)
 }
 
@@ -157,7 +182,7 @@ func TestAdmissionPolicy_ObserveBatch_NormalizesContentSavedProducerGroup(t *tes
 	})
 
 	require.NotNil(t, result.Event)
-	assert.Empty(t, result.Event.ProducerGroup)
+	assert.Nil(t, result.Event.ProducerGroup)
 }
 
 func TestAdmissionPolicy_ObserveBatch_CanonicalizesProducerGroupFromSource(t *testing.T) {
@@ -211,7 +236,8 @@ func TestAdmissionPolicy_ObserveBatch_CanonicalizesProducerGroupFromSource(t *te
 			})
 
 			require.NotNil(t, result.Event)
-			assert.Equal(t, string(tc.expectedGroup), result.Event.ProducerGroup)
+			require.NotNil(t, result.Event.ProducerGroup)
+			assert.Equal(t, string(tc.expectedGroup), *result.Event.ProducerGroup)
 		})
 	}
 }
@@ -226,10 +252,11 @@ func TestAdmissionIdentifiers_AreStableForTask4Consumers(t *testing.T) {
 	assert.False(t, IsSupportedAdmissionSource(AdmissionSourceContentSavedExtractor))
 	assert.False(t, IsSupportedAdmissionSource(AdmissionSource("new_source")))
 
-	assert.Equal(t, string(AdmissionProducerGroupLearning), CanonicalAdmissionProducerGroup(AdmissionSourceConversationAnalysis))
-	assert.Equal(t, string(AdmissionProducerGroupLearning), CanonicalAdmissionProducerGroup(AdmissionSourceSessionLearning))
-	assert.Equal(t, string(AdmissionProducerGroupLearning), CanonicalAdmissionProducerGroup(AdmissionSourceLearning))
-	assert.Equal(t, string(AdmissionProducerGroupLibrarian), CanonicalAdmissionProducerGroup(AdmissionSourceProactiveLibrarian))
+	require.Equal(t, strPtr(string(AdmissionProducerGroupLearning)), CanonicalAdmissionProducerGroup(AdmissionSourceConversationAnalysis))
+	require.Equal(t, strPtr(string(AdmissionProducerGroupLearning)), CanonicalAdmissionProducerGroup(AdmissionSourceSessionLearning))
+	require.Equal(t, strPtr(string(AdmissionProducerGroupLearning)), CanonicalAdmissionProducerGroup(AdmissionSourceLearning))
+	require.Equal(t, strPtr(string(AdmissionProducerGroupLibrarian)), CanonicalAdmissionProducerGroup(AdmissionSourceProactiveLibrarian))
+	assert.Nil(t, CanonicalAdmissionProducerGroup(AdmissionSourceContentSavedExtractor))
 
 	sourceKind, ok := ObservedAdmissionSourceKind(AdmissionSourceConversationAnalysis)
 	require.True(t, ok)

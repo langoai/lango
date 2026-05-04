@@ -28,7 +28,7 @@ func (e TokenUsageEvent) EventName() string { return EventTokenUsage }
 // GraphAdmissionBatchEvent is published for one observe-only admission batch.
 type GraphAdmissionBatchEvent struct {
 	Source           string
-	ProducerGroup    string
+	ProducerGroup    *string
 	ValidatorSource  string
 	BatchCount       int
 	KnownCount       int
