@@ -437,10 +437,25 @@ func PostLoad(cfg *Config) error {
 	cfg.MigrateEmbeddingProvider()
 	substituteEnvVars(cfg)
 	NormalizePaths(cfg)
+	backfillLegacyOntologyAdmissionDefaults(cfg)
 	if err := ValidateDataPaths(cfg); err != nil {
 		return err
 	}
 	return Validate(cfg)
+}
+
+func backfillLegacyOntologyAdmissionDefaults(cfg *Config) {
+	if cfg == nil || cfg.Ontology.Governance.AdmissionMode != "" {
+		return
+	}
+
+	cfg.Ontology.Governance.AdmissionMode = OntologyAdmissionModeOff
+	if cfg.Ontology.Governance.LearningDefaultConfidence == 0 {
+		cfg.Ontology.Governance.LearningDefaultConfidence = OntologyLearningDefaultConfidenceFallback
+	}
+	if cfg.Ontology.Governance.LibrarianDefaultConfidence == 0 {
+		cfg.Ontology.Governance.LibrarianDefaultConfidence = OntologyLibrarianDefaultConfidenceFallback
+	}
 }
 
 // substituteEnvVars replaces ${VAR} patterns with environment variable values
