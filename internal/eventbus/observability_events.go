@@ -5,6 +5,7 @@ const (
 	EventTokenUsage                   = "token.usage"
 	EventGraphAdmissionBatch          = "graph.admission.batch"
 	EventGraphAdmissionUnmappedSource = "graph.admission.unmapped_source"
+	EventGraphExtractorDroppedUnknown = "graph.extractor.dropped_unknown"
 )
 
 // TokenUsageEvent is published when an LLM provider returns token usage data.
@@ -47,4 +48,18 @@ type GraphAdmissionUnmappedSourceEvent struct {
 // EventName implements Event.
 func (e GraphAdmissionUnmappedSourceEvent) EventName() string {
 	return EventGraphAdmissionUnmappedSource
+}
+
+// GraphExtractorDroppedUnknownEvent is published for one extractor dropped-unknown baseline.
+type GraphExtractorDroppedUnknownEvent struct {
+	Source    string
+	SourceID  string
+	Subject   string
+	Predicate string
+	Object    string
+}
+
+// EventName implements Event.
+func (e GraphExtractorDroppedUnknownEvent) EventName() string {
+	return EventGraphExtractorDroppedUnknown
 }

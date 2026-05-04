@@ -89,8 +89,9 @@ func TestAdmissionPolicy_ObserveBatch_SkipsUnsupportedSource(t *testing.T) {
 	}
 
 	result := policy.ObserveBatch(AdmissionBatch{
-		Source:  AdmissionSource("new_source"),
-		Triples: triples,
+		SourceKind: AdmissionSourceKindEventBus,
+		Source:     AdmissionSource("new_source"),
+		Triples:    triples,
 	})
 
 	assert.Empty(t, result.Records)
@@ -101,6 +102,27 @@ func TestAdmissionPolicy_ObserveBatch_SkipsUnsupportedSource(t *testing.T) {
 		RawSource:  "new_source",
 		BatchCount: 1,
 	}, *result.UnmappedEvent)
+}
+
+func TestAdmissionPolicy_ObserveBatch_DoesNotEmitUnmappedForSyntheticUnknownSource(t *testing.T) {
+	t.Parallel()
+
+	policy := NewAdmissionPolicy(AdmissionPolicyConfig{}, zap.NewNop().Sugar())
+
+	triples := []Triple{
+		{Subject: "synthetic", Predicate: "invented_rel", Object: "forwarded"},
+	}
+
+	result := policy.ObserveBatch(AdmissionBatch{
+		SourceKind: AdmissionSourceKindSynthetic,
+		Source:     AdmissionSource("future_synthetic_label"),
+		Triples:    triples,
+	})
+
+	assert.Empty(t, result.Records)
+	assert.Equal(t, triples, result.Forwarded)
+	assert.Nil(t, result.Event)
+	assert.Nil(t, result.UnmappedEvent)
 }
 
 func TestAdmissionPolicy_ObserveBatch_NormalizesContentSavedProducerGroup(t *testing.T) {

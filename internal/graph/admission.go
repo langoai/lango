@@ -37,7 +37,15 @@ const (
 	AdmissionDecisionUnvalidated AdmissionDecision = "unvalidated"
 )
 
+type AdmissionSourceKind string
+
+const (
+	AdmissionSourceKindEventBus  AdmissionSourceKind = "event_bus"
+	AdmissionSourceKindSynthetic AdmissionSourceKind = "synthetic"
+)
+
 type AdmissionBatch struct {
+	SourceKind    AdmissionSourceKind
 	Source        AdmissionSource
 	ProducerGroup AdmissionProducerGroup
 	Triples       []Triple
@@ -83,10 +91,14 @@ func (p *AdmissionPolicy) ObserveBatch(batch AdmissionBatch) AdmissionObserveRes
 		result.Forwarded = append(result.Forwarded, triple)
 	}
 
-	if !isObservedAdmissionSource(batch.Source) {
-		result.UnmappedEvent = &eventbus.GraphAdmissionUnmappedSourceEvent{
-			RawSource:  string(batch.Source),
-			BatchCount: 1,
+	sourceKind := normalizeAdmissionSourceKind(batch)
+
+	if !isObservedAdmissionSource(sourceKind, batch.Source) {
+		if sourceKind == AdmissionSourceKindEventBus {
+			result.UnmappedEvent = &eventbus.GraphAdmissionUnmappedSourceEvent{
+				RawSource:  string(batch.Source),
+				BatchCount: 1,
+			}
 		}
 		return result
 	}
@@ -125,6 +137,23 @@ func (p *AdmissionPolicy) ObserveBatch(batch AdmissionBatch) AdmissionObserveRes
 	return result
 }
 
+func normalizeAdmissionSourceKind(batch AdmissionBatch) AdmissionSourceKind {
+	if batch.SourceKind != "" {
+		return batch.SourceKind
+	}
+	if batch.Source == AdmissionSourceContentSavedExtractor {
+		return AdmissionSourceKindSynthetic
+	}
+	return AdmissionSourceKindEventBus
+}
+
+func isObservedAdmissionSource(sourceKind AdmissionSourceKind, source AdmissionSource) bool {
+	if sourceKind == AdmissionSourceKindSynthetic {
+		return source == AdmissionSourceContentSavedExtractor
+	}
+	return IsSupportedAdmissionSource(source)
+}
+
 func IsSupportedAdmissionSource(source AdmissionSource) bool {
 	switch source {
 	case AdmissionSourceConversationAnalysis,
@@ -134,13 +163,6 @@ func IsSupportedAdmissionSource(source AdmissionSource) bool {
 		return true
 	}
 	return false
-}
-
-func isObservedAdmissionSource(source AdmissionSource) bool {
-	if source == AdmissionSourceContentSavedExtractor {
-		return true
-	}
-	return IsSupportedAdmissionSource(source)
 }
 
 func newAdmissionBatchEvent(batch AdmissionBatch) *eventbus.GraphAdmissionBatchEvent {

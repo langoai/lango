@@ -73,3 +73,38 @@ func TestGraphAdmissionUnmappedSourceEvent_RoundTrip(t *testing.T) {
 		BatchCount: 1,
 	}, got)
 }
+
+func TestGraphExtractorDroppedUnknownEvent_EventName(t *testing.T) {
+	t.Parallel()
+
+	evt := GraphExtractorDroppedUnknownEvent{}
+
+	assert.Equal(t, EventGraphExtractorDroppedUnknown, evt.EventName())
+}
+
+func TestGraphExtractorDroppedUnknownEvent_RoundTrip(t *testing.T) {
+	t.Parallel()
+
+	bus := New()
+
+	var got GraphExtractorDroppedUnknownEvent
+	SubscribeTyped(bus, func(evt GraphExtractorDroppedUnknownEvent) {
+		got = evt
+	})
+
+	bus.Publish(GraphExtractorDroppedUnknownEvent{
+		Source:    "content_saved_extractor",
+		SourceID:  "doc-1",
+		Subject:   "a",
+		Predicate: "invented_rel",
+		Object:    "b",
+	})
+
+	assert.Equal(t, GraphExtractorDroppedUnknownEvent{
+		Source:    "content_saved_extractor",
+		SourceID:  "doc-1",
+		Subject:   "a",
+		Predicate: "invented_rel",
+		Object:    "b",
+	}, got)
+}
