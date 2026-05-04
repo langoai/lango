@@ -135,7 +135,7 @@ func normalizeAdmissionSourceKind(batch AdmissionBatch) AdmissionSourceKind {
 		return sourceKind
 	}
 	if batch.SourceKind != "" {
-		return batch.SourceKind
+		return AdmissionSourceKindEventBus
 	}
 	return AdmissionSourceKindEventBus
 }
