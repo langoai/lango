@@ -138,11 +138,11 @@ func (p *AdmissionPolicy) ObserveBatch(batch AdmissionBatch) AdmissionObserveRes
 }
 
 func normalizeAdmissionSourceKind(batch AdmissionBatch) AdmissionSourceKind {
-	if batch.SourceKind != "" {
-		return batch.SourceKind
+	if sourceKind, ok := ObservedAdmissionSourceKind(batch.Source); ok {
+		return sourceKind
 	}
-	if batch.Source == AdmissionSourceContentSavedExtractor {
-		return AdmissionSourceKindSynthetic
+	if batch.SourceKind != "" {
+		return AdmissionSourceKindEventBus
 	}
 	return AdmissionSourceKindEventBus
 }
@@ -163,6 +163,16 @@ func IsSupportedAdmissionSource(source AdmissionSource) bool {
 		return true
 	}
 	return false
+}
+
+func ObservedAdmissionSourceKind(source AdmissionSource) (AdmissionSourceKind, bool) {
+	if IsSupportedAdmissionSource(source) {
+		return AdmissionSourceKindEventBus, true
+	}
+	if source == AdmissionSourceContentSavedExtractor {
+		return AdmissionSourceKindSynthetic, true
+	}
+	return "", false
 }
 
 func newAdmissionBatchEvent(batch AdmissionBatch) *eventbus.GraphAdmissionBatchEvent {

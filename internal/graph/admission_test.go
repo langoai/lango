@@ -104,7 +104,25 @@ func TestAdmissionPolicy_ObserveBatch_SkipsUnsupportedSource(t *testing.T) {
 	}, *result.UnmappedEvent)
 }
 
-func TestAdmissionPolicy_ObserveBatch_DoesNotEmitUnmappedForSyntheticUnknownSource(t *testing.T) {
+func TestAdmissionPolicy_ObserveBatch_CanonicalizesKnownEventBusSourceKind(t *testing.T) {
+	t.Parallel()
+
+	policy := NewAdmissionPolicy(AdmissionPolicyConfig{}, zap.NewNop().Sugar())
+
+	result := policy.ObserveBatch(AdmissionBatch{
+		SourceKind: AdmissionSourceKindSynthetic,
+		Source:     AdmissionSourceConversationAnalysis,
+		Triples: []Triple{
+			{Subject: "a", Predicate: CausedBy, Object: "b"},
+		},
+	})
+
+	require.NotNil(t, result.Event)
+	assert.Equal(t, string(AdmissionProducerGroupLearning), result.Event.ProducerGroup)
+	assert.Nil(t, result.UnmappedEvent)
+}
+
+func TestAdmissionPolicy_ObserveBatch_EmitsUnmappedForUnknownSyntheticLabel(t *testing.T) {
 	t.Parallel()
 
 	policy := NewAdmissionPolicy(AdmissionPolicyConfig{}, zap.NewNop().Sugar())
@@ -122,7 +140,11 @@ func TestAdmissionPolicy_ObserveBatch_DoesNotEmitUnmappedForSyntheticUnknownSour
 	assert.Empty(t, result.Records)
 	assert.Equal(t, triples, result.Forwarded)
 	assert.Nil(t, result.Event)
-	assert.Nil(t, result.UnmappedEvent)
+	require.NotNil(t, result.UnmappedEvent)
+	assert.Equal(t, eventbus.GraphAdmissionUnmappedSourceEvent{
+		RawSource:  "future_synthetic_label",
+		BatchCount: 1,
+	}, *result.UnmappedEvent)
 }
 
 func TestAdmissionPolicy_ObserveBatch_NormalizesContentSavedProducerGroup(t *testing.T) {
@@ -212,4 +234,15 @@ func TestAdmissionIdentifiers_AreStableForTask4Consumers(t *testing.T) {
 	assert.Equal(t, string(AdmissionProducerGroupLearning), CanonicalAdmissionProducerGroup(AdmissionSourceSessionLearning))
 	assert.Equal(t, string(AdmissionProducerGroupLearning), CanonicalAdmissionProducerGroup(AdmissionSourceLearning))
 	assert.Equal(t, string(AdmissionProducerGroupLibrarian), CanonicalAdmissionProducerGroup(AdmissionSourceProactiveLibrarian))
+
+	sourceKind, ok := ObservedAdmissionSourceKind(AdmissionSourceConversationAnalysis)
+	require.True(t, ok)
+	assert.Equal(t, AdmissionSourceKindEventBus, sourceKind)
+
+	sourceKind, ok = ObservedAdmissionSourceKind(AdmissionSourceContentSavedExtractor)
+	require.True(t, ok)
+	assert.Equal(t, AdmissionSourceKindSynthetic, sourceKind)
+
+	_, ok = ObservedAdmissionSourceKind(AdmissionSource("new_source"))
+	assert.False(t, ok)
 }
