@@ -395,6 +395,8 @@ func (cfg *Config) UnmarshalJSON(data []byte) error {
 	if len(raw.Ontology.Governance) == 0 {
 		cfg.Ontology.Governance.LearningDefaultConfidenceBackfillNeeded = true
 		cfg.Ontology.Governance.LibrarianDefaultConfidenceBackfillNeeded = true
+		cfg.Ontology.Governance.LearningDefaultConfidencePresent = false
+		cfg.Ontology.Governance.LibrarianDefaultConfidencePresent = false
 		if cfg.Ontology.Governance.AdmissionMode == "" {
 			cfg.Ontology.Governance.AdmissionMode = OntologyAdmissionModeOff
 		}
@@ -409,6 +411,8 @@ func (cfg *Config) UnmarshalJSON(data []byte) error {
 
 	cfg.Ontology.Governance.LearningDefaultConfidenceBackfillNeeded = raw.Ontology.Governance["learningDefaultConfidence"] == nil || isJSONNull(raw.Ontology.Governance["learningDefaultConfidence"])
 	cfg.Ontology.Governance.LibrarianDefaultConfidenceBackfillNeeded = raw.Ontology.Governance["librarianDefaultConfidence"] == nil || isJSONNull(raw.Ontology.Governance["librarianDefaultConfidence"])
+	cfg.Ontology.Governance.LearningDefaultConfidencePresent = !cfg.Ontology.Governance.LearningDefaultConfidenceBackfillNeeded
+	cfg.Ontology.Governance.LibrarianDefaultConfidencePresent = !cfg.Ontology.Governance.LibrarianDefaultConfidenceBackfillNeeded
 
 	if rawMode, ok := raw.Ontology.Governance["admissionMode"]; ok {
 		var mode string
@@ -465,6 +469,8 @@ func Load(configPath string) (*LoadResult, error) {
 	}
 	cfg.Ontology.Governance.LearningDefaultConfidenceBackfillNeeded = !v.InConfig("ontology.governance.learningDefaultConfidence")
 	cfg.Ontology.Governance.LibrarianDefaultConfidenceBackfillNeeded = !v.InConfig("ontology.governance.librarianDefaultConfidence")
+	cfg.Ontology.Governance.LearningDefaultConfidencePresent = v.InConfig("ontology.governance.learningDefaultConfidence")
+	cfg.Ontology.Governance.LibrarianDefaultConfidencePresent = v.InConfig("ontology.governance.librarianDefaultConfidence")
 
 	// Detect which context-related keys the user explicitly set in their config file.
 	explicitKeys := collectExplicitKeys(configPath, contextRelatedKeys)

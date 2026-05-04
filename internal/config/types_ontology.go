@@ -43,6 +43,30 @@ type OntologyGovernanceConfig struct {
 	LearningDefaultConfidenceBackfillNeeded bool `mapstructure:"-" json:"-"`
 	// LibrarianDefaultConfidenceBackfillNeeded records that the confidence key was absent on decode.
 	LibrarianDefaultConfidenceBackfillNeeded bool `mapstructure:"-" json:"-"`
+	// LearningDefaultConfidencePresent records that the confidence key was explicitly present on decode/update.
+	LearningDefaultConfidencePresent bool `mapstructure:"-" json:"-"`
+	// LibrarianDefaultConfidencePresent records that the confidence key was explicitly present on decode/update.
+	LibrarianDefaultConfidencePresent bool `mapstructure:"-" json:"-"`
+}
+
+func (c OntologyGovernanceConfig) EffectiveLearningDefaultConfidence() float64 {
+	if c.LearningDefaultConfidencePresent {
+		return c.LearningDefaultConfidence
+	}
+	if c.LearningDefaultConfidence == 0 {
+		return OntologyLearningDefaultConfidenceFallback
+	}
+	return c.LearningDefaultConfidence
+}
+
+func (c OntologyGovernanceConfig) EffectiveLibrarianDefaultConfidence() float64 {
+	if c.LibrarianDefaultConfidencePresent {
+		return c.LibrarianDefaultConfidence
+	}
+	if c.LibrarianDefaultConfidence == 0 {
+		return OntologyLibrarianDefaultConfidenceFallback
+	}
+	return c.LibrarianDefaultConfidence
 }
 
 // OntologyACLConfig configures role-based access control for ontology operations.

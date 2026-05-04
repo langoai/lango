@@ -100,8 +100,8 @@ func NewOntologyForm(cfg *config.Config) *tuicore.FormModel {
 	if admissionMode == "" {
 		admissionMode = config.OntologyAdmissionModeOff
 	}
-	learningConfidence := cfg.Ontology.Governance.LearningDefaultConfidence
-	librarianConfidence := cfg.Ontology.Governance.LibrarianDefaultConfidence
+	learningConfidence := cfg.Ontology.Governance.EffectiveLearningDefaultConfidence()
+	librarianConfidence := cfg.Ontology.Governance.EffectiveLibrarianDefaultConfidence()
 	form.AddField(&tuicore.Field{
 		Key: "ontology_gov_admission_mode", Label: "    Runtime Admission Mode", Type: tuicore.InputSelect,
 		Value:       admissionMode,

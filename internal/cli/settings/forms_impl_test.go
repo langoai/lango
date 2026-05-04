@@ -1514,6 +1514,27 @@ func TestNewOntologyForm_LegacyAdmissionConfidenceDefaultsRoundTrip(t *testing.T
 	}
 }
 
+func TestNewOntologyForm_SparseInMemoryAdmissionConfidenceDefaults(t *testing.T) {
+	cfg := &config.Config{}
+
+	form := NewOntologyForm(cfg)
+	learning := fieldByKey(form, "ontology_gov_learning_conf")
+	if learning == nil {
+		t.Fatal("missing ontology_gov_learning_conf field")
+	}
+	librarian := fieldByKey(form, "ontology_gov_librarian_conf")
+	if librarian == nil {
+		t.Fatal("missing ontology_gov_librarian_conf field")
+	}
+
+	if learning.Value != "0.60" {
+		t.Errorf("ontology_gov_learning_conf: want %q, got %q", "0.60", learning.Value)
+	}
+	if librarian.Value != "0.50" {
+		t.Errorf("ontology_gov_librarian_conf: want %q, got %q", "0.50", librarian.Value)
+	}
+}
+
 func TestNewOntologyForm_ExplicitZeroOffModeConfidenceRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "lango.json")

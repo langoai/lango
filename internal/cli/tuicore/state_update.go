@@ -610,11 +610,13 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 			if v, err := strconv.ParseFloat(val, 64); err == nil {
 				s.Current.Ontology.Governance.LearningDefaultConfidence = v
 				s.Current.Ontology.Governance.LearningDefaultConfidenceBackfillNeeded = false
+				s.Current.Ontology.Governance.LearningDefaultConfidencePresent = true
 			}
 		case "ontology_gov_librarian_conf":
 			if v, err := strconv.ParseFloat(val, 64); err == nil {
 				s.Current.Ontology.Governance.LibrarianDefaultConfidence = v
 				s.Current.Ontology.Governance.LibrarianDefaultConfidenceBackfillNeeded = false
+				s.Current.Ontology.Governance.LibrarianDefaultConfidencePresent = true
 			}
 		case "ontology_ex_enabled":
 			s.Current.Ontology.Exchange.Enabled = f.Checked

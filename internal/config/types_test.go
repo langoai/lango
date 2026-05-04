@@ -45,6 +45,8 @@ func TestConfigClone_PreservesSparseOntologyGovernanceAbsence(t *testing.T) {
 	assert.Equal(t, 0.0, clone.Ontology.Governance.LibrarianDefaultConfidence)
 	assert.False(t, clone.Ontology.Governance.LearningDefaultConfidenceBackfillNeeded)
 	assert.False(t, clone.Ontology.Governance.LibrarianDefaultConfidenceBackfillNeeded)
+	assert.False(t, clone.Ontology.Governance.LearningDefaultConfidencePresent)
+	assert.False(t, clone.Ontology.Governance.LibrarianDefaultConfidencePresent)
 }
 
 func TestConfigClone_PreservesExplicitZeroAdmissionConfidenceMarkers(t *testing.T) {
@@ -56,8 +58,10 @@ func TestConfigClone_PreservesExplicitZeroAdmissionConfidenceMarkers(t *testing.
 				AdmissionMode:                            OntologyAdmissionModeOff,
 				LearningDefaultConfidence:                0.0,
 				LearningDefaultConfidenceBackfillNeeded:  true,
+				LearningDefaultConfidencePresent:         true,
 				LibrarianDefaultConfidence:               0.0,
 				LibrarianDefaultConfidenceBackfillNeeded: true,
+				LibrarianDefaultConfidencePresent:        true,
 			},
 		},
 	}
@@ -69,6 +73,8 @@ func TestConfigClone_PreservesExplicitZeroAdmissionConfidenceMarkers(t *testing.
 	assert.Equal(t, 0.0, clone.Ontology.Governance.LibrarianDefaultConfidence)
 	assert.True(t, clone.Ontology.Governance.LearningDefaultConfidenceBackfillNeeded)
 	assert.True(t, clone.Ontology.Governance.LibrarianDefaultConfidenceBackfillNeeded)
+	assert.True(t, clone.Ontology.Governance.LearningDefaultConfidencePresent)
+	assert.True(t, clone.Ontology.Governance.LibrarianDefaultConfidencePresent)
 }
 
 func TestResolveEmbeddingProvider_ByProviderMapKey(t *testing.T) {
