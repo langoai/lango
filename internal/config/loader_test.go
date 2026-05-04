@@ -140,6 +140,27 @@ func TestPostLoad(t *testing.T) {
 		assert.InDelta(t, OntologyLearningDefaultConfidenceFallback, cfg.Ontology.Governance.LearningDefaultConfidence, 0.001)
 		assert.InDelta(t, OntologyLibrarianDefaultConfidenceFallback, cfg.Ontology.Governance.LibrarianDefaultConfidence, 0.001)
 	})
+
+	t.Run("backfills missing observe confidences after direct unmarshal", func(t *testing.T) {
+		t.Parallel()
+
+		var cfg Config
+		content := `{
+			"server": { "port": 18789 },
+			"logging": { "level": "info", "format": "console" },
+			"ontology": {
+				"governance": {
+					"admissionMode": "observe"
+				}
+			}
+		}`
+		require.NoError(t, json.Unmarshal([]byte(content), &cfg))
+
+		require.NoError(t, PostLoad(&cfg))
+		assert.Equal(t, OntologyAdmissionModeObserve, cfg.Ontology.Governance.AdmissionMode)
+		assert.InDelta(t, OntologyLearningDefaultConfidenceFallback, cfg.Ontology.Governance.LearningDefaultConfidence, 0.001)
+		assert.InDelta(t, OntologyLibrarianDefaultConfidenceFallback, cfg.Ontology.Governance.LibrarianDefaultConfidence, 0.001)
+	})
 }
 
 func TestNormalizePaths_Sandbox(t *testing.T) {

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 	"os"
@@ -372,6 +373,42 @@ type LoadResult struct {
 	Config       *Config         `json:"config"`
 	ExplicitKeys map[string]bool `json:"explicitKeys,omitempty"`
 	AutoEnabled  AutoEnabledSet  `json:"autoEnabled,omitempty"`
+}
+
+func (cfg *Config) UnmarshalJSON(data []byte) error {
+	type alias Config
+	var decoded alias
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*cfg = Config(decoded)
+
+	var raw struct {
+		Ontology struct {
+			Governance map[string]json.RawMessage `json:"governance"`
+		} `json:"ontology"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	if len(raw.Ontology.Governance) == 0 {
+		return nil
+	}
+
+	if rawMode, ok := raw.Ontology.Governance["admissionMode"]; ok {
+		var mode string
+		if err := json.Unmarshal(rawMode, &mode); err == nil && mode == OntologyAdmissionModeObserve {
+			if _, ok := raw.Ontology.Governance["learningDefaultConfidence"]; !ok && cfg.Ontology.Governance.LearningDefaultConfidence == 0 {
+				cfg.Ontology.Governance.LearningDefaultConfidence = OntologyLearningDefaultConfidenceFallback
+			}
+			if _, ok := raw.Ontology.Governance["librarianDefaultConfidence"]; !ok && cfg.Ontology.Governance.LibrarianDefaultConfidence == 0 {
+				cfg.Ontology.Governance.LibrarianDefaultConfidence = OntologyLibrarianDefaultConfidenceFallback
+			}
+		}
+	}
+
+	return nil
 }
 
 // Load reads configuration from file and environment.
