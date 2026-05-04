@@ -1671,6 +1671,58 @@ func TestNewOntologyForm_UnrelatedSavePreservesSparseAdmissionConfidenceSemantic
 	}
 }
 
+func TestNewOntologyForm_EditBackToFallbackPreservesSparseAdmissionConfidenceSemantics(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "lango.json")
+	content := `{
+		"logging": { "level": "info", "format": "console" },
+		"ontology": {
+			"governance": {
+				"admissionMode": "off"
+			}
+		}
+	}`
+	if err := os.WriteFile(cfgPath, []byte(content), 0644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	result, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+
+	form := NewOntologyForm(result.Config)
+	learning := fieldByKey(form, "ontology_gov_learning_conf")
+	if learning == nil {
+		t.Fatal("missing ontology_gov_learning_conf field")
+	}
+	librarian := fieldByKey(form, "ontology_gov_librarian_conf")
+	if librarian == nil {
+		t.Fatal("missing ontology_gov_librarian_conf field")
+	}
+
+	learning.Value = "0.6"
+	learning.Edited = true
+	librarian.Value = "0.5"
+	librarian.Edited = true
+
+	state := tuicore.NewConfigStateWith(result.Config)
+	state.UpdateConfigFromForm(form)
+
+	if state.Current.Ontology.Governance.LearningDefaultConfidencePresent {
+		t.Error("learning confidence presence should remain false after editing back to fallback")
+	}
+	if state.Current.Ontology.Governance.LibrarianDefaultConfidencePresent {
+		t.Error("librarian confidence presence should remain false after editing back to fallback")
+	}
+	if state.Current.Ontology.Governance.LearningDefaultConfidence != 0.60 {
+		t.Errorf("LearningDefaultConfidence: want %.2f, got %.2f", 0.60, state.Current.Ontology.Governance.LearningDefaultConfidence)
+	}
+	if state.Current.Ontology.Governance.LibrarianDefaultConfidence != 0.50 {
+		t.Errorf("LibrarianDefaultConfidence: want %.2f, got %.2f", 0.50, state.Current.Ontology.Governance.LibrarianDefaultConfidence)
+	}
+}
+
 func TestUpdateConfigFromForm_AlertingFields(t *testing.T) {
 	state := tuicore.NewConfigState()
 	form := tuicore.NewFormModel("test")

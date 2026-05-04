@@ -608,7 +608,6 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 			s.Current.Ontology.Governance.AdmissionMode = val
 		case "ontology_gov_learning_conf":
 			if f.PreserveAbsentIfUntouched &&
-				!f.Edited &&
 				!s.Current.Ontology.Governance.LearningDefaultConfidencePresent &&
 				val == f.InitialValue {
 				break
@@ -620,7 +619,6 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 			}
 		case "ontology_gov_librarian_conf":
 			if f.PreserveAbsentIfUntouched &&
-				!f.Edited &&
 				!s.Current.Ontology.Governance.LibrarianDefaultConfidencePresent &&
 				val == f.InitialValue {
 				break
