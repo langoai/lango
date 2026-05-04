@@ -1,14 +1,19 @@
 package app
 
 import (
+	"context"
+	"errors"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/eventbus"
+	"github.com/langoai/lango/internal/graph"
 	"github.com/langoai/lango/internal/observability"
 	"github.com/langoai/lango/internal/toolchain"
 )
@@ -212,4 +217,87 @@ func TestEventContract_GraphObservabilityEvents_AggregateInCollector(t *testing.
 	assert.Equal(t, int64(1), snap.GraphAdmissionUnmappedSources["legacy_import"])
 	assert.Equal(t, int64(1), snap.GraphExtractorDroppedUnknown["content_saved_extractor"])
 	assert.Equal(t, int64(1), snap.GraphWriteFailureBatches)
+}
+
+type failingBufferStore struct {
+	err error
+}
+
+func (s *failingBufferStore) AddTriple(context.Context, graph.Triple) error    { return s.err }
+func (s *failingBufferStore) AddTriples(context.Context, []graph.Triple) error { return s.err }
+func (s *failingBufferStore) RemoveTriple(context.Context, graph.Triple) error { return s.err }
+func (s *failingBufferStore) QueryBySubject(context.Context, string) ([]graph.Triple, error) {
+	return nil, nil
+}
+func (s *failingBufferStore) QueryByObject(context.Context, string) ([]graph.Triple, error) {
+	return nil, nil
+}
+func (s *failingBufferStore) QueryBySubjectPredicate(context.Context, string, string) ([]graph.Triple, error) {
+	return nil, nil
+}
+func (s *failingBufferStore) Traverse(context.Context, string, int, []string) ([]graph.Triple, error) {
+	return nil, nil
+}
+func (s *failingBufferStore) Count(context.Context) (int, error) { return 0, nil }
+func (s *failingBufferStore) PredicateStats(context.Context) (map[string]int, error) {
+	return nil, nil
+}
+func (s *failingBufferStore) AllTriples(context.Context) ([]graph.Triple, error) {
+	return nil, nil
+}
+func (s *failingBufferStore) ClearAll(context.Context) error { return nil }
+func (s *failingBufferStore) Close() error                   { return nil }
+
+func TestWireGraphWriteFailureBaselineObserver_ObserveModeToggle(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		mode          string
+		wantPublished bool
+	}{
+		{
+			name:          "observe mode publishes write failure baseline",
+			mode:          config.OntologyAdmissionModeObserve,
+			wantPublished: true,
+		},
+		{
+			name:          "off mode suppresses write failure baseline",
+			mode:          config.OntologyAdmissionModeOff,
+			wantPublished: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := config.DefaultConfig()
+			cfg.Ontology.Governance.AdmissionMode = tt.mode
+
+			bus := eventbus.New()
+			buffer := graph.NewGraphBuffer(&failingBufferStore{err: errors.New("boom")}, zap.NewNop().Sugar())
+			wireGraphWriteFailureBaselineObserver(cfg, buffer, bus)
+
+			var got []eventbus.GraphAdmissionWriteFailureEvent
+			eventbus.SubscribeTyped(bus, func(evt eventbus.GraphAdmissionWriteFailureEvent) {
+				got = append(got, evt)
+			})
+
+			var wg sync.WaitGroup
+			buffer.Start(&wg)
+			buffer.Enqueue(graph.GraphRequest{
+				Triples: []graph.Triple{{Subject: "a", Predicate: graph.Contains, Object: "b"}},
+			})
+			buffer.Stop()
+			wg.Wait()
+
+			if tt.wantPublished {
+				require.Len(t, got, 1)
+				assert.Equal(t, eventbus.GraphAdmissionWriteFailureEvent{BatchCount: 1}, got[0])
+				return
+			}
+			assert.Empty(t, got)
+		})
+	}
 }
