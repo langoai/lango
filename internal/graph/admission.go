@@ -51,7 +51,7 @@ type AdmissionRecord struct {
 type AdmissionObserveResult struct {
 	Records   []AdmissionRecord
 	Forwarded []Triple
-	Event     eventbus.GraphAdmissionBatchEvent
+	Event     *eventbus.GraphAdmissionBatchEvent
 }
 
 type AdmissionPolicyConfig struct {
@@ -76,14 +76,18 @@ func NewAdmissionPolicy(cfg AdmissionPolicyConfig, logger *zap.SugaredLogger) *A
 
 func (p *AdmissionPolicy) ObserveBatch(batch AdmissionBatch) AdmissionObserveResult {
 	result := AdmissionObserveResult{
-		Records:   make([]AdmissionRecord, 0, len(batch.Triples)),
 		Forwarded: make([]Triple, 0, len(batch.Triples)),
-		Event: eventbus.GraphAdmissionBatchEvent{
-			Source:        string(batch.Source),
-			ProducerGroup: string(batch.ProducerGroup),
-			BatchCount:    1,
-		},
 	}
+	for _, triple := range batch.Triples {
+		result.Forwarded = append(result.Forwarded, triple)
+	}
+
+	if !isSupportedAdmissionSource(batch.Source) {
+		return result
+	}
+
+	result.Records = make([]AdmissionRecord, 0, len(batch.Triples))
+	result.Event = newAdmissionBatchEvent(batch)
 
 	validatorSource := p.cfg.ValidatorSource
 	if p.cfg.Validator == nil {
@@ -111,8 +115,32 @@ func (p *AdmissionPolicy) ObserveBatch(batch AdmissionBatch) AdmissionObserveRes
 			Triple:   triple,
 			Decision: decision,
 		})
-		result.Forwarded = append(result.Forwarded, triple)
 	}
 
 	return result
+}
+
+func isSupportedAdmissionSource(source AdmissionSource) bool {
+	switch source {
+	case AdmissionSourceConversationAnalysis,
+		AdmissionSourceSessionLearning,
+		AdmissionSourceLearning,
+		AdmissionSourceProactiveLibrarian,
+		AdmissionSourceContentSavedExtractor:
+		return true
+	}
+	return false
+}
+
+func newAdmissionBatchEvent(batch AdmissionBatch) *eventbus.GraphAdmissionBatchEvent {
+	producerGroup := string(batch.ProducerGroup)
+	if batch.Source == AdmissionSourceContentSavedExtractor {
+		producerGroup = ""
+	}
+
+	return &eventbus.GraphAdmissionBatchEvent{
+		Source:        string(batch.Source),
+		ProducerGroup: producerGroup,
+		BatchCount:    1,
+	}
 }

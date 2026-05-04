@@ -35,6 +35,7 @@ func TestAdmissionPolicy_ObserveBatch_ClassifiesKnownUnknown(t *testing.T) {
 		{Subject: "known", Predicate: CausedBy, Object: "accepted"},
 		{Subject: "unknown", Predicate: "invented_rel", Object: "rejected"},
 	}, result.Forwarded)
+	require.NotNil(t, result.Event)
 	assert.Equal(t, eventbus.GraphAdmissionBatchEvent{
 		Source:           string(AdmissionSourceConversationAnalysis),
 		ProducerGroup:    string(AdmissionProducerGroupLearning),
@@ -43,7 +44,7 @@ func TestAdmissionPolicy_ObserveBatch_ClassifiesKnownUnknown(t *testing.T) {
 		KnownCount:       1,
 		UnknownCount:     1,
 		UnvalidatedCount: 0,
-	}, result.Event)
+	}, *result.Event)
 }
 
 func TestAdmissionPolicy_ObserveBatch_UsesUnvalidatedWhenValidatorUnavailable(t *testing.T) {
@@ -62,6 +63,7 @@ func TestAdmissionPolicy_ObserveBatch_UsesUnvalidatedWhenValidatorUnavailable(t 
 	require.Len(t, result.Records, 2)
 	assert.Equal(t, AdmissionDecisionUnvalidated, result.Records[0].Decision)
 	assert.Equal(t, AdmissionDecisionUnvalidated, result.Records[1].Decision)
+	require.NotNil(t, result.Event)
 	assert.Equal(t, eventbus.GraphAdmissionBatchEvent{
 		Source:           string(AdmissionSourceContentSavedExtractor),
 		ProducerGroup:    "",
@@ -70,5 +72,45 @@ func TestAdmissionPolicy_ObserveBatch_UsesUnvalidatedWhenValidatorUnavailable(t 
 		KnownCount:       0,
 		UnknownCount:     0,
 		UnvalidatedCount: 2,
-	}, result.Event)
+	}, *result.Event)
+}
+
+func TestAdmissionPolicy_ObserveBatch_SkipsUnsupportedSource(t *testing.T) {
+	t.Parallel()
+
+	policy := NewAdmissionPolicy(AdmissionPolicyConfig{
+		Validator: func(name string) bool {
+			return name == CausedBy
+		},
+	}, zap.NewNop().Sugar())
+
+	triples := []Triple{
+		{Subject: "unsupported", Predicate: "invented_rel", Object: "forwarded"},
+	}
+
+	result := policy.ObserveBatch(AdmissionBatch{
+		Source:  AdmissionSource("new_source"),
+		Triples: triples,
+	})
+
+	assert.Empty(t, result.Records)
+	assert.Equal(t, triples, result.Forwarded)
+	assert.Nil(t, result.Event)
+}
+
+func TestAdmissionPolicy_ObserveBatch_NormalizesContentSavedProducerGroup(t *testing.T) {
+	t.Parallel()
+
+	policy := NewAdmissionPolicy(AdmissionPolicyConfig{}, zap.NewNop().Sugar())
+
+	result := policy.ObserveBatch(AdmissionBatch{
+		Source:        AdmissionSourceContentSavedExtractor,
+		ProducerGroup: AdmissionProducerGroupLearning,
+		Triples: []Triple{
+			{Subject: "a", Predicate: CausedBy, Object: "b"},
+		},
+	})
+
+	require.NotNil(t, result.Event)
+	assert.Empty(t, result.Event.ProducerGroup)
 }
