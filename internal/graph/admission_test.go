@@ -57,8 +57,7 @@ func TestAdmissionPolicy_ObserveBatch_UsesUnvalidatedWhenValidatorUnavailable(t 
 	policy := NewAdmissionPolicy(AdmissionPolicyConfig{}, zap.NewNop().Sugar())
 
 	result := policy.ObserveBatch(AdmissionBatch{
-		SourceKind: AdmissionSourceKindSynthetic,
-		Source:     AdmissionSourceContentSavedExtractor,
+		Source: AdmissionSourceContentSavedExtractor,
 		Triples: []Triple{
 			{Subject: "a", Predicate: CausedBy, Object: "b"},
 			{Subject: "c", Predicate: "invented_rel", Object: "d"},
@@ -129,7 +128,7 @@ func TestAdmissionPolicy_ObserveBatch_ZeroValueSourceKindStillEmitsUnmapped(t *t
 	}, *result.UnmappedEvent)
 }
 
-func TestAdmissionPolicy_ObserveBatch_TreatsEventBusContentSavedExtractorAsUnmapped(t *testing.T) {
+func TestAdmissionPolicy_ObserveBatch_AdmitsContentSavedExtractorWithoutSyntheticHint(t *testing.T) {
 	t.Parallel()
 
 	policy := NewAdmissionPolicy(AdmissionPolicyConfig{}, zap.NewNop().Sugar())
@@ -141,12 +140,9 @@ func TestAdmissionPolicy_ObserveBatch_TreatsEventBusContentSavedExtractorAsUnmap
 		},
 	})
 
-	assert.Nil(t, result.Event)
-	require.NotNil(t, result.UnmappedEvent)
-	assert.Equal(t, eventbus.GraphAdmissionUnmappedSourceEvent{
-		RawSource:  string(AdmissionSourceContentSavedExtractor),
-		BatchCount: 1,
-	}, *result.UnmappedEvent)
+	require.NotNil(t, result.Event)
+	assert.Nil(t, result.Event.ProducerGroup)
+	assert.Nil(t, result.UnmappedEvent)
 }
 
 func TestAdmissionPolicy_ObserveBatch_CanonicalizesKnownEventBusSourceKind(t *testing.T) {
@@ -195,7 +191,6 @@ func TestAdmissionPolicy_ObserveBatch_NormalizesContentSavedProducerGroup(t *tes
 	policy := NewAdmissionPolicy(AdmissionPolicyConfig{}, zap.NewNop().Sugar())
 
 	result := policy.ObserveBatch(AdmissionBatch{
-		SourceKind:    AdmissionSourceKindSynthetic,
 		Source:        AdmissionSourceContentSavedExtractor,
 		ProducerGroup: AdmissionProducerGroupLearning,
 		Triples: []Triple{
@@ -284,13 +279,31 @@ func TestAdmissionIdentifiers_AreStableForTask4Consumers(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, AdmissionSourceKindEventBus, sourceKind)
 
-	sourceKind, ok = ObservedAdmissionSourceKind(AdmissionSourceContentSavedExtractor, AdmissionSourceKindSynthetic)
+	sourceKind, ok = ObservedAdmissionSourceKind(AdmissionSourceContentSavedExtractor, "")
 	require.True(t, ok)
 	assert.Equal(t, AdmissionSourceKindSynthetic, sourceKind)
 
-	_, ok = ObservedAdmissionSourceKind(AdmissionSourceContentSavedExtractor, "")
-	assert.False(t, ok)
-
 	_, ok = ObservedAdmissionSourceKind(AdmissionSource("new_source"), "")
 	assert.False(t, ok)
+}
+
+func TestAdmissionPolicy_ObserveBatch_NormalizesValidatorSource(t *testing.T) {
+	t.Parallel()
+
+	policy := NewAdmissionPolicy(AdmissionPolicyConfig{
+		Validator: func(name string) bool {
+			return name == CausedBy
+		},
+		ValidatorSource: AdmissionValidatorSource("custom_validator"),
+	}, zap.NewNop().Sugar())
+
+	result := policy.ObserveBatch(AdmissionBatch{
+		Source: AdmissionSourceConversationAnalysis,
+		Triples: []Triple{
+			{Subject: "a", Predicate: CausedBy, Object: "b"},
+		},
+	})
+
+	require.NotNil(t, result.Event)
+	assert.Equal(t, string(AdmissionValidatorSourceOntologyRegistry), result.Event.ValidatorSource)
 }

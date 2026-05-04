@@ -106,13 +106,7 @@ func (p *AdmissionPolicy) ObserveBatch(batch AdmissionBatch) AdmissionObserveRes
 	result.Records = make([]AdmissionRecord, 0, len(batch.Triples))
 	result.Event = newAdmissionBatchEvent(batch)
 
-	validatorSource := p.cfg.ValidatorSource
-	if p.cfg.Validator == nil {
-		validatorSource = AdmissionValidatorSourceUnavailable
-	} else if validatorSource == "" {
-		validatorSource = AdmissionValidatorSourceOntologyRegistry
-	}
-	result.Event.ValidatorSource = string(validatorSource)
+	result.Event.ValidatorSource = normalizeAdmissionValidatorSource(p.cfg.Validator)
 
 	for _, triple := range batch.Triples {
 		decision := AdmissionDecisionUnvalidated
@@ -165,14 +159,21 @@ func IsSupportedAdmissionSource(source AdmissionSource) bool {
 	return false
 }
 
-func ObservedAdmissionSourceKind(source AdmissionSource, hintedKind AdmissionSourceKind) (AdmissionSourceKind, bool) {
+func ObservedAdmissionSourceKind(source AdmissionSource, _ AdmissionSourceKind) (AdmissionSourceKind, bool) {
 	if IsSupportedAdmissionSource(source) {
 		return AdmissionSourceKindEventBus, true
 	}
-	if source == AdmissionSourceContentSavedExtractor && hintedKind == AdmissionSourceKindSynthetic {
+	if source == AdmissionSourceContentSavedExtractor {
 		return AdmissionSourceKindSynthetic, true
 	}
 	return "", false
+}
+
+func normalizeAdmissionValidatorSource(validator PredicateValidatorFunc) string {
+	if validator == nil {
+		return string(AdmissionValidatorSourceUnavailable)
+	}
+	return string(AdmissionValidatorSourceOntologyRegistry)
 }
 
 func newAdmissionBatchEvent(batch AdmissionBatch) *eventbus.GraphAdmissionBatchEvent {
