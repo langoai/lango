@@ -72,6 +72,17 @@ func TestConfigUnmarshalJSON_BackfillsLegacyAdmissionModeAndMissingConfidences(t
 	assert.InDelta(t, OntologyLibrarianDefaultConfidenceFallback, cfg.Ontology.Governance.LibrarianDefaultConfidence, 0.001)
 }
 
+func TestConfigUnmarshalJSON_BackfillsDefaultsWhenGovernanceMissing(t *testing.T) {
+	t.Parallel()
+
+	var cfg Config
+	require.NoError(t, json.Unmarshal([]byte(`{}`), &cfg))
+
+	assert.Equal(t, OntologyAdmissionModeOff, cfg.Ontology.Governance.AdmissionMode)
+	assert.InDelta(t, OntologyLearningDefaultConfidenceFallback, cfg.Ontology.Governance.LearningDefaultConfidence, 0.001)
+	assert.InDelta(t, OntologyLibrarianDefaultConfidenceFallback, cfg.Ontology.Governance.LibrarianDefaultConfidence, 0.001)
+}
+
 func TestExpandEnvVars(t *testing.T) {
 	t.Parallel()
 

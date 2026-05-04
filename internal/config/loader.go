@@ -393,6 +393,15 @@ func (cfg *Config) UnmarshalJSON(data []byte) error {
 	}
 
 	if len(raw.Ontology.Governance) == 0 {
+		if cfg.Ontology.Governance.AdmissionMode == "" {
+			cfg.Ontology.Governance.AdmissionMode = OntologyAdmissionModeOff
+		}
+		if cfg.Ontology.Governance.LearningDefaultConfidence == 0 {
+			cfg.Ontology.Governance.LearningDefaultConfidence = OntologyLearningDefaultConfidenceFallback
+		}
+		if cfg.Ontology.Governance.LibrarianDefaultConfidence == 0 {
+			cfg.Ontology.Governance.LibrarianDefaultConfidence = OntologyLibrarianDefaultConfidenceFallback
+		}
 		return nil
 	}
 
