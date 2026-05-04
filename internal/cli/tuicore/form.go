@@ -32,6 +32,7 @@ func NewFormModel(title string) FormModel {
 
 // AddField adds a field to the form, initializing its text input if applicable.
 func (m *FormModel) AddField(f *Field) {
+	f.InitialValue = f.Value
 	if f.Type == InputText || f.Type == InputInt || f.Type == InputPassword {
 		ti := textinput.New()
 		ti.Placeholder = f.Placeholder
@@ -174,6 +175,9 @@ func (m FormModel) Update(msg tea.Msg) (FormModel, tea.Cmd) {
 				return m, nil
 			case "enter":
 				if len(field.FilteredOptions) > 0 && field.SelectCursor < len(field.FilteredOptions) {
+					if field.Value != field.FilteredOptions[field.SelectCursor] {
+						field.Edited = true
+					}
 					field.Value = field.FilteredOptions[field.SelectCursor]
 					field.TextInput.SetValue(field.Value)
 				}
@@ -225,6 +229,7 @@ func (m FormModel) Update(msg tea.Msg) (FormModel, tea.Cmd) {
 		case " ":
 			if field.Type == InputBool {
 				field.Checked = !field.Checked
+				field.Edited = true
 			}
 		case "enter":
 			if field.Type == InputSearchSelect {
@@ -262,8 +267,12 @@ func (m FormModel) Update(msg tea.Msg) (FormModel, tea.Cmd) {
 	field = visible[m.Cursor]
 	if field.Type == InputText || field.Type == InputInt || field.Type == InputPassword {
 		var inputCmd tea.Cmd
+		prev := field.Value
 		field.TextInput, inputCmd = field.TextInput.Update(msg)
 		field.Value = field.TextInput.Value()
+		if field.Value != prev {
+			field.Edited = true
+		}
 		cmd = inputCmd
 	}
 
@@ -300,9 +309,12 @@ func (m FormModel) Update(msg tea.Msg) (FormModel, tea.Cmd) {
 				}
 			}
 			// Fire OnChange callback when value actually changed.
-			if field.Value != oldValue && field.OnChange != nil {
-				if changeCmd := field.OnChange(field.Value); changeCmd != nil {
-					cmd = changeCmd
+			if field.Value != oldValue {
+				field.Edited = true
+				if field.OnChange != nil {
+					if changeCmd := field.OnChange(field.Value); changeCmd != nil {
+						cmd = changeCmd
+					}
 				}
 			}
 		}

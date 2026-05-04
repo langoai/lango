@@ -111,15 +111,17 @@ func NewOntologyForm(cfg *config.Config) *tuicore.FormModel {
 	})
 	form.AddField(&tuicore.Field{
 		Key: "ontology_gov_learning_conf", Label: "    Learning Default Confidence", Type: tuicore.InputText,
-		Value:       strconv.FormatFloat(learningConfidence, 'f', -1, 64),
-		Placeholder: "0.60",
-		Description: "Fallback confidence for the learning producer group",
+		Value:                     strconv.FormatFloat(learningConfidence, 'f', -1, 64),
+		Placeholder:               "0.60",
+		Description:               "Fallback confidence for the learning producer group",
+		PreserveAbsentIfUntouched: true,
 	})
 	form.AddField(&tuicore.Field{
 		Key: "ontology_gov_librarian_conf", Label: "    Librarian Default Confidence", Type: tuicore.InputText,
-		Value:       strconv.FormatFloat(librarianConfidence, 'f', -1, 64),
-		Placeholder: "0.50",
-		Description: "Fallback confidence for the librarian producer group",
+		Value:                     strconv.FormatFloat(librarianConfidence, 'f', -1, 64),
+		Placeholder:               "0.50",
+		Description:               "Fallback confidence for the librarian producer group",
+		PreserveAbsentIfUntouched: true,
 	})
 
 	// --- Exchange ---

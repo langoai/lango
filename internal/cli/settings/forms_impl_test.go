@@ -1620,6 +1620,57 @@ func TestNewOntologyForm_PreservesExactAdmissionConfidenceRoundTrip(t *testing.T
 	}
 }
 
+func TestNewOntologyForm_UnrelatedSavePreservesSparseAdmissionConfidenceSemantics(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "lango.json")
+	content := `{
+		"logging": { "level": "info", "format": "console" },
+		"ontology": {
+			"governance": {
+				"admissionMode": "off"
+			}
+		}
+	}`
+	if err := os.WriteFile(cfgPath, []byte(content), 0644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	result, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if result.Config.Ontology.Governance.LearningDefaultConfidencePresent {
+		t.Fatal("learning confidence should start absent for legacy config")
+	}
+	if result.Config.Ontology.Governance.LibrarianDefaultConfidencePresent {
+		t.Fatal("librarian confidence should start absent for legacy config")
+	}
+
+	form := NewOntologyForm(result.Config)
+	aclEnabled := fieldByKey(form, "ontology_acl_enabled")
+	if aclEnabled == nil {
+		t.Fatal("missing ontology_acl_enabled field")
+	}
+	aclEnabled.Checked = true
+	aclEnabled.Edited = true
+
+	state := tuicore.NewConfigStateWith(result.Config)
+	state.UpdateConfigFromForm(form)
+
+	if state.Current.Ontology.Governance.LearningDefaultConfidencePresent {
+		t.Error("learning confidence presence should remain false after unrelated save")
+	}
+	if state.Current.Ontology.Governance.LibrarianDefaultConfidencePresent {
+		t.Error("librarian confidence presence should remain false after unrelated save")
+	}
+	if state.Current.Ontology.Governance.LearningDefaultConfidence != 0.60 {
+		t.Errorf("LearningDefaultConfidence: want %.2f, got %.2f", 0.60, state.Current.Ontology.Governance.LearningDefaultConfidence)
+	}
+	if state.Current.Ontology.Governance.LibrarianDefaultConfidence != 0.50 {
+		t.Errorf("LibrarianDefaultConfidence: want %.2f, got %.2f", 0.50, state.Current.Ontology.Governance.LibrarianDefaultConfidence)
+	}
+}
+
 func TestUpdateConfigFromForm_AlertingFields(t *testing.T) {
 	state := tuicore.NewConfigState()
 	form := tuicore.NewFormModel("test")
