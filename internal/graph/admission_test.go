@@ -183,12 +183,11 @@ func TestAdmissionIdentifiers_AreStableForTask4Consumers(t *testing.T) {
 	assert.True(t, IsSupportedAdmissionSource(AdmissionSourceSessionLearning))
 	assert.True(t, IsSupportedAdmissionSource(AdmissionSourceLearning))
 	assert.True(t, IsSupportedAdmissionSource(AdmissionSourceProactiveLibrarian))
-	assert.True(t, IsSupportedAdmissionSource(AdmissionSourceContentSavedExtractor))
+	assert.False(t, IsSupportedAdmissionSource(AdmissionSourceContentSavedExtractor))
 	assert.False(t, IsSupportedAdmissionSource(AdmissionSource("new_source")))
 
 	assert.Equal(t, string(AdmissionProducerGroupLearning), CanonicalAdmissionProducerGroup(AdmissionSourceConversationAnalysis))
 	assert.Equal(t, string(AdmissionProducerGroupLearning), CanonicalAdmissionProducerGroup(AdmissionSourceSessionLearning))
 	assert.Equal(t, string(AdmissionProducerGroupLearning), CanonicalAdmissionProducerGroup(AdmissionSourceLearning))
 	assert.Equal(t, string(AdmissionProducerGroupLibrarian), CanonicalAdmissionProducerGroup(AdmissionSourceProactiveLibrarian))
-	assert.Empty(t, CanonicalAdmissionProducerGroup(AdmissionSourceContentSavedExtractor))
 }

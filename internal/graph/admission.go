@@ -83,7 +83,7 @@ func (p *AdmissionPolicy) ObserveBatch(batch AdmissionBatch) AdmissionObserveRes
 		result.Forwarded = append(result.Forwarded, triple)
 	}
 
-	if !IsSupportedAdmissionSource(batch.Source) {
+	if !isObservedAdmissionSource(batch.Source) {
 		result.UnmappedEvent = &eventbus.GraphAdmissionUnmappedSourceEvent{
 			RawSource:  string(batch.Source),
 			BatchCount: 1,
@@ -130,11 +130,17 @@ func IsSupportedAdmissionSource(source AdmissionSource) bool {
 	case AdmissionSourceConversationAnalysis,
 		AdmissionSourceSessionLearning,
 		AdmissionSourceLearning,
-		AdmissionSourceProactiveLibrarian,
-		AdmissionSourceContentSavedExtractor:
+		AdmissionSourceProactiveLibrarian:
 		return true
 	}
 	return false
+}
+
+func isObservedAdmissionSource(source AdmissionSource) bool {
+	if source == AdmissionSourceContentSavedExtractor {
+		return true
+	}
+	return IsSupportedAdmissionSource(source)
 }
 
 func newAdmissionBatchEvent(batch AdmissionBatch) *eventbus.GraphAdmissionBatchEvent {
