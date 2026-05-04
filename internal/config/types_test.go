@@ -2,6 +2,8 @@ package config
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -93,6 +95,32 @@ func TestConfigClone_PreservesExplicitZeroAdmissionConfidenceMarkers(t *testing.
 	assert.True(t, clone.Ontology.Governance.LibrarianDefaultConfidenceBackfillNeeded)
 	assert.True(t, clone.Ontology.Governance.LearningDefaultConfidencePresent)
 	assert.True(t, clone.Ontology.Governance.LibrarianDefaultConfidencePresent)
+}
+
+func TestConfigClone_PreservesLoadedSparseAdmissionFallbackValues(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "lango.json")
+	content := `{
+		"logging": { "level": "info", "format": "console" },
+		"ontology": {
+			"governance": {}
+		}
+	}`
+	require.NoError(t, os.WriteFile(cfgPath, []byte(content), 0644))
+
+	result, err := Load(cfgPath)
+	require.NoError(t, err)
+
+	clone := result.Config.Clone()
+	require.NotNil(t, clone)
+	assert.Equal(t, OntologyAdmissionModeOff, clone.Ontology.Governance.AdmissionMode)
+	assert.InDelta(t, OntologyLearningDefaultConfidenceFallback, clone.Ontology.Governance.LearningDefaultConfidence, 0.001)
+	assert.InDelta(t, OntologyLibrarianDefaultConfidenceFallback, clone.Ontology.Governance.LibrarianDefaultConfidence, 0.001)
+	assert.False(t, clone.Ontology.Governance.AdmissionModePresent)
+	assert.False(t, clone.Ontology.Governance.LearningDefaultConfidencePresent)
+	assert.False(t, clone.Ontology.Governance.LibrarianDefaultConfidencePresent)
 }
 
 func TestOntologyGovernanceJSONMarshal_OmitsSparseConfidenceKeys(t *testing.T) {
