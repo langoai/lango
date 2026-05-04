@@ -212,7 +212,23 @@ func TestPostLoad(t *testing.T) {
 		assert.InDelta(t, OntologyLibrarianDefaultConfidenceFallback, cfg.Ontology.Governance.LibrarianDefaultConfidence, 0.001)
 	})
 
-	t.Run("preserves explicit zero admission confidences for in-memory config", func(t *testing.T) {
+	t.Run("canonicalizes sparse in-memory observe confidences when present markers are unset", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := DefaultConfig()
+		cfg.Ontology.Governance.AdmissionMode = OntologyAdmissionModeObserve
+		cfg.Ontology.Governance.LearningDefaultConfidence = 0
+		cfg.Ontology.Governance.LibrarianDefaultConfidence = 0
+		cfg.Ontology.Governance.LearningDefaultConfidencePresent = false
+		cfg.Ontology.Governance.LibrarianDefaultConfidencePresent = false
+
+		require.NoError(t, PostLoad(cfg))
+		assert.Equal(t, OntologyAdmissionModeObserve, cfg.Ontology.Governance.AdmissionMode)
+		assert.InDelta(t, OntologyLearningDefaultConfidenceFallback, cfg.Ontology.Governance.LearningDefaultConfidence, 0.001)
+		assert.InDelta(t, OntologyLibrarianDefaultConfidenceFallback, cfg.Ontology.Governance.LibrarianDefaultConfidence, 0.001)
+	})
+
+	t.Run("preserves explicit zero admission confidences when present markers are set", func(t *testing.T) {
 		t.Parallel()
 
 		for _, mode := range []string{OntologyAdmissionModeOff, OntologyAdmissionModeObserve} {
@@ -220,6 +236,10 @@ func TestPostLoad(t *testing.T) {
 			cfg.Ontology.Governance.AdmissionMode = mode
 			cfg.Ontology.Governance.LearningDefaultConfidence = 0
 			cfg.Ontology.Governance.LibrarianDefaultConfidence = 0
+			cfg.Ontology.Governance.LearningDefaultConfidencePresent = true
+			cfg.Ontology.Governance.LibrarianDefaultConfidencePresent = true
+			cfg.Ontology.Governance.LearningDefaultConfidenceBackfillNeeded = false
+			cfg.Ontology.Governance.LibrarianDefaultConfidenceBackfillNeeded = false
 
 			require.NoError(t, PostLoad(cfg))
 			assert.Equal(t, mode, cfg.Ontology.Governance.AdmissionMode)

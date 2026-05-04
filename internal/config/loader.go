@@ -515,10 +515,10 @@ func backfillLegacyOntologyAdmissionDefaults(cfg *Config) {
 	if cfg.Ontology.Governance.AdmissionMode == "" {
 		cfg.Ontology.Governance.AdmissionMode = OntologyAdmissionModeOff
 	}
-	if cfg.Ontology.Governance.LearningDefaultConfidenceBackfillNeeded && cfg.Ontology.Governance.LearningDefaultConfidence == 0 {
+	if !cfg.Ontology.Governance.LearningDefaultConfidencePresent && cfg.Ontology.Governance.LearningDefaultConfidence == 0 {
 		cfg.Ontology.Governance.LearningDefaultConfidence = OntologyLearningDefaultConfidenceFallback
 	}
-	if cfg.Ontology.Governance.LibrarianDefaultConfidenceBackfillNeeded && cfg.Ontology.Governance.LibrarianDefaultConfidence == 0 {
+	if !cfg.Ontology.Governance.LibrarianDefaultConfidencePresent && cfg.Ontology.Governance.LibrarianDefaultConfidence == 0 {
 		cfg.Ontology.Governance.LibrarianDefaultConfidence = OntologyLibrarianDefaultConfidenceFallback
 	}
 }
