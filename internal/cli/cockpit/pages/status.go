@@ -295,11 +295,11 @@ func (m *StatusPage) renderGraphAdmission(
 	})
 
 	for _, metric := range admissionMetrics {
-		group := "none"
+		title := fmt.Sprintf("%s  validator=%s", metric.Source, metric.ValidatorSource)
 		if metric.ProducerGroup != nil {
-			group = *metric.ProducerGroup
+			title = fmt.Sprintf("%s  group=%s  validator=%s",
+				metric.Source, *metric.ProducerGroup, metric.ValidatorSource)
 		}
-		title := fmt.Sprintf("%s  group=%s  validator=%s", metric.Source, group, metric.ValidatorSource)
 		detail := fmt.Sprintf("batches %d  known %d  unknown %d  unvalidated %d",
 			metric.BatchCount, metric.KnownCount, metric.UnknownCount, metric.UnvalidatedCount)
 		b.WriteString(nameStyle.Render(title))

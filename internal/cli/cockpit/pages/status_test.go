@@ -128,6 +128,46 @@ func TestStatusPage_ViewWithToolMetrics(t *testing.T) {
 	assert.Contains(t, view, "Total executions")
 }
 
+func TestStatusPage_ViewWithGraphAdmissionMetrics(t *testing.T) {
+	provider := func() []types.FeatureStatus { return nil }
+	collector := observability.NewCollector()
+	learningGroup := "learning"
+
+	collector.RecordGraphAdmissionBatch(observability.GraphAdmissionBatchMetric{
+		Source:           "learning",
+		ProducerGroup:    &learningGroup,
+		ValidatorSource:  "ontology_registry",
+		BatchCount:       2,
+		KnownCount:       5,
+		UnknownCount:     1,
+		UnvalidatedCount: 0,
+	})
+	collector.RecordGraphAdmissionBatch(observability.GraphAdmissionBatchMetric{
+		Source:           "content_saved_extractor",
+		ValidatorSource:  "unavailable",
+		BatchCount:       1,
+		KnownCount:       0,
+		UnknownCount:     0,
+		UnvalidatedCount: 3,
+	})
+	collector.RecordGraphExtractorDroppedUnknown("content_saved_extractor", 2)
+	collector.RecordGraphAdmissionUnmappedSource("legacy_import", 1)
+	collector.RecordGraphWriteFailure(1)
+
+	p := NewStatusPage(provider, collector, &config.Config{})
+	p.Activate()
+
+	view := p.View()
+	assert.Contains(t, view, "Graph Admission")
+	assert.Contains(t, view, "learning  group=learning  validator=ontology_registry")
+	assert.Contains(t, view, "content_saved_extractor  validator=unavailable")
+	assert.NotContains(t, view, "content_saved_extractor  group=none")
+	assert.NotContains(t, view, "group=none")
+	assert.Contains(t, view, "Dropped unknown:")
+	assert.Contains(t, view, "legacy_import  1 batches")
+	assert.Contains(t, view, "1 failed batches")
+}
+
 func TestFormatDuration(t *testing.T) {
 	tests := []struct {
 		give time.Duration
