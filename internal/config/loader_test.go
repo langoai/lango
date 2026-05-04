@@ -324,6 +324,7 @@ func TestValidate(t *testing.T) {
 		t.Parallel()
 
 		cfg := DefaultConfig()
+		cfg.Ontology.Governance.AdmissionMode = OntologyAdmissionModeObserve
 		cfg.Ontology.Governance.LearningDefaultConfidence = 1.25
 
 		err := Validate(cfg)
@@ -336,12 +337,24 @@ func TestValidate(t *testing.T) {
 		t.Parallel()
 
 		cfg := DefaultConfig()
+		cfg.Ontology.Governance.AdmissionMode = OntologyAdmissionModeObserve
 		cfg.Ontology.Governance.LibrarianDefaultConfidence = -0.10
 
 		err := Validate(cfg)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "ontology.governance.librarianDefaultConfidence")
 		assert.Contains(t, err.Error(), "0.0-1.0")
+	})
+
+	t.Run("ontology admission off allows legacy confidence values", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := DefaultConfig()
+		cfg.Ontology.Governance.AdmissionMode = OntologyAdmissionModeOff
+		cfg.Ontology.Governance.LearningDefaultConfidence = 1.25
+		cfg.Ontology.Governance.LibrarianDefaultConfidence = -0.10
+
+		assert.NoError(t, Validate(cfg))
 	})
 }
 

@@ -100,6 +100,14 @@ func NewOntologyForm(cfg *config.Config) *tuicore.FormModel {
 	if admissionMode == "" {
 		admissionMode = config.OntologyAdmissionModeOff
 	}
+	learningConfidence := cfg.Ontology.Governance.LearningDefaultConfidence
+	if admissionMode != config.OntologyAdmissionModeObserve && learningConfidence == 0 {
+		learningConfidence = config.OntologyLearningDefaultConfidenceFallback
+	}
+	librarianConfidence := cfg.Ontology.Governance.LibrarianDefaultConfidence
+	if admissionMode != config.OntologyAdmissionModeObserve && librarianConfidence == 0 {
+		librarianConfidence = config.OntologyLibrarianDefaultConfidenceFallback
+	}
 	form.AddField(&tuicore.Field{
 		Key: "ontology_gov_admission_mode", Label: "    Runtime Admission Mode", Type: tuicore.InputSelect,
 		Value:       admissionMode,
@@ -108,13 +116,13 @@ func NewOntologyForm(cfg *config.Config) *tuicore.FormModel {
 	})
 	form.AddField(&tuicore.Field{
 		Key: "ontology_gov_learning_conf", Label: "    Learning Default Confidence", Type: tuicore.InputText,
-		Value:       fmt.Sprintf("%.2f", cfg.Ontology.Governance.LearningDefaultConfidence),
+		Value:       fmt.Sprintf("%.2f", learningConfidence),
 		Placeholder: "0.60",
 		Description: "Fallback confidence for the learning producer group",
 	})
 	form.AddField(&tuicore.Field{
 		Key: "ontology_gov_librarian_conf", Label: "    Librarian Default Confidence", Type: tuicore.InputText,
-		Value:       fmt.Sprintf("%.2f", cfg.Ontology.Governance.LibrarianDefaultConfidence),
+		Value:       fmt.Sprintf("%.2f", librarianConfidence),
 		Placeholder: "0.50",
 		Description: "Fallback confidence for the librarian producer group",
 	})

@@ -1,8 +1,10 @@
 package config
 
 const (
-	OntologyAdmissionModeOff     = "off"
-	OntologyAdmissionModeObserve = "observe"
+	OntologyAdmissionModeOff                   = "off"
+	OntologyAdmissionModeObserve               = "observe"
+	OntologyLearningDefaultConfidenceFallback  = 0.60
+	OntologyLibrarianDefaultConfidenceFallback = 0.50
 )
 
 // OntologyConfig configures the ontology subsystem.
