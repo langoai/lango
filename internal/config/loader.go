@@ -396,6 +396,9 @@ func (cfg *Config) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 
+	cfg.Ontology.Governance.LearningDefaultConfidenceConfigured = raw.Ontology.Governance["learningDefaultConfidence"] != nil
+	cfg.Ontology.Governance.LibrarianDefaultConfidenceConfigured = raw.Ontology.Governance["librarianDefaultConfidence"] != nil
+
 	if rawMode, ok := raw.Ontology.Governance["admissionMode"]; ok {
 		var mode string
 		if err := json.Unmarshal(rawMode, &mode); err == nil && mode == "" {
@@ -449,6 +452,8 @@ func Load(configPath string) (*LoadResult, error) {
 	if err := v.Unmarshal(cfg); err != nil {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
 	}
+	cfg.Ontology.Governance.LearningDefaultConfidenceConfigured = v.InConfig("ontology.governance.learningDefaultConfidence")
+	cfg.Ontology.Governance.LibrarianDefaultConfidenceConfigured = v.InConfig("ontology.governance.librarianDefaultConfidence")
 
 	// Detect which context-related keys the user explicitly set in their config file.
 	explicitKeys := collectExplicitKeys(configPath, contextRelatedKeys)

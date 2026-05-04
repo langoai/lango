@@ -101,11 +101,11 @@ func NewOntologyForm(cfg *config.Config) *tuicore.FormModel {
 		admissionMode = config.OntologyAdmissionModeOff
 	}
 	learningConfidence := cfg.Ontology.Governance.LearningDefaultConfidence
-	if admissionMode != config.OntologyAdmissionModeObserve && learningConfidence == 0 {
+	if !cfg.Ontology.Governance.LearningDefaultConfidenceConfigured && admissionMode != config.OntologyAdmissionModeObserve && learningConfidence == 0 {
 		learningConfidence = config.OntologyLearningDefaultConfidenceFallback
 	}
 	librarianConfidence := cfg.Ontology.Governance.LibrarianDefaultConfidence
-	if admissionMode != config.OntologyAdmissionModeObserve && librarianConfidence == 0 {
+	if !cfg.Ontology.Governance.LibrarianDefaultConfidenceConfigured && admissionMode != config.OntologyAdmissionModeObserve && librarianConfidence == 0 {
 		librarianConfidence = config.OntologyLibrarianDefaultConfidenceFallback
 	}
 	form.AddField(&tuicore.Field{

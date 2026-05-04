@@ -1,6 +1,8 @@
 package settings
 
 import (
+	"os"
+	"path/filepath"
 	"strconv"
 	"testing"
 	"time"
@@ -1496,6 +1498,56 @@ func TestNewOntologyForm_LegacyAdmissionConfidenceDefaultsRoundTrip(t *testing.T
 	}
 	if state.Current.Ontology.Governance.LibrarianDefaultConfidence != 0.50 {
 		t.Errorf("LibrarianDefaultConfidence: want %.2f, got %.2f", 0.50, state.Current.Ontology.Governance.LibrarianDefaultConfidence)
+	}
+}
+
+func TestNewOntologyForm_ExplicitZeroOffModeConfidenceRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "lango.json")
+	content := `{
+		"logging": { "level": "info", "format": "console" },
+		"ontology": {
+			"governance": {
+				"admissionMode": "off",
+				"learningDefaultConfidence": 0.0,
+				"librarianDefaultConfidence": 0.0
+			}
+		}
+	}`
+	if err := os.WriteFile(cfgPath, []byte(content), 0644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	result, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+
+	form := NewOntologyForm(result.Config)
+	learning := fieldByKey(form, "ontology_gov_learning_conf")
+	if learning == nil {
+		t.Fatal("missing ontology_gov_learning_conf field")
+	}
+	librarian := fieldByKey(form, "ontology_gov_librarian_conf")
+	if librarian == nil {
+		t.Fatal("missing ontology_gov_librarian_conf field")
+	}
+
+	if learning.Value != "0.00" {
+		t.Errorf("ontology_gov_learning_conf: want %q, got %q", "0.00", learning.Value)
+	}
+	if librarian.Value != "0.00" {
+		t.Errorf("ontology_gov_librarian_conf: want %q, got %q", "0.00", librarian.Value)
+	}
+
+	state := tuicore.NewConfigStateWith(result.Config)
+	state.UpdateConfigFromForm(form)
+
+	if state.Current.Ontology.Governance.LearningDefaultConfidence != 0.0 {
+		t.Errorf("LearningDefaultConfidence: want %.2f, got %.2f", 0.0, state.Current.Ontology.Governance.LearningDefaultConfidence)
+	}
+	if state.Current.Ontology.Governance.LibrarianDefaultConfidence != 0.0 {
+		t.Errorf("LibrarianDefaultConfidence: want %.2f, got %.2f", 0.0, state.Current.Ontology.Governance.LibrarianDefaultConfidence)
 	}
 }
 
