@@ -1442,6 +1442,28 @@ func TestNewOntologyForm_AdmissionFieldsVisibleWithoutGovernanceEnabled(t *testi
 	}
 }
 
+func TestNewOntologyForm_AdmissionFieldsVisibleWithoutOntologyEnabled(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Ontology.Enabled = false
+	cfg.Ontology.Governance.Enabled = false
+
+	form := NewOntologyForm(cfg)
+	visible := map[string]bool{}
+	for _, field := range form.VisibleFields() {
+		visible[field.Key] = true
+	}
+
+	if !visible["ontology_gov_admission_mode"] {
+		t.Error("ontology_gov_admission_mode should remain visible when ontology is disabled")
+	}
+	if !visible["ontology_gov_learning_conf"] {
+		t.Error("ontology_gov_learning_conf should remain visible when ontology is disabled")
+	}
+	if !visible["ontology_gov_librarian_conf"] {
+		t.Error("ontology_gov_librarian_conf should remain visible when ontology is disabled")
+	}
+}
+
 func TestUpdateConfigFromForm_AlertingFields(t *testing.T) {
 	state := tuicore.NewConfigState()
 	form := tuicore.NewFormModel("test")

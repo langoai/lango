@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -256,7 +257,7 @@ func DefaultConfig() *Config {
 				P2PPermission: "read",
 			},
 			Governance: OntologyGovernanceConfig{
-				AdmissionMode:              "off",
+				AdmissionMode:              OntologyAdmissionModeOff,
 				LearningDefaultConfidence:  0.60,
 				LibrarianDefaultConfidence: 0.50,
 			},
@@ -580,6 +581,26 @@ func Validate(cfg *Config) error {
 	// Validate graph config
 	if cfg.Graph.Enabled && cfg.Graph.Backend != "bolt" {
 		errs = append(errs, fmt.Sprintf("graph.backend %q is not supported (must be \"bolt\")", cfg.Graph.Backend))
+	}
+
+	switch cfg.Ontology.Governance.AdmissionMode {
+	case "", OntologyAdmissionModeOff, OntologyAdmissionModeObserve:
+	default:
+		errs = append(errs, fmt.Sprintf("ontology.governance.admissionMode %q is invalid (must be off, observe)", cfg.Ontology.Governance.AdmissionMode))
+	}
+
+	if math.IsNaN(cfg.Ontology.Governance.LearningDefaultConfidence) ||
+		math.IsInf(cfg.Ontology.Governance.LearningDefaultConfidence, 0) ||
+		cfg.Ontology.Governance.LearningDefaultConfidence < 0.0 ||
+		cfg.Ontology.Governance.LearningDefaultConfidence > 1.0 {
+		errs = append(errs, fmt.Sprintf("ontology.governance.learningDefaultConfidence %v is invalid (must be within 0.0-1.0)", cfg.Ontology.Governance.LearningDefaultConfidence))
+	}
+
+	if math.IsNaN(cfg.Ontology.Governance.LibrarianDefaultConfidence) ||
+		math.IsInf(cfg.Ontology.Governance.LibrarianDefaultConfidence, 0) ||
+		cfg.Ontology.Governance.LibrarianDefaultConfidence < 0.0 ||
+		cfg.Ontology.Governance.LibrarianDefaultConfidence > 1.0 {
+		errs = append(errs, fmt.Sprintf("ontology.governance.librarianDefaultConfidence %v is invalid (must be within 0.0-1.0)", cfg.Ontology.Governance.LibrarianDefaultConfidence))
 	}
 
 	// Validate sandbox backend.

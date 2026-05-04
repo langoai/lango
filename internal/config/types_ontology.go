@@ -1,5 +1,10 @@
 package config
 
+const (
+	OntologyAdmissionModeOff     = "off"
+	OntologyAdmissionModeObserve = "observe"
+)
+
 // OntologyConfig configures the ontology subsystem.
 type OntologyConfig struct {
 	// Enabled activates the ontology registry and seed migration.

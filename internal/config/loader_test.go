@@ -298,6 +298,51 @@ func TestValidate(t *testing.T) {
 		cfg.Sandbox.WorkspacePath = ""
 		assert.NoError(t, Validate(cfg))
 	})
+
+	t.Run("ontology admission mode rejects unknown value", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := DefaultConfig()
+		cfg.Ontology.Governance.AdmissionMode = "enforce"
+
+		err := Validate(cfg)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "ontology.governance.admissionMode")
+		assert.Contains(t, err.Error(), "off, observe")
+	})
+
+	t.Run("ontology admission mode empty accepted for backward compatibility", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := DefaultConfig()
+		cfg.Ontology.Governance.AdmissionMode = ""
+
+		assert.NoError(t, Validate(cfg))
+	})
+
+	t.Run("ontology learning confidence rejects out of range", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := DefaultConfig()
+		cfg.Ontology.Governance.LearningDefaultConfidence = 1.25
+
+		err := Validate(cfg)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "ontology.governance.learningDefaultConfidence")
+		assert.Contains(t, err.Error(), "0.0-1.0")
+	})
+
+	t.Run("ontology librarian confidence rejects out of range", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := DefaultConfig()
+		cfg.Ontology.Governance.LibrarianDefaultConfidence = -0.10
+
+		err := Validate(cfg)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "ontology.governance.librarianDefaultConfidence")
+		assert.Contains(t, err.Error(), "0.0-1.0")
+	})
 }
 
 func TestPathIsUnder(t *testing.T) {
