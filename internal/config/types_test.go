@@ -91,6 +91,39 @@ func TestOntologyGovernanceJSONMarshal_OmitsSparseConfidenceKeys(t *testing.T) {
 	assert.NotContains(t, string(data), `librarianDefaultConfidence`)
 }
 
+func TestOntologyGovernanceJSONMarshal_OmitsSparseAdmissionModeKey(t *testing.T) {
+	t.Parallel()
+
+	var cfg Config
+	require.NoError(t, json.Unmarshal([]byte(`{"ontology":{"governance":{}}}`), &cfg))
+
+	data, err := json.Marshal(cfg)
+	require.NoError(t, err)
+	assert.NotContains(t, string(data), `"admissionMode"`)
+}
+
+func TestOntologyGovernanceJSONMarshal_PreservesExplicitOffAdmissionMode(t *testing.T) {
+	t.Parallel()
+
+	cfg := &Config{
+		Ontology: OntologyConfig{
+			Governance: OntologyGovernanceConfig{
+				AdmissionMode:        OntologyAdmissionModeOff,
+				AdmissionModePresent: true,
+			},
+		},
+	}
+
+	data, err := json.Marshal(cfg)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), `"admissionMode":"off"`)
+
+	var decoded Config
+	require.NoError(t, json.Unmarshal(data, &decoded))
+	assert.Equal(t, OntologyAdmissionModeOff, decoded.Ontology.Governance.AdmissionMode)
+	assert.True(t, decoded.Ontology.Governance.AdmissionModePresent)
+}
+
 func TestOntologyGovernanceJSONMarshal_PreservesExplicitZeroConfidenceKeys(t *testing.T) {
 	t.Parallel()
 

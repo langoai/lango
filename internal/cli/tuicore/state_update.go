@@ -605,7 +605,13 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 				s.Current.Ontology.Governance.SchemaExplosionBudget = i
 			}
 		case "ontology_gov_admission_mode":
+			if f.PreserveAbsentIfUntouched &&
+				!s.Current.Ontology.Governance.AdmissionModePresent &&
+				val == f.InitialValue {
+				break
+			}
 			s.Current.Ontology.Governance.AdmissionMode = val
+			s.Current.Ontology.Governance.AdmissionModePresent = true
 		case "ontology_gov_learning_conf":
 			if f.PreserveAbsentIfUntouched &&
 				!s.Current.Ontology.Governance.LearningDefaultConfidencePresent {

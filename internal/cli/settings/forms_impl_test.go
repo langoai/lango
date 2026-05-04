@@ -1472,9 +1472,7 @@ func TestNewOntologyForm_LegacyAdmissionConfidenceDefaultsRoundTrip(t *testing.T
 	content := `{
 		"logging": { "level": "info", "format": "console" },
 		"ontology": {
-			"governance": {
-				"admissionMode": "off"
-			}
+			"governance": {}
 		}
 	}`
 	if err := os.WriteFile(cfgPath, []byte(content), 0644); err != nil {
@@ -1626,9 +1624,7 @@ func TestNewOntologyForm_UnrelatedSavePreservesSparseAdmissionConfidenceSemantic
 	content := `{
 		"logging": { "level": "info", "format": "console" },
 		"ontology": {
-			"governance": {
-				"admissionMode": "off"
-			}
+			"governance": {}
 		}
 	}`
 	if err := os.WriteFile(cfgPath, []byte(content), 0644); err != nil {
@@ -1644,6 +1640,9 @@ func TestNewOntologyForm_UnrelatedSavePreservesSparseAdmissionConfidenceSemantic
 	}
 	if result.Config.Ontology.Governance.LibrarianDefaultConfidencePresent {
 		t.Fatal("librarian confidence should start absent for legacy config")
+	}
+	if result.Config.Ontology.Governance.AdmissionModePresent {
+		t.Fatal("admission mode should start absent for legacy config")
 	}
 
 	form := NewOntologyForm(result.Config)
@@ -1662,6 +1661,9 @@ func TestNewOntologyForm_UnrelatedSavePreservesSparseAdmissionConfidenceSemantic
 	}
 	if state.Current.Ontology.Governance.LibrarianDefaultConfidencePresent {
 		t.Error("librarian confidence presence should remain false after unrelated save")
+	}
+	if state.Current.Ontology.Governance.AdmissionModePresent {
+		t.Error("admission mode presence should remain false after unrelated save")
 	}
 	if state.Current.Ontology.Governance.LearningDefaultConfidence != 0.60 {
 		t.Errorf("LearningDefaultConfidence: want %.2f, got %.2f", 0.60, state.Current.Ontology.Governance.LearningDefaultConfidence)

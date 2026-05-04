@@ -37,6 +37,8 @@ type OntologyGovernanceConfig struct {
 	SchemaExplosionBudget int `mapstructure:"schemaExplosionBudget" json:"schemaExplosionBudget,omitempty"`
 	// AdmissionMode controls runtime admission observation behavior.
 	AdmissionMode string `mapstructure:"admissionMode" json:"admissionMode,omitempty"`
+	// AdmissionModePresent records that the admission mode key was explicitly present on decode/update.
+	AdmissionModePresent bool `mapstructure:"-" json:"-"`
 	// LearningDefaultConfidence is the fallback confidence for learning-group producers.
 	LearningDefaultConfidence float64 `mapstructure:"learningDefaultConfidence" json:"learningDefaultConfidence"`
 	// LibrarianDefaultConfidence is the fallback confidence for librarian-group producers.
@@ -79,7 +81,7 @@ func (c OntologyGovernanceConfig) MarshalJSON() ([]byte, error) {
 		ShadowModeDurationHrs      int      `json:"shadowModeDurationHrs,omitempty"`
 		MinUsageForPromotion       int      `json:"minUsageForPromotion,omitempty"`
 		SchemaExplosionBudget      int      `json:"schemaExplosionBudget,omitempty"`
-		AdmissionMode              string   `json:"admissionMode,omitempty"`
+		AdmissionMode              *string  `json:"admissionMode,omitempty"`
 		LearningDefaultConfidence  *float64 `json:"learningDefaultConfidence,omitempty"`
 		LibrarianDefaultConfidence *float64 `json:"librarianDefaultConfidence,omitempty"`
 	}
@@ -91,7 +93,10 @@ func (c OntologyGovernanceConfig) MarshalJSON() ([]byte, error) {
 		ShadowModeDurationHrs: c.ShadowModeDurationHrs,
 		MinUsageForPromotion:  c.MinUsageForPromotion,
 		SchemaExplosionBudget: c.SchemaExplosionBudget,
-		AdmissionMode:         c.AdmissionMode,
+	}
+	if c.AdmissionModePresent || c.AdmissionMode != OntologyAdmissionModeOff {
+		v := c.AdmissionMode
+		out.AdmissionMode = &v
 	}
 	if c.LearningDefaultConfidencePresent ||
 		(!c.LearningDefaultConfidenceBackfillNeeded && c.LearningDefaultConfidence != OntologyLearningDefaultConfidenceFallback) {

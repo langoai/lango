@@ -393,6 +393,7 @@ func (cfg *Config) UnmarshalJSON(data []byte) error {
 	}
 
 	if len(raw.Ontology.Governance) == 0 {
+		cfg.Ontology.Governance.AdmissionModePresent = false
 		cfg.Ontology.Governance.LearningDefaultConfidenceBackfillNeeded = true
 		cfg.Ontology.Governance.LibrarianDefaultConfidenceBackfillNeeded = true
 		cfg.Ontology.Governance.LearningDefaultConfidencePresent = false
@@ -416,11 +417,17 @@ func (cfg *Config) UnmarshalJSON(data []byte) error {
 
 	if rawMode, ok := raw.Ontology.Governance["admissionMode"]; ok {
 		var mode string
-		if err := json.Unmarshal(rawMode, &mode); err == nil && mode == "" {
-			cfg.Ontology.Governance.AdmissionMode = OntologyAdmissionModeOff
+		if err := json.Unmarshal(rawMode, &mode); err == nil {
+			if mode == "" {
+				cfg.Ontology.Governance.AdmissionMode = OntologyAdmissionModeOff
+				cfg.Ontology.Governance.AdmissionModePresent = false
+			} else {
+				cfg.Ontology.Governance.AdmissionModePresent = true
+			}
 		}
 	} else if cfg.Ontology.Governance.AdmissionMode == "" {
 		cfg.Ontology.Governance.AdmissionMode = OntologyAdmissionModeOff
+		cfg.Ontology.Governance.AdmissionModePresent = false
 	}
 
 	if cfg.Ontology.Governance.LearningDefaultConfidenceBackfillNeeded && cfg.Ontology.Governance.LearningDefaultConfidence == 0 {
@@ -471,6 +478,7 @@ func Load(configPath string) (*LoadResult, error) {
 	cfg.Ontology.Governance.LibrarianDefaultConfidenceBackfillNeeded = !v.InConfig("ontology.governance.librarianDefaultConfidence")
 	cfg.Ontology.Governance.LearningDefaultConfidencePresent = v.InConfig("ontology.governance.learningDefaultConfidence")
 	cfg.Ontology.Governance.LibrarianDefaultConfidencePresent = v.InConfig("ontology.governance.librarianDefaultConfidence")
+	cfg.Ontology.Governance.AdmissionModePresent = v.InConfig("ontology.governance.admissionMode") && cfg.Ontology.Governance.AdmissionMode != ""
 
 	// Detect which context-related keys the user explicitly set in their config file.
 	explicitKeys := collectExplicitKeys(configPath, contextRelatedKeys)
