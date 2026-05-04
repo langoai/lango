@@ -133,14 +133,23 @@ func isSupportedAdmissionSource(source AdmissionSource) bool {
 }
 
 func newAdmissionBatchEvent(batch AdmissionBatch) *eventbus.GraphAdmissionBatchEvent {
-	producerGroup := string(batch.ProducerGroup)
-	if batch.Source == AdmissionSourceContentSavedExtractor {
-		producerGroup = ""
-	}
-
 	return &eventbus.GraphAdmissionBatchEvent{
 		Source:        string(batch.Source),
-		ProducerGroup: producerGroup,
+		ProducerGroup: canonicalAdmissionProducerGroup(batch.Source),
 		BatchCount:    1,
 	}
+}
+
+func canonicalAdmissionProducerGroup(source AdmissionSource) string {
+	switch source {
+	case AdmissionSourceConversationAnalysis,
+		AdmissionSourceSessionLearning,
+		AdmissionSourceLearning:
+		return string(AdmissionProducerGroupLearning)
+	case AdmissionSourceProactiveLibrarian:
+		return string(AdmissionProducerGroupLibrarian)
+	case AdmissionSourceContentSavedExtractor:
+		return ""
+	}
+	return ""
 }

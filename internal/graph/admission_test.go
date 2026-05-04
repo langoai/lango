@@ -114,3 +114,59 @@ func TestAdmissionPolicy_ObserveBatch_NormalizesContentSavedProducerGroup(t *tes
 	require.NotNil(t, result.Event)
 	assert.Empty(t, result.Event.ProducerGroup)
 }
+
+func TestAdmissionPolicy_ObserveBatch_CanonicalizesProducerGroupFromSource(t *testing.T) {
+	t.Parallel()
+
+	policy := NewAdmissionPolicy(AdmissionPolicyConfig{}, zap.NewNop().Sugar())
+
+	testCases := []struct {
+		name          string
+		source        AdmissionSource
+		inputGroup    AdmissionProducerGroup
+		expectedGroup AdmissionProducerGroup
+	}{
+		{
+			name:          "conversation analysis maps to learning",
+			source:        AdmissionSourceConversationAnalysis,
+			inputGroup:    AdmissionProducerGroupLibrarian,
+			expectedGroup: AdmissionProducerGroupLearning,
+		},
+		{
+			name:          "session learning maps to learning",
+			source:        AdmissionSourceSessionLearning,
+			inputGroup:    AdmissionProducerGroupLibrarian,
+			expectedGroup: AdmissionProducerGroupLearning,
+		},
+		{
+			name:          "learning maps to learning",
+			source:        AdmissionSourceLearning,
+			inputGroup:    AdmissionProducerGroupLibrarian,
+			expectedGroup: AdmissionProducerGroupLearning,
+		},
+		{
+			name:          "proactive librarian maps to librarian",
+			source:        AdmissionSourceProactiveLibrarian,
+			inputGroup:    AdmissionProducerGroupLearning,
+			expectedGroup: AdmissionProducerGroupLibrarian,
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			result := policy.ObserveBatch(AdmissionBatch{
+				Source:        tc.source,
+				ProducerGroup: tc.inputGroup,
+				Triples: []Triple{
+					{Subject: "a", Predicate: CausedBy, Object: "b"},
+				},
+			})
+
+			require.NotNil(t, result.Event)
+			assert.Equal(t, string(tc.expectedGroup), result.Event.ProducerGroup)
+		})
+	}
+}
