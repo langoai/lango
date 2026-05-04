@@ -398,14 +398,18 @@ func (cfg *Config) UnmarshalJSON(data []byte) error {
 
 	if rawMode, ok := raw.Ontology.Governance["admissionMode"]; ok {
 		var mode string
-		if err := json.Unmarshal(rawMode, &mode); err == nil && mode == OntologyAdmissionModeObserve {
-			if _, ok := raw.Ontology.Governance["learningDefaultConfidence"]; !ok && cfg.Ontology.Governance.LearningDefaultConfidence == 0 {
-				cfg.Ontology.Governance.LearningDefaultConfidence = OntologyLearningDefaultConfidenceFallback
-			}
-			if _, ok := raw.Ontology.Governance["librarianDefaultConfidence"]; !ok && cfg.Ontology.Governance.LibrarianDefaultConfidence == 0 {
-				cfg.Ontology.Governance.LibrarianDefaultConfidence = OntologyLibrarianDefaultConfidenceFallback
-			}
+		if err := json.Unmarshal(rawMode, &mode); err == nil && mode == "" {
+			cfg.Ontology.Governance.AdmissionMode = OntologyAdmissionModeOff
 		}
+	} else if cfg.Ontology.Governance.AdmissionMode == "" {
+		cfg.Ontology.Governance.AdmissionMode = OntologyAdmissionModeOff
+	}
+
+	if _, ok := raw.Ontology.Governance["learningDefaultConfidence"]; !ok && cfg.Ontology.Governance.LearningDefaultConfidence == 0 {
+		cfg.Ontology.Governance.LearningDefaultConfidence = OntologyLearningDefaultConfidenceFallback
+	}
+	if _, ok := raw.Ontology.Governance["librarianDefaultConfidence"]; !ok && cfg.Ontology.Governance.LibrarianDefaultConfidence == 0 {
+		cfg.Ontology.Governance.LibrarianDefaultConfidence = OntologyLibrarianDefaultConfidenceFallback
 	}
 
 	return nil
@@ -641,20 +645,22 @@ func Validate(cfg *Config) error {
 		errs = append(errs, fmt.Sprintf("ontology.governance.admissionMode %q is invalid (must be off, observe)", cfg.Ontology.Governance.AdmissionMode))
 	}
 
-	if cfg.Ontology.Governance.AdmissionMode == OntologyAdmissionModeObserve {
-		if math.IsNaN(cfg.Ontology.Governance.LearningDefaultConfidence) ||
-			math.IsInf(cfg.Ontology.Governance.LearningDefaultConfidence, 0) ||
-			cfg.Ontology.Governance.LearningDefaultConfidence < 0.0 ||
-			cfg.Ontology.Governance.LearningDefaultConfidence > 1.0 {
-			errs = append(errs, fmt.Sprintf("ontology.governance.learningDefaultConfidence %v is invalid (must be within 0.0-1.0)", cfg.Ontology.Governance.LearningDefaultConfidence))
-		}
+	if math.IsNaN(cfg.Ontology.Governance.LearningDefaultConfidence) ||
+		math.IsInf(cfg.Ontology.Governance.LearningDefaultConfidence, 0) {
+		errs = append(errs, fmt.Sprintf("ontology.governance.learningDefaultConfidence %v is invalid (must be finite)", cfg.Ontology.Governance.LearningDefaultConfidence))
+	} else if cfg.Ontology.Governance.AdmissionMode == OntologyAdmissionModeObserve &&
+		(cfg.Ontology.Governance.LearningDefaultConfidence < 0.0 ||
+			cfg.Ontology.Governance.LearningDefaultConfidence > 1.0) {
+		errs = append(errs, fmt.Sprintf("ontology.governance.learningDefaultConfidence %v is invalid (must be within 0.0-1.0)", cfg.Ontology.Governance.LearningDefaultConfidence))
+	}
 
-		if math.IsNaN(cfg.Ontology.Governance.LibrarianDefaultConfidence) ||
-			math.IsInf(cfg.Ontology.Governance.LibrarianDefaultConfidence, 0) ||
-			cfg.Ontology.Governance.LibrarianDefaultConfidence < 0.0 ||
-			cfg.Ontology.Governance.LibrarianDefaultConfidence > 1.0 {
-			errs = append(errs, fmt.Sprintf("ontology.governance.librarianDefaultConfidence %v is invalid (must be within 0.0-1.0)", cfg.Ontology.Governance.LibrarianDefaultConfidence))
-		}
+	if math.IsNaN(cfg.Ontology.Governance.LibrarianDefaultConfidence) ||
+		math.IsInf(cfg.Ontology.Governance.LibrarianDefaultConfidence, 0) {
+		errs = append(errs, fmt.Sprintf("ontology.governance.librarianDefaultConfidence %v is invalid (must be finite)", cfg.Ontology.Governance.LibrarianDefaultConfidence))
+	} else if cfg.Ontology.Governance.AdmissionMode == OntologyAdmissionModeObserve &&
+		(cfg.Ontology.Governance.LibrarianDefaultConfidence < 0.0 ||
+			cfg.Ontology.Governance.LibrarianDefaultConfidence > 1.0) {
+		errs = append(errs, fmt.Sprintf("ontology.governance.librarianDefaultConfidence %v is invalid (must be within 0.0-1.0)", cfg.Ontology.Governance.LibrarianDefaultConfidence))
 	}
 
 	// Validate sandbox backend.

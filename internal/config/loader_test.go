@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -51,6 +52,24 @@ func TestOntologyAdmissionConfidenceJSONRoundTripPreservesZero(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 0.0, result.Config.Ontology.Governance.LearningDefaultConfidence)
 	assert.Equal(t, 0.0, result.Config.Ontology.Governance.LibrarianDefaultConfidence)
+}
+
+func TestConfigUnmarshalJSON_BackfillsLegacyAdmissionModeAndMissingConfidences(t *testing.T) {
+	t.Parallel()
+
+	var cfg Config
+	content := `{
+		"ontology": {
+			"governance": {
+				"admissionMode": ""
+			}
+		}
+	}`
+	require.NoError(t, json.Unmarshal([]byte(content), &cfg))
+
+	assert.Equal(t, OntologyAdmissionModeOff, cfg.Ontology.Governance.AdmissionMode)
+	assert.InDelta(t, OntologyLearningDefaultConfidenceFallback, cfg.Ontology.Governance.LearningDefaultConfidence, 0.001)
+	assert.InDelta(t, OntologyLibrarianDefaultConfidenceFallback, cfg.Ontology.Governance.LibrarianDefaultConfidence, 0.001)
 }
 
 func TestExpandEnvVars(t *testing.T) {
@@ -419,6 +438,32 @@ func TestValidate(t *testing.T) {
 		cfg.Ontology.Governance.LibrarianDefaultConfidence = -0.10
 
 		assert.NoError(t, Validate(cfg))
+	})
+
+	t.Run("ontology non-finite confidences rejected even when admission off", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := DefaultConfig()
+		cfg.Ontology.Governance.AdmissionMode = OntologyAdmissionModeOff
+		cfg.Ontology.Governance.LearningDefaultConfidence = math.NaN()
+		cfg.Ontology.Governance.LibrarianDefaultConfidence = math.Inf(1)
+
+		err := Validate(cfg)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "ontology.governance.learningDefaultConfidence")
+		assert.Contains(t, err.Error(), "ontology.governance.librarianDefaultConfidence")
+	})
+
+	t.Run("ontology negative infinity confidence rejected even when admission off", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := DefaultConfig()
+		cfg.Ontology.Governance.AdmissionMode = OntologyAdmissionModeOff
+		cfg.Ontology.Governance.LibrarianDefaultConfidence = math.Inf(-1)
+
+		err := Validate(cfg)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "ontology.governance.librarianDefaultConfidence")
 	})
 }
 
