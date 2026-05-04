@@ -90,6 +90,28 @@ func initObservability(cfg *config.Config, tokenStore *token.EntTokenStore, bus 
 	})
 	logger().Info("observability: tool execution metrics wired")
 
+	eventbus.SubscribeTyped[eventbus.GraphAdmissionBatchEvent](bus, func(evt eventbus.GraphAdmissionBatchEvent) {
+		oc.collector.RecordGraphAdmissionBatch(observability.GraphAdmissionBatchMetric{
+			Source:           evt.Source,
+			ProducerGroup:    evt.ProducerGroup,
+			ValidatorSource:  evt.ValidatorSource,
+			BatchCount:       int64(evt.BatchCount),
+			KnownCount:       int64(evt.KnownCount),
+			UnknownCount:     int64(evt.UnknownCount),
+			UnvalidatedCount: int64(evt.UnvalidatedCount),
+		})
+	})
+	eventbus.SubscribeTyped[eventbus.GraphAdmissionUnmappedSourceEvent](bus, func(evt eventbus.GraphAdmissionUnmappedSourceEvent) {
+		oc.collector.RecordGraphAdmissionUnmappedSource(evt.RawSource, int64(evt.BatchCount))
+	})
+	eventbus.SubscribeTyped[eventbus.GraphExtractorDroppedUnknownEvent](bus, func(evt eventbus.GraphExtractorDroppedUnknownEvent) {
+		oc.collector.RecordGraphExtractorDroppedUnknown(evt.Source, 1)
+	})
+	eventbus.SubscribeTyped[eventbus.GraphAdmissionWriteFailureEvent](bus, func(evt eventbus.GraphAdmissionWriteFailureEvent) {
+		oc.collector.RecordGraphWriteFailure(int64(evt.BatchCount))
+	})
+	logger().Info("observability: graph admission metrics wired")
+
 	// 6b. OpenTelemetry tracing
 	if cfg.Observability.Tracing.Enabled {
 		_, shutdown, err := observability.InitTracer(cfg.Observability.Tracing)

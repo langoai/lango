@@ -313,6 +313,107 @@ func TestRecordPolicyDecision_SnapshotIsolation(t *testing.T) {
 	assert.False(t, exists)
 }
 
+func TestRecordGraphAdmissionMetrics(t *testing.T) {
+	c := NewCollector()
+
+	learningGroup := "learning"
+
+	c.RecordGraphAdmissionBatch(GraphAdmissionBatchMetric{
+		Source:           "learning",
+		ProducerGroup:    &learningGroup,
+		ValidatorSource:  "ontology_registry",
+		BatchCount:       1,
+		KnownCount:       2,
+		UnknownCount:     1,
+		UnvalidatedCount: 0,
+	})
+	c.RecordGraphAdmissionBatch(GraphAdmissionBatchMetric{
+		Source:           "learning",
+		ProducerGroup:    &learningGroup,
+		ValidatorSource:  "ontology_registry",
+		BatchCount:       1,
+		KnownCount:       3,
+		UnknownCount:     0,
+		UnvalidatedCount: 0,
+	})
+	c.RecordGraphAdmissionBatch(GraphAdmissionBatchMetric{
+		Source:           "content_saved_extractor",
+		ValidatorSource:  "unavailable",
+		BatchCount:       1,
+		KnownCount:       0,
+		UnknownCount:     0,
+		UnvalidatedCount: 4,
+	})
+	c.RecordGraphAdmissionUnmappedSource("legacy_import", 2)
+	c.RecordGraphAdmissionUnmappedSource("legacy_import", 1)
+	c.RecordGraphExtractorDroppedUnknown("content_saved_extractor", 1)
+	c.RecordGraphExtractorDroppedUnknown("content_saved_extractor", 1)
+	c.RecordGraphWriteFailure(1)
+	c.RecordGraphWriteFailure(1)
+
+	snap := c.Snapshot()
+	require.Len(t, snap.GraphAdmission, 2)
+	assert.Equal(t, GraphAdmissionBatchMetric{
+		Source:           "learning",
+		ProducerGroup:    &learningGroup,
+		ValidatorSource:  "ontology_registry",
+		BatchCount:       2,
+		KnownCount:       5,
+		UnknownCount:     1,
+		UnvalidatedCount: 0,
+	}, snap.GraphAdmission["learning|learning|ontology_registry"])
+	assert.Equal(t, GraphAdmissionBatchMetric{
+		Source:           "content_saved_extractor",
+		ProducerGroup:    nil,
+		ValidatorSource:  "unavailable",
+		BatchCount:       1,
+		KnownCount:       0,
+		UnknownCount:     0,
+		UnvalidatedCount: 4,
+	}, snap.GraphAdmission["content_saved_extractor||unavailable"])
+	assert.Equal(t, map[string]int64{
+		"legacy_import": 3,
+	}, snap.GraphAdmissionUnmappedSources)
+	assert.Equal(t, map[string]int64{
+		"content_saved_extractor": 2,
+	}, snap.GraphExtractorDroppedUnknown)
+	assert.Equal(t, int64(2), snap.GraphWriteFailureBatches)
+}
+
+func TestRecordGraphAdmissionMetrics_SnapshotIsolationAndReset(t *testing.T) {
+	c := NewCollector()
+	c.RecordGraphAdmissionBatch(GraphAdmissionBatchMetric{
+		Source:           "content_saved_extractor",
+		ValidatorSource:  "unavailable",
+		BatchCount:       1,
+		UnvalidatedCount: 2,
+	})
+	c.RecordGraphAdmissionUnmappedSource("unknown_source", 1)
+	c.RecordGraphExtractorDroppedUnknown("content_saved_extractor", 1)
+	c.RecordGraphWriteFailure(1)
+
+	snap := c.Snapshot()
+	snap.GraphAdmission["injected"] = GraphAdmissionBatchMetric{Source: "injected"}
+	snap.GraphAdmissionUnmappedSources["injected"] = 99
+	snap.GraphExtractorDroppedUnknown["injected"] = 42
+
+	snap2 := c.Snapshot()
+	_, exists := snap2.GraphAdmission["injected"]
+	assert.False(t, exists)
+	_, exists = snap2.GraphAdmissionUnmappedSources["injected"]
+	assert.False(t, exists)
+	_, exists = snap2.GraphExtractorDroppedUnknown["injected"]
+	assert.False(t, exists)
+
+	c.Reset()
+
+	snap3 := c.Snapshot()
+	assert.Empty(t, snap3.GraphAdmission)
+	assert.Empty(t, snap3.GraphAdmissionUnmappedSources)
+	assert.Empty(t, snap3.GraphExtractorDroppedUnknown)
+	assert.Equal(t, int64(0), snap3.GraphWriteFailureBatches)
+}
+
 func TestReset(t *testing.T) {
 	c := NewCollector()
 	c.RecordTokenUsage(TokenUsage{

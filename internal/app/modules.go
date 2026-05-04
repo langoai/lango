@@ -295,6 +295,9 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 
 	// Graph Store (before knowledge).
 	gc, gcStatus := initGraphStore(cfg)
+	if gc != nil && gc.buffer != nil {
+		gc.buffer.SetEventBus(m.bus)
+	}
 
 	// Ontology Registry (after graph store).
 	var graphStoreForOntology graph.Store

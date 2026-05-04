@@ -8,6 +8,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/langoai/lango/internal/asyncbuf"
+	"github.com/langoai/lango/internal/eventbus"
 )
 
 // GraphRequest represents a request to add triples to the graph.
@@ -24,6 +25,7 @@ type GraphRequest struct {
 type GraphBuffer struct {
 	store  Store
 	inner  *asyncbuf.BatchBuffer[GraphRequest]
+	bus    *eventbus.Bus
 	logger *zap.SugaredLogger
 }
 
@@ -62,6 +64,11 @@ func (b *GraphBuffer) Stop() {
 	b.inner.Stop()
 }
 
+// SetEventBus wires optional observability event publishing for buffer baselines.
+func (b *GraphBuffer) SetEventBus(bus *eventbus.Bus) {
+	b.bus = bus
+}
+
 // processBatchRequests expands GraphRequests into triples and stores them.
 func (b *GraphBuffer) processBatchRequests(batch []GraphRequest) {
 	var triples []Triple
@@ -79,5 +86,8 @@ func (b *GraphBuffer) processBatch(batch []Triple) {
 
 	if err := b.store.AddTriples(ctx, batch); err != nil {
 		b.logger.Errorw("batch graph update error", "count", len(batch), "error", err)
+		if b.bus != nil {
+			b.bus.Publish(eventbus.GraphAdmissionWriteFailureEvent{BatchCount: 1})
+		}
 	}
 }

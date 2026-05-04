@@ -99,6 +99,7 @@ func (m *StatusPage) View() string {
 		m.renderFeatureFlags(sectionTitle, divider),
 		m.renderTokenUsage(sectionTitle, divider),
 		m.renderToolExecution(sectionTitle, divider),
+		m.renderGraphAdmission(sectionTitle, divider),
 		m.renderSystemInfo(sectionTitle, divider),
 	}
 
@@ -249,6 +250,96 @@ func (m *StatusPage) renderSystemInfo(
 	return b.String()
 }
 
+func (m *StatusPage) renderGraphAdmission(
+	titleStyle lipgloss.Style, divider string,
+) string {
+	var b strings.Builder
+	b.WriteString(titleStyle.Render("Graph Admission"))
+	b.WriteByte('\n')
+	b.WriteString(divider)
+	b.WriteByte('\n')
+
+	labelStyle := lipgloss.NewStyle().Foreground(theme.TextSecondary)
+	nameStyle := lipgloss.NewStyle().Foreground(theme.TextPrimary)
+	detailStyle := lipgloss.NewStyle().Foreground(theme.TextSecondary)
+
+	if len(m.snapshot.GraphAdmission) == 0 &&
+		len(m.snapshot.GraphExtractorDroppedUnknown) == 0 &&
+		len(m.snapshot.GraphAdmissionUnmappedSources) == 0 &&
+		m.snapshot.GraphWriteFailureBatches == 0 {
+		b.WriteString(detailStyle.Render("No graph admission telemetry"))
+		b.WriteByte('\n')
+		return b.String()
+	}
+
+	admissionMetrics := make([]observability.GraphAdmissionBatchMetric, 0, len(m.snapshot.GraphAdmission))
+	for _, metric := range m.snapshot.GraphAdmission {
+		admissionMetrics = append(admissionMetrics, metric)
+	}
+	sort.Slice(admissionMetrics, func(i, j int) bool {
+		if admissionMetrics[i].Source != admissionMetrics[j].Source {
+			return admissionMetrics[i].Source < admissionMetrics[j].Source
+		}
+		leftGroup := ""
+		if admissionMetrics[i].ProducerGroup != nil {
+			leftGroup = *admissionMetrics[i].ProducerGroup
+		}
+		rightGroup := ""
+		if admissionMetrics[j].ProducerGroup != nil {
+			rightGroup = *admissionMetrics[j].ProducerGroup
+		}
+		if leftGroup != rightGroup {
+			return leftGroup < rightGroup
+		}
+		return admissionMetrics[i].ValidatorSource < admissionMetrics[j].ValidatorSource
+	})
+
+	for _, metric := range admissionMetrics {
+		group := "none"
+		if metric.ProducerGroup != nil {
+			group = *metric.ProducerGroup
+		}
+		title := fmt.Sprintf("%s  group=%s  validator=%s", metric.Source, group, metric.ValidatorSource)
+		detail := fmt.Sprintf("batches %d  known %d  unknown %d  unvalidated %d",
+			metric.BatchCount, metric.KnownCount, metric.UnknownCount, metric.UnvalidatedCount)
+		b.WriteString(nameStyle.Render(title))
+		b.WriteByte('\n')
+		b.WriteString(detailStyle.Render(detail))
+		b.WriteByte('\n')
+	}
+
+	droppedSources := sortedMetricSourceKeys(m.snapshot.GraphExtractorDroppedUnknown)
+	if len(droppedSources) > 0 {
+		b.WriteString(labelStyle.Render("Dropped unknown:"))
+		b.WriteByte('\n')
+		for _, source := range droppedSources {
+			line := fmt.Sprintf("%s  %s dropped", source, tui.FormatNumber(m.snapshot.GraphExtractorDroppedUnknown[source]))
+			b.WriteString(detailStyle.Render(line))
+			b.WriteByte('\n')
+		}
+	}
+
+	unmappedSources := sortedMetricSourceKeys(m.snapshot.GraphAdmissionUnmappedSources)
+	if len(unmappedSources) > 0 {
+		b.WriteString(labelStyle.Render("Unmapped sources:"))
+		b.WriteByte('\n')
+		for _, source := range unmappedSources {
+			line := fmt.Sprintf("%s  %s batches", source, tui.FormatNumber(m.snapshot.GraphAdmissionUnmappedSources[source]))
+			b.WriteString(detailStyle.Render(line))
+			b.WriteByte('\n')
+		}
+	}
+
+	b.WriteString(labelStyle.Render("Write failures:"))
+	b.WriteByte('\n')
+	b.WriteString(detailStyle.Render(
+		fmt.Sprintf("%s failed batches", tui.FormatNumber(m.snapshot.GraphWriteFailureBatches)),
+	))
+	b.WriteByte('\n')
+
+	return b.String()
+}
+
 // --- helpers ---
 
 func (m *StatusPage) refreshData() {
@@ -264,4 +355,13 @@ func tickCmd() tea.Cmd {
 	return tea.Tick(5*time.Second, func(t time.Time) tea.Msg {
 		return tickMsg(t)
 	})
+}
+
+func sortedMetricSourceKeys(metrics map[string]int64) []string {
+	keys := make([]string, 0, len(metrics))
+	for key := range metrics {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }
