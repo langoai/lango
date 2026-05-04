@@ -96,6 +96,11 @@ func TestAdmissionPolicy_ObserveBatch_SkipsUnsupportedSource(t *testing.T) {
 	assert.Empty(t, result.Records)
 	assert.Equal(t, triples, result.Forwarded)
 	assert.Nil(t, result.Event)
+	require.NotNil(t, result.UnmappedEvent)
+	assert.Equal(t, eventbus.GraphAdmissionUnmappedSourceEvent{
+		RawSource:  "new_source",
+		BatchCount: 1,
+	}, *result.UnmappedEvent)
 }
 
 func TestAdmissionPolicy_ObserveBatch_NormalizesContentSavedProducerGroup(t *testing.T) {
@@ -169,4 +174,21 @@ func TestAdmissionPolicy_ObserveBatch_CanonicalizesProducerGroupFromSource(t *te
 			assert.Equal(t, string(tc.expectedGroup), result.Event.ProducerGroup)
 		})
 	}
+}
+
+func TestAdmissionIdentifiers_AreStableForTask4Consumers(t *testing.T) {
+	t.Parallel()
+
+	assert.True(t, IsSupportedAdmissionSource(AdmissionSourceConversationAnalysis))
+	assert.True(t, IsSupportedAdmissionSource(AdmissionSourceSessionLearning))
+	assert.True(t, IsSupportedAdmissionSource(AdmissionSourceLearning))
+	assert.True(t, IsSupportedAdmissionSource(AdmissionSourceProactiveLibrarian))
+	assert.True(t, IsSupportedAdmissionSource(AdmissionSourceContentSavedExtractor))
+	assert.False(t, IsSupportedAdmissionSource(AdmissionSource("new_source")))
+
+	assert.Equal(t, string(AdmissionProducerGroupLearning), CanonicalAdmissionProducerGroup(AdmissionSourceConversationAnalysis))
+	assert.Equal(t, string(AdmissionProducerGroupLearning), CanonicalAdmissionProducerGroup(AdmissionSourceSessionLearning))
+	assert.Equal(t, string(AdmissionProducerGroupLearning), CanonicalAdmissionProducerGroup(AdmissionSourceLearning))
+	assert.Equal(t, string(AdmissionProducerGroupLibrarian), CanonicalAdmissionProducerGroup(AdmissionSourceProactiveLibrarian))
+	assert.Empty(t, CanonicalAdmissionProducerGroup(AdmissionSourceContentSavedExtractor))
 }

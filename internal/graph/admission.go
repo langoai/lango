@@ -49,9 +49,10 @@ type AdmissionRecord struct {
 }
 
 type AdmissionObserveResult struct {
-	Records   []AdmissionRecord
-	Forwarded []Triple
-	Event     *eventbus.GraphAdmissionBatchEvent
+	Records       []AdmissionRecord
+	Forwarded     []Triple
+	Event         *eventbus.GraphAdmissionBatchEvent
+	UnmappedEvent *eventbus.GraphAdmissionUnmappedSourceEvent
 }
 
 type AdmissionPolicyConfig struct {
@@ -82,7 +83,11 @@ func (p *AdmissionPolicy) ObserveBatch(batch AdmissionBatch) AdmissionObserveRes
 		result.Forwarded = append(result.Forwarded, triple)
 	}
 
-	if !isSupportedAdmissionSource(batch.Source) {
+	if !IsSupportedAdmissionSource(batch.Source) {
+		result.UnmappedEvent = &eventbus.GraphAdmissionUnmappedSourceEvent{
+			RawSource:  string(batch.Source),
+			BatchCount: 1,
+		}
 		return result
 	}
 
@@ -120,7 +125,7 @@ func (p *AdmissionPolicy) ObserveBatch(batch AdmissionBatch) AdmissionObserveRes
 	return result
 }
 
-func isSupportedAdmissionSource(source AdmissionSource) bool {
+func IsSupportedAdmissionSource(source AdmissionSource) bool {
 	switch source {
 	case AdmissionSourceConversationAnalysis,
 		AdmissionSourceSessionLearning,
@@ -135,12 +140,12 @@ func isSupportedAdmissionSource(source AdmissionSource) bool {
 func newAdmissionBatchEvent(batch AdmissionBatch) *eventbus.GraphAdmissionBatchEvent {
 	return &eventbus.GraphAdmissionBatchEvent{
 		Source:        string(batch.Source),
-		ProducerGroup: canonicalAdmissionProducerGroup(batch.Source),
+		ProducerGroup: CanonicalAdmissionProducerGroup(batch.Source),
 		BatchCount:    1,
 	}
 }
 
-func canonicalAdmissionProducerGroup(source AdmissionSource) string {
+func CanonicalAdmissionProducerGroup(source AdmissionSource) string {
 	switch source {
 	case AdmissionSourceConversationAnalysis,
 		AdmissionSourceSessionLearning,

@@ -2,8 +2,9 @@ package eventbus
 
 // Event name constants for observability domain events.
 const (
-	EventTokenUsage          = "token.usage"
-	EventGraphAdmissionBatch = "graph.admission.batch"
+	EventTokenUsage                   = "token.usage"
+	EventGraphAdmissionBatch          = "graph.admission.batch"
+	EventGraphAdmissionUnmappedSource = "graph.admission.unmapped_source"
 )
 
 // TokenUsageEvent is published when an LLM provider returns token usage data.
@@ -36,3 +37,14 @@ type GraphAdmissionBatchEvent struct {
 
 // EventName implements Event.
 func (e GraphAdmissionBatchEvent) EventName() string { return EventGraphAdmissionBatch }
+
+// GraphAdmissionUnmappedSourceEvent is published for one unsupported source batch.
+type GraphAdmissionUnmappedSourceEvent struct {
+	RawSource  string
+	BatchCount int
+}
+
+// EventName implements Event.
+func (e GraphAdmissionUnmappedSourceEvent) EventName() string {
+	return EventGraphAdmissionUnmappedSource
+}

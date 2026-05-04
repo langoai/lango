@@ -44,3 +44,32 @@ func TestGraphAdmissionBatchEvent_RoundTrip(t *testing.T) {
 		UnvalidatedCount: 0,
 	}, got)
 }
+
+func TestGraphAdmissionUnmappedSourceEvent_EventName(t *testing.T) {
+	t.Parallel()
+
+	evt := GraphAdmissionUnmappedSourceEvent{}
+
+	assert.Equal(t, EventGraphAdmissionUnmappedSource, evt.EventName())
+}
+
+func TestGraphAdmissionUnmappedSourceEvent_RoundTrip(t *testing.T) {
+	t.Parallel()
+
+	bus := New()
+
+	var got GraphAdmissionUnmappedSourceEvent
+	SubscribeTyped(bus, func(evt GraphAdmissionUnmappedSourceEvent) {
+		got = evt
+	})
+
+	bus.Publish(GraphAdmissionUnmappedSourceEvent{
+		RawSource:  "new_source",
+		BatchCount: 1,
+	})
+
+	assert.Equal(t, GraphAdmissionUnmappedSourceEvent{
+		RawSource:  "new_source",
+		BatchCount: 1,
+	}, got)
+}
