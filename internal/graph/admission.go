@@ -64,8 +64,7 @@ type AdmissionObserveResult struct {
 }
 
 type AdmissionPolicyConfig struct {
-	Validator       PredicateValidatorFunc
-	ValidatorSource AdmissionValidatorSource
+	Validator PredicateValidatorFunc
 }
 
 type AdmissionPolicy struct {

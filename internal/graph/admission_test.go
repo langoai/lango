@@ -302,7 +302,6 @@ func TestAdmissionPolicy_ObserveBatch_NormalizesValidatorSource(t *testing.T) {
 		Validator: func(name string) bool {
 			return name == CausedBy
 		},
-		ValidatorSource: AdmissionValidatorSource("custom_validator"),
 	}, zap.NewNop().Sugar())
 
 	result := policy.ObserveBatch(AdmissionBatch{

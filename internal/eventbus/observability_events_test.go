@@ -54,7 +54,7 @@ func TestGraphAdmissionUnmappedSourceEvent_EventName(t *testing.T) {
 
 	evt := GraphAdmissionUnmappedSourceEvent{}
 
-	assert.Equal(t, EventGraphAdmissionUnmappedSource, evt.EventName())
+	assert.Equal(t, "graph.unmapped_source", evt.EventName())
 }
 
 func TestGraphAdmissionUnmappedSourceEvent_RoundTrip(t *testing.T) {
@@ -118,7 +118,7 @@ func TestGraphAdmissionWriteFailureEvent_EventName(t *testing.T) {
 
 	evt := GraphAdmissionWriteFailureEvent{}
 
-	assert.Equal(t, EventGraphAdmissionWriteFailure, evt.EventName())
+	assert.Equal(t, "graph.write_failure", evt.EventName())
 }
 
 func TestGraphAdmissionWriteFailureEvent_RoundTrip(t *testing.T) {

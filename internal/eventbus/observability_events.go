@@ -4,9 +4,9 @@ package eventbus
 const (
 	EventTokenUsage                   = "token.usage"
 	EventGraphAdmissionBatch          = "graph.admission.batch"
-	EventGraphAdmissionUnmappedSource = "graph.admission.unmapped_source"
+	EventGraphAdmissionUnmappedSource = "graph.unmapped_source"
 	EventGraphExtractorDroppedUnknown = "graph.extractor.dropped_unknown"
-	EventGraphAdmissionWriteFailure   = "graph.admission.write_failure"
+	EventGraphAdmissionWriteFailure   = "graph.write_failure"
 )
 
 // TokenUsageEvent is published when an LLM provider returns token usage data.
