@@ -1444,7 +1444,7 @@ func TestNewOntologyForm_AdmissionFieldsVisibleWithoutGovernanceEnabled(t *testi
 	}
 }
 
-func TestNewOntologyForm_AdmissionFieldsVisibleWithoutOntologyEnabled(t *testing.T) {
+func TestNewOntologyForm_AdmissionFieldsHiddenWhenOntologyDisabled(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Ontology.Enabled = false
 	cfg.Ontology.Governance.Enabled = false
@@ -1455,14 +1455,14 @@ func TestNewOntologyForm_AdmissionFieldsVisibleWithoutOntologyEnabled(t *testing
 		visible[field.Key] = true
 	}
 
-	if !visible["ontology_gov_admission_mode"] {
-		t.Error("ontology_gov_admission_mode should remain visible when ontology is disabled")
+	if visible["ontology_gov_admission_mode"] {
+		t.Error("ontology_gov_admission_mode should be hidden when ontology is disabled")
 	}
-	if !visible["ontology_gov_learning_conf"] {
-		t.Error("ontology_gov_learning_conf should remain visible when ontology is disabled")
+	if visible["ontology_gov_learning_conf"] {
+		t.Error("ontology_gov_learning_conf should be hidden when ontology is disabled")
 	}
-	if !visible["ontology_gov_librarian_conf"] {
-		t.Error("ontology_gov_librarian_conf should remain visible when ontology is disabled")
+	if visible["ontology_gov_librarian_conf"] {
+		t.Error("ontology_gov_librarian_conf should be hidden when ontology is disabled")
 	}
 }
 
