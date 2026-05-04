@@ -274,6 +274,15 @@ func (m *intelligenceModule) DependsOn() []appinit.Provides {
 }
 func (m *intelligenceModule) Enabled() bool { return true } // always enabled — subsystems check their own config
 
+func newGraphAdmissionPolicy(cfg *config.Config, ontologyValidator graph.PredicateValidatorFunc) *graph.AdmissionPolicy {
+	if cfg == nil || cfg.Ontology.Governance.AdmissionMode != config.OntologyAdmissionModeObserve {
+		return nil
+	}
+	return graph.NewAdmissionPolicy(graph.AdmissionPolicyConfig{
+		Validator: ontologyValidator,
+	}, logger())
+}
+
 func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*appinit.ModuleResult, error) {
 	cfg := m.cfg
 	fv := r.Resolve(appinit.ProvidesSupervisor).(*foundationValues)
@@ -313,14 +322,12 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 			ConfigKey: "ontology.enabled", Enabled: true, Tools: ontologyTools,
 		})
 	}
-	if gc != nil && cfg.Ontology.Governance.AdmissionMode == config.OntologyAdmissionModeObserve {
+	if gc != nil {
 		var admissionValidator graph.PredicateValidatorFunc
 		if ontologyResult != nil && ontologyResult.Service != nil && cfg.Ontology.Enabled {
 			admissionValidator = ontologyResult.Service.PredicateValidator()
 		}
-		gc.admissionPolicy = graph.NewAdmissionPolicy(graph.AdmissionPolicyConfig{
-			Validator: admissionValidator,
-		}, logger())
+		gc.admissionPolicy = newGraphAdmissionPolicy(cfg, admissionValidator)
 	}
 
 	// Skills — resolve base tools from foundation for skill init.

@@ -117,6 +117,32 @@ func observeContentSavedTriples(policy *graph.AdmissionPolicy, bus *eventbus.Bus
 	})
 }
 
+func injectGraphPredicateValidator(store graph.Store, ontologyValidator graph.PredicateValidatorFunc) {
+	if ontologyValidator == nil {
+		return
+	}
+	if pv, ok := store.(predicateValidatable); ok {
+		pv.SetPredicateValidator(ontologyValidator)
+		logger().Info("ontology predicate validator injected into graph store")
+	}
+}
+
+func contentSavedDroppedUnknownObserver(policy *graph.AdmissionPolicy, bus *eventbus.Bus) func(graph.DroppedUnknownPredicateEvent) {
+	return func(evt graph.DroppedUnknownPredicateEvent) {
+		if policy == nil || bus == nil {
+			return
+		}
+
+		bus.Publish(eventbus.GraphExtractorDroppedUnknownEvent{
+			Source:    evt.Source,
+			SourceID:  evt.SourceID,
+			Subject:   evt.Subject,
+			Predicate: evt.Predicate,
+			Object:    evt.Object,
+		})
+	}
+}
+
 // wireGraphCallbacks subscribes to content.saved and triples.extracted events to feed the graph buffer.
 // It also creates the Entity Extractor pipeline and Memory GraphHooks.
 func wireGraphCallbacks(gc *graphComponents, kc *knowledgeComponents, mc *memoryComponents, sv *supervisor.Supervisor, cfg *config.Config, bus *eventbus.Bus, ontologyValidator graph.PredicateValidatorFunc) {
@@ -125,12 +151,7 @@ func wireGraphCallbacks(gc *graphComponents, kc *knowledgeComponents, mc *memory
 	}
 
 	// Inject predicate validator if the store implementation supports it.
-	if ontologyValidator != nil {
-		if pv, ok := gc.store.(predicateValidatable); ok {
-			pv.SetPredicateValidator(ontologyValidator)
-			logger().Info("ontology predicate validator injected into graph store")
-		}
-	}
+	injectGraphPredicateValidator(gc.store, ontologyValidator)
 
 	// Create Entity Extractor for async triple extraction from content.
 	var extractor *graph.Extractor
@@ -143,19 +164,7 @@ func wireGraphCallbacks(gc *graphComponents, kc *knowledgeComponents, mc *memory
 		if ontologyValidator != nil {
 			opts = append(opts, graph.WithPredicateValidator(ontologyValidator))
 		}
-		opts = append(opts, graph.WithDroppedUnknownObserver(func(evt graph.DroppedUnknownPredicateEvent) {
-			if gc.admissionPolicy == nil || bus == nil {
-				return
-			}
-
-			bus.Publish(eventbus.GraphExtractorDroppedUnknownEvent{
-				Source:    evt.Source,
-				SourceID:  evt.SourceID,
-				Subject:   evt.Subject,
-				Predicate: evt.Predicate,
-				Object:    evt.Object,
-			})
-		}))
+		opts = append(opts, graph.WithDroppedUnknownObserver(contentSavedDroppedUnknownObserver(gc.admissionPolicy, bus)))
 		extractor = graph.NewExtractor(generator, logger(), opts...)
 		logger().Info("graph entity extractor initialized")
 	}
