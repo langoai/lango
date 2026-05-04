@@ -159,11 +159,11 @@ func IsSupportedAdmissionSource(source AdmissionSource) bool {
 	return false
 }
 
-func ObservedAdmissionSourceKind(source AdmissionSource, _ AdmissionSourceKind) (AdmissionSourceKind, bool) {
+func ObservedAdmissionSourceKind(source AdmissionSource, hintedKind AdmissionSourceKind) (AdmissionSourceKind, bool) {
 	if IsSupportedAdmissionSource(source) {
 		return AdmissionSourceKindEventBus, true
 	}
-	if source == AdmissionSourceContentSavedExtractor {
+	if source == AdmissionSourceContentSavedExtractor && hintedKind == AdmissionSourceKindSynthetic {
 		return AdmissionSourceKindSynthetic, true
 	}
 	return "", false
