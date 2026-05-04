@@ -169,7 +169,7 @@ func ObservedAdmissionSourceKind(source AdmissionSource, hintedKind AdmissionSou
 	if IsSupportedAdmissionSource(source) {
 		return AdmissionSourceKindEventBus, true
 	}
-	if source == AdmissionSourceContentSavedExtractor {
+	if source == AdmissionSourceContentSavedExtractor && hintedKind == AdmissionSourceKindSynthetic {
 		return AdmissionSourceKindSynthetic, true
 	}
 	return "", false
