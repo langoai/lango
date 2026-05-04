@@ -143,6 +143,22 @@ func contentSavedDroppedUnknownObserver(policy *graph.AdmissionPolicy, bus *even
 	}
 }
 
+func runtimeGraphWriteFailureBaselineEnabled(policy *graph.AdmissionPolicy) bool {
+	return policy != nil
+}
+
+func runtimeGraphTripleCallback(buffer *graph.GraphBuffer, emitWriteFailureBaseline bool) func([]graph.Triple) {
+	return func(triples []graph.Triple) {
+		if buffer == nil {
+			return
+		}
+		buffer.Enqueue(graph.GraphRequest{
+			Triples:                  triples,
+			EmitWriteFailureBaseline: emitWriteFailureBaseline,
+		})
+	}
+}
+
 // wireGraphCallbacks subscribes to content.saved and triples.extracted events to feed the graph buffer.
 // It also creates the Entity Extractor pipeline and Memory GraphHooks.
 func wireGraphCallbacks(gc *graphComponents, kc *knowledgeComponents, mc *memoryComponents, sv *supervisor.Supervisor, cfg *config.Config, bus *eventbus.Bus, ontologyValidator graph.PredicateValidatorFunc) {
@@ -189,6 +205,7 @@ func wireGraphCallbacks(gc *graphComponents, kc *knowledgeComponents, mc *memory
 						Metadata:    evt.Metadata,
 					},
 				},
+				EmitWriteFailureBaseline: runtimeGraphWriteFailureBaselineEnabled(gc.admissionPolicy),
 			})
 
 			// Async entity extraction via LLM.
@@ -223,9 +240,7 @@ func wireGraphCallbacks(gc *graphComponents, kc *knowledgeComponents, mc *memory
 
 	// Wire Memory GraphHooks for temporal/session triples.
 	if mc != nil {
-		tripleCallback := func(triples []graph.Triple) {
-			gc.buffer.Enqueue(graph.GraphRequest{Triples: triples})
-		}
+		tripleCallback := runtimeGraphTripleCallback(gc.buffer, runtimeGraphWriteFailureBaselineEnabled(gc.admissionPolicy))
 		hooks := memory.NewGraphHooks(tripleCallback, logger())
 		mc.store.SetGraphHooks(hooks)
 		logger().Info("memory graph hooks wired")

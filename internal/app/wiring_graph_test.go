@@ -2,8 +2,12 @@ package app
 
 import (
 	"context"
+	"errors"
+	"sync"
 	"testing"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -11,6 +15,7 @@ import (
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/graph"
+	"github.com/langoai/lango/internal/memory"
 )
 
 func ptrString(v string) *string {
@@ -60,6 +65,35 @@ func (s *predicateCapturingStore) AllTriples(context.Context) ([]graph.Triple, e
 func (s *predicateCapturingStore) ClearAll(context.Context) error { return nil }
 
 func (s *predicateCapturingStore) Close() error { return nil }
+
+type failingRuntimeGraphStore struct {
+	err error
+}
+
+func (s *failingRuntimeGraphStore) AddTriple(context.Context, graph.Triple) error    { return s.err }
+func (s *failingRuntimeGraphStore) AddTriples(context.Context, []graph.Triple) error { return s.err }
+func (s *failingRuntimeGraphStore) RemoveTriple(context.Context, graph.Triple) error { return s.err }
+func (s *failingRuntimeGraphStore) QueryBySubject(context.Context, string) ([]graph.Triple, error) {
+	return nil, nil
+}
+func (s *failingRuntimeGraphStore) QueryByObject(context.Context, string) ([]graph.Triple, error) {
+	return nil, nil
+}
+func (s *failingRuntimeGraphStore) QueryBySubjectPredicate(context.Context, string, string) ([]graph.Triple, error) {
+	return nil, nil
+}
+func (s *failingRuntimeGraphStore) Traverse(context.Context, string, int, []string) ([]graph.Triple, error) {
+	return nil, nil
+}
+func (s *failingRuntimeGraphStore) Count(context.Context) (int, error) { return 0, nil }
+func (s *failingRuntimeGraphStore) PredicateStats(context.Context) (map[string]int, error) {
+	return nil, nil
+}
+func (s *failingRuntimeGraphStore) AllTriples(context.Context) ([]graph.Triple, error) {
+	return nil, nil
+}
+func (s *failingRuntimeGraphStore) ClearAll(context.Context) error { return nil }
+func (s *failingRuntimeGraphStore) Close() error                   { return nil }
 
 func TestObserveExtractedTriples_PublishesAdmissionAndPreservesOriginalTriples(t *testing.T) {
 	t.Parallel()
@@ -393,4 +427,73 @@ func TestContentSavedDroppedUnknownObserver_PublishesOnlyWhenObserveModeOn(t *te
 			assert.Empty(t, published)
 		})
 	}
+}
+
+func TestWireGraphCallbacks_ContentSavedContainmentPublishesWriteFailureBaselineInObserveMode(t *testing.T) {
+	t.Parallel()
+
+	bus := eventbus.New()
+	store := &failingRuntimeGraphStore{err: errors.New("boom")}
+	buffer := graph.NewGraphBuffer(store, zap.NewNop().Sugar())
+	buffer.SetEventBus(bus)
+
+	var got []eventbus.GraphAdmissionWriteFailureEvent
+	eventbus.SubscribeTyped(bus, func(evt eventbus.GraphAdmissionWriteFailureEvent) {
+		got = append(got, evt)
+	})
+
+	var wg sync.WaitGroup
+	buffer.Start(&wg)
+
+	gc := &graphComponents{
+		store:  store,
+		buffer: buffer,
+		admissionPolicy: graph.NewAdmissionPolicy(graph.AdmissionPolicyConfig{
+			Validator: func(string) bool { return true },
+		}, zap.NewNop().Sugar()),
+	}
+	cfg := config.DefaultConfig()
+	wireGraphCallbacks(gc, nil, nil, nil, cfg, bus, nil)
+
+	bus.Publish(eventbus.ContentSavedEvent{
+		ID:         "doc-1",
+		Collection: "knowledge",
+		NeedsGraph: true,
+	})
+
+	buffer.Stop()
+	wg.Wait()
+
+	require.Len(t, got, 1)
+	assert.Equal(t, eventbus.GraphAdmissionWriteFailureEvent{BatchCount: 1}, got[0])
+}
+
+func TestRuntimeGraphTripleCallback_PublishesWriteFailureBaselineInObserveMode(t *testing.T) {
+	t.Parallel()
+
+	bus := eventbus.New()
+	store := &failingRuntimeGraphStore{err: errors.New("boom")}
+	buffer := graph.NewGraphBuffer(store, zap.NewNop().Sugar())
+	buffer.SetEventBus(bus)
+
+	var got []eventbus.GraphAdmissionWriteFailureEvent
+	eventbus.SubscribeTyped(bus, func(evt eventbus.GraphAdmissionWriteFailureEvent) {
+		got = append(got, evt)
+	})
+
+	var wg sync.WaitGroup
+	buffer.Start(&wg)
+
+	hooks := memory.NewGraphHooks(runtimeGraphTripleCallback(buffer, true), zap.NewNop().Sugar())
+	hooks.OnObservation(memory.Observation{
+		ID:         uuid.New(),
+		SessionKey: "sess-1",
+		CreatedAt:  time.Now(),
+	}, "")
+
+	buffer.Stop()
+	wg.Wait()
+
+	require.Len(t, got, 1)
+	assert.Equal(t, eventbus.GraphAdmissionWriteFailureEvent{BatchCount: 1}, got[0])
 }
