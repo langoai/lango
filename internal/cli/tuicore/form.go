@@ -373,6 +373,13 @@ func (m FormModel) View() string {
 			}
 			b.WriteString(val)
 
+		case InputReadOnly:
+			val := f.Value
+			if isFocused {
+				val = lipgloss.NewStyle().Foreground(tui.Accent).Render(val)
+			}
+			b.WriteString(val)
+
 		case InputSearchSelect:
 			if f.Loading {
 				b.WriteString(lipgloss.NewStyle().Foreground(tui.Dim).Italic(true).Render("Loading models..."))
@@ -453,6 +460,13 @@ func (m FormModel) View() string {
 			tui.HelpEntry("Enter", "Select"),
 			tui.HelpEntry("Esc", "Close"),
 			tui.HelpEntry("Type", "Filter"),
+		))
+	} else if len(visible) > 0 && visible[m.Cursor].Type == InputReadOnly {
+		b.WriteString(tui.HelpBar(
+			tui.HelpEntry("Tab", "Next"),
+			tui.HelpEntry("Shift+Tab", "Prev"),
+			tui.HelpEntry("Esc", "Back"),
+			tui.HelpEntry("Read-only", "Info"),
 		))
 	} else {
 		b.WriteString(tui.HelpBar(

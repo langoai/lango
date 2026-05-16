@@ -16,11 +16,20 @@ The package SHALL define the following input types:
 - `InputBool` — Boolean toggle (spacebar)
 - `InputSelect` — Cycle through options (left/right arrows)
 - `InputPassword` — Masked text input
+- `InputReadOnly` — Non-editable informational field
+
+#### Scenario: Standard field types are available
+- **WHEN** callers build forms with shared input components
+- **THEN** the package SHALL expose `InputText`, `InputInt`, `InputBool`, `InputSelect`, `InputPassword`, and `InputReadOnly`
 
 ### Field Struct
 Each field SHALL have:
 - Key, Label, Type, Value, Placeholder, Options, Checked, Width, Validate
 - Exported `TextInput` field (bubbletea textinput.Model) for cross-package access
+
+#### Scenario: Field struct exposes shared form state
+- **WHEN** a field is created for form use
+- **THEN** it SHALL expose the documented core properties and exported `TextInput` handle
 
 ### FormModel
 The form model SHALL:
@@ -28,6 +37,10 @@ The form model SHALL:
 - Support text input, boolean toggle, and select cycling
 - Render with title, field labels, and help footer
 - Call OnCancel on Esc
+
+#### Scenario: FormModel supports shared form interaction
+- **WHEN** a form model is used by onboarding or settings flows
+- **THEN** it SHALL manage navigation, input handling, rendering, and cancel behavior across its fields
 
 ### FormModel cursor navigation
 The form cursor SHALL index into `VisibleFields()` instead of the full `Fields` slice. After any input event (including bool toggles that may change visibility), the cursor SHALL be clamped to `[0, len(visible)-1]`.
@@ -56,6 +69,11 @@ The config state SHALL:
 - Hold current `*config.Config` and dirty field tracking
 - Provide `UpdateConfigFromForm`, `UpdateProviderFromForm`, `UpdateAuthProviderFromForm` methods
 - Map all field keys to their corresponding config paths
+
+#### Scenario: ConfigState applies form updates to config
+- **WHEN** a form change is committed through ConfigState
+- **THEN** the matching config fields SHALL be updated
+- **AND** the state SHALL track those edits as dirty
 
 ### Skill field mappings in UpdateConfigFromForm
 The `UpdateConfigFromForm` method SHALL map the following field keys to config paths:
@@ -124,6 +142,11 @@ The `Field` struct SHALL include a `VisibleWhen func() bool` property. When non-
 ### IsVisible method on Field
 The `Field` struct SHALL expose an `IsVisible() bool` method that returns true when `VisibleWhen` is nil, and the result of `VisibleWhen()` otherwise.
 
+#### Scenario: IsVisible reflects VisibleWhen semantics
+- **WHEN** callers invoke `IsVisible()` on a field
+- **THEN** it SHALL return `true` for nil `VisibleWhen`
+- **AND** otherwise SHALL return the callback result
+
 ### VisibleFields on FormModel
 `FormModel` SHALL expose a `VisibleFields() []*Field` method that returns only fields where `IsVisible()` returns true.
 
@@ -145,8 +168,23 @@ The FormModel MUST support InputSearchSelect as a field type with dedicated stat
 #### Scenario: Context-dependent help bar
 - **WHEN** a dropdown is open
 - **THEN** help bar shows dropdown-specific keys (↑↓ Navigate, Enter Select, Esc Close, Type Filter)
-- **WHEN** no dropdown is open
+- **WHEN** no dropdown is open and the focused field is editable
 - **THEN** help bar shows form-level keys including Enter Search
+- **WHEN** no dropdown is open and the focused field is `InputReadOnly`
+- **THEN** help bar shows read-only informational guidance instead of edit/search controls
+
+### Requirement: InputReadOnly field type in form model
+The FormModel MUST support InputReadOnly as a non-editable field type for status and compatibility notices.
+
+#### Scenario: Read-only field does not mutate
+- **WHEN** the focused field is `InputReadOnly`
+- **THEN** text input, space, arrow, and enter keys SHALL NOT change the field value
+- **AND** the field SHALL NOT be marked edited
+
+#### Scenario: Read-only field renders as informational text
+- **WHEN** the form View renders an `InputReadOnly` field
+- **THEN** the field value SHALL be shown as informational text
+- **AND** focused read-only fields SHALL render a read-only help footer
 
 ### Field struct reactive fields
 The `tuicore.Field` struct SHALL include `OnChange func(newValue string) tea.Cmd`, `Loading bool`, and `LoadError error` fields in addition to all existing fields. The `OnChange` callback SHALL be invoked by the form when an InputSelect field value changes via user interaction.

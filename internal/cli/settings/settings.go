@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
@@ -42,7 +43,7 @@ Press "/" to search, or use smart filters: @basic, @advanced, @enabled, @modifie
   P2P & Economy:    P2P Network, P2P Workspace, P2P ZKP, P2P Pricing, P2P Owner, P2P Sandbox,
                     Economy, Risk, Negotiation, Escrow, On-Chain Escrow, Pricing
   Integrations:     MCP, Observability, Alerting
-  Security:         Security, Auth, DB Encryption, KMS, OS Sandbox
+  Security:         Security, Auth, Legacy DB Encryption, KMS, OS Sandbox
 
 All settings including API keys are saved in an encrypted profile (~/.lango/lango.db).
 
@@ -53,7 +54,7 @@ See Also:
   lango onboard     - Guided setup wizard
   lango doctor      - Diagnose configuration issues`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runSettings(profileName)
+			return runSettings(cmd.OutOrStdout(), profileName)
 		},
 	}
 
@@ -62,7 +63,7 @@ See Also:
 	return cmd
 }
 
-func runSettings(profileName string) error {
+func runSettings(out io.Writer, profileName string) error {
 	boot, err := bootstrap.Run(bootstrap.Options{
 		Version:            cliboot.Version,
 		StartStorageBroker: true,
@@ -93,7 +94,7 @@ func runSettings(profileName string) error {
 	}
 
 	if editor.Cancelled {
-		fmt.Println("\nSettings cancelled.")
+		fmt.Fprintln(out, "\nSettings cancelled.")
 		return nil
 	}
 
@@ -118,7 +119,7 @@ func runSettings(profileName string) error {
 		}
 	}
 
-	printNextSteps(profileName)
+	printNextSteps(out, profileName)
 
 	return nil
 }
@@ -134,16 +135,16 @@ func loadOrDefault(ctx context.Context, store storage.ConfigProfileStore, name s
 	return nil, false, err
 }
 
-func printNextSteps(profileName string) {
-	fmt.Printf("\n%s Configuration saved to encrypted profile %q\n", "\u2713", profileName)
-	fmt.Println("  Storage: ~/.lango/lango.db")
+func printNextSteps(out io.Writer, profileName string) {
+	fmt.Fprintf(out, "\n%s Configuration saved to encrypted profile %q\n", "\u2713", profileName)
+	fmt.Fprintln(out, "  Storage: ~/.lango/lango.db")
 
-	fmt.Println("\nNext steps:")
-	fmt.Println("  1. Start Lango:")
-	fmt.Println("     lango serve")
-	fmt.Println("\n  2. (Optional) Run doctor to verify setup:")
-	fmt.Println("     lango doctor")
-	fmt.Println("\n  Profile management:")
-	fmt.Println("     lango config list    \u2014 list all profiles")
-	fmt.Println("     lango config use     \u2014 switch active profile")
+	fmt.Fprintln(out, "\nNext steps:")
+	fmt.Fprintln(out, "  1. Start Lango:")
+	fmt.Fprintln(out, "     lango serve")
+	fmt.Fprintln(out, "\n  2. (Optional) Run doctor to verify setup:")
+	fmt.Fprintln(out, "     lango doctor")
+	fmt.Fprintln(out, "\n  Profile management:")
+	fmt.Fprintln(out, "     lango config list    \u2014 list all profiles")
+	fmt.Fprintln(out, "     lango config use     \u2014 switch active profile")
 }

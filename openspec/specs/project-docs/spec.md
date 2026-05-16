@@ -32,7 +32,7 @@ The docs/architecture/project-structure.md security package description SHALL me
 - **THEN** the description SHALL include KMS providers (AWS, GCP, Azure, PKCS#11)
 
 ### Requirement: Skills description corrected
-The README.md and docs/architecture/project-structure.md SHALL NOT reference "30" or "38" embedded default skills, and SHALL explain that built-in skills were removed due to the passphrase security model.
+The README.md, docs/architecture/project-structure.md, and docs/features/skills.md SHALL NOT reference "30" or "38" embedded default skills, and SHALL explain that built-in skills were removed due to the passphrase security model.
 
 #### Scenario: README skills line is accurate
 - **WHEN** a user reads the README.md Architecture section skills line
@@ -42,19 +42,26 @@ The README.md and docs/architecture/project-structure.md SHALL NOT reference "30
 - **WHEN** a user reads the skills section of project-structure.md
 - **THEN** it SHALL explain that ~30 built-in skills were removed and the infrastructure remains functional for user-defined skills
 
-### Requirement: Security feature card updated in docs landing page
-The docs/index.md Security card SHALL mention hardware keyring, SQLCipher, and Cloud KMS.
+#### Scenario: skills feature page is accurate
+- **WHEN** a user reads docs/features/skills.md
+- **THEN** it SHALL explain that the embedded skill path currently deploys no usable built-in skills by default
+- **AND** it SHALL direct the user toward user-authored, imported, or extension-provided skills instead
+
+### Requirement: Security feature card stays current with active encryption model
+The docs/index.md Security card SHALL mention hardware keyring, broker-managed payload protection, and Cloud KMS without presenting SQLCipher page encryption as an active current-runtime feature.
 
 #### Scenario: docs/index.md Security card is complete
 - **WHEN** a user reads the Security card on docs/index.md
-- **THEN** it SHALL mention hardware keyring (Touch ID / TPM), SQLCipher database encryption, and Cloud KMS integration
+- **THEN** it SHALL mention hardware keyring (Touch ID / TPM), broker-managed payload protection, and Cloud KMS integration
+- **AND** it SHALL NOT present SQLCipher page encryption as supported by the current runtime
 
-### Requirement: README Features security line updated
-The README.md Features section security line SHALL mention hardware keyring, SQLCipher, and Cloud KMS.
+### Requirement: README Features security line stays current with active encryption model
+The README.md Features section security line SHALL mention hardware keyring, broker-managed payload protection, and Cloud KMS without presenting SQLCipher page encryption as an active current-runtime feature.
 
 #### Scenario: README security feature is complete
 - **WHEN** a user reads the Features section of README.md
-- **THEN** the Secure line SHALL include hardware keyring, SQLCipher DB encryption, and Cloud KMS
+- **THEN** the Secure line SHALL include hardware keyring, broker-managed payload protection, and Cloud KMS
+- **AND** any SQLCipher references SHALL be framed as legacy compatibility or remediation only
 
 ### Requirement: Build and installation docs describe FTS5 as always on
 Project documentation MUST describe FTS5 as included in the default runtime and MUST NOT require `-tags "fts5"` for normal builds or installs.

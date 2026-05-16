@@ -18,6 +18,7 @@ const (
 	InputSelect
 	InputPassword
 	InputSearchSelect // Searchable dropdown select
+	InputReadOnly     // Non-editable informational field
 )
 
 // Field represents a single configuration field in a form.

@@ -694,14 +694,6 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 				s.Current.Alerting.Delivery = filtered
 			}
 
-		// Security DB Encryption
-		case "db_encryption_enabled":
-			s.Current.Security.DBEncryption.Enabled = f.Checked
-		case "db_cipher_page_size":
-			if i, err := strconv.Atoi(val); err == nil {
-				s.Current.Security.DBEncryption.CipherPageSize = i
-			}
-
 		// Security KMS
 		case "kms_backend":
 			// Syncs the KMS backend selector with signer provider.

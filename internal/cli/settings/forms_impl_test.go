@@ -816,14 +816,19 @@ func TestNewP2PSandboxForm_AllFields(t *testing.T) {
 	if f := fieldByKey(form, "container_runtime"); f.Type != tuicore.InputSelect {
 		t.Errorf("container_runtime: want InputSelect, got %d", f.Type)
 	}
+	if f := fieldByKey(form, "container_runtime"); f.Description != "Container runtime: auto=detect best available, docker=preferred real container runtime, gvisor=current stub, native=local fallback" {
+		t.Errorf("container_runtime description mismatch: %q", f.Description)
+	}
 }
 
 func TestNewDBEncryptionForm_AllFields(t *testing.T) {
 	cfg := defaultTestConfig()
+	cfg.Security.DBEncryption.Enabled = true
+	cfg.Security.DBEncryption.CipherPageSize = 8192
 	form := NewDBEncryptionForm(cfg)
 
 	wantKeys := []string{
-		"db_encryption_enabled", "db_cipher_page_size",
+		"db_encryption_flag_status", "db_cipher_page_size_status", "db_encryption_runtime_note",
 	}
 
 	if len(form.Fields) != len(wantKeys) {
@@ -834,6 +839,60 @@ func TestNewDBEncryptionForm_AllFields(t *testing.T) {
 		if f := fieldByKey(form, key); f == nil {
 			t.Errorf("missing field %q", key)
 		}
+	}
+
+	for _, key := range wantKeys {
+		if f := fieldByKey(form, key); f.Type != tuicore.InputReadOnly {
+			t.Errorf("%s: want InputReadOnly, got %d", key, f.Type)
+		}
+	}
+	if f := fieldByKey(form, "db_encryption_flag_status"); f.Value != "enabled in config (ignored by runtime)" {
+		t.Errorf("db_encryption_flag_status: unexpected value %q", f.Value)
+	}
+	if f := fieldByKey(form, "db_cipher_page_size_status"); f.Value != "8192" {
+		t.Errorf("db_cipher_page_size_status: unexpected value %q", f.Value)
+	}
+	if f := fieldByKey(form, "db_encryption_runtime_note"); f.Value != "Broker-managed payload protection is active; SQLCipher page encryption is unsupported." {
+		t.Errorf("db_encryption_runtime_note: unexpected value %q", f.Value)
+	}
+}
+
+func TestUpdateConfigFromForm_IgnoresDeprecatedDBEncryptionFields(t *testing.T) {
+	state := tuicore.NewConfigState()
+	state.Current.Security.DBEncryption.Enabled = true
+	state.Current.Security.DBEncryption.CipherPageSize = 4096
+
+	cfg := defaultTestConfig()
+	cfg.Security.DBEncryption.Enabled = false
+	cfg.Security.DBEncryption.CipherPageSize = 8192
+	form := NewDBEncryptionForm(cfg)
+
+	state.UpdateConfigFromForm(form)
+
+	if !state.Current.Security.DBEncryption.Enabled {
+		t.Fatal("DBEncryption.Enabled: read-only notice form must preserve existing config state")
+	}
+	if state.Current.Security.DBEncryption.CipherPageSize != 4096 {
+		t.Fatalf("DBEncryption.CipherPageSize: want 4096, got %d", state.Current.Security.DBEncryption.CipherPageSize)
+	}
+}
+
+func TestUpdateConfigFromForm_IgnoresFormerDeprecatedDBEncryptionKeys(t *testing.T) {
+	state := tuicore.NewConfigState()
+	state.Current.Security.DBEncryption.Enabled = false
+	state.Current.Security.DBEncryption.CipherPageSize = 4096
+
+	form := tuicore.NewFormModel("test")
+	form.AddField(&tuicore.Field{Key: "db_encryption_enabled", Type: tuicore.InputBool, Checked: true})
+	form.AddField(&tuicore.Field{Key: "db_cipher_page_size", Type: tuicore.InputInt, Value: "8192"})
+
+	state.UpdateConfigFromForm(&form)
+
+	if state.Current.Security.DBEncryption.Enabled {
+		t.Fatal("DBEncryption.Enabled: former deprecated settings form keys must not mutate runtime config")
+	}
+	if state.Current.Security.DBEncryption.CipherPageSize != 4096 {
+		t.Fatalf("DBEncryption.CipherPageSize: want 4096, got %d", state.Current.Security.DBEncryption.CipherPageSize)
 	}
 }
 

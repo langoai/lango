@@ -297,3 +297,35 @@ func TestFormModel_HasOpenDropdown(t *testing.T) {
 	form.Fields[0].SelectOpen = true
 	assert.True(t, form.HasOpenDropdown())
 }
+
+func TestInputReadOnly_DoesNotMutateOnEditingKeys(t *testing.T) {
+	form := NewFormModel("Test")
+	form.Focus = true
+	form.AddField(ReadOnlyInput("legacy", "Legacy", "unchanged", "compatibility-only status"))
+
+	for _, msg := range []tea.KeyMsg{
+		{Type: tea.KeyRunes, Runes: []rune("x")},
+		{Type: tea.KeySpace},
+		{Type: tea.KeyRight},
+		{Type: tea.KeyEnter},
+	} {
+		var cmd tea.Cmd
+		form, cmd = form.Update(msg)
+		assert.Nil(t, cmd)
+		assert.Equal(t, "unchanged", form.Fields[0].Value)
+		assert.False(t, form.Fields[0].Edited)
+	}
+}
+
+func TestInputReadOnly_ViewShowsReadOnlyHelp(t *testing.T) {
+	form := NewFormModel("Test")
+	form.Focus = true
+	form.AddField(ReadOnlyInput("legacy", "Legacy", "unsupported", "compatibility-only status"))
+
+	view := form.View()
+
+	assert.Contains(t, view, "Read-only")
+	assert.Contains(t, view, "Info")
+	assert.NotContains(t, view, "Toggle")
+	assert.NotContains(t, view, "Search")
+}
