@@ -1,9 +1,11 @@
 package chat
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/langoai/lango/internal/approval"
 )
@@ -40,6 +42,16 @@ func TestFormatChannelOrigin_TwoParts(t *testing.T) {
 	assert.Equal(t, "", got)
 }
 
+func TestFormatChannelOrigin_SanitizesOriginValue(t *testing.T) {
+	got := formatChannelOrigin("telegram:\x1b[31m12\n3\x1b[0m:456")
+	assert.Equal(t, "[Telegram] 12 3", got)
+}
+
+func TestFormatChannelOrigin_SanitizesKnownPrefix(t *testing.T) {
+	got := formatChannelOrigin("\x1b[31mtelegram\x1b[0m:123:456")
+	assert.Equal(t, "[Telegram] 123", got)
+}
+
 // --- formatChannelBadge tests ---
 
 func TestFormatChannelBadge_Telegram(t *testing.T) {
@@ -60,6 +72,11 @@ func TestFormatChannelBadge_Slack(t *testing.T) {
 func TestFormatChannelBadge_NonChannel(t *testing.T) {
 	got := formatChannelBadge("tui-12345")
 	assert.Equal(t, "", got)
+}
+
+func TestFormatChannelBadge_SanitizesKnownPrefix(t *testing.T) {
+	got := formatChannelBadge("\x1b[31mdiscord\x1b[0m:ch:user")
+	assert.Equal(t, "[DC]", got)
 }
 
 // --- Renderer tests with channel session keys ---
@@ -90,6 +107,94 @@ func TestRenderApprovalBanner_NoChannelOrigin(t *testing.T) {
 	assert.NotContains(t, output, "←", "banner should not show origin arrow for non-channel key")
 }
 
+func TestRenderApprovalBanner_ParamsRenderInStableKeyOrder(t *testing.T) {
+	req := approval.ApprovalRequest{
+		ToolName: "fs_read",
+		Summary:  "Read config file",
+		Params: map[string]interface{}{
+			"zeta":  3,
+			"alpha": 1,
+			"beta":  2,
+		},
+	}
+	output := renderApprovalBanner(req, 120)
+
+	alphaIdx := strings.Index(output, "alpha: 1")
+	betaIdx := strings.Index(output, "beta: 2")
+	zetaIdx := strings.Index(output, "zeta: 3")
+
+	require.NotEqual(t, -1, alphaIdx)
+	require.NotEqual(t, -1, betaIdx)
+	require.NotEqual(t, -1, zetaIdx)
+	assert.Less(t, alphaIdx, betaIdx)
+	assert.Less(t, betaIdx, zetaIdx)
+}
+
+func TestRenderApprovalBanner_NestedParamsRenderDeterministically(t *testing.T) {
+	req := approval.ApprovalRequest{
+		ToolName: "fs_read",
+		Summary:  "Read config file",
+		Params: map[string]interface{}{
+			"config": map[string]interface{}{
+				"zeta":  3,
+				"alpha": 1,
+			},
+		},
+	}
+	output := renderApprovalBanner(req, 120)
+	assert.Contains(t, output, `config: {"alpha":1,"zeta":3}`)
+}
+
+func TestRenderApprovalBanner_MultilineStringParamStaysSingleLine(t *testing.T) {
+	req := approval.ApprovalRequest{
+		ToolName: "fs_read",
+		Summary:  "Read config file",
+		Params: map[string]interface{}{
+			"content": "line one\nline two\nline three",
+		},
+	}
+	output := renderApprovalBanner(req, 120)
+	assert.Contains(t, output, "content: line one line two line three")
+	assert.NotContains(t, output, "line one\nline two")
+}
+
+func TestRenderApprovalBanner_SanitizesParamKey(t *testing.T) {
+	req := approval.ApprovalRequest{
+		ToolName: "fs_read",
+		Summary:  "Read config file",
+		Params: map[string]interface{}{
+			"path\x1b[31m\nops\x1b[0m": "/tmp/test.txt",
+		},
+	}
+	output := renderApprovalBanner(req, 120)
+	assert.Contains(t, output, "path ops: /tmp/test.txt")
+	assert.NotContains(t, output, "\x1b[31m")
+	assert.NotContains(t, output, "\x1b[0m")
+}
+
+func TestRenderApprovalBanner_SanitizesSummary(t *testing.T) {
+	req := approval.ApprovalRequest{
+		ToolName: "fs_read",
+		Summary:  "\x1b[31mRead\nconfig\tfile\x1b[0m",
+	}
+	output := renderApprovalBanner(req, 120)
+	assert.Contains(t, output, "Read config file")
+	assert.NotContains(t, output, "\x1b[31m")
+	assert.NotContains(t, output, "\x1b[0m")
+	assert.NotContains(t, output, "Read\nconfig")
+}
+
+func TestRenderApprovalBanner_SanitizesToolName(t *testing.T) {
+	req := approval.ApprovalRequest{
+		ToolName: "fs_\x1b[31mread\nops\x1b[0m",
+		Summary:  "Read config file",
+	}
+	output := renderApprovalBanner(req, 120)
+	assert.Contains(t, output, "fs_read ops")
+	assert.NotContains(t, output, "\x1b[31m")
+	assert.NotContains(t, output, "\x1b[0m")
+}
+
 func TestRenderApprovalStrip_WithChannelBadge(t *testing.T) {
 	vm := approval.ApprovalViewModel{
 		Request: approval.ApprovalRequest{
@@ -99,7 +204,7 @@ func TestRenderApprovalStrip_WithChannelBadge(t *testing.T) {
 		},
 		Risk: approval.RiskIndicator{Level: "moderate", Label: "Reads file"},
 	}
-	output := renderApprovalStrip(vm, 120)
+	output := renderApprovalStrip(vm, &approvalState{}, 120)
 
 	assert.Contains(t, output, "[DC]", "strip should show channel badge for discord session key")
 }
@@ -113,7 +218,7 @@ func TestRenderApprovalStrip_NoChannelBadge(t *testing.T) {
 		},
 		Risk: approval.RiskIndicator{Level: "moderate", Label: "Reads file"},
 	}
-	output := renderApprovalStrip(vm, 120)
+	output := renderApprovalStrip(vm, &approvalState{}, 120)
 
 	assert.NotContains(t, output, "[TG]", "strip should not show TG badge for non-channel key")
 	assert.NotContains(t, output, "[DC]", "strip should not show DC badge for non-channel key")
@@ -154,4 +259,35 @@ func TestRenderApprovalDialog_NoChannelOrigin(t *testing.T) {
 	assert.NotContains(t, output, "[Telegram]", "dialog should not show Telegram for non-channel key")
 	assert.NotContains(t, output, "[Discord]", "dialog should not show Discord for non-channel key")
 	assert.NotContains(t, output, "[Slack]", "dialog should not show Slack for non-channel key")
+}
+
+func TestRenderApprovalBanner_SanitizesChannelOrigin(t *testing.T) {
+	req := approval.ApprovalRequest{
+		ToolName:   "fs_read",
+		Summary:    "Read config file",
+		SessionKey: "telegram:\x1b[31m12\n3\x1b[0m:456",
+	}
+	output := renderApprovalBanner(req, 80)
+
+	assert.Contains(t, output, "[Telegram] 12 3")
+	assert.NotContains(t, output, "\x1b[31m")
+	assert.NotContains(t, output, "\x1b[0m")
+}
+
+func TestRenderApprovalDialog_SanitizesChannelOrigin(t *testing.T) {
+	vm := approval.ApprovalViewModel{
+		Request: approval.ApprovalRequest{
+			ToolName:   "fs_edit",
+			Summary:    "Edit config.yaml",
+			SessionKey: "slack:\x1b[31mC1\n23\x1b[0m:U456",
+			Params:     map[string]interface{}{"path": "/etc/config.yaml"},
+		},
+		Risk: approval.RiskIndicator{Level: "high", Label: "Modifies filesystem"},
+	}
+	state := &approvalState{}
+	output := renderApprovalDialog(vm, state, 80, 40)
+
+	assert.Contains(t, output, "[Slack] C1 23")
+	assert.NotContains(t, output, "\x1b[31m")
+	assert.NotContains(t, output, "\x1b[0m")
 }

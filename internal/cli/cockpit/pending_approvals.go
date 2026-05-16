@@ -24,6 +24,11 @@ func NewPendingApprovalRegistry() *PendingApprovalRegistry {
 func (r *PendingApprovalRegistry) Register(msg chat.ApprovalRequestMsg) {
 	r.mu.Lock()
 	msgCopy := msg
+	msgCopy.Request.ToolName = sanitizeMissionProjectionText(msgCopy.Request.ToolName)
+	msgCopy.Request.Summary = sanitizeMissionProjectionText(msgCopy.Request.Summary)
+	msgCopy.ViewModel.RuleExplanation = sanitizeMissionProjectionText(msgCopy.ViewModel.RuleExplanation)
+	msgCopy.ViewModel.Risk.Level = sanitizeMissionProjectionText(msgCopy.ViewModel.Risk.Level)
+	msgCopy.ViewModel.Risk.Label = sanitizeMissionProjectionText(msgCopy.ViewModel.Risk.Label)
 	if r.pending == nil {
 		r.pending = &msgCopy
 	} else {

@@ -215,6 +215,11 @@ func (m *Model) markTurnStarted() {
 
 func (m *Model) handleDone(msg chat.DoneMsg) (tea.Model, tea.Cmd) {
 	cmds := make([]tea.Cmd, 0, 2)
+	if m.activityBuffer != nil {
+		if item, ok := cockpit.NewAssistantSummaryActivity("", msg, time.Now()); ok {
+			m.activityBuffer.Append(item)
+		}
+	}
 	if _, cmd := m.forward(msg); cmd != nil {
 		cmds = append(cmds, cmd)
 	}

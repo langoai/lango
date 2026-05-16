@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -110,16 +111,54 @@ func TestRenderThinkingBlock_NarrowWidth(t *testing.T) {
 	}
 }
 
+func TestRenderThinkingBlock_ActiveClampAndSingleLine(t *testing.T) {
+	got := renderThinkingBlock("line one\nline two\nline three", "active", "", 20)
+	assert.LessOrEqual(t, lipgloss.Width(got), 20)
+	assert.NotContains(t, got, "\n")
+	assert.Contains(t, got, "…")
+}
+
+func TestRenderThinkingBlock_SanitizesPreviewText(t *testing.T) {
+	got := renderThinkingBlock("\x1b[31mline one\nline two\x1b[0m", "active", "", 80)
+	assert.Contains(t, got, "line one line two")
+	assert.NotContains(t, got, "\x1b[31m")
+	assert.NotContains(t, got, "\x1b[0m")
+}
+
+func TestRenderThinkingBlock_SanitizesFallbackText(t *testing.T) {
+	got := renderThinkingBlock("\x1b[31mfallback\ntext\x1b[0m", "unknown", "", 80)
+	assert.Contains(t, got, "fallback text")
+	assert.NotContains(t, got, "\x1b[31m")
+	assert.NotContains(t, got, "\x1b[0m")
+}
+
+func TestRenderThinkingBlock_DoneClamp(t *testing.T) {
+	got := renderThinkingBlock("", "done", "1234567890", 12)
+	assert.LessOrEqual(t, lipgloss.Width(got), 12)
+	assert.NotContains(t, got, "\n")
+}
+
 func TestRenderPendingIndicator(t *testing.T) {
-	got := renderPendingIndicator("3s")
+	got := renderPendingIndicator("3s", 80)
 	assert.Contains(t, got, "Working")
 	assert.Contains(t, got, "3s")
 	assert.True(t, strings.Contains(got, "⏳"), "should contain hourglass emoji")
 }
 
 func TestRenderPendingIndicator_EmptyElapsed(t *testing.T) {
-	got := renderPendingIndicator("")
+	got := renderPendingIndicator("", 80)
 	assert.NotEmpty(t, got, "should produce valid output even with empty elapsed")
 	assert.Contains(t, got, "Working")
 	assert.Contains(t, got, "⏳")
+}
+
+func TestRenderPendingIndicator_NarrowWidth(t *testing.T) {
+	got := renderPendingIndicator("1234567890", 12)
+	assert.LessOrEqual(t, lipgloss.Width(got), 12)
+	assert.Contains(t, got, "…")
+}
+
+func TestRenderPendingIndicator_ZeroWidth(t *testing.T) {
+	got := renderPendingIndicator("3s", 0)
+	assert.LessOrEqual(t, lipgloss.Width(got), 10)
 }

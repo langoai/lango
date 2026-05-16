@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/langoai/lango/internal/agentrt"
 	"github.com/langoai/lango/internal/background"
 	"github.com/langoai/lango/internal/collabview"
@@ -17,6 +19,10 @@ import (
 	"github.com/langoai/lango/internal/proposal"
 	"github.com/langoai/lango/internal/runledger"
 )
+
+func sanitizeMissionProjectionText(text string) string {
+	return strings.Join(strings.Fields(ansi.Strip(strings.TrimSpace(text))), " ")
+}
 
 const (
 	defaultMissionControlMissionLimit  = 6
@@ -117,12 +123,12 @@ func (p *MissionControlProjector) Project(taskSnapshots []background.TaskSnapsho
 
 	return MissionControlSnapshot{
 		Header: HeaderView{
-			ActiveAgentSummary:   buildActiveAgentSummary(missions),
-			ModelProviderSummary: p.buildModelProviderSummary(),
+			ActiveAgentSummary:   sanitizeMissionProjectionText(buildActiveAgentSummary(missions)),
+			ModelProviderSummary: sanitizeMissionProjectionText(p.buildModelProviderSummary()),
 			PendingDecisionCount: pendingDecisionCount(p.pendingApprovals),
-			DegradedNote:         degradedNote,
-			ContextSummary:       p.buildContextSummary(),
-			MetricsSummary:       p.buildMetricsSummary(),
+			DegradedNote:         sanitizeMissionProjectionText(degradedNote),
+			ContextSummary:       sanitizeMissionProjectionText(p.buildContextSummary()),
+			MetricsSummary:       sanitizeMissionProjectionText(p.buildMetricsSummary()),
 		},
 		Missions:                visibleMissions,
 		Decision:                decision,
@@ -230,12 +236,12 @@ func (p *MissionControlProjector) projectBackgroundTasks(taskSnapshots []backgro
 			ID:         "bg:" + strings.TrimSpace(task.ID),
 			Kind:       MissionKindActive,
 			Status:     missionStatusFromTask(task.StatusText),
-			Title:      firstNonEmptyLine(task.Prompt),
+			Title:      sanitizeMissionProjectionText(firstNonEmptyLine(task.Prompt)),
 			NextAction: nextActionForTask(task.StatusText),
 			UpdatedAt:  newestRelevantTaskTime(task),
 		}
 		if mission.Title == "" {
-			mission.Title = strings.TrimSpace(task.ID)
+			mission.Title = sanitizeMissionProjectionText(task.ID)
 		}
 
 		if p.runLedgerStore != nil {
@@ -282,11 +288,11 @@ func (p *MissionControlProjector) projectDecision() *DecisionView {
 	return &DecisionView{
 		ID:                   strings.TrimSpace(msg.Request.ID),
 		Category:             DecisionCategoryApproval,
-		Title:                title,
-		Reason:               strings.TrimSpace(msg.ViewModel.RuleExplanation),
-		EffectText:           strings.TrimSpace(msg.Request.Summary),
-		RiskLevel:            strings.TrimSpace(msg.ViewModel.Risk.Level),
-		RiskLabel:            strings.TrimSpace(msg.ViewModel.Risk.Label),
+		Title:                sanitizeMissionProjectionText(title),
+		Reason:               sanitizeMissionProjectionText(msg.ViewModel.RuleExplanation),
+		EffectText:           sanitizeMissionProjectionText(msg.Request.Summary),
+		RiskLevel:            sanitizeMissionProjectionText(msg.ViewModel.Risk.Level),
+		RiskLabel:            sanitizeMissionProjectionText(msg.ViewModel.Risk.Label),
 		ApproveLabel:         "Approve",
 		DenyLabel:            "Deny",
 		AllowForSessionLabel: "Allow for session",
@@ -312,9 +318,9 @@ func (p *MissionControlProjector) projectLearningSuggestions() []MissionView {
 
 	missions := make([]MissionView, 0, len(items))
 	for _, item := range items {
-		title := strings.TrimSpace(item.ProposedRule)
+		title := sanitizeMissionProjectionText(item.ProposedRule)
 		if title == "" {
-			title = strings.TrimSpace(item.Pattern)
+			title = sanitizeMissionProjectionText(item.Pattern)
 		}
 		if title == "" {
 			title = "Inspect learning suggestion"
@@ -323,11 +329,11 @@ func (p *MissionControlProjector) projectLearningSuggestions() []MissionView {
 			ID:         "learn:" + strings.TrimSpace(item.SuggestionID),
 			Kind:       MissionKindProposed,
 			Status:     MissionStatusPending,
-			Title:      "Apply learning rule: " + title,
-			Detail:     strings.TrimSpace(item.Rationale),
+			Title:      sanitizeMissionProjectionText("Apply learning rule: " + title),
+			Detail:     sanitizeMissionProjectionText(item.Rationale),
 			NextAction: "Review raw suggestion",
 			SourceKind: "proposed_learning",
-			SourceRef:  strings.TrimSpace(item.SuggestionID),
+			SourceRef:  sanitizeMissionProjectionText(item.SuggestionID),
 			UpdatedAt:  item.Timestamp,
 		})
 	}
@@ -353,9 +359,9 @@ func (p *MissionControlProjector) projectProposals() ([]MissionView, bool) {
 			ID:         strings.TrimSpace(item.ProposalID),
 			Kind:       MissionKindProposed,
 			Status:     missionStatusFromProposal(item.Status),
-			Title:      strings.TrimSpace(item.Title),
-			SourceKind: strings.TrimSpace(item.Source.Kind),
-			SourceRef:  strings.TrimSpace(item.Source.Ref),
+			Title:      sanitizeMissionProjectionText(item.Title),
+			SourceKind: sanitizeMissionProjectionText(item.Source.Kind),
+			SourceRef:  sanitizeMissionProjectionText(item.Source.Ref),
 			UpdatedAt:  item.UpdatedAt,
 		}
 		if view.Title == "" {
@@ -370,14 +376,14 @@ func (p *MissionControlProjector) projectProposals() ([]MissionView, bool) {
 			view.NextAction = "Review proposal"
 		}
 		if item.PreparedBrief != nil {
-			view.Detail = strings.TrimSpace(item.PreparedBrief.SourceSummary)
-			view.RuntimeHint = strings.TrimSpace(item.PreparedBrief.Reason)
+			view.Detail = sanitizeMissionProjectionText(item.PreparedBrief.SourceSummary)
+			view.RuntimeHint = sanitizeMissionProjectionText(item.PreparedBrief.Reason)
 		}
 		if view.Detail == "" {
-			view.Detail = strings.TrimSpace(item.Summary)
+			view.Detail = sanitizeMissionProjectionText(item.Summary)
 		}
 		if view.RuntimeHint == "" {
-			view.RuntimeHint = strings.TrimSpace(item.Source.Kind)
+			view.RuntimeHint = sanitizeMissionProjectionText(item.Source.Kind)
 		}
 		missions = append(missions, view)
 	}
@@ -448,8 +454,8 @@ func (p *MissionControlProjector) projectLoops(
 			for _, item := range items {
 				input.DeadLetters = append(input.DeadLetters, loopview.DeadLetterSource{
 					ReferenceID: item.TransactionReceiptID,
-					Title:       firstNonEmptyString(item.LatestDispatchReference, item.TransactionReceiptID),
-					Summary:     item.LatestDeadLetterReason,
+					Title:       sanitizeMissionProjectionText(firstNonEmptyString(item.LatestDispatchReference, item.TransactionReceiptID)),
+					Summary:     sanitizeMissionProjectionText(item.LatestDeadLetterReason),
 					Retryable:   item.CanRetry,
 					UpdatedAt:   parseRFC3339OrZero(item.LatestDeadLetteredAt),
 				})
@@ -475,10 +481,10 @@ func (p *MissionControlProjector) projectLoops(
 				}
 				input.CronJobs = append(input.CronJobs, loopview.CronSource{
 					JobID:         item.ID,
-					Name:          item.Name,
+					Name:          sanitizeMissionProjectionText(item.Name),
 					Enabled:       item.Enabled,
 					NextRunAt:     valueOrZero(item.NextRunAt),
-					LastRunStatus: lastStatus,
+					LastRunStatus: sanitizeMissionProjectionText(lastStatus),
 					LastRunAt:     lastRunAt,
 				})
 			}
@@ -493,9 +499,9 @@ func (p *MissionControlProjector) projectLoops(
 			ID:         item.LoopID,
 			Kind:       item.LoopKind,
 			Status:     item.Status,
-			Title:      item.Title,
-			Summary:    item.Summary,
-			NextAction: item.NextAction,
+			Title:      sanitizeMissionProjectionText(item.Title),
+			Summary:    sanitizeMissionProjectionText(item.Summary),
+			NextAction: sanitizeMissionProjectionText(item.NextAction),
 			UpdatedAt:  item.UpdatedAt,
 		})
 		if item.Status != loopview.LoopStatusResolved {
@@ -634,11 +640,11 @@ func attachCollaboration(missions []MissionView, collaboration map[string]Collab
 }
 
 func summarizeCollaboration(view collabview.CollaborationView) CollaborationView {
-	out := CollaborationView{ActiveOwner: strings.TrimSpace(view.ActiveOwner)}
+	out := CollaborationView{ActiveOwner: sanitizeMissionProjectionText(view.ActiveOwner)}
 	if len(view.Participants) > 0 {
 		names := make([]string, 0, len(view.Participants))
 		for _, participant := range view.Participants {
-			if text := strings.TrimSpace(participant.Name); text != "" {
+			if text := sanitizeMissionProjectionText(participant.Name); text != "" {
 				names = append(names, text)
 			}
 		}
@@ -661,13 +667,13 @@ func summarizeCollaboration(view collabview.CollaborationView) CollaborationView
 		out.StateHint = "Reviewing"
 	}
 	if len(view.HandoffEdges) > 0 {
-		out.HandoffSummary = fmt.Sprintf("%s -> %s", strings.TrimSpace(view.HandoffEdges[0].From), strings.TrimSpace(view.HandoffEdges[0].To))
+		out.HandoffSummary = sanitizeMissionProjectionText(fmt.Sprintf("%s -> %s", view.HandoffEdges[0].From, view.HandoffEdges[0].To))
 	}
 	if view.BudgetSignal != nil {
 		out.BudgetHint = fmt.Sprintf("%d/%d delegation budget", view.BudgetSignal.Used, view.BudgetSignal.Max)
 	}
 	if view.LastRecovery != nil {
-		out.RecoveryHint = fmt.Sprintf("%s after %s", strings.TrimSpace(view.LastRecovery.Action), strings.TrimSpace(view.LastRecovery.CauseClass))
+		out.RecoveryHint = sanitizeMissionProjectionText(fmt.Sprintf("%s after %s", view.LastRecovery.Action, view.LastRecovery.CauseClass))
 	}
 	return out
 }
@@ -691,7 +697,7 @@ func (p *MissionControlProjector) projectActivities() []ActivityView {
 	for _, item := range items {
 		views = append(views, ActivityView{
 			Kind:      item.Kind,
-			Summary:   item.Summary,
+			Summary:   sanitizeMissionProjectionText(item.Summary),
 			Timestamp: item.Timestamp,
 		})
 	}
@@ -738,21 +744,21 @@ func missionViewFromDurableRow(row *mission.Mission) MissionView {
 		ID:         row.ID.String(),
 		Kind:       MissionKindActive,
 		Status:     missionStatusFromDurable(row.Status),
-		Title:      strings.TrimSpace(row.Title),
-		SourceKind: strings.TrimSpace(row.SourceKind),
+		Title:      sanitizeMissionProjectionText(row.Title),
+		SourceKind: sanitizeMissionProjectionText(row.SourceKind),
 		UpdatedAt:  row.UpdatedAt,
 	}
 	if row.SourceRef != nil {
-		view.SourceRef = strings.TrimSpace(*row.SourceRef)
+		view.SourceRef = sanitizeMissionProjectionText(*row.SourceRef)
 	}
 	if row.Description != nil {
-		view.Detail = strings.TrimSpace(*row.Description)
+		view.Detail = sanitizeMissionProjectionText(*row.Description)
 	}
 	if row.CurrentBlockedReason != nil {
-		view.BlockedReason = strings.TrimSpace(*row.CurrentBlockedReason)
+		view.BlockedReason = sanitizeMissionProjectionText(*row.CurrentBlockedReason)
 	}
 	if row.CurrentDecisionSummary != nil && view.Detail == "" {
-		view.Detail = strings.TrimSpace(*row.CurrentDecisionSummary)
+		view.Detail = sanitizeMissionProjectionText(*row.CurrentDecisionSummary)
 	}
 
 	switch row.Status {
@@ -883,16 +889,16 @@ func enrichDurableMissionFromRunLedger(missionView *MissionView, snap *runledger
 		return
 	}
 	if detail := strings.TrimSpace(snap.Goal); detail != "" {
-		missionView.Detail = detail
+		missionView.Detail = sanitizeMissionProjectionText(detail)
 	}
 	if blocker := strings.TrimSpace(firstNonEmptyString(snap.CurrentBlocker, snap.TeammateBlockedReason)); blocker != "" {
-		missionView.BlockedReason = blocker
+		missionView.BlockedReason = sanitizeMissionProjectionText(blocker)
 	}
 	if hint := strings.TrimSpace(snap.TeammateRuntimeCondition); hint != "" && missionView.RuntimeHint == "" {
-		missionView.RuntimeHint = hint
+		missionView.RuntimeHint = sanitizeMissionProjectionText(hint)
 	}
 	if step := snap.NextExecutableStep(); step != nil && missionView.NextAction != "Resolve pending decision" {
-		missionView.NextAction = "Next step: " + strings.TrimSpace(step.Goal)
+		missionView.NextAction = sanitizeMissionProjectionText("Next step: " + step.Goal)
 	}
 	if snap.UpdatedAt.After(missionView.UpdatedAt) {
 		missionView.UpdatedAt = snap.UpdatedAt
@@ -904,13 +910,13 @@ func enrichDurableMissionFromAgentRun(missionView *MissionView, run *agentrt.Age
 		return
 	}
 	if owner := strings.TrimSpace(run.RequestedAgent); owner != "" {
-		missionView.OwnerAgent = owner
+		missionView.OwnerAgent = sanitizeMissionProjectionText(owner)
 	}
 	if hint := runtimeHintForAgentRun(run.RuntimeCondition, run.BlockedReason); hint != "" {
-		missionView.RuntimeHint = hint
+		missionView.RuntimeHint = sanitizeMissionProjectionText(hint)
 	}
 	if missionView.BlockedReason == "" {
-		missionView.BlockedReason = strings.TrimSpace(run.BlockedReason)
+		missionView.BlockedReason = sanitizeMissionProjectionText(run.BlockedReason)
 	}
 }
 
@@ -928,7 +934,7 @@ func buildActiveAgentSummary(missions []MissionView) string {
 		if mission.Status == MissionStatusDone || mission.Status == MissionStatusFailed || mission.Status == MissionStatusCancelled {
 			continue
 		}
-		owner := strings.TrimSpace(mission.OwnerAgent)
+		owner := sanitizeMissionProjectionText(mission.OwnerAgent)
 		if owner == "" {
 			continue
 		}
@@ -952,8 +958,12 @@ func (p *MissionControlProjector) buildModelProviderSummary() string {
 	if p.cfg == nil {
 		return ""
 	}
-	provider := strings.TrimSpace(p.cfg.Agent.Provider)
-	model := strings.TrimSpace(p.cfg.Agent.Model)
+	status := config.EvaluateAgentSetup(p.cfg)
+	if !status.Ready() {
+		return "Setup required"
+	}
+	provider := status.ProviderID
+	model := status.Model
 	switch {
 	case provider != "" && model != "":
 		return provider + " / " + model
@@ -1039,18 +1049,18 @@ func enrichMissionFromRunLedger(mission *MissionView, snap *runledger.RunSnapsho
 	}
 
 	if detail := strings.TrimSpace(snap.Goal); detail != "" {
-		mission.Detail = detail
+		mission.Detail = sanitizeMissionProjectionText(detail)
 	}
 	if blocker := strings.TrimSpace(firstNonEmptyString(snap.CurrentBlocker, snap.TeammateBlockedReason)); blocker != "" {
 		mission.Status = MissionStatusBlocked
-		mission.BlockedReason = blocker
+		mission.BlockedReason = sanitizeMissionProjectionText(blocker)
 		mission.NextAction = "Resolve blocker"
 	}
 	if hint := strings.TrimSpace(snap.TeammateRuntimeCondition); hint != "" && mission.RuntimeHint == "" {
-		mission.RuntimeHint = hint
+		mission.RuntimeHint = sanitizeMissionProjectionText(hint)
 	}
 	if step := snap.NextExecutableStep(); step != nil && mission.Status != MissionStatusBlocked {
-		mission.NextAction = "Next step: " + strings.TrimSpace(step.Goal)
+		mission.NextAction = sanitizeMissionProjectionText("Next step: " + step.Goal)
 	}
 	if snap.UpdatedAt.After(mission.UpdatedAt) {
 		mission.UpdatedAt = snap.UpdatedAt
@@ -1062,10 +1072,10 @@ func enrichMissionFromAgentRun(mission *MissionView, run *agentrt.AgentRun) {
 		return
 	}
 	if owner := strings.TrimSpace(run.RequestedAgent); owner != "" {
-		mission.OwnerAgent = owner
+		mission.OwnerAgent = sanitizeMissionProjectionText(owner)
 	}
 	if hint := runtimeHintForAgentRun(run.RuntimeCondition, run.BlockedReason); hint != "" {
-		mission.RuntimeHint = hint
+		mission.RuntimeHint = sanitizeMissionProjectionText(hint)
 	}
 	if reason, nextAction, blocked := blockedStateForAgentRun(run.RuntimeCondition, run.BlockedReason); blocked {
 		mission.Status = MissionStatusBlocked

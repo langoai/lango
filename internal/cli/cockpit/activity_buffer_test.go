@@ -1,6 +1,7 @@
 package cockpit
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 
 	"github.com/langoai/lango/internal/cli/chat"
 	"github.com/langoai/lango/internal/eventbus"
+	"github.com/langoai/lango/internal/turnrunner"
 )
 
 func TestMissionActivityBufferRetention(t *testing.T) {
@@ -27,6 +29,88 @@ func TestMissionActivityBufferRetention(t *testing.T) {
 	require.Len(t, items, 200)
 	assert.Equal(t, time.Unix(5, 0).UTC().Format(time.RFC3339), items[0].Summary)
 	assert.Equal(t, time.Unix(204, 0).UTC().Format(time.RFC3339), items[len(items)-1].Summary)
+}
+
+func TestMissionActivityBufferAppendCompactsSummary(t *testing.T) {
+	buf := NewMissionActivityBuffer()
+	now := time.Date(2026, 5, 13, 12, 0, 0, 0, time.UTC)
+
+	buf.Append(MissionActivityItem{
+		Kind:      MissionActivityAssistant,
+		Summary:   "  First\x1b[31m line\n\nSecond   line\twith  extra spacing  ",
+		Timestamp: now,
+	})
+
+	longText := "Assistant reply: " + strings.Repeat("very long summary ", 20)
+	buf.Append(MissionActivityItem{
+		Kind:      MissionActivityAssistant,
+		Summary:   longText,
+		Timestamp: now.Add(time.Second),
+	})
+
+	items := buf.Snapshot()
+	require.Len(t, items, 2)
+	assert.Equal(t, "First line Second line with extra spacing", items[0].Summary)
+	assert.NotContains(t, items[0].Summary, "\x1b")
+	assert.Len(t, []rune(items[1].Summary), missionActivitySummaryMaxRunes)
+	assert.True(t, strings.HasSuffix(items[1].Summary, "..."))
+	assert.NotContains(t, items[1].Summary, "\n")
+}
+
+func TestNewAssistantSummaryActivity(t *testing.T) {
+	now := time.Date(2026, 5, 13, 12, 0, 0, 0, time.UTC)
+
+	t.Run("success summary", func(t *testing.T) {
+		item, ok := newAssistantSummaryActivity("sess-1", chat.DoneMsg{
+			Result: turnrunner.Result{
+				Outcome: "success",
+				Summary: "Answer completed",
+			},
+		}, now)
+		require.True(t, ok)
+		assert.Equal(t, MissionActivityAssistant, item.Kind)
+		assert.Equal(t, "sess-1", item.SessionKey)
+		assert.Equal(t, "Assistant reply: Answer completed", item.Summary)
+		assert.Equal(t, now, item.Timestamp)
+	})
+
+	t.Run("failure summary", func(t *testing.T) {
+		item, ok := newAssistantSummaryActivity("sess-1", chat.DoneMsg{
+			Result: turnrunner.Result{
+				Outcome:     "timeout",
+				UserMessage: "Request timed out",
+				Summary:     "request\x1b[31m exceeded\nlimit",
+			},
+		}, now)
+		require.True(t, ok)
+		assert.Equal(t, "Turn timeout: request exceeded limit", item.Summary)
+		assert.NotContains(t, item.Summary, "\x1b")
+	})
+
+	t.Run("prefers summary and sanitizes before append", func(t *testing.T) {
+		item, ok := newAssistantSummaryActivity("sess-1", chat.DoneMsg{
+			Result: turnrunner.Result{
+				Outcome:      "success",
+				ResponseText: "Response body fallback",
+				Summary:      "Line \x1b[31mone\n\nLine two",
+			},
+		}, now)
+		require.True(t, ok)
+		assert.Equal(t, "Assistant reply: Line one Line two", item.Summary)
+		assert.NotContains(t, item.Summary, "\x1b")
+
+		buf := NewMissionActivityBuffer()
+		buf.Append(item)
+		items := buf.Snapshot()
+		require.Len(t, items, 1)
+		assert.Equal(t, "Assistant reply: Line one Line two", items[0].Summary)
+		assert.NotContains(t, items[0].Summary, "\x1b")
+	})
+
+	t.Run("empty summary skipped", func(t *testing.T) {
+		_, ok := newAssistantSummaryActivity("sess-1", chat.DoneMsg{}, now)
+		assert.False(t, ok)
+	})
 }
 
 func TestMissionActivityContinuityEventAppend(t *testing.T) {

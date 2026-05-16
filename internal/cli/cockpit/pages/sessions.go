@@ -3,17 +3,23 @@ package pages
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/langoai/lango/internal/cli/cockpit/theme"
 	"github.com/langoai/lango/internal/cli/tui"
 	"github.com/langoai/lango/internal/session"
 )
+
+func sanitizeSessionsText(text string) string {
+	return strings.Join(strings.Fields(ansi.Strip(text)), " ")
+}
 
 // sessionsKeyMap holds the key bindings for the sessions page.
 type sessionsKeyMap struct {
@@ -25,11 +31,11 @@ func defaultSessionsKeyMap() sessionsKeyMap {
 	return sessionsKeyMap{
 		Up: key.NewBinding(
 			key.WithKeys("up", "k"),
-			key.WithHelp("up/k", "navigate up"),
+			key.WithHelp("↑/k", "up"),
 		),
 		Down: key.NewBinding(
 			key.WithKeys("down", "j"),
-			key.WithHelp("down/j", "navigate down"),
+			key.WithHelp("↓/j", "down"),
 		),
 	}
 }
@@ -82,6 +88,9 @@ func (p *SessionsPage) Title() string { return "Sessions" }
 
 // ShortHelp returns context-sensitive keybindings for the help bar.
 func (p *SessionsPage) ShortHelp() []key.Binding {
+	if p == nil || len(p.sessions) < 2 {
+		return nil
+	}
 	return []key.Binding{p.keymap.Up, p.keymap.Down}
 }
 
@@ -110,7 +119,10 @@ func (p *SessionsPage) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			p.sessions = nil
 		} else {
 			p.loadErr = nil
-			p.sessions = msg.sessions
+			p.sessions = append([]session.SessionSummary(nil), msg.sessions...)
+			sort.SliceStable(p.sessions, func(i, j int) bool {
+				return p.sessions[i].UpdatedAt.After(p.sessions[j].UpdatedAt)
+			})
 		}
 		if p.cursor >= len(p.sessions) {
 			p.cursor = max(0, len(p.sessions)-1)
@@ -138,8 +150,10 @@ func (p *SessionsPage) View() string {
 
 	var body string
 	switch {
+	case p.listFn == nil:
+		body = sessionsEmptyStyle.Render("  Session list is not configured.")
 	case p.loadErr != nil:
-		body = sessionsErrStyle.Render(fmt.Sprintf("  Error: %v", p.loadErr))
+		body = sessionsErrStyle.Render(fmt.Sprintf("  Session list failed to load: %s", sanitizeSessionsText(p.loadErr.Error())))
 	case len(p.sessions) == 0:
 		body = sessionsEmptyStyle.Render("  No sessions found.")
 	default:
@@ -159,7 +173,7 @@ func (p *SessionsPage) renderList() string {
 
 	lines := make([]string, 0, len(p.sessions))
 	for i, s := range p.sessions {
-		keyText := tui.Truncate(s.Key, keyWidth)
+		keyText := tui.Truncate(sanitizeSessionsText(s.Key), keyWidth)
 		relTime := tui.RelativeTimeHuman(time.Now(), s.UpdatedAt)
 
 		var line string

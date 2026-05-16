@@ -178,3 +178,51 @@ func TestProposalServiceAcceptRejectsExpiredProposal(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, ProposalStatusExpired, stored.Status)
 }
+
+func TestProposalServiceRequiresRegistryAcrossEntryPoints(t *testing.T) {
+	t.Parallel()
+
+	service := &Service{preparer: NewDeterministicPreparer()}
+
+	upserted, err := service.UpsertLearningSuggestion(context.Background(), LearningSuggestionSource{
+		SessionKey:   "sess-missing-registry",
+		SuggestionID: "suggestion-1",
+		Pattern:      "retry timeout",
+		ProposedRule: "Use bounded retry",
+	})
+	require.Error(t, err)
+	assert.Nil(t, upserted)
+	assert.Contains(t, err.Error(), "upsert learning suggestion")
+	assert.Contains(t, err.Error(), "proposal registry is required")
+
+	accepted, err := service.Accept(context.Background(), "proposal-1")
+	require.Error(t, err)
+	assert.Nil(t, accepted)
+	assert.Contains(t, err.Error(), "accept proposal")
+	assert.Contains(t, err.Error(), "proposal registry is required")
+
+	pruned, err := service.PruneExpired(context.Background())
+	require.Error(t, err)
+	assert.Zero(t, pruned)
+	assert.Contains(t, err.Error(), "prune proposals")
+	assert.Contains(t, err.Error(), "proposal registry is required")
+}
+
+func TestProposalServiceRequiresPreparerForLearningSuggestion(t *testing.T) {
+	t.Parallel()
+
+	clock := &testClock{now: time.Date(2026, 5, 3, 11, 0, 0, 0, time.UTC)}
+	service := &Service{
+		registry: newSpyRegistry(clock.Now),
+	}
+
+	upserted, err := service.UpsertLearningSuggestion(context.Background(), LearningSuggestionSource{
+		SessionKey:   "sess-missing-preparer",
+		SuggestionID: "suggestion-1",
+		Pattern:      "retry timeout",
+		ProposedRule: "Use bounded retry",
+	})
+	require.Error(t, err)
+	assert.Nil(t, upserted)
+	assert.Contains(t, err.Error(), "proposal preparer is required")
+}

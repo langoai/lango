@@ -5,7 +5,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -28,6 +30,18 @@ func TestAppendAssistant_PreservesRawContent(t *testing.T) {
 	if entry.content == "" {
 		t.Error("want non-empty rendered content")
 	}
+}
+
+func TestAppendAssistant_StripsControlSequencesFromRawContent(t *testing.T) {
+	cv := newChatViewModel(80, 20)
+	raw := "\x1b[31mHello **world**\x1b[0m\nnext line"
+	cv.appendAssistant(raw)
+
+	require.Len(t, cv.entries, 1)
+	entry := cv.entries[0]
+	assert.Equal(t, "Hello **world**\nnext line", entry.rawContent)
+	assert.NotContains(t, entry.rawContent, "\x1b[31m")
+	assert.NotContains(t, entry.rawContent, "\x1b[0m")
 }
 
 func TestAppendAssistant_SkipsEmpty(t *testing.T) {
@@ -128,10 +142,21 @@ func TestRender_InFlightStreamingBlock(t *testing.T) {
 	}
 }
 
+func TestRender_InFlightStreamingBlock_StripsEscapeSequences(t *testing.T) {
+	cv := newChatViewModel(80, 20)
+	cv.appendUser("question")
+	cv.appendChunk("\x1b[31mpartial\nresponse\x1b[0m")
+
+	content := cv.viewport.View()
+	assert.Contains(t, content, "partial response")
+	assert.NotContains(t, content, "\x1b[31m")
+	assert.NotContains(t, content, "\x1b[0m")
+}
+
 func TestAppendStatusAndApprovalEventKinds(t *testing.T) {
 	cv := newChatViewModel(80, 20)
 	cv.appendStatus("working", "info")
-	cv.appendApprovalEvent("approval requested", "requested")
+	cv.appendApprovalEvent("approval requested", "requested", "apr-1", "Run command")
 
 	if len(cv.entries) != 2 {
 		t.Fatalf("want 2 entries, got %d", len(cv.entries))
@@ -142,6 +167,157 @@ func TestAppendStatusAndApprovalEventKinds(t *testing.T) {
 	if cv.entries[1].kind != itemApproval {
 		t.Fatalf("second item should be approval, got %q", cv.entries[1].kind)
 	}
+	assert.Contains(t, cv.entries[1].content, "Run command")
+	assert.Contains(t, cv.entries[1].content, "[apr-1]")
+}
+
+func TestAppendStatus_StripsEscapeSequences(t *testing.T) {
+	cv := newChatViewModel(80, 20)
+	cv.appendStatus("\x1b[31mworking\x1b[0m", "info")
+
+	require.Len(t, cv.entries, 1)
+	e := cv.entries[0]
+	assert.Equal(t, "working", e.content)
+	assert.NotContains(t, e.content, "\x1b[31m")
+	assert.NotContains(t, e.content, "\x1b[0m")
+}
+
+func TestAppendStatus_NormalizesMultilineContent(t *testing.T) {
+	cv := newChatViewModel(80, 20)
+	cv.appendStatus("working\nline two", "info")
+
+	require.Len(t, cv.entries, 1)
+	e := cv.entries[0]
+	assert.Equal(t, "working line two", e.content)
+}
+
+func TestAppendApprovalEvent_CompactsLongRequestID(t *testing.T) {
+	cv := newChatViewModel(80, 20)
+	cv.appendApprovalEvent("approval requested", "requested", "req-12345678901234567890", "Run command")
+
+	require.Len(t, cv.entries, 1)
+	assert.Contains(t, cv.entries[0].content, "Run command")
+	assert.Contains(t, cv.entries[0].content, "[req-1234…7890]")
+	assert.NotContains(t, cv.entries[0].content, "[req-12345678901234567890]")
+}
+
+func TestAppendApprovalEvent_SanitizesRequestID(t *testing.T) {
+	cv := newChatViewModel(80, 20)
+	cv.appendApprovalEvent("approval requested", "requested", "req-\x1b[31m1234\n7890\x1b[0m", "Run command")
+
+	require.Len(t, cv.entries, 1)
+	got := cv.entries[0].content
+	assert.Contains(t, got, "[req-1234 7890]")
+	assert.NotContains(t, got, "\x1b[31m")
+	assert.NotContains(t, got, "\x1b[0m")
+}
+
+func TestAppendApprovalEvent_TruncatesUnicodeSummarySafely(t *testing.T) {
+	cv := newChatViewModel(80, 20)
+	longSummary := strings.Repeat("가", 100)
+
+	cv.appendApprovalEvent("approval requested", "requested", "apr-1", longSummary)
+
+	require.Len(t, cv.entries, 1)
+	got := cv.entries[0].content
+	assert.Contains(t, got, "[apr-1]")
+	assert.Contains(t, got, "...")
+	assert.NotContains(t, got, longSummary)
+	assert.True(t, utf8.ValidString(got))
+}
+
+func TestAppendApprovalEvent_SanitizesEventTextAndSummary(t *testing.T) {
+	cv := newChatViewModel(80, 20)
+	cv.appendApprovalEvent("\x1b[31mapproval\nrequested\x1b[0m", "requested", "apr-1", "\x1b[31mRun\ncommand\x1b[0m")
+
+	require.Len(t, cv.entries, 1)
+	got := cv.entries[0].content
+	assert.Contains(t, got, "approval requested")
+	assert.Contains(t, got, "Run command")
+	assert.NotContains(t, got, "\x1b[31m")
+	assert.NotContains(t, got, "\x1b[0m")
+}
+
+func TestAppendChannel_StoresSanitizedDisplayMetadata(t *testing.T) {
+	cv := newChatViewModel(80, 20)
+	cv.appendChannel("\x1b[31mtele\ngram\x1b[0m", "\x1b[31malice\x1b[0m", "hello", "telegram:1:2", nil)
+
+	require.Len(t, cv.entries, 1)
+	e := cv.entries[0]
+	assert.Equal(t, "tele gram", e.meta["channel"])
+	assert.Equal(t, "alice", e.meta["sender"])
+}
+
+func TestAppendChannel_StoresSanitizedPayload(t *testing.T) {
+	cv := newChatViewModel(80, 20)
+	cv.appendChannel("telegram", "alice", "\x1b[31mhello\nworld\x1b[0m", "telegram:1:2", nil)
+
+	require.Len(t, cv.entries, 1)
+	e := cv.entries[0]
+	assert.Equal(t, "hello world", e.rawContent)
+	assert.NotContains(t, e.rawContent, "\x1b[31m")
+	assert.NotContains(t, e.rawContent, "\x1b[0m")
+}
+
+func TestAppendDelegation_StoresSanitizedDisplayMetadata(t *testing.T) {
+	cv := newChatViewModel(80, 20)
+	cv.appendDelegation("\x1b[31mop\nerator\x1b[0m", "\x1b[31mli\nbrarian\x1b[0m", "\x1b[31mreason\x1b[0m")
+
+	require.Len(t, cv.entries, 1)
+	e := cv.entries[0]
+	assert.Equal(t, "op erator", e.meta["from"])
+	assert.Equal(t, "li brarian", e.meta["to"])
+	assert.Equal(t, "reason", e.meta["reason"])
+}
+
+func TestRenderApprovalEventBlock_NarrowWidth(t *testing.T) {
+	output := renderApprovalEventBlock("Approval requested for exec — very long summary [req-1234…7890]", "requested", 20)
+	assert.LessOrEqual(t, lipgloss.Width(output), 20)
+	assert.Contains(t, output, "Approval")
+	assert.Contains(t, output, "…")
+}
+
+func TestRenderStatusBlock_NarrowWidth(t *testing.T) {
+	output := renderStatusBlock("A very long warning that should not overflow the compact row", "warning", 20)
+	assert.LessOrEqual(t, lipgloss.Width(output), 20)
+	assert.Contains(t, output, "Status")
+	assert.Contains(t, output, "…")
+}
+
+func TestRenderStatusBlock_ExtremeNarrowWidth(t *testing.T) {
+	output := renderStatusBlock("warning", "warning", 10)
+	assert.LessOrEqual(t, lipgloss.Width(output), 10)
+}
+
+func TestRenderApprovalEventBlock_ExtremeNarrowWidth(t *testing.T) {
+	output := renderApprovalEventBlock("Approval requested for exec", "requested", 10)
+	assert.LessOrEqual(t, lipgloss.Width(output), 10)
+}
+
+func TestRenderStatusBlock_CollapsesMultilineContent(t *testing.T) {
+	output := renderStatusBlock("line one\nline two\nline three", "error", 80)
+	assert.NotContains(t, output, "line one\nline two")
+	assert.Contains(t, output, "line one line two line three")
+}
+
+func TestRenderApprovalEventBlock_CollapsesMultilineContent(t *testing.T) {
+	output := renderApprovalEventBlock("Approval requested\nfor exec", "requested", 80)
+	assert.NotContains(t, output, "requested\nfor")
+	assert.Contains(t, output, "Approval requested for exec")
+}
+
+func TestRenderStatusBlock_StripsEscapeSequences(t *testing.T) {
+	output := renderStatusBlock("\x1b[31mwarning\nline\x1b[0m", "warning", 80)
+	assert.Contains(t, output, "warning line")
+	assert.NotContains(t, output, "\x1b[31m")
+	assert.NotContains(t, output, "\x1b[0m")
+}
+
+func TestRenderApprovalEventBlock_StripsEscapeSequences(t *testing.T) {
+	output := renderApprovalEventBlock("\x1b[31mApproval requested\nfor exec\x1b[0m", "requested", 80)
+	assert.Contains(t, output, "Approval requested for exec")
+	assert.NotContains(t, output, "\x1b[31m")
+	assert.NotContains(t, output, "\x1b[0m")
 }
 
 // ---------------------------------------------------------------------------
@@ -150,7 +326,7 @@ func TestAppendStatusAndApprovalEventKinds(t *testing.T) {
 
 func TestAppendToolStart(t *testing.T) {
 	cv := newChatViewModel(80, 24)
-	cv.appendToolStart("call1", "fs_read", nil)
+	cv.appendToolStart("call1", "fs_read", map[string]any{"path": "/tmp/test.txt"})
 
 	require.Len(t, cv.entries, 1)
 	e := cv.entries[0]
@@ -158,6 +334,18 @@ func TestAppendToolStart(t *testing.T) {
 	assert.Equal(t, "fs_read", e.content)
 	assert.Equal(t, "call1", e.meta["callID"])
 	assert.Equal(t, string(toolStateRunning), e.meta["state"])
+	assert.Equal(t, "path=/tmp/test.txt", e.meta["preview"])
+}
+
+func TestAppendToolStart_SanitizesStoredToolName(t *testing.T) {
+	cv := newChatViewModel(80, 24)
+	cv.appendToolStart("call1", "fs_\x1b[31mread\nops\x1b[0m", nil)
+
+	require.Len(t, cv.entries, 1)
+	e := cv.entries[0]
+	assert.Equal(t, "fs_read ops", e.content)
+	assert.NotContains(t, e.content, "\x1b[31m")
+	assert.NotContains(t, e.content, "\x1b[0m")
 }
 
 func TestAppendToolStart_Multiple(t *testing.T) {
@@ -215,6 +403,41 @@ func TestFinalizeToolResult_NoMatch(t *testing.T) {
 	assert.Equal(t, string(toolStateRunning), e.meta["state"])
 	assert.Empty(t, e.meta["output"])
 	assert.Empty(t, e.meta["duration"])
+}
+
+func TestTransitionLatestToolState_MovesMatchingRow(t *testing.T) {
+	cv := newChatViewModel(80, 24)
+	cv.appendToolStart("call1", "fs_read", map[string]any{"path": "/tmp/test.txt"})
+
+	cv.transitionLatestToolState("fs_read", []ToolItemState{toolStateRunning}, toolStateAwaitingApproval)
+
+	require.Len(t, cv.entries, 1)
+	assert.Equal(t, string(toolStateAwaitingApproval), cv.entries[0].meta["state"])
+	assert.Equal(t, "path=/tmp/test.txt", cv.entries[0].meta["preview"])
+}
+
+func TestTransitionLatestToolState_IgnoresNonMatchingState(t *testing.T) {
+	cv := newChatViewModel(80, 24)
+	cv.appendToolStart("call1", "fs_read", nil)
+
+	cv.transitionLatestToolState("fs_read", []ToolItemState{toolStateAwaitingApproval}, toolStateCanceled)
+
+	require.Len(t, cv.entries, 1)
+	assert.Equal(t, string(toolStateRunning), cv.entries[0].meta["state"])
+}
+
+func TestTransitionLatestToolState_UpdatesLatestMatchingRow(t *testing.T) {
+	cv := newChatViewModel(80, 24)
+	cv.appendToolStart("call1", "fs_read", nil)
+	cv.appendToolStart("call2", "web_search", nil)
+	cv.appendToolStart("call3", "fs_read", nil)
+
+	cv.transitionLatestToolState("fs_read", []ToolItemState{toolStateRunning}, toolStateAwaitingApproval)
+
+	require.Len(t, cv.entries, 3)
+	assert.Equal(t, string(toolStateRunning), cv.entries[0].meta["state"])
+	assert.Equal(t, string(toolStateRunning), cv.entries[1].meta["state"])
+	assert.Equal(t, string(toolStateAwaitingApproval), cv.entries[2].meta["state"])
 }
 
 // ---------------------------------------------------------------------------
@@ -286,6 +509,44 @@ func TestAppendSystem(t *testing.T) {
 	assert.Equal(t, "system message", e.content)
 }
 
+func TestAppendSystem_StripsEscapeSequences(t *testing.T) {
+	cv := newChatViewModel(80, 24)
+	cv.appendSystem("\x1b[31msystem\x1b[0m message")
+
+	require.Len(t, cv.entries, 1)
+	e := cv.entries[0]
+	assert.Equal(t, "system message", e.content)
+	assert.NotContains(t, e.content, "\x1b[31m")
+	assert.NotContains(t, e.content, "\x1b[0m")
+}
+
+func TestAppendUser_StripsEscapeSequences(t *testing.T) {
+	cv := newChatViewModel(80, 24)
+	cv.appendUser("\x1b[31mhello\x1b[0m\nworld")
+
+	require.Len(t, cv.entries, 1)
+	e := cv.entries[0]
+	assert.Equal(t, itemUser, e.kind)
+	assert.Equal(t, "hello\nworld", e.content)
+	assert.NotContains(t, e.content, "\x1b[31m")
+	assert.NotContains(t, e.content, "\x1b[0m")
+}
+
+func TestRenderSystemBlock_NarrowWidth(t *testing.T) {
+	output := renderSystemBlock("A very long system message that should not overflow the viewport", 20)
+	assert.LessOrEqual(t, lipgloss.Width(output), 20)
+	assert.Contains(t, output, "System")
+	assert.Contains(t, output, "…")
+}
+
+func TestRenderSystemBlock_StripsEscapeSequences(t *testing.T) {
+	output := renderSystemBlock("\x1b[31msystem\nnote\x1b[0m", 80)
+	assert.Contains(t, output, "system")
+	assert.Contains(t, output, "note")
+	assert.NotContains(t, output, "\x1b[31m")
+	assert.NotContains(t, output, "\x1b[0m")
+}
+
 func TestAppendSystem_Empty(t *testing.T) {
 	cv := newChatViewModel(80, 24)
 	cv.appendSystem("")
@@ -328,6 +589,17 @@ func TestAppendRecovery(t *testing.T) {
 	assert.Equal(t, "rate_limit", e.meta["causeClass"])
 	assert.Equal(t, "2", e.meta["attempt"])
 	assert.Equal(t, "3s", e.meta["backoff"])
+}
+
+func TestAppendRecovery_SanitizesCauseClass(t *testing.T) {
+	cv := newChatViewModel(80, 24)
+	cv.appendRecovery("retry", "\x1b[31mrate\nlimit\x1b[0m", 2, 3*time.Second)
+
+	require.Len(t, cv.entries, 1)
+	e := cv.entries[0]
+	assert.Equal(t, "rate limit", e.meta["causeClass"])
+	assert.NotContains(t, e.meta["causeClass"], "\x1b[31m")
+	assert.NotContains(t, e.meta["causeClass"], "\x1b[0m")
 }
 
 func TestAppendTokenSummary(t *testing.T) {

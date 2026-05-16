@@ -15,17 +15,21 @@ import (
 	"github.com/langoai/lango/internal/cli/tui"
 )
 
+func sanitizeTasksText(text string) string {
+	return strings.Join(strings.Fields(ansi.Strip(text)), " ")
+}
+
 // Column layout constants for the tasks table.
 const (
-	taskGutterW = 6  // "  " or "> " prefix (2) + PaddingLeft(4)
-	taskColIDW  = 10 // ID column width
-	taskColStatW = 10 // Status column width
-	taskColElW  = 12 // Elapsed column width
-	taskColGapW = 1  // space between columns (from format string)
+	taskGutterW         = 6  // "  " or "> " prefix (2) + PaddingLeft(4)
+	taskColIDW          = 10 // ID column width
+	taskColStatW        = 10 // Status column width
+	taskColElW          = 12 // Elapsed column width
+	taskColGapW         = 1  // space between columns (from format string)
 	taskNarrowThreshold = 50 // width below which elapsed column is hidden
 
-	tableMinHeight  = 6 // minimum rows reserved for the table
-	detailMinHeight = 8 // minimum rows reserved for the detail panel
+	tableMinHeight  = 6               // minimum rows reserved for the table
+	detailMinHeight = 8               // minimum rows reserved for the detail panel
 	statusMsgTTL    = 3 * time.Second // how long status messages are shown
 )
 
@@ -50,10 +54,10 @@ type TaskInfo struct {
 	Prompt        string
 	Status        string
 	Elapsed       time.Duration
-	Result        string        // completion result text
-	Error         string        // error message if failed
-	OriginChannel string        // originating channel (e.g. "telegram", "slack")
-	TokensUsed    int           // token count for this task
+	Result        string // completion result text
+	Error         string // error message if failed
+	OriginChannel string // originating channel (e.g. "telegram", "slack")
+	TokensUsed    int    // token count for this task
 }
 
 // TaskLister provides the list of background tasks.
@@ -69,11 +73,11 @@ type TaskActioner interface {
 
 // TasksPage displays background tasks in a table view.
 type TasksPage struct {
-	lister       TaskLister
-	actioner     TaskActioner // optional, nil when unavailable
-	tasks        []TaskInfo
-	cursor       int
-	tickActive   bool
+	lister        TaskLister
+	actioner      TaskActioner // optional, nil when unavailable
+	tasks         []TaskInfo
+	cursor        int
+	tickActive    bool
 	width, height int
 
 	detailMode   bool      // true when detail panel is expanded
@@ -92,22 +96,47 @@ func (m *TasksPage) Title() string { return "Tasks" }
 
 // ShortHelp returns key bindings for the help bar.
 func (m *TasksPage) ShortHelp() []key.Binding {
-	bindings := []key.Binding{
-		key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "details")),
-		key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", "up")),
-		key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", "down")),
+	var bindings []key.Binding
+	if len(m.tasks) > 0 {
+		bindings = append(bindings, key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "details")))
 	}
-	if m.detailMode {
+	if len(m.tasks) > 1 {
 		bindings = append(bindings,
-			key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")))
-	}
-	if m.actioner != nil {
-		bindings = append(bindings,
-			key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "cancel")),
-			key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "retry")),
+			key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", "up")),
+			key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", "down")),
 		)
 	}
+	if m.detailMode {
+		bindings = []key.Binding{
+			key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "close detail")),
+		}
+		if task := m.selectedTask(); task != nil && m.detailMaxScroll(*task) > 0 {
+			bindings = append(bindings,
+				key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", "scroll up")),
+				key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", "scroll down")),
+			)
+		}
+		bindings = append(bindings, key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "close detail")))
+	}
+	if task := m.selectedTask(); m.actioner != nil && task != nil {
+		switch task.Status {
+		case "running", "pending":
+			bindings = append(bindings,
+				key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "cancel")))
+		case "failed", "cancelled":
+			bindings = append(bindings,
+				key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "retry")))
+		}
+	}
 	return bindings
+}
+
+func (m *TasksPage) selectedTask() *TaskInfo {
+	if m == nil || len(m.tasks) == 0 {
+		return nil
+	}
+	idx := clamp(m.cursor, 0, len(m.tasks)-1)
+	return &m.tasks[idx]
 }
 
 // Init satisfies tea.Model.
@@ -143,9 +172,9 @@ func (m *TasksPage) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, taskTickCmd()
 	case taskActionResultMsg:
 		if msg.err != nil {
-			m.statusMsg = "Error: " + msg.err.Error()
+			m.statusMsg = sanitizeTasksText("Task action failed: " + msg.err.Error())
 		} else {
-			m.statusMsg = msg.msg
+			m.statusMsg = sanitizeTasksText(msg.msg)
 		}
 		m.statusTime = time.Now()
 		return m, nil
@@ -180,7 +209,12 @@ func (m *TasksPage) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case key.Matches(msg, key.NewBinding(key.WithKeys("down", "j"))):
 		if m.detailMode {
-			m.detailScroll++
+			if task := m.selectedTask(); task != nil {
+				maxScroll := m.detailMaxScroll(*task)
+				if m.detailScroll < maxScroll {
+					m.detailScroll++
+				}
+			}
 		} else {
 			if m.cursor < len(m.tasks)-1 {
 				m.cursor++
@@ -241,7 +275,7 @@ func (m *TasksPage) View() string {
 			Foreground(theme.TextSecondary).
 			PaddingLeft(2).
 			PaddingTop(1).
-			Render("No background tasks available")
+			Render("Background task manager is not configured.")
 	}
 
 	if len(m.tasks) == 0 {
@@ -294,9 +328,9 @@ func (m *TasksPage) View() string {
 	// Table rows.
 	var rows []string
 	for i, task := range m.tasks {
-		id := tui.Truncate(task.ID, taskColIDW-2) // leave padding room
-		promptStr := ansi.Truncate(task.Prompt, promptW, "…")
-		status := tui.Truncate(task.Status, taskColStatW)
+		id := tui.Truncate(sanitizeTasksText(task.ID), taskColIDW-2) // leave padding room
+		promptStr := ansi.Truncate(sanitizeTasksText(task.Prompt), promptW, "…")
+		status := tui.Truncate(sanitizeTasksText(task.Status), taskColStatW)
 
 		var row string
 		if wide {
@@ -343,6 +377,31 @@ func (m *TasksPage) View() string {
 
 // renderDetail builds the detail panel for the given task.
 func (m *TasksPage) renderDetail(task TaskInfo) string {
+	lines := m.detailLines(task)
+	maxScroll := m.detailMaxScroll(task)
+	if m.detailScroll > maxScroll {
+		m.detailScroll = maxScroll
+	}
+
+	// Apply scroll offset.
+	if m.detailScroll > 0 {
+		offset := min(m.detailScroll, maxScroll)
+		lines = lines[offset:]
+	}
+
+	// Compute available height for detail panel.
+	detailH := m.detailHeight()
+	if detailH > 0 && len(lines) > detailH {
+		lines = lines[:detailH]
+	}
+
+	style := lipgloss.NewStyle().
+		Foreground(theme.TextSecondary).
+		PaddingLeft(2)
+	return style.Render(strings.Join(lines, "\n"))
+}
+
+func (m *TasksPage) detailLines(task TaskInfo) []string {
 	contentW := max(m.width-8, 30) // inner content width
 	labelW := 10                   // "  Status:  " prefix width
 
@@ -352,12 +411,13 @@ func (m *TasksPage) renderDetail(task TaskInfo) string {
 		Render("─── Task Detail " + strings.Repeat("─", max(contentW-16, 4)))
 
 	valW := max(contentW-labelW, 10)
+	statusText := sanitizeTasksText(task.Status)
 
 	statusLine := fmt.Sprintf("  Status:  %s (%s elapsed)",
-		ansi.Truncate(task.Status, valW/2, "…"),
+		ansi.Truncate(statusText, valW/2, "…"),
 		task.Elapsed.Round(time.Second))
 
-	originVal := task.OriginChannel
+	originVal := sanitizeTasksText(task.OriginChannel)
 	if originVal == "" {
 		originVal = "(none)"
 	}
@@ -365,17 +425,17 @@ func (m *TasksPage) renderDetail(task TaskInfo) string {
 
 	tokensLine := fmt.Sprintf("  Tokens:  %s", tui.FormatTokens(task.TokensUsed))
 
-	promptWrapped := tui.WordWrap(task.Prompt, valW)
+	promptWrapped := tui.WordWrap(sanitizeTasksText(task.Prompt), valW)
 	if promptWrapped == "" {
 		promptWrapped = "(none)"
 	}
 
-	resultWrapped := tui.WordWrap(task.Result, valW)
+	resultWrapped := tui.WordWrap(sanitizeTasksText(task.Result), valW)
 	if resultWrapped == "" {
 		resultWrapped = "(none)"
 	}
 
-	errorVal := task.Error
+	errorVal := sanitizeTasksText(task.Error)
 	if errorVal == "" {
 		errorVal = "(none)"
 	}
@@ -402,26 +462,16 @@ func (m *TasksPage) renderDetail(task TaskInfo) string {
 	for _, l := range strings.Split(errorWrapped, "\n") {
 		lines = append(lines, "    "+l)
 	}
+	return lines
+}
 
-	// Apply scroll offset.
-	if m.detailScroll > 0 {
-		offset := m.detailScroll
-		if offset >= len(lines) {
-			offset = max(len(lines)-1, 0)
-		}
-		lines = lines[offset:]
-	}
-
-	// Compute available height for detail panel.
+func (m *TasksPage) detailMaxScroll(task TaskInfo) int {
+	lines := m.detailLines(task)
 	detailH := m.detailHeight()
-	if detailH > 0 && len(lines) > detailH {
-		lines = lines[:detailH]
+	if detailH <= 0 || len(lines) <= detailH {
+		return 0
 	}
-
-	style := lipgloss.NewStyle().
-		Foreground(theme.TextSecondary).
-		PaddingLeft(2)
-	return style.Render(strings.Join(lines, "\n"))
+	return len(lines) - detailH
 }
 
 // detailHeight computes the maximum number of lines for the detail panel.
@@ -438,10 +488,21 @@ func (m *TasksPage) detailHeight() int {
 func (m *TasksPage) refreshData() {
 	if m.lister == nil {
 		m.tasks = nil
+		m.detailMode = false
+		m.detailScroll = 0
 		return
 	}
 	m.tasks = m.lister.ListTasks()
 	if m.cursor >= len(m.tasks) {
 		m.cursor = max(len(m.tasks)-1, 0)
+	}
+	if task := m.selectedTask(); task != nil {
+		maxScroll := m.detailMaxScroll(*task)
+		if m.detailScroll > maxScroll {
+			m.detailScroll = maxScroll
+		}
+	} else {
+		m.detailMode = false
+		m.detailScroll = 0
 	}
 }

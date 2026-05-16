@@ -63,9 +63,9 @@ func TestLearningSuggestionBufferFind(t *testing.T) {
 	buf.Append(eventbus.LearningSuggestionEvent{
 		SessionKey:   "sess-1",
 		SuggestionID: "s-1",
-		Pattern:      "retry timeout",
-		ProposedRule: "Use bounded retry",
-		Rationale:    "Pattern repeated",
+		Pattern:      "retry\x1b[31m timeout\n",
+		ProposedRule: "Use\x1b[31m bounded\nretry",
+		Rationale:    "Pattern\x1b[31m repeated\n",
 		Timestamp:    now,
 	})
 
@@ -73,6 +73,8 @@ func TestLearningSuggestionBufferFind(t *testing.T) {
 	require.NotNil(t, found)
 	assert.Equal(t, "retry timeout", found.Pattern)
 	assert.Equal(t, "Use bounded retry", found.ProposedRule)
+	assert.Equal(t, "Pattern repeated", found.Rationale)
+	assert.NotContains(t, found.Pattern, "\x1b")
 
 	assert.Nil(t, buf.Find("missing"))
 }

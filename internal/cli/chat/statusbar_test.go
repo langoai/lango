@@ -44,9 +44,15 @@ func TestRenderHelpBar_ZeroWidth(t *testing.T) {
 func TestRenderHelpBar_ContainsCorrectKeys(t *testing.T) {
 	idleOutput := renderHelpBar(stateIdle, 120)
 	assert.Contains(t, idleOutput, "Enter")
+	assert.Contains(t, idleOutput, "x2")
+	assert.Contains(t, idleOutput, "Ctrl+D")
 
 	streamingOutput := renderHelpBar(stateStreaming, 120)
 	assert.Contains(t, streamingOutput, "Ctrl+C")
+
+	approvingOutput := renderHelpBar(stateApproving, 120)
+	assert.Contains(t, approvingOutput, "d/Esc")
+	assert.Contains(t, approvingOutput, "Ctrl+D")
 }
 
 func TestTurnStateCopy_AllStates(t *testing.T) {
@@ -76,6 +82,13 @@ func TestTurnStateCopy_Default(t *testing.T) {
 	assert.Equal(t, "Ready", label)
 }
 
+func TestTurnStateCopy_ApprovingMentionsDenyAndQuit(t *testing.T) {
+	label, hint, _ := turnStateCopy(stateApproving)
+	assert.Equal(t, "Approval Required", label)
+	assert.Contains(t, hint, "d/Esc")
+	assert.Contains(t, hint, "Ctrl+D")
+}
+
 func TestRenderHeader_NormalWidth(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Agent.Provider = "openai"
@@ -92,8 +105,19 @@ func TestRenderHeader_NarrowWidth(t *testing.T) {
 
 	assert.NotPanics(t, func() {
 		output := renderHeader(cfg, "abc123", 20)
-		_ = output
+		assert.LessOrEqual(t, lipgloss.Width(output), 20)
+		assert.Equal(t, 1, lipgloss.Height(output))
 	})
+}
+
+func TestRenderHeader_ExtremeNarrowWidth(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Agent.Provider = "openai"
+	cfg.Agent.Model = "gpt-4"
+
+	output := renderHeader(cfg, "abc123", 8)
+	assert.LessOrEqual(t, lipgloss.Width(output), 8)
+	assert.Equal(t, 1, lipgloss.Height(output))
 }
 
 func TestRenderHeader_EmptyConfig(t *testing.T) {
@@ -102,6 +126,27 @@ func TestRenderHeader_EmptyConfig(t *testing.T) {
 	output := renderHeader(cfg, "abc123", 80)
 	assert.Contains(t, output, "default")
 	assert.Contains(t, output, "auto")
+}
+
+func TestRenderHeader_NilConfig(t *testing.T) {
+	assert.NotPanics(t, func() {
+		output := renderHeader(nil, "abc123", 80)
+		assert.Contains(t, output, "default")
+		assert.Contains(t, output, "auto")
+	})
+}
+
+func TestRenderHeader_SanitizesDisplayFields(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Agent.Provider = "\x1b[31mopen\nai\x1b[0m"
+	cfg.Agent.Model = "gpt\t4"
+
+	output := renderHeader(cfg, "abc\n123\x1b[0m", 120)
+	assert.Contains(t, output, "open ai")
+	assert.Contains(t, output, "gpt 4")
+	assert.Contains(t, output, "session: abc 123")
+	assert.NotContains(t, output, "\x1b[31m")
+	assert.Equal(t, 1, lipgloss.Height(output))
 }
 
 func TestRenderTurnStrip_AllStates(t *testing.T) {
@@ -128,11 +173,18 @@ func TestRenderTurnStrip_AllStates(t *testing.T) {
 func TestRenderTurnStrip_NarrowWidth(t *testing.T) {
 	assert.NotPanics(t, func() {
 		output := renderTurnStrip(stateIdle, 10)
-		_ = output
+		assert.LessOrEqual(t, lipgloss.Width(output), 10)
+		assert.Equal(t, 1, lipgloss.Height(output))
 	})
 }
 
 func TestRenderTurnStrip_ContainsLabel(t *testing.T) {
 	output := renderTurnStrip(stateIdle, 80)
 	assert.Contains(t, output, "Ready")
+}
+
+func TestRenderTurnStrip_ApprovingNarrowWidth(t *testing.T) {
+	output := renderTurnStrip(stateApproving, 14)
+	assert.LessOrEqual(t, lipgloss.Width(output), 14)
+	assert.Equal(t, 1, lipgloss.Height(output))
 }

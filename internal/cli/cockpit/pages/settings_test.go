@@ -56,6 +56,13 @@ func TestSettingsPage_ViewNonEmpty(t *testing.T) {
 	assert.NotEmpty(t, view, "View should render editor content")
 }
 
+func TestSettingsPage_ViewMentionsUnavailablePersistenceWhenStoreMissing(t *testing.T) {
+	page := NewSettingsPage(config.DefaultConfig(), nil, "")
+	view := page.View()
+	assert.Contains(t, view, "cannot be saved")
+	assert.Contains(t, view, "config profile store is not configured")
+}
+
 func TestSettingsPage_PageInterfaceCompliance(t *testing.T) {
 	page := newTestSettingsPage(nil)
 
@@ -87,6 +94,16 @@ func TestSettingsPage_OnSaveError(t *testing.T) {
 		return fmt.Errorf("disk full")
 	})
 	require.NotNil(t, page.editor)
+}
+
+func TestSettingsPage_NilStoreSaveCallbackFailsClosed(t *testing.T) {
+	page := NewSettingsPage(config.DefaultConfig(), nil, "")
+	require.NotNil(t, page.editor)
+	require.NotNil(t, page.editor.OnSave)
+
+	err := page.editor.OnSave(config.DefaultConfig(), map[string]bool{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "config profile store is not configured")
 }
 
 // --- helpers ---

@@ -6,16 +6,20 @@ import (
 	"sync"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/langoai/lango/internal/cli/chat"
 	"github.com/langoai/lango/internal/eventbus"
 )
 
 const missionActivityCapacity = 200
+const missionActivitySummaryMaxRunes = 160
 
 type MissionActivityKind string
 
 const (
 	MissionActivityGeneric    MissionActivityKind = "generic"
+	MissionActivityAssistant  MissionActivityKind = "assistant"
 	MissionActivityContinuity MissionActivityKind = "continuity"
 	MissionActivityLearning   MissionActivityKind = "learning"
 	MissionActivityRuntime    MissionActivityKind = "runtime"
@@ -45,6 +49,8 @@ func NewMissionActivityBuffer() *MissionActivityBuffer {
 func (b *MissionActivityBuffer) Append(item MissionActivityItem) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+
+	item.Summary = compactMissionActivitySummary(item.Summary)
 
 	if len(b.items) >= missionActivityCapacity {
 		copy(b.items, b.items[1:])
@@ -191,6 +197,54 @@ func newTurnSummaryActivity(sessionKey string, msg chat.TurnTokenUsageMsg, now t
 		Summary:    fmt.Sprintf("Turn summary: %d total tokens (%d in / %d out)", msg.TotalTokens, msg.InputTokens, msg.OutputTokens),
 		Timestamp:  now,
 	}
+}
+
+func newAssistantSummaryActivity(sessionKey string, msg chat.DoneMsg, now time.Time) (MissionActivityItem, bool) {
+	text := strings.TrimSpace(msg.Result.Summary)
+	if text == "" {
+		text = strings.TrimSpace(msg.Result.ResponseText)
+	}
+	if text == "" {
+		text = strings.TrimSpace(msg.Result.UserMessage)
+	}
+	if text == "" {
+		return MissionActivityItem{}, false
+	}
+
+	summary := "Assistant reply: " + text
+	if msg.Result.Outcome != "success" {
+		summary = fmt.Sprintf("Turn %s: %s", msg.Result.Outcome, text)
+	}
+
+	return MissionActivityItem{
+		Kind:       MissionActivityAssistant,
+		SessionKey: sessionKey,
+		Summary:    compactMissionActivitySummary(summary),
+		Timestamp:  now,
+	}, true
+}
+
+// NewAssistantSummaryActivity exposes the shared assistant-summary contract to
+// sibling packages that reuse the cockpit activity lane.
+func NewAssistantSummaryActivity(sessionKey string, msg chat.DoneMsg, now time.Time) (MissionActivityItem, bool) {
+	return newAssistantSummaryActivity(sessionKey, msg, now)
+}
+
+func compactMissionActivitySummary(text string) string {
+	text = strings.TrimSpace(ansi.Strip(text))
+	if text == "" {
+		return ""
+	}
+	text = strings.ReplaceAll(text, "\n", " ")
+	text = strings.Join(strings.Fields(text), " ")
+	runes := []rune(text)
+	if len(runes) <= missionActivitySummaryMaxRunes {
+		return text
+	}
+	if missionActivitySummaryMaxRunes <= 3 {
+		return string(runes[:missionActivitySummaryMaxRunes])
+	}
+	return string(runes[:missionActivitySummaryMaxRunes-3]) + "..."
 }
 
 func emptyMode(name string) string {

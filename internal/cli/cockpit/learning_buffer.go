@@ -35,6 +35,10 @@ func (b *LearningSuggestionBuffer) Append(event eventbus.LearningSuggestionEvent
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
+	event.Pattern = sanitizeMissionProjectionText(event.Pattern)
+	event.ProposedRule = sanitizeMissionProjectionText(event.ProposedRule)
+	event.Rationale = sanitizeMissionProjectionText(event.Rationale)
+
 	b.pruneLocked()
 	if len(b.items) >= learningSuggestionCapacity {
 		b.items = append([]eventbus.LearningSuggestionEvent(nil), b.items[len(b.items)-learningSuggestionCapacity+1:]...)

@@ -9,6 +9,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/langoai/lango/internal/adk"
 	"github.com/langoai/lango/internal/approval"
@@ -155,6 +157,20 @@ func TestDoneMsg_DuplicateFailureStatusSkipped(t *testing.T) {
 	}
 }
 
+func TestDoneMsg_DuplicateFailureStatusSkippedAfterSanitization(t *testing.T) {
+	m := newTestModel()
+	m.chatView.appendChunk("\x1b[31msame text\x1b[0m")
+
+	m.Update(DoneMsg{Result: turnrunner.Result{
+		Outcome:      "model_error",
+		ResponseText: "\x1b[31msame text\x1b[0m",
+	}})
+
+	if len(m.chatView.entries) != 1 {
+		t.Fatalf("want only assistant entry, got %d", len(m.chatView.entries))
+	}
+}
+
 func TestErrorMsg_PreservesPartialStream(t *testing.T) {
 	m := newTestModel()
 	m.chatView.appendChunk("partial ")
@@ -261,6 +277,18 @@ func TestRenderBars_MinimalWidth(t *testing.T) {
 	if renderTurnStrip(stateStreaming, 20) == "" {
 		t.Fatal("turn strip should render at narrow width")
 	}
+}
+
+func TestHelpCommandMentionsFailedStateDoublePressQuit(t *testing.T) {
+	m := newTestModel()
+	cmd := cmdHelp(m, "")
+	require.NotNil(t, cmd)
+
+	msg := cmd()
+	sys, ok := msg.(SystemMsg)
+	require.True(t, ok)
+	assert.Contains(t, sys.Text, "double-press to quit when idle or failed")
+	assert.Contains(t, sys.Text, "Scroll transcript")
 }
 
 func TestCPRFullSequenceDiscarded(t *testing.T) {
@@ -521,6 +549,62 @@ func TestDoublePress_DenyResetsConfirm(t *testing.T) {
 	}
 }
 
+func TestApprovalRequestMarksLatestToolRowAwaitingApproval(t *testing.T) {
+	m := newTestModel()
+	m.chatView.appendToolStart("call1", "exec", map[string]any{"path": "/tmp/x"})
+
+	m.Update(ApprovalRequestMsg{
+		Request: approval.ApprovalRequest{ToolName: "exec"},
+		ViewModel: approval.ApprovalViewModel{
+			Risk: approval.RiskIndicator{Level: "critical", Label: "Executes arbitrary code"},
+		},
+		Response: make(chan approval.ApprovalResponse, 1),
+	})
+
+	require.Len(t, m.chatView.entries, 2)
+	assert.Equal(t, string(toolStateAwaitingApproval), m.chatView.entries[0].meta["state"])
+}
+
+func TestApprovalDeniedMarksToolRowCanceled(t *testing.T) {
+	m := newTestModel()
+	respCh := make(chan approval.ApprovalResponse, 1)
+	m.chatView.appendToolStart("call1", "exec", map[string]any{"path": "/tmp/x"})
+	m.state = stateApproving
+	m.approval.pending = &ApprovalRequestMsg{
+		Request: approval.ApprovalRequest{
+			ToolName: "exec",
+		},
+		Response: respCh,
+	}
+	m.chatView.transitionLatestToolState("exec", []ToolItemState{toolStateRunning}, toolStateAwaitingApproval)
+
+	dKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}}
+	m.Update(dKey)
+
+	require.Len(t, m.chatView.entries, 2)
+	assert.Equal(t, string(toolStateCanceled), m.chatView.entries[0].meta["state"])
+}
+
+func TestApprovalGrantRestoresToolRowRunning(t *testing.T) {
+	m := newTestModel()
+	respCh := make(chan approval.ApprovalResponse, 1)
+	m.chatView.appendToolStart("call1", "browser_search", map[string]any{"q": "hello"})
+	m.state = stateApproving
+	m.approval.pending = &ApprovalRequestMsg{
+		Request: approval.ApprovalRequest{
+			ToolName: "browser_search",
+		},
+		Response: respCh,
+	}
+	m.chatView.transitionLatestToolState("browser_search", []ToolItemState{toolStateRunning}, toolStateAwaitingApproval)
+
+	aKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}}
+	m.Update(aKey)
+
+	require.Len(t, m.chatView.entries, 2)
+	assert.Equal(t, string(toolStateRunning), m.chatView.entries[0].meta["state"])
+}
+
 func TestRedirect_DuringStreamingQueuesAndCancels(t *testing.T) {
 	m := newTestModel()
 	m.state = stateStreaming
@@ -631,6 +715,7 @@ func TestCockpitApprovalSharedResolveUsesRegistry(t *testing.T) {
 			Request: approval.ApprovalRequest{
 				ID:       "apr-1",
 				ToolName: "browser_search",
+				Summary:  "Reads data",
 			},
 			ViewModel: approval.ApprovalViewModel{
 				Risk: approval.RiskIndicator{Level: "moderate", Label: "Reads data"},
@@ -654,6 +739,9 @@ func TestCockpitApprovalSharedResolveUsesRegistry(t *testing.T) {
 	if m.state != stateStreaming {
 		t.Fatalf("want stateStreaming after shared approval, got %v", m.state)
 	}
+	last := m.chatView.entries[len(m.chatView.entries)-1]
+	assert.Contains(t, last.content, "Reads data")
+	assert.Contains(t, last.content, "[apr-1]")
 }
 
 func TestCockpitApprovalSharedResolveKeepsApprovingForNextPending(t *testing.T) {
@@ -662,6 +750,7 @@ func TestCockpitApprovalSharedResolveKeepsApprovingForNextPending(t *testing.T) 
 			Request: approval.ApprovalRequest{
 				ID:       "apr-1",
 				ToolName: "browser_search",
+				Summary:  "Reads data",
 			},
 			ViewModel: approval.ApprovalViewModel{
 				Risk: approval.RiskIndicator{Level: "moderate", Label: "Reads data"},
@@ -672,6 +761,7 @@ func TestCockpitApprovalSharedResolveKeepsApprovingForNextPending(t *testing.T) 
 			Request: approval.ApprovalRequest{
 				ID:       "apr-2",
 				ToolName: "fs_write",
+				Summary:  "Writes data",
 			},
 			ViewModel: approval.ApprovalViewModel{
 				Risk: approval.RiskIndicator{Level: "high", Label: "Writes data"},
@@ -703,6 +793,7 @@ func TestCockpitApprovalSharedResolveFailureDoesNotAppendFalseSuccess(t *testing
 			Request: approval.ApprovalRequest{
 				ID:       "apr-1",
 				ToolName: "browser_search",
+				Summary:  "Reads data",
 			},
 			ViewModel: approval.ApprovalViewModel{
 				Risk: approval.RiskIndicator{Level: "moderate", Label: "Reads data"},
@@ -739,6 +830,23 @@ func TestCockpitApprovalSharedResolveFailureDoesNotAppendFalseSuccess(t *testing
 			t.Fatalf("unexpected approval success event after resolve failure: %q", entry.content)
 		}
 	}
+}
+
+func TestApprovalRequestEventIncludesRequestID(t *testing.T) {
+	m := newTestModel()
+
+	m.Update(ApprovalRequestMsg{
+		Request: approval.ApprovalRequest{ID: "apr-42", ToolName: "exec", Summary: "Run command"},
+		ViewModel: approval.ApprovalViewModel{
+			Risk: approval.RiskIndicator{Level: "critical", Label: "Executes arbitrary code"},
+		},
+		Response: make(chan approval.ApprovalResponse, 1),
+	})
+
+	last := m.chatView.entries[len(m.chatView.entries)-1]
+	assert.Equal(t, itemApproval, last.kind)
+	assert.Contains(t, last.content, "Run command")
+	assert.Contains(t, last.content, "[apr-42]")
 }
 
 func TestCockpitActivityUserSubmissionCallback(t *testing.T) {

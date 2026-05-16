@@ -225,6 +225,12 @@ func (m *ChatModel) HasPendingApproval() bool {
 	return m != nil && m.currentPendingApproval() != nil
 }
 
+// IsStreamingTurn reports whether the composer is currently attached to an
+// in-flight model turn.
+func (m *ChatModel) IsStreamingTurn() bool {
+	return m != nil && m.state == stateStreaming
+}
+
 // HandleComposerEditingKey applies a key directly to the composer input,
 // bypassing chat state gating. Mission Control uses this so typing intent can
 // move to the Composer lane while a live decision still exists.
@@ -446,9 +452,9 @@ func (m *ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		nextState := stateIdle
 		if msg.Result.Outcome != "success" {
 			nextState = stateFailed
-			text := strings.TrimSpace(msg.Result.UserMessage)
+			text := strings.TrimSpace(sanitizeMarkdownInput(msg.Result.UserMessage))
 			if text == "" {
-				text = strings.TrimSpace(msg.Result.ResponseText)
+				text = strings.TrimSpace(sanitizeMarkdownInput(msg.Result.ResponseText))
 			}
 			if text != "" && strings.TrimSpace(m.chatView.lastAssistantRaw()) != text {
 				m.chatView.appendStatus(text, "error")
@@ -522,7 +528,8 @@ func (m *ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ApprovalRequestMsg:
 		m.dismissPending()
 		m.resetApprovalOwner(&msg)
-		m.chatView.appendApprovalEvent(fmt.Sprintf("Approval requested for %s", msg.Request.ToolName), "requested")
+		m.chatView.transitionLatestToolState(msg.Request.ToolName, []ToolItemState{toolStateRunning}, toolStateAwaitingApproval)
+		m.chatView.appendApprovalEvent(fmt.Sprintf("Approval requested for %s", msg.Request.ToolName), "requested", msg.Request.ID, msg.Request.Summary)
 		if cmd := m.transitionTo(stateApproving); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
@@ -594,7 +601,7 @@ func (m *ChatModel) RenderParts() ChatParts {
 	}
 
 	if m.pending.IsActive() {
-		parts.Pending = renderPendingIndicator(m.pending.Elapsed())
+		parts.Pending = renderPendingIndicator(m.pending.Elapsed(), m.width)
 	}
 
 	if m.state == stateApproving {
@@ -765,16 +772,26 @@ func (m *ChatModel) handleApprovingKey(msg tea.KeyMsg) tea.Cmd {
 				m.chatView.appendStatus(fmt.Sprintf("Approval resolution failed for %s", req.ToolName), "error")
 				return nil
 			}
+			if approved {
+				m.chatView.transitionLatestToolState(req.ToolName, []ToolItemState{toolStateAwaitingApproval}, toolStateRunning)
+			} else {
+				m.chatView.transitionLatestToolState(req.ToolName, []ToolItemState{toolStateAwaitingApproval}, toolStateCanceled)
+			}
 			m.approval.Clear()
-			m.chatView.appendApprovalEvent(eventText, outcome)
+			m.chatView.appendApprovalEvent(eventText, outcome, req.ID, req.Summary)
 			if m.currentPendingApproval() != nil {
 				return m.transitionTo(stateApproving)
 			}
 			return m.transitionTo(stateStreaming)
 		}
 		ch := pending.Response
+		if approved {
+			m.chatView.transitionLatestToolState(req.ToolName, []ToolItemState{toolStateAwaitingApproval}, toolStateRunning)
+		} else {
+			m.chatView.transitionLatestToolState(req.ToolName, []ToolItemState{toolStateAwaitingApproval}, toolStateCanceled)
+		}
 		m.approval.Clear()
-		m.chatView.appendApprovalEvent(eventText, outcome)
+		m.chatView.appendApprovalEvent(eventText, outcome, req.ID, req.Summary)
 		return tea.Batch(
 			m.transitionTo(stateStreaming),
 			func() tea.Msg {
@@ -926,7 +943,7 @@ func (m *ChatModel) recalcLayout() {
 		renderTurnStrip(m.state, m.width),
 	}
 	if m.pending.IsActive() {
-		fixedParts = append(fixedParts, renderPendingIndicator(m.pending.Elapsed()))
+		fixedParts = append(fixedParts, renderPendingIndicator(m.pending.Elapsed(), m.width))
 	}
 	if ts := m.taskStrip.View(m.width); ts != "" {
 		fixedParts = append(fixedParts, ts)

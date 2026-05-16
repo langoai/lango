@@ -171,15 +171,25 @@ func TestDeadLettersPage_Title(t *testing.T) {
 func TestDeadLettersPage_ShortHelp(t *testing.T) {
 	page := NewDeadLettersPage(nil, nil)
 	bindings := page.ShortHelp()
-	require.Len(t, bindings, 10)
+	require.Len(t, bindings, 8)
+	assert.Equal(t, "text filter", bindings[5].Help().Desc)
 }
 
 func TestDeadLettersPage_ShortHelpIncludesRetryWhenEnabled(t *testing.T) {
 	page := NewDeadLettersPage(nil, nil, (&mockDeadLetterRetryFn{}).call)
 	page.detail = &postadjudicationstatus.TransactionStatus{CanRetry: true}
 	bindings := page.ShortHelp()
-	require.Len(t, bindings, 11)
-	assert.Equal(t, "r", bindings[10].Keys()[0])
+	require.Len(t, bindings, 9)
+	assert.Equal(t, "r", bindings[8].Keys()[0])
+}
+
+func TestDeadLettersPage_ShortHelpHidesRowNavigationWithSingleItem(t *testing.T) {
+	page := NewDeadLettersPage(nil, nil)
+	page.items = []postadjudicationstatus.DeadLetterBacklogEntry{
+		{TransactionReceiptID: "tx-1"},
+	}
+	bindings := page.ShortHelp()
+	require.Len(t, bindings, 8)
 }
 
 func TestDeadLettersPage_ShortHelpShowsConfirmWhenPending(t *testing.T) {
@@ -189,8 +199,46 @@ func TestDeadLettersPage_ShortHelpShowsConfirmWhenPending(t *testing.T) {
 	page.retryConfirmID = "tx-1"
 
 	bindings := page.ShortHelp()
-	require.Len(t, bindings, 11)
-	assert.Equal(t, "confirm", bindings[10].Help().Desc)
+	require.Len(t, bindings, 10)
+	assert.Equal(t, "confirm", bindings[6].Help().Desc)
+	assert.Equal(t, "confirm", bindings[8].Help().Desc)
+	assert.Equal(t, "cancel retry", bindings[9].Help().Desc)
+}
+
+func TestDeadLettersPage_ShortHelpHidesResetWhileRetryRunning(t *testing.T) {
+	page := NewDeadLettersPage(nil, nil, (&mockDeadLetterRetryFn{}).call)
+	page.selectedID = "tx-1"
+	page.detail = &postadjudicationstatus.TransactionStatus{CanRetry: true}
+	page.retryRunningID = "tx-1"
+
+	bindings := page.ShortHelp()
+	for _, binding := range bindings {
+		if len(binding.Keys()) > 0 {
+			assert.NotEqual(t, "ctrl+r", binding.Keys()[0])
+		}
+	}
+}
+
+func TestDeadLettersPage_FilterHintShowsConfirmStateGuidance(t *testing.T) {
+	page := NewDeadLettersPage(nil, nil, (&mockDeadLetterRetryFn{}).call)
+	page.selectedID = "tx-1"
+	page.detail = &postadjudicationstatus.TransactionStatus{CanRetry: true}
+	page.retryConfirmID = "tx-1"
+
+	view := page.renderFilterBar()
+	assert.Contains(t, view, "Retry confirm pending: Enter confirms retry, Esc cancels, Ctrl+R still resets filters")
+	assert.NotContains(t, view, "Enter to apply")
+}
+
+func TestDeadLettersPage_FilterHintHidesResetWhileRetryRunning(t *testing.T) {
+	page := NewDeadLettersPage(nil, nil, (&mockDeadLetterRetryFn{}).call)
+	page.selectedID = "tx-1"
+	page.detail = &postadjudicationstatus.TransactionStatus{CanRetry: true}
+	page.retryRunningID = "tx-1"
+
+	view := page.renderFilterBar()
+	assert.Contains(t, view, "Enter to apply")
+	assert.NotContains(t, view, "Ctrl+R")
 }
 
 func TestDeadLettersPage_ActivateLoadsBacklogAndDetail(t *testing.T) {
@@ -226,7 +274,8 @@ func TestDeadLettersPage_ActivateLoadsBacklogAndDetail(t *testing.T) {
 		},
 	}
 
-	page := NewDeadLettersPage(listFn.call, detailFn.call, (&mockDeadLetterRetryFn{}).call)
+	retryFn := &mockDeadLetterRetryFn{}
+	page := NewDeadLettersPage(listFn.call, detailFn.call, retryFn.call)
 	cmd := page.Activate()
 	require.NotNil(t, cmd)
 
@@ -244,6 +293,27 @@ func TestDeadLettersPage_ActivateLoadsBacklogAndDetail(t *testing.T) {
 	assert.Equal(t, []string{"tx-1"}, detailFn.calls)
 }
 
+func TestDeadLettersPage_ActivateWithoutListFunctionReturnsConfiguredError(t *testing.T) {
+	page := NewDeadLettersPage(nil, nil)
+
+	cmd := page.Activate()
+	require.NotNil(t, cmd)
+
+	msg := cmd()
+	loaded, ok := msg.(deadLettersLoadedMsg)
+	require.True(t, ok)
+	require.Error(t, loaded.err)
+	assert.Contains(t, loaded.err.Error(), "dead-letter list function not configured")
+}
+
+func TestDeadLettersPage_ViewWithoutListFunctionShowsUnavailableMessage(t *testing.T) {
+	page := NewDeadLettersPage(nil, nil)
+	updated, _ := page.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
+	page = updated.(*DeadLettersPage)
+
+	assert.Contains(t, page.View(), "Dead-letter backlog is not configured.")
+}
+
 func TestDeadLettersPage_SelectionLoadsNextDetail(t *testing.T) {
 	listFn := &mockDeadLetterListFn{
 		items: []postadjudicationstatus.DeadLetterBacklogEntry{
@@ -258,7 +328,8 @@ func TestDeadLettersPage_SelectionLoadsNextDetail(t *testing.T) {
 		},
 	}
 
-	page := NewDeadLettersPage(listFn.call, detailFn.call, (&mockDeadLetterRetryFn{}).call)
+	retryFn := &mockDeadLetterRetryFn{}
+	page := NewDeadLettersPage(listFn.call, detailFn.call, retryFn.call)
 	updated, detailCmd := page.Update(page.Activate()())
 	page = updated.(*DeadLettersPage)
 	require.NotNil(t, detailCmd)
@@ -293,7 +364,8 @@ func TestDeadLettersPage_ApplyFiltersReloadsAndResetsSelection(t *testing.T) {
 		},
 	}
 
-	page := NewDeadLettersPage(listFn.call, detailFn.call, (&mockDeadLetterRetryFn{}).call)
+	retryFn := &mockDeadLetterRetryFn{}
+	page := NewDeadLettersPage(listFn.call, detailFn.call, retryFn.call)
 	updated, detailCmd := page.Update(page.Activate()())
 	page = updated.(*DeadLettersPage)
 	require.NotNil(t, detailCmd)
@@ -446,7 +518,8 @@ func TestDeadLettersPage_ApplyFiltersPreservesSelectionWhenPresent(t *testing.T)
 		},
 	}
 
-	page := NewDeadLettersPage(listFn.call, detailFn.call, (&mockDeadLetterRetryFn{}).call)
+	retryFn := &mockDeadLetterRetryFn{}
+	page := NewDeadLettersPage(listFn.call, detailFn.call, retryFn.call)
 	updated, detailCmd := page.Update(page.Activate()())
 	page = updated.(*DeadLettersPage)
 	updated, _ = page.Update(detailCmd())
@@ -516,7 +589,8 @@ func TestDeadLettersPage_ApplyFiltersFallsBackToFirstRowWhenSelectionDisappears(
 		},
 	}
 
-	page := NewDeadLettersPage(listFn.call, detailFn.call, (&mockDeadLetterRetryFn{}).call)
+	retryFn := &mockDeadLetterRetryFn{}
+	page := NewDeadLettersPage(listFn.call, detailFn.call, retryFn.call)
 	updated, detailCmd := page.Update(page.Activate()())
 	page = updated.(*DeadLettersPage)
 	updated, _ = page.Update(detailCmd())
@@ -693,6 +767,69 @@ func TestDeadLettersPage_ViewIncludesBackgroundTaskWhenPresent(t *testing.T) {
 	assert.Contains(t, view, "Retry action: ready (press r to request retry)")
 }
 
+func TestDeadLettersPage_SanitizesRenderedText(t *testing.T) {
+	listFn := &mockDeadLetterListFn{
+		items: []postadjudicationstatus.DeadLetterBacklogEntry{
+			{
+				TransactionReceiptID:      "tx-\x1b[31m1\nx",
+				SubmissionReceiptID:       "sub-\x1b[31m1\nx",
+				Adjudication:              "re\x1b[31mlease\n",
+				LatestRetryAttempt:        3,
+				LatestDeadLetterReason:    "terminal\x1b[31m failure\nnow",
+				LatestStatusSubtypeFamily: "manual-\x1b[31mretry\n",
+				LatestManualReplayActor:   "operator:\x1b[31malice\nops",
+				LatestDispatchReference:   "queue/\x1b[31memail-1\nops",
+				IsDeadLettered:            true,
+				CanRetry:                  true,
+			},
+		},
+	}
+	detailFn := &mockDeadLetterDetailFn{
+		statusByID: map[string]postadjudicationstatus.TransactionStatus{
+			"tx-\x1b[31m1\nx": {
+				CanonicalSnapshot: postadjudicationstatus.CanonicalSnapshot{
+					TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-\x1b[31m1\nx"},
+					SubmissionReceipt:  receipts.SubmissionReceipt{SubmissionReceiptID: "sub-\x1b[31m1\nx"},
+				},
+				RetryDeadLetterSummary: postadjudicationstatus.RetryDeadLetterSummary{
+					LatestDeadLetterReason:    "terminal\x1b[31m failure\nnow",
+					LatestRetryAttempt:        3,
+					LatestDispatchReference:   "queue/\x1b[31memail-1\nops",
+					LatestStatusSubtype:       "manual-\x1b[31mretry-requested\n",
+					LatestStatusSubtypeFamily: "manual-\x1b[31mretry\n",
+				},
+				LatestBackgroundTask: &postadjudicationstatus.BackgroundTaskBridge{
+					TaskID:       "task-\x1b[31m9\nx",
+					Status:       "re\x1b[31mtrying\n",
+					AttemptCount: 2,
+					NextRetryAt:  "2026-04-24T12:30:00Z",
+				},
+				IsDeadLettered: true,
+				CanRetry:       true,
+				Adjudication:   "re\x1b[31mlease\n",
+			},
+		},
+	}
+
+	page := NewDeadLettersPage(listFn.call, detailFn.call, (&mockDeadLetterRetryFn{}).call)
+	updated, detailCmd := page.Update(page.Activate()())
+	page = updated.(*DeadLettersPage)
+	require.NotNil(t, detailCmd)
+	updated, _ = page.Update(detailCmd())
+	page = updated.(*DeadLettersPage)
+
+	view := page.View()
+	assert.Contains(t, view, "tx-1 x")
+	assert.Contains(t, view, "sub-1 x")
+	assert.Contains(t, view, "release")
+	assert.Contains(t, view, "terminal failure now")
+	assert.Contains(t, view, "operator:alice ops")
+	assert.Contains(t, view, "queue/email-1 ops")
+	assert.Contains(t, view, "task-9 x")
+	assert.Contains(t, view, "retrying")
+	assert.NotContains(t, view, "\x1b")
+}
+
 func TestDeadLettersPage_RetrySelectedShowsSuccessMessage(t *testing.T) {
 	listFn := &mockDeadLetterListFn{
 		items: []postadjudicationstatus.DeadLetterBacklogEntry{
@@ -725,7 +862,7 @@ func TestDeadLettersPage_RetrySelectedShowsSuccessMessage(t *testing.T) {
 	page = updated.(*DeadLettersPage)
 	assert.Nil(t, retryCmd)
 	assert.Empty(t, retryFn.calls)
-	assert.Contains(t, page.View(), "Retry action: confirm request (press r again)")
+	assert.Contains(t, page.View(), "Retry action: confirm request (press r again or Enter, Esc cancels)")
 
 	updated, retryCmd = page.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
 	page = updated.(*DeadLettersPage)
@@ -1437,6 +1574,11 @@ func TestDeadLettersPage_RetryConfirmClearsOnFilterApply(t *testing.T) {
 	updated, reloadCmd := page.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	page = updated.(*DeadLettersPage)
 	require.NotNil(t, reloadCmd)
+	require.Equal(t, "tx-1", page.retryRunningID)
+	retryResult := reloadCmd()
+	retryMsg, ok := retryResult.(deadLetterRetryResultMsg)
+	require.True(t, ok)
+	assert.Equal(t, "tx-1", retryMsg.transactionID)
 	assert.False(t, page.retryConfirmActive())
 }
 

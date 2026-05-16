@@ -46,9 +46,31 @@ func TestToolsPage_Title(t *testing.T) {
 func TestToolsPage_ShortHelp(t *testing.T) {
 	t.Parallel()
 
-	p := NewToolsPage(toolcatalog.New())
+	p := NewToolsPage(newTestCatalog())
 	bindings := p.ShortHelp()
-	assert.Len(t, bindings, 3, "expected up, down, back bindings")
+	assert.Len(t, bindings, 2, "expected up and down bindings")
+	assert.Equal(t, "↑/k", bindings[0].Help().Key)
+	assert.Equal(t, "↓/j", bindings[1].Help().Key)
+}
+
+func TestToolsPage_ShortHelpHiddenWithoutCategories(t *testing.T) {
+	t.Parallel()
+
+	p := NewToolsPage(nil)
+	assert.Empty(t, p.ShortHelp())
+}
+
+func TestToolsPage_ShortHelpHiddenWithSingleCategory(t *testing.T) {
+	t.Parallel()
+
+	cat := toolcatalog.New()
+	cat.RegisterCategory(toolcatalog.Category{
+		Name:        "exec",
+		Description: "Execution tools",
+		Enabled:     true,
+	})
+	p := NewToolsPage(cat)
+	assert.Empty(t, p.ShortHelp())
 }
 
 func TestToolsPage_Categories(t *testing.T) {
@@ -113,7 +135,22 @@ func TestToolsPage_EmptyCatalog(t *testing.T) {
 	updated, _ := p.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	p = updated.(*ToolsPage)
 	view := p.View()
-	assert.Contains(t, view, "No categories")
+	assert.Contains(t, view, "No categories registered.")
+	assert.Contains(t, p.renderCategories(40), "No categories registered.")
+}
+
+func TestToolsPage_NilCatalog(t *testing.T) {
+	t.Parallel()
+
+	p := NewToolsPage(nil)
+	assert.Empty(t, p.categories)
+	assert.Empty(t, p.tools)
+
+	updated, _ := p.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	p = updated.(*ToolsPage)
+	view := p.View()
+	assert.Contains(t, view, "Tool catalog is not available")
+	assert.Contains(t, view, "Tool catalog is not available")
 }
 
 func TestToolsPage_WindowSize(t *testing.T) {
@@ -201,6 +238,52 @@ func TestToolsPage_SeparatorLineCount(t *testing.T) {
 	// the first sidebar item).
 	assert.Equal(t, p.height, len(lines),
 		"tools page View must produce exactly height lines; trailing newline in separator causes +1 overflow")
+}
+
+func TestToolsPage_SanitizesCategoryAndToolText(t *testing.T) {
+	t.Parallel()
+
+	cat := toolcatalog.New()
+	cat.RegisterCategory(toolcatalog.Category{
+		Name:        "br\x1b]8;;evil\aowser\nlane",
+		Description: "Browser\x1b[31m tools\nfor operators",
+		Enabled:     true,
+	})
+	cat.Register("br\x1b]8;;evil\aowser\nlane", []*agent.Tool{
+		{
+			Name:        "navigate\x1b[31m_now\nplease",
+			Description: "Open\x1b[31m URLs\nsafely",
+			SafetyLevel: agent.SafetyLevelSafe,
+		},
+	})
+
+	p := NewToolsPage(cat)
+	p.tools = []toolcatalog.ToolSchema{
+		{
+			Name:        "navigate\x1b[31m_now\nplease",
+			Description: "Open\x1b[31m URLs\nsafely",
+			SafetyLevel: "sa\x1b[31mfe\n",
+		},
+	}
+	updated, _ := p.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
+	p = updated.(*ToolsPage)
+
+	view := p.View()
+	assert.Contains(t, view, "browser lane")
+	assert.Contains(t, view, "Browser tools for operators")
+	assert.Contains(t, view, "navigate_now please")
+	assert.Contains(t, view, "Open URLs safely")
+	assert.Contains(t, view, "safe")
+	assert.NotContains(t, view, "\x1b")
+	assert.NotContains(t, view, "\nplease")
+}
+
+func TestToolsPage_SafetyStyleUsesSanitizedKnownLabel(t *testing.T) {
+	t.Parallel()
+
+	safe := safetyStyles["safe"].Render("safe")
+	got := safetyStyle("sa\x1b[31mfe\n").Render("safe")
+	assert.Equal(t, safe, got)
 }
 
 func TestTruncate(t *testing.T) {

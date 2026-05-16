@@ -2,11 +2,15 @@ package pages
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/langoai/lango/internal/cli/settings"
+	"github.com/langoai/lango/internal/cli/cockpit/theme"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/storage"
 )
@@ -14,7 +18,8 @@ import (
 // SettingsPage embeds a settings.Editor in the cockpit.
 // Save operations use the OnSave callback instead of quitting.
 type SettingsPage struct {
-	editor *settings.Editor
+	editor           *settings.Editor
+	storeConfigured  bool
 }
 
 // NewSettingsPage creates a SettingsPage with an embedded Editor.
@@ -26,14 +31,18 @@ func NewSettingsPage(
 ) *SettingsPage {
 	if store == nil {
 		return &SettingsPage{
-			editor: settings.NewEditorForEmbedding(cfg, func(cfg *config.Config, dirtyKeys map[string]bool) error { return nil }),
+			editor: settings.NewEditorForEmbedding(cfg, func(cfg *config.Config, dirtyKeys map[string]bool) error {
+				return fmt.Errorf("config profile store is not configured")
+			}),
+			storeConfigured: false,
 		}
 	}
 	onSave := func(cfg *config.Config, dirtyKeys map[string]bool) error {
 		return store.Save(context.Background(), profileName, cfg, dirtyKeys)
 	}
 	return &SettingsPage{
-		editor: settings.NewEditorForEmbedding(cfg, onSave),
+		editor:          settings.NewEditorForEmbedding(cfg, onSave),
+		storeConfigured: true,
 	}
 }
 
@@ -61,5 +70,14 @@ func (m *SettingsPage) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // View delegates rendering to the embedded Editor.
 func (m *SettingsPage) View() string {
-	return m.editor.View()
+	if m.storeConfigured {
+		return m.editor.View()
+	}
+
+	note := lipgloss.NewStyle().
+		Foreground(theme.Warning).
+		PaddingLeft(2).
+		Render("Settings changes cannot be saved because the config profile store is not configured.")
+
+	return strings.TrimRight(note+"\n\n"+m.editor.View(), "\n")
 }

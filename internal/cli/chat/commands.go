@@ -116,9 +116,9 @@ func cmdHelp(m *ChatModel, _ string) tea.Cmd {
 	bindings := []struct{ key, desc string }{
 		{"Enter", "Send message"},
 		{"Alt+Enter", "Insert newline"},
-		{"Ctrl+C", "Cancel generation / quit"},
+		{"Ctrl+C", "Cancel generation / double-press to quit when idle or failed"},
 		{"Ctrl+D", "Quit immediately"},
-		{"PgUp/PgDn", "Scroll chat"},
+		{"PgUp/PgDn", "Scroll transcript"},
 	}
 	for _, kb := range bindings {
 		k := lipgloss.NewStyle().Bold(true).Foreground(tui.Highlight).Render(kb.key)

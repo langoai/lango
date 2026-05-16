@@ -292,15 +292,30 @@ func loadedMissionControlPageForSurface(t *testing.T, snapshot cockpit.MissionCo
 	t.Helper()
 	projector := &stubMissionControlProjector{snapshot: snapshot}
 	surface := missionControlSurfaceCockpit
+	var cfg *config.Config
 	if workbench {
 		surface = missionControlSurfaceWorkbench
+		cfg = readyWorkbenchConfig()
 	}
-	page := newMissionControlPageWithSurface(projector, stubMissionTaskSource{}, newTestMissionComposer(t, nil), surface)
+	page := newMissionControlPageWithSurface(projector, stubMissionTaskSource{}, cfg, "", newTestMissionComposer(t, nil), surface)
 	updated, _ := page.Update(tea.WindowSizeMsg{Width: 110, Height: 30})
 	page = updated.(*MissionControlPage)
 	page.Activate()
 	updated, _ = page.Update(missionControlTickMsg(time.Now()))
 	return updated.(*MissionControlPage)
+}
+
+func readyWorkbenchConfig() *config.Config {
+	cfg := config.DefaultConfig()
+	cfg.Agent.Provider = "test"
+	cfg.Agent.Model = "gpt-5"
+	cfg.Providers = map[string]config.ProviderConfig{
+		"test": {
+			Type:   "openai",
+			APIKey: "test-key",
+		},
+	}
+	return cfg
 }
 
 func newTestMissionComposer(t *testing.T, activity *cockpit.MissionActivityBuffer) *chat.ChatModel {
@@ -315,7 +330,7 @@ func TestMissionControlFirstScreenChatFallbackCopy(t *testing.T) {
 	page := loadedMissionControlPage(t, cockpit.MissionControlSnapshot{})
 	view := page.View()
 
-	assert.Contains(t, view, "Type to chat here")
+	assert.Contains(t, view, "Type a request here")
 	assert.Contains(t, view, "lango chat")
 	assert.NotContains(t, view, "lango cockpit")
 }
@@ -328,6 +343,160 @@ func TestMissionControlWorkbenchCopyMentionsAdvancedDashboard(t *testing.T) {
 
 	assert.Contains(t, view, "lango chat")
 	assert.Contains(t, view, "lango cockpit")
+}
+
+func TestMissionControlShortHelpHidesInertNavigationInEmptyState(t *testing.T) {
+	t.Parallel()
+
+	page := loadedMissionControlPage(t, cockpit.MissionControlSnapshot{})
+	bindings := page.ShortHelp()
+
+	require.Len(t, bindings, 1)
+	assert.Equal(t, "tab", bindings[0].Help().Key)
+}
+
+func TestMissionControlWorkbenchShortHelpSeedsStarterInEmptyState(t *testing.T) {
+	t.Parallel()
+
+	page := loadedMissionControlPageForSurface(t, cockpit.MissionControlSnapshot{}, true)
+	bindings := page.ShortHelp()
+
+	require.Len(t, bindings, 2)
+	assert.Equal(t, "seed starter", bindings[1].Help().Desc)
+}
+
+func TestMissionControlWorkbenchShortHelpRunsStarterWhenArmed(t *testing.T) {
+	t.Parallel()
+
+	page := loadedMissionControlPageForSurface(t, cockpit.MissionControlSnapshot{}, true)
+	page.composer.SetComposerValue(page.defaultWorkbenchSeedPrompt())
+	bindings := page.ShortHelp()
+
+	require.Len(t, bindings, 2)
+	assert.Equal(t, "run starter", bindings[1].Help().Desc)
+}
+
+func TestMissionControlShortHelpShowsNavigationWhenRowsExist(t *testing.T) {
+	t.Parallel()
+
+	page := loadedMissionControlPage(t, cockpit.MissionControlSnapshot{
+		Missions: []cockpit.MissionView{
+			{ID: "mission-1", Title: "Example mission"},
+			{ID: "mission-2", Title: "Another mission"},
+		},
+	})
+	bindings := page.ShortHelp()
+
+	require.Len(t, bindings, 3)
+	assert.Equal(t, "↑/k", bindings[1].Help().Key)
+	assert.Equal(t, "↓/j", bindings[2].Help().Key)
+}
+
+func TestMissionControlComposerFocusDownMovesActivityCursor(t *testing.T) {
+	t.Parallel()
+
+	page := loadedMissionControlPage(t, cockpit.MissionControlSnapshot{
+		Activities: []cockpit.ActivityView{
+			{Summary: "first"},
+			{Summary: "second"},
+			{Summary: "third"},
+		},
+	})
+	page.focus = missionControlFocusComposer
+
+	updated, _ := page.Update(tea.KeyMsg{Type: tea.KeyDown})
+	page = updated.(*MissionControlPage)
+
+	assert.Equal(t, 1, page.activityOffset)
+}
+
+func TestMissionControlShortHelpHidesNavigationWithSingleMissionRow(t *testing.T) {
+	t.Parallel()
+
+	page := loadedMissionControlPage(t, cockpit.MissionControlSnapshot{
+		Missions: []cockpit.MissionView{{ID: "mission-1", Title: "Example mission"}},
+	})
+	bindings := page.ShortHelp()
+
+	require.Len(t, bindings, 1)
+	assert.Equal(t, "tab", bindings[0].Help().Key)
+}
+
+func TestMissionControlShortHelpShowsDismissForProposedRow(t *testing.T) {
+	t.Parallel()
+
+	page := loadedMissionControlPage(t, cockpit.MissionControlSnapshot{
+		Missions: []cockpit.MissionView{{ID: "proposal-1", Title: "Example proposal", Kind: cockpit.MissionKindProposed}},
+	})
+	bindings := page.ShortHelp()
+
+	require.Len(t, bindings, 3)
+	assert.Equal(t, "accept", bindings[1].Help().Desc)
+	assert.Equal(t, "d", bindings[2].Help().Key)
+	assert.Equal(t, "dismiss", bindings[2].Help().Desc)
+}
+
+func TestMissionControlShortHelpPreservesNavigationForProposedRowWithOtherMission(t *testing.T) {
+	t.Parallel()
+
+	page := loadedMissionControlPage(t, cockpit.MissionControlSnapshot{
+		Missions: []cockpit.MissionView{
+			{ID: "proposal-1", Title: "Example proposal", Kind: cockpit.MissionKindProposed},
+			{ID: "mission-2", Title: "Another mission"},
+		},
+	})
+	bindings := page.ShortHelp()
+
+	require.Len(t, bindings, 5)
+	assert.Equal(t, "tab", bindings[0].Help().Key)
+	assert.Equal(t, "↑/k", bindings[1].Help().Key)
+	assert.Equal(t, "↓/j", bindings[2].Help().Key)
+	assert.Equal(t, "enter", bindings[3].Help().Key)
+	assert.Equal(t, "accept", bindings[3].Help().Desc)
+	assert.Equal(t, "d", bindings[4].Help().Key)
+	assert.Equal(t, "dismiss", bindings[4].Help().Desc)
+}
+
+func TestMissionControlFooterHintShowsProposalActions(t *testing.T) {
+	t.Parallel()
+
+	page := loadedMissionControlPage(t, cockpit.MissionControlSnapshot{
+		Missions: []cockpit.MissionView{{ID: "proposal-1", Title: "Example proposal", Kind: cockpit.MissionKindProposed}},
+	})
+
+	hint := page.footerSurfaceHint()
+	assert.Contains(t, hint, "Enter accepts proposal")
+	assert.Contains(t, hint, "d dismisses proposal")
+	assert.Contains(t, hint, "`lango chat`")
+}
+
+func TestMissionControlShortHelpHidesDismissOutsideMissionFocus(t *testing.T) {
+	t.Parallel()
+
+	page := loadedMissionControlPage(t, cockpit.MissionControlSnapshot{
+		Missions: []cockpit.MissionView{{ID: "proposal-1", Title: "Example proposal", Kind: cockpit.MissionKindProposed}},
+	})
+	page.focus = missionControlFocusComposer
+	bindings := page.ShortHelp()
+
+	for _, binding := range bindings {
+		if len(binding.Keys()) > 0 {
+			assert.NotEqual(t, "d", binding.Keys()[0])
+		}
+	}
+}
+
+func TestMissionControlShortHelpHidesEnterOnDecisionsFocus(t *testing.T) {
+	t.Parallel()
+
+	page := loadedMissionControlPage(t, cockpit.MissionControlSnapshot{
+		Decision: &cockpit.DecisionView{ID: "apr-1", Title: "Approve fs_write"},
+	})
+	page.focus = missionControlFocusDecisions
+	bindings := page.ShortHelp()
+
+	require.Len(t, bindings, 1)
+	assert.Equal(t, "tab", bindings[0].Help().Key)
 }
 
 func TestMissionControlHeaderContextRendering(t *testing.T) {
@@ -350,6 +519,82 @@ func TestMissionControlHeaderContextRendering(t *testing.T) {
 	assert.Contains(t, view, "mission-control-wave-one")
 	assert.Contains(t, view, "150 tokens across 1 requests")
 	assert.Contains(t, view, "RunLedger unavailable")
+}
+
+func TestMissionControlHeaderSanitizesSummaryText(t *testing.T) {
+	t.Parallel()
+
+	page := loadedMissionControlPage(t, cockpit.MissionControlSnapshot{
+		Header: cockpit.HeaderView{
+			ActiveAgentSummary:   "worker\x1b[31m-c\nactive",
+			ModelProviderSummary: "openai\x1b[31m /\ngpt-5",
+			ContextSummary:       "mission\x1b[31m-control\nwave-one",
+			MetricsSummary:       "150\x1b[31m tokens\nacross 1 requests",
+			DegradedNote:         "RunLedger\x1b[31m unavailable\nnow",
+		},
+	})
+
+	view := page.View()
+	assert.Contains(t, view, "worker-c active")
+	assert.Contains(t, view, "openai / gpt-5")
+	assert.Contains(t, view, "mission-control wave-one")
+	assert.Contains(t, view, "150 tokens across 1 requests")
+	assert.Contains(t, view, "RunLedger unavailable now")
+	assert.NotContains(t, view, "\x1b")
+}
+
+func TestMissionControlLaneTextSanitization(t *testing.T) {
+	t.Parallel()
+
+	page := loadedMissionControlPage(t, cockpit.MissionControlSnapshot{
+		Missions: []cockpit.MissionView{{
+			ID:     "m-1",
+			Kind:   cockpit.MissionKindProposed,
+			Status: cockpit.MissionStatusPrepared,
+			Title:  "Ship\x1b[31m layout\nnow",
+			Detail: "Fix\x1b[31m spacing\nand copy",
+			Collaboration: cockpit.CollaborationView{
+				ParticipantSummary: "researcher\x1b[31m +1\nops",
+			},
+			SourceKind: "learning\x1b[31m\nsignal",
+			SourceRef:  "s-\x1b[31m1\nx",
+		}},
+		Decision: &cockpit.DecisionView{
+			Title:      "Approve\x1b[31m fs_write\nnow",
+			Reason:     "Filesystem\x1b[31m writes\nrequire approval.",
+			EffectText: "Update\x1b[31m mission\ncopy.",
+			RiskLabel:  "Writes\x1b[31m files\n",
+		},
+		Activities: []cockpit.ActivityView{{
+			Summary: "User\x1b[31m submitted:\nkeep history",
+		}},
+		Loops: []cockpit.LoopView{{
+			Title:   "Retry\x1b[31m release\nflow",
+			Summary: "Inspect\x1b[31m dead letters\nfirst",
+			Kind:    loopview.LoopKindDeadLetter,
+			Status:  loopview.LoopStatusBlocked,
+		}},
+		MissionOverflowSummary:  "1 more\x1b[31m mission\nhidden",
+		ActivityOverflowSummary: "2 more\x1b[31m activities\nhidden",
+		LoopOverflowSummary:     "3 more\x1b[31m loops\nhidden",
+	})
+
+	view := page.View()
+	assert.Contains(t, view, "Ship layout now")
+	assert.Contains(t, view, "Fix spacing and copy")
+	assert.Contains(t, view, "people: researcher +1 ops")
+	assert.Contains(t, view, "source: learning signal / s-1 x")
+	assert.Contains(t, view, "Approve fs_write now")
+	assert.Contains(t, view, "Filesystem writes require approval.")
+	assert.Contains(t, view, "Update mission copy.")
+	assert.Contains(t, view, "Writes files")
+	assert.Contains(t, view, "User submitted: keep history")
+	assert.Contains(t, view, "Retry release flow")
+	assert.Contains(t, view, "Inspect dead letters first")
+	assert.Contains(t, view, "1 more mission hidden")
+	assert.Contains(t, view, "2 more activities hidden")
+	assert.Contains(t, view, "3 more loops hidden")
+	assert.NotContains(t, view, "\x1b")
 }
 
 func TestMissionControlFooterDiscoverabilityHint(t *testing.T) {
@@ -502,6 +747,8 @@ func TestMissionControlComposerSubmitReusesTurnPath(t *testing.T) {
 		ActivityBuffer: activity,
 	})
 	page := newMissionControlPage(projector, stubMissionTaskSource{}, composer)
+	page.missionService = &stubMissionLifecycleService{startResult: &mission.Mission{ID: uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")}}
+	page.sessionKey = "mission-session"
 	updated, _ := page.Update(tea.WindowSizeMsg{Width: 110, Height: 30})
 	page = updated.(*MissionControlPage)
 	page.Activate()
@@ -524,6 +771,40 @@ func TestMissionControlComposerSubmitReusesTurnPath(t *testing.T) {
 	assert.Equal(t, "ship mission control", executor.input)
 }
 
+func TestMissionControlWorkbenchSeededStarterSubmitsOutsideComposerFocus(t *testing.T) {
+	t.Parallel()
+
+	activity := cockpit.NewMissionActivityBuffer()
+	composer, executor := newMissionComposerWithExecutor(t, activity)
+	cfg := config.DefaultConfig()
+	cfg.Agent.Provider = "anthropic"
+	cfg.Agent.Model = "claude-sonnet-4-5-20250929"
+	cfg.Providers = map[string]config.ProviderConfig{
+		"anthropic": {Type: "anthropic", APIKey: "sk-live"},
+	}
+
+	projector := &stubMissionControlProjector{}
+	page := newMissionControlPageWithSurface(projector, stubMissionTaskSource{}, cfg, "", composer, missionControlSurfaceWorkbench)
+	page.missionService = &stubMissionLifecycleService{startResult: &mission.Mission{ID: uuid.MustParse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")}}
+	page.sessionKey = "mission-session"
+	updated, _ := page.Update(tea.WindowSizeMsg{Width: 110, Height: 30})
+	page = updated.(*MissionControlPage)
+	page.Activate()
+	updated, _ = page.Update(missionControlTickMsg(time.Now()))
+	page = updated.(*MissionControlPage)
+
+	page.composer.SetComposerValue("Summarize this repository")
+	page.focus = missionControlFocusMissions
+	updated, cmd := page.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	page = updated.(*MissionControlPage)
+	require.NotNil(t, cmd)
+
+	_ = collectImmediateMsgs(cmd)
+
+	assert.Equal(t, 1, executor.calls)
+	assert.Equal(t, "Summarize this repository", executor.input)
+}
+
 func TestMissionControlComposerSubmitEchoesUserTextIntoActivity(t *testing.T) {
 	t.Parallel()
 
@@ -535,6 +816,8 @@ func TestMissionControlComposerSubmitEchoesUserTextIntoActivity(t *testing.T) {
 		ActivityBuffer: activity,
 	})
 	page := newMissionControlPage(projector, stubMissionTaskSource{}, composer)
+	page.missionService = &stubMissionLifecycleService{startResult: &mission.Mission{ID: uuid.MustParse("cccccccc-cccc-cccc-cccc-cccccccccccc")}}
+	page.sessionKey = "mission-session"
 	updated, _ := page.Update(tea.WindowSizeMsg{Width: 110, Height: 30})
 	page = updated.(*MissionControlPage)
 	page.Activate()
@@ -584,6 +867,36 @@ func TestMissionControlComposerSubmitCreatesMissionBeforeTurnDispatch(t *testing
 	assert.Equal(t, "11111111-1111-1111-1111-111111111111", ctxkeys.MissionIDFromContext(executor.ctx))
 }
 
+func TestMissionControlComposerSubmitSanitizesDurableMissionTitle(t *testing.T) {
+	t.Parallel()
+
+	composer, executor := newMissionComposerWithExecutor(t, nil)
+	svc := &stubMissionLifecycleService{
+		startResult: &mission.Mission{ID: uuid.MustParse("33333333-3333-3333-3333-333333333333")},
+	}
+	page := newMissionControlPage(&stubMissionControlProjector{}, stubMissionTaskSource{}, composer)
+	page.missionService = svc
+	page.sessionKey = "mission-session"
+	updated, _ := page.Update(tea.WindowSizeMsg{Width: 110, Height: 30})
+	page = updated.(*MissionControlPage)
+	page.Activate()
+
+	page.composer.SetComposerValue("ship mission\ncontrol")
+	page.focus = missionControlFocusComposer
+	updated, cmd := page.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	page = updated.(*MissionControlPage)
+
+	require.NotNil(t, cmd)
+	assert.Equal(t, "ship mission control", svc.lastStartInput.Title)
+
+	for _, msg := range collectImmediateMsgs(cmd) {
+		updated, _ = page.Update(msg)
+		page = updated.(*MissionControlPage)
+	}
+
+	assert.Equal(t, "33333333-3333-3333-3333-333333333333", ctxkeys.MissionIDFromContext(executor.ctx))
+}
+
 func TestMissionControlAcceptProposedMissionCreatesDurableRowAndRemovesOverlay(t *testing.T) {
 	t.Parallel()
 
@@ -602,12 +915,12 @@ func TestMissionControlAcceptProposedMissionCreatesDurableRowAndRemovesOverlay(t
 				Title:  "Apply bounded retry guidance",
 				Status: proposal.ProposalStatusPrepared,
 				PreparedBrief: &proposal.PreparedBrief{
-					SourceSummary:             "Learning suggestion: repeated timeout retries.",
-					Reason:                    "Repeated timeout failures benefited from bounded retry.",
-					SuggestedAcceptanceEffect: "Create a mission to apply bounded retry guidance.",
+					SourceSummary:             "Learning suggestion:\x1b[31m repeated timeout\nretries.",
+					Reason:                    "Repeated timeout\x1b[31m failures\nbenefited from bounded retry.",
+					SuggestedAcceptanceEffect: "Create a mission\x1b[31m to apply\nbounded retry guidance.",
 					SupportingEvidence: []string{
-						"Pattern: timeout retries",
-						"Confidence: 0.75",
+						"Pattern:\x1b[31m timeout\nretries",
+						"Confidence:\x1b[31m 0.75\n",
 					},
 				},
 			},
@@ -650,7 +963,58 @@ func TestMissionControlAcceptProposedMissionCreatesDurableRowAndRemovesOverlay(t
 	assert.Contains(t, svc.lastAcceptInput.Description, "Create a mission to apply bounded retry guidance.")
 	assert.Contains(t, svc.lastAcceptInput.Description, "Evidence: Pattern: timeout retries")
 	assert.Contains(t, svc.lastAcceptInput.Description, "Evidence: Confidence: 0.75")
+	assert.NotContains(t, svc.lastAcceptInput.Description, "\x1b")
+	assert.NotContains(t, svc.lastAcceptInput.Description, "\n")
 	assert.Empty(t, page.snapshot.Missions)
+}
+
+func TestMissionControlAcceptProposedMissionSanitizesPersistedLabels(t *testing.T) {
+	t.Parallel()
+
+	svc := &stubMissionLifecycleService{
+		acceptResult: &mission.Mission{ID: uuid.MustParse("44444444-4444-4444-4444-444444444444")},
+	}
+	proposalReader := &stubMissionProposalReader{
+		items: map[string]proposal.Proposal{
+			"proposal-1": {
+				ProposalID: "proposal-1",
+				SessionKey: "mission-session",
+				Source: proposal.ProposalSource{
+					Kind: "proposed_\x1b[31mlearning\n",
+					Ref:  "s-\x1b[31m1\nx",
+				},
+				Title:  "Apply\x1b[31m bounded\nretry guidance",
+				Status: proposal.ProposalStatusPrepared,
+			},
+		},
+	}
+	proposalSvc := &stubMissionProposalService{proposalReader: proposalReader}
+	deps := cockpit.Deps{
+		Config:         &config.Config{Agent: config.AgentConfig{Provider: "openai", Model: "gpt-5"}},
+		SessionKey:     "mission-session",
+		ProposalReader: proposalReader,
+	}
+	projector := cockpit.NewMissionControlProjector(deps)
+	page := newMissionControlPage(projector, stubMissionTaskSource{}, newTestMissionComposer(t, nil))
+	page.missionService = svc
+	page.proposalReader = proposalReader
+	page.proposalSvc = proposalSvc
+	page.sessionKey = "mission-session"
+	updated, _ := page.Update(tea.WindowSizeMsg{Width: 110, Height: 30})
+	page = updated.(*MissionControlPage)
+	page.Activate()
+	updated, _ = page.Update(missionControlTickMsg(time.Now()))
+	page = updated.(*MissionControlPage)
+
+	require.Len(t, page.snapshot.Missions, 1)
+	page.focus = missionControlFocusMissions
+	updated, cmd := page.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	page = updated.(*MissionControlPage)
+
+	assert.Nil(t, cmd)
+	assert.Equal(t, "Apply bounded retry guidance", svc.lastAcceptInput.Title)
+	assert.Equal(t, "proposed_learning", svc.lastAcceptInput.SourceKind)
+	assert.Equal(t, "s-1 x", svc.lastAcceptInput.SourceRef)
 }
 
 func TestMissionControlAcceptProposedMissionRestoresProposalIfMissionCreateFails(t *testing.T) {
@@ -754,6 +1118,54 @@ func TestMissionControlDismissProposedMissionUsesProposalServiceAndRemovesOverla
 	assert.Equal(t, 1, proposalSvc.dismissCalls)
 	assert.Equal(t, "proposal-1", proposalSvc.lastDismissID)
 	assert.Empty(t, page.snapshot.Missions)
+}
+
+func TestMissionControlAcceptProposedMissionFailsClosedWithoutMissionService(t *testing.T) {
+	t.Parallel()
+
+	page := loadedMissionControlPage(t, cockpit.MissionControlSnapshot{
+		Missions: []cockpit.MissionView{{
+			ID:     "proposal-1",
+			Kind:   cockpit.MissionKindProposed,
+			Status: cockpit.MissionStatusPrepared,
+			Title:  "Accept me",
+		}},
+	})
+	page.focus = missionControlFocusMissions
+
+	updated, cmd := page.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	page = updated.(*MissionControlPage)
+
+	require.NotNil(t, cmd)
+	msgs := collectImmediateMsgs(cmd)
+	require.NotEmpty(t, msgs)
+	sys, ok := msgs[0].(chat.SystemMsg)
+	require.True(t, ok)
+	assert.Contains(t, sys.Text, "Mission service is not configured")
+}
+
+func TestMissionControlDismissProposedMissionFailsClosedWithoutProposalService(t *testing.T) {
+	t.Parallel()
+
+	page := loadedMissionControlPage(t, cockpit.MissionControlSnapshot{
+		Missions: []cockpit.MissionView{{
+			ID:     "proposal-1",
+			Kind:   cockpit.MissionKindProposed,
+			Status: cockpit.MissionStatusPrepared,
+			Title:  "Dismiss me",
+		}},
+	})
+	page.focus = missionControlFocusMissions
+
+	updated, cmd := page.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	page = updated.(*MissionControlPage)
+
+	require.NotNil(t, cmd)
+	msgs := collectImmediateMsgs(cmd)
+	require.NotEmpty(t, msgs)
+	sys, ok := msgs[0].(chat.SystemMsg)
+	require.True(t, ok)
+	assert.Contains(t, sys.Text, "Proposal service is not configured")
 }
 
 func TestMissionControlProposalSourceMetadataIsVisibleInMissionPane(t *testing.T) {
@@ -864,6 +1276,55 @@ func TestMissionControlLoadingEmptyDegradedRendering(t *testing.T) {
 	assert.Contains(t, view, "No active missions")
 	assert.Contains(t, view, "Degraded")
 	assert.Contains(t, view, "Agent runtime unavailable")
+}
+
+func TestWorkbenchEmptyStateSanitizesLastResultSummary(t *testing.T) {
+	t.Parallel()
+
+	page := loadedMissionControlPageForSurface(t, cockpit.MissionControlSnapshot{
+		Activities: []cockpit.ActivityView{{
+			Kind:    cockpit.MissionActivityAssistant,
+			Summary: "Assistant reply: done\x1b[31m now\nplease",
+		}},
+	}, true)
+
+	view := page.View()
+	assert.Contains(t, view, "Last result: done now please")
+	assert.NotContains(t, view, "\x1b")
+}
+
+func TestMissionControlNilProjectorShowsConfiguredDegradedState(t *testing.T) {
+	t.Parallel()
+
+	page := newMissionControlPage(nil, stubMissionTaskSource{}, newTestMissionComposer(t, nil))
+	updated, _ := page.Update(tea.WindowSizeMsg{Width: 90, Height: 28})
+	page = updated.(*MissionControlPage)
+
+	page.Activate()
+	updated, _ = page.Update(missionControlTickMsg(time.Now()))
+	page = updated.(*MissionControlPage)
+
+	view := page.View()
+	assert.Contains(t, view, "No active missions or pending decisions.")
+	assert.Contains(t, view, "Degraded")
+	assert.Contains(t, view, "Mission Control data is not configured")
+}
+
+func TestWorkbenchEmptyStateSuppressesDegradedNote(t *testing.T) {
+	t.Parallel()
+
+	page := loadedMissionControlPageForSurface(t, cockpit.MissionControlSnapshot{
+		Degraded: true,
+		Header: cockpit.HeaderView{
+			DegradedNote: "Mission store unavailable; RunLedger unavailable; Agent runtime unavailable",
+		},
+	}, true)
+
+	view := page.View()
+	assert.NotContains(t, view, "Degraded:")
+	assert.NotContains(t, view, "Mission store unavailable")
+	assert.NotContains(t, view, "RunLedger unavailable")
+	assert.NotContains(t, view, "Agent runtime unavailable")
 }
 
 func TestMissionControlDecisionsFocusRoutesApprovalKeys(t *testing.T) {
@@ -1048,6 +1509,36 @@ func TestMissionControlDecisionResolutionRefreshesSnapshotImmediately(t *testing
 	view := page.View()
 	assert.NotContains(t, view, "Action: Approve fs_write")
 	assert.Contains(t, view, "No active missions or pending decisions.")
+}
+
+func TestMissionControlSubmitFailsClosedWithoutMissionService(t *testing.T) {
+	t.Parallel()
+
+	composer, executor := newMissionComposerWithExecutor(t, nil)
+	composer.SetComposerValue("Ship the next milestone")
+
+	page := newMissionControlPage(&stubMissionControlProjector{}, stubMissionTaskSource{}, composer)
+	page.sessionKey = "mission-session"
+	updated, _ := page.Update(tea.WindowSizeMsg{Width: 110, Height: 30})
+	page = updated.(*MissionControlPage)
+	page.Activate()
+	updated, _ = page.Update(missionControlTickMsg(time.Now()))
+	page = updated.(*MissionControlPage)
+	page.focus = missionControlFocusComposer
+
+	updated, cmd := page.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	page = updated.(*MissionControlPage)
+
+	require.NotNil(t, cmd)
+	assert.Equal(t, 0, executor.calls, "ordinary submit should not fall through to chat execution when mission service is unavailable")
+
+	msgs := collectImmediateMsgs(cmd)
+	require.NotEmpty(t, msgs)
+	var sys chat.SystemMsg
+	require.IsType(t, sys, msgs[0])
+	sys = msgs[0].(chat.SystemMsg)
+	assert.Contains(t, sys.Text, "Mission service is not configured")
+	assert.Equal(t, "Ship the next milestone", page.composer.ComposerValue(), "composer text should stay intact after fail-closed submit")
 }
 
 func TestMissionControlNarrowAndShortLayouts(t *testing.T) {

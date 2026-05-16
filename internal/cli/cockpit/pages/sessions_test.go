@@ -26,9 +26,28 @@ func TestSessionsPage_Title(t *testing.T) {
 }
 
 func TestSessionsPage_ShortHelp(t *testing.T) {
+	now := time.Now()
 	p := NewSessionsPage(nil)
+	p.sessions = []session.SessionSummary{
+		{Key: "s1", UpdatedAt: now},
+		{Key: "s2", UpdatedAt: now.Add(-time.Minute)},
+	}
 	bindings := p.ShortHelp()
 	assert.Len(t, bindings, 2)
+	assert.Equal(t, "↑/k", bindings[0].Help().Key)
+	assert.Equal(t, "↓/j", bindings[1].Help().Key)
+}
+
+func TestSessionsPage_ShortHelpHiddenWithoutRows(t *testing.T) {
+	p := NewSessionsPage(nil)
+	assert.Empty(t, p.ShortHelp())
+}
+
+func TestSessionsPage_ShortHelpHiddenWithSingleRow(t *testing.T) {
+	now := time.Now()
+	p := NewSessionsPage(nil)
+	p.sessions = []session.SessionSummary{{Key: "s1", UpdatedAt: now}}
+	assert.Empty(t, p.ShortHelp())
 }
 
 func TestSessionsPage_Init(t *testing.T) {
@@ -86,14 +105,16 @@ func TestSessionsPage_UpdateLoadedMsg(t *testing.T) {
 	p := NewSessionsPage(nil)
 	msg := sessionsLoadedMsg{
 		sessions: []session.SessionSummary{
-			{Key: "a", UpdatedAt: now},
 			{Key: "b", UpdatedAt: now.Add(-time.Hour)},
+			{Key: "a", UpdatedAt: now},
 		},
 	}
 	model, _ := p.Update(msg)
 	sp := model.(*SessionsPage)
 	assert.Len(t, sp.sessions, 2)
 	assert.Nil(t, sp.loadErr)
+	assert.Equal(t, "a", sp.sessions[0].Key)
+	assert.Equal(t, "b", sp.sessions[1].Key)
 }
 
 func TestSessionsPage_UpdateLoadedError(t *testing.T) {
@@ -143,30 +164,38 @@ func TestSessionsPage_ViewEmpty(t *testing.T) {
 	p := NewSessionsPage(nil)
 	view := p.View()
 	assert.Contains(t, view, "Sessions")
-	assert.Contains(t, view, "No sessions found")
+	assert.Contains(t, view, "Session list is not configured.")
+}
+
+func TestSessionsPage_ViewEmptyConfiguredList(t *testing.T) {
+	p := NewSessionsPage(fakeListFn([]session.SessionSummary{}, nil))
+	view := p.View()
+	assert.Contains(t, view, "No sessions found.")
 }
 
 func TestSessionsPage_ViewWithSessions(t *testing.T) {
 	now := time.Now()
-	p := NewSessionsPage(nil)
+	p := NewSessionsPage(fakeListFn(nil, nil))
 	p.sessions = []session.SessionSummary{
-		{Key: "session-alpha", UpdatedAt: now.Add(-5 * time.Minute)},
+		{Key: "session-\x1b[31malpha\nops", UpdatedAt: now.Add(-5 * time.Minute)},
 		{Key: "session-beta", UpdatedAt: now.Add(-2 * time.Hour)},
 	}
 	p.width = 80
 	view := p.View()
-	assert.Contains(t, view, "session-alpha")
+	assert.Contains(t, view, "session-alpha ops")
 	assert.Contains(t, view, "session-beta")
 	assert.Contains(t, view, "5m ago")
 	assert.Contains(t, view, "2h ago")
+	assert.NotContains(t, view, "\x1b")
 }
 
 func TestSessionsPage_ViewWithError(t *testing.T) {
-	p := NewSessionsPage(nil)
-	p.loadErr = fmt.Errorf("connection refused")
+	p := NewSessionsPage(fakeListFn(nil, nil))
+	p.loadErr = fmt.Errorf("connection \x1b[31mrefused\nnow")
 	view := p.View()
-	assert.Contains(t, view, "Error")
-	assert.Contains(t, view, "connection refused")
+	assert.Contains(t, view, "Session list failed to load")
+	assert.Contains(t, view, "connection refused now")
+	assert.NotContains(t, view, "\x1b")
 }
 
 func TestSessionsRelativeTime(t *testing.T) {

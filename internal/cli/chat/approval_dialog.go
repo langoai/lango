@@ -7,14 +7,22 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/langoai/lango/internal/approval"
 	"github.com/langoai/lango/internal/cli/tui"
 )
 
 // renderApprovalDialog renders a Tier 2 fullscreen approval dialog overlay.
-func renderApprovalDialog(vm approval.ApprovalViewModel, state *approvalState, width, height int, confirmPending ...bool) string {
-	isConfirmPending := len(confirmPending) > 0 && confirmPending[0]
+func renderApprovalDialog(vm approval.ApprovalViewModel, state *approvalState, width, height int) string {
+	if state == nil {
+		state = &approvalState{}
+	}
+	isConfirmPending := state != nil && state.confirmPending
+	confirmKey := "a"
+	if state != nil && strings.TrimSpace(state.confirmAction) != "" {
+		confirmKey = state.confirmAction
+	}
 	scrollOffset := state.scrollOffset
 	splitMode := state.splitMode
 
@@ -28,20 +36,23 @@ func renderApprovalDialog(vm approval.ApprovalViewModel, state *approvalState, w
 	}
 
 	// Header: risk badge + tool name.
-	riskColor := riskLevelColor(vm.Risk.Level)
+	safeRiskLevel := strings.ToUpper(sanitizeDisplayText(vm.Risk.Level))
+	riskColor := riskLevelColor(strings.ToLower(safeRiskLevel))
+	safeToolName := sanitizeDisplayText(vm.Request.ToolName)
+	safeRiskLabel := sanitizeDisplayText(vm.Risk.Label)
 	riskBadge := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(tui.Foreground).
 		Background(riskColor).
 		Padding(0, 1).
-		Render(strings.ToUpper(vm.Risk.Level))
+		Render(safeRiskLevel)
 
 	toolName := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(tui.Highlight).
-		Render(vm.Request.ToolName)
+		Render(safeToolName)
 
-	header := fmt.Sprintf(" %s  %s  %s", riskBadge, toolName, vm.Risk.Label)
+	header := fmt.Sprintf(" %s  %s  %s", riskBadge, toolName, safeRiskLabel)
 
 	// Channel origin (if from a channel session).
 	var originLine string
@@ -55,8 +66,9 @@ func renderApprovalDialog(vm approval.ApprovalViewModel, state *approvalState, w
 	// Summary.
 	summary := vm.Request.Summary
 	if summary == "" {
-		summary = fmt.Sprintf("Execute tool: %s", vm.Request.ToolName)
+		summary = fmt.Sprintf("Execute tool: %s", safeToolName)
 	}
+	summary = sanitizeDisplayText(summary)
 	summaryBlock := lipgloss.NewStyle().
 		PaddingLeft(2).
 		Foreground(tui.Foreground).
@@ -65,23 +77,24 @@ func renderApprovalDialog(vm approval.ApprovalViewModel, state *approvalState, w
 	// Rule explanation.
 	var explanationBlock string
 	if vm.RuleExplanation != "" {
+		explanation := sanitizeDisplayText(vm.RuleExplanation)
 		explanationBlock = lipgloss.NewStyle().
 			Foreground(tui.Muted).
 			Italic(true).
 			PaddingLeft(2).
-			Render("Why: " + vm.RuleExplanation)
+			Render("Why: " + explanation)
 	}
 
 	// Parameters.
 	var paramsBlock string
 	if len(vm.Request.Params) > 0 {
 		var parts []string
-		for k, v := range vm.Request.Params {
-			val := fmt.Sprintf("%v", v)
+		for _, k := range sortedParamKeys(vm.Request.Params) {
+			val := formatParamValue(vm.Request.Params[k])
 			if len(val) > 120 {
 				val = val[:117] + "..."
 			}
-			parts = append(parts, fmt.Sprintf("  %s: %s", k, val))
+			parts = append(parts, fmt.Sprintf("  %s: %s", sanitizeParamKey(k), val))
 		}
 		paramsBlock = lipgloss.NewStyle().
 			Foreground(tui.Muted).
@@ -90,6 +103,7 @@ func renderApprovalDialog(vm approval.ApprovalViewModel, state *approvalState, w
 
 	// Diff preview (if available).
 	var diffBlock string
+	hasScrollableDiff := false
 	if vm.DiffContent != "" {
 		allLines := strings.Split(vm.DiffContent, "\n")
 
@@ -101,6 +115,7 @@ func renderApprovalDialog(vm approval.ApprovalViewModel, state *approvalState, w
 			state.diffCache.splitMode != splitMode {
 			cachedLines = make([]string, 0, len(allLines))
 			for _, line := range allLines {
+				line = ansi.Strip(line)
 				switch {
 				case strings.HasPrefix(line, "+"):
 					cachedLines = append(cachedLines, lipgloss.NewStyle().Foreground(tui.Success).Render(line))
@@ -134,6 +149,15 @@ func renderApprovalDialog(vm approval.ApprovalViewModel, state *approvalState, w
 		if visible < 3 {
 			visible = 3
 		}
+		maxStart := len(cachedLines) - visible
+		if maxStart < 0 {
+			maxStart = 0
+		}
+		if state.scrollOffset > maxStart {
+			state.scrollOffset = maxStart
+			start = maxStart
+		}
+		hasScrollableDiff = len(cachedLines) > visible
 		end := start + visible
 		if end > len(cachedLines) {
 			end = len(cachedLines)
@@ -158,19 +182,23 @@ func renderApprovalDialog(vm approval.ApprovalViewModel, state *approvalState, w
 		actionBar = lipgloss.NewStyle().
 			Bold(true).
 			Foreground(tui.Warning).
-			Render("  Press 'a' again to confirm (destructive operation)")
+			Render(fmt.Sprintf("  Press '%s' again to confirm (destructive operation)  d/Esc denies", confirmKey))
 	} else if vm.DiffContent != "" {
-		actionBar = tui.HelpBar(
+		entries := []string{
 			tui.HelpEntry("a", "allow"),
-			tui.HelpEntry("s", "session"),
-			tui.HelpEntry("d/esc", "deny"),
-			tui.HelpEntry("\u2191\u2193", "scroll"),
-		)
+			tui.HelpEntry("s", "allow session"),
+			tui.HelpEntry("d/Esc", "deny"),
+			tui.HelpEntry("t", "split"),
+		}
+		if hasScrollableDiff {
+			entries = append(entries, tui.HelpEntry("\u2191\u2193", "scroll"))
+		}
+		actionBar = tui.HelpBar(entries...)
 	} else {
 		actionBar = tui.HelpBar(
 			tui.HelpEntry("a", "allow"),
 			tui.HelpEntry("s", "allow session"),
-			tui.HelpEntry("d/esc", "deny"),
+			tui.HelpEntry("d/Esc", "deny"),
 		)
 	}
 

@@ -10,17 +10,24 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/langoai/lango/internal/background"
 	"github.com/langoai/lango/internal/cli/chat"
 	"github.com/langoai/lango/internal/cli/cockpit"
 	"github.com/langoai/lango/internal/cli/cockpit/theme"
 	"github.com/langoai/lango/internal/cli/tui"
+	"github.com/langoai/lango/internal/cli/workbenchstart"
+	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/ctxkeys"
 	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/mission"
 	"github.com/langoai/lango/internal/proposal"
 )
+
+func sanitizeMissionControlText(text string) string {
+	return strings.Join(strings.Fields(ansi.Strip(text)), " ")
+}
 
 const missionControlTickInterval = 2 * time.Second
 
@@ -51,10 +58,14 @@ type missionControlTaskSource interface {
 
 // MissionControlPage renders the Wave 1 Mission Control surface.
 type MissionControlPage struct {
-	projector  missionControlProjector
-	taskSource missionControlTaskSource
-	composer   *chat.ChatModel
-	surface    missionControlSurface
+	projector            missionControlProjector
+	taskSource           missionControlTaskSource
+	composer             *chat.ChatModel
+	surface              missionControlSurface
+	cfg                  *config.Config
+	workDir              string
+	starterPrompts       []string
+	defaultStarterPrompt string
 
 	sessionKey     string
 	missionService cockpit.MissionLifecycleService
@@ -93,6 +104,8 @@ func newSurfaceMissionControlPage(
 	page := newMissionControlPageWithSurface(
 		cockpit.NewMissionControlProjector(deps),
 		deps.BackgroundManager,
+		deps.Config,
+		deps.WorkDir,
 		composer,
 		surface,
 	)
@@ -109,12 +122,14 @@ func newMissionControlPage(
 	taskSource missionControlTaskSource,
 	composer *chat.ChatModel,
 ) *MissionControlPage {
-	return newMissionControlPageWithSurface(projector, taskSource, composer, missionControlSurfaceCockpit)
+	return newMissionControlPageWithSurface(projector, taskSource, nil, "", composer, missionControlSurfaceCockpit)
 }
 
 func newMissionControlPageWithSurface(
 	projector missionControlProjector,
 	taskSource missionControlTaskSource,
+	cfg *config.Config,
+	workDir string,
 	composer *chat.ChatModel,
 	surface missionControlSurface,
 ) *MissionControlPage {
@@ -122,22 +137,86 @@ func newMissionControlPageWithSurface(
 		composer = chat.New(chat.Deps{})
 	}
 	return &MissionControlPage{
-		projector:  projector,
-		taskSource: taskSource,
-		composer:   composer,
-		focus:      missionControlFocusMissions,
-		surface:    surface,
+		projector:            projector,
+		taskSource:           taskSource,
+		composer:             composer,
+		cfg:                  cfg,
+		workDir:              strings.TrimSpace(workDir),
+		starterPrompts:       workbenchstart.BuildPrompts(strings.TrimSpace(workDir)),
+		defaultStarterPrompt: workbenchstart.DefaultPrompt(strings.TrimSpace(workDir)),
+		focus:                missionControlFocusMissions,
+		surface:              surface,
 	}
 }
 
 func (p *MissionControlPage) Title() string { return "Mission Control" }
 
 func (p *MissionControlPage) ShortHelp() []key.Binding {
-	return []key.Binding{
-		key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "focus")),
-		key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", "up")),
-		key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", "down")),
-		key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "submit")),
+	if p != nil && p.isEmpty() {
+		bindings := []key.Binding{
+			key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "focus")),
+		}
+		if desc := p.enterHelpDesc(); desc != "" {
+			bindings = append(bindings, key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", desc)))
+		}
+		return bindings
+	}
+	bindings := []key.Binding{key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "focus"))}
+	if p.focusedLaneHasAlternativeRow() {
+		bindings = append(bindings[:1], append([]key.Binding{
+			key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", "up")),
+			key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", "down")),
+		}, bindings[1:]...)...)
+	}
+	if p.focus == missionControlFocusMissions {
+		if mission := p.selectedMission(); mission != nil && mission.Kind == cockpit.MissionKindProposed {
+			bindings = append(bindings, key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "accept")))
+			bindings = append(bindings, key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "dismiss")))
+			return bindings
+		}
+	}
+	if desc := p.enterHelpDesc(); desc != "" {
+		bindings = append(bindings, key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", desc)))
+	}
+	return bindings
+}
+
+func (p *MissionControlPage) enterHelpDesc() string {
+	if p == nil {
+		return "submit"
+	}
+	if p.surface == missionControlSurfaceWorkbench && p.isEmpty() {
+		switch {
+		case p.hasWorkbenchQueuedFollowUpDraft():
+			return "run follow-up"
+		case p.hasWorkbenchStarterPromptArmed():
+			return "run starter"
+		case p.canUseWorkbenchStarterPromptKeys():
+			return "seed starter"
+		}
+	}
+	if p.focus == missionControlFocusDecisions && p.snapshot.Decision != nil {
+		return ""
+	}
+	if p.focus == missionControlFocusMissions {
+		return ""
+	}
+	return "submit"
+}
+
+func (p *MissionControlPage) focusedLaneHasAlternativeRow() bool {
+	if p == nil {
+		return false
+	}
+	switch p.focus {
+	case missionControlFocusMissions:
+		return len(p.snapshot.Missions) > 1
+	case missionControlFocusDecisions:
+		return false
+	case missionControlFocusComposer:
+		return len(p.snapshot.Activities) > 1
+	default:
+		return false
 	}
 }
 
@@ -242,13 +321,56 @@ func (p *MissionControlPage) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	if handled := p.applyWorkbenchStarterPromptKey(msg); handled {
+		return p, nil
+	}
+
+	if p.focus != missionControlFocusComposer && (p.hasWorkbenchStarterPromptArmed() || p.hasWorkbenchQueuedFollowUpDraft()) && isMissionControlComposerEditingKey(msg) {
+		p.focus = missionControlFocusComposer
+		return p.forwardComposerKey(msg)
+	}
+
 	if key.Matches(msg, key.NewBinding(key.WithKeys("enter"))) {
 		if p.focus == missionControlFocusMissions {
 			if cmd, handled := p.acceptSelectedProposal(); handled {
 				return p, cmd
 			}
+			if p.queueDefaultWorkbenchFollowUp() {
+				p.focus = missionControlFocusComposer
+				return p.forwardComposerKey(msg)
+			}
+			if p.hasWorkbenchQueuedFollowUpDraft() {
+				p.focus = missionControlFocusComposer
+				return p.forwardComposerKey(msg)
+			}
+			if p.hasWorkbenchStarterPromptArmed() {
+				if cmd, handled := p.submitComposerFromMissionControl(); handled {
+					return p, cmd
+				}
+			}
+			if p.seedDefaultWorkbenchStarterPrompt() {
+				return p, nil
+			}
+		}
+		if p.focus == missionControlFocusDecisions {
+			if p.queueDefaultWorkbenchFollowUp() {
+				p.focus = missionControlFocusComposer
+				return p.forwardComposerKey(msg)
+			}
+			if p.hasWorkbenchQueuedFollowUpDraft() {
+				p.focus = missionControlFocusComposer
+				return p.forwardComposerKey(msg)
+			}
+			if p.hasWorkbenchStarterPromptArmed() {
+				if cmd, handled := p.submitComposerFromMissionControl(); handled {
+					return p, cmd
+				}
+			}
 		}
 		if p.focus == missionControlFocusComposer {
+			if p.queueDefaultWorkbenchFollowUp() {
+				return p.forwardComposerKey(msg)
+			}
 			if cmd, handled := p.submitComposerFromMissionControl(); handled {
 				return p, cmd
 			}
@@ -259,6 +381,16 @@ func (p *MissionControlPage) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if cmd, handled := p.dismissSelectedProposal(); handled {
 				return p, cmd
 			}
+		}
+	}
+	if p.focus == missionControlFocusComposer && p.focusedLaneHasAlternativeRow() {
+		switch {
+		case key.Matches(msg, key.NewBinding(key.WithKeys("up", "k"))):
+			p.moveCursor(-1)
+			return p, nil
+		case key.Matches(msg, key.NewBinding(key.WithKeys("down", "j"))):
+			p.moveCursor(1)
+			return p, nil
 		}
 	}
 
@@ -278,8 +410,13 @@ func (p *MissionControlPage) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (p *MissionControlPage) acceptSelectedProposal() (tea.Cmd, bool) {
 	missionView := p.selectedMission()
-	if missionView == nil || missionView.Kind != cockpit.MissionKindProposed || p.missionService == nil {
+	if missionView == nil || missionView.Kind != cockpit.MissionKindProposed {
 		return nil, false
+	}
+	if p.missionService == nil {
+		return func() tea.Msg {
+			return chat.SystemMsg{Text: "Mission service is not configured; Mission Control cannot accept a proposed mission into a durable mission row."}
+		}, true
 	}
 
 	description := ""
@@ -295,7 +432,7 @@ func (p *MissionControlPage) acceptSelectedProposal() (tea.Cmd, bool) {
 			description = compactPreparedBrief(*proposalRow.PreparedBrief)
 		}
 		if description == "" {
-			description = strings.TrimSpace(firstNonEmpty(proposalRow.Summary, proposalRow.Reason))
+			description = sanitizeMissionControlText(firstNonEmpty(proposalRow.Summary, proposalRow.Reason))
 		}
 		if _, err := p.proposalSvc.Accept(context.Background(), proposalID); err != nil {
 			return func() tea.Msg {
@@ -304,9 +441,9 @@ func (p *MissionControlPage) acceptSelectedProposal() (tea.Cmd, bool) {
 		}
 		if _, err := p.missionService.AcceptProposal(context.Background(), mission.AcceptProposalInput{
 			SessionKey:  strings.TrimSpace(p.sessionKey),
-			SourceKind:  strings.TrimSpace(proposalRow.Source.Kind),
-			SourceRef:   strings.TrimSpace(proposalRow.Source.Ref),
-			Title:       strings.TrimSpace(firstNonEmpty(proposalRow.Title, missionView.Title)),
+			SourceKind:  sanitizeMissionControlText(proposalRow.Source.Kind),
+			SourceRef:   sanitizeMissionControlText(proposalRow.Source.Ref),
+			Title:       sanitizeMissionControlText(firstNonEmpty(proposalRow.Title, missionView.Title)),
 			Description: description,
 		}); err != nil {
 			if _, restoreErr := p.proposalSvc.RestorePrepared(context.Background(), proposalID); restoreErr != nil {
@@ -322,8 +459,8 @@ func (p *MissionControlPage) acceptSelectedProposal() (tea.Cmd, bool) {
 		return nil, true
 	}
 
-	sourceKind := strings.TrimSpace(missionView.SourceKind)
-	sourceRef := strings.TrimSpace(missionView.SourceRef)
+	sourceKind := sanitizeMissionControlText(missionView.SourceKind)
+	sourceRef := sanitizeMissionControlText(missionView.SourceRef)
 	if sourceKind == "" || sourceRef == "" {
 		// Backward compatibility for stale snapshots created before explicit
 		// proposal metadata was carried on MissionView.
@@ -331,14 +468,14 @@ func (p *MissionControlPage) acceptSelectedProposal() (tea.Cmd, bool) {
 			sourceKind = "proposed_learning"
 		}
 		if sourceRef == "" && strings.HasPrefix(missionView.ID, "learn:") {
-			sourceRef = strings.TrimSpace(strings.TrimPrefix(missionView.ID, "learn:"))
+			sourceRef = sanitizeMissionControlText(strings.TrimPrefix(missionView.ID, "learn:"))
 		}
 	}
 
-	title := strings.TrimSpace(missionView.Title)
-	description = strings.TrimSpace(missionView.Detail)
+	title := sanitizeMissionControlText(missionView.Title)
+	description = sanitizeMissionControlText(missionView.Detail)
 	if item := p.lookupLearningSuggestion(sourceRef); item != nil && description == "" {
-		description = strings.TrimSpace(item.Rationale)
+		description = sanitizeMissionControlText(item.Rationale)
 	}
 
 	if _, err := p.missionService.AcceptProposal(context.Background(), mission.AcceptProposalInput{
@@ -366,7 +503,9 @@ func (p *MissionControlPage) dismissSelectedProposal() (tea.Cmd, bool) {
 		return nil, false
 	}
 	if p.proposalSvc == nil {
-		return nil, false
+		return func() tea.Msg {
+			return chat.SystemMsg{Text: "Proposal service is not configured; Mission Control cannot dismiss the selected proposed mission."}
+		}, true
 	}
 	if _, err := p.proposalSvc.Dismiss(context.Background(), strings.TrimSpace(missionView.ID)); err != nil {
 		return func() tea.Msg {
@@ -410,20 +549,35 @@ func (p *MissionControlPage) submitComposerFromMissionControl() (tea.Cmd, bool) 
 	}
 	input := strings.TrimSpace(p.composer.ComposerValue())
 	if input == "" {
+		if p.canUseWorkbenchStarterPromptKeys() {
+			prompt := p.defaultWorkbenchSeedPrompt()
+			if strings.TrimSpace(prompt) == "" {
+				prompt = p.workbenchStarterPromptSet()[0]
+			}
+			p.composer.SetComposerValue(prompt)
+			p.focus = missionControlFocusComposer
+			p.refreshSnapshot()
+		}
 		return nil, true
 	}
 	if !p.composer.CanStartTurnFromComposer() {
 		return nil, false
 	}
-	if strings.HasPrefix(input, "/") || p.missionService == nil {
+	p.focus = missionControlFocusComposer
+	if strings.HasPrefix(input, "/") {
 		cmd := p.composer.SubmitComposerWithParent(context.Background())
 		p.refreshSnapshot()
 		return cmd, true
 	}
+	if p.missionService == nil {
+		return func() tea.Msg {
+			return chat.SystemMsg{Text: "Mission service is not configured; Mission Control cannot start a durable mission from the shared composer."}
+		}, true
+	}
 
 	row, err := p.missionService.StartMission(context.Background(), mission.StartMissionInput{
 		SessionKey:  strings.TrimSpace(p.sessionKey),
-		Title:       input,
+		Title:       sanitizeMissionControlText(input),
 		Description: "",
 		SourceKind:  "user",
 		StartActive: true,
@@ -466,7 +620,12 @@ func (p *MissionControlPage) selectedMission() *cockpit.MissionView {
 
 func (p *MissionControlPage) refreshSnapshot() {
 	if p.projector == nil {
-		p.snapshot = cockpit.MissionControlSnapshot{}
+		p.snapshot = cockpit.MissionControlSnapshot{
+			Degraded: true,
+			Header: cockpit.HeaderView{
+				DegradedNote: "Mission Control data is not configured",
+			},
+		}
 		p.hasLoaded = true
 		return
 	}
@@ -494,20 +653,20 @@ func (p *MissionControlPage) renderHeader() string {
 
 	lines := []string{title}
 	if text := strings.TrimSpace(p.snapshot.Header.ActiveAgentSummary); text != "" {
-		lines = append(lines, "Agents: "+text)
+		lines = append(lines, "Agents: "+sanitizeMissionControlText(text))
 	}
 	lines = append(lines, fmt.Sprintf("Pending decisions: %d", p.snapshot.Header.PendingDecisionCount))
 	if text := strings.TrimSpace(p.snapshot.Header.ModelProviderSummary); text != "" {
-		lines = append(lines, "Model: "+text)
+		lines = append(lines, "Model: "+sanitizeMissionControlText(text))
 	}
 	if text := strings.TrimSpace(p.snapshot.Header.ContextSummary); text != "" {
-		lines = append(lines, "Context: "+text)
+		lines = append(lines, "Context: "+sanitizeMissionControlText(text))
 	}
 	if text := strings.TrimSpace(p.snapshot.Header.MetricsSummary); text != "" {
-		lines = append(lines, "Metrics: "+text)
+		lines = append(lines, "Metrics: "+sanitizeMissionControlText(text))
 	}
-	if text := strings.TrimSpace(p.snapshot.Header.DegradedNote); text != "" {
-		lines = append(lines, lipgloss.NewStyle().Foreground(theme.Warning).Render("Degraded: "+text))
+	if text := p.visibleDegradedNote(); text != "" {
+		lines = append(lines, lipgloss.NewStyle().Foreground(theme.Warning).Render("Degraded: "+sanitizeMissionControlText(text)))
 	}
 	return strings.Join(lines, "\n")
 }
@@ -519,19 +678,60 @@ func (p *MissionControlPage) renderLoading() string {
 }
 
 func (p *MissionControlPage) renderEmpty() string {
-	lines := []string{
-		"No active missions or pending decisions.",
-		p.focusedChatHint(),
+	emptyLead := "No active missions or pending decisions."
+	lines := []string{emptyLead}
+	if result := p.latestWorkbenchAssistantSummary(); result != "" {
+		if p.surface == missionControlSurfaceWorkbench && p.hasWorkbenchCompletedTurn() {
+			if strings.HasPrefix(result, "Turn ") {
+				lines[0] = "Last turn needs attention. Pick the recovery step."
+			} else {
+				lines[0] = "Last turn finished. Pick the next step."
+			}
+		}
+		result = strings.TrimPrefix(result, "Assistant reply: ")
+		lines = append(lines, "Last result: "+sanitizeMissionControlText(result))
 	}
+	if setup := p.setupHint(); setup != "" {
+		lines = append(lines, setup)
+	} else if running := p.runningStarterHint(); running != "" {
+		lines = append(lines, running)
+	} else if submit := p.seededStarterHint(); submit != "" {
+		lines = append(lines, submit)
+	} else if starter := p.starterHint(); starter != "" {
+		lines = append(lines, starter)
+	}
+	lines = append(lines, p.focusedChatHint())
 	if extra := p.dashboardHint(); extra != "" {
 		lines = append(lines, extra)
 	}
-	if text := strings.TrimSpace(p.snapshot.Header.DegradedNote); text != "" {
+	if text := p.visibleDegradedNote(); text != "" {
 		lines = append(lines, "Degraded: "+text)
 	}
 	return lipgloss.NewStyle().
 		Foreground(theme.TextSecondary).
 		Render(strings.Join(lines, "\n"))
+}
+
+func (p *MissionControlPage) latestWorkbenchAssistantSummary() string {
+	if p == nil || p.surface != missionControlSurfaceWorkbench || !p.hasWorkbenchCompletedTurn() {
+		return ""
+	}
+	for _, item := range p.snapshot.Activities {
+		if item.Kind == cockpit.MissionActivityAssistant {
+			return strings.TrimSpace(item.Summary)
+		}
+	}
+	return ""
+}
+
+func (p *MissionControlPage) visibleDegradedNote() string {
+	if p == nil {
+		return ""
+	}
+	if p.surface == missionControlSurfaceWorkbench && p.isEmpty() {
+		return ""
+	}
+	return sanitizeMissionControlText(p.snapshot.Header.DegradedNote)
 }
 
 func (p *MissionControlPage) renderWideTop() string {
@@ -572,25 +772,25 @@ func (p *MissionControlPage) renderMissionPane() string {
 			string(mission.Status),
 		}, " / "))
 		if meta != "" {
-			lines = append(lines, prefix+mission.Title+" ["+meta+"]")
+			lines = append(lines, prefix+sanitizeMissionControlText(mission.Title)+" ["+sanitizeMissionControlText(meta)+"]")
 		} else {
-			lines = append(lines, prefix+mission.Title)
+			lines = append(lines, prefix+sanitizeMissionControlText(mission.Title))
 		}
 		if detail := strings.TrimSpace(firstNonEmpty(mission.Detail, mission.NextAction, mission.BlockedReason)); detail != "" {
-			lines = append(lines, "    "+detail)
+			lines = append(lines, "    "+sanitizeMissionControlText(detail))
 		}
 		if summary := compactCollaborationSummary(mission.Collaboration); summary != "" {
 			maxWidth := max(24, p.width-8)
-			lines = append(lines, "    "+tui.Truncate(summary, maxWidth))
+			lines = append(lines, "    "+tui.Truncate(sanitizeMissionControlText(summary), maxWidth))
 		}
 		if mission.Kind == cockpit.MissionKindProposed {
 			if sourceLabel := strings.TrimSpace(compactProposalSourceLabel(mission)); sourceLabel != "" {
-				lines = append(lines, "    source: "+sourceLabel)
+				lines = append(lines, "    source: "+sanitizeMissionControlText(sourceLabel))
 			}
 		}
 	}
 	if extra := strings.TrimSpace(p.snapshot.MissionOverflowSummary); extra != "" {
-		lines = append(lines, "  "+extra)
+		lines = append(lines, "  "+sanitizeMissionControlText(extra))
 	}
 	return strings.Join(lines, "\n")
 }
@@ -604,10 +804,10 @@ func (p *MissionControlPage) renderDecisionPane(_ bool) string {
 	decision := p.snapshot.Decision
 	lines := []string{
 		title,
-		"> Action: " + firstNonEmpty(decision.Title, "Pending approval"),
-		"  Reason: " + firstNonEmpty(decision.Reason, "—"),
-		"  Effect: " + firstNonEmpty(decision.EffectText, "—"),
-		"  Risk: " + firstNonEmpty(decision.RiskLabel, decision.RiskLevel, "—"),
+		"> Action: " + sanitizeMissionControlText(firstNonEmpty(decision.Title, "Pending approval")),
+		"  Reason: " + sanitizeMissionControlText(firstNonEmpty(decision.Reason, "—")),
+		"  Effect: " + sanitizeMissionControlText(firstNonEmpty(decision.EffectText, "—")),
+		"  Risk: " + sanitizeMissionControlText(firstNonEmpty(decision.RiskLabel, decision.RiskLevel, "—")),
 	}
 	return strings.Join(lines, "\n")
 }
@@ -627,14 +827,14 @@ func (p *MissionControlPage) renderActivityPane(includeComposerHint bool) string
 
 	lines := []string{title}
 	for _, item := range visibleActivities(p.snapshot.Activities, p.activityOffset, 6) {
-		summary := item.Summary
+		summary := sanitizeMissionControlText(item.Summary)
 		if ts := item.Timestamp; !ts.IsZero() {
 			summary = fmt.Sprintf("%s  %s", tui.RelativeTime(time.Now(), ts), summary)
 		}
 		lines = append(lines, "- "+summary)
 	}
 	if extra := strings.TrimSpace(p.snapshot.ActivityOverflowSummary); extra != "" {
-		lines = append(lines, "- "+extra)
+		lines = append(lines, "- "+sanitizeMissionControlText(extra))
 	}
 	return strings.Join(lines, "\n")
 }
@@ -646,18 +846,18 @@ func (p *MissionControlPage) renderLoopPane() string {
 	lines := []string{p.sectionTitle("Agenda", false)}
 	lines = append(lines, fmt.Sprintf("Open loops: %d", p.snapshot.OpenLoopCount))
 	for _, loop := range p.snapshot.Loops {
-		meta := strings.TrimSpace(strings.Join([]string{string(loop.Kind), string(loop.Status)}, " / "))
-		line := "- " + loop.Title
+		meta := sanitizeMissionControlText(strings.TrimSpace(strings.Join([]string{string(loop.Kind), string(loop.Status)}, " / ")))
+		line := "- " + sanitizeMissionControlText(loop.Title)
 		if meta != "" {
 			line += " [" + meta + "]"
 		}
 		lines = append(lines, line)
 		if detail := strings.TrimSpace(firstNonEmpty(loop.Summary, loop.NextAction)); detail != "" {
-			lines = append(lines, "  "+detail)
+			lines = append(lines, "  "+sanitizeMissionControlText(detail))
 		}
 	}
 	if extra := strings.TrimSpace(p.snapshot.LoopOverflowSummary); extra != "" {
-		lines = append(lines, "- "+extra)
+		lines = append(lines, "- "+sanitizeMissionControlText(extra))
 	}
 	return strings.Join(lines, "\n")
 }
@@ -668,6 +868,11 @@ func (p *MissionControlPage) renderComposerLine() string {
 	if p.composer != nil {
 		value = p.composer.ComposerValue()
 		if text := strings.TrimSpace(p.composer.ComposerPlaceholder()); text != "" {
+			placeholder = text
+		}
+	}
+	if strings.TrimSpace(value) == "" {
+		if text := p.composerEmptyStateHint(); text != "" {
 			placeholder = text
 		}
 	}
@@ -802,20 +1007,20 @@ func firstNonEmpty(items ...string) string {
 func compactPreparedBrief(brief proposal.PreparedBrief) string {
 	parts := make([]string, 0, 3)
 	if text := strings.TrimSpace(brief.SourceSummary); text != "" {
-		parts = append(parts, text)
+		parts = append(parts, sanitizeMissionControlText(text))
 	}
 	if text := strings.TrimSpace(brief.Reason); text != "" {
-		parts = append(parts, text)
+		parts = append(parts, sanitizeMissionControlText(text))
 	}
 	if text := strings.TrimSpace(brief.SuggestedAcceptanceEffect); text != "" {
-		parts = append(parts, text)
+		parts = append(parts, sanitizeMissionControlText(text))
 	}
 	for _, evidence := range brief.SupportingEvidence {
 		if text := strings.TrimSpace(evidence); text != "" {
-			parts = append(parts, "Evidence: "+text)
+			parts = append(parts, "Evidence: "+sanitizeMissionControlText(text))
 		}
 	}
-	return strings.Join(parts, "\n")
+	return strings.Join(parts, " | ")
 }
 
 func compactCollaborationSummary(view cockpit.CollaborationView) string {
@@ -876,19 +1081,11 @@ func max(a, b int) int {
 }
 
 func (p *MissionControlPage) focusedChatHint() string {
-	return "Type to chat here, or use `lango chat` for focused chat."
-}
-
-func (p *MissionControlPage) dashboardHint() string {
-	if p.surface != missionControlSurfaceWorkbench {
-		return ""
+	if p != nil && p.surface == missionControlSurfaceWorkbench && p.hasWorkbenchCompletedTurn() {
+		if p.hasWorkbenchTurnNeedingAttention() {
+			return "Type the recovery prompt here, or use `lango chat` for focused chat."
+		}
+		return "Type the next prompt here, or use `lango chat` for focused chat."
 	}
-	return "For the advanced multi-page dashboard, use `lango cockpit`."
-}
-
-func (p *MissionControlPage) footerSurfaceHint() string {
-	if p.surface == missionControlSurfaceWorkbench {
-		return "Type to chat here  `lango chat` focused chat  `lango cockpit` dashboard"
-	}
-	return "Type to chat here  `lango chat` focused chat"
+	return "Type a request here, or use `lango chat` for focused chat."
 }

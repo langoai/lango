@@ -73,7 +73,7 @@ func New(deps Deps) *Model {
 		},
 	})
 
-	return &Model{
+	m := &Model{
 		child:            chatModel,
 		cfg:              deps.Config,
 		pages:            make(map[PageID]Page),
@@ -86,11 +86,55 @@ func New(deps Deps) *Model {
 		learningBuffer:   deps.LearningBuffer,
 		activityBuffer:   deps.ActivityBuffer,
 	}
+	m.syncSidebarAvailability()
+	return m
+}
+
+// Pages exposes the currently registered cockpit pages for wiring tests and
+// diagnostics.
+func (m *Model) Pages() map[PageID]Page {
+	if m == nil {
+		return nil
+	}
+	return m.pages
+}
+
+// Sidebar exposes the current sidebar model for wiring tests and diagnostics.
+func (m *Model) Sidebar() sidebar.Model {
+	if m == nil {
+		return sidebar.Model{}
+	}
+	return m.sidebar
 }
 
 // RegisterPage adds a page to the cockpit.
 func (m *Model) RegisterPage(id PageID, page Page) {
 	m.pages[id] = page
+	m.syncSidebarAvailability()
+}
+
+func (m *Model) syncSidebarAvailability() {
+	if m == nil {
+		return
+	}
+	alwaysAvailable := map[PageID]bool{
+		PageMissionControl: true,
+		PageChat:           true,
+	}
+	for _, id := range []PageID{
+		PageMissionControl,
+		PageChat,
+		PageSettings,
+		PageTools,
+		PageStatus,
+		PageSessions,
+		PageTasks,
+		PageDeadLetters,
+		PageApprovals,
+	} {
+		_, registered := m.pages[id]
+		m.sidebar.SetDisabled(id.String(), !alwaysAvailable[id] && !registered)
+	}
 }
 
 // SetProgram delegates to the wrapped child.
@@ -271,6 +315,11 @@ func (m *Model) handleRecovery(msg chat.RecoveryMsg) (*Model, tea.Cmd) {
 // and finally resets the turn.
 func (m *Model) handleDone(msg chat.DoneMsg) (*Model, tea.Cmd) {
 	var cmds []tea.Cmd
+	if m.activityBuffer != nil {
+		if item, ok := newAssistantSummaryActivity("", msg, time.Now()); ok {
+			m.activityBuffer.Append(item)
+		}
+	}
 	// 1. Forward DoneMsg to chat child first (appends assistant response).
 	up, cmd := m.child.Update(msg)
 	m.child = up.(childModel)

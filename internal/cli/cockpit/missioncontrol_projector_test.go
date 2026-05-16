@@ -3,6 +3,7 @@ package cockpit
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -295,9 +296,9 @@ func TestMissionControlProjectorApprovalDecisionDerivation(t *testing.T) {
 	require.NotNil(t, snapshot.Decision)
 	assert.Equal(t, "req-7", snapshot.Decision.ID)
 	assert.Equal(t, DecisionCategoryApproval, snapshot.Decision.Category)
-	assert.Equal(t, "fs_write: Update mission-control copy to clarify degraded state.", snapshot.Decision.Title)
+	assert.Equal(t, "fs_write: Update mission-control copy to clarify degraded state. Second line is ignored.", snapshot.Decision.Title)
 	assert.Equal(t, "Filesystem writes require approval.", snapshot.Decision.Reason)
-	assert.Equal(t, "Update mission-control copy to clarify degraded state.\nSecond line is ignored.", snapshot.Decision.EffectText)
+	assert.Equal(t, "Update mission-control copy to clarify degraded state. Second line is ignored.", snapshot.Decision.EffectText)
 	assert.Equal(t, "critical", snapshot.Decision.RiskLevel)
 	assert.Equal(t, "Modifies filesystem", snapshot.Decision.RiskLabel)
 	assert.Equal(t, "Approve", snapshot.Decision.ApproveLabel)
@@ -381,6 +382,69 @@ func TestMissionControlProposalRegistryPreparedProposalRendersFirstClass(t *test
 	assert.Equal(t, "proposed_learning", snapshot.Missions[0].SourceKind)
 	assert.Equal(t, "suggestion-1", snapshot.Missions[0].SourceRef)
 	assert.Equal(t, "Repeated timeout failures benefited from bounded retry.", snapshot.Missions[0].RuntimeHint)
+}
+
+func TestMissionControlProjectorSanitizesDisplayFacingSnapshotText(t *testing.T) {
+	t.Parallel()
+
+	projector := NewMissionControlProjector(Deps{
+		SessionKey: "sess-1",
+		ProposalReader: stubMissionControlProposalReader{
+			items: map[string][]proposal.Proposal{
+				"sess-1": {
+					{
+						ProposalID: "proposal-1",
+						SessionKey: "sess-1",
+						Source: proposal.ProposalSource{
+							Kind: "proposed_\x1b[31mlearning\n",
+							Ref:  "suggestion-\x1b[31m1\nx",
+						},
+						Title:  "Apply\x1b[31m retry\nguidance",
+						Status: proposal.ProposalStatusPrepared,
+						PreparedBrief: &proposal.PreparedBrief{
+							SourceSummary: "Learning\x1b[31m suggestion\nsummary",
+							Reason:        "Repeated\x1b[31m timeout\nfailures",
+						},
+						UpdatedAt: time.Date(2026, 5, 3, 12, 0, 0, 0, time.UTC),
+					},
+				},
+			},
+		},
+	})
+	projector.activityBuffer = NewMissionActivityBuffer()
+	projector.activityBuffer.Append(MissionActivityItem{
+		Kind:      MissionActivityAssistant,
+		Summary:   "Assistant\x1b[31m reply:\nkeep history",
+		Timestamp: time.Date(2026, 5, 3, 12, 1, 0, 0, time.UTC),
+	})
+
+	snapshot := projector.Project([]background.TaskSnapshot{{
+		ID:         "bg-\x1b[31m1\nx",
+		StatusText: "running",
+		Prompt:     "Ship\x1b[31m projector\nhardening",
+	}})
+
+	require.Len(t, snapshot.Missions, 2)
+	var foundProposal bool
+	var foundBackground bool
+	for _, mission := range snapshot.Missions {
+		switch mission.ID {
+		case "proposal-1":
+			foundProposal = true
+			assert.Equal(t, "Apply retry guidance", mission.Title)
+			assert.Equal(t, "Learning suggestion summary", mission.Detail)
+			assert.Equal(t, "Repeated timeout failures", mission.RuntimeHint)
+			assert.Equal(t, "proposed_learning", mission.SourceKind)
+			assert.Equal(t, "suggestion-1 x", mission.SourceRef)
+		case "bg:bg-\x1b[31m1\nx":
+			foundBackground = true
+			assert.Equal(t, "Ship projector", mission.Title)
+		}
+	}
+	assert.True(t, foundProposal)
+	assert.True(t, foundBackground)
+	require.Len(t, snapshot.Activities, 1)
+	assert.Equal(t, "Assistant reply: keep history", snapshot.Activities[0].Summary)
 }
 
 func TestMissionControlProposalRegistrySessionScoping(t *testing.T) {
@@ -578,6 +642,12 @@ func TestMissionControlHeaderDerivation(t *testing.T) {
 				Provider: "openai",
 				Model:    "gpt-5",
 			},
+			Providers: map[string]config.ProviderConfig{
+				"openai": {
+					Type:   "openai",
+					APIKey: "sk-test",
+				},
+			},
 		},
 		SessionKey:       "sess-1",
 		MetricsCollector: collector,
@@ -609,6 +679,77 @@ func TestMissionControlHeaderDerivation(t *testing.T) {
 	assert.Empty(t, snapshot.Header.ContextSummary)
 	assert.Equal(t, "150 tokens across 1 requests", snapshot.Header.MetricsSummary)
 	assert.Empty(t, snapshot.Header.DegradedNote)
+}
+
+func TestMissionControlProjectorSanitizesHeaderSnapshotText(t *testing.T) {
+	t.Parallel()
+
+	cfg := &config.Config{}
+	cfg.Agent.Provider = "open\x1b[31mai\n"
+	cfg.Agent.Model = "gpt\x1b[31m-5\n"
+
+	projector := NewMissionControlProjector(Deps{
+		Config:           cfg,
+		SessionKey:       "sess-1",
+		MetricsCollector: observability.NewCollector(),
+	})
+	projector.metricsCollector.RecordTokenUsage(observability.TokenUsage{
+		SessionKey:   "sess-1",
+		InputTokens:  10,
+		OutputTokens: 20,
+		TotalTokens:  30,
+	})
+
+	snapshot := projector.Project(nil)
+	assert.Equal(t, "Setup required", snapshot.Header.ModelProviderSummary)
+	assert.NotContains(t, snapshot.Header.ActiveAgentSummary, "\x1b")
+	assert.NotContains(t, snapshot.Header.ModelProviderSummary, "\x1b")
+	assert.NotContains(t, snapshot.Header.MetricsSummary, "\x1b")
+	assert.NotContains(t, snapshot.Header.DegradedNote, "\x1b")
+}
+
+func TestMissionControlHeaderMarksMissingModelAsSetupRequired(t *testing.T) {
+	t.Parallel()
+
+	projector := NewMissionControlProjector(Deps{
+		Config: &config.Config{
+			Agent: config.AgentConfig{
+				Provider: "anthropic",
+				Model:    "",
+			},
+		},
+	})
+
+	snapshot := projector.Project(nil)
+
+	assert.Equal(t, "Setup required", snapshot.Header.ModelProviderSummary)
+}
+
+func TestBuildActiveAgentSummarySanitizesOwnerLabels(t *testing.T) {
+	t.Parallel()
+
+	got := buildActiveAgentSummary([]MissionView{
+		{Kind: MissionKindActive, Status: MissionStatusRunning, OwnerAgent: "worker-\x1b[31mc\nops"},
+	})
+	assert.Equal(t, "worker-c ops active", got)
+}
+
+func TestMissionControlHeaderMarksMissingProviderConfigAsSetupRequired(t *testing.T) {
+	t.Parallel()
+
+	projector := NewMissionControlProjector(Deps{
+		Config: &config.Config{
+			Agent: config.AgentConfig{
+				Provider: "anthropic",
+				Model:    "claude-sonnet-4-5-20250929",
+			},
+			Providers: map[string]config.ProviderConfig{},
+		},
+	})
+
+	snapshot := projector.Project(nil)
+
+	assert.Equal(t, "Setup required", snapshot.Header.ModelProviderSummary)
 }
 
 func TestMissionControlHeaderOmitsGlobalAgentRunSummaryWithoutProjectedMission(t *testing.T) {
@@ -925,6 +1066,28 @@ func TestMissionControlOverflow(t *testing.T) {
 	assert.Equal(t, "Second", snapshot.Activities[1].Summary)
 }
 
+func TestMissionControlProjectorPreservesCompactedActivitySummaries(t *testing.T) {
+	t.Parallel()
+
+	projector := NewMissionControlProjector(Deps{})
+	now := time.Date(2026, 5, 13, 13, 0, 0, 0, time.UTC)
+	activity := NewMissionActivityBuffer()
+	activity.Append(MissionActivityItem{
+		Kind:      MissionActivityAssistant,
+		Summary:   "Assistant reply: First line\n\n" + strings.Repeat("very long summary ", 20),
+		Timestamp: now,
+	})
+	projector.activityBuffer = activity
+
+	snapshot := projector.Project(nil)
+
+	require.Len(t, snapshot.Activities, 1)
+	assert.Equal(t, MissionActivityAssistant, snapshot.Activities[0].Kind)
+	assert.NotContains(t, snapshot.Activities[0].Summary, "\n")
+	assert.Len(t, []rune(snapshot.Activities[0].Summary), missionActivitySummaryMaxRunes)
+	assert.True(t, strings.HasSuffix(snapshot.Activities[0].Summary, "..."))
+}
+
 func TestMissionControlLoopRowsRenderFromRealSources(t *testing.T) {
 	t.Parallel()
 
@@ -970,21 +1133,85 @@ func TestMissionControlLoopRowsRenderFromRealSources(t *testing.T) {
 			},
 		},
 	})
+	projector.nowFn = func() time.Time { return now }
 
 	snapshot := projector.Project(nil)
 
-	require.Len(t, snapshot.Loops, 3)
+	require.Len(t, snapshot.Loops, 4)
 	assert.Equal(t, "mission:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", snapshot.Loops[0].ID)
 	assert.Equal(t, loopview.LoopKindMissionCluster, snapshot.Loops[0].Kind)
 	assert.Equal(t, loopview.LoopKindInquiry, snapshot.Loops[1].Kind)
 	assert.Equal(t, loopview.LoopKindScheduledAutomation, snapshot.Loops[2].Kind)
 	assert.Equal(t, loopview.LoopStatusBlocked, snapshot.Loops[2].Status)
-	assert.Equal(t, 3, snapshot.OpenLoopCount)
+	assert.Equal(t, "follow-up:inquiry:bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", snapshot.Loops[3].ID)
+	assert.Equal(t, loopview.LoopKindFollowUp, snapshot.Loops[3].Kind)
+	assert.Equal(t, 4, snapshot.OpenLoopCount)
 }
 
-func TestMissionControlAgendaOrderingIsDeterministic(t *testing.T) {
+// Intentionally not parallel: this test freezes projector.nowFn and asserts
+// time-sensitive scheduled-loop rendering.
+func TestMissionControlProjectorSanitizesCronLoopSourceText(t *testing.T) {
+	now := time.Date(2026, 5, 3, 12, 0, 0, 0, time.UTC)
+	projector := NewMissionControlProjector(Deps{
+		SessionKey: "sess-1",
+		LoopCronReader: stubMissionControlLoopCronReader{
+			items: []cron.Job{{
+				ID:        "cron-1",
+				Name:      "Retry\x1b[31m queue\njob",
+				Enabled:   true,
+				NextRunAt: ptrTime(now.Add(time.Hour)),
+			}},
+			history: map[string][]cron.HistoryEntry{
+				"cron-1": {{Status: "fa\x1b[31miled\n", StartedAt: now.Add(-time.Hour)}},
+			},
+		},
+	})
+	projector.nowFn = func() time.Time { return now }
+
+	snapshot := projector.Project(nil)
+
+	for _, loop := range snapshot.Loops {
+		if loop.Kind != loopview.LoopKindScheduledAutomation {
+			continue
+		}
+		assert.Equal(t, loopview.LoopStatusBlocked, loop.Status)
+		assert.Equal(t, "Retry queue job", loop.Title)
+		assert.NotContains(t, loop.Title, "\x1b")
+		assert.NotContains(t, loop.Summary, "\x1b")
+		return
+	}
+	t.Fatalf("expected scheduled automation loop")
+}
+
+func TestMissionControlProjectorSanitizesLoopSnapshotText(t *testing.T) {
 	t.Parallel()
 
+	now := time.Date(2026, 5, 3, 12, 0, 0, 0, time.UTC)
+	projector := NewMissionControlProjector(Deps{
+		SessionKey: "sess-1",
+		LoopInquiryReader: stubMissionControlLoopInquiryReader{
+			items: []librarian.Inquiry{{
+				ID:         uuid.MustParse("aaaaaaaa-1111-2222-3333-bbbbbbbbbbbb"),
+				SessionKey: "sess-1",
+				Topic:      "Retry\x1b[31m release\nflow",
+				Question:   "Inspect\x1b[31m dead letters\nfirst",
+				CreatedAt:  now.Add(-time.Hour),
+			}},
+		},
+	})
+
+	snapshot := projector.Project(nil)
+
+	require.NotEmpty(t, snapshot.Loops)
+	assert.Equal(t, "Retry release flow", snapshot.Loops[0].Title)
+	assert.Equal(t, "Inspect dead letters first", snapshot.Loops[0].Summary)
+	assert.NotContains(t, snapshot.Loops[0].Title, "\x1b")
+	assert.NotContains(t, snapshot.Loops[0].Summary, "\x1b")
+}
+
+// Intentionally not parallel: this test freezes projector.nowFn and asserts
+// deterministic loop ordering across time-sensitive sources.
+func TestMissionControlAgendaOrderingIsDeterministic(t *testing.T) {
 	now := time.Date(2026, 5, 3, 12, 0, 0, 0, time.UTC)
 	projector := NewMissionControlProjector(Deps{
 		SessionKey: "sess-1",
@@ -1029,6 +1256,7 @@ func TestMissionControlAgendaOrderingIsDeterministic(t *testing.T) {
 			},
 		},
 	})
+	projector.nowFn = func() time.Time { return now }
 
 	snapshot := projector.Project(nil)
 
@@ -1053,9 +1281,9 @@ func TestMissionControlAbsentScheduledSourceDoesNotFabricateLoops(t *testing.T) 
 	}
 }
 
+// Intentionally not parallel: this test freezes projector.nowFn and asserts
+// time-sensitive cron outcome projection.
 func TestMissionControlLoopCronUsesRealLatestExecutionOutcome(t *testing.T) {
-	t.Parallel()
-
 	now := time.Date(2026, 5, 3, 12, 0, 0, 0, time.UTC)
 	projector := NewMissionControlProjector(Deps{
 		SessionKey:    "sess-1",
@@ -1077,6 +1305,7 @@ func TestMissionControlLoopCronUsesRealLatestExecutionOutcome(t *testing.T) {
 			},
 		},
 	})
+	projector.nowFn = func() time.Time { return now }
 
 	snapshot := projector.Project(nil)
 
@@ -1086,9 +1315,9 @@ func TestMissionControlLoopCronUsesRealLatestExecutionOutcome(t *testing.T) {
 	assert.Equal(t, "Review failed cron run", snapshot.Loops[0].NextAction)
 }
 
+// Intentionally not parallel: this test freezes projector.nowFn and asserts
+// time-sensitive proposal follow-up projection.
 func TestMissionControlAcceptedProposalFollowUpLoopAppearsFromIntegratedReader(t *testing.T) {
-	t.Parallel()
-
 	now := time.Date(2026, 5, 3, 12, 0, 0, 0, time.UTC)
 	projector := NewMissionControlProjector(Deps{
 		SessionKey:    "sess-1",
@@ -1115,9 +1344,9 @@ func TestMissionControlAcceptedProposalFollowUpLoopAppearsFromIntegratedReader(t
 	assert.Equal(t, loopview.LoopStatusActive, snapshot.Loops[0].Status)
 }
 
+// Intentionally not parallel: this test freezes projector.nowFn and asserts
+// time-sensitive recent-mission review follow-up projection.
 func TestMissionControlRecentDoneMissionReviewFollowUpAppears(t *testing.T) {
-	t.Parallel()
-
 	now := time.Date(2026, 5, 3, 12, 0, 0, 0, time.UTC)
 	projector := NewMissionControlProjector(Deps{
 		SessionKey: "sess-1",

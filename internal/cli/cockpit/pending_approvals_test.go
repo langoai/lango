@@ -15,7 +15,14 @@ func TestPendingApprovalRegistryQueuesWithoutAutoDeny(t *testing.T) {
 
 	firstRespCh := make(chan approval.ApprovalResponse, 1)
 	first := chat.ApprovalRequestMsg{
-		Request:  approval.ApprovalRequest{ID: "apr-1", ToolName: "fs_read"},
+		Request: approval.ApprovalRequest{ID: "apr-1", ToolName: "fs_\x1b[31mread\nnow", Summary: "Read\x1b[31m config\nnow"},
+		ViewModel: approval.ApprovalViewModel{
+			RuleExplanation: "Filesystem\x1b[31m reads\nrequire approval",
+			Risk: approval.RiskIndicator{
+				Level: "sa\x1b[31mfe\n",
+				Label: "Read\x1b[31m files\n",
+			},
+		},
 		Response: firstRespCh,
 	}
 	second := chat.ApprovalRequestMsg{
@@ -30,7 +37,11 @@ func TestPendingApprovalRegistryQueuesWithoutAutoDeny(t *testing.T) {
 	latest := registry.Latest()
 	require.NotNil(t, latest)
 	assert.Equal(t, "apr-1", latest.Request.ID)
-	assert.Equal(t, "fs_read", latest.Request.ToolName)
+	assert.Equal(t, "fs_read now", latest.Request.ToolName)
+	assert.Equal(t, "Read config now", latest.Request.Summary)
+	assert.Equal(t, "Filesystem reads require approval", latest.ViewModel.RuleExplanation)
+	assert.Equal(t, "safe", latest.ViewModel.Risk.Level)
+	assert.Equal(t, "Read files", latest.ViewModel.Risk.Label)
 
 	select {
 	case superseded := <-firstRespCh:

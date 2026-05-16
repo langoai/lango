@@ -227,6 +227,15 @@ func TestNew_DefaultPageIsMissionControl(t *testing.T) {
 	assert.Equal(t, PageMissionControl, m.activePage)
 }
 
+func TestNew_DisablesUnregisteredOptionalSidebarPages(t *testing.T) {
+	m := New(Deps{})
+
+	assert.False(t, m.sidebar.IsDisabled(PageMissionControl.String()))
+	assert.False(t, m.sidebar.IsDisabled(PageChat.String()))
+	assert.True(t, m.sidebar.IsDisabled(PageTools.String()))
+	assert.True(t, m.sidebar.IsDisabled(PageSessions.String()))
+}
+
 func TestNew_ChatModelAccessorReturnsSharedRootChat(t *testing.T) {
 	m := New(Deps{})
 	require.NotNil(t, m.ChatModel())
@@ -310,6 +319,17 @@ func TestPageSelectedMsg_SwitchesPage(t *testing.T) {
 	assert.Equal(t, PageTools, m.activePage)
 	assert.True(t, toolsPage.activated)
 	assert.False(t, m.sidebarFocused, "focus should return to content")
+}
+
+func TestRegisterPage_EnablesSidebarItem(t *testing.T) {
+	mock := &mockChild{}
+	m := newDefaultTestModel(mock)
+
+	assert.True(t, m.sidebar.IsDisabled(PageTools.String()))
+
+	m.RegisterPage(PageTools, &mockPage{title: "Tools"})
+
+	assert.False(t, m.sidebar.IsDisabled(PageTools.String()))
 }
 
 func TestPageSelectedMsg_SwitchesToDeadLettersPage(t *testing.T) {

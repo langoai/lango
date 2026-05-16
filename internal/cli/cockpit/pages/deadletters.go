@@ -34,6 +34,10 @@ var deadLettersNow = func() time.Time {
 	return time.Now().UTC()
 }
 
+func sanitizeDeadLetterText(text string) string {
+	return strings.Join(strings.Fields(ansi.Strip(text)), " ")
+}
+
 type deadLettersLoadedMsg struct {
 	items             []postadjudicationstatus.DeadLetterBacklogEntry
 	err               error
@@ -230,26 +234,41 @@ func (p *DeadLettersPage) Title() string { return "Dead Letters" }
 
 func (p *DeadLettersPage) ShortHelp() []key.Binding {
 	bindings := []key.Binding{
-		key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", "up")),
-		key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", "down")),
 		key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "field")),
 		key.NewBinding(key.WithKeys("left", "right"), key.WithHelp("←/→", "adj")),
 		key.NewBinding(key.WithKeys("[", "]"), key.WithHelp("[/]", "subtype")),
 		key.NewBinding(key.WithKeys(",", "."), key.WithHelp(",/.", "family")),
 		key.NewBinding(key.WithKeys(";", "/"), key.WithHelp(";/", "any")),
-		key.NewBinding(key.WithKeys("backspace"), key.WithHelp("⌫", "query")),
+		key.NewBinding(key.WithKeys("backspace"), key.WithHelp("⌫", "text filter")),
 		key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "apply")),
-		key.NewBinding(key.WithKeys("ctrl+r"), key.WithHelp("ctrl+r", "reset")),
+	}
+	if !p.retryRunning() {
+		bindings = append(bindings, key.NewBinding(key.WithKeys("ctrl+r"), key.WithHelp("ctrl+r", "reset")))
+	}
+	if len(p.items) > 1 {
+		bindings = append([]key.Binding{
+			key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", "up")),
+			key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", "down")),
+		}, bindings...)
 	}
 	if p.canRetrySelected() {
 		help := "retry"
 		if p.retryConfirmActive() {
 			help = "confirm"
+			for i, binding := range bindings {
+				if len(binding.Keys()) > 0 && binding.Keys()[0] == "enter" {
+					bindings[i] = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "confirm"))
+					break
+				}
+			}
 		} else if p.retryRunningActive() {
 			help = "running"
 		}
 		if !p.retryRunning() {
 			bindings = append(bindings, key.NewBinding(key.WithKeys("r"), key.WithHelp("r", help)))
+		}
+		if p.retryConfirmActive() {
+			bindings = append(bindings, key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "cancel retry")))
 		}
 	}
 	return bindings
@@ -381,6 +400,11 @@ func (p *DeadLettersPage) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		switch msg.String() {
 		case "enter":
+			if p.retryConfirmActive() {
+				p.retryConfirmID = ""
+				p.retryRunningID = p.selectedID
+				return p, p.retrySelected()
+			}
 			selectedID := p.selectedID
 			p.retryConfirmID = ""
 			p.appliedQuery = strings.TrimSpace(p.queryDraft)
@@ -497,7 +521,7 @@ func (p *DeadLettersPage) View() string {
 	detail := p.renderDetailPane()
 	parts := []string{title, divider, "", summary, "", filterBar, "", table, "", detail}
 	if strings.TrimSpace(p.statusMsg) != "" {
-		status := lipgloss.NewStyle().Foreground(theme.Accent).Render(p.statusMsg)
+		status := lipgloss.NewStyle().Foreground(theme.Accent).Render(sanitizeDeadLetterText(p.statusMsg))
 		parts = append(parts, "", status)
 	}
 	content := lipgloss.JoinVertical(lipgloss.Left, parts...)
@@ -526,7 +550,7 @@ func (p *DeadLettersPage) renderSummaryStrip() string {
 	if len(summary.topReasons) > 0 {
 		reasonParts := make([]string, 0, len(summary.topReasons))
 		for _, item := range summary.topReasons {
-			reasonParts = append(reasonParts, fmt.Sprintf("%s(%d)", item.reason, item.count))
+			reasonParts = append(reasonParts, fmt.Sprintf("%s(%d)", sanitizeDeadLetterText(item.reason), item.count))
 		}
 
 		reasonsLine := "reasons: " + strings.Join(reasonParts, ", ")
@@ -539,7 +563,7 @@ func (p *DeadLettersPage) renderSummaryStrip() string {
 	if len(summary.reasonFamilies) > 0 {
 		familyParts := make([]string, 0, len(summary.reasonFamilies))
 		for _, item := range summary.reasonFamilies {
-			familyParts = append(familyParts, fmt.Sprintf("%s(%d)", item.family, item.count))
+			familyParts = append(familyParts, fmt.Sprintf("%s(%d)", sanitizeDeadLetterText(item.family), item.count))
 		}
 		familiesLine := "reason families: " + strings.Join(familyParts, ", ")
 		if p.width > 0 {
@@ -551,7 +575,7 @@ func (p *DeadLettersPage) renderSummaryStrip() string {
 	if len(summary.topActors) > 0 {
 		actorParts := make([]string, 0, len(summary.topActors))
 		for _, item := range summary.topActors {
-			actorParts = append(actorParts, fmt.Sprintf("%s(%d)", item.actor, item.count))
+			actorParts = append(actorParts, fmt.Sprintf("%s(%d)", sanitizeDeadLetterText(item.actor), item.count))
 		}
 		actorsLine := "actors: " + strings.Join(actorParts, ", ")
 		if p.width > 0 {
@@ -563,7 +587,7 @@ func (p *DeadLettersPage) renderSummaryStrip() string {
 	if len(summary.actorFamilies) > 0 {
 		familyParts := make([]string, 0, len(summary.actorFamilies))
 		for _, item := range summary.actorFamilies {
-			familyParts = append(familyParts, fmt.Sprintf("%s(%d)", item.family, item.count))
+			familyParts = append(familyParts, fmt.Sprintf("%s(%d)", sanitizeDeadLetterText(item.family), item.count))
 		}
 		actorFamiliesLine := "actor families: " + strings.Join(familyParts, ", ")
 		if p.width > 0 {
@@ -575,7 +599,7 @@ func (p *DeadLettersPage) renderSummaryStrip() string {
 	if len(summary.dispatchFamilies) > 0 {
 		familyParts := make([]string, 0, len(summary.dispatchFamilies))
 		for _, item := range summary.dispatchFamilies {
-			familyParts = append(familyParts, fmt.Sprintf("%s(%d)", item.family, item.count))
+			familyParts = append(familyParts, fmt.Sprintf("%s(%d)", sanitizeDeadLetterText(item.family), item.count))
 		}
 		dispatchFamiliesLine := "dispatch families: " + strings.Join(familyParts, ", ")
 		if p.width > 0 {
@@ -587,7 +611,7 @@ func (p *DeadLettersPage) renderSummaryStrip() string {
 	if len(summary.topDispatches) > 0 {
 		dispatchParts := make([]string, 0, len(summary.topDispatches))
 		for _, item := range summary.topDispatches {
-			dispatchParts = append(dispatchParts, fmt.Sprintf("%s(%d)", item.dispatchReference, item.count))
+			dispatchParts = append(dispatchParts, fmt.Sprintf("%s(%d)", sanitizeDeadLetterText(item.dispatchReference), item.count))
 		}
 		dispatchLine := "dispatch: " + strings.Join(dispatchParts, ", ")
 		if p.width > 0 {
@@ -632,8 +656,18 @@ func (p *DeadLettersPage) renderFilterBar() string {
 		lipgloss.NewStyle().Foreground(theme.TextPrimary).Render(fmt.Sprintf("Latest subtype: %s", p.subtypeDraft)),
 		lipgloss.NewStyle().Foreground(theme.TextPrimary).Render(fmt.Sprintf("Latest family: %s", p.familyDraft)),
 		lipgloss.NewStyle().Foreground(theme.TextPrimary).Render(fmt.Sprintf("Any-match family: %s", p.anyMatchFamilyDraft)),
-		hintStyle.Render("Tab fields, type text, use ←/→ for adjudication, [/] for subtype, ,/. for family, ;/ for any-match, Enter to apply, Ctrl+R to reset"),
+		hintStyle.Render(p.filterHintText()),
 	)
+}
+
+func (p *DeadLettersPage) filterHintText() string {
+	if p.retryConfirmActive() {
+		return "Retry confirm pending: Enter confirms retry, Esc cancels, Ctrl+R still resets filters"
+	}
+	if p.retryRunning() {
+		return "Tab fields, type text, use ←/→ for adjudication, [/] for subtype, ,/. for family, ;/ for any-match, Enter to apply"
+	}
+	return "Tab fields, type text, use ←/→ for adjudication, [/] for subtype, ,/. for family, ;/ for any-match, Enter to apply, Ctrl+R to reset"
 }
 
 func (p *DeadLettersPage) renderFilterLine(label string, value string, active bool) string {
@@ -647,12 +681,15 @@ func (p *DeadLettersPage) renderFilterLine(label string, value string, active bo
 	if displayValue == "" {
 		displayValue = "all"
 	}
-	return style.Render(fmt.Sprintf("%s%s: %s", prefix, label, displayValue))
+	return style.Render(fmt.Sprintf("%s%s: %s", prefix, label, sanitizeDeadLetterText(displayValue)))
 }
 
 func (p *DeadLettersPage) renderTable() string {
+	if p.listFn == nil {
+		return lipgloss.NewStyle().Foreground(theme.TextSecondary).Render("Dead-letter backlog is not configured.")
+	}
 	if p.loadErr != nil {
-		return lipgloss.NewStyle().Foreground(theme.Error).Render(fmt.Sprintf("Failed to load dead letters: %v", p.loadErr))
+		return lipgloss.NewStyle().Foreground(theme.Error).Render(fmt.Sprintf("Failed to load dead letters: %s", sanitizeDeadLetterText(p.loadErr.Error())))
 	}
 	if len(p.items) == 0 {
 		if p.hasAppliedFilters() {
@@ -683,11 +720,11 @@ func (p *DeadLettersPage) renderTable() string {
 	for i, entry := range p.items {
 		line := fmt.Sprintf(
 			format,
-			tui.Truncate(entry.TransactionReceiptID, deadLettersTxColW),
-			ansi.Truncate(entry.LatestDeadLetterReason, promptW, "…"),
-			tui.Truncate(entry.Adjudication, deadLettersAdjColW),
+			tui.Truncate(sanitizeDeadLetterText(entry.TransactionReceiptID), deadLettersTxColW),
+			ansi.Truncate(sanitizeDeadLetterText(entry.LatestDeadLetterReason), promptW, "…"),
+			tui.Truncate(sanitizeDeadLetterText(entry.Adjudication), deadLettersAdjColW),
 			fmt.Sprintf("%d", entry.LatestRetryAttempt),
-			tui.Truncate(deadLetterStatusLabel(entry), deadLettersStatusColW),
+			tui.Truncate(sanitizeDeadLetterText(deadLetterStatusLabel(entry)), deadLettersStatusColW),
 		)
 		style := lipgloss.NewStyle().PaddingLeft(deadLettersTableGutterW).Foreground(theme.TextPrimary)
 		prefix := "  "
@@ -718,7 +755,7 @@ func (p *DeadLettersPage) renderDetailPane() string {
 	case len(p.items) == 0:
 		return lipgloss.JoinVertical(lipgloss.Left, title, lipgloss.NewStyle().Foreground(theme.Muted).Render("Select a backlog row to inspect detail."))
 	case p.detailErr != nil:
-		return lipgloss.JoinVertical(lipgloss.Left, title, lipgloss.NewStyle().Foreground(theme.Error).Render(fmt.Sprintf("Failed to load detail: %v", p.detailErr)))
+		return lipgloss.JoinVertical(lipgloss.Left, title, lipgloss.NewStyle().Foreground(theme.Error).Render(fmt.Sprintf("Failed to load detail: %s", sanitizeDeadLetterText(p.detailErr.Error()))))
 	case p.detail == nil:
 		return lipgloss.JoinVertical(lipgloss.Left, title, lipgloss.NewStyle().Foreground(theme.Muted).Render("Loading selected transaction detail..."))
 	}
@@ -726,30 +763,30 @@ func (p *DeadLettersPage) renderDetailPane() string {
 	selected := p.items[p.cursor]
 	detail := p.detail
 	lines := []string{
-		fmt.Sprintf("Transaction: %s", detail.CanonicalSnapshot.TransactionReceipt.TransactionReceiptID),
-		fmt.Sprintf("Submission: %s", detail.CanonicalSnapshot.SubmissionReceipt.SubmissionReceiptID),
-		fmt.Sprintf("Adjudication: %s", detail.Adjudication),
+		fmt.Sprintf("Transaction: %s", sanitizeDeadLetterText(detail.CanonicalSnapshot.TransactionReceipt.TransactionReceiptID)),
+		fmt.Sprintf("Submission: %s", sanitizeDeadLetterText(detail.CanonicalSnapshot.SubmissionReceipt.SubmissionReceiptID)),
+		fmt.Sprintf("Adjudication: %s", sanitizeDeadLetterText(detail.Adjudication)),
 		fmt.Sprintf("Dead-lettered: %t", detail.IsDeadLettered),
 		fmt.Sprintf("Retryable: %t", detail.CanRetry),
-		fmt.Sprintf("Latest reason: %s", fallback(detail.RetryDeadLetterSummary.LatestDeadLetterReason, selected.LatestDeadLetterReason, "n/a")),
+		fmt.Sprintf("Latest reason: %s", sanitizeDeadLetterText(fallback(detail.RetryDeadLetterSummary.LatestDeadLetterReason, selected.LatestDeadLetterReason, "n/a"))),
 		fmt.Sprintf("Latest retry attempt: %d", detail.RetryDeadLetterSummary.LatestRetryAttempt),
-		fmt.Sprintf("Latest dispatch reference: %s", fallback(detail.RetryDeadLetterSummary.LatestDispatchReference, selected.LatestDispatchReference, "n/a")),
+		fmt.Sprintf("Latest dispatch reference: %s", sanitizeDeadLetterText(fallback(detail.RetryDeadLetterSummary.LatestDispatchReference, selected.LatestDispatchReference, "n/a"))),
 	}
 
 	if detail.LatestBackgroundTask != nil {
 		lines = append(lines,
-			fmt.Sprintf("Background task: %s", detail.LatestBackgroundTask.TaskID),
-			fmt.Sprintf("Task status: %s", detail.LatestBackgroundTask.Status),
+			fmt.Sprintf("Background task: %s", sanitizeDeadLetterText(detail.LatestBackgroundTask.TaskID)),
+			fmt.Sprintf("Task status: %s", sanitizeDeadLetterText(detail.LatestBackgroundTask.Status)),
 			fmt.Sprintf("Task attempts: %d", detail.LatestBackgroundTask.AttemptCount),
-			fmt.Sprintf("Next retry at: %s", fallback(detail.LatestBackgroundTask.NextRetryAt, "", "n/a")),
+			fmt.Sprintf("Next retry at: %s", sanitizeDeadLetterText(fallback(detail.LatestBackgroundTask.NextRetryAt, "", "n/a"))),
 		)
 	} else {
 		lines = append(lines, "Background task: n/a")
 	}
-	retryState := p.retryActionLabel()
+	retryState := sanitizeDeadLetterText(p.retryActionLabel())
 	lines = append(lines, fmt.Sprintf("Retry action: %s", retryState))
 	if p.selectedID == p.retryFollowUpID && strings.TrimSpace(p.retryFollowUpNote) != "" {
-		lines = append(lines, fmt.Sprintf("Retry follow-up: %s", p.retryFollowUpNote))
+		lines = append(lines, fmt.Sprintf("Retry follow-up: %s", sanitizeDeadLetterText(p.retryFollowUpNote)))
 	}
 
 	minLines := deadLettersDetailMinLines
@@ -866,17 +903,17 @@ func (p *DeadLettersPage) retryActionLabel() string {
 		return "requesting retry..."
 	}
 	if p.retryConfirmActive() {
-		return "confirm request (press r again)"
+		return "confirm request (press r again or Enter, Esc cancels)"
 	}
 	return "ready (press r to request retry)"
 }
 
 func (p *DeadLettersPage) retrySuccessMessage(transactionID string) string {
-	return fmt.Sprintf("Retry request accepted for %s. Refreshing backlog and detail.", transactionID)
+	return fmt.Sprintf("Retry request accepted for %s. Refreshing backlog and detail.", sanitizeDeadLetterText(transactionID))
 }
 
 func (p *DeadLettersPage) retryFailureMessage(transactionID string, err error) string {
-	return fmt.Sprintf("Retry request failed for %s: %v", transactionID, err)
+	return fmt.Sprintf("Retry request failed for %s: %s", sanitizeDeadLetterText(transactionID), sanitizeDeadLetterText(err.Error()))
 }
 
 func (p *DeadLettersPage) retryAcceptedMessage(transactionID string, note string) string {
@@ -884,7 +921,7 @@ func (p *DeadLettersPage) retryAcceptedMessage(transactionID string, note string
 	if trimmed == "" {
 		return p.retrySuccessMessage(transactionID)
 	}
-	return fmt.Sprintf("Retry request accepted for %s. Follow-up: %s.", transactionID, trimmed)
+	return fmt.Sprintf("Retry request accepted for %s. Follow-up: %s.", sanitizeDeadLetterText(transactionID), sanitizeDeadLetterText(trimmed))
 }
 
 func (p *DeadLettersPage) describeRetryFollowUp(

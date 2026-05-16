@@ -175,3 +175,60 @@ func TestServiceInvalidTransitionPropagatesFromStore(t *testing.T) {
 	assert.Nil(t, updated)
 	assert.Contains(t, err.Error(), "invalid transition")
 }
+
+func TestServiceRequiresStoreForLifecycleEntryPoints(t *testing.T) {
+	t.Parallel()
+
+	svc := NewService(nil)
+	ctx := context.Background()
+
+	started, err := svc.StartMission(ctx, StartMissionInput{SessionKey: "svc-missing-store", Title: "start"})
+	require.Error(t, err)
+	assert.Nil(t, started)
+	assert.Contains(t, err.Error(), "start mission")
+	assert.Contains(t, err.Error(), "mission store is required")
+
+	accepted, err := svc.AcceptProposal(ctx, AcceptProposalInput{
+		SessionKey: "svc-missing-store",
+		SourceKind: "proposed_learning",
+		Title:      "accept",
+	})
+	require.Error(t, err)
+	assert.Nil(t, accepted)
+	assert.Contains(t, err.Error(), "accept proposal")
+	assert.Contains(t, err.Error(), "mission store is required")
+
+	err = svc.AttachExecution(ctx, AttachExecutionInput{
+		MissionID:     "mission-1",
+		ExecutionKind: ExecutionKindTaskOSExecution,
+		ExecutionRef:  "task-1",
+		LinkRole:      LinkRolePrimary,
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "attach execution")
+	assert.Contains(t, err.Error(), "mission store is required")
+}
+
+func TestServiceRequestValidationGuards(t *testing.T) {
+	t.Parallel()
+
+	store, _ := newTestStore(t)
+	svc := NewService(store)
+	ctx := context.Background()
+
+	accepted, err := svc.AcceptProposal(ctx, AcceptProposalInput{
+		SessionKey: "svc-missing-source-kind",
+		Title:      "accept",
+	})
+	require.Error(t, err)
+	assert.Nil(t, accepted)
+	assert.Contains(t, err.Error(), "accept proposal: source_kind is required")
+
+	err = svc.AttachExecution(ctx, AttachExecutionInput{
+		MissionID:     "mission-1",
+		ExecutionKind: ExecutionKindTaskOSExecution,
+		LinkRole:      LinkRolePrimary,
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "attach execution: execution_ref is required")
+}

@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/langoai/lango/internal/cli/tui"
 )
@@ -16,13 +17,13 @@ import (
 type transcriptItemKind string
 
 const (
-	itemUser      transcriptItemKind = "user"
-	itemAssistant transcriptItemKind = "assistant"
-	itemSystem    transcriptItemKind = "system"
-	itemStatus    transcriptItemKind = "status"
-	itemApproval  transcriptItemKind = "approval"
-	itemTool      transcriptItemKind = "tool"
-	itemThinking  transcriptItemKind = "thinking"
+	itemUser       transcriptItemKind = "user"
+	itemAssistant  transcriptItemKind = "assistant"
+	itemSystem     transcriptItemKind = "system"
+	itemStatus     transcriptItemKind = "status"
+	itemApproval   transcriptItemKind = "approval"
+	itemTool       transcriptItemKind = "tool"
+	itemThinking   transcriptItemKind = "thinking"
 	itemChannel    transcriptItemKind = "channel"
 	itemDelegation transcriptItemKind = "delegation"
 	itemRecovery   transcriptItemKind = "recovery"
@@ -75,12 +76,12 @@ func (m *chatViewModel) appendUser(content string) {
 	}
 	m.appendEntry(transcriptItem{
 		kind:    itemUser,
-		content: strings.TrimSpace(content),
+		content: strings.TrimSpace(ansi.Strip(content)),
 	})
 }
 
 func (m *chatViewModel) appendAssistant(raw string) {
-	raw = strings.TrimSpace(raw)
+	raw = strings.TrimSpace(sanitizeMarkdownInput(raw))
 	if raw == "" {
 		return
 	}
@@ -97,7 +98,7 @@ func (m *chatViewModel) appendSystem(content string) {
 	}
 	m.appendEntry(transcriptItem{
 		kind:    itemSystem,
-		content: strings.TrimSpace(content),
+		content: strings.TrimSpace(ansi.Strip(content)),
 	})
 }
 
@@ -107,31 +108,79 @@ func (m *chatViewModel) appendStatus(content string, tone string) {
 	}
 	m.appendEntry(transcriptItem{
 		kind:    itemStatus,
-		content: strings.TrimSpace(content),
+		content: sanitizeDisplayText(content),
 		meta:    map[string]string{"tone": tone},
 	})
 }
 
-func (m *chatViewModel) appendApprovalEvent(content string, outcome string) {
+func (m *chatViewModel) appendApprovalEvent(content string, outcome string, requestID ...string) {
 	if strings.TrimSpace(content) == "" {
 		return
 	}
+	text := sanitizeDisplayText(content)
+	var summary string
+	if len(requestID) > 1 {
+		summary = sanitizeDisplayText(requestID[1])
+	}
+	if summary != "" {
+		if len(summary) > 80 {
+			summary = ansi.Truncate(summary, 80, "...")
+		}
+		text += " — " + summary
+	}
+	if len(requestID) > 0 && strings.TrimSpace(requestID[0]) != "" {
+		text += " [" + compactRequestID(strings.TrimSpace(requestID[0])) + "]"
+	}
 	m.appendEntry(transcriptItem{
 		kind:    itemApproval,
-		content: strings.TrimSpace(content),
+		content: text,
 		meta:    map[string]string{"outcome": outcome},
 	})
 }
 
+func compactRequestID(id string) string {
+	id = sanitizeDisplayText(id)
+	if len(id) <= 14 {
+		return id
+	}
+	return id[:8] + "…" + id[len(id)-4:]
+}
+
 func (m *chatViewModel) appendToolStart(callID, toolName string, params map[string]any) {
+	toolName = sanitizeDisplayText(toolName)
+	preview := formatParamPreview(params)
 	m.appendEntry(transcriptItem{
 		kind:    itemTool,
 		content: toolName,
 		meta: map[string]string{
-			"callID": callID,
-			"state":  string(toolStateRunning),
+			"callID":  callID,
+			"state":   string(toolStateRunning),
+			"preview": preview,
 		},
 	})
+}
+
+func (m *chatViewModel) transitionLatestToolState(toolName string, from []ToolItemState, to ToolItemState) {
+	if toolName == "" {
+		return
+	}
+	allowed := make(map[string]struct{}, len(from))
+	for _, state := range from {
+		allowed[string(state)] = struct{}{}
+	}
+	for i := len(m.entries) - 1; i >= 0; i-- {
+		e := &m.entries[i]
+		if e.kind != itemTool || e.content != toolName {
+			continue
+		}
+		if _, ok := allowed[e.meta["state"]]; !ok {
+			continue
+		}
+		e.meta["state"] = string(to)
+		e.cachedBlock = ""
+		m.render()
+		return
+	}
 }
 
 func (m *chatViewModel) finalizeToolResult(callID string, success bool, duration time.Duration, output string) {
@@ -180,8 +229,8 @@ func (m *chatViewModel) finalizeThinking(summary string, duration time.Duration)
 
 func (m *chatViewModel) appendChannel(channel, senderName, text, sessionKey string, metadata map[string]string) {
 	meta := map[string]string{
-		"channel":    channel,
-		"sender":     senderName,
+		"channel":    sanitizeDisplayText(channel),
+		"sender":     sanitizeDisplayText(senderName),
 		"sessionKey": sessionKey,
 	}
 	// Preserve all metadata for future use (thread grouping, origin jump, etc.)
@@ -190,7 +239,7 @@ func (m *chatViewModel) appendChannel(channel, senderName, text, sessionKey stri
 	}
 	m.appendEntry(transcriptItem{
 		kind:       itemChannel,
-		rawContent: text,
+		rawContent: sanitizeDisplayText(text),
 		meta:       meta,
 	})
 }
@@ -199,9 +248,9 @@ func (m *chatViewModel) appendDelegation(from, to, reason string) {
 	m.appendEntry(transcriptItem{
 		kind: itemDelegation,
 		meta: map[string]string{
-			"from":   from,
-			"to":     to,
-			"reason": reason,
+			"from":   sanitizeDisplayText(from),
+			"to":     sanitizeDisplayText(to),
+			"reason": sanitizeDisplayText(reason),
 		},
 	})
 }
@@ -211,7 +260,7 @@ func (m *chatViewModel) appendRecovery(action, causeClass string, attempt int, b
 		kind: itemRecovery,
 		meta: map[string]string{
 			"action":     action,
-			"causeClass": causeClass,
+			"causeClass": sanitizeDisplayText(causeClass),
 			"attempt":    strconv.Itoa(attempt),
 			"backoff":    backoff.String(),
 		},
@@ -362,16 +411,17 @@ func (m *chatViewModel) renderEntry(entry transcriptItem) string {
 	case itemAssistant:
 		return renderTranscriptBlock("Lango", entry.content, tui.Primary)
 	case itemSystem:
-		return renderSystemBlock(entry.content)
+		return renderSystemBlock(entry.content, m.contentWidth())
 	case itemStatus:
-		return renderStatusBlock(entry.content, entry.meta["tone"])
+		return renderStatusBlock(entry.content, entry.meta["tone"], m.contentWidth())
 	case itemApproval:
-		return renderApprovalEventBlock(entry.content, entry.meta["outcome"])
+		return renderApprovalEventBlock(entry.content, entry.meta["outcome"], m.contentWidth())
 	case itemTool:
 		return renderToolBlock(
 			entry.content,
 			ToolItemState(entry.meta["state"]),
 			entry.meta["duration"],
+			entry.meta["preview"],
 			entry.meta["output"],
 			m.contentWidth(),
 		)
@@ -426,7 +476,7 @@ func (m *chatViewModel) render() {
 
 	// Streaming entry is always re-rendered (no cache).
 	if m.streamBuf.Len() > 0 {
-		streamContent := m.streamBuf.String()
+		streamContent := sanitizeDisplayText(m.streamBuf.String())
 		if m.showCursor {
 			streamContent += "\u258c" // "▌" block cursor
 		}
@@ -461,13 +511,33 @@ func renderTranscriptBlock(label, content string, color lipgloss.Color) string {
 	return fmt.Sprintf(" %s  %s\n%s", labelText, separator, body)
 }
 
-func renderSystemBlock(content string) string {
-	label := systemLabelStyle.Render("System")
-	body := systemBodyStyle.Render(strings.TrimRight(content, "\n"))
-	return fmt.Sprintf(" %s\n%s", label, body)
+func renderSystemBlock(content string, width int) string {
+	if width < 10 {
+		width = 10
+	}
+	label := ansi.Truncate(" "+systemLabelStyle.Render("System"), width, "…")
+	bodyText := ansi.Truncate(strings.TrimRight(ansi.Strip(content), "\n"), max(width-1, 1), "…")
+	body := ansi.Truncate(systemBodyStyle.Render(bodyText), width, "…")
+	return fmt.Sprintf("%s\n%s", label, body)
 }
 
-func renderStatusBlock(content, tone string) string {
+func renderCompactStatusRow(labelText, content string, color lipgloss.Color, width int) string {
+	if width < 10 {
+		width = 10
+	}
+	label := statusLabelStyle.Foreground(color).Render(labelText)
+	prefix := " " + label + "  "
+	maxContent := width - lipgloss.Width(prefix)
+	if maxContent < 1 {
+		maxContent = 1
+	}
+	content = sanitizeDisplayText(content)
+	content = ansi.Truncate(content, maxContent, "…")
+	body := statusBodyStyle.Foreground(color).Render(content)
+	return ansi.Truncate(prefix+body, width, "…")
+}
+
+func renderStatusBlock(content, tone string, width int) string {
 	color := tui.Muted
 	switch tone {
 	case "success":
@@ -477,12 +547,10 @@ func renderStatusBlock(content, tone string) string {
 	case "error":
 		color = tui.Error
 	}
-	label := statusLabelStyle.Foreground(color).Render("Status")
-	body := statusBodyStyle.Foreground(color).Render(content)
-	return fmt.Sprintf(" %s  %s", label, body)
+	return renderCompactStatusRow("Status", content, color, width)
 }
 
-func renderApprovalEventBlock(content, outcome string) string {
+func renderApprovalEventBlock(content, outcome string, width int) string {
 	color := tui.Warning
 	switch outcome {
 	case "approved", "session":
@@ -490,7 +558,5 @@ func renderApprovalEventBlock(content, outcome string) string {
 	case "denied":
 		color = tui.Error
 	}
-	label := statusLabelStyle.Foreground(color).Render("Approval")
-	body := statusBodyStyle.Foreground(color).Render(content)
-	return fmt.Sprintf(" %s  %s", label, body)
+	return renderCompactStatusRow("Approval", content, color, width)
 }

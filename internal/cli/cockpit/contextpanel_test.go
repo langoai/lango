@@ -135,7 +135,9 @@ func TestContextPanel_NilCollector(t *testing.T) {
 	// Should not panic.
 	panel.refreshSnapshot()
 	view := panel.View()
-	assert.Contains(t, view, "No tool executions")
+	assert.Contains(t, view, "Metrics collector is not")
+	assert.Contains(t, view, "configured")
+	assert.NotContains(t, view, "No tool executions")
 }
 
 func TestContextPanel_TopFiveTools(t *testing.T) {
@@ -185,6 +187,33 @@ func TestContextPanel_WithChannels(t *testing.T) {
 	assert.Contains(t, view, "●")
 }
 
+func TestContextPanel_SanitizesLiveLabels(t *testing.T) {
+	panel := NewContextPanel(observability.NewCollector())
+	panel.visible = true
+	panel.height = 30
+	panel.width = 48
+	panel.runtimeStat = runtimeStatus{
+		IsRunning:       true,
+		ActiveAgent:     "opera\x1b[31mtor\nagent",
+		DelegationCount: 1,
+	}
+	panel.SetChannelStatuses([]channelStatus{
+		{Name: "sla\x1b[31mck\nops", Connected: true, MessageCount: 5, LastActivity: time.Now()},
+	})
+	panel.snapshot.ToolBreakdown = map[string]observability.ToolMetric{
+		"web_\x1b[31msearch\nnow": {Count: 3},
+	}
+	panel.sortedToolsDirty = true
+
+	view := panel.View()
+	assert.Contains(t, view, "operator agent")
+	assert.Contains(t, view, "slack ops")
+	assert.Contains(t, view, "web_search now")
+	assert.NotContains(t, view, "\x1b")
+	require.Len(t, panel.sortedTools, 1)
+	assert.Equal(t, "web_search now", panel.sortedTools[0].name)
+}
+
 func TestContextPanel_DisconnectedChannel(t *testing.T) {
 	panel := NewContextPanel(nil)
 	panel.visible = true
@@ -215,13 +244,13 @@ func TestContextPanel_SetChannelStatuses(t *testing.T) {
 	panel := NewContextPanel(nil)
 
 	statuses := []channelStatus{
-		{Name: "slack", Connected: true, MessageCount: 42, LastActivity: time.Now()},
+		{Name: "sla\x1b[31mck\nops", Connected: true, MessageCount: 42, LastActivity: time.Now()},
 		{Name: "email", Connected: false, MessageCount: 0, LastActivity: time.Time{}},
 	}
 	panel.SetChannelStatuses(statuses)
 
 	require.Len(t, panel.channelStatuses, 2)
-	assert.Equal(t, "slack", panel.channelStatuses[0].Name)
+	assert.Equal(t, "slack ops", panel.channelStatuses[0].Name)
 	assert.True(t, panel.channelStatuses[0].Connected)
 	assert.Equal(t, 42, panel.channelStatuses[0].MessageCount)
 	assert.Equal(t, "email", panel.channelStatuses[1].Name)
@@ -229,7 +258,18 @@ func TestContextPanel_SetChannelStatuses(t *testing.T) {
 
 	// Verify defensive copy — mutating the original should not affect panel.
 	statuses[0].Name = "mutated"
-	assert.Equal(t, "slack", panel.channelStatuses[0].Name)
+	assert.Equal(t, "slack ops", panel.channelStatuses[0].Name)
+}
+
+func TestContextPanel_SetRuntimeStatusSanitizesActiveAgent(t *testing.T) {
+	panel := NewContextPanel(nil)
+	panel.SetRuntimeStatus(runtimeStatus{
+		IsRunning:       true,
+		ActiveAgent:     "opera\x1b[31mtor\nagent",
+		DelegationCount: 1,
+	})
+
+	assert.Equal(t, "operator agent", panel.runtimeStat.ActiveAgent)
 }
 
 func TestContextPanel_RuntimeSectionWhenRunning(t *testing.T) {

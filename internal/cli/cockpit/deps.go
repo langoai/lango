@@ -95,6 +95,7 @@ type CollaborationRuntimeReader interface {
 type Deps struct {
 	TurnRunner         *turnrunner.Runner
 	Config             *config.Config
+	WorkDir            string
 	SessionKey         string
 	SessionStore       session.Store // optional; enables /mode to persist session mode
 	ToolCatalog        *toolcatalog.Catalog

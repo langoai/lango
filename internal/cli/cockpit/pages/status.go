@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/langoai/lango/internal/cli/cockpit/theme"
 	"github.com/langoai/lango/internal/cli/tui"
@@ -16,6 +17,10 @@ import (
 	"github.com/langoai/lango/internal/observability"
 	"github.com/langoai/lango/internal/types"
 )
+
+func sanitizeStatusText(text string) string {
+	return strings.Join(strings.Fields(ansi.Strip(text)), " ")
+}
 
 // tickMsg triggers a periodic metrics refresh.
 type tickMsg time.Time
@@ -126,7 +131,15 @@ func (m *StatusPage) renderFeatureFlags(
 	labelStyle := lipgloss.NewStyle().Foreground(theme.TextSecondary).Width(20)
 	reasonStyle := lipgloss.NewStyle().Foreground(theme.Muted)
 
+	if m.statusProvider == nil {
+		b.WriteString(reasonStyle.Render("Feature status provider is not configured"))
+		b.WriteByte('\n')
+		return b.String()
+	}
+
 	for _, fs := range m.featureStatuses {
+		name := sanitizeStatusText(fs.Name)
+		reason := sanitizeStatusText(fs.Reason)
 		var indicator string
 		var statusText string
 		if fs.Enabled {
@@ -136,9 +149,9 @@ func (m *StatusPage) renderFeatureFlags(
 			indicator = disabledStyle.Render("○")
 			statusText = disabledStyle.Render("disabled")
 		}
-		line := fmt.Sprintf("%s %s%s", indicator, labelStyle.Render(fs.Name), statusText)
-		if !fs.Enabled && fs.Reason != "" {
-			line += reasonStyle.Render(" (" + fs.Reason + ")")
+		line := fmt.Sprintf("%s %s%s", indicator, labelStyle.Render(name), statusText)
+		if !fs.Enabled && reason != "" {
+			line += reasonStyle.Render(" (" + reason + ")")
 		}
 		b.WriteString(line)
 		b.WriteByte('\n')
@@ -157,6 +170,12 @@ func (m *StatusPage) renderTokenUsage(
 
 	labelStyle := lipgloss.NewStyle().Foreground(theme.TextSecondary).Width(12)
 	valueStyle := lipgloss.NewStyle().Foreground(theme.TextPrimary).Align(lipgloss.Right).Width(12)
+
+	if m.metricsCollector == nil {
+		b.WriteString(lipgloss.NewStyle().Foreground(theme.Muted).Render("Metrics collector is not configured"))
+		b.WriteByte('\n')
+		return b.String()
+	}
 
 	t := m.snapshot.TokenUsageTotal
 	rows := []struct {
@@ -188,6 +207,12 @@ func (m *StatusPage) renderToolExecution(
 	labelStyle := lipgloss.NewStyle().Foreground(theme.TextSecondary)
 	valueStyle := lipgloss.NewStyle().Foreground(theme.TextPrimary)
 
+	if m.metricsCollector == nil {
+		b.WriteString(lipgloss.NewStyle().Foreground(theme.Muted).Render("Metrics collector is not configured"))
+		b.WriteByte('\n')
+		return b.String()
+	}
+
 	b.WriteString(labelStyle.Render("Total executions:  "))
 	b.WriteString(valueStyle.Render(tui.FormatNumber(m.snapshot.ToolExecutions)))
 	b.WriteByte('\n')
@@ -208,7 +233,7 @@ func (m *StatusPage) renderToolExecution(
 		avg := tui.FormatDuration(tm.AvgDuration)
 		detail := fmt.Sprintf("%d calls  avg %s  %d errors",
 			tm.Count, avg, tm.Errors)
-		b.WriteString(nameStyle.Render(tm.Name))
+		b.WriteString(nameStyle.Render(sanitizeStatusText(tm.Name)))
 		b.WriteString(detailStyle.Render(detail))
 		b.WriteByte('\n')
 	}
@@ -230,8 +255,8 @@ func (m *StatusPage) renderSystemInfo(
 	provider := ""
 	model := ""
 	if m.cfg != nil {
-		provider = m.cfg.Agent.Provider
-		model = m.cfg.Agent.Model
+		provider = sanitizeStatusText(m.cfg.Agent.Provider)
+		model = sanitizeStatusText(m.cfg.Agent.Model)
 	}
 
 	rows := []struct {
@@ -262,6 +287,12 @@ func (m *StatusPage) renderGraphAdmission(
 	labelStyle := lipgloss.NewStyle().Foreground(theme.TextSecondary)
 	nameStyle := lipgloss.NewStyle().Foreground(theme.TextPrimary)
 	detailStyle := lipgloss.NewStyle().Foreground(theme.TextSecondary)
+
+	if m.metricsCollector == nil {
+		b.WriteString(detailStyle.Render("Metrics collector is not configured"))
+		b.WriteByte('\n')
+		return b.String()
+	}
 
 	if len(m.snapshot.GraphAdmission) == 0 &&
 		len(m.snapshot.GraphExtractorDroppedUnknown) == 0 &&
@@ -295,10 +326,13 @@ func (m *StatusPage) renderGraphAdmission(
 	})
 
 	for _, metric := range admissionMetrics {
-		title := fmt.Sprintf("%s  validator=%s", metric.Source, metric.ValidatorSource)
+		source := sanitizeStatusText(metric.Source)
+		validator := sanitizeStatusText(metric.ValidatorSource)
+		title := fmt.Sprintf("%s  validator=%s", source, validator)
 		if metric.ProducerGroup != nil {
+			group := sanitizeStatusText(*metric.ProducerGroup)
 			title = fmt.Sprintf("%s  group=%s  validator=%s",
-				metric.Source, *metric.ProducerGroup, metric.ValidatorSource)
+				source, group, validator)
 		}
 		detail := fmt.Sprintf("batches %d  known %d  unknown %d  unvalidated %d",
 			metric.BatchCount, metric.KnownCount, metric.UnknownCount, metric.UnvalidatedCount)
@@ -313,7 +347,7 @@ func (m *StatusPage) renderGraphAdmission(
 		b.WriteString(labelStyle.Render("Dropped unknown:"))
 		b.WriteByte('\n')
 		for _, source := range droppedSources {
-			line := fmt.Sprintf("%s  %s dropped", source, tui.FormatNumber(m.snapshot.GraphExtractorDroppedUnknown[source]))
+			line := fmt.Sprintf("%s  %s dropped", sanitizeStatusText(source), tui.FormatNumber(m.snapshot.GraphExtractorDroppedUnknown[source]))
 			b.WriteString(detailStyle.Render(line))
 			b.WriteByte('\n')
 		}
@@ -324,7 +358,7 @@ func (m *StatusPage) renderGraphAdmission(
 		b.WriteString(labelStyle.Render("Unmapped sources:"))
 		b.WriteByte('\n')
 		for _, source := range unmappedSources {
-			line := fmt.Sprintf("%s  %s batches", source, tui.FormatNumber(m.snapshot.GraphAdmissionUnmappedSources[source]))
+			line := fmt.Sprintf("%s  %s batches", sanitizeStatusText(source), tui.FormatNumber(m.snapshot.GraphAdmissionUnmappedSources[source]))
 			b.WriteString(detailStyle.Render(line))
 			b.WriteByte('\n')
 		}

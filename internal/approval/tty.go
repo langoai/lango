@@ -1,13 +1,16 @@
 package approval
 
 import (
-	"bufio"
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
 	"golang.org/x/term"
+
+	"github.com/langoai/lango/internal/lineio"
 )
 
 // TTYProvider prompts the user via the terminal (stdin) for approval.
@@ -17,11 +20,17 @@ type TTYProvider struct{}
 
 var _ Provider = (*TTYProvider)(nil)
 
+var (
+	ttyIsTerminal           = func() bool { return term.IsTerminal(int(os.Stdin.Fd())) }
+	ttyInput      io.Reader = os.Stdin
+	ttyError      io.Writer = os.Stderr
+)
+
 // RequestApproval prompts the user on stderr and reads y/a/N from stdin.
 // "y" or "yes" approves once; "a" or "always" approves and grants persistent
 // access for the tool in this session.
 func (t *TTYProvider) RequestApproval(_ context.Context, req ApprovalRequest) (ApprovalResponse, error) {
-	if !term.IsTerminal(int(os.Stdin.Fd())) {
+	if !ttyIsTerminal() {
 		return ApprovalResponse{}, WrapError(
 			ErrUnavailable,
 			"tty",
@@ -30,15 +39,17 @@ func (t *TTYProvider) RequestApproval(_ context.Context, req ApprovalRequest) (A
 		)
 	}
 
-	fmt.Fprintf(os.Stderr, "\n⚠ Sensitive tool '%s' requires approval.\n", req.ToolName)
+	fmt.Fprintf(ttyError, "\n⚠ Sensitive tool '%s' requires approval.\n", req.ToolName)
 	if req.Summary != "" {
-		fmt.Fprintf(os.Stderr, "  %s\n", req.Summary)
+		fmt.Fprintf(ttyError, "  %s\n", req.Summary)
 	}
-	fmt.Fprint(os.Stderr, "  Allow? [y/a/N] (a=always): ")
+	fmt.Fprint(ttyError, "  Allow? [y/a/N] (a=always): ")
 
-	reader := bufio.NewReader(os.Stdin)
-	input, err := reader.ReadString('\n')
+	input, err := lineio.ReadLine(ttyInput)
 	if err != nil {
+		if errors.Is(err, io.EOF) {
+			return ApprovalResponse{Provider: "tty"}, nil
+		}
 		return ApprovalResponse{}, fmt.Errorf("read approval input: %w", err)
 	}
 

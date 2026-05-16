@@ -2,10 +2,14 @@ package chat
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"reflect"
+	"sort"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/langoai/lango/internal/approval"
 	"github.com/langoai/lango/internal/cli/tui"
@@ -52,9 +56,9 @@ func (t *TUIApprovalProvider) Name() string { return "tui" }
 func renderApproval(msg *ApprovalRequestMsg, state *approvalState, width, height int) string {
 	switch msg.ViewModel.Tier {
 	case approval.TierFullscreen:
-		return renderApprovalDialog(msg.ViewModel, state, width, height, state.confirmPending)
+		return renderApprovalDialog(msg.ViewModel, state, width, height)
 	case approval.TierInline:
-		return renderApprovalStrip(msg.ViewModel, width, state.confirmPending)
+		return renderApprovalStrip(msg.ViewModel, state, width)
 	default:
 		return renderApprovalBanner(msg.Request, width)
 	}
@@ -67,9 +71,10 @@ func formatChannelOrigin(sessionKey string) string {
 	if len(parts) < 3 {
 		return ""
 	}
+	channelKey := strings.ToLower(sanitizeDisplayText(parts[0]))
 
 	var channelName string
-	switch parts[0] {
+	switch channelKey {
 	case "telegram":
 		channelName = "Telegram"
 	case "discord":
@@ -80,7 +85,7 @@ func formatChannelOrigin(sessionKey string) string {
 		return ""
 	}
 
-	return fmt.Sprintf("[%s] %s", channelName, parts[1])
+	return fmt.Sprintf("[%s] %s", channelName, sanitizeDisplayText(parts[1]))
 }
 
 // formatChannelBadge returns a short channel badge for compact displays.
@@ -90,8 +95,9 @@ func formatChannelBadge(sessionKey string) string {
 	if len(parts) < 3 {
 		return ""
 	}
+	channelKey := strings.ToLower(sanitizeDisplayText(parts[0]))
 
-	switch parts[0] {
+	switch channelKey {
 	case "telegram":
 		return "[TG]"
 	case "discord":
@@ -101,6 +107,53 @@ func formatChannelBadge(sessionKey string) string {
 	default:
 		return ""
 	}
+}
+
+func sortedParamKeys(params map[string]any) []string {
+	if len(params) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(params))
+	for k := range params {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func sanitizeParamKey(key string) string {
+	return sanitizeDisplayText(key)
+}
+
+func formatParamValue(v any) string {
+	switch val := v.(type) {
+	case nil:
+		return "null"
+	case string:
+		return singleLineValue(val)
+	case fmt.Stringer:
+		return singleLineValue(val.String())
+	}
+
+	rv := reflect.ValueOf(v)
+	if !rv.IsValid() {
+		return "null"
+	}
+	switch rv.Kind() {
+	case reflect.Map, reflect.Slice, reflect.Array, reflect.Struct:
+		if data, err := json.Marshal(v); err == nil {
+			return string(data)
+		}
+	}
+	return singleLineValue(fmt.Sprintf("%v", v))
+}
+
+func singleLineValue(s string) string {
+	return strings.Join(strings.Fields(s), " ")
+}
+
+func sanitizeDisplayText(s string) string {
+	return singleLineValue(ansi.Strip(s))
 }
 
 // renderApprovalBanner renders the inline approval prompt.
@@ -120,21 +173,23 @@ func renderApprovalBanner(req approval.ApprovalRequest, width int) string {
 		Foreground(tui.Warning).
 		Render("Tool Approval Required")
 
+	safeToolName := sanitizeDisplayText(req.ToolName)
 	tool := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(tui.Highlight).
-		Render(req.ToolName)
+		Render(safeToolName)
 
 	summary := req.Summary
 	if summary == "" {
-		summary = fmt.Sprintf("Execute tool: %s", req.ToolName)
+		summary = fmt.Sprintf("Execute tool: %s", safeToolName)
 	}
+	summary = sanitizeDisplayText(summary)
 
 	var params string
 	if len(req.Params) > 0 {
 		var parts []string
-		for k, v := range req.Params {
-			parts = append(parts, fmt.Sprintf("  %s: %v", k, v))
+		for _, k := range sortedParamKeys(req.Params) {
+			parts = append(parts, fmt.Sprintf("  %s: %s", sanitizeParamKey(k), formatParamValue(req.Params[k])))
 		}
 		params = "\n" + lipgloss.NewStyle().Foreground(tui.Muted).Render(strings.Join(parts, "\n"))
 	}
@@ -147,8 +202,7 @@ func renderApprovalBanner(req approval.ApprovalRequest, width int) string {
 	keys := tui.HelpBar(
 		tui.HelpEntry("a", "allow"),
 		tui.HelpEntry("s", "allow session"),
-		tui.HelpEntry("d", "deny"),
-		tui.HelpEntry("esc", "deny"),
+		tui.HelpEntry("d/Esc", "deny"),
 	)
 
 	content := fmt.Sprintf("%s\n%s  %s%s%s\n\n%s", title, tool, summary, originLine, params, keys)

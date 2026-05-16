@@ -208,3 +208,34 @@ func (m *Model) SetActive(id string) {
 func (m *Model) SetFocused(f bool) {
 	m.focused = f
 }
+
+// SetDisabled marks a sidebar item as disabled or enabled by ID.
+// If the current cursor lands on a disabled item, it moves to the first
+// enabled item to keep keyboard navigation usable.
+func (m *Model) SetDisabled(id string, disabled bool) {
+	for i := range m.items {
+		if m.items[i].ID == id {
+			m.items[i].Disabled = disabled
+			break
+		}
+	}
+	if m.cursor >= 0 && m.cursor < len(m.items) && m.items[m.cursor].Disabled {
+		for i := range m.items {
+			if !m.items[i].Disabled {
+				m.cursor = i
+				return
+			}
+		}
+	}
+}
+
+// IsDisabled reports whether the sidebar item with the given ID is disabled.
+// Unknown IDs return false.
+func (m Model) IsDisabled(id string) bool {
+	for _, item := range m.items {
+		if item.ID == id {
+			return item.Disabled
+		}
+	}
+	return false
+}

@@ -11,6 +11,33 @@ import (
 	"github.com/langoai/lango/internal/config"
 )
 
+func renderShellBar(left, right string, width int, bg lipgloss.Color) string {
+	w := max(width, 1)
+	if lipgloss.Width(left) >= w {
+		left = ansi.Truncate(left, w, "…")
+		right = ""
+	} else if right != "" {
+		maxRight := w - lipgloss.Width(left) - 1
+		if maxRight < 0 {
+			maxRight = 0
+		}
+		right = ansi.Truncate(right, maxRight, "…")
+	}
+
+	gap := w - lipgloss.Width(left) - lipgloss.Width(right)
+	if gap < 0 {
+		gap = 0
+	}
+	content := left + strings.Repeat(" ", gap) + right
+	content = ansi.Truncate(content, w, "…")
+
+	return lipgloss.NewStyle().
+		Background(bg).
+		Foreground(tui.Foreground).
+		Width(w).
+		Render(content)
+}
+
 // chatState tracks the current operator-visible TUI turn state.
 type chatState int
 
@@ -23,8 +50,6 @@ const (
 )
 
 func renderHeader(cfg *config.Config, sessionKey string, width int) string {
-	headerWidth := max(width, 1)
-
 	productBadge := lipgloss.NewStyle().
 		Background(tui.Primary).
 		Foreground(tui.Foreground).
@@ -32,14 +57,19 @@ func renderHeader(cfg *config.Config, sessionKey string, width int) string {
 		Padding(0, 1).
 		Render("Lango")
 
-	provider := strings.TrimSpace(cfg.Agent.Provider)
+	provider := ""
+	model := ""
+	if cfg != nil {
+		provider = singleLineValue(ansi.Strip(cfg.Agent.Provider))
+		model = singleLineValue(ansi.Strip(cfg.Agent.Model))
+	}
 	if provider == "" {
 		provider = "default"
 	}
-	model := strings.TrimSpace(cfg.Agent.Model)
 	if model == "" {
 		model = "auto"
 	}
+	sessionKey = singleLineValue(ansi.Strip(sessionKey))
 
 	modelText := lipgloss.NewStyle().
 		Bold(true).
@@ -51,21 +81,10 @@ func renderHeader(cfg *config.Config, sessionKey string, width int) string {
 		Foreground(tui.Muted).
 		Render(fmt.Sprintf("session: %s ", sessionKey))
 
-	gap := headerWidth - lipgloss.Width(left) - lipgloss.Width(right)
-	if gap < 1 {
-		gap = 1
-	}
-
-	return lipgloss.NewStyle().
-		Background(lipgloss.Color("#132238")).
-		Foreground(tui.Foreground).
-		Width(headerWidth).
-		Render(left + strings.Repeat(" ", gap) + right)
+	return renderShellBar(left, right, width, lipgloss.Color("#132238"))
 }
 
 func renderTurnStrip(state chatState, width int) string {
-	stripWidth := max(width, 1)
-
 	label, hint, color := turnStateCopy(state)
 	left := lipgloss.NewStyle().
 		Bold(true).
@@ -75,16 +94,7 @@ func renderTurnStrip(state chatState, width int) string {
 		Foreground(tui.Muted).
 		Render(hint + " ")
 
-	gap := stripWidth - lipgloss.Width(left) - lipgloss.Width(right)
-	if gap < 1 {
-		gap = 1
-	}
-
-	return lipgloss.NewStyle().
-		Background(lipgloss.Color("#0f1724")).
-		Foreground(tui.Foreground).
-		Width(stripWidth).
-		Render(left + strings.Repeat(" ", gap) + right)
+	return renderShellBar(left, right, width, lipgloss.Color("#0f1724"))
 }
 
 func renderHelpBar(state chatState, width int) string {
@@ -95,7 +105,8 @@ func renderHelpBar(state chatState, width int) string {
 		entries = []string{
 			tui.HelpEntry("Enter", "send"),
 			tui.HelpEntry("Alt+Enter", "newline"),
-			tui.HelpEntry("Ctrl+C", "quit"),
+			tui.HelpEntry("Ctrl+C", "quit x2"),
+			tui.HelpEntry("Ctrl+D", "quit"),
 			tui.HelpEntry("/help", "commands"),
 		}
 	case stateStreaming:
@@ -107,7 +118,8 @@ func renderHelpBar(state chatState, width int) string {
 		entries = []string{
 			tui.HelpEntry("a", "allow"),
 			tui.HelpEntry("s", "allow session"),
-			tui.HelpEntry("d/esc", "deny"),
+			tui.HelpEntry("d/Esc", "deny"),
+			tui.HelpEntry("Ctrl+D", "quit"),
 		}
 	case stateCancelling:
 		entries = []string{
@@ -125,7 +137,7 @@ func turnStateCopy(state chatState) (label, hint string, color lipgloss.Color) {
 	case stateStreaming:
 		return "Streaming", "Ctrl+C cancels the current turn", tui.Warning
 	case stateApproving:
-		return "Approval Required", "Review the tool action and choose a / s / d", tui.Warning
+		return "Approval Required", "Choose a / s / d/Esc · Ctrl+D quits", tui.Warning
 	case stateCancelling:
 		return "Cancelling", "Waiting for the current turn to stop", tui.Muted
 	case stateFailed:

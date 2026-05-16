@@ -2,14 +2,20 @@ package cockpit
 
 import (
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/langoai/lango/internal/cli/chat"
 	"github.com/langoai/lango/internal/eventbus"
 )
+
+func sanitizeChannelTrackerText(text string) string {
+	return strings.Join(strings.Fields(ansi.Strip(text)), " ")
+}
 
 // msgSender abstracts tea.Program.Send for testability.
 // *tea.Program satisfies this interface via duck typing.
@@ -65,7 +71,7 @@ func NewChannelTracker(bus *eventbus.Bus) *ChannelTracker {
 			defer t.mu.Unlock()
 			entry, ok := t.channels[e.Channel]
 			if !ok {
-				entry = &channelStatusEntry{name: e.Channel, connected: true}
+				entry = &channelStatusEntry{name: sanitizeChannelTrackerText(e.Channel), connected: true}
 				t.channels[e.Channel] = entry
 			}
 			entry.messageCount++
@@ -92,7 +98,7 @@ func (t *ChannelTracker) SeedChannel(name string, connected bool) {
 		entry.connected = connected
 	} else {
 		t.channels[name] = &channelStatusEntry{
-			name:      name,
+			name:      sanitizeChannelTrackerText(name),
 			connected: connected,
 		}
 	}

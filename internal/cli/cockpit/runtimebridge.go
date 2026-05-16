@@ -1,12 +1,19 @@
 package cockpit
 
 import (
+	"strings"
 	"sync"
+
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/langoai/lango/internal/agentrt"
 	"github.com/langoai/lango/internal/cli/chat"
 	"github.com/langoai/lango/internal/eventbus"
 )
+
+func sanitizeRuntimeTrackerText(text string) string {
+	return strings.Join(strings.Fields(ansi.Strip(text)), " ")
+}
 
 // tokenSnapshot holds accumulated token usage for a single turn.
 type tokenSnapshot struct {
@@ -108,7 +115,7 @@ func (t *RuntimeTracker) RecordDelegation(to string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.delegationCount++
-	t.activeAgent = to
+	t.activeAgent = sanitizeRuntimeTrackerText(to)
 }
 
 // SetActiveAgent updates the active agent label without incrementing the
@@ -116,7 +123,7 @@ func (t *RuntimeTracker) RecordDelegation(to string) {
 func (t *RuntimeTracker) SetActiveAgent(name string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	t.activeAgent = name
+	t.activeAgent = sanitizeRuntimeTrackerText(name)
 }
 
 // ResetTurn clears delegation count, active agent, and turn-active flag.
@@ -140,4 +147,3 @@ func (t *RuntimeTracker) Snapshot() runtimeStatus {
 		IsRunning:       t.turnActive,
 	}
 }
-
