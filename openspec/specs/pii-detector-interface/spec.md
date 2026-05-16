@@ -1,7 +1,7 @@
 # pii-detector-interface Specification
 
 ## Purpose
-TBD - created by archiving change pii-redaction-enhancement. Update Purpose after archive.
+Define the common PII detector interface and the baseline regex-based detection contract.
 ## Requirements
 ### Requirement: PIIDetector interface
 The system SHALL define a PIIDetector interface with a single method `Detect(text string) []PIIMatch` that returns all PII matches found in the given text.
@@ -58,4 +58,3 @@ Each PIIMatch SHALL include Start and End byte offsets into the original text.
 #### Scenario: Accurate position
 - **WHEN** text is "Email: user@test.com here" and email is detected
 - **THEN** text[Start:End] SHALL equal "user@test.com"
-

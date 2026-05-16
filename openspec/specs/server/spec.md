@@ -22,6 +22,10 @@ The application SHALL be able to open an encrypted SQLite database if the correc
 ### Requirement: Passphrase Configuration
 The application SHALL prioritize the passphrase from environment variables over configuration files (standard security practice).
 
+#### Scenario: Environment passphrase wins over file-based sources
+- **WHEN** both an environment-provided passphrase and a file-based passphrase source are available
+- **THEN** the application SHALL use the environment-provided passphrase first
+
 ### Requirement: Path Expansion
 The application SHALL verify that configuration paths using `~` are correctly expanded to the user's home directory.
 

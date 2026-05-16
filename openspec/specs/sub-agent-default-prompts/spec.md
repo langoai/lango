@@ -21,3 +21,7 @@ The IDENTITY.md files SHALL be included in the embedded prompts filesystem via t
 #### Scenario: Prompt builder loads default identity
 - **WHEN** `agent.promptsDir` is not configured and multi-agent mode is enabled
 - **THEN** the prompt builder SHALL use the embedded default IDENTITY.md for each sub-agent
+
+#### Scenario: Built-in agent specs read embedded identities
+- **WHEN** the built-in teammate registry is initialized
+- **THEN** each `agentSpecs[].Instruction` SHALL prefer the embedded `prompts/agents/<name>/IDENTITY.md` content over its fallback string

@@ -24,6 +24,12 @@ The system SHALL provide a `lango config create <name>` command that creates a n
 - **WHEN** `lango config create default` is run and "default" already exists
 - **THEN** an error is returned: "profile \"default\" already exists"
 
+#### Scenario: Config profile-management output uses the command writer
+- **WHEN** `lango config list`, `create`, `use`, `delete`, or `import` renders output
+- **THEN** it SHALL write the full output through the Cobra command output writer
+- **AND** `delete` confirmation SHALL read from `cmd.InOrStdin()`
+- **AND** wrappers or tests that replace `cmd.OutOrStdout()` / `cmd.InOrStdin()` SHALL capture the interaction
+
 ### Requirement: Config use command
 The system SHALL provide a `lango config use <name>` command that switches the active profile.
 
@@ -32,7 +38,7 @@ The system SHALL provide a `lango config use <name>` command that switches the a
 - **THEN** the "production" profile becomes active and all others are deactivated
 
 ### Requirement: Config delete command
-The system SHALL provide a `lango config delete <name>` command with confirmation prompt.
+The system SHALL provide a `lango config delete <name>` command with confirmation prompt. When `--force` is not supplied, the confirmation SHALL be driven through the shared confirmation helper using Cobra command input/output streams so wrappers and tests can capture the interaction without replacing process-global stdio.
 
 #### Scenario: Delete with confirmation
 - **WHEN** `lango config delete staging` is run without `--force`
@@ -41,6 +47,11 @@ The system SHALL provide a `lango config delete <name>` command with confirmatio
 #### Scenario: Delete with force flag
 - **WHEN** `lango config delete staging --force` is run
 - **THEN** the profile is deleted without confirmation
+
+#### Scenario: Delete denied through command input
+- **WHEN** `lango config delete staging` is run and the user answers `n`
+- **THEN** the command SHALL print `Aborted.`
+- **AND** the profile SHALL remain undeleted
 
 ### Requirement: Config import command
 The system SHALL provide a `lango config import <file>` command that imports a JSON config file as an encrypted profile. The source JSON file SHALL be automatically deleted after successful import for security.
@@ -63,6 +74,20 @@ The system SHALL provide a `lango config export <name>` command that outputs dec
 - **THEN** the passphrase is verified via bootstrap
 - **AND** the decrypted config is printed to stdout as formatted JSON, with a WARNING on stderr
 
+#### Scenario: Config export/validate output uses the command writer
+- **WHEN** `lango config export` or `lango config validate` renders output
+- **THEN** it SHALL write the full command output through the Cobra command output or error writers
+- **AND** wrappers or tests that replace `cmd.OutOrStdout()` / `cmd.ErrOrStderr()` SHALL capture the output
+
+#### Scenario: Config JSON output remains decodable on the command writer
+- **WHEN** `lango config export` or `lango config get <path> --output json` renders JSON output
+- **THEN** the command writer SHALL receive valid pretty-printed JSON that can be decoded without stripping extra framing text
+
+#### Scenario: Config get rejects an unknown output format before loading config
+- **WHEN** `lango config get <path> --output yaml` is run
+- **THEN** the command SHALL return an actionable unknown-output-format error
+- **AND** it SHALL reject the invocation before loading the active config
+
 ### Requirement: Config set uses single bootstrap with cleanup
 The `config set` command SHALL bootstrap exactly once. The cfgLoader function SHALL return a cleanup function that closes the DB client. The cleanup function MUST be called via `defer` in `RunE` to ensure resources are released on all code paths (success, setConfigPath error, save error).
 
@@ -81,6 +106,11 @@ The `config set` command SHALL bootstrap exactly once. The cfgLoader function SH
 #### Scenario: Loader failure does not leak resources
 - **WHEN** the cfgLoader fails (bootstrap error)
 - **THEN** cleanup is nil, defer is a no-op, no DB client exists to leak
+
+#### Scenario: Config get/set/keys output uses the command writer
+- **WHEN** `lango config get`, `lango config set`, or `lango config keys` renders output
+- **THEN** it SHALL write the full output through the Cobra command output writer
+- **AND** wrappers or tests that replace `cmd.OutOrStdout()` SHALL capture the command output
 
 ### Requirement: Config validate command
 The system SHALL provide a `lango config validate` command that validates the active profile's configuration.
@@ -101,3 +131,10 @@ The config profile subcommands (list, create, use, delete, import, export, valid
 - **THEN** config profile commands SHALL be added via configcmd.NewConfigCmd()
 - **THEN** main.go SHALL NOT contain RunE implementations for profile commands
 
+### Requirement: Config delete treats EOF as denial
+`lango config delete <name>` SHALL treat EOF on its confirmation input as a clean denial.
+
+#### Scenario: Config delete EOF aborts cleanly
+- **WHEN** `lango config delete staging` prompts for confirmation and stdin reaches EOF before approval
+- **THEN** the command SHALL print `Aborted.`
+- **AND** the profile SHALL remain undeleted

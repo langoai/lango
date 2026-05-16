@@ -101,12 +101,139 @@ The system SHALL provide `initSmartAccount()` in `wiring_smartaccount.go` with c
 - **WHEN** smart account is enabled and initialized
 - **THEN** 12 tools SHALL be registered: smart_account_deploy, smart_account_info, session_key_create/list/revoke, session_execute, policy_check, module_install/uninstall, spending_status, paymaster_status, paymaster_approve
 
+#### Scenario: Missing required smart-account wrapper input fails early
+- **WHEN** `session_key_create`, `session_key_revoke`, `session_execute`, `policy_check`, `module_install`, `module_uninstall`, or `paymaster_approve` is invoked without one of its declared required wrapper inputs
+- **THEN** the tool SHALL return an actionable missing-parameter error before state mutation, validation, or transaction submission begins
+
 ### Requirement: CLI commands
 The system SHALL provide `lango account` command group with deploy, info, session create/list/revoke, module list/install, policy show/set. All SHALL support `--output json|table` format.
 
 #### Scenario: CLI output formats
 - **WHEN** a CLI command is run with --output json
 - **THEN** it SHALL output valid JSON
+
+#### Scenario: Smart-account commands reject an unknown output format before load
+- **WHEN** a smart-account subcommand with `--output` is run with `--output yaml`
+- **THEN** the command SHALL return an actionable unknown-output-format error
+- **AND** it SHALL reject the invocation before smart-account bootstrap or load work begins
+
+### Requirement: Smart account deploy output routing
+`lango account deploy` SHALL write all non-error output through the Cobra command output stream so wrappers and test harnesses can capture table and JSON output without intercepting process-global stdout.
+
+#### Scenario: Smart account deploy table writes to command output
+- **WHEN** `lango account deploy` is run without `--output json`
+- **THEN** the command writes the human-readable deployment summary to the Cobra command output stream
+
+#### Scenario: Smart account deploy JSON writes to command output
+- **WHEN** `lango account deploy --output json` is run
+- **THEN** the command writes the JSON payload to the Cobra command output stream
+
+### Requirement: Smart account session output routing
+`lango account session create` and `lango account session list` SHALL write all non-error output through the Cobra command output stream so wrappers and test harnesses can capture table, JSON, and empty-state output without intercepting process-global stdout.
+
+#### Scenario: Smart account session create table writes to command output
+- **WHEN** `lango account session create` is run without `--output json`
+- **THEN** the command writes the human-readable session summary to the Cobra command output stream
+
+#### Scenario: Smart account session create JSON writes to command output
+- **WHEN** `lango account session create --output json` is run
+- **THEN** the command writes the JSON payload to the Cobra command output stream
+
+#### Scenario: Smart account session list table writes to command output
+- **WHEN** `lango account session list` is run without `--output json`
+- **THEN** the command writes the session table to the Cobra command output stream
+
+#### Scenario: Smart account session list JSON writes to command output
+- **WHEN** `lango account session list --output json` is run
+- **THEN** the command writes the JSON payload to the Cobra command output stream
+
+#### Scenario: Smart account session list empty-state writes to command output
+- **WHEN** `lango account session list` is run with no session keys
+- **THEN** the command writes the empty-state message to the Cobra command output stream
+
+### Requirement: Smart account session revoke output routing
+`lango account session revoke` SHALL write revocation confirmation through the Cobra command output stream so wrappers and test harnesses can capture success output without intercepting process-global stdout.
+
+#### Scenario: Smart account session revoke single writes to command output
+- **WHEN** `lango account session revoke <session-id>` succeeds
+- **THEN** the command writes the single-session revocation confirmation to the Cobra command output stream
+
+#### Scenario: Smart account session revoke all writes to command output
+- **WHEN** `lango account session revoke --all` succeeds
+- **THEN** the command writes the bulk revocation confirmation to the Cobra command output stream
+
+### Requirement: Smart account info output routing
+`lango account info` SHALL write all non-error output through the Cobra command output stream so wrappers and test harnesses can capture table and JSON output without intercepting process-global stdout.
+
+#### Scenario: Smart account info table writes to command output
+- **WHEN** `lango account info` is run without `--output json`
+- **THEN** the command writes the human-readable account summary to the Cobra command output stream
+
+#### Scenario: Smart account info JSON writes to command output
+- **WHEN** `lango account info --output json` is run
+- **THEN** the command writes the JSON payload to the Cobra command output stream
+
+### Requirement: Smart account module list output routing
+`lango account module list` SHALL write all non-error output through the Cobra command output stream so wrappers and test harnesses can capture table, JSON, and empty-state output without intercepting process-global stdout.
+
+#### Scenario: Smart account module list table writes to command output
+- **WHEN** `lango account module list` is run without `--output json`
+- **THEN** the command writes the installed modules table to the Cobra command output stream
+
+#### Scenario: Smart account module list JSON writes to command output
+- **WHEN** `lango account module list --output json` is run
+- **THEN** the command writes the JSON payload to the Cobra command output stream
+
+#### Scenario: Smart account module list empty-state writes to command output
+- **WHEN** `lango account module list` is run with no registered modules
+- **THEN** the command writes the empty-state message to the Cobra command output stream
+
+### Requirement: Smart account module install output routing
+`lango account module install` SHALL write the success summary through the Cobra command output stream so wrappers and test harnesses can capture installation confirmation without intercepting process-global stdout.
+
+#### Scenario: Smart account module install success writes to command output
+- **WHEN** `lango account module install <module-address> --type <module-type>` succeeds
+- **THEN** the command writes the installation summary to the Cobra command output stream
+
+### Requirement: Smart account policy output routing
+`lango account policy show` SHALL write all non-error output through the Cobra command output stream so wrappers and test harnesses can capture table, JSON, and empty-policy output without intercepting process-global stdout.
+
+#### Scenario: Smart account policy show table writes to command output
+- **WHEN** `lango account policy show` is run without `--output json`
+- **THEN** the command writes the human-readable policy summary to the Cobra command output stream
+
+#### Scenario: Smart account policy show JSON writes to command output
+- **WHEN** `lango account policy show --output json` is run
+- **THEN** the command writes the JSON payload to the Cobra command output stream
+
+### Requirement: Smart account policy set output routing
+`lango account policy set` SHALL write the update summary through the Cobra command output stream so wrappers and test harnesses can capture confirmation output without intercepting process-global stdout.
+
+#### Scenario: Smart account policy set success writes to command output
+- **WHEN** `lango account policy set` succeeds
+- **THEN** the command writes the update summary to the Cobra command output stream
+
+### Requirement: Smart account paymaster status output routing
+`lango account paymaster status` SHALL write all non-error output through the Cobra command output stream so wrappers and test harnesses can capture table and JSON output without intercepting process-global stdout.
+
+#### Scenario: Smart account paymaster status table writes to command output
+- **WHEN** `lango account paymaster status` is run without `--output json`
+- **THEN** the command writes the human-readable paymaster summary to the Cobra command output stream
+
+#### Scenario: Smart account paymaster status JSON writes to command output
+- **WHEN** `lango account paymaster status --output json` is run
+- **THEN** the command writes the JSON payload to the Cobra command output stream
+
+### Requirement: Smart account paymaster approval output routing
+`lango account paymaster approve` SHALL write all non-error output through the Cobra command output stream so wrappers and test harnesses can capture table and JSON output without intercepting process-global stdout.
+
+#### Scenario: Smart account paymaster approval table writes to command output
+- **WHEN** `lango account paymaster approve --amount <usdc>` is run without `--output json`
+- **THEN** the command writes the human-readable approval summary to the Cobra command output stream
+
+#### Scenario: Smart account paymaster approval JSON writes to command output
+- **WHEN** `lango account paymaster approve --amount <usdc> --output json` is run
+- **THEN** the command writes the JSON payload to the Cobra command output stream
 
 ### Requirement: Economy integration
 The system SHALL provide callback-based integrations (no direct smartaccount imports):

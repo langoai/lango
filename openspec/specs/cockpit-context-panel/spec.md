@@ -1,9 +1,7 @@
 ## Purpose
 
 Capability spec for cockpit-context-panel. See requirements below for scope and behavior contracts.
-
 ## Requirements
-
 ### Requirement: Toggleable right context panel
 The cockpit SHALL support a right-side context panel (Ctrl+P toggle) displaying live token usage, tool execution stats, and uptime from MetricsCollector.Snapshot(). The panel SHALL NOT be a Page — it uses Start()/Stop() lifecycle managed by the cockpit toggle.
 
@@ -41,12 +39,22 @@ The context panel SHALL display token usage (input/output/total/cache), top-5 to
 - **WHEN** context panel is visible
 - **THEN** it SHALL render uptime from the metrics snapshot
 
+#### Scenario: Rendered context-panel labels stay plain and single-line
+- **WHEN** top-tool names, runtime active-agent labels, or channel names contain ANSI/OSC escape sequences or embedded newlines
+- **THEN** the context panel SHALL strip those control sequences
+- **AND** it SHALL normalize the displayed text to a single line before rendering it
+
 ### Requirement: Channel status section in context panel
 The context panel SHALL display a "Channels" section showing each channel's connection status (connected/disconnected indicator), name, and message count.
 
 #### Scenario: Connected channel displayed
 - **WHEN** a channel with Connected=true and MessageCount=5 is set
 - **THEN** the context panel renders a green "●" indicator, the channel name, and "5 msgs"
+
+#### Scenario: Channel snapshot labels are replay-safe
+- **WHEN** channel names contain ANSI/OSC escape sequences or embedded newlines before entering the channel snapshot
+- **THEN** the channel tracker SHALL strip those control sequences
+- **AND** it SHALL normalize the stored channel snapshot text to a single line before replay
 
 #### Scenario: Disconnected channel displayed
 - **WHEN** a channel with Connected=false is set
@@ -66,6 +74,11 @@ The context panel SHALL display a "Runtime" section showing the active agent, de
 #### Scenario: Runtime section when turn is active
 - **WHEN** `SetRuntimeStatus` is called with `IsRunning=true`, `ActiveAgent="operator"`, `DelegationCount=3`, `TurnTokens=1234`
 - **THEN** the context panel SHALL display a "Runtime" section with a green running indicator, agent name, delegation count, and formatted token count
+
+#### Scenario: Runtime snapshot labels are replay-safe
+- **WHEN** active-agent labels contain ANSI/OSC escape sequences or embedded newlines before entering the runtime snapshot
+- **THEN** the runtime tracker SHALL strip those control sequences
+- **AND** it SHALL normalize the stored runtime snapshot text to a single line before replay
 
 #### Scenario: Runtime section hidden when idle
 - **WHEN** `SetRuntimeStatus` is called with `IsRunning=false`
@@ -90,6 +103,11 @@ The ContextPanel SHALL reuse existing slice capacity in SetChannelStatuses() ins
 - **WHEN** SetChannelStatuses is called with a status list of equal or smaller length than existing capacity
 - **THEN** the existing slice SHALL be resliced and copied without new allocation
 
+#### Scenario: Context panel setters keep cached labels replay-safe
+- **WHEN** channel names or runtime active-agent labels contain ANSI/OSC escape sequences or embedded newlines before entering the context panel setters
+- **THEN** the context panel SHALL strip those control sequences
+- **AND** it SHALL normalize the cached setter-owned text to a single line before replay
+
 #### Scenario: Render styles pre-allocated
 - **WHEN** renderRuntimeStatus or renderChannelStatus renders status items
 - **THEN** they SHALL use module-level pre-allocated style variables instead of inline lipgloss.NewStyle()
@@ -97,3 +115,17 @@ The ContextPanel SHALL reuse existing slice capacity in SetChannelStatuses() ins
 #### Scenario: Tool count sum cached with dirty flag
 - **WHEN** the sortedTools dirty flag is false and toolCountSum is needed
 - **THEN** the cached sum SHALL be returned without iterating the tool breakdown map
+
+#### Scenario: Cached tool labels are replay-safe
+- **WHEN** tool names contain ANSI/OSC escape sequences or embedded newlines before entering the cached `sortedTools` slice
+- **THEN** the context panel SHALL strip those control sequences
+- **AND** it SHALL normalize the stored cached tool text to a single line before replay
+
+### Requirement: Context panel renders unavailable messaging when metrics are absent
+The cockpit context panel SHALL distinguish an unavailable metrics collector from valid zero-valued metric data.
+
+#### Scenario: Nil metrics collector renders unavailable messages
+- **WHEN** the context panel renders with no configured metrics collector
+- **THEN** the Token Usage section SHALL explain that the metrics collector is not configured
+- **AND** the Tool Stats section SHALL explain that the metrics collector is not configured
+- **AND** the System section SHALL explain that the metrics collector is not configured

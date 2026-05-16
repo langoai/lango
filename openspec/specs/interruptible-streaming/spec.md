@@ -1,7 +1,7 @@
 # interruptible-streaming Specification
 
 ## Purpose
-TBD - created by archiving change ux-elastic-turns. Update Purpose after archive.
+Define user interrupt and redirect behavior while a turn is actively streaming.
 ## Requirements
 ### Requirement: Pending redirect input queue
 The `ChatModel` SHALL maintain a `pendingRedirectInput` string field. When the user submits input during `stateStreaming`, the input SHALL be stored in this field (not submitted immediately), the current turn SHALL be cancelled via `cancelFn()`, and the partial stream SHALL be finalized with an `[interrupted]` marker.
@@ -42,4 +42,3 @@ During `stateStreaming`, the input composer SHALL be focused (not blurred) and i
 #### Scenario: inputAcceptsText includes stateStreaming
 - **WHEN** `inputAcceptsText()` is called during `stateStreaming`
 - **THEN** it SHALL return `true`
-

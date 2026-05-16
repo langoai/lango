@@ -1,9 +1,7 @@
 ## Purpose
 
 Capability spec for meta-tools. See requirements below for scope and behavior contracts.
-
 ## Requirements
-
 ### Requirement: Knowledge Management Tools
 The system SHALL provide agent-facing tools for managing the knowledge base.
 
@@ -296,3 +294,88 @@ The meta tools surface SHALL enforce canonical adjudication on the existing escr
 - **WHEN** `refund_escrow_settlement` is invoked
 - **THEN** it SHALL require `escrow_adjudication = refund`
 - **AND** it SHALL deny execution when adjudication is missing or mismatched
+
+### Requirement: Transaction-receipt-backed execution tools keep actionable missing-parameter errors
+
+Meta tools that require `transaction_receipt_id` for settlement or escrow execution SHALL reject missing values at the wrapper layer with actionable parameter errors before invoking service logic.
+
+#### Scenario: Settlement and escrow execution tools reject missing transaction receipt ids
+- **WHEN** `execute_settlement`, `execute_partial_settlement`, or `execute_escrow_recommendation` is invoked without `transaction_receipt_id`
+- **THEN** the tool SHALL return an actionable missing-parameter error
+- **AND** SHALL not invoke the underlying execution service
+
+### Requirement: Additional transaction-receipt-backed operator tools keep actionable missing-parameter errors
+
+Transaction-receipt-backed operator tools beyond the direct settlement executors SHALL reject missing values at the wrapper layer with actionable parameter errors before invoking service logic.
+
+#### Scenario: Dispute, escrow-release, refund, status, and replay tools reject missing transaction receipt ids
+- **WHEN** `hold_escrow_for_dispute`, `release_escrow_settlement`, `refund_escrow_settlement`, `get_post_adjudication_execution_status`, or `retry_post_adjudication_execution` is invoked without `transaction_receipt_id`
+- **THEN** the tool SHALL return an actionable missing-parameter error
+- **AND** SHALL not invoke the underlying service
+
+### Requirement: Remaining transaction-receipt-backed decision tools keep actionable missing-parameter errors
+
+Transaction-receipt-backed decision and update tools SHALL reject missing values at the wrapper layer with actionable parameter errors before invoking service logic.
+
+#### Scenario: Path selection, approval, settlement progression, and escrow adjudication reject missing transaction receipt ids
+- **WHEN** `select_knowledge_exchange_path`, `approve_upfront_payment`, `apply_settlement_progression`, or `adjudicate_escrow_dispute` is invoked without `transaction_receipt_id`
+- **THEN** the tool SHALL return an actionable missing-parameter error
+- **AND** SHALL not invoke the underlying service
+
+### Requirement: Decision-oriented meta tools keep actionable missing-outcome errors
+
+Decision-oriented transaction-receipt tools SHALL reject missing `outcome` values at the wrapper layer with actionable parameter errors before invoking service logic.
+
+#### Scenario: Settlement progression and escrow adjudication reject missing outcomes
+- **WHEN** `apply_settlement_progression` or `adjudicate_escrow_dispute` is invoked without `outcome`
+- **THEN** the tool SHALL return an actionable missing-parameter error
+- **AND** SHALL not invoke the underlying service
+
+### Requirement: Canonical open and approval tools keep actionable missing-parameter errors
+
+The canonical knowledge-open and upfront-payment-approval tools SHALL reject missing required inputs at the wrapper layer with actionable parameter errors before invoking service logic.
+
+#### Scenario: Open transaction and upfront approval reject missing required inputs
+- **WHEN** `open_knowledge_exchange_transaction` is invoked without one of `transaction_id`, `counterparty`, `requested_scope`, `price_context`, or `trust_context`
+- **OR** `approve_upfront_payment` is invoked without one of `transaction_receipt_id`, `submission_receipt_id`, `amount`, `trust_score`, `user_max_prepay`, or `remaining_budget`
+- **THEN** the tool SHALL return an actionable missing-parameter error
+- **AND** SHALL not invoke the underlying service
+
+### Requirement: Knowledge-artifact meta tools keep actionable missing-parameter errors
+
+Knowledge save/exportability/release-approval tools SHALL reject missing required inputs at the wrapper layer with actionable parameter errors before invoking service logic.
+
+#### Scenario: Knowledge-artifact tools reject missing required inputs
+- **WHEN** `save_knowledge`, `evaluate_exportability`, or `approve_artifact_release` is invoked without one of its required inputs
+- **THEN** the tool SHALL return an actionable missing-parameter error
+- **AND** SHALL not invoke the underlying service
+
+### Requirement: Learning and skill management tools keep actionable missing-parameter errors
+
+Learning and skill-management tools SHALL reject missing required inputs at the wrapper layer with actionable parameter errors before invoking service logic.
+
+#### Scenario: Learning and skill tools reject missing required inputs
+- **WHEN** `save_learning`, `search_learnings`, or `create_skill` is invoked without one of its required inputs
+- **THEN** the tool SHALL return an actionable missing-parameter error
+- **AND** SHALL not invoke the underlying service
+
+### Requirement: Skill read/import tools keep actionable missing-parameter errors
+
+Skill read/import tools SHALL reject missing required inputs at the wrapper layer with actionable parameter errors before invoking service logic.
+
+#### Scenario: View and import skill tools reject missing required inputs
+- **WHEN** `view_skill` is invoked without `name`
+- **OR** `import_skill` is invoked without `url`
+- **THEN** the tool SHALL return an actionable missing-parameter error
+- **AND** SHALL not invoke the underlying service
+
+### Requirement: Knowledge read tools keep actionable missing-parameter errors
+
+Knowledge history/search tools SHALL reject missing required inputs at the wrapper layer with actionable parameter errors before invoking service logic.
+
+#### Scenario: Knowledge history and search reject missing required inputs
+- **WHEN** `get_knowledge_history` is invoked without `key`
+- **OR** `search_knowledge` is invoked without `query`
+- **THEN** the tool SHALL return an actionable missing-parameter error
+- **AND** SHALL not invoke the underlying service
+

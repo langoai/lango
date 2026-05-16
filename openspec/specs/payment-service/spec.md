@@ -125,3 +125,34 @@ Payment transaction writes MUST flow through an explicit transaction-store inter
 - **THEN** the payment service persists those transitions through a transaction-store interface
 - **AND** the service does not directly access Ent-generated `PaymentTx` builders
 
+### Requirement: Payment-send confirmation uses shared command streams
+`lango payment send` SHALL drive its interactive confirmation through the shared confirmation helper using Cobra command input/output streams. When stdin is non-interactive and `--force` is not provided, the command SHALL refuse to continue with explicit `--force` guidance instead of attempting a prompt.
+
+#### Scenario: Payment-send denial prints abort message
+- **WHEN** `lango payment send` is run interactively and the user answers `n`
+- **THEN** the command SHALL print `Aborted.`
+- **AND** it SHALL NOT submit a payment
+
+#### Scenario: Payment-send prompt stays on command output
+- **WHEN** `lango payment send` is run interactively
+- **THEN** the payment summary and `Confirm [y/N]: ` prompt SHALL be written through the Cobra command output stream
+
+#### Scenario: Payment-send non-interactive path requires force
+- **WHEN** `lango payment send` is run with non-interactive input and without `--force`
+- **THEN** the command SHALL return an error directing the user to pass `--force for non-interactive mode`
+
+### Requirement: Payment-send non-interactive confirmation uses a single shared guard
+`lango payment send` SHALL enforce its non-interactive confirmation policy through the shared TTY-input guard without requiring an additional process-global interactive check.
+
+#### Scenario: Pipe-based non-interactive send still requires force
+- **WHEN** `lango payment send` receives non-terminal input without `--force`
+- **THEN** it SHALL return the existing `use --force for non-interactive mode` error through the shared guard path
+
+### Requirement: Payment-send EOF aborts cleanly
+`lango payment send` SHALL treat EOF on its confirmation input as a clean denial.
+
+#### Scenario: Payment-send EOF aborts without submission
+- **WHEN** `lango payment send` prompts for confirmation and stdin reaches EOF before approval
+- **THEN** the command SHALL print `Aborted.`
+- **AND** it SHALL NOT submit a payment
+

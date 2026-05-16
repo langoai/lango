@@ -5,23 +5,14 @@ Provide a built-in CLI health check command that eliminates the need for externa
 ### Requirement: CLI health check command
 The system SHALL provide a `lango health` CLI command that checks the gateway health endpoint without external dependencies.
 
-#### Scenario: Successful health check
-- **WHEN** `lango health` is executed and the gateway is running on the default port
-- **THEN** the system SHALL send an HTTP GET request to `http://localhost:18789/health`
-- **AND** the system SHALL print "ok" and exit with code 0 when the response status is 200
+#### Scenario: Failed health check does not emit success payload
+- **WHEN** `lango health` returns a non-200 status or times out
+- **THEN** it SHALL return an error without emitting the `ok` success payload
 
-#### Scenario: Failed health check
-- **WHEN** `lango health` is executed and the gateway is not running or returns non-200
-- **THEN** the system SHALL exit with code 1
-- **AND** the system SHALL print an error message describing the failure
-
-#### Scenario: Custom port
-- **WHEN** `lango health --port 8080` is executed
-- **THEN** the system SHALL check `http://localhost:8080/health` instead of the default port
-
-#### Scenario: Request timeout
-- **WHEN** `lango health` is executed and the gateway does not respond within 5 seconds
-- **THEN** the system SHALL exit with code 1
+#### Scenario: Failed health check does not duplicate error output through the command writer
+- **WHEN** `lango health` returns a non-200 status or times out
+- **THEN** the command output stream SHALL remain empty
+- **AND** the returned error SHALL still describe the failure
 
 ### Requirement: Advanced feature hints in onboard flow
 The onboard flow SHALL display hints about advanced features after initial setup is complete. The hints SHALL inform users about agent memory, hooks, librarian, and learning system features that can be configured via settings or CLI.
@@ -59,6 +50,5 @@ The doctor command SHALL show classified cause metadata for recent failed multi-
 - **THEN** the `Multi-Agent` doctor check SHALL include `trace_id`, `outcome`, `error_code`, `cause_class`, and `summary`
 
 #### Scenario: Doctor JSON preserves cause metadata
-- **WHEN** `lango doctor --json` reports recent failed multi-agent traces
+- **WHEN** `lango doctor --output json` reports recent failed multi-agent traces
 - **THEN** the same classified fields SHALL be present in machine-readable output
-

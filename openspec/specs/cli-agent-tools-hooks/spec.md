@@ -5,19 +5,40 @@ Provides CLI commands for listing registered agent tools and displaying hook con
 
 ## Requirements
 
+### Requirement: Agent hooks output routing
+`lango agent hooks` SHALL route human-readable and JSON output through the Cobra command writer instead of writing directly to process stdout.
+
+#### Scenario: Agent hooks output uses the command writer
+- **WHEN** `lango agent hooks` renders text or JSON output
+- **THEN** the command SHALL write the full output through the Cobra command output writer
+- **AND** wrappers or tests that replace `cmd.OutOrStdout()` SHALL capture the command output
+
+### Requirement: Agent tools output routing
+`lango agent tools` SHALL route human-readable and JSON output through the Cobra command writer instead of writing directly to process stdout.
+
+#### Scenario: Agent tools output uses the command writer
+- **WHEN** `lango agent tools` renders text or JSON output
+- **THEN** the command SHALL write the full output through the Cobra command output writer
+- **AND** wrappers or tests that replace `cmd.OutOrStdout()` SHALL capture the command output
+
 ### Requirement: Agent tools command
-The system SHALL provide a `lango agent tools [--json]` command that lists all registered tools in the agent's tool catalog. The command SHALL use cfgLoader to load configuration and enumerate tools by name and description.
+The system SHALL provide a `lango agent tools [--output table|json] [--category <name>]` command that lists tool categories and their availability derived from configuration. The command SHALL use cfgLoader to load config and output category name, description, optional config key, and enabled state.
 
-#### Scenario: List tools in text format
+#### Scenario: List tool categories in text format
 - **WHEN** user runs `lango agent tools`
-- **THEN** system displays a table with NAME and DESCRIPTION columns for each registered tool
+- **THEN** system displays a table with CATEGORY, ENABLED, and DESCRIPTION columns for each known tool category
 
-#### Scenario: List tools in JSON format
-- **WHEN** user runs `lango agent tools --json`
-- **THEN** system outputs a JSON array of tool objects with name and description fields
+#### Scenario: List tool categories in JSON format
+- **WHEN** user runs `lango agent tools --output json`
+- **THEN** system outputs a JSON array of category objects with `name`, `description`, optional `config_key`, and `enabled` fields
+
+#### Scenario: Filter to one tool category
+- **WHEN** user runs `lango agent tools --category browser`
+- **THEN** system outputs only the browser category row or object when that category exists
+- **AND** outputs an empty result set if the named category does not exist
 
 ### Requirement: Agent hooks command
-The system SHALL provide a `lango agent hooks [--json]` command that displays the current hook configuration including enabled hooks, blocked commands, and active hook types. The command SHALL use cfgLoader for configuration. Additionally, the command SHALL build a `HookRegistry` from the loaded config via a public helper (`BuildHookRegistry`) and display the registry snapshot: each registered pre/post hook's name, priority, and wirable status. For `KnowledgeSaveHook`, the output SHALL include the active `SaveableTools` list. Existing config-only output fields SHALL remain unchanged for backward compatibility.
+The system SHALL provide a `lango agent hooks [--output table|json]` command that displays the current hook configuration including enabled hooks, blocked commands, and active hook types. The command SHALL use cfgLoader for configuration. Additionally, the command SHALL build a `HookRegistry` from the loaded config via a public helper (`BuildHookRegistry`) and display the registry snapshot: each registered pre/post hook's name, priority, and wirable status. For `KnowledgeSaveHook`, the output SHALL include the active `SaveableTools` list. Existing config-only output fields SHALL remain unchanged for backward compatibility.
 
 #### Scenario: Hooks enabled
 - **WHEN** user runs `lango agent hooks` with hooks.enabled set to true
@@ -31,7 +52,7 @@ The system SHALL provide a `lango agent hooks [--json]` command that displays th
 - **AND** system still displays the registry snapshot (SecurityFilter is always registered regardless of the enabled flag)
 
 #### Scenario: Hooks in JSON format
-- **WHEN** user runs `lango agent hooks --json`
+- **WHEN** user runs `lango agent hooks --output json`
 - **THEN** system outputs a JSON object with fields: enabled, securityFilter, accessControl, eventPublishing, knowledgeSave, blockedCommands
 - **AND** the JSON object includes a `registry` field containing `preHooks` and `postHooks` arrays, each entry having `name`, `priority`, and `wirable` fields
 - **AND** hooks with extended details (e.g. KnowledgeSaveHook) include a `details` object with hook-specific information

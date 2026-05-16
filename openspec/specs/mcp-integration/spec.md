@@ -19,6 +19,16 @@ Enable Lango to connect to external MCP (Model Context Protocol) servers and exp
 - MUST support global `defaultTimeout` (30s), `maxOutputTokens` (25000), `healthCheckInterval` (30s)
 - MUST merge configs from three scopes: profile < user (`~/.lango/mcp.json`) < project (`.lango-mcp.json`)
 
+#### Scenario: Configuration merges all supported scopes
+- **WHEN** MCP configuration is loaded from profile, user, and project scopes
+- **THEN** the system MUST merge those scopes in the documented order
+- **AND** preserve per-server transport, timeout, safety, and auth settings
+
+#### Scenario: MCP configuration merges documented scopes
+- **WHEN** MCP configuration is loaded from profile, user, and project scopes
+- **THEN** the system MUST merge those scopes in the documented order
+- **AND** preserve per-server transport, timeout, safety, and auth settings
+
 ### Connection Lifecycle
 
 - MUST connect to all enabled servers during app initialization
@@ -26,6 +36,16 @@ Enable Lango to connect to external MCP (Model Context Protocol) servers and exp
 - MUST support health checks via periodic `Ping()` with configurable interval
 - MUST auto-reconnect on failure with exponential backoff (capped at 30s)
 - MUST disconnect all servers on app shutdown via lifecycle registry (PriorityNetwork)
+
+#### Scenario: Connection failure does not block other servers
+- **WHEN** one enabled MCP server fails to connect during initialization
+- **THEN** the system MUST log a warning
+- **AND** continue with the remaining available servers
+
+#### Scenario: Connection failure does not block remaining servers
+- **WHEN** one enabled MCP server fails to connect during initialization
+- **THEN** the system MUST log a warning
+- **AND** continue with the remaining available servers
 
 ### Tool Adaptation
 
@@ -36,11 +56,31 @@ Enable Lango to connect to external MCP (Model Context Protocol) servers and exp
 - MUST truncate output exceeding `maxOutputTokens` (approximate: 4 chars/token)
 - MUST pass MCP tools through the full middleware chain (hooks, approval, learning)
 
+#### Scenario: MCP tools are adapted into agent tools
+- **WHEN** tools are discovered from a connected MCP server
+- **THEN** they MUST be exposed as `mcp__{serverName}__{toolName}`
+- **AND** preserve schema, safety level, timeout, truncation, and middleware behavior
+
+#### Scenario: MCP tools are adapted into agent tools
+- **WHEN** tools are discovered from a connected MCP server
+- **THEN** they MUST be exposed as `mcp__{serverName}__{toolName}`
+- **AND** preserve schema, safety level, timeout, truncation, and middleware behavior
+
 ### Management Tools
 
 - MUST provide `mcp_status` tool showing server connection states
 - MUST provide `mcp_tools` tool listing available MCP tools (with optional server filter)
 - MUST register MCP tools in tool catalog under "mcp" category
+
+#### Scenario: Management tools expose server and tool inventory
+- **WHEN** an operator queries MCP management tools
+- **THEN** `mcp_status` MUST report server connection states
+- **AND** `mcp_tools` MUST list available MCP tools with optional server filtering
+
+#### Scenario: Management tools expose server and tool inventory
+- **WHEN** an operator queries MCP management tools
+- **THEN** `mcp_status` MUST report server connection states
+- **AND** `mcp_tools` MUST list available MCP tools with optional server filtering
 
 ### CLI
 
@@ -52,16 +92,71 @@ Enable Lango to connect to external MCP (Model Context Protocol) servers and exp
 - MUST provide `lango mcp enable/disable <name>` to toggle servers
 - MUST support `--scope user|project` for add/remove/enable/disable operations
 
+#### Scenario: CLI manages MCP server lifecycle
+- **WHEN** an operator uses `lango mcp` subcommands
+- **THEN** the CLI MUST support listing, adding, removing, inspecting, testing, enabling, and disabling servers
+- **AND** apply scope-aware mutations where supported
+
+#### Scenario: MCP get output uses the command writer
+- **WHEN** an operator runs `lango mcp get <name>`
+- **THEN** the command SHALL write the full output through the Cobra command output writer
+- **AND** wrappers or tests that replace `cmd.OutOrStdout()` SHALL capture the command output
+
+#### Scenario: MCP list output uses the command writer
+- **WHEN** an operator runs `lango mcp list`
+- **THEN** the command SHALL write the full output through the Cobra command output writer
+- **AND** wrappers or tests that replace `cmd.OutOrStdout()` SHALL capture the command output
+
+#### Scenario: MCP enable/disable output uses the command writer
+- **WHEN** an operator runs `lango mcp enable <name>` or `lango mcp disable <name>`
+- **THEN** the command SHALL write the full confirmation output through the Cobra command output writer
+- **AND** wrappers or tests that replace `cmd.OutOrStdout()` SHALL capture the command output
+
+#### Scenario: MCP add/remove output uses the command writer
+- **WHEN** an operator runs `lango mcp add <name>` or `lango mcp remove <name>`
+- **THEN** the command SHALL write the full confirmation output through the Cobra command output writer
+- **AND** wrappers or tests that replace `cmd.OutOrStdout()` SHALL capture the command output
+
+#### Scenario: MCP test output uses the command writer
+- **WHEN** an operator runs `lango mcp test <name>`
+- **THEN** the command SHALL write the full diagnostic output through the Cobra command output writer
+- **AND** wrappers or tests that replace `cmd.OutOrStdout()` SHALL capture the command output
+
+#### Scenario: CLI manages MCP server lifecycle
+- **WHEN** an operator uses `lango mcp` subcommands
+- **THEN** the CLI MUST support listing, adding, removing, inspecting, testing, enabling, and disabling servers
+- **AND** apply scope-aware mutations where supported
+
 ### TUI Settings
 
 - MCP integration SHALL be configurable through both CLI commands and the TUI settings editor
 - Global settings (enabled, timeouts, reconnection) SHALL be available in the TUI settings form under Infrastructure > MCP Servers
 - Individual server management (add/remove/enable/disable) SHALL remain CLI-only via `lango mcp` subcommands
 
+#### Scenario: TUI exposes global MCP settings only
+- **WHEN** an operator uses the settings editor for MCP configuration
+- **THEN** the TUI SHALL expose global MCP settings
+- **AND** per-server lifecycle actions SHALL remain CLI-only
+
+#### Scenario: TUI exposes global MCP settings only
+- **WHEN** an operator uses the settings editor for MCP configuration
+- **THEN** the TUI SHALL expose global MCP settings
+- **AND** per-server lifecycle actions SHALL remain CLI-only
+
 ### Security
 
 - MUST register MCP server auth headers with the secret scanner
 - MUST block `lango mcp` from agent shell execution via `blockLangoExec` guard
+
+#### Scenario: MCP secrets remain behind scanner and exec guard
+- **WHEN** MCP auth headers are configured and shell execution is evaluated
+- **THEN** the secret scanner MUST register the headers
+- **AND** `blockLangoExec` MUST block agent shell execution of `lango mcp`
+
+#### Scenario: MCP secrets remain behind scanner and exec guard
+- **WHEN** MCP auth headers are configured and shell execution is evaluated
+- **THEN** the secret scanner MUST register the headers
+- **AND** `blockLangoExec` MUST block agent shell execution of `lango mcp`
 
 ### Requirement: MCP stdio server OS sandbox
 The MCP `ServerConnection` SHALL support optional OS-level sandbox for stdio server processes via `SetOSIsolator(iso, dataRoot)`, applied at transport creation time with `MCPServerPolicy(dataRoot)` (network=allow, filesystem restricted, lango control-plane denied).

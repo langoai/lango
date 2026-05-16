@@ -3,15 +3,15 @@
 Multi-agent orchestration tool routing — prefix-based tool partitioning, agent spec registry, and orchestrator delegation protocol.
 ## Requirements
 ### Requirement: AgentSpec registry defines sub-agent identity and routing metadata
-The system SHALL define an `AgentSpec` type with fields: Name, Description, Instruction, Prefixes, Keywords, Accepts, Returns, CannotDo, and AlwaysInclude. A `var agentSpecs` registry SHALL contain specs for all 6 sub-agents in creation order.
+The system SHALL define an `AgentSpec` type with fields: Name, Description, Instruction, Prefixes, Keywords, Accepts, Returns, CannotDo, and AlwaysInclude. A `var agentSpecs` registry SHALL contain specs for all 8 built-in teammates in creation order.
 
 #### Scenario: AgentSpec type has all required fields
 - **WHEN** the AgentSpec type is defined
 - **THEN** it SHALL include Name (string), Description (string), Instruction (string), Prefixes ([]string), Keywords ([]string), Accepts (string), Returns (string), CannotDo ([]string), and AlwaysInclude (bool)
 
-#### Scenario: Registry contains exactly 6 specs
+#### Scenario: Registry contains exactly 8 specs
 - **WHEN** agentSpecs is initialized
-- **THEN** it SHALL contain specs for operator, navigator, vault, librarian, planner, and chronicler in that order
+- **THEN** it SHALL contain specs for operator, navigator, vault, librarian, automator, planner, chronicler, and ontologist in that order
 
 #### Scenario: Each spec has unique name
 - **WHEN** agentSpecs is iterated
@@ -48,16 +48,16 @@ The orchestrator instruction SHALL include a 5-step decision protocol: CLASSIFY,
 - **WHEN** the orchestrator instruction is generated
 - **THEN** it SHALL contain the steps CLASSIFY, MATCH, SELECT, VERIFY, and DELEGATE
 
-### Requirement: Reject protocol for misrouted tasks
-Each sub-agent instruction SHALL include a `[REJECT]` response protocol. When a sub-agent receives a task outside its capabilities, it SHALL respond with `[REJECT] This task requires <correct_agent>. I handle: <capabilities>.`
+### Requirement: Compatibility reject protocol remains available outside built-in teammate prompts
+The runtime SHALL preserve `[REJECT]` detection and retry handling as a compatibility safety net for legacy or remote sub-agent paths. Built-in teammate prompt overrides are governed separately and SHALL not require textual `[REJECT]` markers.
 
-#### Scenario: All sub-agent instructions contain reject protocol
-- **WHEN** any sub-agent's instruction is checked
-- **THEN** it SHALL contain the string `[REJECT]`
+#### Scenario: Compatibility rejection is still handled
+- **WHEN** a legacy or remote sub-agent response contains `[REJECT]`
+- **THEN** the orchestrator/runtime SHALL try the next most relevant agent or handle the task directly
 
-#### Scenario: Orchestrator handles rejections
-- **WHEN** a sub-agent rejects a task
-- **THEN** the orchestrator SHALL try the next most relevant agent or handle directly
+#### Scenario: Built-in prompt overrides do not require reject text
+- **WHEN** a built-in teammate prompt override is checked
+- **THEN** it SHALL NOT require the string `[REJECT]`
 
 ### Requirement: Keywords for routing decisions
 Each AgentSpec SHALL define keywords that the orchestrator uses to match user requests to agents.
@@ -195,4 +195,3 @@ All prompt override files (`IDENTITY.md`, `AGENT.md`) SHALL continue to forbid `
 #### Scenario: Output handling in non-planner overrides remains required
 - **WHEN** a non-planner prompt override file is checked
 - **THEN** it SHALL contain `## Output Handling` section with `tool_output_get` guidance
-

@@ -1,7 +1,7 @@
 # inline-emergency-compaction Specification
 
 ## Purpose
-TBD - created by archiving change ux-elastic-turns. Update Purpose after archive.
+Define inline emergency session compaction behavior when prompt context approaches the model window limit.
 ## Requirements
 ### Requirement: SessionCompactor interface
 The system SHALL define a `SessionCompactor` interface with method `CompactMessages(key string, upToIndex int, summary string) error`. This interface SHALL be injectable into `ContextAwareModelAdapter` via a `WithSessionCompactor()` method following the existing `WithMemory()` pattern.
@@ -43,4 +43,3 @@ The `app/wiring.go` module SHALL inject the session `EntStore` as a `SessionComp
 #### Scenario: Compactor wired at startup
 - **WHEN** the application initializes and creates a `ContextAwareModelAdapter`
 - **THEN** the adapter SHALL receive the `EntStore` as its `SessionCompactor`
-

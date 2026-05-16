@@ -12,7 +12,7 @@ The system SHALL provide a `lango p2p reputation` CLI command that queries peer 
 - **THEN** system displays trust score, successful exchanges, failed exchanges, timeout count, first seen date, and last interaction date in table format
 
 #### Scenario: Query reputation with JSON output
-- **WHEN** user runs `lango p2p reputation --peer-did "did:lango:abc123" --json`
+- **WHEN** user runs `lango p2p reputation --peer-did "did:lango:abc123" --output json`
 - **THEN** system outputs full PeerDetails as JSON to stdout
 
 #### Scenario: Query reputation for unknown peer

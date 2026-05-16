@@ -94,9 +94,9 @@ All config-exposed settings must have corresponding runtime behavior. No config 
 ## Dead Code
 
 ### Companion Discovery (deleted)
-- `internal/companion/discovery.go` (254 LOC) deleted
-- mDNS service discovery was never imported; WebSocket companion connections use Gateway directly
-- `zeroconf` dependency removed via `go mod tidy`
+- The legacy dedicated companion discovery package was removed
+- Automatic companion discovery is not a shipped runtime surface; gateway-backed `/companion` connections are the active model
+- Historical mDNS-related transitive dependencies are not evidence of a production companion discovery feature
 
 ### PairingEnabled (removed)
 - `TelegramConfig.PairingEnabled` field removed from config, telegram, and channels packages

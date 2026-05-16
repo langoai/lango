@@ -1,7 +1,7 @@
 # extension-pack-core Specification
 
 ## Purpose
-TBD - created by archiving change ux-extension-packs. Update Purpose after archive.
+Define manifest, loading, integrity, and merge behavior for extension packs.
 ## Requirements
 ### Requirement: Extension pack manifest schema v1
 The system SHALL parse `extension.yaml` manifests conforming to the `lango.extension/v1` schema. The schema SHALL be a closed set: a v1 parser encountering an unknown top-level field under `contents` (e.g., `tools`, `mcp`, `providers`) SHALL reject the manifest with a validation error referencing the offending field. Allowed `contents` keys in v1 are `skills`, `modes`, and `prompts`.
@@ -271,4 +271,3 @@ The `plannedWrites` function SHALL enumerate all files in skill directories, not
 #### Scenario: Skill directory with sibling resources
 - **WHEN** a pack contains `skills/x/SKILL.md` and `skills/x/references/guide.md`
 - **THEN** `extension inspect` reports both files in the planned writes list
-

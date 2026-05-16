@@ -1,7 +1,7 @@
 # always-on-fts5 Specification
 
 ## Purpose
-TBD - created by archiving change always-on-fts5. Update Purpose after archive.
+Define the default runtime contract that SQLite FTS5 support is always available without a dedicated build tag.
 ## Requirements
 ### Requirement: Default runtime includes FTS5 without a build tag
 The standard Lango build and test workflow MUST include SQLite FTS5 support without requiring a dedicated `fts5` build tag.
@@ -15,4 +15,3 @@ The standard Lango build and test workflow MUST include SQLite FTS5 support with
 - **WHEN** a developer wants the legacy sqlite-vec integration
 - **THEN** they enable it with the `vec` build tag
 - **AND** FTS5 remains part of the default runtime rather than a separate tag
-

@@ -6,7 +6,7 @@ Provides CLI commands for viewing the approval system status, including approval
 ## Requirements
 
 ### Requirement: Approval status command
-The system SHALL provide a `lango approval status [--json]` command that displays the current approval system status including approval mode, pending request count, and configured approval channels. The command SHALL use bootLoader because it reads approval provider state from the runtime.
+The system SHALL provide a `lango approval status [--output table|json]` command that displays the current approval system status including approval mode, pending request count, and configured approval channels. The command SHALL use cfgLoader.
 
 #### Scenario: Approval enabled
 - **WHEN** user runs `lango approval status` with approval system enabled
@@ -17,8 +17,18 @@ The system SHALL provide a `lango approval status [--json]` command that display
 - **THEN** system displays "Approval system is disabled"
 
 #### Scenario: Approval status in JSON format
-- **WHEN** user runs `lango approval status --json`
-- **THEN** system outputs a JSON object with fields: enabled, mode, pendingCount, channels
+- **WHEN** user runs `lango approval status --output json`
+- **THEN** system outputs a JSON object with approval-interceptor status fields
+
+#### Scenario: Approval status rejects unknown output before config load
+- **WHEN** user runs `lango approval status --output yaml`
+- **THEN** the command SHALL return an actionable unknown-output-format error
+- **AND** it SHALL NOT invoke the config loader
+
+#### Scenario: Approval command output uses the command writer
+- **WHEN** `lango approval status` renders table or JSON output
+- **THEN** it SHALL write the full output through the Cobra command output writer
+- **AND** wrappers or tests that replace `cmd.OutOrStdout()` SHALL capture the command output
 
 ### Requirement: Approval command entry point
 The system SHALL provide a `lango approval` command group. When invoked without a subcommand, it SHALL display help text listing the status subcommand.

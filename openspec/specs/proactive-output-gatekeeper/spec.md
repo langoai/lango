@@ -84,6 +84,10 @@ The system SHALL provide a `tool_output_get` tool with three modes: `full` (retu
 - **WHEN** `tool_output_get` is called with mode `grep` and a pattern
 - **THEN** matching lines SHALL be returned
 
+#### Scenario: Missing output ref or grep pattern
+- **WHEN** `tool_output_get` is called without `ref`, or with mode `grep` but without `pattern`
+- **THEN** the tool SHALL return an actionable validation error before stored-output lookup begins
+
 ### Requirement: Configuration
 The system SHALL support `tools.outputManager` configuration with `enabled` (*bool, default true), `tokenBudget` (int, default 2000), `headRatio` (float64, default 0.7), and `tailRatio` (float64, default 0.3).
 

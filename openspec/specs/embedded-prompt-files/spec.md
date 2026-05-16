@@ -5,14 +5,20 @@ Production-quality default prompts stored as `.md` files and embedded into the b
 ## Requirements
 
 ### Requirement: Prompt files embedded via go:embed
-The system SHALL embed all default prompt `.md` files into the binary at build time using Go's `embed.FS`. The `prompts` package SHALL expose a public `FS` variable of type `embed.FS` containing all `.md` files in the package directory.
+The system SHALL embed all default prompt `.md` files into the binary at build time using Go's `embed.FS`. The `prompts` package SHALL expose a public `FS` variable of type `embed.FS` containing the top-level prompt files and the built-in per-agent `agents/*/IDENTITY.md` files.
 
-#### Scenario: All four prompt files are embedded
+#### Scenario: Global prompt files are embedded
 - **WHEN** the binary is built
 - **THEN** `prompts.FS.ReadFile("AGENTS.md")` SHALL return non-empty content
 - **AND** `prompts.FS.ReadFile("SAFETY.md")` SHALL return non-empty content
 - **AND** `prompts.FS.ReadFile("CONVERSATION_RULES.md")` SHALL return non-empty content
 - **AND** `prompts.FS.ReadFile("TOOL_USAGE.md")` SHALL return non-empty content
+
+#### Scenario: Built-in per-agent identity files are embedded
+- **WHEN** the binary is built
+- **THEN** `prompts.FS.ReadFile("agents/operator/IDENTITY.md")` SHALL return non-empty content
+- **AND** `prompts.FS.ReadFile("agents/navigator/IDENTITY.md")` SHALL return non-empty content
+- **AND** the remaining built-in agent identity files SHALL also be present under `agents/<name>/IDENTITY.md`
 
 ### Requirement: DefaultBuilder reads from embedded FS
 `DefaultBuilder()` SHALL read prompt content from `prompts.FS` instead of hardcoded Go constants. The function signature and return type SHALL remain unchanged.

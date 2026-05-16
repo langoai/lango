@@ -10,34 +10,38 @@ Capability spec for package-consolidation. See requirements below for scope and 
 ## Requirements
 
 ### R1: ctxutil → types
-- Move `Detach()` function and `detachedCtx` type from `internal/ctxutil/` to `internal/types/context.go`
-- Move tests to `internal/types/context_test.go`
-- Update all importers to use new path
-- Delete `internal/ctxutil/` directory
+The system SHALL keep `DetachContext()` and its supporting implementation in `internal/types/context.go` with tests in `internal/types/context_test.go`, and current importers SHALL use that path.
 
-#### Scenarios
-- **Background task**: `types.DetachContext(ctx)` preserves `Value()` but detaches from cancellation.
-- **No import cycle**: `types` package has no upstream dependencies.
+#### Scenario: Background task context detach behavior is preserved
+- **WHEN** `types.DetachContext(ctx)` is used after the consolidation
+- **THEN** it SHALL preserve `Value()` lookups
+- **AND** it SHALL detach from parent cancellation
+
+#### Scenario: types package remains cycle-free
+- **WHEN** the consolidated `types` package is compiled
+- **THEN** it SHALL not gain upstream import cycles from the moved context helpers
 
 ### R2: passphrase → security/passphrase
-- Move all files from `internal/passphrase/` to `internal/security/passphrase/`
-- Package name remains `passphrase`
-- Update all importers (bootstrap.go, bootstrap_test.go)
-- Delete `internal/passphrase/` directory
+The system SHALL keep passphrase acquisition, keyfile, stdin, and interactive helpers in `internal/security/passphrase/` under the `passphrase` package name.
 
-#### Scenarios
-- **Passphrase acquisition**: Priority order (keyring → keyfile → interactive → stdin) unchanged.
-- **Keyfile operations**: Read/Write/Shred/ValidatePermissions unchanged.
+#### Scenario: Passphrase acquisition order is preserved
+- **WHEN** passphrase acquisition runs after the package move
+- **THEN** the priority order SHALL remain keyring → keyfile → interactive → stdin
+
+#### Scenario: Keyfile helpers remain behaviorally unchanged
+- **WHEN** read, write, shred, or permission validation helpers are called after consolidation
+- **THEN** their observable behavior SHALL remain unchanged
 
 ### R3: zkp → p2p/zkp
-- Move all files from `internal/zkp/` to `internal/p2p/zkp/` (including `circuits/` subdirectory)
-- Package names remain `zkp` and `circuits`
-- Update all importers (wiring.go, internal cross-references)
-- Delete `internal/zkp/` directory
+The system SHALL keep ZKP implementation files under `internal/p2p/zkp/` (including `circuits/`) with package names `zkp` and `circuits`, and current importers SHALL use that path.
 
-#### Scenarios
-- **ZKP proving/verifying**: `ProverService` functionality unchanged.
-- **Circuit compilation**: All 4 circuits (ownership, attestation, capability, balance) work identically.
+#### Scenario: ZKP proving and verifying behavior is preserved
+- **WHEN** `ProverService` is used after the move to `internal/p2p/zkp/`
+- **THEN** its proving and verification behavior SHALL remain unchanged
+
+#### Scenario: All moved circuits still compile and run
+- **WHEN** the ownership, attestation, capability, and balance circuits are compiled after consolidation
+- **THEN** they SHALL behave identically to the pre-move versions
 
 ## Constraints
 - Zero functional changes — only import paths change

@@ -11,30 +11,39 @@ Capability spec for webchat-playground. See requirements below for scope and beh
 ## Requirements
 
 ### Serving
+The gateway SHALL serve the embedded playground HTML at `GET /playground` when HTTP serving is enabled.
 
+#### Scenario: Playground HTML is served from the binary
 - **GIVEN** `server.httpEnabled` is `true`
 - **WHEN** a client requests `GET /playground`
 - **THEN** the server SHALL return the embedded HTML with `Content-Type: text/html; charset=utf-8`
 - **AND** the HTML SHALL be embedded in the binary using Go's `go:embed` directive
 
 ### Authentication
+The playground SHALL follow the same authentication posture as the existing WebSocket and status surfaces.
 
+#### Scenario: OIDC-protected playground
 - **GIVEN** OIDC authentication is configured
-- **THEN** `/playground` SHALL require authentication (same middleware as `/ws` and `/status`)
-- **GIVEN** OIDC is not configured (dev mode)
+- **WHEN** a user requests `/playground`
+- **THEN** the route SHALL require authentication using the same middleware as `/ws` and `/status`
+
+#### Scenario: Dev-mode playground remains open
+- **GIVEN** OIDC authentication is not configured
+- **WHEN** a user requests `/playground`
 - **THEN** `/playground` SHALL be accessible without authentication
 
 ### WebSocket Integration
+The playground SHALL connect to the existing WebSocket JSON-RPC surface rather than inventing a second chat transport.
 
+#### Scenario: Playground uses the existing WebSocket chat protocol
 - **WHEN** the playground page loads
 - **THEN** it SHALL establish a WebSocket connection to `/ws` using `location`-based URL construction
 - **AND** it SHALL use the JSON-RPC 2.0 `chat.message` method for sending messages
-- **AND** it SHALL handle the following events: `agent.thinking`, `agent.chunk`, `agent.done`, `agent.error`, `agent.progress`, `agent.warning`
+- **AND** it SHALL handle `agent.thinking`, `agent.chunk`, `agent.done`, `agent.error`, `agent.progress`, and `agent.warning` events
 
 ### UI Capabilities
+The playground SHALL provide a lightweight browser chat UI without external CDN dependencies.
 
-- The playground SHALL render basic markdown: code blocks, inline code, bold, italic
-- The playground SHALL support dark and light modes via `prefers-color-scheme`
-- The playground SHALL display connection status (connected, disconnected, reconnecting)
-- The playground SHALL auto-reconnect with exponential backoff on disconnect
-- The playground SHALL have zero external CDN dependencies
+#### Scenario: Playground UI provides core chat affordances
+- **WHEN** a user interacts with the playground
+- **THEN** it SHALL render basic markdown, support dark and light modes, display connection status, auto-reconnect with exponential backoff, and avoid external CDN dependencies

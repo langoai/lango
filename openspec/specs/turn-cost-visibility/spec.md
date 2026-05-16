@@ -1,7 +1,7 @@
 # turn-cost-visibility Specification
 
 ## Purpose
-TBD - created by archiving change ux-capability-concierge. Update Purpose after archive.
+Define model-pricing lookup and estimated turn-cost visibility across events, TUI surfaces, and slash-command summaries.
 ## Requirements
 ### Requirement: Model pricing registry
 The system SHALL provide `internal/provider/pricing.go` with a `ModelPrice{InputPerMillion, OutputPerMillion float64}` struct and a `PriceFor(model string) (ModelPrice, bool)` function. The registry SHALL include static entries for the primary supported models (Claude Opus, Claude Sonnet, Claude Haiku, Gemini 2.5 Pro, GPT-4o or equivalents). Unknown models SHALL return `(ModelPrice{}, false)`.
@@ -49,4 +49,3 @@ The TUI SHALL support a `/cost` slash command that prints the session's cumulati
 #### Scenario: /cost summarizes session
 - **WHEN** the user types `/cost` after several turns
 - **THEN** the TUI SHALL print a summary with total input tokens, total output tokens, and total estimated cost in USD
-

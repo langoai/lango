@@ -1,7 +1,7 @@
 # turn-retry-loop Specification
 
 ## Purpose
-TBD - created by archiving change ux-elastic-turns. Update Purpose after archive.
+Define recovery-action mapping and retry-loop behavior for retryable turn failures.
 ## Requirements
 ### Requirement: RecoveryAction type and mapping
 The system SHALL define a `RecoveryAction` type with values `Retry` and `AbortWithHint`. A `recoveryActionFor(FailureClassification) RecoveryAction` function SHALL map cause classes to actions: `CauseProviderRateLimit` → `Retry`, `CauseProviderTransient` → `Retry`, `CauseProviderConnection` → `Retry`, `CauseProviderAuth` → `AbortWithHint`. Unmapped causes SHALL return `nil` (no retry).
@@ -46,4 +46,3 @@ The Runner SHALL emit a `RecoveryInfo` event for each retry attempt. The event S
 - **WHEN** the runner retries after a `CauseProviderRateLimit` failure
 - **THEN** a `RecoveryInfo` event SHALL be emitted with the attempt number and cause class
 - **AND** the event SHALL be recorded in the turn trace via `recordRecovery()`
-

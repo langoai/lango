@@ -38,6 +38,15 @@ The system SHALL provide 4 sentinel tools: sentinel_status (safe), sentinel_aler
 - **WHEN** agent calls sentinel_status
 - **THEN** system returns running state, total alerts count, active alerts count, and detector names
 
+#### Scenario: Missing alertId fails before acknowledgment
+- **WHEN** the agent invokes `sentinel_acknowledge` without `alertId`
+- **THEN** the tool SHALL return an actionable missing-parameter error before alert acknowledgment begins
+
+#### Scenario: Acknowledge capability metadata is not read-only
+- **WHEN** `sentinel_acknowledge` is registered
+- **THEN** its capability metadata SHALL classify it as a management/write path
+- **AND** it SHALL NOT be marked read-only
+
 ### Requirement: Sentinel skill definition
 The system SHALL provide a `security-sentinel.yaml` skill that allows the agent to monitor escrow activity, with allowed tools: sentinel_status, sentinel_alerts, sentinel_config, sentinel_acknowledge, escrow_status, escrow_list.
 
@@ -57,7 +66,7 @@ The system SHALL list all 4 `sentinel_*` tools in `prompts/TOOL_USAGE.md`: `sent
 
 #### Scenario: Sentinel tool names match code
 - **WHEN** the agent reads TOOL_USAGE.md
-- **THEN** tool names match those registered in `internal/app/tools_sentinel.go`
+- **THEN** tool names match those registered by `sentinel.BuildTools()` in `internal/economy/escrow/sentinel/tools.go`
 
 ### Requirement: Sentinel CLI documentation
 The system SHALL document the `lango economy escrow sentinel status` command in `docs/cli/economy.md`.
@@ -66,10 +75,14 @@ The system SHALL document the `lango economy escrow sentinel status` command in 
 - **WHEN** a user reads `docs/cli/economy.md`
 - **THEN** they find the sentinel status command with description and output format
 
+#### Scenario: Sentinel CLI docs do not imply a nonexistent alerts subcommand
+- **WHEN** a user reads the sentinel status guidance in `docs/cli/economy.md` or runs `lango economy escrow sentinel status`
+- **THEN** the guidance SHALL point to the running server plus the `sentinel_alerts` agent tool
+- **AND** it SHALL NOT mention a nonexistent `lango economy escrow sentinel alerts` CLI subcommand
+
 ### Requirement: README reflects sentinel
 The system SHALL mention Security Sentinel anomaly detection in `README.md` features.
 
 #### Scenario: Sentinel in README
 - **WHEN** a user reads README.md
 - **THEN** Security Sentinel is mentioned in the features section
-

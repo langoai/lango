@@ -1,7 +1,7 @@
 # cli-bootstrap-factory Specification
 
 ## Purpose
-TBD - created by archiving change config-bootstrap-regression-fixes. Update Purpose after archive.
+Define the shared CLI bootstrap loader contract used by CLI commands.
 ## Requirements
 ### Requirement: Shared CLI bootstrap loader package
 The system SHALL provide a `cliutil` (or equivalent) package that exposes shared bootstrap loader functions for use by all CLI commands. This package SHALL encapsulate the bootstrap lifecycle so that individual CLI commands do not duplicate bootstrap logic.
@@ -56,4 +56,3 @@ All CLI commands that require bootstrap (config get, config set, run, doctor, et
 #### Scenario: No direct bootstrap calls in cmd/ package
 - **WHEN** the codebase is audited
 - **THEN** no file in `cmd/` SHALL call `bootstrap.Run()` directly; all bootstrap access SHALL go through the shared loader
-

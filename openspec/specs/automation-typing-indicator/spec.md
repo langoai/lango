@@ -1,7 +1,7 @@
 # automation-typing-indicator Specification
 
 ## Purpose
-TBD - created by archiving change automation-typing-indicator. Update Purpose after archive.
+Define typing-indicator behavior for automation deliveries across supported channel adapters.
 ## Requirements
 ### Requirement: Automation typing indicator dispatch
 The `channelSender` SHALL implement a `StartTyping(ctx, channel) (func(), error)` method that dispatches typing indicator requests to the appropriate channel adapter based on the delivery target format (`channel:id`).
@@ -32,4 +32,3 @@ The `StartTyping` method SHALL always return a non-nil stop function, even on er
 #### Scenario: Error returns no-op stop
 - **WHEN** `StartTyping` encounters a parse error (e.g., invalid chat ID)
 - **THEN** the system SHALL return a no-op stop function alongside the error
-

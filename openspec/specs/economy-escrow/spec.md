@@ -1,9 +1,7 @@
 ## Purpose
 
 Capability spec for economy-escrow. See requirements below for scope and behavior contracts.
-
 ## Requirements
-
 ### Requirement: Escrow state machine
 The system SHALL manage escrow lifecycle in `internal/economy/escrow/` through the following state machine:
 
@@ -178,7 +176,6 @@ The escrow package SHALL export a `NoopSettler` struct that implements `Settleme
 - **WHEN** the escrow package is compiled
 - **THEN** a `var _ SettlementExecutor = (*NoopSettler)(nil)` check SHALL verify interface compliance
 
-
 ### Requirement: Store ListByStatusBefore filtered query
 The escrow `Store` interface SHALL provide a `ListByStatusBefore(status EscrowStatus, before time.Time) []*EscrowEntry` method that returns only escrows matching the given status AND created before the specified time.
 
@@ -222,3 +219,13 @@ The escrow package SHALL define a `TransactionType` string type with constants `
 #### Scenario: Transaction type usage
 - **WHEN** escrow store records a transaction
 - **THEN** it uses `TxDeposit`/`TxRelease`/`TxRefund` constants instead of string literals
+
+### Requirement: Economy escrow tools keep actionable wrapper parameter guards
+
+Economy-layer escrow tools SHALL reject missing required wrapper inputs with actionable parameter errors before downstream escrow engine logic begins.
+
+#### Scenario: Economy escrow tools reject missing required inputs
+- **WHEN** `economy_escrow_create`, `economy_escrow_milestone`, `economy_escrow_status`, `economy_escrow_release`, or `economy_escrow_dispute` is invoked without one of its declared required inputs
+- **THEN** the tool SHALL return an actionable missing-parameter error
+- **AND** SHALL not proceed into downstream escrow engine operations
+

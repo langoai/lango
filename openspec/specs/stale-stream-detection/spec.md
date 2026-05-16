@@ -1,7 +1,7 @@
 # stale-stream-detection Specification
 
 ## Purpose
-TBD - created by archiving change ux-elastic-turns. Update Purpose after archive.
+Define stale-stream watchdog detection, cancellation, and retry behavior during streaming turns.
 ## Requirements
 ### Requirement: Stale stream watchdog timer
 The `Runner` SHALL maintain a configurable `staleTimeout` (default 30 seconds). A watchdog timer SHALL be started when the first streaming chunk arrives. Each subsequent chunk SHALL reset the timer. If the timer fires (no chunk for `staleTimeout`), the current attempt context SHALL be cancelled.
@@ -34,4 +34,3 @@ The `staleTimeout` SHALL be configurable via `Runner` configuration. If not set,
 #### Scenario: Default stale timeout
 - **WHEN** `Runner` is configured without a `staleTimeout` value
 - **THEN** the watchdog SHALL use 30 seconds as the default
-

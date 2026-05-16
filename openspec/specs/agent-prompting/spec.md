@@ -53,6 +53,46 @@ The TOOL_USAGE.md prompt SHALL include a "Tool Selection Priority" section that 
 - **AND** it SHALL also be instructed to fall back to `browser_navigate` with a search URL plus `browser_extract` in `search_results` mode when `browser_search` is unavailable
 - **AND** it SHALL be instructed to continue with low-level `browser_action` or `eval` instead of stopping if equivalent browser tools are still available
 
+#### Scenario: Browser action input guidance
+- **WHEN** the agent processes browser guidance in TOOL_USAGE.md or navigator-specific instructions
+- **THEN** it SHALL be instructed that `browser_action` click/get_text/get_element_info/wait require `selector`
+- **AND** it SHALL be instructed that `type` requires both `selector` and `text`
+- **AND** it SHALL be instructed that `eval` requires JavaScript in `text`
+
+#### Scenario: Browser search and navigate input guidance
+- **WHEN** the agent processes browser guidance in TOOL_USAGE.md or navigator-specific instructions
+- **THEN** it SHALL be instructed that `browser_search` requires `query`
+- **AND** it SHALL be instructed that `browser_navigate` requires `url`
+
+#### Scenario: Web retrieval guidance
+- **WHEN** the agent processes TOOL_USAGE.md or librarian-specific instructions
+- **THEN** it SHALL be instructed that `web_search` is for lightweight search without browser sessions
+- **AND** it SHALL be instructed that `web_fetch` is for single-URL text/html/markdown extraction without browser interaction
+- **AND** it SHALL be instructed that `web_search` requires `query` and `web_fetch` requires `url`
+
+#### Scenario: Background task input guidance
+- **WHEN** the agent processes TOOL_USAGE.md or automator-specific instructions
+- **THEN** it SHALL be instructed that `bg_submit` requires `prompt`
+- **AND** it SHALL be instructed that `bg_status`, `bg_result`, and `bg_cancel` require `task_id`
+
+#### Scenario: Workflow input guidance
+- **WHEN** the agent processes TOOL_USAGE.md or automator-specific instructions
+- **THEN** it SHALL be instructed that `workflow_status` and `workflow_cancel` require `run_id`
+- **AND** it SHALL be instructed that `workflow_save` requires both `name` and `yaml_content`
+
+#### Scenario: Graph and agent-memory input guidance
+- **WHEN** the agent processes TOOL_USAGE.md
+- **THEN** it SHALL be instructed that `graph_traverse` requires `start_node`
+- **AND** it SHALL be instructed that `graph_query` requires `subject` or `object`
+- **AND** it SHALL be instructed that `memory_agent_save` requires `key` and `content`
+- **AND** it SHALL be instructed that `memory_agent_recall` requires `query`
+- **AND** it SHALL be instructed that `memory_agent_forget` requires `key`
+
+#### Scenario: Cron input guidance
+- **WHEN** the agent processes TOOL_USAGE.md or automator-specific instructions
+- **THEN** it SHALL be instructed that `cron_add` requires `name`, `schedule_type`, `schedule`, and `prompt`
+- **AND** it SHALL be instructed that `cron_pause`, `cron_resume`, and `cron_remove` require `id`
+
 #### Scenario: Bounded browser search guidance
 - **WHEN** the agent processes browser guidance in TOOL_USAGE.md
 - **THEN** it SHALL use imperative language: "ONCE", "EXACTLY once", "NEVER more than twice"

@@ -1,35 +1,13 @@
 ## Purpose
 
 Capability spec for passphrase-acquisition. See requirements below for scope and behavior contracts.
-
 ## Requirements
-
 ### Requirement: Passphrase acquisition priority chain
 The system SHALL acquire a passphrase using the following priority: (1) hardware keyring (Touch ID / TPM), (2) keyfile at `~/.lango/keyfile`, (3) interactive terminal prompt, (4) stdin pipe. The system SHALL return an error if no source is available.
 
-#### Scenario: Keyfile exists with correct permissions
-- **WHEN** a keyfile exists at the configured path with 0600 permissions
-- **THEN** the passphrase is read from the file and `SourceKeyfile` is returned
-
-#### Scenario: Keyfile has wrong permissions
-- **WHEN** a keyfile exists but does not have 0600 permissions
-- **THEN** the keyfile is skipped and the next source is tried
-
-#### Scenario: Interactive terminal available
-- **WHEN** no keyfile is available and stdin is a terminal
-- **THEN** the user is prompted for a passphrase via hidden input and `SourceInteractive` is returned
-
-#### Scenario: New passphrase creation
-- **WHEN** `AllowCreation` is true and interactive terminal is used
-- **THEN** the user is prompted twice (entry + confirmation) and the passphrase must match
-
-#### Scenario: Stdin pipe
-- **WHEN** no keyfile is available and stdin is a pipe (not a terminal)
-- **THEN** one line is read from stdin and `SourceStdin` is returned
-
-#### Scenario: No source available
-- **WHEN** no keyfile exists, stdin is not a terminal, and stdin pipe is empty
-- **THEN** the system returns an error
+#### Scenario: Empty stdin pipe is treated as empty passphrase input
+- **WHEN** the stdin-pipe passphrase path reaches EOF without reading any passphrase bytes
+- **THEN** it SHALL return an empty-input passphrase error instead of a raw read failure
 
 ### Requirement: Log keyring read errors to stderr
 When `passphrase.Acquire()` attempts to read from the OS keyring and receives an error other than `ErrNotFound`, it SHALL write a warning to stderr in the format: `warning: keyring read failed: <error>`. The function SHALL still fall through to the next passphrase source (keyfile, interactive, stdin).
@@ -38,6 +16,17 @@ When `passphrase.Acquire()` attempts to read from the OS keyring and receives an
 - **WHEN** `KeyringProvider.Get()` returns an error that is not `ErrNotFound`
 - **THEN** stderr SHALL contain `warning: keyring read failed: <error detail>`
 - **AND** acquisition SHALL continue to the next source
+
+### Requirement: Passphrase acquisition stream seams
+The stdin-pipe and keyring-warning branches of passphrase acquisition SHALL be structured so they can be exercised with injected readers and writers in tests, without replacing process-global stdin or stderr.
+
+#### Scenario: Stdin pipe path supports injected reader
+- **WHEN** the stdin-pipe branch of acquisition is exercised in tests
+- **THEN** the implementation SHALL be able to read from an injected reader instead of requiring `os.Stdin` replacement
+
+#### Scenario: Keyring warning path supports injected writer
+- **WHEN** the keyring read branch returns a non-`ErrNotFound` error in tests
+- **THEN** the warning path SHALL be capturable via an injected writer instead of requiring `os.Stderr` interception
 
 #### Scenario: Keyring returns ErrNotFound
 - **WHEN** `KeyringProvider.Get()` returns `ErrNotFound`
@@ -121,3 +110,11 @@ The bootstrap credential acquisition phase SHALL NOT offer a mnemonic recovery c
 - **WHEN** bootstrap runs non-interactively (no tty, keyring/keyfile available)
 - **THEN** passphrase acquisition SHALL proceed via the normal priority chain
 - **AND** no behavior change from the previous non-interactive path
+
+### Requirement: Stdin-pipe acquisition uses shared raw line reader
+The non-interactive stdin-pipe passphrase acquisition path SHALL use the shared raw line reader before applying its passphrase-specific trimming and empty-input checks.
+
+#### Scenario: Passphrase stdin path delegates raw line reading
+- **WHEN** `ReadStdinPipeFromReader(...)` reads from injected stdin
+- **THEN** it SHALL obtain the raw line through the shared lower-level helper
+

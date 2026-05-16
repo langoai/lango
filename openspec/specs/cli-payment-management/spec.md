@@ -19,8 +19,18 @@ The system SHALL provide a `lango payment balance` command that displays the wal
 - **THEN** the system SHALL display balance in USDC, wallet address, and network name with chain ID
 
 #### Scenario: Display balance in JSON format
-- **WHEN** user runs `lango payment balance --json`
+- **WHEN** user runs `lango payment balance --output json`
 - **THEN** the system SHALL output JSON with fields: balance, currency, address, chainId, network
+
+#### Scenario: Payment balance rejects unknown output before bootstrap
+- **WHEN** user runs `lango payment balance --output yaml`
+- **THEN** the command SHALL return an actionable unknown-output-format error
+- **AND** it SHALL NOT invoke bootstrap-dependent work
+
+#### Scenario: Payment balance output uses the command writer
+- **WHEN** `lango payment balance` renders table or JSON output
+- **THEN** it SHALL write the full output through the Cobra command output writer
+- **AND** wrappers or tests that replace `cmd.OutOrStdout()` SHALL capture the command output
 
 #### Scenario: Payment disabled error
 - **WHEN** user runs `lango payment balance` and `payment.enabled` is false
@@ -42,8 +52,18 @@ The system SHALL provide a `lango payment history` command that displays recent 
 - **THEN** the system SHALL display "No transactions found."
 
 #### Scenario: JSON history output
-- **WHEN** user runs `lango payment history --json`
+- **WHEN** user runs `lango payment history --output json`
 - **THEN** the system SHALL output JSON with fields: transactions (array), count
+
+#### Scenario: Payment history rejects unknown output before bootstrap
+- **WHEN** user runs `lango payment history --output yaml`
+- **THEN** the command SHALL return an actionable unknown-output-format error
+- **AND** it SHALL NOT invoke bootstrap-dependent work
+
+#### Scenario: Payment history output uses the command writer
+- **WHEN** `lango payment history` renders table or JSON output
+- **THEN** it SHALL write the full output through the Cobra command output writer
+- **AND** wrappers or tests that replace `cmd.OutOrStdout()` SHALL capture the command output
 
 ### Requirement: Limits command
 The system SHALL provide a `lango payment limits` command that displays spending limits and daily usage.
@@ -53,8 +73,18 @@ The system SHALL provide a `lango payment limits` command that displays spending
 - **THEN** the system SHALL display max per transaction, max daily, spent today, and remaining today in USDC
 
 #### Scenario: JSON limits output
-- **WHEN** user runs `lango payment limits --json`
+- **WHEN** user runs `lango payment limits --output json`
 - **THEN** the system SHALL output JSON with fields: maxPerTx, maxDaily, dailySpent, dailyRemaining, currency
+
+#### Scenario: Payment limits reject unknown output before bootstrap
+- **WHEN** user runs `lango payment limits --output yaml`
+- **THEN** the command SHALL return an actionable unknown-output-format error
+- **AND** it SHALL NOT invoke bootstrap-dependent work
+
+#### Scenario: Payment limits output uses the command writer
+- **WHEN** `lango payment limits` renders table or JSON output
+- **THEN** it SHALL write the full output through the Cobra command output writer
+- **AND** wrappers or tests that replace `cmd.OutOrStdout()` SHALL capture the command output
 
 ### Requirement: Info command
 The system SHALL provide a `lango payment info` command that displays wallet and payment system configuration.
@@ -64,8 +94,18 @@ The system SHALL provide a `lango payment info` command that displays wallet and
 - **THEN** the system SHALL display wallet address, network, wallet provider, USDC contract, RPC URL, and X402 status
 
 #### Scenario: JSON info output
-- **WHEN** user runs `lango payment info --json`
+- **WHEN** user runs `lango payment info --output json`
 - **THEN** the system SHALL output JSON with fields: address, chainId, network, walletProvider, usdcContract, rpcUrl, x402
+
+#### Scenario: Payment info rejects unknown output before bootstrap
+- **WHEN** user runs `lango payment info --output yaml`
+- **THEN** the command SHALL return an actionable unknown-output-format error
+- **AND** it SHALL NOT invoke bootstrap-dependent work
+
+#### Scenario: Payment info output uses the command writer
+- **WHEN** `lango payment info` renders table or JSON output
+- **THEN** it SHALL write the full output through the Cobra command output writer
+- **AND** wrappers or tests that replace `cmd.OutOrStdout()` SHALL capture the command output
 
 ### Requirement: Send command
 The system SHALL provide a `lango payment send` command that sends USDC to a recipient address with required flags --to, --amount, and --purpose.
@@ -78,6 +118,17 @@ The system SHALL provide a `lango payment send` command that sends USDC to a rec
 #### Scenario: Non-interactive send with force flag
 - **WHEN** user runs `lango payment send --to 0x... --amount 1.00 --purpose "test" --force`
 - **THEN** the system SHALL skip the confirmation prompt and send immediately
+
+#### Scenario: Payment send output uses the command streams
+- **WHEN** `lango payment send` renders a confirmation prompt, success output, or JSON output
+- **THEN** it SHALL write the full output through the Cobra command output writer
+- **AND** it SHALL read confirmation input from `cmd.InOrStdin()`
+- **AND** wrappers or tests that replace those streams SHALL capture the interaction
+
+#### Scenario: Payment send rejects unknown output before bootstrap
+- **WHEN** user runs `lango payment send --to 0x... --amount 1.00 --purpose "test" --output yaml`
+- **THEN** the command SHALL return an actionable unknown-output-format error
+- **AND** it SHALL NOT invoke bootstrap-dependent work
 
 #### Scenario: Non-interactive without force flag
 - **WHEN** user runs `lango payment send --to 0x... --amount 1.00 --purpose "test"` in a non-interactive terminal without --force
@@ -116,6 +167,15 @@ The `payment x402` subcommand SHALL use cfgLoader to read X402 configuration fro
 - **WHEN** user runs `lango payment x402`
 - **THEN** the command loads configuration via cfgLoader and reads the payment.x402 config block
 
+#### Scenario: X402 JSON output
+- **WHEN** user runs `lango payment x402 --output json`
+- **THEN** the command SHALL output JSON with fields: payment_enabled, auto_intercept, max_auto_pay_usdc, max_per_tx, and max_daily
+
+#### Scenario: X402 rejects unknown output before bootstrap
+- **WHEN** user runs `lango payment x402 --output yaml`
+- **THEN** the command SHALL return an actionable unknown-output-format error
+- **AND** it SHALL NOT invoke bootstrap-dependent work
+
 ### Requirement: Existing payment commands unaffected
 The addition of the x402 subcommand SHALL NOT change the behavior or registration of any existing payment subcommands.
 
@@ -131,4 +191,3 @@ Payment CLI setup MUST create spending limiters and payment services through sto
 - **THEN** it obtains the spending limiter and payment transaction persistence from storage-facing capabilities
 - **AND** payment service construction stays in the payment/CLI layer
 - **AND** it does not extract or consume a raw `*ent.Client` from production storage paths
-

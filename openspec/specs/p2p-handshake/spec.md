@@ -136,6 +136,7 @@ The `Challenge` and `ChallengeResponse` structs SHALL include an optional `Bundl
 ---
 
 ### Requirement: Handshake authentication
+The handshake flow SHALL authenticate peers according to DID version, bundle availability, signature verification, and alias-based session continuity rules before caching bundle data or auto-approving known peers.
 
 #### Scenario: Bundle cached only after authentication
 - **WHEN** a handshake challenge or response is received
@@ -202,6 +203,11 @@ The `Handshaker` SHALL support an injectable `SignatureVerifyFunc` for signature
 ### Requirement: SignatureVerifyFunc type
 
 The `SignatureVerifyFunc` type SHALL be used for both challenge and response signature verification, replacing the previous `ResponseVerifyFunc` name.
+
+#### Scenario: Shared signature verifier type is used for both handshake directions
+- **WHEN** challenge or response signature verification is wired into the handshaker
+- **THEN** the code SHALL use `SignatureVerifyFunc`
+- **AND** it SHALL NOT rely on the legacy `ResponseVerifyFunc` name
 
 ---
 

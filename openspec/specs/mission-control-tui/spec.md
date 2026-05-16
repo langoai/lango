@@ -1,7 +1,7 @@
 # mission-control-tui Specification
 
 ## Purpose
-TBD - created by archiving change 2026-05-02-mission-control-wave-one. Update Purpose after archive.
+Define the shared Mission Control TUI contract used by the workbench and cockpit surfaces.
 ## Requirements
 ### Requirement: Mission Control is the default `lango` TUI surface
 
@@ -54,6 +54,11 @@ Mission Control SHALL render the latest pending approval request as one live dec
 - **THEN** the response SHALL be sent through the original pending approval response channel
 - **AND** the same pending request SHALL disappear from chat-derived or approvals-derived cockpit surfaces on the next render
 
+#### Scenario: Shared pending approval snapshot text is replay-safe
+- **WHEN** tool names, request summaries, rule explanations, or risk labels contain ANSI/OSC escape sequences or embedded newlines before entering the shared pending approval owner
+- **THEN** the cockpit pending approval registry SHALL strip those control sequences
+- **AND** it SHALL normalize the stored pending approval text to a single line before replay
+
 ### Requirement: Learning suggestions render as actionable proposed missions
 
 Mission Control SHALL back proposed missions with a transient proposal registry instead of rendering raw learning-buffer rows directly. In this Wave 3 slice, `LearningSuggestionEvent` is the only active proposal producer. Proposed missions SHALL remain transient and SHALL move through explicit proposal states such as `suggested`, `preparing`, and `prepared` before acceptance or dismissal.
@@ -68,6 +73,20 @@ Mission Control SHALL back proposed missions with a transient proposal registry 
 - **THEN** the page SHALL read proposal state from the transient proposal registry
 - **AND** the learning buffer MAY remain only as a producer input or compatibility source, not the primary rendered proposal state
 
+#### Scenario: Accepted proposal description stays plain and single-line
+- **WHEN** prepared-brief or fallback proposal summary text contains ANSI/OSC escape sequences or embedded newlines before durable mission acceptance
+- **THEN** Mission Control SHALL strip those control sequences
+- **AND** it SHALL normalize the persisted mission description text to a single line before calling mission acceptance
+
+#### Scenario: Prepared brief persistence stays single-line
+- **WHEN** a prepared brief contributes multiple description segments during durable mission acceptance
+- **THEN** Mission Control SHALL collapse those segments into one single-line persisted description
+
+#### Scenario: Buffered learning suggestion text is replay-safe
+- **WHEN** learning suggestion patterns, proposed rules, or rationales contain ANSI/OSC escape sequences or embedded newlines before buffering
+- **THEN** the cockpit learning suggestion buffer SHALL strip those control sequences
+- **AND** it SHALL normalize the stored suggestion text to a single line before replay
+
 ### Requirement: Mission Control presents timeline and header as first-class Wave 1 outputs
 
 Mission Control SHALL add a real direct mission-start write path in Wave 2 while preserving timeline and header behavior from Wave 1.
@@ -76,6 +95,26 @@ Mission Control SHALL add a real direct mission-start write path in Wave 2 while
 - **WHEN** the user starts a mission directly from Mission Control
 - **THEN** the application SHALL create a durable mission row immediately
 - **AND** the resulting mission SHALL appear in Mission Control through the durable-first read path
+
+#### Scenario: Persisted Mission Control labels stay plain and single-line
+- **WHEN** mission titles, proposal source labels, or fallback proposal references contain ANSI/OSC escape sequences or embedded newlines before durable mission creation
+- **THEN** Mission Control SHALL strip those control sequences
+- **AND** it SHALL normalize the persisted mission label text to a single line before calling mission creation or acceptance
+
+#### Scenario: Rendered Mission Control header text stays plain and single-line
+- **WHEN** active-agent, model/provider, context, metrics, or degraded-note header summaries contain ANSI/OSC escape sequences or embedded newlines
+- **THEN** Mission Control SHALL strip those control sequences
+- **AND** it SHALL normalize the displayed header text to a single line before rendering it
+
+#### Scenario: Projected Mission Control header snapshot text is replay-safe
+- **WHEN** active-agent, provider/model, metrics, or degraded-note header summaries contain ANSI/OSC escape sequences or embedded newlines before projection
+- **THEN** the Mission Control projector SHALL strip those control sequences
+- **AND** it SHALL normalize the stored header snapshot text to a single line before replay
+
+#### Scenario: Active-agent summary aggregation stays replay-safe
+- **WHEN** mission owner-agent labels contain ANSI/OSC escape sequences or embedded newlines before header aggregation
+- **THEN** the Mission Control active-agent summary builder SHALL strip those control sequences
+- **AND** it SHALL normalize the aggregated header summary text to a single line before replay
 
 ### Requirement: Mission Control defines loading, empty, degraded, and responsive states
 Mission Control SHALL distinguish first-load, empty-data, degraded-reader, and narrow-terminal states instead of rendering the same fallback for every case.
@@ -87,6 +126,36 @@ Mission Control SHALL distinguish first-load, empty-data, degraded-reader, and n
 #### Scenario: Empty state after data load
 - **WHEN** data has loaded and there are no missions and no pending live decision
 - **THEN** the page SHALL render an empty-state view with the shared composer path still available on the page
+
+#### Scenario: Empty-state last result stays plain and single-line
+- **WHEN** the latest assistant activity summary shown as `Last result:` contains ANSI/OSC escape sequences or embedded newlines
+- **THEN** Mission Control SHALL strip those control sequences
+- **AND** it SHALL normalize the displayed empty-state result text to a single line before rendering it
+
+#### Scenario: Rendered Mission Control lane text stays plain and single-line
+- **WHEN** mission titles/details, collaboration labels, proposal source labels, decision text, activity summaries, loop titles/details, or lane overflow summaries contain ANSI/OSC escape sequences or embedded newlines
+- **THEN** Mission Control SHALL strip those control sequences
+- **AND** it SHALL normalize the displayed lane text to a single line before rendering it
+
+#### Scenario: Buffered activity summaries are replay-safe
+- **WHEN** assistant or runtime activity summaries contain ANSI/OSC escape sequences or embedded newlines before buffering
+- **THEN** the Mission Control activity buffer SHALL strip those control sequences
+- **AND** it SHALL normalize the stored summary text to a single line before replay
+
+#### Scenario: Exported assistant activity helper is replay-safe
+- **WHEN** assistant summary, response text, or user message fields contain ANSI/OSC escape sequences or embedded newlines before helper construction
+- **THEN** `NewAssistantSummaryActivity()` SHALL strip those control sequences
+- **AND** it SHALL normalize the returned summary text to a single line before replay
+
+#### Scenario: Projected Mission Control snapshot text is replay-safe
+- **WHEN** proposal, decision, collaboration, loop, or durable-mission text contains ANSI/OSC escape sequences or embedded newlines before projection
+- **THEN** the Mission Control projector SHALL strip those control sequences
+- **AND** it SHALL normalize the stored snapshot text to a single line before replay
+
+#### Scenario: Projected loop snapshot text is replay-safe
+- **WHEN** loop titles, summaries, or next-action text contain ANSI/OSC escape sequences or embedded newlines before projection
+- **THEN** the Mission Control projector SHALL strip those control sequences
+- **AND** it SHALL normalize the stored loop snapshot text to a single line before replay
 
 #### Scenario: Degraded state omits unavailable optional fields
 - **WHEN** optional readers such as RunLedger or AgentRun are unavailable
@@ -160,6 +229,11 @@ Wave 3 SHALL keep the first proactive slice narrowly scoped. Librarian-gap produ
 
 ### Requirement: Mission Control can project operator loops from real existing sources
 Mission Control SHALL support an operator loop surface in addition to durable missions, proposals, and live decisions. In the first Wave 4 slice, loop rows SHALL be projected only from real existing sources rather than invented integrations or placeholder data.
+
+#### Scenario: Scheduled-loop source text is replay-safe
+- **WHEN** cron job names or last-run status text contain ANSI/OSC escape sequences or embedded newlines before loop projection
+- **THEN** Mission Control SHALL strip those control sequences
+- **AND** it SHALL normalize the scheduled-loop source text to a single line before projection
 
 #### Scenario: Loop rows are derived only from first-slice real sources
 - **WHEN** Mission Control projects operator loops for the current session
@@ -248,4 +322,3 @@ Wave 5 collaboration visibility SHALL be grounded in real local signals such as 
 #### Scenario: Reviewing state is not inferred from vague multi-agent activity
 - **WHEN** a mission has generic multi-agent activity but no linked local review-needed execution signal
 - **THEN** Mission Control SHALL NOT invent a `reviewing` collaboration state for that mission
-

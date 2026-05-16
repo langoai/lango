@@ -45,20 +45,17 @@ The `AgentConfig` struct SHALL include a `PromptsDir` field (mapstructure: "prom
 - **WHEN** both PromptsDir and SystemPromptPath are empty
 - **THEN** the system SHALL use the built-in default sections including conversation rules
 
-### Requirement: OAuth Provider Login (REMOVED 2026-02-14)
-**Reason**: OAuth with AI providers risks account bans.
-**Migration**: Use API key authentication with `${ENV_VAR}` references.
+### Requirement: OAuth provider login is removed
+The system SHALL NOT support OAuth-based AI provider login fields such as `clientId`, `clientSecret`, or `scopes` in provider configuration.
 
-Previously, providers could be configured with `clientId`, `clientSecret`, and `scopes` for OAuth-based authentication via `lango login [provider]`. This has been removed.
+#### Scenario: OAuth-style provider login fields are rejected
+- **WHEN** provider configuration includes OAuth-style provider login fields
+- **THEN** the system SHALL reject or ignore those fields
+- **AND** provider authentication SHALL remain API-key based
 
-### Requirement: Legacy API Key Support
-**Reason**: Duplication and ambiguity with `providers` map.
-**Migration**: Move `agent.apiKey` to `providers.<agent.provider>.apiKey`.
+### Requirement: Legacy API key field is removed
+The system SHALL NOT use `agent.apiKey` as the canonical provider credential source. Provider credentials SHALL live under `providers.<agent.provider>.apiKey`.
 
 #### Scenario: Legacy config detected
 - **WHEN** user configuration contains `agent.apiKey`
-- **THEN** system fails to start (or ignores it with a warning, depending on strictness - we choose fail for clarity)
-
-## Removed Requirements
-
-## Deprecated Requirements
+- **THEN** the system SHALL fail startup or emit a migration warning directing the user to `providers.<agent.provider>.apiKey`

@@ -59,7 +59,7 @@ Negotiated `Terms` SHALL contain: Price (*big.Int), Currency (string), ToolName 
 - **THEN** Terms.UseEscrow=true and EscrowID is set after escrow creation
 
 ### Requirement: Proposal and ProposalAction types
-Each round of negotiation produces a `Proposal` with Action (propose/counter/accept/reject), SenderDID, Terms, Round, Reason (optional), and Timestamp.
+Each round of negotiation SHALL produce a `Proposal` with Action (propose/counter/accept/reject), SenderDID, Terms, Round, Reason (optional), and Timestamp.
 
 #### Scenario: Counter-offer with reason
 - **WHEN** a responder counters with a lower price

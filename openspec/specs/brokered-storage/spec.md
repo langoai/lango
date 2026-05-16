@@ -1,7 +1,7 @@
 # brokered-storage Specification
 
 ## Purpose
-TBD - created by archiving change brokered-storage-boundary. Update Purpose after archive.
+Define the brokered-storage subprocess boundary, protocol, and client guarantees.
 ## Requirements
 ### Requirement: Storage broker subprocess mode
 The system SHALL provide an internal storage broker subprocess mode inside the main `lango` binary. The broker SHALL be activated by a dedicated internal flag and SHALL not expose a separate user-facing binary.
@@ -116,4 +116,3 @@ Production payment setup MUST use storage-facing transaction persistence and lim
 - **WHEN** app or CLI payment setup initializes payment transaction persistence
 - **THEN** it resolves the collaborator through storage-facing capabilities
 - **AND** it does not rebuild the dependency from a session-store Ent client
-

@@ -10,6 +10,10 @@ The existing `agent_spawn` response shape, advisory routing semantics, and basic
 - **THEN** `agent_spawn` SHALL create the run
 - **AND** `agent_wait` / `agent_stop` SHALL operate on that run identity chain
 
+#### Scenario: Missing spawn instruction fails at the wrapper
+- **WHEN** `agent_spawn` is invoked without `instruction`
+- **THEN** the tool SHALL return an actionable missing-parameter error
+
 ### Requirement: agent_wait polls AgentRunStore until terminal status
 
 The existing `agent_wait` polling contract remains preserved unless explicitly changed by this requirement: it still polls the `AgentRunStore`, still waits for terminal state or timeout, and still treats timeout as a non-terminal observation result. In addition, `agent_wait` SHALL include projected condition fields in timeout responses for non-terminal runs. A timeout on `blocked_waiting_approval` SHALL remain non-terminal and SHALL return the projected condition instead of coercing the run into failure.
@@ -25,6 +29,10 @@ The existing `agent_wait` polling contract remains preserved unless explicitly c
 - **THEN** the response SHALL keep the run non-terminal
 - **AND** SHALL report that approval is still pending
 
+#### Scenario: Missing wait agent id fails at the wrapper
+- **WHEN** `agent_wait` is invoked without `agent_id`
+- **THEN** the tool SHALL return an actionable missing-parameter error
+
 ### Requirement: agent_stop cancels via AgentRunStore.Cancel
 The `agent_stop` tool SHALL cancel a spawned agent by invoking `AgentRunStore.Cancel(agentID)`, which sets the status to `cancelled`, records `CompletedAt`, and calls the run's `CancelFn` if set. The tool's SafetyLevel SHALL be `SafetyLevelSafe`.
 
@@ -38,6 +46,10 @@ The `agent_stop` tool SHALL cancel a spawned agent by invoking `AgentRunStore.Ca
 - **GIVEN** an `AgentRun` with ID `arun-abc123` in status `completed`
 - **WHEN** `agent_stop` is called with `agent_id: "arun-abc123"`
 - **THEN** the tool SHALL return an error indicating the run is already terminal
+
+#### Scenario: Missing stop agent id fails at the wrapper
+- **WHEN** `agent_stop` is invoked without `agent_id`
+- **THEN** the tool SHALL return an actionable missing-parameter error
 
 ### Requirement: agent_message excluded from initial tool set
 The `agent_message` tool SHALL NOT be included in the initial `BuildControlTools` output. It is deferred to a future change for inter-agent messaging.
@@ -55,6 +67,10 @@ Task management tools SHALL continue providing lightweight CRUD over `TaskEntry`
 - **WHEN** task management tools create, list, or update `TaskEntry` rows
 - **THEN** those rows SHALL remain lightweight operational tracking records
 - **AND** Wave 2 SHALL NOT require them to serve as the authoritative durable mission checklist model
+
+#### Scenario: Missing task required input fails at the wrapper
+- **WHEN** `task_create`, `task_get`, or `task_update` is invoked without its required `title` or `task_id`
+- **THEN** the tool SHALL return an actionable missing-parameter error
 
 ### Requirement: AgentRunProjection implements background.Projection for ID unification
 
@@ -199,4 +215,3 @@ When control-plane or mission-bound runtime work creates a new execution for an 
 - **WHEN** a `TaskEntry` exists without mission-aware execution linkage
 - **THEN** Wave 2 SHALL NOT require the system to reconstruct durable mission ownership only by retrofitting all task-tracking records
 - **AND** mission-execution linkage truth SHALL remain attached to execution creation sites
-

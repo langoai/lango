@@ -43,5 +43,14 @@ When a higher-precedence source asserts a conflicting fact, the system SHALL aut
 ### Requirement: Conflict resolution
 `ResolveConflict` SHALL retract all candidate triples except the winner and mark the conflict as "resolved".
 
+#### Scenario: ResolveConflict retracts losing candidates
+- **WHEN** a conflict is resolved with one chosen winner
+- **THEN** all non-winning candidate triples SHALL be retracted
+- **AND** the conflict record SHALL be marked `resolved`
+
 ### Requirement: Predicate validation
 `AssertFact` SHALL call `ValidateTriple` before any other operation. Unknown or deprecated predicates SHALL be rejected.
+
+#### Scenario: Unknown or deprecated predicates are rejected
+- **WHEN** `AssertFact` is called with an unknown or deprecated predicate
+- **THEN** `ValidateTriple` SHALL reject the assertion before any other truth-maintenance operation occurs

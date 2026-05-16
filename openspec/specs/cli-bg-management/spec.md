@@ -15,6 +15,11 @@ The CLI SHALL provide `lango bg list` that displays all background tasks with co
 - **WHEN** user runs `lango bg list` with no active tasks
 - **THEN** the CLI SHALL display "No background tasks."
 
+#### Scenario: Background CLI output uses the command writer
+- **WHEN** `lango bg list`, `status`, `cancel`, or `result` renders output
+- **THEN** it SHALL write the full output through the Cobra command output writer
+- **AND** wrappers or tests that replace `cmd.OutOrStdout()` SHALL capture the command output
+
 ### Requirement: Background status command
 The CLI SHALL provide `lango bg status <id>` that displays detailed task information.
 

@@ -1,7 +1,7 @@
 # session-recall Specification
 
 ## Purpose
-TBD - created by archiving change ux-continuity. Update Purpose after archive.
+Define session-end recall indexing, deferred sweep behavior, and resume-time recovery of pending recall work.
 ## Requirements
 ### Requirement: Session end triggers
 The system SHALL recognize two session end modes and process each through a unified recall pipeline.
@@ -126,4 +126,3 @@ Session recall indexing MUST use decrypted message content as summarization inpu
 #### Scenario: Decrypt failure does not promote projection text
 - **WHEN** a protected message row cannot be decrypted during recall generation
 - **THEN** the pipeline does not treat the stored plaintext projection as the original message body
-

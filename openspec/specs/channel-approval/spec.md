@@ -1,9 +1,7 @@
 ## Purpose
 
 The Channel Approval capability provides a unified interface for routing tool execution approval requests through channel-native interactive components. It defines the core `Provider` interface, composite routing logic, and fallback mechanisms (Gateway WebSocket, TTY terminal).
-
 ## Requirements
-
 ### Requirement: Approval Provider interface
 The system SHALL define a `Provider` interface with `RequestApproval(ctx, req) (ApprovalResponse, error)` and `CanHandle(sessionKey) bool` methods for handling tool execution approval requests. `ApprovalResponse` SHALL carry `Approved bool` and `AlwaysAllow bool` fields.
 
@@ -67,17 +65,10 @@ The system SHALL allow providers to be registered concurrently without data race
 ### Requirement: TTY approval fallback behavior
 The `TTYProvider.RequestApproval` SHALL return `(ApprovalResponse{}, error)` when stdin is not a terminal. When stdin is a terminal, it SHALL prompt with `[y/a/N]` where `a` means "always allow".
 
-#### Scenario: Non-terminal environment returns error
-- **WHEN** `TTYProvider.RequestApproval` is called and stdin is not a terminal
-- **THEN** it SHALL return an empty `ApprovalResponse` and a non-nil error containing "not a terminal"
-
-#### Scenario: Terminal user types 'a'
-- **WHEN** the user enters "a" or "always" at the TTY prompt
-- **THEN** it SHALL return `ApprovalResponse{Approved: true, AlwaysAllow: true}`
-
-#### Scenario: Terminal user types 'y'
-- **WHEN** the user enters "y" or "yes" at the TTY prompt
-- **THEN** it SHALL return `ApprovalResponse{Approved: true, AlwaysAllow: false}`
+#### Scenario: Terminal prompt EOF denies safely
+- **WHEN** the TTY prompt reaches EOF before an approval answer is received
+- **THEN** it SHALL return `ApprovalResponse{Approved: false, AlwaysAllow: false}`
+- **AND** it SHALL NOT surface a read error
 
 ### Requirement: Gateway approval provider
 The system SHALL provide a `GatewayProvider` that delegates approval to connected companion apps via WebSocket. The `GatewayApprover` interface SHALL return `(ApprovalResponse, error)`.
@@ -343,3 +334,11 @@ Approval rendering surfaces SHALL display channel origin information when the ap
 #### Scenario: No origin for local session
 - **WHEN** an approval request has SessionKey="tui-12345"
 - **THEN** no channel origin info is displayed
+
+### Requirement: TTY approval fallback uses shared raw line reader
+The TTY approval fallback SHALL use the shared raw line reader for its `[y/a/N]` prompt input path.
+
+#### Scenario: TTY approval reads line through shared helper
+- **WHEN** `TTYProvider.RequestApproval` reads the operator response
+- **THEN** the raw line input SHALL be obtained through the shared lower-level line reader
+

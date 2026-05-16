@@ -1,0 +1,14 @@
+## Why
+
+`lango security keyring status` still wrote text and JSON output directly to process stdout instead of the Cobra command writer. That made wrapper capture inconsistent with the hardened security status surface.
+
+## What Changes
+
+- route `security keyring status` text and JSON output through `cmd.OutOrStdout()`
+- add command-level writer capture tests using a stub keyring provider
+- sync security CLI docs and keyring specs with the output-writer contract
+
+## Impact
+
+- improves automation compatibility and testability for keyring status inspection
+- keeps user-visible output unchanged while aligning behavior with the rest of the CLI

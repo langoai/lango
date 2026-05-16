@@ -1,7 +1,7 @@
 # background-hygiene-compaction Specification
 
 ## Purpose
-TBD - created by archiving change ux-continuity. Update Purpose after archive.
+Define asynchronous background compaction of session history for context hygiene.
 ## Requirements
 ### Requirement: CompactionBuffer async buffer
 The system SHALL provide a `session.CompactionBuffer` in `internal/session/compaction_buffer.go` that accepts compaction jobs via `EnqueueCompaction(key string, upToIndex int)` and executes them asynchronously on a bounded worker pool. The buffer SHALL follow the same lifecycle contract as `learning.AnalysisBuffer`: bounded queue, drop-with-warning on overflow, graceful `Drain(timeout time.Duration) error` on shutdown, and `Start(ctx)` / `Stop()` hooks integrated with `lifecycle.Registry`.
@@ -87,4 +87,3 @@ The system SHALL provide additive fields under `context.compaction`: `enabled bo
 #### Scenario: Invalid threshold clamped
 - **WHEN** `context.compaction.threshold` is set to `1.5`
 - **THEN** the effective threshold SHALL be clamped to `0.95` with a warning log
-

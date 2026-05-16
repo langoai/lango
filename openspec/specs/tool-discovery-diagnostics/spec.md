@@ -1,7 +1,7 @@
 # tool-discovery-diagnostics Specification
 
 ## Purpose
-TBD - created by archiving change tool-discovery-audit-bugfix. Update Purpose after archive.
+Define diagnostics and validation requirements that surface misconfigured smart-account, payment, x402, and observability wiring early.
 ## Requirements
 ### Requirement: Config validation for SmartAccount
 SmartAccountConfig SHALL provide a Validate() method that returns an error when enabled but required fields (EntryPointAddress, FactoryAddress, BundlerURL) are empty. Validate() SHALL return nil when the config is disabled.
@@ -58,4 +58,3 @@ SessionGuard SHALL provide a Stop() method that deactivates alert processing. Af
 #### Scenario: SessionGuard registered with lifecycle registry
 - **WHEN** sentinel session guard is wired in initSmartAccount
 - **THEN** the guard is registered with the lifecycle registry at PriorityAutomation for graceful shutdown
-

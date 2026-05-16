@@ -1,11 +1,9 @@
 ## Purpose
 
 Documentation synchronization for P0-P2 security hardening features. Ensures all CLI docs, feature docs, README, agent prompts, and security roadmap accurately reflect the implemented security capabilities.
-
 ## Requirements
-
 ### Requirement: CLI security docs include OS Keyring commands
-The `docs/cli/security.md` file SHALL document `lango security keyring store`, `keyring clear` (with `--force`), and `keyring status` (with `--json`) commands with output examples matching the actual CLI implementation.
+The `docs/cli/security.md` file SHALL document `lango security keyring store`, `keyring clear` (with `--force`), and `keyring status` (with `--output table|json`) commands with output examples matching the actual CLI implementation.
 
 #### Scenario: Keyring commands documented
 - **WHEN** a user reads `docs/cli/security.md`
@@ -19,7 +17,7 @@ The `docs/cli/security.md` file SHALL document `lango security db-migrate` and `
 - **THEN** they find complete documentation for `db-migrate` and `db-decrypt` with flags and examples
 
 ### Requirement: CLI security docs include KMS commands
-The `docs/cli/security.md` file SHALL document `lango security kms status` (with `--json`), `kms test`, and `kms keys` (with `--json`) commands with output examples.
+The `docs/cli/security.md` file SHALL document `lango security kms status` (with `--output table|json`), `kms test`, and `kms keys` (with `--output table|json`) commands with output examples.
 
 #### Scenario: KMS commands documented
 - **WHEN** a user reads `docs/cli/security.md`
@@ -33,7 +31,7 @@ The `docs/cli/security.md` status example SHALL include `DB Encryption`, `KMS Pr
 - **THEN** they see all fields including `db_encryption`, `kms_provider`, `kms_key_id`, `kms_fallback` in the JSON fields table
 
 ### Requirement: CLI P2P docs include session management commands
-The `docs/cli/p2p.md` file SHALL document `lango p2p session list` (with `--json`), `session revoke` (with `--peer-did`), and `session revoke-all` commands.
+The `docs/cli/p2p.md` file SHALL document `lango p2p session list` (with `--output table|json`), `session revoke` (with `--peer-did`), and `session revoke-all` commands.
 
 #### Scenario: Session commands documented
 - **WHEN** a user reads `docs/cli/p2p.md`
@@ -185,3 +183,12 @@ The security documentation set SHALL include an escrow execution document that d
 #### Scenario: Escrow execution docs linked from index
 - **WHEN** a user reads `docs/security/index.md`
 - **THEN** they SHALL find a quick link to the escrow execution document
+
+### Requirement: Escrow execution docs describe the validation-vs-rejection split
+
+Public security docs for escrow execution SHALL describe empty transaction receipt ids as validation failures and reserve receipt-backed rejection conditions for post-validation execution state.
+
+#### Scenario: Escrow execution docs distinguish validation failures from rejection states
+- **WHEN** a user reads the escrow execution doc
+- **THEN** they SHALL find that an empty `transaction_receipt_id` returns an actionable validation error
+- **AND** they SHALL find that approval, settlement-hint, missing-input, and already-progressed checks apply only after request validation succeeds

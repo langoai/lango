@@ -6,7 +6,7 @@ Provides extended CLI commands for the graph store, including adding individual 
 ## Requirements
 
 ### Requirement: Graph add command
-The system SHALL provide a `lango graph add --subject <s> --predicate <p> --object <o> [--json]` command that adds a single triple to the graph store. The command SHALL use cfgLoader combined with initGraphStore() to initialize the graph backend. All three flags (subject, predicate, object) MUST be provided.
+The system SHALL provide a `lango graph add --subject <s> --predicate <p> --object <o> [--output table|json]` command that adds a single triple to the graph store. The command SHALL use cfgLoader combined with initGraphStore() to initialize the graph backend. All three flags (subject, predicate, object) MUST be provided.
 
 #### Scenario: Successful add
 - **WHEN** user runs `lango graph add --subject "entity1" --predicate "related_to" --object "entity2"`

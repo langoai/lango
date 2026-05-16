@@ -193,6 +193,16 @@ The system SHALL provide: `lango economy escrow list` (config summary), `lango e
 - **WHEN** user runs `lango economy escrow show`
 - **THEN** system displays hub address, vault factory, arbitrator, token address, poll interval, and confirmation depth
 
+#### Scenario: CLI show with escrow id points to live status surface
+- **WHEN** user runs `lango economy escrow show --id <escrow-id>`
+- **THEN** the command SHALL direct the operator to the running server plus `escrow_status` for live escrow data
+- **AND** it SHALL NOT use a vague "escrow agent tools" message
+
+#### Scenario: CLI show help describes id flag truthfully
+- **WHEN** user runs `lango economy escrow show --help`
+- **THEN** the `--id` flag SHALL be described as an optional live-status guidance input
+- **AND** it SHALL NOT be described as future work
+
 ### Requirement: On-chain escrow documentation in economy.md
 The system SHALL include documentation for on-chain escrow (Hub/Vault dual-mode) in `docs/features/economy.md`, covering deal lifecycle, contract architecture, and configuration.
 
@@ -336,3 +346,12 @@ The system SHALL define an `IZKVerifier` interface with `verifyProof(uint256[8] 
 - **WHEN** a gnark Groth16 verifier is exported as Solidity
 - **THEN** it SHALL implement `IZKVerifier` interface
 
+### Requirement: On-chain escrow tools keep actionable wrapper parameter guards
+
+On-chain escrow tools SHALL reject missing required wrapper inputs with actionable parameter errors before downstream escrow logic begins.
+
+#### Scenario: On-chain escrow tools reject missing required inputs
+- **WHEN** `escrow_create`, `escrow_fund`, `escrow_activate`, `escrow_submit_work`, `escrow_release`, `escrow_refund`, `escrow_dispute`, `escrow_resolve`, or `escrow_status` is invoked without one of its declared required wrapper inputs
+- **THEN** the tool SHALL return an actionable missing-parameter error
+- **AND** SHALL not proceed into downstream escrow execution logic
+- **AND** this coverage SHALL include `escrow_create` inputs such as `buyerDid`, `sellerDid`, `amount`, and `milestones`, plus `escrow_resolve` inputs such as `escrowId`, `favor`, and `sellerPercent`

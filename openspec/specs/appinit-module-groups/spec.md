@@ -1,7 +1,7 @@
 # appinit-module-groups Specification
 
 ## Purpose
-TBD - created by archiving change config-bootstrap-regression-fixes. Update Purpose after archive.
+Define the grouped appinit module architecture and responsibilities for the major runtime initialization domains.
 ## Requirements
 ### Requirement: Five module group implementations
 The system SHALL define five module groups — Foundation, Intelligence, Automation, Network, and Extension — each implementing the `Module` interface. Each module group SHALL wrap existing wiring functions from `internal/app/wiring*.go` and organize them into a cohesive initialization unit.
@@ -80,4 +80,3 @@ Each module's `Init()` SHALL return a `ModuleResult` containing: initialized com
 #### Scenario: ModuleResult contains CatalogEntries
 - **WHEN** any module's `Init()` completes successfully
 - **THEN** the returned `ModuleResult` SHALL include a non-nil `CatalogEntries` field listing all tools the module provides with their category and description
-

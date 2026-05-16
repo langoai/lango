@@ -91,9 +91,18 @@ The system SHALL expose two new agent tools: `librarian_pending_inquiries` (list
 - **WHEN** agent calls librarian_pending_inquiries with a session key
 - **THEN** pending inquiries are returned with count
 
+#### Scenario: Pending inquiries use current session fallback
+- **WHEN** agent calls `librarian_pending_inquiries` without `session_key`
+- **AND** the request context carries a session key
+- **THEN** pending inquiries for the current session are returned with count
+
 #### Scenario: Dismiss inquiry tool
 - **WHEN** agent calls librarian_dismiss_inquiry with an inquiry UUID
 - **THEN** the inquiry is dismissed and confirmation is returned
+
+#### Scenario: Missing inquiry id is rejected
+- **WHEN** agent calls `librarian_dismiss_inquiry` without `inquiry_id`
+- **THEN** the tool SHALL return an actionable missing-parameter error before inquiry lookup begins
 
 ### Requirement: Auto-save Knowledge from Extractions
 The system SHALL automatically save knowledge extractions that meet the configured auto-save confidence threshold. The extraction pipeline SHALL validate the type of each extraction before saving. High-confidence extractions with valid types are saved without user confirmation. When an extraction has an unrecognized type, the system SHALL log a warning and skip that extraction without affecting other extractions in the batch. Optional graph triples (subject/predicate/object) SHALL be forwarded via the graph callback if available.
@@ -136,4 +145,3 @@ Inquiry persistence MUST store `{question, context, answer}` as one protected bu
 - **WHEN** an inquiry row has ciphertext fields present but decryption fails
 - **THEN** the store returns an error or empty protected values
 - **AND** it does not promote the stored plaintext projections as originals
-

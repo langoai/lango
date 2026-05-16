@@ -95,6 +95,17 @@ The cron_add tool handler SHALL resolve delivery channels using the three-tier f
 - **WHEN** a cron job executes with empty DeliverTo
 - **THEN** the executor SHALL log a Warn-level message including the job name and a configuration hint
 
+### Requirement: Cron tool handlers reject missing required inputs
+The cron tool handlers SHALL reject missing required wrapper inputs before scheduler lookup or mutation begins.
+
+#### Scenario: Missing cron add input
+- **WHEN** `cron_add` is invoked without `name`, `schedule_type`, `schedule`, or `prompt`
+- **THEN** the handler SHALL return an actionable missing-parameter error
+
+#### Scenario: Missing cron control id
+- **WHEN** `cron_pause`, `cron_resume`, or `cron_remove` is invoked without `id`
+- **THEN** the handler SHALL return an actionable missing-parameter error
+
 ### Requirement: Multi-channel delivery
 The system SHALL deliver job results to configured target channels (Telegram, Slack, Discord) via the ChannelSender interface.
 

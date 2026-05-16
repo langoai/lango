@@ -1,7 +1,7 @@
 # learning-suggestions Specification
 
 ## Purpose
-TBD - created by archiving change ux-continuity. Update Purpose after archive.
+Define emission, routing, and lifecycle requirements for learning suggestions before auto-apply.
 ## Requirements
 ### Requirement: Suggestion emission threshold
 The `learning.SuggestionEngine` SHALL emit a `LearningSuggestionEvent` whenever a learning candidate crosses the configured suggestion confidence threshold (default `0.5`) AND does not already match an existing auto-applied learning (confidence ≥ 0.7). The suggestion threshold SHALL be distinct from the auto-apply threshold and SHALL be configurable under `learning.suggestions.threshold` (valid range `[0.1, 0.9]`).
@@ -83,4 +83,3 @@ The system SHALL provide additive fields under `learning.suggestions`: `enabled 
 #### Scenario: Defaults when unset
 - **WHEN** no `learning.suggestions.*` config is set
 - **THEN** suggestions SHALL be enabled with threshold 0.5, rate limit 10, and dedup window 1 hour
-

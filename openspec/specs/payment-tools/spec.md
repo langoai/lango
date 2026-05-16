@@ -1,15 +1,13 @@
 ## Purpose
 
 Capability spec for payment-tools. See requirements below for scope and behavior contracts.
-
 ## Requirements
-
 ### Requirement: Payment send tool
-The system SHALL provide a `payment_send` tool with SafetyLevel Dangerous that accepts `to` (address), `amount` (USDC string), and `purpose` (string) parameters. It MUST return txHash, status, amount, from, to, chainId, and network.
+The system SHALL provide a `payment_send` tool with SafetyLevel Dangerous that accepts required `to` (address), `transaction_receipt_id`, `amount` (USDC string), and `purpose` (string) parameters. It MUST return txHash, status, amount, from, to, chainId, and network.
 
-#### Scenario: Agent sends payment
-- **WHEN** the agent calls `payment_send` with valid parameters
-- **THEN** the payment is submitted and a receipt with txHash is returned
+#### Scenario: Agent sends a receipt-backed payment
+- **WHEN** the agent calls `payment_send` with `to`, `transaction_receipt_id`, `amount`, and `purpose`
+- **THEN** the tool SHALL submit the payment and return a canonical payment receipt payload
 
 ### Requirement: Payment balance tool
 The system SHALL provide a `payment_balance` tool with SafetyLevel Safe that returns the wallet's USDC balance, address, chainId, and network name.
@@ -79,3 +77,21 @@ The payment_send tool SHALL return the actual on-chain status from the receipt i
 #### Scenario: Response includes gas metadata
 - **WHEN** gasUsed > 0 in the receipt
 - **THEN** the tool response SHALL include the gasUsed field
+
+### Requirement: Payment send request-id validation stays actionable
+
+The `payment_send` tool SHALL preserve actionable validation errors for missing required receipt-linked payment inputs before direct-payment gate evaluation begins.
+
+#### Scenario: Missing transaction receipt id returns a wrapper validation error
+- **WHEN** the agent calls `payment_send` without a `transaction_receipt_id`
+- **THEN** the tool SHALL return an actionable missing-parameter error
+- **AND** SHALL not defer that validation to the downstream payment gate
+
+### Requirement: X402 fetch wrapper input guards stay actionable
+
+The `payment_x402_fetch` tool SHALL reject a missing required `url` input with an actionable missing-parameter error before attempting to create an HTTP client or request.
+
+#### Scenario: Missing URL returns a wrapper validation error
+- **WHEN** the agent calls `payment_x402_fetch` without `url`
+- **THEN** the tool SHALL return an actionable missing-parameter error
+

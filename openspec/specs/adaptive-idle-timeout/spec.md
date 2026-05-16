@@ -1,7 +1,7 @@
 # adaptive-idle-timeout Specification
 
 ## Purpose
-TBD - created by archiving change adaptive-idle-timeout. Update Purpose after archive.
+Define shared extendable deadlines for idle-timeout and hard-ceiling enforcement across turn execution.
 ## Requirements
 ### Requirement: Shared ExtendableDeadline package
 The system SHALL provide an `internal/deadline` package containing `ExtendableDeadline` with `New()`, `Extend()`, `Stop()`, and `Reason()` methods. The `internal/app` package SHALL re-export via type alias for backward compatibility.

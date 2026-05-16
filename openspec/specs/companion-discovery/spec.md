@@ -4,43 +4,21 @@ Capability spec for companion-discovery. See requirements below for scope and be
 
 ## Requirements
 
-### Requirement: Bonjour Service Discovery
-The system SHALL discover companion apps on local network using mDNS/Bonjour.
+### Requirement: Companion connectivity is gateway-backed, not discovery-backed
+The current runtime SHALL use the gateway `/companion` WebSocket endpoint for companion connectivity and SHALL NOT claim that an automatic discovery subsystem is currently shipped.
 
-#### Scenario: Discover companion on startup
-- **WHEN** Lango server starts
-- **THEN** it SHALL browse for services of type `_lango-companion._tcp`
-- **AND** attempt connection to discovered instances
+#### Scenario: Companion connects through gateway endpoint
+- **WHEN** a companion app connects to `/companion`
+- **THEN** the gateway registers it as a companion client for approval and RPC response routing
 
-#### Scenario: Companion appears after startup
-- **WHEN** a companion app starts and advertises its service
-- **THEN** Lango SHALL detect the new service within 5 seconds
-- **AND** initiate WebSocket connection
+#### Scenario: No automatic discovery claim
+- **WHEN** the companion-discovery main spec is read
+- **THEN** it SHALL NOT claim that Lango currently browses a Bonjour/mDNS companion service type
+- **AND** it SHALL NOT claim a legacy dedicated companion-address configuration path
 
-### Requirement: Companion Connection
-The system SHALL maintain WebSocket connection to companion app.
+### Requirement: Companion status reporting is connection-oriented
+The system SHALL report whether a companion is currently connected through the gateway-facing connection model.
 
-#### Scenario: Successful connection
-- **WHEN** companion is discovered
-- **THEN** Lango connects via WebSocket to the advertised address
-- **AND** performs mTLS handshake
-
-#### Scenario: Connection lost
-- **WHEN** WebSocket connection to companion is lost
-- **THEN** the system continues operating with local fallback
-- **AND** attempts reconnection every 30 seconds
-
-### Requirement: Manual Companion Configuration
-The system SHALL support manual companion address configuration.
-
-#### Scenario: Configure via config file
-- **WHEN** lango.json contains `security.companion.address`
-- **THEN** the system connects to that address instead of using discovery
-- **AND** skips Bonjour browsing
-
-### Requirement: Companion Status Reporting
-The system SHALL report companion connection status.
-
-#### Scenario: Query companion status
-- **WHEN** status is queried via gateway API
-- **THEN** the system returns connection state, companion address, and last heartbeat time
+#### Scenario: Query companion connectivity state
+- **WHEN** companion connectivity is inspected through the current runtime surfaces
+- **THEN** the system reports whether at least one companion is connected

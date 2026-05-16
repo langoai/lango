@@ -194,5 +194,14 @@ The `Handler` MUST check each tool's safety level against a configurable maximum
 ### Requirement: P2P safety configuration
 `P2PConfig` MUST include `maxSafetyLevel` (string, default "moderate") and `allowedTools` (string slice, default empty) fields.
 
+#### Scenario: P2P config exposes safety threshold and allowlist
+- **WHEN** P2P configuration is loaded
+- **THEN** it MUST expose `maxSafetyLevel` with default `"moderate"`
+- **AND** it MUST expose `allowedTools` with an empty-slice default
+
 ### Requirement: Sentinel errors
 The protocol MUST define `ErrNoSandboxExecutor` and `ErrToolSafetyBlocked` sentinel errors.
+
+#### Scenario: Protocol exposes sandbox and safety sentinel errors
+- **WHEN** callers inspect protocol-level denial and execution failures
+- **THEN** they MUST be able to match `ErrNoSandboxExecutor` and `ErrToolSafetyBlocked` as sentinel errors

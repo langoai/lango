@@ -51,11 +51,17 @@ The system SHALL provide 5 agent tools for workflow management: `workflow_run` (
 
 #### Scenario: Run a workflow from file path
 - **WHEN** the agent calls `workflow_run` with a file_path parameter
-- **THEN** the system SHALL parse, validate, and execute the workflow, returning run_id, status, and step results
+- **THEN** the system SHALL parse, validate, and start the workflow asynchronously
+- **AND** SHALL return `run_id`, `status`, and a launch message
+- **AND** SHALL NOT claim to return step results synchronously from `workflow_run`
 
 #### Scenario: Run a workflow from inline YAML
 - **WHEN** the agent calls `workflow_run` with yaml_content parameter
-- **THEN** the system SHALL parse the inline YAML and execute it
+- **THEN** the system SHALL parse the inline YAML and start it asynchronously
+
+#### Scenario: workflow_run rejects ambiguous dual source input
+- **WHEN** the agent calls `workflow_run` with both `file_path` and `yaml_content`
+- **THEN** the tool SHALL return an error indicating that the two inputs are mutually exclusive
 
 #### Scenario: Save a workflow definition
 - **WHEN** the agent calls `workflow_save` with name and yaml_content
@@ -64,6 +70,14 @@ The system SHALL provide 5 agent tools for workflow management: `workflow_run` (
 #### Scenario: Cancel a running workflow
 - **WHEN** the agent calls `workflow_cancel` with a run_id
 - **THEN** the system SHALL cancel the running workflow and update its status
+
+#### Scenario: Missing workflow status or cancel run id
+- **WHEN** the agent calls `workflow_status` or `workflow_cancel` without `run_id`
+- **THEN** the tool SHALL return an actionable missing-parameter error before workflow lookup begins
+
+#### Scenario: Missing workflow save inputs
+- **WHEN** the agent calls `workflow_save` without `name` or `yaml_content`
+- **THEN** the tool SHALL return an actionable missing-parameter error before YAML validation or file writes begin
 
 ### Requirement: Shared automation helper package
 The automation subsystem SHALL provide a shared `internal/automation/` helper package containing `AgentRunner`, `ChannelSender`, and `DetectChannelFromContext(ctx)` so cron, background, and workflow packages use one common contract.

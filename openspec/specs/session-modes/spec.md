@@ -1,7 +1,7 @@
 # session-modes Specification
 
 ## Purpose
-TBD - created by archiving change ux-capability-concierge. Update Purpose after archive.
+Define session-scoped capability modes, built-in modes, and mode-constrained tool and skill discovery behavior.
 ## Requirements
 ### Requirement: SessionMode type and built-in modes
 The system SHALL define a `SessionMode` type containing `Name`, `Tools` (list of tool names or `@category` references), `Skills` (list of skill names), and `SystemHint` (free-form prompt addition). The system SHALL ship three built-in modes: `code-review`, `research`, and `debug`. User config MAY define additional modes that merge with built-ins by name.
@@ -133,4 +133,3 @@ The turn runner's retry loop SHALL allow retry after a stale-stream timeout even
 - **WHEN** a provider emits some chunks then returns a retryable error immediately
 - **THEN** the retry loop SHALL NOT retry (chunksEmitted=true, staleTriggered=false)
 - **AND** the partial output SHALL remain visible to the user
-

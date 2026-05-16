@@ -1,9 +1,7 @@
 ## Purpose
 
 Capability spec for cockpit-settings-page. See requirements below for scope and behavior contracts.
-
 ## Requirements
-
 ### Requirement: Inline save result banner
 Editor SHALL display save success or failure inline at menu top. The banner SHALL clear on next key input.
 
@@ -21,7 +19,6 @@ Editor SHALL display save success or failure inline at menu top. The banner SHAL
 #### Scenario: Embedded editor starts at menu
 - **WHEN** NewEditorForEmbedding(cfg, onSave) is called
 - **THEN** the Editor step SHALL be StepMenu, not StepWelcome
-
 
 ### Requirement: Embedded settings with OnSave callback
 SettingsPage SHALL embed `settings.Editor` via `NewEditorForEmbedding(cfg, onSave)`. The Editor SHALL work on a deep copy of the config, not the live runtime config. The save action SHALL pass context-related dotted path keys as explicitKeys, not category IDs.
@@ -45,3 +42,15 @@ SettingsPage SHALL embed `settings.Editor` via `NewEditorForEmbedding(cfg, onSav
 #### Scenario: Auto-enable respects embedded save
 - **WHEN** embedded save stores explicitKeys and config is reloaded
 - **THEN** ResolveContextAutoEnable SHALL NOT override explicitly set values
+
+### Requirement: Settings page fails closed when persistence is unavailable
+The cockpit Settings page SHALL distinguish between editable configuration state and persistence availability.
+
+#### Scenario: Nil config-profile store shows degraded save note
+- **WHEN** the Settings page renders with no config-profile store
+- **THEN** the page SHALL explain that settings changes cannot be saved because the config profile store is not configured
+
+#### Scenario: Nil config-profile store save callback returns actionable error
+- **WHEN** the embedded Settings page save callback runs with no config-profile store
+- **THEN** the callback SHALL return an actionable error explaining that the config profile store is not configured
+

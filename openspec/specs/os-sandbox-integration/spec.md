@@ -28,6 +28,10 @@ The `SessionKey` field on every published event SHALL be derived from the runtim
 - **THEN** the tool SHALL log a warning, emit one stderr line of the form `lango: WARNING — sandbox fallback active (reason: ...); commands run unsandboxed`, publish a `SandboxDecisionEvent{Decision:"skipped"}`, and proceed with unsandboxed execution
 - **AND** a subsequent fallback in the same process SHALL NOT emit a duplicate stderr line
 
+#### Scenario: Fail-open warning path is deterministic under test
+- **WHEN** the exec tool's fail-open warning path is exercised in tests
+- **THEN** the stderr writer SHALL be injectable so the one-shot warning contract can be asserted without intercepting process-global stderr
+
 #### Scenario: Excluded command bypasses sandbox
 - **WHEN** `Config.ExcludedCommands` contains `"git"` and the user command is `"git status"`
 - **THEN** `OSIsolator.Apply` SHALL NOT be called and a `SandboxDecisionEvent{Decision:"excluded", Pattern:"git"}` SHALL be published
@@ -174,4 +178,3 @@ All code comments, doc comments, README, docs pages, and configuration reference
 #### Scenario: Config field comments
 - **WHEN** reading `SandboxConfig` field comments for Linux-specific behavior
 - **THEN** they note Linux isolation is not yet enforced
-

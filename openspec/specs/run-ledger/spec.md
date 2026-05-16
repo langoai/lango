@@ -369,6 +369,17 @@ Tool access SHALL be role-based. The orchestrator (agent name `"orchestrator"` o
 - **WHEN** a non-orchestrator agent calls `run_create`
 - **THEN** `ErrAccessDenied` is returned
 
+### Requirement: Run tool handlers reject missing required inputs
+The `run_*` tool handlers SHALL reject missing required wrapper inputs before journal writes, snapshot reads, or policy application begins.
+
+#### Scenario: Missing run creation inputs
+- **WHEN** `run_create` is invoked without `plan_json`, `session_key`, or `original_request`
+- **THEN** the handler SHALL return an actionable missing-parameter error
+
+#### Scenario: Missing run read or control inputs
+- **WHEN** `run_read`, `run_active`, `run_note`, `run_propose_step_result`, `run_apply_policy`, `run_approve_step`, or `run_resume` is invoked without one of its required inputs
+- **THEN** the handler SHALL return an actionable missing-parameter error
+
 ### Requirement: CLI Journal Inspection
 The system SHALL let operators inspect persistent RunLedger data from the CLI.
 
@@ -379,6 +390,20 @@ The system SHALL let operators inspect persistent RunLedger data from the CLI.
 #### Scenario: `lango run journal <run-id>`
 - **WHEN** the operator runs `lango run journal <run-id>`
 - **THEN** the command reads the persistent journal events for that run
+
+#### Scenario: RunLedger CLI JSON output
+- **WHEN** the operator runs `lango run list`, `lango run status`, or `lango run journal <run-id>` with `--output json`
+- **THEN** the command SHALL emit structured JSON through the Cobra command output writer
+
+#### Scenario: RunLedger CLI rejects unknown output before bootstrap
+- **WHEN** the operator runs `lango run list`, `lango run status`, or `lango run journal <run-id>` with `--output yaml`
+- **THEN** the command SHALL return an actionable unknown-output-format error
+- **AND** it SHALL NOT invoke bootstrap-dependent work
+
+#### Scenario: RunLedger CLI output uses the command writer
+- **WHEN** `lango run list`, `lango run status`, or `lango run journal <run-id>` renders output
+- **THEN** it SHALL write the full output through the Cobra command output writer
+- **AND** wrappers or tests that replace `cmd.OutOrStdout()` SHALL capture the command output
 
 ### Requirement: Command Context
 The system SHALL inject active run summaries into command context. The system SHALL cache assembled run summary strings per session with journal-sequence-based invalidation to avoid redundant queries on repeated LLM requests.
@@ -645,4 +670,3 @@ The RunLedger durable mirror for built-in teammate approval blocking SHALL prese
 - **WHEN** a prior blocked cycle for a logical request has already been cleared by grant or denial
 - **THEN** a later blocked cycle for the same logical request MAY reuse the same `grant_request_id`
 - **AND** the durable mirror SHALL only preserve the latest active cycle metadata for that logical request in the snapshot
-

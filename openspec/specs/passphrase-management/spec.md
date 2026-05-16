@@ -2,9 +2,7 @@
 
 ## Purpose
 This capability defines how the user's passphrase for the Local Crypto Provider is securely handled, validated, and migrated. It ensures passphrases are never stored in plain text configuration files and provides mechanisms for key rotation.
-
 ## Requirements
-
 ### Requirement: Passphrase source resolution
 The system SHALL resolve passphrases using the priority chain: keyfile (`~/.lango/keyfile`) → interactive terminal prompt → stdin pipe. The system SHALL NOT read passphrases from the `LANGO_PASSPHRASE` environment variable or the `security.passphrase` config field.
 
@@ -54,6 +52,17 @@ The system SHALL provide a CLI command to change the passphrase. For envelope-ba
 - **AND** does NOT re-encrypt any secrets or config_profiles rows
 - **AND** does NOT call `PRAGMA rekey`
 
+### Requirement: Change-passphrase success output routing
+`lango security change-passphrase` SHALL write its non-error success confirmation through the Cobra command output stream so wrappers and test harnesses can capture completion output without intercepting process-global stdout.
+
+#### Scenario: Change-passphrase success writes to command output
+- **WHEN** `lango security change-passphrase` succeeds
+- **THEN** the command writes the success confirmation to the Cobra command output stream
+
+#### Scenario: Change-passphrase warning output writes to command error stream
+- **WHEN** `lango security change-passphrase` emits keyfile or keyring update notices or warnings
+- **THEN** those messages SHALL write to the Cobra command error stream
+
 #### Scenario: Change-passphrase with wrong current passphrase
 
 - **WHEN** the user enters an incorrect current passphrase
@@ -66,6 +75,13 @@ The system SHALL provide a CLI command to change the passphrase. For envelope-ba
 - **THEN** the command displays a deprecation notice pointing to `change-passphrase`
 - **AND** either delegates to change-passphrase or completes its legacy behavior for backward compatibility
 
+### Requirement: Migrate-passphrase output routing
+`lango security migrate-passphrase` SHALL write its non-error status and success output through the Cobra command output stream so wrappers and test harnesses can capture migration progress without intercepting process-global stdout.
+
+#### Scenario: Migrate-passphrase progress writes to command output
+- **WHEN** `lango security migrate-passphrase` runs
+- **THEN** the command writes its migration guidance, progress, and success output to the Cobra command output stream
+
 #### Scenario: Change-passphrase failure leaves envelope intact
 
 - **WHEN** envelope re-wrap fails during file write
@@ -73,6 +89,7 @@ The system SHALL provide a CLI command to change the passphrase. For envelope-ba
 - **AND** the user can retry with the original passphrase
 
 ### Requirement: Passphrase change updates stored credentials
+Successful passphrase change or recovery restore SHALL update any stored keyring or keyfile credentials so local unlock paths remain consistent with the new passphrase.
 
 #### Scenario: Keyring updated after passphrase change
 - **WHEN** `lango security change-passphrase` succeeds
@@ -97,4 +114,34 @@ With the envelope architecture, the passphrase SHALL function as a Key Encryptio
 - **THEN** the passphrase SHALL be used only to derive a KEK and unwrap the MK
 - **AND** all `Encrypt`/`Decrypt` operations on the `CryptoProvider` SHALL use the MK (stored as `keys["local"]`)
 - **AND** the raw passphrase SHALL NOT be accessible after bootstrap completes
+
+#### Scenario: Legacy environment variable path remains unsupported
+- **WHEN** a caller attempts to configure the passphrase via `LANGO_PASSPHRASE`
+- **THEN** the system SHALL ignore that environment variable for local-crypto bootstrap
+- **AND** continue using the documented acquisition chain instead
+
+### Requirement: Keyring-clear confirmation uses shared command streams
+`lango security keyring clear` SHALL drive its interactive confirmation through the shared confirmation helper using Cobra command input/output streams. When stdin is non-interactive and `--force` is not provided, the command SHALL refuse to continue with explicit `--force` guidance instead of attempting a prompt.
+
+#### Scenario: Keyring-clear denial prints abort message
+- **WHEN** `lango security keyring clear` is run interactively and the user answers `n`
+- **THEN** the command SHALL print `Aborted.`
+- **AND** it SHALL leave stored credentials untouched
+
+#### Scenario: Keyring-clear confirm prints prompt on command output
+- **WHEN** `lango security keyring clear` is run interactively and the user answers `y`
+- **THEN** the confirmation prompt SHALL be written through the Cobra command output stream
+- **AND** the command SHALL continue with the backend clearing flow
+
+#### Scenario: Keyring-clear non-interactive path requires force
+- **WHEN** `lango security keyring clear` is run with non-interactive stdin and without `--force`
+- **THEN** the command SHALL return an error directing the user to pass `--force for non-interactive deletion`
+
+### Requirement: Keyring-clear EOF aborts cleanly
+`lango security keyring clear` SHALL treat EOF on its confirmation input as a clean denial.
+
+#### Scenario: Keyring-clear EOF aborts without clearing
+- **WHEN** `lango security keyring clear` prompts for confirmation and stdin reaches EOF before approval
+- **THEN** the command SHALL print `Aborted.`
+- **AND** it SHALL NOT clear stored credentials
 

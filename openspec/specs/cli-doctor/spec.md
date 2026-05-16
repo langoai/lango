@@ -9,6 +9,25 @@ The system SHALL include RunLedger diagnostics in the `lango doctor` command out
 - **WHEN** user runs `lango doctor --help`
 - **THEN** the long description SHALL include RunLedger configuration diagnostics among the check families
 
+#### Scenario: Doctor output uses the command writer
+- **WHEN** `lango doctor` renders table or JSON output
+- **THEN** it SHALL write the full output through the Cobra command output writer
+- **AND** wrappers or tests that replace `cmd.OutOrStdout()` SHALL capture the command output
+
+#### Scenario: Doctor JSON output remains decodable
+- **WHEN** `lango doctor --output json` renders output
+- **THEN** the output SHALL be valid pretty-printed JSON that can be decoded directly by wrappers without stripping extra framing text
+
+#### Scenario: Doctor rejects unknown output before bootstrap
+- **WHEN** `lango doctor --output yaml` is run
+- **THEN** the command SHALL return an actionable unknown-output-format error
+- **AND** it SHALL NOT invoke bootstrap
+
+#### Scenario: Doctor output text stays plain and single-line
+- **WHEN** doctor check names, messages, details, fix actions, or structured trace metadata contain ANSI/OSC escape sequences or embedded newlines before rendering
+- **THEN** the doctor command SHALL strip those control sequences
+- **AND** it SHALL normalize both TUI and JSON output text to a single line before display or serialization
+
 ### Requirement: Verify all providers
 The command SHALL verify the status of every provider defined in the `providers` configuration map.
 
@@ -461,4 +480,3 @@ The doctor command SHALL include a `RunLedgerCheck` that validates RunLedger-spe
 #### Scenario: No profile set and nothing enabled
 - **WHEN** `contextProfile` is not set AND no context subsystems are enabled
 - **THEN** doctor check reports StatusSkip or StatusWarn suggesting user set a context profile
-

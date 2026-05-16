@@ -16,8 +16,8 @@ Domain packages SHALL export a `BuildTools()` function that creates agent tools 
 - **WHEN** `economy.BuildTools(nil, nil, nil, nil, nil)` is called
 - **THEN** an empty tool slice is returned without panic
 
-### Requirement: app/tools_economy.go is removed
-The `buildEconomyTools` function and its 5 sub-builders SHALL be deleted from `internal/app/tools_economy.go`. Tool registration MUST go through `economy.BuildTools()` called from the network module's `Init()`.
+### Requirement: Legacy app-local economy builder is removed
+The old app-local `buildEconomyTools` path is gone. Tool registration MUST go through `economy.BuildTools()` from `internal/economy/tools.go`, wired from the current app module path.
 
 #### Scenario: Module calls economy.BuildTools
 - **WHEN** the network module initializes economy components
@@ -57,7 +57,7 @@ The `tools/browser`, `tools/filesystem`, `tools/exec`, `tooloutput`, `tools/cryp
 - **THEN** it SHALL pass the lango-command guard and protected-path guard as callback functions into `exec.BuildTools()`
 
 ### Requirement: Cycle-bound builders may remain in app
-Builders that still require cross-package knowledge or import-cycle-sensitive glue MAY remain in `internal/app/` until a separate boundary redesign is completed.
+The system SHALL allow builders that still require cross-package knowledge or import-cycle-sensitive glue to remain in `internal/app/` until a separate boundary redesign is completed.
 
 #### Scenario: Meta and on-chain escrow builders remain app-owned
 - **WHEN** tool builder ownership is reviewed after the recent refactors

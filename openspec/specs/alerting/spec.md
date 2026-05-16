@@ -44,6 +44,16 @@ The system SHALL provide a `lango alerts list` CLI command that queries the gate
 - **WHEN** user runs `lango alerts list --output json`
 - **THEN** the system outputs alerts as a JSON array
 
+#### Scenario: Alerts list rejects an unknown output format before fetch
+- **WHEN** user runs `lango alerts list --output yaml`
+- **THEN** the system returns an actionable unknown-output-format error
+- **AND** it SHALL NOT contact the gateway
+
+#### Scenario: Alerts command output uses the command writer
+- **WHEN** `lango alerts list` or `lango alerts summary` renders table or JSON output
+- **THEN** it SHALL write the full output through the Cobra command output writer
+- **AND** wrappers or tests that replace `cmd.OutOrStdout()` SHALL capture the command output
+
 ### Requirement: CLI alerts summary command
 The system SHALL provide a `lango alerts summary` CLI command that queries the gateway `/alerts` endpoint and displays aggregated alert counts by type.
 

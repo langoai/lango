@@ -1,9 +1,7 @@
 ## Purpose
 
 Capability spec for p2p-workspace. See requirements below for scope and behavior contracts.
-
 ## Requirements
-
 ### Requirement: p2p-workspace capability documented
 The p2p-workspace capability SHALL be documented through the sections in this spec. This requirement is a structural placeholder that satisfies the canonical openspec format; detailed behavior contracts live in the descriptive sections of this file.
 
@@ -42,6 +40,29 @@ The workspace message system SHALL support four new message types for branch-bas
 #### Scenario: Sync request message
 - **WHEN** git state divergence is detected or a member requests synchronization
 - **THEN** a SYNC_REQUEST message is posted to coordinate re-sync
+
+### Requirement: Workspace creation keeps goal optional
+
+The `p2p_workspace_create` operator tool SHALL require only a workspace name and SHALL treat the workspace goal as optional descriptive context.
+
+#### Scenario: Workspace create accepts name without goal
+- **WHEN** `p2p_workspace_create` is invoked with `name` and without `goal`
+- **THEN** the tool SHALL create the workspace successfully
+- **AND** the returned workspace payload SHALL keep an empty goal value
+
+### Requirement: Workspace operator tools reject missing required wrapper inputs
+The workspace operator tools SHALL reject missing required wrapper inputs with actionable parameter errors before workspace lookup, membership mutation, or message persistence begin.
+
+#### Scenario: Missing workspace tool input fails at the wrapper
+- **WHEN** `p2p_workspace_join`, `p2p_workspace_leave`, `p2p_workspace_status`, `p2p_workspace_post`, or `p2p_workspace_read` is invoked without one of its declared required wrapper inputs
+- **THEN** the tool SHALL return an actionable missing-parameter error
+
+### Requirement: Workspace git tools reject missing required wrapper inputs
+The workspace git tools SHALL reject missing required wrapper inputs with actionable parameter errors before repository lookup, bundle creation, or diff resolution begin.
+
+#### Scenario: Missing workspace git tool input fails at the wrapper
+- **WHEN** `p2p_git_init`, `p2p_git_push`, `p2p_git_log`, `p2p_git_diff`, or `p2p_git_leaves` is invoked without one of its declared required wrapper inputs
+- **THEN** the tool SHALL return an actionable missing-parameter error
 
 ## Overview
 

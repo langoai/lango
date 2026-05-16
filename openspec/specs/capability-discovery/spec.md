@@ -1,7 +1,7 @@
 # capability-discovery Specification
 
 ## Purpose
-TBD - created by archiving change ux-capability-concierge. Update Purpose after archive.
+Define capability discovery, summary skill listing, and mode-aware filtering behavior.
 ## Requirements
 ### Requirement: list_skills summary parameter
 The `list_skills` tool SHALL accept an optional `summary` boolean parameter (default `false`). When `summary=true`, the tool SHALL return only `{name, description, when_to_use}` for each active skill, omitting full content and reference paths. When `summary=false` (default), the tool SHALL return its existing full output, preserving backward compatibility.
@@ -54,4 +54,3 @@ When a session has an active mode, the system prompt SHALL include guidance inst
 #### Scenario: Mode adds capability discovery hint
 - **WHEN** a session with an active mode generates its system prompt
 - **THEN** the prompt SHALL contain guidance referencing `list_skills(summary=true)` and `view_skill`
-

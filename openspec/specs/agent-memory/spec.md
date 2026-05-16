@@ -63,7 +63,7 @@ The package SHALL provide an `InMemoryStore` implementation using sync.RWMutex-p
 - **AND** it SHALL apply the final limit after those filters
 
 ### Requirement: Agent memory tools
-The `agentmemory` package SHALL export `BuildTools(store Store)` that returns three tools: `memory_agent_save`, `memory_agent_recall`, and `memory_agent_forget`. App-layer registration SHALL use this builder instead of `internal/app/tools_agentmemory.go`.
+The `agentmemory` package SHALL export `BuildTools(store Store)` that returns three tools: `memory_agent_save`, `memory_agent_recall`, and `memory_agent_forget`. App-layer registration SHALL use this builder directly from the current app module wiring instead of any deleted app-local builder file.
 
 #### Scenario: BuildTools returns the three agent memory tools
 - **WHEN** `agentmemory.BuildTools(store)` is called
@@ -124,4 +124,3 @@ Persistent agent memory MUST store original content as ciphertext and keep only 
 - **WHEN** an agent memory row has ciphertext fields present but decryption fails
 - **THEN** the store returns an error or empty protected values
 - **AND** it does not promote the stored plaintext projection as the original content
-

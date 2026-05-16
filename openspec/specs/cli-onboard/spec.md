@@ -6,7 +6,6 @@ The `lango onboard` command provides a guided 5-step wizard for first-time setup
 ## Purpose
 
 Capability spec for cli-onboard. See requirements below for scope and behavior contracts.
-
 ## Requirements
 
 ### Guided Wizard Flow
@@ -135,8 +134,18 @@ The test step SHALL validate:
 4. Channel tokens are present for enabled channels (no channels → warn)
 5. config.Validate() passes
 
+#### Scenario: Test step runs the five validation categories
+- **WHEN** user advances to the Test Configuration step
+- **THEN** the wizard SHALL validate provider presence, API key status, agent model presence, enabled channel tokens, and `config.Validate()` success
+- **AND** SHALL surface the results using pass, warn, or fail indicators
+
 ### Encrypted Profile Storage
 The `lango onboard` command SHALL save configuration via `configstore.Store.Save()` to the encrypted SQLite profile store. The `--profile` flag controls the profile name (default: "default").
+
+#### Scenario: Onboard saves to the encrypted profile store
+- **WHEN** user completes the onboard wizard
+- **THEN** the command SHALL persist the configuration through `configstore.Store.Save()`
+- **AND** SHALL use the `--profile` flag value, or `default` when the flag is omitted
 
 ### Post-save Messaging
 After saving, the command SHALL display the profile name, storage path, and next steps including `lango serve`, `lango doctor`, and `lango settings` for fine-tuning.
@@ -173,3 +182,42 @@ The next steps output SHALL include quick preset commands for creating additiona
 #### Scenario: Preset commands shown
 - **WHEN** onboard completes
 - **THEN** output includes example commands: `lango config create <name> --preset researcher/collaborator/full`
+
+### Requirement: Onboard post-save output mentions all primary next steps
+After saving, the onboard command SHALL display next-step guidance that mentions the default workbench entry point, the live runtime entry point, the verification command, and the full configuration editor.
+
+#### Scenario: Post-save mentions primary entry points
+- **WHEN** user saves configuration via onboard
+- **THEN** the output SHALL include `lango` as the default mission workbench entry point
+- **AND** SHALL include `lango serve` as the live runtime entry point
+- **AND** SHALL include `lango doctor` as the verification step
+- **AND** SHALL include `lango settings` as the full-editor follow-up
+
+### Requirement: Onboard command output routing
+`lango onboard` SHALL write its preset banner, cancel message, and post-save guidance through the Cobra command output stream so wrappers and test harnesses can capture non-TUI completion output without intercepting process-global stdout.
+
+#### Scenario: Onboard next-steps guidance writes to command output
+- **WHEN** onboard completes successfully
+- **THEN** the post-save guidance writes to the Cobra command output stream
+
+### Requirement: Advanced feature guidance stays outside the five-step wizard
+Product guidance for advanced systems SHALL describe them as settings-editor or config-import/export tasks instead of as dedicated onboarding submenu paths.
+
+#### Scenario: Advanced features are routed to settings or config workflows
+- **WHEN** a user needs to configure advanced systems such as embedding, graph, multi-agent, A2A, prompts, or OIDC providers
+- **THEN** the product guidance SHALL direct them to `lango settings` or `lango config import/export`
+- **AND** SHALL NOT describe nonexistent dedicated onboard submenu paths for those advanced systems
+
+### Requirement: Onboard test step shares the workbench readiness contract
+
+The onboard Test Configuration step SHALL evaluate provider/model/API-key completeness with the same agent-readiness rules used by the workbench setup-recovery flow.
+
+#### Scenario: Missing remote API key fails onboard validation
+- **WHEN** the selected agent provider and model target a non-ollama provider and the provider API key is empty
+- **THEN** the Test Configuration step SHALL fail the API key check
+- **AND** SHALL continue treating the profile as incomplete until the key is provided
+
+#### Scenario: Ollama passes onboard validation without an API key
+- **WHEN** the selected agent provider and model target an ollama provider and the provider API key is empty
+- **THEN** the Test Configuration step SHALL pass the API key check
+- **AND** SHALL keep that profile eligible for ready-state workbench behavior after save

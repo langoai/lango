@@ -34,8 +34,8 @@
 - `internal/economy/escrow/sentinel/detector_test.go` — Tests
 
 ### Agent Tools
-- `internal/app/tools_escrow.go` — 10 escrow tools + 4 sentinel tools
-- `internal/app/tools_sentinel.go` — Sentinel tools
+- `internal/app/tools_escrow.go` — 10 on-chain escrow tools
+- `internal/economy/escrow/sentinel/tools.go` — Sentinel tools
 
 ### Skill
 - `skills/security-sentinel.yaml` — Sentinel skill definition
@@ -59,5 +59,5 @@
 
 - Fully backward compatible: existing `custodian` mode unchanged
 - New config under `economy.escrow.onChain` (additive)
-- Existing escrow tools in `tools_economy.go` unchanged
+- Existing economy tools continue to come from `internal/economy/tools.go`
 - New tools registered in separate catalog categories ("escrow", "sentinel")

@@ -1,9 +1,7 @@
 ## Purpose
 
 Capability spec for zkp-core. See requirements below for scope and behavior contracts.
-
 ## Requirements
-
 ### Requirement: ProverService Lifecycle and Scheme Selection
 
 The `ProverService` SHALL support two proving schemes: `"plonk"` (default) and `"groth16"`. The scheme SHALL be set at construction time via `Config.Scheme` and SHALL NOT change after construction. If `Config.Scheme` is empty, the service SHALL default to `"plonk"`. The service SHALL create and maintain a cache directory at `{CacheDir}` (defaulting to `~/.lango/zkp/cache`) with permissions `0700`. An unsupported scheme name MUST cause `Compile` and `Prove` to return an error.
@@ -131,20 +129,19 @@ The `AgentCapabilityCircuit` SHALL prove that an agent has a capability with an 
 - **THEN** `AssertIsLessOrEqual(MinScore, ActualScore)` SHALL fail
 
 ### Requirement: Groth16 Solidity verifier export
-
 The system SHALL provide a `cmd/zkexport` CLI tool that compiles gnark circuits and exports Groth16 verifying keys as Solidity contracts. The tool SHALL use unsafe SRS for R&D and support all registered circuit IDs.
 
-#### Scenario: Export verifier for existing circuit
-- **WHEN** `zkexport --circuit ownership --output contracts/src/verifiers/OwnershipVerifier.sol` is run
-- **THEN** the tool compiles the circuit, runs Groth16 setup, and writes a Solidity verifier contract
+#### Scenario: Help path returns success without prover setup
+- **WHEN** `zkexport --help` is invoked
+- **THEN** the command SHALL return success
+- **AND** it SHALL print help text to stderr
+- **AND** it SHALL NOT attempt prover service setup
 
-#### Scenario: Exported verifier accepts valid proof
-- **WHEN** a proof is generated off-chain for the ownership circuit and submitted to the exported verifier contract
-- **THEN** the verifier returns true
-
-#### Scenario: Groth16 verifier export method
-- **WHEN** `ExportGroth16Verifier(circuitID, circuit, w)` is called on ProverService
-- **THEN** the service compiles the circuit with Groth16 R1CS, runs Groth16 setup with unsafe SRS, and writes the Solidity verifier to `w`
+#### Scenario: Later all-mode failure leaves stdout empty
+- **WHEN** `zkexport --all` successfully exports at least one earlier circuit and a later circuit export fails
+- **THEN** stdout SHALL remain empty for that failed run
+- **AND** stderr SHALL report the failing circuit export
+- **AND** verifier files created during that run SHALL be removed
 
 ### Requirement: PQAttestationCircuit (Circuit ID: "pq_attestation")
 

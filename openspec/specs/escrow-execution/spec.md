@@ -1,9 +1,7 @@
 ## Purpose
 
 Capability spec for escrow-execution. See requirements below for scope and behavior contracts.
-
 ## Requirements
-
 ### Requirement: Receipt-backed escrow recommendation execution
 The system SHALL provide a receipt-backed escrow recommendation execution path for `knowledge exchange v1`. The first slice SHALL execute only `create + fund`.
 
@@ -29,3 +27,13 @@ The system SHALL persist canonical escrow execution state and append-only escrow
 #### Scenario: Execution failure is preserved
 - **WHEN** escrow creation or funding fails
 - **THEN** the receipt trail SHALL append an escrow execution failure event and preserve the failure reason for later reconstruction
+
+### Requirement: Escrow execution request validation stays actionable
+
+The escrow recommendation execution path SHALL treat an empty `transaction_receipt_id` as an actionable validation error before receipt-backed rejection logic runs.
+
+#### Scenario: Missing transaction receipt id fails validation
+- **WHEN** `execute_escrow_recommendation` is called without `transaction_receipt_id`
+- **THEN** the runtime SHALL return an actionable transaction-receipt-id-required error
+- **AND** SHALL not pretend that receipt-backed rejection state was evaluated
+

@@ -2,6 +2,36 @@
 
 Capability spec for cli-security-status. See requirements below for scope and behavior contracts.
 ## Requirements
+### Requirement: Security status output routing
+`lango security status` SHALL route human-readable and JSON output through the Cobra command writer instead of writing directly to process stdout.
+
+#### Scenario: Security status output uses the command writer
+- **WHEN** `lango security status` renders table or JSON output
+- **THEN** the command SHALL write the full output through the Cobra command output writer
+- **AND** wrappers or tests that replace `cmd.OutOrStdout()` SHALL capture the command output
+
+#### Scenario: Security status rejects unknown output before bootstrap
+- **WHEN** `lango security status --output yaml` is run
+- **THEN** the command SHALL return an actionable unknown-output-format error
+- **AND** it SHALL NOT invoke bootstrap-dependent work
+
+### Requirement: Security inspection subcommands support explicit output formats
+`lango security keyring status`, `lango security kms status`, `lango security kms keys`, and `lango security secrets list` SHALL accept `--output table|json` and route table or JSON output through the Cobra command writer.
+
+#### Scenario: Keyring status JSON output uses the command writer
+- **WHEN** `lango security keyring status --output json` is run
+- **THEN** the command SHALL emit valid JSON through the Cobra command output writer
+
+#### Scenario: KMS status and key listing reject unknown output before bootstrap
+- **WHEN** `lango security kms status --output yaml` or `lango security kms keys --output yaml` is run
+- **THEN** the command SHALL return an actionable unknown-output-format error
+- **AND** it SHALL NOT invoke bootstrap-dependent work
+
+#### Scenario: Secrets list rejects unknown output before bootstrap
+- **WHEN** `lango security secrets list --output yaml` is run
+- **THEN** the command SHALL return an actionable unknown-output-format error
+- **AND** it SHALL NOT invoke bootstrap-dependent work
+
 ### Requirement: Security status command
 Security status reads SHALL use broker-backed storage diagnostics rather than opening the SQLite database directly from the CLI process. The status surface SHALL also report whether the first-slice exportability policy is enabled.
 
@@ -70,3 +100,16 @@ The security status surface MUST report brokered payload protection state rather
 - **WHEN** the user runs the security status command after payload protection is enabled
 - **THEN** the output reports broker/storage/payload-protection state
 - **AND** it does not imply that SQLCipher page encryption is active
+
+### Requirement: Status output field semantics stay stable
+The security status surface SHALL keep its signer-provider, DB status, and KMS fallback fields aligned with the actual runtime semantics.
+
+#### Scenario: KMS signer remains visible in status output
+- **WHEN** the security status command renders a KMS-backed signer configuration
+- **THEN** the output SHALL keep the active signer provider visible as the KMS provider name
+- **AND** SHALL surface the KMS provider, key ID, and fallback enabled/disabled state
+
+#### Scenario: Unavailable config read still preserves explicit DB status strings
+- **WHEN** the security status command renders JSON output for a state where DB-backed config could not be read non-interactively
+- **THEN** `signer_provider` SHALL be `unavailable`
+- **AND** `db_encryption` SHALL preserve the current runtime status string rather than a generic placeholder

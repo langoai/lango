@@ -1,7 +1,7 @@
 # extension-pack-cli Specification
 
 ## Purpose
-TBD - created by archiving change ux-extension-packs. Update Purpose after archive.
+Define the CLI workflows for installing, listing, validating, and removing extension packs.
 ## Requirements
 ### Requirement: `lango extension inspect` subcommand
 The CLI SHALL provide `lango extension inspect <source>` that accepts a local directory path or a git URL (with optional `#<ref>` suffix) and prints the inspect report to stdout. The command SHALL exit with code 0 on a readable, valid pack; 1 on user-facing error (invalid manifest, unreachable source, path-safety violation); 2 on internal error (I/O failure, malformed working copy). The command SHALL NOT write any file outside the system temp directory used for fetching.
@@ -19,7 +19,7 @@ The CLI SHALL provide `lango extension inspect <source>` that accepts a local di
 - **THEN** the command SHALL exit 1 with an error naming the validation failure
 
 ### Requirement: `lango extension install` subcommand
-The CLI SHALL provide `lango extension install <source> [--yes] [--output <format>]`. The command SHALL (a) print the inspect report, (b) unless `--yes` is set, prompt interactively for confirmation, and (c) on confirm, install the pack as specified by the `extension-pack-core` install contract. `--yes` SHALL NOT suppress the inspect output. Exit codes match `inspect` plus: exit 3 on user-denied confirmation.
+The CLI SHALL provide `lango extension install <source> [--yes] [--output <format>]`. The command SHALL (a) print the inspect report, (b) unless `--yes` is set, prompt interactively for confirmation through the shared confirmation helper using Cobra command input/output streams, and (c) on confirm, install the pack as specified by the `extension-pack-core` install contract. `--yes` SHALL NOT suppress the inspect output. Exit codes match `inspect` plus: exit 3 on user-denied confirmation.
 
 #### Scenario: Interactive install confirmed
 - **WHEN** the user runs `lango extension install ./python-dev` and answers `y` at the prompt
@@ -60,7 +60,7 @@ The CLI SHALL provide `lango extension list [--output <format>]` that prints all
 - **AND** its json record SHALL carry `status: "tampered"`
 
 ### Requirement: `lango extension remove` subcommand
-The CLI SHALL provide `lango extension remove <name> [--yes]` that removes a pack per the `extension-pack-core` removal contract. Without `--yes`, it SHALL prompt for confirmation and print the list of files/directories that will be deleted before prompting. Exit 0 on success; 1 if the pack is not installed; 3 on user-denied confirmation.
+The CLI SHALL provide `lango extension remove <name> [--yes]` that removes a pack per the `extension-pack-core` removal contract. Without `--yes`, it SHALL print the list of files/directories that will be deleted, then prompt for confirmation through the shared confirmation helper using Cobra command input/output streams. Exit 0 on success; 1 if the pack is not installed; 3 on user-denied confirmation.
 
 #### Scenario: Remove with confirmation
 - **WHEN** the user runs `lango extension remove python-dev` and answers `y`
@@ -101,4 +101,12 @@ The CLI SHALL provide `lango extension remove <name> [--yes]` that removes a pac
 #### Scenario: Subcommand help has example
 - **WHEN** the user runs `lango extension install --help`
 - **THEN** the output SHALL include at least one `lango extension install <source>` example
+
+### Requirement: Extension confirmation uses shared guarded prompt helper
+`lango extension install` and `lango extension remove` SHALL use the shared terminal-guarded confirmation helper for their interactive confirmation flow.
+
+#### Scenario: Extension confirmation refuses non-TTY stdin through shared helper
+- **WHEN** `lango extension install <pack>` or `lango extension remove <name>` runs without `--yes` and stdin is a non-terminal `*os.File`
+- **THEN** the command SHALL fail with the existing scripted-run guidance
+- **AND** the prompt SHALL be mediated by the shared guarded confirmation helper
 

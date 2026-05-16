@@ -6,35 +6,53 @@ Capability spec for callback-wiring. See requirements below for scope and behavi
 
 ## Requirements
 
-### REQ-1: Session on-chain registration/revocation callbacks
+### Requirement: Session on-chain registration and revocation callbacks
+When `SessionValidatorAddress` is configured, the session manager SHALL wire `WithOnChainRegistration` and `WithOnChainRevocation` options that call the `SessionValidatorClient`.
 
-When `SessionValidatorAddress` is configured, the session manager must wire `WithOnChainRegistration` and `WithOnChainRevocation` options that call the `SessionValidatorClient`.
+#### Scenario: Session creation registers key on-chain
+- **WHEN** SessionValidator address is configured and a session key is created
+- **THEN** `RegisterSessionKey` SHALL be called on-chain
 
-**Scenarios:**
-- Given SessionValidator address configured, when a session key is created, then `RegisterSessionKey` is called on-chain.
-- Given SessionValidator address configured, when a session key is revoked, then `RevokeSessionKey` is called on-chain.
+#### Scenario: Session revocation revokes key on-chain
+- **WHEN** SessionValidator address is configured and a session key is revoked
+- **THEN** `RevokeSessionKey` SHALL be called on-chain
 
-### REQ-2: Budget engine sync via OnChainTracker
+### Requirement: Budget engine sync uses OnChainTracker callback
+The `OnChainTracker.SetCallback` SHALL forward spending data to the budget engine's `Record()` method instead of only logging it.
 
-The `OnChainTracker.SetCallback` must forward spending data to the budget engine's `Record()` method, not just log.
+#### Scenario: Spending callback reaches budget engine
+- **WHEN** the on-chain tracker emits spending data through its callback
+- **THEN** the budget engine SHALL record that data
 
-### REQ-3: P2P CardFn provides agent info
+### Requirement: P2P CardFn provides agent information
+The protocol handler SHALL receive a `CardFn` that returns the agent's name, DID, and peer ID.
 
-The protocol handler must receive a `CardFn` that returns the agent's name, DID, and peer ID.
+#### Scenario: Protocol handler resolves local card information
+- **WHEN** the protocol handler needs local card information
+- **THEN** `CardFn` SHALL return the configured agent name, DID, and peer ID
 
-### REQ-4: Gossip service must be started
+### Requirement: Gossip service starts after creation
+After creation, `gossip.Start()` SHALL be called to begin the publish/subscribe loops.
 
-After creation, `gossip.Start()` must be called to begin the publish/subscribe loops.
+#### Scenario: Gossip loops begin after initialization
+- **WHEN** the gossip service is created successfully
+- **THEN** `gossip.Start()` SHALL be invoked
 
-### REQ-5: Team invoke must use handler
+### Requirement: Team invoke uses the real handler path
+The team coordinator's `invokeFn` SHALL route through the P2P protocol handler to send real remote tool invocation requests instead of returning a stub error.
 
-The team coordinator's `invokeFn` must route through the P2P protocol handler to send real remote tool invocation requests, not return a stub error.
+#### Scenario: Team invoke dispatches through protocol handler
+- **WHEN** the team coordinator invokes a remote tool
+- **THEN** the request SHALL be routed through the P2P protocol handler
 
-### REQ-6: SmartAccount components must be accessible
+### Requirement: SmartAccount components are publicly accessible
+All smart account sub-components (session manager, policy engine, module registry, bundler, paymaster, on-chain tracker) SHALL be accessible via public accessor methods from the `App` struct.
 
-All smart account sub-components (session manager, policy engine, module registry, bundler, paymaster, on-chain tracker) must be accessible via public accessor methods from the App struct.
+#### Scenario: App exposes smart-account sub-components
+- **WHEN** callers need smart-account support components from the application
+- **THEN** the app SHALL provide public accessors for the configured sub-components
 
-### REQ-7: Cross-domain callbacks replaced by EventBus
+### Requirement: Cross-domain callbacks are replaced by EventBus
 
 The following SetXxxCallback methods SHALL be removed and replaced by EventBus publish/subscribe:
 - `SetEmbedCallback` on knowledge and memory stores → `ContentSavedEvent`
@@ -43,7 +61,15 @@ The following SetXxxCallback methods SHALL be removed and replaced by EventBus p
 
 Stores SHALL accept `*eventbus.Bus` via `SetEventBus(bus)` method. When bus is nil, publish is silently skipped.
 
-**Scenarios:**
-- Given a knowledge store with EventBus set, when content is saved, then `ContentSavedEvent` is published.
-- Given a store with no bus (nil), when content is saved, then no panic occurs and no event is published.
-- Domain-internal hooks (negotiation.SetEventCallback, SessionStore.SetInvalidationCallback) SHALL NOT be removed.
+#### Scenario: Knowledge store publishes ContentSavedEvent
+- **WHEN** a knowledge store with EventBus set saves content
+- **THEN** `ContentSavedEvent` SHALL be published
+
+#### Scenario: Nil bus is a no-op
+- **WHEN** a store has no bus and content is saved
+- **THEN** no panic SHALL occur
+- **AND** no event SHALL be published
+
+#### Scenario: Domain-internal hooks remain
+- **WHEN** domain-internal hooks such as `negotiation.SetEventCallback` or `SessionStore.SetInvalidationCallback` are evaluated
+- **THEN** they SHALL NOT be removed by this EventBus migration

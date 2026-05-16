@@ -6,26 +6,26 @@ Provides CLI commands for managing P2P teams, including listing teams, viewing t
 ## Requirements
 
 ### Requirement: P2P team list command
-The system SHALL provide a `lango p2p team list [--json]` command that displays all known P2P teams. The command SHALL use bootLoader for config access but SHALL NOT initialize a full P2P node. When P2P is disabled, the command SHALL return a clear error message.
+The system SHALL provide a `lango p2p team list [--output table|json]` guidance command that describes how to inspect runtime-backed P2P teams. The command SHALL use bootLoader for config access but SHALL NOT initialize a full P2P node. When P2P is disabled, the command SHALL return a clear error message.
 
 #### Scenario: List teams with JSON output
-- **WHEN** user runs `lango p2p team list --json`
-- **THEN** system outputs a JSON array of team objects with fields: name, members, createdAt
+- **WHEN** user runs `lango p2p team list --output json`
+- **THEN** system outputs an empty JSON array when no runtime team snapshot is available
 
 #### Scenario: P2P disabled
 - **WHEN** user runs `lango p2p team list` with `p2p.enabled` set to false
 - **THEN** system returns error "P2P networking is not enabled (set p2p.enabled = true)"
 
 ### Requirement: P2P team status command
-The system SHALL provide a `lango p2p team status <name> [--json]` command that displays detailed status for a specific P2P team, including member count, active connections, and team role assignments.
+The system SHALL provide a `lango p2p team status <name> [--output table|json]` guidance command that explains how to inspect a runtime-backed P2P team.
 
-#### Scenario: Team exists
+#### Scenario: Team inspection guidance
 - **WHEN** user runs `lango p2p team status my-team`
-- **THEN** system displays team name, member list with peer IDs, and connection status
+- **THEN** system explains that teams are runtime-only structures and points the operator to the concrete `team_status` tool
 
-#### Scenario: Team not found
-- **WHEN** user runs `lango p2p team status nonexistent`
-- **THEN** system returns error indicating the team was not found
+#### Scenario: Team status with JSON output
+- **WHEN** user runs `lango p2p team status nonexistent --output json`
+- **THEN** system outputs a JSON object containing `"error": "team not found (teams are runtime-only)"`
 
 ### Requirement: P2P team disband command
 The system SHALL provide a `lango p2p team disband <name> [--force]` command that disbands a P2P team. The command SHALL prompt for confirmation unless `--force` is provided.

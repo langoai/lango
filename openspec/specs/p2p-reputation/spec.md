@@ -40,6 +40,10 @@ The system SHALL integrate with the P2P firewall to reject untrusted peers.
 ### Requirement: Persistence
 The system SHALL persist reputation data in the database using Ent ORM.
 
+#### Scenario: Reputation updates are stored durably
+- **WHEN** a peer reputation record is created or updated after an exchange outcome
+- **THEN** the reputation data SHALL be persisted through Ent ORM
+
 ### Requirement: Reputation data retrieval
 The reputation Store SHALL provide a `GetDetails(ctx, peerDID)` method that returns full `PeerDetails` including PeerDID, TrustScore, SuccessfulExchanges, FailedExchanges, TimeoutCount, FirstSeen, and LastInteraction.
 

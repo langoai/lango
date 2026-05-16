@@ -10,7 +10,7 @@ Capability spec for cli-command-groups. See requirements below for scope and beh
 ## Requirements
 
 ### R1: Command Grouping
-The root command must define five Cobra groups organized by user intent and assign every subcommand to one:
+The root command SHALL define five Cobra groups organized by user intent and assign every subcommand to one:
 
 | Group ID | Title | Commands |
 |----------|-------|----------|
@@ -20,8 +20,9 @@ The root command must define five Cobra groups organized by user intent and assi
 | `net` | Network & Economy: | p2p, payment, economy, contract, account, mcp |
 | `sys` | Security & System: | security, approval, health, config |
 
-#### Scenarios
-- **lango --help**: Commands appear grouped under their titles instead of flat alphabetical list.
+#### Scenario: Commands appear grouped in help output
+- **WHEN** user runs `lango --help`
+- **THEN** commands SHALL appear grouped under their titles instead of a flat alphabetical list
 
 #### Scenario: Getting Started group
 - **WHEN** user runs `lango --help`
@@ -44,15 +45,19 @@ The root command must define five Cobra groups organized by user intent and assi
 - **THEN** Security & System section contains: security, approval, health, config
 
 ### R2: Cross-References (See Also)
-Each configuration-related command must include a "See Also" section in its `Long` description:
+Each configuration-related command SHALL include a "See Also" section in its `Long` description:
 - `config` → settings, onboard, doctor
 - `settings` → config, onboard, doctor
 - `onboard` → settings, config, doctor
 - `doctor` → settings, config, onboard
 
-#### Scenarios
-- **lango config --help**: Shows "See Also" section with settings, onboard, doctor references.
-- **lango doctor --help**: Shows "See Also" section with settings, config, onboard references.
+#### Scenario: lango config help shows related commands
+- **WHEN** user runs `lango config --help`
+- **THEN** the help output SHALL show a "See Also" section with settings, onboard, and doctor references
+
+#### Scenario: lango doctor help shows related commands
+- **WHEN** user runs `lango doctor --help`
+- **THEN** the help output SHALL show a "See Also" section with settings, config, and onboard references
 
 ## Constraints
 - No behavioral changes — only `--help` output affected

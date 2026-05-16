@@ -1,9 +1,7 @@
 ## Purpose
 
 Capability spec for p2p-agent-prompts. See requirements below for scope and behavior contracts.
-
 ## Requirements
-
 ### Requirement: P2P tool category in agent identity
 The AGENTS.md prompt SHALL include P2P Network as part of thirteen tool categories. The identity section SHALL reference "thirteen tool categories" and include Economy, Contract, and Observability bullets alongside the existing P2P Network bullet.
 
@@ -64,3 +62,21 @@ The TOOL_USAGE.md exec tool blocklist SHALL include `lango economy`, `lango metr
 #### Scenario: Blocklist includes new command groups
 - **WHEN** the agent checks exec tool blocklist
 - **THEN** `lango economy`, `lango metrics`, and `lango contract` SHALL be listed as blocked commands
+
+### Requirement: Economy escrow tool usage wording stays truth-aligned
+
+The agent tool-usage prompt SHALL describe `economy_escrow_create` using the same required-input contract enforced by the wrapper layer.
+
+#### Scenario: Economy escrow create prompt lists required milestones
+- **WHEN** the agent reads the economy tool section in `TOOL_USAGE.md`
+- **THEN** `economy_escrow_create` SHALL describe `buyerDid`, `sellerDid`, `amount`, and `milestones` as required inputs
+
+### Requirement: P2P pay prompt wording stays truth-aligned
+
+The agent tool-usage prompt SHALL describe `p2p_pay` using the same receipt-linked required-input contract enforced by the tool wrapper.
+
+#### Scenario: p2p_pay prompt lists required transaction receipt id
+- **WHEN** the agent reads the P2P networking section in `TOOL_USAGE.md`
+- **THEN** `p2p_pay` SHALL describe `peer_did`, `transaction_receipt_id`, and `amount` as required inputs
+- **AND** SHALL describe `submission_receipt_id` and `memo` as optional inputs
+

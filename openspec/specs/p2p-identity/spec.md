@@ -151,11 +151,11 @@ The `lango p2p identity` command SHALL display `keyStorage` information (either 
 - **THEN** the output SHALL show `Key Storage: file`
 
 #### Scenario: JSON output reflects key storage
-- **WHEN** the user runs `lango p2p identity --json`
+- **WHEN** the user runs `lango p2p identity --output json`
 - **THEN** the JSON SHALL contain `"keyStorage": "secrets-store"` or `"keyStorage": "file"` instead of `"keyDir"`
 
 #### Scenario: Identity output includes active DID when available
-- **WHEN** the user runs `lango p2p identity` or `lango p2p identity --json` and an active DID is available
+- **WHEN** the user runs `lango p2p identity` or `lango p2p identity --output json` and an active DID is available
 - **THEN** the output SHALL include that DID in addition to peer and key storage information
 
 ---
@@ -249,3 +249,12 @@ The system SHALL derive the Ed25519 identity key from the Master Key using `HKDF
 ### Requirement: Bundle file persistence
 
 The system SHALL persist the local IdentityBundle to `~/.lango/identity-bundle.json` (0600 permissions) using atomic write (temp file + rename). Remote peer bundles SHALL be persisted to `~/.lango/known-bundles/` directory.
+
+#### Scenario: Local identity bundle is written atomically
+- **WHEN** the local IdentityBundle is persisted
+- **THEN** it SHALL be written to `~/.lango/identity-bundle.json` with `0600` permissions
+- **AND** the write path SHALL use an atomic temp-file-plus-rename strategy
+
+#### Scenario: Remote peer bundles are stored under known-bundles
+- **WHEN** a remote peer IdentityBundle is persisted
+- **THEN** it SHALL be stored under `~/.lango/known-bundles/`
