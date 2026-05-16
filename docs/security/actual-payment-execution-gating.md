@@ -29,12 +29,13 @@ This gate is not a new policy engine. It consumes the canonical result of earlie
 - dispute-ready receipts preserve the linked submission and transaction evidence
 - actual payment execution gating enforces that state at the direct payment tool boundary
 
-The gate returns only:
+For well-formed requests, the gate returns only:
 
 - `allow`
 - `deny`
 
 There is no execution-time `escalate`. Ambiguous or high-risk cases must already have been resolved upstream.
+Malformed requests and fail-closed wiring problems remain actionable errors instead of being collapsed into business deny results.
 
 ## Receipt-Backed Execution Rules
 
@@ -45,6 +46,8 @@ Direct payment execution is receipt-backed.
 - when `submission_receipt_id` is omitted, the gate uses the transaction receipt's current canonical submission
 - when `submission_receipt_id` is provided, it must exist, belong to the transaction, and still match the current canonical submission
 
+If `transaction_receipt_id` is empty, the gate returns a validation error (`transaction receipt id is required`) instead of a deny result.
+
 For the first slice, direct payment execution allows only `prepay`.
 
 - if the canonical payment approval state is not `approved`, execution is denied
@@ -53,13 +56,14 @@ For the first slice, direct payment execution allows only `prepay`.
 
 ## Deny Reasons
 
-The first slice uses a small deny reason set:
+The first slice uses a small deny reason set after request validation succeeds:
 
 - `missing_receipt`
 - `approval_not_approved`
 - `stale_state`
 - `execution_mode_mismatch`
 
+Here `missing_receipt` means the referenced transaction or canonical submission state could not be resolved, not that the request omitted `transaction_receipt_id`.
 These reason codes are recorded for both tool families so operators can reconstruct why a direct payment did or did not execute.
 
 ## Evidence Requirements

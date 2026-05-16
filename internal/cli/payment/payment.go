@@ -12,6 +12,7 @@ import (
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/payment"
 	"github.com/langoai/lango/internal/security"
+	"github.com/langoai/lango/internal/storage"
 	"github.com/langoai/lango/internal/wallet"
 )
 
@@ -21,6 +22,23 @@ type paymentDeps struct {
 	limiter wallet.SpendingLimiter
 	config  *config.PaymentConfig
 	cleanup func()
+}
+
+var paymentDepsLoader = initPaymentDeps
+var paymentHistoryLoader = func(ctx context.Context, boot *bootstrap.Result, limit int) ([]storage.PaymentHistoryRecord, error) {
+	if boot == nil || boot.Storage == nil {
+		return nil, fmt.Errorf("payment history unavailable")
+	}
+	return boot.Storage.PaymentHistory(ctx, limit)
+}
+var paymentUsageLoader = func(ctx context.Context, boot *bootstrap.Result) (storage.PaymentUsageSummary, error) {
+	if boot == nil || boot.Storage == nil {
+		return storage.PaymentUsageSummary{}, fmt.Errorf("payment usage unavailable")
+	}
+	return boot.Storage.PaymentUsage(ctx)
+}
+var paymentSendExecutor = func(ctx context.Context, deps *paymentDeps, req payment.PaymentRequest) (*payment.PaymentReceipt, error) {
+	return deps.service.Send(ctx, req)
 }
 
 // NewPaymentCmd creates the payment command with lazy bootstrap loading.

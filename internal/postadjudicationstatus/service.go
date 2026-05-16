@@ -108,7 +108,7 @@ func (s *Service) GetTransactionStatus(ctx context.Context, transactionReceiptID
 
 	transactionReceiptID = strings.TrimSpace(transactionReceiptID)
 	if transactionReceiptID == "" {
-		return TransactionStatus{}, ErrTransactionReceiptNotFound
+		return TransactionStatus{}, ErrTransactionReceiptRequired
 	}
 
 	transaction, err := s.store.GetTransactionReceipt(ctx, transactionReceiptID)

@@ -46,6 +46,12 @@ func (s *Service) ExecuteRecommendation(ctx context.Context, req Request) (Resul
 	if transactionReceiptID == "" {
 		return Result{}, fmt.Errorf("transaction receipt id is required")
 	}
+	if s == nil || s.store == nil {
+		return Result{}, fmt.Errorf("load transaction receipt %q: receipt store is required", transactionReceiptID)
+	}
+	if s.runtime == nil {
+		return Result{}, fmt.Errorf("runtime is required")
+	}
 	lock := s.lockForTransaction(transactionReceiptID)
 	lock.Lock()
 	defer lock.Unlock()

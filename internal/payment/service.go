@@ -80,16 +80,25 @@ func (s *Service) Send(ctx context.Context, req PaymentRequest) (*PaymentReceipt
 	if amount.Sign() <= 0 {
 		return nil, fmt.Errorf("amount must be positive")
 	}
+	if s.limiter == nil {
+		return nil, fmt.Errorf("spending limit: %w", fmt.Errorf("spending limiter unavailable"))
+	}
 
 	// Check spending limits
 	if err := s.limiter.Check(ctx, amount); err != nil {
 		return nil, fmt.Errorf("spending limit: %w", err)
+	}
+	if s.wallet == nil {
+		return nil, fmt.Errorf("get wallet address: %w", fmt.Errorf("wallet provider unavailable"))
 	}
 
 	// Get sender address
 	fromAddr, err := s.wallet.Address(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("get wallet address: %w", err)
+	}
+	if s.store == nil {
+		return nil, fmt.Errorf("create tx record: %w", fmt.Errorf("payment store unavailable"))
 	}
 
 	// Create pending transaction record
@@ -187,9 +196,18 @@ func (s *Service) Send(ctx context.Context, req PaymentRequest) (*PaymentReceipt
 // Balance returns the wallet's USDC balance as a formatted string.
 func (s *Service) Balance(ctx context.Context) (string, error) {
 	// Query USDC ERC-20 balance via eth_call
+	if s.wallet == nil {
+		return "", fmt.Errorf("wallet provider unavailable")
+	}
 	addr, err := s.wallet.Address(ctx)
 	if err != nil {
 		return "", fmt.Errorf("get address: %w", err)
+	}
+	if s.builder == nil {
+		return "", fmt.Errorf("balance builder unavailable")
+	}
+	if s.rpcClient == nil {
+		return "", fmt.Errorf("balance RPC unavailable")
 	}
 
 	contract := s.builder.USDCContract()
@@ -214,6 +232,9 @@ func (s *Service) Balance(ctx context.Context) (string, error) {
 func (s *Service) History(ctx context.Context, limit int) ([]TransactionInfo, error) {
 	if limit <= 0 {
 		limit = DefaultHistoryLimit
+	}
+	if s.store == nil {
+		return nil, fmt.Errorf("query history: %w", fmt.Errorf("payment store unavailable"))
 	}
 
 	txs, err := s.store.List(ctx, limit)
@@ -245,6 +266,9 @@ func (s *Service) History(ctx context.Context, limit int) ([]TransactionInfo, er
 // Unlike Send(), this does not build or submit a transaction — the SDK handles
 // payment signing. This only creates the database record for tracking.
 func (s *Service) RecordX402Payment(ctx context.Context, record X402PaymentRecord) error {
+	if s.store == nil {
+		return fmt.Errorf("record X402 payment: %w", fmt.Errorf("payment store unavailable"))
+	}
 	_, err := s.store.Create(ctx, TxRecord{
 		ID:            uuid.New(),
 		FromAddress:   record.From,
@@ -264,6 +288,9 @@ func (s *Service) RecordX402Payment(ctx context.Context, record X402PaymentRecor
 
 // WalletAddress returns the wallet's public address.
 func (s *Service) WalletAddress(ctx context.Context) (string, error) {
+	if s.wallet == nil {
+		return "", fmt.Errorf("wallet provider unavailable")
+	}
 	return s.wallet.Address(ctx)
 }
 
@@ -274,6 +301,10 @@ func (s *Service) ChainID() int64 {
 
 // submitWithRetry sends the signed transaction with exponential backoff.
 func (s *Service) submitWithRetry(ctx context.Context, tx *types.Transaction) (string, error) {
+	if s.rpcClient == nil {
+		return "", fmt.Errorf("transaction RPC unavailable")
+	}
+
 	var lastErr error
 	for attempt := 0; attempt < s.maxRetries; attempt++ {
 		if err := s.rpcClient.SendTransaction(ctx, tx); err == nil {
@@ -296,6 +327,10 @@ func (s *Service) submitWithRetry(ctx context.Context, tx *types.Transaction) (s
 
 // waitForConfirmation polls for a transaction receipt with exponential backoff.
 func (s *Service) waitForConfirmation(ctx context.Context, txHash common.Hash) (*types.Receipt, error) {
+	if s.rpcClient == nil {
+		return nil, fmt.Errorf("receipt RPC unavailable")
+	}
+
 	deadline := time.After(s.receiptTimeout)
 	backoff := 1 * time.Second
 	maxBackoff := 16 * time.Second

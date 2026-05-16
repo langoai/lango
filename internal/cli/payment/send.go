@@ -2,9 +2,7 @@ package payment
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 
@@ -16,18 +14,24 @@ import (
 
 func newSendCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 	var (
-		to         string
-		amount     string
-		purpose    string
-		force      bool
-		jsonOutput bool
+		to      string
+		amount  string
+		purpose string
+		force   bool
+		output  string
 	)
 
 	cmd := &cobra.Command{
-		Use:   "send",
-		Short: "Send a USDC payment",
-		Long:  "Send USDC to a recipient address on the configured blockchain network.",
+		Use:           "send",
+		Short:         "Send a USDC payment",
+		Long:          "Send USDC to a recipient address on the configured blockchain network.",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			output, err := resolveOutput(cmd)
+			if err != nil {
+				return err
+			}
 			if to == "" || amount == "" || purpose == "" {
 				return fmt.Errorf("--to, --amount, and --purpose are required")
 			}
@@ -38,7 +42,7 @@ func newSendCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 			}
 			defer boot.Close()
 
-			deps, err := initPaymentDeps(boot)
+			deps, err := paymentDepsLoader(boot)
 			if err != nil {
 				return err
 			}
@@ -49,22 +53,27 @@ func newSendCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 
 			// Confirmation prompt unless --force.
 			if !force {
-				if !prompt.IsInteractive() {
-					return fmt.Errorf("use --force for non-interactive mode")
+				if err := prompt.RequireTTYInput(cmd.InOrStdin(), "use --force for non-interactive mode"); err != nil {
+					return err
 				}
-				fmt.Printf("Send %s USDC to %s on %s?\n", amount, to, network)
-				fmt.Printf("Purpose: %s\n", purpose)
-				fmt.Print("Confirm [y/N]: ")
-				var answer string
-				_, _ = fmt.Scanln(&answer)
-				if answer != "y" && answer != "Y" && answer != "yes" {
-					fmt.Println("Aborted.")
-					return nil
+				if _, err := fmt.Fprintf(cmd.OutOrStdout(), "Send %s USDC to %s on %s?\n", amount, to, network); err != nil {
+					return err
+				}
+				if _, err := fmt.Fprintf(cmd.OutOrStdout(), "Purpose: %s\n", purpose); err != nil {
+					return err
+				}
+				ok, err := prompt.ConfirmDenyOnEOFIO(cmd.InOrStdin(), cmd.OutOrStdout(), "Confirm")
+				if err != nil {
+					return err
+				}
+				if !ok {
+					_, err := fmt.Fprintln(cmd.OutOrStdout(), "Aborted.")
+					return err
 				}
 			}
 
 			ctx := context.Background()
-			receipt, err := deps.service.Send(ctx, pmtypes.PaymentRequest{
+			receipt, err := paymentSendExecutor(ctx, deps, pmtypes.PaymentRequest{
 				To:      to,
 				Amount:  amount,
 				Purpose: purpose,
@@ -73,10 +82,8 @@ func newSendCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 				return fmt.Errorf("send payment: %w", err)
 			}
 
-			if jsonOutput {
-				enc := json.NewEncoder(os.Stdout)
-				enc.SetIndent("", "  ")
-				return enc.Encode(map[string]interface{}{
+			if output == "json" {
+				return printJSON(cmd.OutOrStdout(), map[string]interface{}{
 					"status":  receipt.Status,
 					"txHash":  receipt.TxHash,
 					"amount":  receipt.Amount,
@@ -87,13 +94,13 @@ func newSendCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 				})
 			}
 
-			fmt.Println("Payment Submitted")
-			fmt.Printf("  Status:    %s\n", receipt.Status)
-			fmt.Printf("  Tx Hash:   %s\n", receipt.TxHash)
-			fmt.Printf("  Amount:    %s USDC\n", receipt.Amount)
-			fmt.Printf("  From:      %s\n", receipt.From)
-			fmt.Printf("  To:        %s\n", receipt.To)
-			fmt.Printf("  Network:   %s (chain %d)\n", network, receipt.ChainID)
+			fmt.Fprintln(cmd.OutOrStdout(), "Payment Submitted")
+			fmt.Fprintf(cmd.OutOrStdout(), "  Status:    %s\n", receipt.Status)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Tx Hash:   %s\n", receipt.TxHash)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Amount:    %s USDC\n", receipt.Amount)
+			fmt.Fprintf(cmd.OutOrStdout(), "  From:      %s\n", receipt.From)
+			fmt.Fprintf(cmd.OutOrStdout(), "  To:        %s\n", receipt.To)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Network:   %s (chain %d)\n", network, receipt.ChainID)
 
 			return nil
 		},
@@ -103,7 +110,7 @@ func newSendCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 	cmd.Flags().StringVar(&amount, "amount", "", "Amount in USDC (e.g. \"1.50\")")
 	cmd.Flags().StringVar(&purpose, "purpose", "", "Human-readable purpose of the payment")
 	cmd.Flags().BoolVar(&force, "force", false, "Skip confirmation prompt")
-	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
+	cmd.Flags().StringVar(&output, "output", "table", "Output format: table or json")
 
 	return cmd
 }

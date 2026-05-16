@@ -42,13 +42,13 @@ func TestService_EvaluateDirectPayment_AllowsApprovedPrepay(t *testing.T) {
 	require.Empty(t, result.Reason)
 }
 
-func TestService_EvaluateDirectPayment_DeniesMissingTransactionReceiptID(t *testing.T) {
+func TestService_EvaluateDirectPayment_RequiresTransactionReceiptID(t *testing.T) {
 	service := NewService(receipts.NewStore())
 
 	result, err := service.EvaluateDirectPayment(context.Background(), Request{})
-	require.NoError(t, err)
-	require.Equal(t, Deny, result.Decision)
-	require.Equal(t, ReasonMissingReceipt, result.Reason)
+	require.Error(t, err)
+	require.Equal(t, Result{}, result)
+	require.ErrorContains(t, err, "transaction receipt id is required")
 }
 
 func TestService_EvaluateDirectPayment_DeniesMissingTransactionInStore(t *testing.T) {
@@ -281,6 +281,18 @@ func TestService_EvaluateDirectPayment_PropagatesUnexpectedStoreErrors(t *testin
 	})
 	require.ErrorIs(t, err, storeErr)
 	require.Equal(t, Result{}, result)
+}
+
+func TestService_EvaluateDirectPayment_MissingStoreFailsClosed(t *testing.T) {
+	service := NewService(nil)
+
+	result, err := service.EvaluateDirectPayment(context.Background(), Request{
+		TransactionReceiptID: "tx-missing-store",
+		SubmissionReceiptID:  "submission-missing-store",
+	})
+	require.Error(t, err)
+	require.Equal(t, Result{}, result)
+	require.ErrorContains(t, err, "payment gate receipt store unavailable")
 }
 
 type fakeReceiptStore struct {

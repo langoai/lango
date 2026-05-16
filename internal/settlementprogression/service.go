@@ -84,8 +84,12 @@ func mapReleaseOutcome(
 			ProgressionReason:     progressionReason(outcome.Reason, "Artifact release requires revision."),
 		}, nil
 	case approvalflow.DecisionEscalate:
+		progressionStatus, err := escalationProgressionStatus(current)
+		if err != nil {
+			return SettlementOutcome{}, err
+		}
 		return SettlementOutcome{
-			ProgressionStatus:     escalationProgressionStatus(current),
+			ProgressionStatus:     progressionStatus,
 			ProgressionReasonCode: receipts.SettlementProgressionReasonCodeEscalate,
 			ProgressionReason:     progressionReason(outcome.Reason, "higher approval needed"),
 		}, nil
@@ -104,18 +108,18 @@ func progressionReason(reason string, fallback string) string {
 
 func escalationProgressionStatus(
 	current receipts.SettlementProgressionStatus,
-) receipts.SettlementProgressionStatus {
+) (receipts.SettlementProgressionStatus, error) {
 	switch current {
 	case receipts.SettlementProgressionPending,
 		receipts.SettlementProgressionInProgress,
 		receipts.SettlementProgressionSettled:
-		return receipts.SettlementProgressionReviewNeeded
+		return receipts.SettlementProgressionReviewNeeded, nil
 	case receipts.SettlementProgressionReviewNeeded,
 		receipts.SettlementProgressionApprovedForSettlement,
 		receipts.SettlementProgressionPartiallySettled,
 		receipts.SettlementProgressionDisputeReady:
-		return receipts.SettlementProgressionDisputeReady
+		return receipts.SettlementProgressionDisputeReady, nil
 	default:
-		panic(fmt.Sprintf("unhandled settlement progression status %q", current))
+		return "", fmt.Errorf("%w: %q", ErrUnsupportedCurrentProgression, current)
 	}
 }

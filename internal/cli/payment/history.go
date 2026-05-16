@@ -2,9 +2,7 @@ package payment
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"os"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
@@ -23,43 +21,44 @@ const (
 
 func newHistoryCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 	var (
-		jsonOutput bool
-		limit      int
+		output string
+		limit  int
 	)
 
 	cmd := &cobra.Command{
-		Use:   "history",
-		Short: "Show payment transaction history",
+		Use:           "history",
+		Short:         "Show payment transaction history",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			output, err := resolveOutput(cmd)
+			if err != nil {
+				return err
+			}
 			boot, err := bootLoader()
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
 			defer boot.Close()
 
-			if boot.Storage == nil {
-				return fmt.Errorf("payment history unavailable")
-			}
-			txs, err := boot.Storage.PaymentHistory(context.Background(), limit)
+			txs, err := paymentHistoryLoader(context.Background(), boot, limit)
 			if err != nil {
 				return fmt.Errorf("get history: %w", err)
 			}
 
-			if jsonOutput {
-				enc := json.NewEncoder(os.Stdout)
-				enc.SetIndent("", "  ")
-				return enc.Encode(map[string]interface{}{
+			if output == "json" {
+				return printJSON(cmd.OutOrStdout(), map[string]interface{}{
 					"transactions": txs,
 					"count":        len(txs),
 				})
 			}
 
 			if len(txs) == 0 {
-				fmt.Println("No transactions found.")
-				return nil
+				_, err := fmt.Fprintln(cmd.OutOrStdout(), "No transactions found.")
+				return err
 			}
 
-			w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
 			fmt.Fprintln(w, "STATUS\tAMOUNT\tTO\tMETHOD\tPURPOSE\tTX HASH\tCREATED")
 			for _, tx := range txs {
 				hash := tx.TxHash
@@ -93,7 +92,7 @@ func newHistoryCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command 
 		},
 	}
 
-	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
+	cmd.Flags().StringVar(&output, "output", "table", "Output format: table or json")
 	cmd.Flags().IntVar(&limit, "limit", 20, "Maximum number of transactions to show")
 	return cmd
 }

@@ -144,8 +144,8 @@ func acknowledgeTool(se *Engine) *agent.Tool {
 		Capability: agent.ToolCapability{
 			Category:        "security",
 			Exposure:        agent.ExposureDeferred,
-			Activity:        agent.ActivityQuery,
-			ReadOnly:        true,
+			Activity:        agent.ActivityManage,
+			ReadOnly:        false,
 			ConcurrencySafe: true,
 		},
 		Parameters: map[string]interface{}{

@@ -29,7 +29,7 @@ func NewService(store receiptStore) *Service {
 func (s *Service) Adjudicate(ctx context.Context, req AdjudicateRequest) (Result, error) {
 	transactionReceiptID := strings.TrimSpace(req.TransactionReceiptID)
 	if transactionReceiptID == "" {
-		return deniedResult("", "", receipts.SettlementProgressionPending, "", "", "", DenyReasonMissingReceipt)
+		return Result{}, fmt.Errorf("transaction receipt id is required")
 	}
 	if s == nil || s.store == nil {
 		return Result{}, fmt.Errorf("receipt store is required")

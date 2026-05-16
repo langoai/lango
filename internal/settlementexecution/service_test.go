@@ -34,6 +34,45 @@ func TestServiceExecute_DeniesMissingTransactionReceipt(t *testing.T) {
 	require.Equal(t, 0, store.recordFailureCalls)
 }
 
+func TestServiceExecute_RequiresTransactionReceiptID(t *testing.T) {
+	t.Parallel()
+
+	result, err := NewService(&fakeReceiptStore{}, &fakeDirectPaymentRuntime{}).Execute(context.Background(), Request{})
+	require.Error(t, err)
+	require.Equal(t, Result{}, result)
+	require.ErrorContains(t, err, "transaction receipt id is required")
+}
+
+func TestServiceExecute_RequiresStoreAndRuntime(t *testing.T) {
+	t.Parallel()
+
+	runtime := &fakeDirectPaymentRuntime{}
+
+	result, err := NewService(nil, runtime).Execute(context.Background(), Request{
+		TransactionReceiptID: "tx-missing-store",
+	})
+	require.Error(t, err)
+	require.Equal(t, Result{}, result)
+	require.ErrorContains(t, err, "receipt store is required")
+
+	store := &fakeReceiptStore{
+		transaction: receipts.TransactionReceipt{
+			TransactionReceiptID:       "tx-1",
+			CurrentSubmissionReceiptID: "sub-1",
+		},
+		submission: receipts.SubmissionReceipt{
+			SubmissionReceiptID:  "sub-1",
+			TransactionReceiptID: "tx-1",
+		},
+	}
+	result, err = NewService(store, nil).Execute(context.Background(), Request{
+		TransactionReceiptID: "tx-1",
+	})
+	require.Error(t, err)
+	require.Equal(t, Result{}, result)
+	require.ErrorContains(t, err, "direct payment runtime is required")
+}
+
 func TestServiceExecute_DeniesWhenCurrentSubmissionIsMissing(t *testing.T) {
 	t.Parallel()
 

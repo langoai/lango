@@ -2,10 +2,8 @@ package payment
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"math/big"
-	"os"
 
 	"github.com/spf13/cobra"
 
@@ -14,22 +12,25 @@ import (
 )
 
 func newLimitsCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
-	var jsonOutput bool
+	var output string
 
 	cmd := &cobra.Command{
-		Use:   "limits",
-		Short: "Show spending limits and daily usage",
+		Use:           "limits",
+		Short:         "Show spending limits and daily usage",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			output, err := resolveOutput(cmd)
+			if err != nil {
+				return err
+			}
 			boot, err := bootLoader()
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
 			defer boot.Close()
 
-			if boot.Storage == nil {
-				return fmt.Errorf("payment usage unavailable")
-			}
-			usage, err := boot.Storage.PaymentUsage(context.Background())
+			usage, err := paymentUsageLoader(context.Background(), boot)
 			if err != nil {
 				return fmt.Errorf("get daily spent: %w", err)
 			}
@@ -41,10 +42,8 @@ func newLimitsCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 				return err
 			}
 
-			if jsonOutput {
-				enc := json.NewEncoder(os.Stdout)
-				enc.SetIndent("", "  ")
-				return enc.Encode(map[string]interface{}{
+			if output == "json" {
+				return printJSON(cmd.OutOrStdout(), map[string]interface{}{
 					"maxPerTx":       maxPerTx,
 					"maxDaily":       maxDaily,
 					"dailySpent":     spent,
@@ -53,17 +52,17 @@ func newLimitsCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 				})
 			}
 
-			fmt.Println("Spending Limits")
-			fmt.Printf("  Max Per Transaction:  %s %s\n", maxPerTx, wallet.CurrencyUSDC)
-			fmt.Printf("  Max Daily:            %s %s\n", maxDaily, wallet.CurrencyUSDC)
-			fmt.Printf("  Spent Today:          %s %s\n", spent, wallet.CurrencyUSDC)
-			fmt.Printf("  Remaining Today:      %s %s\n", remaining, wallet.CurrencyUSDC)
+			fmt.Fprintln(cmd.OutOrStdout(), "Spending Limits")
+			fmt.Fprintf(cmd.OutOrStdout(), "  Max Per Transaction:  %s %s\n", maxPerTx, wallet.CurrencyUSDC)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Max Daily:            %s %s\n", maxDaily, wallet.CurrencyUSDC)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Spent Today:          %s %s\n", spent, wallet.CurrencyUSDC)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Remaining Today:      %s %s\n", remaining, wallet.CurrencyUSDC)
 
 			return nil
 		},
 	}
 
-	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
+	cmd.Flags().StringVar(&output, "output", "table", "Output format: table or json")
 	return cmd
 }
 

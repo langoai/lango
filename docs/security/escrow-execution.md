@@ -48,15 +48,19 @@ The execution step then requires only:
 - `transaction_receipt_id`
 
 The runtime resolves the current canonical submission from the transaction receipt instead of asking operators to supply a separate submission ID at execution time.
+If `transaction_receipt_id` is empty, the service returns a validation error (`transaction receipt id is required`) instead of pretending that receipt-backed escrow state was evaluated.
 
 ## Execution Model
 
 This slice is receipt-backed and fail-closed.
 
+- request validation requires a non-empty `transaction_receipt_id`
 - execution requires a transaction receipt with canonical payment approval state `approved`
 - execution requires canonical settlement hint `escrow`
 - execution requires bound escrow execution input on the transaction receipt
 - execution records progress in the linked receipt trail before and after runtime calls
+
+Those later receipt-backed checks run only after request validation succeeds.
 
 The current execution sequence is:
 

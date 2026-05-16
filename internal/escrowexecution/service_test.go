@@ -62,6 +62,38 @@ func TestService_ExecuteRecommendation_CreateAndFundSuccess(t *testing.T) {
 	assert.Equal(t, receipts.EventEscrowExecutionFunded, events[3].Type)
 }
 
+func TestService_ExecuteRecommendation_RequiresTransactionReceiptID(t *testing.T) {
+	t.Parallel()
+
+	result, err := NewService(receipts.NewStore(), &fakeRuntime{}).ExecuteRecommendation(context.Background(), Request{})
+	require.Error(t, err)
+	require.Equal(t, Result{}, result)
+	require.ErrorContains(t, err, "transaction receipt id is required")
+}
+
+func TestService_ExecuteRecommendation_RequiresStoreAndRuntime(t *testing.T) {
+	t.Parallel()
+
+	runtime := &fakeRuntime{}
+
+	result, err := NewService(nil, runtime).ExecuteRecommendation(context.Background(), Request{
+		TransactionReceiptID: "tx-missing-store",
+	})
+	require.Error(t, err)
+	require.Equal(t, Result{}, result)
+	require.ErrorContains(t, err, `load transaction receipt "tx-missing-store"`)
+
+	store := receipts.NewStore()
+	_, tx := createApprovedEscrowReceipt(t, context.Background(), store)
+
+	result, err = NewService(store, nil).ExecuteRecommendation(context.Background(), Request{
+		TransactionReceiptID: tx.TransactionReceiptID,
+	})
+	require.Error(t, err)
+	require.Equal(t, Result{}, result)
+	require.ErrorContains(t, err, "runtime is required")
+}
+
 func TestService_ExecuteRecommendation_DeniesWhenApprovalIsNotApproved(t *testing.T) {
 	t.Parallel()
 

@@ -3,6 +3,7 @@ package knowledgeruntime
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/langoai/lango/internal/paymentapproval"
 	"github.com/langoai/lango/internal/receipts"
@@ -24,7 +25,12 @@ func NewService(store receiptStore) *Service {
 }
 
 func (s *Service) OpenTransaction(ctx context.Context, req OpenTransactionRequest) (OpenTransactionResult, error) {
-	tx, err := s.store.OpenKnowledgeExchangeTransaction(ctx, receipts.OpenTransactionInput{
+	store, err := s.requireStore("open transaction")
+	if err != nil {
+		return OpenTransactionResult{}, err
+	}
+
+	tx, err := store.OpenKnowledgeExchangeTransaction(ctx, receipts.OpenTransactionInput{
 		TransactionID:  req.TransactionID,
 		Counterparty:   req.Counterparty,
 		RequestedScope: req.RequestedScope,
@@ -42,7 +48,16 @@ func (s *Service) OpenTransaction(ctx context.Context, req OpenTransactionReques
 }
 
 func (s *Service) SelectExecutionPath(ctx context.Context, transactionReceiptID string) (BranchSelection, error) {
-	tx, err := s.store.GetTransactionReceipt(ctx, transactionReceiptID)
+	store, err := s.requireStore("select execution path")
+	if err != nil {
+		return BranchSelection{}, err
+	}
+	transactionReceiptID = strings.TrimSpace(transactionReceiptID)
+	if transactionReceiptID == "" {
+		return BranchSelection{}, fmt.Errorf("transaction_receipt_id is required")
+	}
+
+	tx, err := store.GetTransactionReceipt(ctx, transactionReceiptID)
 	if err != nil {
 		return BranchSelection{}, err
 	}
@@ -50,7 +65,7 @@ func (s *Service) SelectExecutionPath(ctx context.Context, transactionReceiptID 
 		return BranchSelection{}, fmt.Errorf("transaction %q has no current submission receipt bound", transactionReceiptID)
 	}
 
-	_, events, err := s.store.GetSubmissionReceipt(ctx, tx.CurrentSubmissionReceiptID)
+	_, events, err := store.GetSubmissionReceipt(ctx, tx.CurrentSubmissionReceiptID)
 	if err != nil {
 		return BranchSelection{}, err
 	}
@@ -69,7 +84,7 @@ func (s *Service) SelectExecutionPath(ctx context.Context, transactionReceiptID 
 	}
 
 	if tx.KnowledgeExchangeRuntimeStatus != receipts.RuntimeStatusPaymentApproved {
-		if _, err := s.store.ApplyKnowledgeExchangeRuntimeProgression(ctx, transactionReceiptID, receipts.RuntimeStatusPaymentApproved, tx.CurrentSubmissionReceiptID); err != nil {
+		if _, err := store.ApplyKnowledgeExchangeRuntimeProgression(ctx, transactionReceiptID, receipts.RuntimeStatusPaymentApproved, tx.CurrentSubmissionReceiptID); err != nil {
 			return BranchSelection{}, err
 		}
 	}
@@ -88,4 +103,11 @@ func hasPaymentApprovalEvent(events []receipts.ReceiptEvent, submissionReceiptID
 	}
 
 	return false
+}
+
+func (s *Service) requireStore(action string) (receiptStore, error) {
+	if s == nil || s.store == nil {
+		return nil, fmt.Errorf("%s: knowledge runtime receipt store is required", action)
+	}
+	return s.store, nil
 }

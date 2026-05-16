@@ -10,6 +10,7 @@ import (
 var (
 	ErrInvalidApplyReleaseOutcomeRequest = errors.New("invalid apply release outcome request")
 	ErrUnsupportedReleaseDecision        = errors.New("unsupported release decision")
+	ErrUnsupportedCurrentProgression     = errors.New("unsupported current settlement progression status")
 )
 
 type ReleaseOutcome struct {

@@ -33,7 +33,7 @@ func NewService(store receiptStore, runtime directPaymentRuntime) *Service {
 func (s *Service) Execute(ctx context.Context, req ExecuteRequest) (Result, error) {
 	transactionReceiptID := strings.TrimSpace(req.TransactionReceiptID)
 	if transactionReceiptID == "" {
-		return deniedResult("", "", receipts.SettlementProgressionPending, DenyReasonMissingReceipt)
+		return Result{}, fmt.Errorf("transaction receipt id is required")
 	}
 	if s == nil || s.store == nil {
 		return Result{}, fmt.Errorf("receipt store is required")

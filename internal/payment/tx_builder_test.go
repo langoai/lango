@@ -1,6 +1,14 @@
 package payment
 
-import "testing"
+import (
+	"context"
+	"math/big"
+	"testing"
+
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
 
 func TestValidateAddress(t *testing.T) {
 	tests := []struct {
@@ -37,4 +45,39 @@ func TestERC20TransferMethodID(t *testing.T) {
 		ERC20TransferMethodID[2] != 0x9c || ERC20TransferMethodID[3] != 0xbb {
 		t.Errorf("unexpected method ID: %x", ERC20TransferMethodID)
 	}
+}
+
+func TestTxBuilderBuildTransferTx_FailsClosedWhenUnwired(t *testing.T) {
+	t.Run("nil builder", func(t *testing.T) {
+		var builder *TxBuilder
+
+		tx, err := builder.BuildTransferTx(
+			context.Background(),
+			common.HexToAddress(validAddr),
+			common.HexToAddress("0xabcdef1234567890abcdef1234567890abcdef12"),
+			big.NewInt(1_000_000),
+		)
+
+		require.Error(t, err)
+		assert.Nil(t, tx)
+		assert.Contains(t, err.Error(), "transaction builder unavailable")
+	})
+
+	t.Run("missing rpc client", func(t *testing.T) {
+		builder := &TxBuilder{
+			chainID:      big.NewInt(84532),
+			usdcContract: common.HexToAddress(validAddr),
+		}
+
+		tx, err := builder.BuildTransferTx(
+			context.Background(),
+			common.HexToAddress(validAddr),
+			common.HexToAddress("0xabcdef1234567890abcdef1234567890abcdef12"),
+			big.NewInt(1_000_000),
+		)
+
+		require.Error(t, err)
+		assert.Nil(t, tx)
+		assert.Contains(t, err.Error(), "transaction RPC unavailable")
+	})
 }

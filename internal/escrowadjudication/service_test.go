@@ -13,22 +13,29 @@ import (
 	"github.com/langoai/lango/internal/receipts"
 )
 
-func TestServiceAdjudicate_DeniesMissingTransactionReceipt(t *testing.T) {
+func TestServiceAdjudicate_RequiresTransactionReceiptID(t *testing.T) {
 	t.Parallel()
 
 	store := &fakeReceiptStore{getTransactionErr: receipts.ErrTransactionReceiptNotFound}
 	svc := NewService(store)
 
-	result, err := svc.Adjudicate(context.Background(), Request{
-		TransactionReceiptID: "missing",
-		Outcome:              OutcomeRelease,
-	})
+	result, err := svc.Adjudicate(context.Background(), Request{Outcome: OutcomeRelease})
 
 	require.Error(t, err)
-	assertExecutionError(t, err, FailureKindDenied, DenyReasonMissingReceipt)
-	require.Equal(t, StatusDenied, result.Status)
-	require.Equal(t, "missing", result.TransactionReceiptID)
-	require.Equal(t, receipts.SettlementProgressionPending, result.SettlementProgressionStatus)
+	require.Equal(t, Result{}, result)
+	require.ErrorContains(t, err, "transaction receipt id is required")
+}
+
+func TestServiceAdjudicate_RequiresStore(t *testing.T) {
+	t.Parallel()
+
+	result, err := NewService(nil).Adjudicate(context.Background(), Request{
+		TransactionReceiptID: "tx-missing-store",
+		Outcome:              OutcomeRelease,
+	})
+	require.Error(t, err)
+	require.Equal(t, Result{}, result)
+	require.ErrorContains(t, err, "receipt store is required")
 }
 
 func TestServiceAdjudicate_DeniesWhenCurrentSubmissionIsMissing(t *testing.T) {

@@ -10,6 +10,7 @@ import (
 
 var (
 	ErrTransactionReceiptNotFound = errors.New("transaction receipt not found")
+	ErrTransactionReceiptRequired = errors.New("transaction receipt id is required")
 	ErrCurrentSubmissionMissing   = errors.New("current submission missing")
 )
 

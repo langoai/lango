@@ -3,6 +3,7 @@ package paymentgate
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/langoai/lango/internal/paymentapproval"
@@ -23,8 +24,12 @@ func NewService(store receiptStore) *Service {
 }
 
 func (s *Service) EvaluateDirectPayment(ctx context.Context, req Request) (Result, error) {
+	if s == nil || s.store == nil {
+		return Result{}, fmt.Errorf("payment gate receipt store unavailable")
+	}
+
 	if strings.TrimSpace(req.TransactionReceiptID) == "" {
-		return Result{Decision: Deny, Reason: ReasonMissingReceipt}, nil
+		return Result{}, fmt.Errorf("transaction receipt id is required")
 	}
 
 	transaction, err := s.store.GetTransactionReceipt(ctx, req.TransactionReceiptID)

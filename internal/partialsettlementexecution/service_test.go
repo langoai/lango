@@ -17,12 +17,44 @@ func TestServiceExecute_DeniesMissingTransactionReceipt(t *testing.T) {
 	runtime := &fakeDirectPaymentRuntime{}
 	svc := NewService(store, runtime)
 
-	result, err := svc.Execute(context.Background(), Request{TransactionReceiptID: "missing"})
+	result, err := svc.Execute(context.Background(), Request{})
 
 	require.Error(t, err)
-	assertExecutionError(t, err, FailureKindDenied, DenyReasonMissingReceipt)
-	require.Equal(t, StatusDenied, result.Status)
-	require.Equal(t, "missing", result.TransactionReceiptID)
+	require.Equal(t, Result{}, result)
+	require.ErrorContains(t, err, "transaction receipt id is required")
+}
+
+func TestServiceExecute_RequiresStoreAndRuntime(t *testing.T) {
+	t.Parallel()
+
+	runtime := &fakeDirectPaymentRuntime{}
+
+	result, err := NewService(nil, runtime).Execute(context.Background(), Request{
+		TransactionReceiptID: "tx-missing-store",
+	})
+	require.Error(t, err)
+	require.Equal(t, Result{}, result)
+	require.ErrorContains(t, err, "receipt store is required")
+
+	store := &fakeReceiptStore{
+		transaction: receipts.TransactionReceipt{
+			TransactionReceiptID:        "tx-1",
+			CurrentSubmissionReceiptID:  "sub-1",
+			PriceContext:                "quote:1.00-usdc",
+			PartialSettlementHint:       "settle:0.40-usdc",
+			SettlementProgressionStatus: receipts.SettlementProgressionApprovedForSettlement,
+		},
+		submission: receipts.SubmissionReceipt{
+			SubmissionReceiptID:  "sub-1",
+			TransactionReceiptID: "tx-1",
+		},
+	}
+	result, err = NewService(store, nil).Execute(context.Background(), Request{
+		TransactionReceiptID: "tx-1",
+	})
+	require.Error(t, err)
+	require.Equal(t, Result{}, result)
+	require.ErrorContains(t, err, "direct payment runtime is required")
 }
 
 func TestServiceExecute_DeniesWhenCurrentSubmissionIsMissing(t *testing.T) {

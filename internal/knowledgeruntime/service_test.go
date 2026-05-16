@@ -32,6 +32,18 @@ func TestService_OpenTransaction_RecordsCanonicalOpenState(t *testing.T) {
 	require.Equal(t, "did:lango:peer-1", stored.Counterparty)
 }
 
+func TestService_OpenTransaction_RequiresCanonicalInputs(t *testing.T) {
+	ctx := context.Background()
+	store := receipts.NewStore()
+	svc := NewService(store)
+
+	tx, err := svc.OpenTransaction(ctx, OpenTransactionRequest{})
+	require.Error(t, err)
+	require.Equal(t, OpenTransactionResult{}, tx)
+	require.ErrorIs(t, err, receipts.ErrInvalidSubmissionInput)
+	require.ErrorContains(t, err, "transaction_id, counterparty, and requested_scope are required")
+}
+
 func TestService_SelectExecutionPath_UsesPrepayBranch(t *testing.T) {
 	ctx := context.Background()
 	store := receipts.NewStore()
@@ -71,6 +83,17 @@ func TestService_SelectExecutionPath_UsesPrepayBranch(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, receipts.RuntimeStatusPaymentApproved, stored.KnowledgeExchangeRuntimeStatus)
 	require.Equal(t, submission.SubmissionReceiptID, stored.CurrentSubmissionReceiptID)
+}
+
+func TestService_SelectExecutionPath_RequiresTransactionReceiptID(t *testing.T) {
+	ctx := context.Background()
+	store := receipts.NewStore()
+	svc := NewService(store)
+
+	selection, err := svc.SelectExecutionPath(ctx, "")
+	require.Error(t, err)
+	require.Equal(t, BranchSelection{}, selection)
+	require.ErrorContains(t, err, "transaction_receipt_id is required")
 }
 
 func TestService_SelectExecutionPath_UsesEscrowBranch(t *testing.T) {
@@ -194,4 +217,27 @@ func TestService_SelectExecutionPath_IsIdempotentForRepeatCalls(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, receipts.RuntimeStatusPaymentApproved, stored.KnowledgeExchangeRuntimeStatus)
 	require.Equal(t, submission.SubmissionReceiptID, stored.CurrentSubmissionReceiptID)
+}
+
+func TestService_RequiresStoreAcrossEntryPoints(t *testing.T) {
+	ctx := context.Background()
+	svc := NewService(nil)
+
+	opened, err := svc.OpenTransaction(ctx, OpenTransactionRequest{
+		TransactionID:  "deal-rt-missing-store",
+		Counterparty:   "did:lango:peer-missing",
+		RequestedScope: "artifact/research-note",
+		PriceContext:   "quote:0.50-usdc",
+		TrustContext:   "trust:0.71",
+	})
+	require.Error(t, err)
+	require.Equal(t, OpenTransactionResult{}, opened)
+	require.ErrorContains(t, err, "open transaction")
+	require.ErrorContains(t, err, "knowledge runtime receipt store is required")
+
+	selection, err := svc.SelectExecutionPath(ctx, "tx-missing-store")
+	require.Error(t, err)
+	require.Equal(t, BranchSelection{}, selection)
+	require.ErrorContains(t, err, "select execution path")
+	require.ErrorContains(t, err, "knowledge runtime receipt store is required")
 }

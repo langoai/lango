@@ -2,6 +2,7 @@ package settlementprogression
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -10,12 +11,14 @@ import (
 	"github.com/langoai/lango/internal/receipts"
 )
 
-func TestEscalationProgressionStatus_PanicsOnUnknownStatus(t *testing.T) {
+func TestEscalationProgressionStatus_ReturnsErrorOnUnknownStatus(t *testing.T) {
 	t.Parallel()
 
-	require.Panics(t, func() {
-		_ = escalationProgressionStatus(receipts.SettlementProgressionStatus("unknown"))
-	})
+	status, err := escalationProgressionStatus(receipts.SettlementProgressionStatus("unknown"))
+	require.Error(t, err)
+	require.Empty(t, status)
+	require.ErrorIs(t, err, ErrUnsupportedCurrentProgression)
+	require.ErrorContains(t, err, `unknown`)
 }
 
 func createSubmittedTransaction(t *testing.T, store *receipts.Store, ctx context.Context, transactionID string) receipts.TransactionReceipt {
@@ -53,6 +56,28 @@ func TestApplyReleaseOutcome_ApproveMapsToApprovedForSettlement(t *testing.T) {
 	require.Equal(t, receipts.SettlementProgressionApprovedForSettlement, result.Transaction.SettlementProgressionStatus)
 	require.Equal(t, receipts.SettlementProgressionReasonCodeApprove, result.Transaction.SettlementProgressionReasonCode)
 	require.Equal(t, "Approved after final review.", result.Transaction.SettlementProgressionReason)
+}
+
+func TestApplyReleaseOutcome_RequiresTransactionReceiptIDAndStore(t *testing.T) {
+	store := receipts.NewStore()
+	svc := NewService(store)
+
+	result, err := svc.ApplyReleaseOutcome(context.Background(), ApplyReleaseOutcomeRequest{
+		Outcome: ReleaseOutcome{Decision: approvalflow.DecisionApprove},
+	})
+	require.Error(t, err)
+	require.Equal(t, ApplyReleaseOutcomeResult{}, result)
+	require.ErrorIs(t, err, ErrInvalidApplyReleaseOutcomeRequest)
+	require.ErrorContains(t, err, "transaction_receipt_id is required")
+
+	result, err = NewService(nil).ApplyReleaseOutcome(context.Background(), ApplyReleaseOutcomeRequest{
+		TransactionReceiptID: "tx-missing-store",
+		Outcome:              ReleaseOutcome{Decision: approvalflow.DecisionApprove},
+	})
+	require.Error(t, err)
+	require.Equal(t, ApplyReleaseOutcomeResult{}, result)
+	require.ErrorIs(t, err, ErrInvalidApplyReleaseOutcomeRequest)
+	require.ErrorContains(t, err, "receipt store is required")
 }
 
 func TestApplyReleaseOutcome_ApproveDefaultsReasonWhenMissing(t *testing.T) {
@@ -217,6 +242,27 @@ func TestApplyReleaseOutcome_EscalateFromReviewNeededMapsToDisputeReady(t *testi
 	require.Equal(t, "manual approval required", result.Transaction.SettlementProgressionReason)
 }
 
+func TestApplyReleaseOutcome_EscalateUnknownCurrentStatusFailsClosed(t *testing.T) {
+	svc := NewService(fakeSettlementProgressionStore{
+		transaction: receipts.TransactionReceipt{
+			TransactionReceiptID:        "tx-escalate-unknown",
+			SettlementProgressionStatus: receipts.SettlementProgressionStatus("unknown"),
+		},
+	})
+
+	result, err := svc.ApplyReleaseOutcome(context.Background(), ApplyReleaseOutcomeRequest{
+		TransactionReceiptID: "tx-escalate-unknown",
+		Outcome: ReleaseOutcome{
+			Decision: approvalflow.DecisionEscalate,
+			Reason:   "manual approval required",
+		},
+	})
+	require.Error(t, err)
+	require.Equal(t, ApplyReleaseOutcomeResult{}, result)
+	require.ErrorIs(t, err, ErrUnsupportedCurrentProgression)
+	require.ErrorContains(t, err, `unknown`)
+}
+
 func TestApplyReleaseOutcome_RequestRevisionPreservesReason(t *testing.T) {
 	store := receipts.NewStore()
 	svc := NewService(store)
@@ -256,6 +302,29 @@ func TestApplyReleaseOutcome_RequestRevisionDefaultsReasonWhenMissing(t *testing
 	require.Equal(t, receipts.SettlementProgressionReasonCodeRequestRevision, result.Outcome.ProgressionReasonCode)
 	require.Equal(t, "Artifact release requires revision.", result.Outcome.ProgressionReason)
 	require.Equal(t, "Artifact release requires revision.", result.Transaction.SettlementProgressionReason)
+}
+
+type fakeSettlementProgressionStore struct {
+	transaction receipts.TransactionReceipt
+	err         error
+}
+
+func (f fakeSettlementProgressionStore) GetTransactionReceipt(context.Context, string) (receipts.TransactionReceipt, error) {
+	if f.err != nil {
+		return receipts.TransactionReceipt{}, f.err
+	}
+	return f.transaction, nil
+}
+
+func (f fakeSettlementProgressionStore) ApplySettlementProgression(
+	context.Context,
+	string,
+	receipts.SettlementProgressionStatus,
+	receipts.SettlementProgressionReasonCode,
+	string,
+	string,
+) (receipts.TransactionReceipt, error) {
+	return receipts.TransactionReceipt{}, errors.New("should not apply progression for unsupported current status")
 }
 
 func TestApplyReleaseOutcome_RequestRevisionPersistsPartialHint(t *testing.T) {

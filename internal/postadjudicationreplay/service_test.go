@@ -41,6 +41,45 @@ func TestServiceReplay_DeniesWhenActorIsUnresolved(t *testing.T) {
 	assert.Equal(t, 0, dispatcher.calls)
 }
 
+func TestServiceReplay_RequiresTransactionReceiptID(t *testing.T) {
+	t.Parallel()
+
+	store := newReplayStore()
+	dispatcher := &fakeReplayDispatcher{}
+	svc := NewService(store, dispatcher, replayPolicy())
+
+	result, err := svc.Replay(context.Background(), Request{})
+
+	require.Error(t, err)
+	require.Equal(t, Result{}, result)
+	require.ErrorContains(t, err, "transaction_receipt_id is required")
+	assert.Equal(t, 0, store.manualRetryCalls)
+	assert.Equal(t, 0, dispatcher.calls)
+}
+
+func TestServiceReplay_RequiresStoreAndDispatcher(t *testing.T) {
+	t.Parallel()
+
+	dispatcher := &fakeReplayDispatcher{}
+
+	result, err := NewService(nil, dispatcher, replayPolicy()).Replay(
+		context.Background(),
+		Request{TransactionReceiptID: "tx-missing-store"},
+	)
+	require.Error(t, err)
+	require.Equal(t, Result{}, result)
+	require.ErrorContains(t, err, "receipt store is required")
+
+	store := newReplayStore()
+	result, err = NewService(store, nil, replayPolicy()).Replay(
+		context.Background(),
+		Request{TransactionReceiptID: store.transaction.TransactionReceiptID},
+	)
+	require.Error(t, err)
+	require.Equal(t, Result{}, result)
+	require.ErrorContains(t, err, "dispatcher is required")
+}
+
 func TestExecutionPolicy_DefaultsToManualRecoveryWhenFlagsAreAbsent(t *testing.T) {
 	t.Parallel()
 

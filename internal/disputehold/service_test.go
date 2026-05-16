@@ -20,14 +20,45 @@ func TestServiceExecute_DeniesMissingTransactionReceipt(t *testing.T) {
 	runtime := &fakeHoldRuntime{}
 	svc := NewService(store, runtime)
 
-	result, err := svc.Execute(context.Background(), Request{TransactionReceiptID: "missing"})
+	result, err := svc.Execute(context.Background(), Request{})
 
 	require.Error(t, err)
-	assertExecutionError(t, err, FailureKindDenied, DenyReasonMissingReceipt)
-	require.Equal(t, StatusDenied, result.Status)
-	require.Equal(t, "missing", result.TransactionReceiptID)
-	require.Equal(t, receipts.SettlementProgressionPending, result.SettlementProgressionStatus)
+	require.Equal(t, Result{}, result)
+	require.ErrorContains(t, err, "transaction receipt id is required")
 	require.Equal(t, 0, runtime.calls)
+}
+
+func TestServiceExecute_RequiresStoreAndRuntime(t *testing.T) {
+	t.Parallel()
+
+	runtime := &fakeHoldRuntime{}
+
+	result, err := NewService(nil, runtime).Execute(context.Background(), Request{
+		TransactionReceiptID: "tx-missing-store",
+	})
+	require.Error(t, err)
+	require.Equal(t, Result{}, result)
+	require.ErrorContains(t, err, "receipt store is required")
+
+	store := &fakeReceiptStore{
+		transaction: receipts.TransactionReceipt{
+			TransactionReceiptID:        "tx-1",
+			CurrentSubmissionReceiptID:  "sub-1",
+			EscrowExecutionStatus:       receipts.EscrowExecutionStatusFunded,
+			SettlementProgressionStatus: receipts.SettlementProgressionDisputeReady,
+			EscrowReference:             "escrow-123",
+		},
+		submission: receipts.SubmissionReceipt{
+			SubmissionReceiptID:  "sub-1",
+			TransactionReceiptID: "tx-1",
+		},
+	}
+	result, err = NewService(store, nil).Execute(context.Background(), Request{
+		TransactionReceiptID: "tx-1",
+	})
+	require.Error(t, err)
+	require.Equal(t, Result{}, result)
+	require.ErrorContains(t, err, "dispute hold runtime is required")
 }
 
 func TestServiceExecute_DeniesWhenCurrentSubmissionIsMissing(t *testing.T) {

@@ -14,14 +14,15 @@ lango payment <subcommand>
 ## lango payment balance
 
 Show the current USDC wallet balance, address, and network information.
+Both table and JSON modes write through the Cobra command output stream so wrappers and test harnesses can capture balance output directly.
 
 ```
-lango payment balance [--json]
+lango payment balance [--output table|json]
 ```
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--json` | bool | `false` | Output as JSON |
+| `--output` | string | `table` | Output format (`table` or `json`) |
 
 **Example:**
 
@@ -38,14 +39,15 @@ Wallet Balance
 ## lango payment history
 
 Show payment transaction history.
+Both table and JSON modes write through the Cobra command output stream so wrappers and test harnesses can capture payment history output directly.
 
 ```
-lango payment history [--json] [--limit N]
+lango payment history [--output table|json] [--limit N]
 ```
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--json` | bool | `false` | Output as JSON |
+| `--output` | string | `table` | Output format (`table` or `json`) |
 | `--limit` | int | `20` | Maximum number of transactions to show |
 
 **Example:**
@@ -57,7 +59,7 @@ confirmed  1.50 USDC  0x5678...     direct   API access fee           0xaabb... 
 confirmed  0.50 USDC  0x9abc...     x402     Weather data query       0xccdd...     2026-02-20 13:15
 pending    2.00 USDC  0xdef0...     direct   Document translation     0xeeff...     2026-02-20 12:00
 
-$ lango payment history --limit 5 --json
+$ lango payment history --limit 5 --output json
 ```
 
 ---
@@ -65,14 +67,15 @@ $ lango payment history --limit 5 --json
 ## lango payment limits
 
 Show configured spending limits and current daily usage.
+Both table and JSON modes write through the Cobra command output stream so wrappers and test harnesses can capture spending-limit output directly.
 
 ```
-lango payment limits [--json]
+lango payment limits [--output table|json]
 ```
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--json` | bool | `false` | Output as JSON |
+| `--output` | string | `table` | Output format (`table` or `json`) |
 
 **Example:**
 
@@ -90,14 +93,15 @@ Spending Limits
 ## lango payment info
 
 Show wallet and payment system configuration details, including X402 protocol status.
+Both table and JSON modes write through the Cobra command output stream so wrappers and test harnesses can capture payment info output directly.
 
 ```
-lango payment info [--json]
+lango payment info [--output table|json]
 ```
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--json` | bool | `false` | Output as JSON |
+| `--output` | string | `table` | Output format (`table` or `json`) |
 
 **Example:**
 
@@ -118,9 +122,10 @@ Payment System Info
 ## lango payment send
 
 Send a USDC payment to a recipient address. Requires `--to`, `--amount`, and `--purpose` flags. Prompts for confirmation unless `--force` is specified.
+The confirmation prompt, success output, and JSON output all use the Cobra command streams so wrappers and test harnesses can capture the full interaction.
 
 ```
-lango payment send --to <address> --amount <amount> --purpose <text> [--force] [--json]
+lango payment send --to <address> --amount <amount> --purpose <text> [--force] [--output table|json]
 ```
 
 | Flag | Type | Default | Description |
@@ -129,7 +134,7 @@ lango payment send --to <address> --amount <amount> --purpose <text> [--force] [
 | `--amount` | string | *required* | Amount in USDC (e.g., `"1.50"`) |
 | `--purpose` | string | *required* | Human-readable purpose of the payment |
 | `--force` | bool | `false` | Skip confirmation prompt |
-| `--json` | bool | `false` | Output as JSON |
+| `--output` | string | `table` | Output format (`table` or `json`) |
 
 **Example:**
 
@@ -162,14 +167,15 @@ Payment Submitted
 ## lango payment x402
 
 Show X402 auto-pay protocol configuration and status. The X402 protocol enables automatic payment for HTTP 402 (Payment Required) responses using the Coinbase SDK and EIP-3009 signing.
+Both table and JSON modes write through the Cobra command output stream so wrappers and test harnesses can capture X402 inspection output directly.
 
 ```
-lango payment x402 [--json]
+lango payment x402 [--output table|json]
 ```
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--json` | bool | `false` | Output as JSON |
+| `--output` | string | `table` | Output format (`table` or `json`) |
 
 **Example:**
 

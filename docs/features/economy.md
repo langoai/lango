@@ -64,6 +64,8 @@ The budget manager enforces per-task spending limits. Each task gets an isolated
 | `economy_budget_status` | Check budget burn rate for a task |
 | `economy_budget_close` | Close a task budget and get final spend report |
 
+Required economy inputs fail at the wrapper boundary too: `economy_budget_allocate`, `economy_budget_status`, and `economy_budget_close` require `taskId`; `economy_risk_assess` requires `peerDid` and `amount`; `economy_negotiate` requires `peerDid`, `toolName`, and `price`; `economy_negotiate_status` requires `sessionId`; `economy_price_quote` requires `toolName`.
+
 ### Events
 
 | Event | Description |
@@ -216,6 +218,8 @@ stateDiagram-v2
 | `escrow_status` | Get detailed escrow status including on-chain state |
 | `escrow_list` | List all escrows with optional filter |
 
+Required on-chain escrow inputs fail at the wrapper boundary too: `escrow_fund`, `escrow_activate`, `escrow_release`, `escrow_refund`, and `escrow_status` require `escrowId`; `escrow_submit_work` requires `escrowId` and `workHash`; `escrow_dispute` requires `escrowId` and `note`; `escrow_resolve` requires `escrowId`, `favor`, and `sellerPercent`.
+
 ### Events
 
 | Event | Description |
@@ -367,6 +371,8 @@ Alerts are categorized by severity: `critical`, `high`, `medium`, `low`.
 | `sentinel_alerts` | List security alerts with optional severity filter |
 | `sentinel_config` | Show current detection thresholds |
 | `sentinel_acknowledge` | Acknowledge and dismiss an alert by ID |
+
+`sentinel_acknowledge` is the dangerous alert-state mutation path. It requires `alertId`; missing it fails immediately at the wrapper boundary before alert acknowledgment begins.
 
 ## Events Summary
 

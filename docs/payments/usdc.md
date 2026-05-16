@@ -14,7 +14,7 @@ Lango provides a blockchain payment system for USDC on Base L2 (EVM). The agent 
 
 | Tool | Description | Safety Level |
 |------|-------------|--------------|
-| `payment_send` | Send USDC to recipient | Dangerous |
+| `payment_send` | Send USDC to recipient with linked transaction receipt | Dangerous |
 | `payment_balance` | Check wallet USDC balance | Safe |
 | `payment_history` | View recent transactions | Safe |
 | `payment_limits` | View spending limits and daily usage | Safe |
@@ -28,7 +28,7 @@ Lango provides a blockchain payment system for USDC on Base L2 (EVM). The agent 
 
 !!! info "Direct Payment Execution Gate"
 
-    `payment_send` and `p2p_pay` now run behind a receipt-backed direct payment execution gate. Direct payment execution requires a linked `transaction_receipt_id`, uses the transaction's current canonical submission when `submission_receipt_id` is omitted, and allows execution only when the canonical payment approval state is approved with a `prepay` settlement hint. See [Actual Payment Execution Gating](../security/actual-payment-execution-gating.md).
+    `payment_send` and `p2p_pay` now run behind a receipt-backed direct payment execution gate. Direct payment execution requires a linked `transaction_receipt_id`, uses the transaction's current canonical submission when `submission_receipt_id` is omitted, and allows execution only when the canonical payment approval state is approved with a `prepay` settlement hint. If `transaction_receipt_id` is missing, the tool now fails immediately with an actionable missing-parameter error instead of deferring that check deeper into the payment gate. See [Actual Payment Execution Gating](../security/actual-payment-execution-gating.md).
 
 ## Wallet Providers
 
@@ -76,10 +76,12 @@ Skip confirmation prompt with `--force`:
 lango payment send --to 0x1234...abcd --amount 0.50 --purpose "API access" --force
 ```
 
+The interactive confirmation summary and `Confirm [y/N]:` prompt are written through the Cobra command streams, so wrappers can drive the interaction via command input/output. In non-interactive runs, pass `--force` instead of attempting a prompt.
+
 JSON output for scripting:
 
 ```bash
-lango payment balance --json
+lango payment balance --output json
 ```
 
 ## Configuration

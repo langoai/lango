@@ -106,6 +106,22 @@ func TestServiceListCurrentDeadLetters_ReturnsOnlyCurrentDeadLetteredTransaction
 	assert.Equal(t, string(receipts.EscrowAdjudicationRelease), got[0].Adjudication)
 }
 
+func TestServiceRequiresStoreForStatusEntryPoints(t *testing.T) {
+	t.Parallel()
+
+	svc := NewService(nil)
+
+	page, err := svc.ListCurrentDeadLettersPage(context.Background(), DeadLetterListOptions{})
+	require.Error(t, err)
+	require.Equal(t, DeadLetterListPage{}, page)
+	require.ErrorContains(t, err, "receipt store is required")
+
+	status, err := svc.GetTransactionStatus(context.Background(), "tx-missing-store")
+	require.Error(t, err)
+	require.Equal(t, TransactionStatus{}, status)
+	require.ErrorContains(t, err, "receipt store is required")
+}
+
 func TestServiceListCurrentDeadLetters_ExtractsFocusedFields(t *testing.T) {
 	t.Parallel()
 
@@ -388,6 +404,17 @@ func TestServiceGetTransactionStatus_ReturnsMissingTransactionFailure(t *testing
 	got, err := svc.GetTransactionStatus(context.Background(), "missing")
 	require.Error(t, err)
 	assert.ErrorIs(t, err, ErrTransactionReceiptNotFound)
+	assert.Equal(t, TransactionStatus{}, got)
+}
+
+func TestServiceGetTransactionStatus_RequiresTransactionReceiptID(t *testing.T) {
+	t.Parallel()
+
+	svc := NewService(newFakeStatusStore())
+
+	got, err := svc.GetTransactionStatus(context.Background(), "")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrTransactionReceiptRequired)
 	assert.Equal(t, TransactionStatus{}, got)
 }
 
