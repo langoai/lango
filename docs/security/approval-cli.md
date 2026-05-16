@@ -45,6 +45,8 @@ Prompts the terminal user via stdin/stderr. Supports three responses:
 | `N` / anything else | Deny |
 
 TTY approval is unavailable when stdin is not a terminal (e.g., Docker containers, background processes).
+The approval banner, optional summary line, and `[y/a/N]` prompt are emitted through seam-aware TTY streams so tests can capture the full interaction without replacing process-global stdin or stderr.
+If the terminal prompt reaches EOF before an approval answer is received, Lango treats that as a safe denial instead of surfacing a read error.
 
 ### One-shot Approve vs Always Allow
 
@@ -139,8 +141,10 @@ Small paid tool invocations can be auto-approved when the amount is below `payme
 ## CLI Commands
 
 ```bash
-lango approval status        # Show approval system configuration
+lango approval status [--output table|json]   # Show approval system configuration
 ```
+
+Both table and JSON modes write through the Cobra command output stream so wrappers and test harnesses can capture approval status output directly. Unknown `--output` values fail fast before config loading begins.
 
 ## Configuration
 

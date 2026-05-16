@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -74,6 +75,11 @@ type statusOutput struct {
 	PQHandshakeEnabled   bool                  `json:"pq_handshake_enabled"`
 	PQHandshakeAlgo      string                `json:"pq_handshake_algorithm,omitempty"`
 }
+
+var (
+	acquireNonInteractivePassphrase           = passphrase.AcquireNonInteractive
+	statusErrWriter                 io.Writer = os.Stderr
+)
 
 // readIdentityBundleStatus reads the identity bundle file from langoDir.
 func readIdentityBundleStatus(langoDir string) identityBundleSection {
@@ -197,13 +203,13 @@ func readDBStatusNonInteractive(
 	)
 	if needsKey {
 		keyringProvider, _ := keyring.DetectSecureProvider()
-		pass, source, err := passphrase.AcquireNonInteractive(passphrase.Options{
+		pass, source, err := acquireNonInteractivePassphrase(passphrase.Options{
 			KeyfilePath:     filepath.Join(langoDir, "keyfile"),
 			KeyringProvider: keyringProvider,
 		})
 		if err != nil {
 			if !errors.Is(err, passphrase.ErrNoNonInteractiveSource) {
-				fmt.Fprintf(os.Stderr, "warning: status non-interactive passphrase: %v\n", err)
+				fmt.Fprintf(statusErrWriter, "warning: status non-interactive passphrase: %v\n", err)
 			}
 			return result
 		}
@@ -216,7 +222,7 @@ func readDBStatusNonInteractive(
 			if source != passphrase.SourceKeyring {
 				return "", false // first attempt was already keyfile
 			}
-			kfPass, _, kfErr := passphrase.AcquireNonInteractive(passphrase.Options{
+			kfPass, _, kfErr := acquireNonInteractivePassphrase(passphrase.Options{
 				KeyfilePath: filepath.Join(langoDir, "keyfile"),
 			})
 			if kfErr != nil {
@@ -261,7 +267,7 @@ func readDBStatusNonInteractive(
 	if err != nil {
 		// For legacy mode with stale keyring, retry with keyfile-only.
 		if needsKey && !rawKey && usedKeyring {
-			kfPass, _, kfErr := passphrase.AcquireNonInteractive(passphrase.Options{
+			kfPass, _, kfErr := acquireNonInteractivePassphrase(passphrase.Options{
 				KeyfilePath: filepath.Join(langoDir, "keyfile"),
 			})
 			if kfErr == nil {
@@ -323,12 +329,14 @@ func resolveStatusConfig() *config.Config {
 }
 
 func newStatusCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
-	var jsonOutput bool
+	var output string
 	var fullBootstrap bool
 
 	cmd := &cobra.Command{
-		Use:   "status",
-		Short: "Show security configuration status",
+		Use:           "status",
+		Short:         "Show security configuration status",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		Long: `Show security configuration status.
 
 By default, the command runs in passphrase-free mode: it reads envelope.json
@@ -336,23 +344,27 @@ directly, attempts a non-interactive DB read via keyring/keyfile, and
 gracefully degrades DB-dependent fields when no credential is available.
 
 Use --full to force a full bootstrap (which may prompt for a passphrase in
-interactive terminals).`,
+		interactive terminals).`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if fullBootstrap {
-				return runStatusFullBootstrap(bootLoader, jsonOutput)
+			output, err := resolveOutput(cmd)
+			if err != nil {
+				return err
 			}
-			return runStatusNonInteractive(jsonOutput)
+			if fullBootstrap {
+				return runStatusFullBootstrap(cmd.OutOrStdout(), bootLoader, output)
+			}
+			return runStatusNonInteractive(cmd.OutOrStdout(), output)
 		},
 	}
 
-	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
+	cmd.Flags().StringVar(&output, "output", "table", "Output format: table or json")
 	cmd.Flags().BoolVar(&fullBootstrap, "full", false, "Run full bootstrap (may prompt for passphrase)")
 	return cmd
 }
 
 // runStatusNonInteractive is the default status path.
 // It NEVER triggers an interactive passphrase prompt.
-func runStatusNonInteractive(jsonOutput bool) error {
+func runStatusNonInteractive(writer io.Writer, output string) error {
 	langoDir := defaultLangoDir()
 	dbPath := filepath.Join(langoDir, "lango.db")
 
@@ -404,12 +416,12 @@ func runStatusNonInteractive(jsonOutput bool) error {
 		PQHandshakeEnabled:   cfg.P2P.EnablePQHandshake,
 		PQHandshakeAlgo:      pqAlgorithmLabel(cfg.P2P.EnablePQHandshake),
 	}
-	return renderStatus(s, jsonOutput)
+	return renderStatus(writer, s, output)
 }
 
 // runStatusFullBootstrap is the --full path. It runs a full bootstrap (may
 // prompt), reads decrypted config values, and surfaces KMS provider details.
-func runStatusFullBootstrap(bootLoader func() (*bootstrap.Result, error), jsonOutput bool) error {
+func runStatusFullBootstrap(writer io.Writer, bootLoader func() (*bootstrap.Result, error), output string) error {
 	boot, err := bootLoader()
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
@@ -464,14 +476,12 @@ func runStatusFullBootstrap(bootLoader func() (*bootstrap.Result, error), jsonOu
 		}
 	}
 
-	return renderStatus(s, jsonOutput)
+	return renderStatus(writer, s, output)
 }
 
-func renderStatus(s statusOutput, jsonOutput bool) error {
-	if jsonOutput {
-		enc := json.NewEncoder(os.Stdout)
-		enc.SetIndent("", "  ")
-		return enc.Encode(s)
+func renderStatus(writer io.Writer, s statusOutput, output string) error {
+	if output == "json" {
+		return printJSON(writer, s)
 	}
 
 	signer := s.SignerProvider
@@ -479,62 +489,62 @@ func renderStatus(s statusOutput, jsonOutput bool) error {
 		signer = "unavailable"
 	}
 
-	fmt.Println("Security Status")
-	fmt.Printf("  Signer Provider:    %s\n", signer)
-	fmt.Printf("  Encryption Keys:    %d\n", s.EncryptionKeys)
-	fmt.Printf("  Stored Secrets:     %d\n", s.StoredSecrets)
-	fmt.Printf("  Interceptor:        %s\n", s.Interceptor)
-	fmt.Printf("  PII Redaction:      %s\n", s.PIIRedaction)
-	fmt.Printf("  Approval Policy:    %s\n", s.ApprovalPolicy)
-	fmt.Printf("  Exportability:      %s\n", boolToStatus(s.ExportabilityEnabled))
-	fmt.Printf("  DB Encryption:      %s\n", s.DBEncryption)
+	fmt.Fprintln(writer, "Security Status")
+	fmt.Fprintf(writer, "  Signer Provider:    %s\n", signer)
+	fmt.Fprintf(writer, "  Encryption Keys:    %d\n", s.EncryptionKeys)
+	fmt.Fprintf(writer, "  Stored Secrets:     %d\n", s.StoredSecrets)
+	fmt.Fprintf(writer, "  Interceptor:        %s\n", s.Interceptor)
+	fmt.Fprintf(writer, "  PII Redaction:      %s\n", s.PIIRedaction)
+	fmt.Fprintf(writer, "  Approval Policy:    %s\n", s.ApprovalPolicy)
+	fmt.Fprintf(writer, "  Exportability:      %s\n", boolToStatus(s.ExportabilityEnabled))
+	fmt.Fprintf(writer, "  DB Encryption:      %s\n", s.DBEncryption)
 	if !s.DBAvailable {
-		fmt.Println("  DB Access:          unavailable (no non-interactive credential)")
+		fmt.Fprintln(writer, "  DB Access:          unavailable (no non-interactive credential)")
 	}
-	fmt.Println("  Master Key Envelope:")
+	fmt.Fprintln(writer, "  Master Key Envelope:")
 	if s.Envelope.Present {
-		fmt.Printf("    Version:          %d\n", s.Envelope.Version)
-		fmt.Printf("    KEK Slots:        %d (%s)\n", s.Envelope.SlotCount, strings.Join(s.Envelope.SlotTypes, ", "))
-		fmt.Printf("    Recovery Setup:   %s\n", boolToStatus(s.Envelope.RecoverySetup))
+		fmt.Fprintf(writer, "    Version:          %d\n", s.Envelope.Version)
+		fmt.Fprintf(writer, "    KEK Slots:        %d (%s)\n", s.Envelope.SlotCount, strings.Join(s.Envelope.SlotTypes, ", "))
+		fmt.Fprintf(writer, "    Recovery Setup:   %s\n", boolToStatus(s.Envelope.RecoverySetup))
 		if s.Envelope.KMSProtected {
-			fmt.Printf("    KMS Protection:   enabled (%s)\n", s.Envelope.KMSProvider)
+			fmt.Fprintf(writer, "    KMS Protection:   enabled (%s)\n", s.Envelope.KMSProvider)
 		} else {
-			fmt.Println("    KMS Protection:   disabled")
+			fmt.Fprintln(writer, "    KMS Protection:   disabled")
 		}
 		if s.Envelope.PendingMigration {
-			fmt.Println("    PendingMigration: TRUE (migration incomplete)")
+			fmt.Fprintln(writer, "    PendingMigration: TRUE (migration incomplete)")
 		}
 		if s.Envelope.PendingRekey {
-			fmt.Println("    PendingRekey:     TRUE (PRAGMA rekey incomplete)")
+			fmt.Fprintln(writer, "    PendingRekey:     TRUE (PRAGMA rekey incomplete)")
 		}
 	} else {
-		fmt.Println("    absent (legacy format)")
+		fmt.Fprintln(writer, "    absent (legacy format)")
 	}
 	// Identity bundle section.
-	fmt.Println("  Identity Bundle:")
+	fmt.Fprintln(writer, "  Identity Bundle:")
 	if s.IdentityBundle.Present {
-		fmt.Printf("    DID v2:           %s\n", s.IdentityBundle.DIDv2)
-		fmt.Printf("    Signing Key:      %s\n", s.IdentityBundle.SigningAlgorithm)
-		fmt.Printf("    Settlement Key:   %s\n", boolToStatus(s.IdentityBundle.HasSettlement))
-		fmt.Printf("    Legacy DID:       %s\n", s.IdentityBundle.LegacyDID)
+		fmt.Fprintf(writer, "    DID v2:           %s\n", s.IdentityBundle.DIDv2)
+		fmt.Fprintf(writer, "    Signing Key:      %s\n", s.IdentityBundle.SigningAlgorithm)
+		fmt.Fprintf(writer, "    Settlement Key:   %s\n", boolToStatus(s.IdentityBundle.HasSettlement))
+		fmt.Fprintf(writer, "    Legacy DID:       %s\n", s.IdentityBundle.LegacyDID)
 		if s.IdentityBundle.PQSigningKeyAvailable {
-			fmt.Printf("    PQ Signing Key:   available (%s)\n", s.IdentityBundle.PQSigningAlgorithm)
+			fmt.Fprintf(writer, "    PQ Signing Key:   available (%s)\n", s.IdentityBundle.PQSigningAlgorithm)
 		} else {
-			fmt.Println("    PQ Signing Key:   not available")
+			fmt.Fprintln(writer, "    PQ Signing Key:   not available")
 		}
 	} else {
-		fmt.Println("    absent (v1 identity only)")
+		fmt.Fprintln(writer, "    absent (v1 identity only)")
 	}
 	// PQ handshake section.
 	if s.PQHandshakeEnabled {
-		fmt.Printf("  PQ Handshake:       enabled (%s)\n", s.PQHandshakeAlgo)
+		fmt.Fprintf(writer, "  PQ Handshake:       enabled (%s)\n", s.PQHandshakeAlgo)
 	} else {
-		fmt.Println("  PQ Handshake:       disabled")
+		fmt.Fprintln(writer, "  PQ Handshake:       disabled")
 	}
 	if s.KMSProvider != "" {
-		fmt.Printf("  KMS Provider:       %s\n", s.KMSProvider)
-		fmt.Printf("  KMS Key ID:         %s\n", s.KMSKeyID)
-		fmt.Printf("  KMS Fallback:       %s\n", s.KMSFallback)
+		fmt.Fprintf(writer, "  KMS Provider:       %s\n", s.KMSProvider)
+		fmt.Fprintf(writer, "  KMS Key ID:         %s\n", s.KMSKeyID)
+		fmt.Fprintf(writer, "  KMS Fallback:       %s\n", s.KMSFallback)
 	}
 	return nil
 }

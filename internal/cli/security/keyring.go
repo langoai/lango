@@ -1,7 +1,6 @@
 package security
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -13,6 +12,8 @@ import (
 	"github.com/langoai/lango/internal/cli/prompt"
 	"github.com/langoai/lango/internal/keyring"
 )
+
+var detectSecureProvider = keyring.DetectSecureProvider
 
 func newKeyringCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 	cmd := &cobra.Command{
@@ -39,7 +40,7 @@ func newKeyringStoreCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Com
 If no secure hardware backend is available, this command will refuse to store
 the passphrase to avoid exposing it to same-UID attacks via plain OS keyring.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			secureProvider, tier := keyring.DetectSecureProvider()
+			secureProvider, tier := detectSecureProvider()
 			if secureProvider == nil {
 				return fmt.Errorf(
 					"no secure hardware backend available (security tier: %s)\n"+
@@ -58,14 +59,14 @@ the passphrase to avoid exposing it to same-UID attacks via plain OS keyring.`,
 			// Check if passphrase is already stored in the secure provider.
 			if checker, ok := secureProvider.(keyring.KeyChecker); ok {
 				if checker.HasKey(keyring.Service, keyring.KeyMasterPassphrase) {
-					fmt.Println("Passphrase is already stored in the secure keyring.")
-					fmt.Println("  Next launch will load it automatically.")
+					fmt.Fprintln(cmd.OutOrStdout(), "Passphrase is already stored in the secure keyring.")
+					fmt.Fprintln(cmd.OutOrStdout(), "  Next launch will load it automatically.")
 					return nil
 				}
 			}
 
-			if !prompt.IsInteractive() {
-				return fmt.Errorf("this command requires an interactive terminal")
+			if err := prompt.RequireInteractiveTerminal("this command requires an interactive terminal"); err != nil {
+				return err
 			}
 
 			pass, err := prompt.Passphrase("Enter passphrase to store: ")
@@ -82,8 +83,8 @@ the passphrase to avoid exposing it to same-UID attacks via plain OS keyring.`,
 				return fmt.Errorf("store passphrase: %w", err)
 			}
 
-			fmt.Printf("Passphrase stored with %s protection.\n", tier.String())
-			fmt.Println("  Next launch will load it automatically.")
+			fmt.Fprintf(cmd.OutOrStdout(), "Passphrase stored with %s protection.\n", tier.String())
+			fmt.Fprintln(cmd.OutOrStdout(), "  Next launch will load it automatically.")
 			return nil
 		},
 	}
@@ -97,15 +98,19 @@ func newKeyringClearCmd() *cobra.Command {
 		Short: "Remove the master passphrase from all storage backends",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if !force {
-				if !prompt.IsInteractive() {
-					return fmt.Errorf("use --force for non-interactive deletion")
+				if err := prompt.RequireTTYInput(cmd.InOrStdin(), "use --force for non-interactive deletion"); err != nil {
+					return err
 				}
-				ok, err := prompt.Confirm("Remove passphrase from all keyring backends?")
+				ok, err := prompt.ConfirmDenyOnEOFIO(
+					cmd.InOrStdin(),
+					cmd.OutOrStdout(),
+					"Remove passphrase from all keyring backends?",
+				)
 				if err != nil {
 					return err
 				}
 				if !ok {
-					fmt.Println("Aborted.")
+					fmt.Fprintln(cmd.OutOrStdout(), "Aborted.")
 					return nil
 				}
 			}
@@ -113,12 +118,12 @@ func newKeyringClearCmd() *cobra.Command {
 			var cleared int
 
 			// 1. Try secure hardware provider (biometric / TPM).
-			if secureProvider, _ := keyring.DetectSecureProvider(); secureProvider != nil {
+			if secureProvider, _ := detectSecureProvider(); secureProvider != nil {
 				if err := secureProvider.Delete(keyring.Service, keyring.KeyMasterPassphrase); err == nil {
-					fmt.Println("Removed passphrase from secure provider.")
+					fmt.Fprintln(cmd.OutOrStdout(), "Removed passphrase from secure provider.")
 					cleared++
 				} else if !errors.Is(err, keyring.ErrNotFound) {
-					fmt.Fprintf(os.Stderr, "warning: secure provider delete: %v\n", err)
+					fmt.Fprintf(cmd.ErrOrStderr(), "warning: secure provider delete: %v\n", err)
 				}
 			}
 
@@ -128,13 +133,13 @@ func newKeyringClearCmd() *cobra.Command {
 				tpmDir := filepath.Join(home, ".lango", "tpm")
 				blobPath := filepath.Join(tpmDir, keyring.Service+"_"+keyring.KeyMasterPassphrase+".sealed")
 				if err := os.Remove(blobPath); err == nil {
-					fmt.Println("Removed TPM sealed blob file.")
+					fmt.Fprintln(cmd.OutOrStdout(), "Removed TPM sealed blob file.")
 					cleared++
 				}
 			}
 
 			if cleared == 0 {
-				fmt.Println("No stored passphrase found in any backend.")
+				fmt.Fprintln(cmd.OutOrStdout(), "No stored passphrase found in any backend.")
 			}
 
 			return nil
@@ -146,14 +151,20 @@ func newKeyringClearCmd() *cobra.Command {
 }
 
 func newKeyringStatusCmd() *cobra.Command {
-	var jsonOutput bool
+	var output string
 
 	cmd := &cobra.Command{
-		Use:   "status",
-		Short: "Show keyring availability, security tier, and stored passphrase status",
+		Use:           "status",
+		Short:         "Show keyring availability, security tier, and stored passphrase status",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			output, err := resolveOutput(cmd)
+			if err != nil {
+				return err
+			}
 			// Detect hardware-backed secure provider (biometric / TPM).
-			secureProvider, tier := keyring.DetectSecureProvider()
+			secureProvider, tier := detectSecureProvider()
 			available := secureProvider != nil
 
 			// Check for stored passphrase using HasKey (avoids triggering Touch ID).
@@ -176,21 +187,19 @@ func newKeyringStatusCmd() *cobra.Command {
 				HasPassphrase: hasPassphrase,
 			}
 
-			if jsonOutput {
-				enc := json.NewEncoder(os.Stdout)
-				enc.SetIndent("", "  ")
-				return enc.Encode(out)
+			if output == "json" {
+				return printJSON(cmd.OutOrStdout(), out)
 			}
 
-			fmt.Println("Hardware Keyring Status")
-			fmt.Printf("  Available:       %v\n", out.Available)
-			fmt.Printf("  Security Tier:   %s\n", out.SecurityTier)
-			fmt.Printf("  Has Passphrase:  %v\n", out.HasPassphrase)
+			fmt.Fprintln(cmd.OutOrStdout(), "Hardware Keyring Status")
+			fmt.Fprintf(cmd.OutOrStdout(), "  Available:       %v\n", out.Available)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Security Tier:   %s\n", out.SecurityTier)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Has Passphrase:  %v\n", out.HasPassphrase)
 
 			return nil
 		},
 	}
 
-	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
+	cmd.Flags().StringVar(&output, "output", "table", "Output format: table or json")
 	return cmd
 }

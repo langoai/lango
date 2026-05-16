@@ -3,6 +3,7 @@ package passphrase
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/langoai/lango/internal/keyring"
@@ -30,6 +31,10 @@ var ErrNoNonInteractiveSource = errors.New("no non-interactive passphrase source
 // from os.Stdin pipe. It SHALL NEVER block on user input beyond whatever the
 // keyring provider itself does (e.g., a Touch ID prompt).
 func AcquireNonInteractive(opts Options) (string, Source, error) {
+	return acquireNonInteractiveWithIO(opts, os.Stderr)
+}
+
+func acquireNonInteractiveWithIO(opts Options, stderr io.Writer) (string, Source, error) {
 	keyfilePath := opts.KeyfilePath
 	if keyfilePath == "" {
 		var err error
@@ -47,7 +52,7 @@ func AcquireNonInteractive(opts Options) (string, Source, error) {
 		}
 		// Soft-fail: not-found is normal; other errors fall through with a warning.
 		if err != nil && !errors.Is(err, keyring.ErrNotFound) {
-			fmt.Fprintf(os.Stderr, "warning: keyring read failed: %v\n", err)
+			fmt.Fprintf(stderr, "warning: keyring read failed: %v\n", err)
 		}
 	}
 

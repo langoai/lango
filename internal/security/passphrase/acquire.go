@@ -3,6 +3,7 @@ package passphrase
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -38,9 +39,7 @@ func defaultKeyfilePath() (string, error) {
 	return filepath.Join(home, ".lango", "keyfile"), nil
 }
 
-// Acquire obtains a passphrase from the highest-priority available source.
-// Priority: keyring -> keyfile -> interactive terminal -> stdin pipe -> error
-func Acquire(opts Options) (string, Source, error) {
+func acquireWithIO(opts Options, stdin io.Reader, stderr io.Writer, interactive bool) (string, Source, error) {
 	keyfilePath := opts.KeyfilePath
 	if keyfilePath == "" {
 		var err error
@@ -50,25 +49,21 @@ func Acquire(opts Options) (string, Source, error) {
 		}
 	}
 
-	// 1. Try secure keyring (highest priority — biometric/TPM).
 	if opts.KeyringProvider != nil {
 		pass, err := opts.KeyringProvider.Get(keyring.Service, keyring.KeyMasterPassphrase)
 		if err == nil && pass != "" {
 			return pass, SourceKeyring, nil
 		}
-		// Fall through on ErrNotFound or any other keyring error.
 		if err != nil && !errors.Is(err, keyring.ErrNotFound) {
-			fmt.Fprintf(os.Stderr, "warning: keyring read failed: %v\n", err)
+			fmt.Fprintf(stderr, "warning: keyring read failed: %v\n", err)
 		}
 	}
 
-	// 2. Try keyfile.
 	if pass, err := ReadKeyfile(keyfilePath); err == nil {
 		return pass, SourceKeyfile, nil
 	}
 
-	// 3. Try interactive terminal.
-	if term.IsTerminal(int(syscall.Stdin)) {
+	if interactive {
 		pass, err := acquireInteractive(opts.AllowCreation)
 		if err != nil {
 			return "", 0, fmt.Errorf("interactive passphrase: %w", err)
@@ -76,12 +71,17 @@ func Acquire(opts Options) (string, Source, error) {
 		return pass, SourceInteractive, nil
 	}
 
-	// 4. Try stdin pipe.
-	pass, err := ReadStdinPipe()
+	pass, err := ReadStdinPipeFromReader(stdin)
 	if err != nil {
 		return "", 0, fmt.Errorf("stdin passphrase: %w", err)
 	}
 	return pass, SourceStdin, nil
+}
+
+// Acquire obtains a passphrase from the highest-priority available source.
+// Priority: keyring -> keyfile -> interactive terminal -> stdin pipe -> error
+func Acquire(opts Options) (string, Source, error) {
+	return acquireWithIO(opts, os.Stdin, os.Stderr, term.IsTerminal(int(syscall.Stdin)))
 }
 
 // acquireInteractive prompts the user for a passphrase via the terminal.

@@ -12,10 +12,10 @@ import (
 
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
-	"entgo.io/ent/dialect/sql/schema"
 	"golang.org/x/crypto/pbkdf2"
 
 	"github.com/langoai/lango/internal/ent"
+	"github.com/langoai/lango/internal/testutil/schemautil"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -30,7 +30,7 @@ func setupLegacyDB(t *testing.T, dbPath, passphrase string) (*ent.Client, *sql.D
 	}
 	drv := entsql.OpenDB(dialect.SQLite, db)
 	client := ent.NewClient(ent.Driver(drv))
-	if err := client.Schema.Create(context.Background(), schema.WithForeignKeys(false)); err != nil {
+	if err := schemautil.CreateSchema(context.Background(), client); err != nil {
 		t.Fatalf("schema create: %v", err)
 	}
 

@@ -1,7 +1,7 @@
 package passphrase
 
 import (
-	"os"
+	"bytes"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -34,19 +34,7 @@ func TestReadStdinPipe(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
-			// Create a pipe and replace stdin
-			r, w, err := os.Pipe()
-			require.NoError(t, err)
-
-			origStdin := os.Stdin
-			os.Stdin = r
-			t.Cleanup(func() { os.Stdin = origStdin })
-
-			_, err = w.WriteString(tt.giveData)
-			require.NoError(t, err)
-			require.NoError(t, w.Close())
-
-			got, err := ReadStdinPipe()
+			got, err := ReadStdinPipeFromReader(bytes.NewBufferString(tt.giveData))
 			if tt.wantErr {
 				assert.Error(t, err)
 				return
@@ -59,16 +47,13 @@ func TestReadStdinPipe(t *testing.T) {
 }
 
 func TestReadStdinPipe_EmptyPipe(t *testing.T) {
-	r, w, err := os.Pipe()
-	require.NoError(t, err)
-
-	origStdin := os.Stdin
-	os.Stdin = r
-	t.Cleanup(func() { os.Stdin = origStdin })
-
-	// Close immediately — no data
-	require.NoError(t, w.Close())
-
-	_, err = ReadStdinPipe()
+	_, err := ReadStdinPipeFromReader(bytes.NewBuffer(nil))
 	assert.Error(t, err)
+	assert.EqualError(t, err, "empty passphrase from stdin")
+}
+
+func TestReadStdinPipe_NoTrailingNewlineStillWorks(t *testing.T) {
+	got, err := ReadStdinPipeFromReader(bytes.NewBufferString("my-secret-passphrase"))
+	require.NoError(t, err)
+	assert.Equal(t, "my-secret-passphrase", got)
 }

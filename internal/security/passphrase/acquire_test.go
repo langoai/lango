@@ -1,6 +1,9 @@
 package passphrase
 
 import (
+	"bytes"
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -31,19 +34,7 @@ func TestAcquire_KeyfilePriority(t *testing.T) {
 
 	require.NoError(t, WriteKeyfile(keyfilePath, wantPass))
 
-	// Set up a pipe on stdin (simulating piped input)
-	r, w, err := os.Pipe()
-	require.NoError(t, err)
-
-	origStdin := os.Stdin
-	os.Stdin = r
-	t.Cleanup(func() { os.Stdin = origStdin })
-
-	_, err = w.WriteString("stdin-passphrase\n")
-	require.NoError(t, err)
-	require.NoError(t, w.Close())
-
-	got, source, err := Acquire(Options{KeyfilePath: keyfilePath})
+	got, source, err := acquireWithIO(Options{KeyfilePath: keyfilePath}, bytes.NewBufferString("stdin-passphrase\n"), io.Discard, false)
 	require.NoError(t, err)
 	assert.Equal(t, wantPass, got)
 	assert.Equal(t, SourceKeyfile, source)
@@ -54,19 +45,8 @@ func TestAcquire_StdinPipe(t *testing.T) {
 	dir := t.TempDir()
 	keyfilePath := filepath.Join(dir, "nonexistent-keyfile")
 
-	r, w, err := os.Pipe()
-	require.NoError(t, err)
-
-	origStdin := os.Stdin
-	os.Stdin = r
-	t.Cleanup(func() { os.Stdin = origStdin })
-
 	wantPass := "stdin-passphrase"
-	_, err = w.WriteString(wantPass + "\n")
-	require.NoError(t, err)
-	require.NoError(t, w.Close())
-
-	got, source, err := Acquire(Options{KeyfilePath: keyfilePath})
+	got, source, err := acquireWithIO(Options{KeyfilePath: keyfilePath}, bytes.NewBufferString(wantPass+"\n"), io.Discard, false)
 	require.NoError(t, err)
 	assert.Equal(t, wantPass, got)
 	assert.Equal(t, SourceStdin, source)
@@ -79,19 +59,8 @@ func TestAcquire_InvalidKeyfilePermissions(t *testing.T) {
 
 	require.NoError(t, os.WriteFile(keyfilePath, []byte("bad-perms\n"), 0644))
 
-	r, w, err := os.Pipe()
-	require.NoError(t, err)
-
-	origStdin := os.Stdin
-	os.Stdin = r
-	t.Cleanup(func() { os.Stdin = origStdin })
-
 	wantPass := "fallback-stdin"
-	_, err = w.WriteString(wantPass + "\n")
-	require.NoError(t, err)
-	require.NoError(t, w.Close())
-
-	got, source, err := Acquire(Options{KeyfilePath: keyfilePath})
+	got, source, err := acquireWithIO(Options{KeyfilePath: keyfilePath}, bytes.NewBufferString(wantPass+"\n"), io.Discard, false)
 	require.NoError(t, err)
 	assert.Equal(t, wantPass, got)
 	assert.Equal(t, SourceStdin, source)
@@ -102,16 +71,7 @@ func TestAcquire_NoSourceAvailable(t *testing.T) {
 	dir := t.TempDir()
 	keyfilePath := filepath.Join(dir, "nonexistent-keyfile")
 
-	r, w, err := os.Pipe()
-	require.NoError(t, err)
-
-	origStdin := os.Stdin
-	os.Stdin = r
-	t.Cleanup(func() { os.Stdin = origStdin })
-
-	require.NoError(t, w.Close())
-
-	_, _, err = Acquire(Options{KeyfilePath: keyfilePath})
+	_, _, err := acquireWithIO(Options{KeyfilePath: keyfilePath}, bytes.NewBuffer(nil), io.Discard, false)
 	assert.Error(t, err)
 }
 
@@ -124,4 +84,28 @@ func TestDefaultKeyfilePath(t *testing.T) {
 
 	want := filepath.Join(home, ".lango", "keyfile")
 	assert.Equal(t, want, got)
+}
+
+type stubAcquireKeyringProvider struct {
+	pass string
+	err  error
+}
+
+func (s stubAcquireKeyringProvider) Get(service, key string) (string, error) { return s.pass, s.err }
+func (s stubAcquireKeyringProvider) Set(service, key, value string) error    { return nil }
+func (s stubAcquireKeyringProvider) Delete(service, key string) error        { return nil }
+
+func TestAcquire_KeyringErrorWarnsAndFallsThrough(t *testing.T) {
+	dir := t.TempDir()
+	keyfilePath := filepath.Join(dir, "nonexistent-keyfile")
+	var errBuf bytes.Buffer
+
+	got, source, err := acquireWithIO(Options{
+		KeyfilePath:     keyfilePath,
+		KeyringProvider: stubAcquireKeyringProvider{err: errors.New("boom")},
+	}, bytes.NewBufferString("stdin-passphrase\n"), &errBuf, false)
+	require.NoError(t, err)
+	assert.Equal(t, "stdin-passphrase", got)
+	assert.Equal(t, SourceStdin, source)
+	assert.Contains(t, errBuf.String(), "warning: keyring read failed: boom")
 }

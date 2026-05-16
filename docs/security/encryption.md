@@ -137,7 +137,7 @@ go build -tags kms_aws ./cmd/lango
 go build -tags kms_all ./cmd/lango
 ```
 
-Without a build tag, the provider returns a stub error at runtime.
+Without a build tag, the provider returns a stub error at runtime. Even with the matching build tag, the runtime still depends on bootstrap-backed storage wiring so the key registry and secrets store can be initialized around the KMS-backed provider.
 
 The **CompositeCryptoProvider** wraps any KMS backend with automatic local fallback when `kms.fallbackToLocal` is enabled. KMS calls include exponential backoff retry logic for transient errors (throttling, network timeouts) and a health checker with a 30-second probe cache.
 
@@ -239,6 +239,8 @@ Lango can store the master passphrase using hardware-backed security, eliminatin
 3. **Interactive prompt** (terminal input)
 4. **Stdin** (piped input for CI/CD)
 
+If the piped stdin source reaches EOF without any passphrase bytes, Lango treats that as an empty passphrase input instead of surfacing a low-level read error.
+
 **Supported Hardware Backends:**
 
 | Platform | Backend | Security Level |
@@ -326,32 +328,17 @@ When blockchain payments are enabled, wallet private keys are managed through th
 }
 ```
 
-## Companion App Discovery
+## Companion Connectivity
 
 !!! warning "Experimental"
 
-    Companion app discovery is an experimental feature and may change in future releases.
+    Companion-backed RPC signing is still experimental and may change in future releases.
 
-Lango can auto-discover companion apps on the local network using mDNS:
+The current runtime does not ship automatic mDNS/Bonjour companion discovery.
+Instead, companion apps connect to the gateway's `/companion` WebSocket endpoint,
+and Lango routes approval or RPC crypto requests through currently connected companions.
 
-- **Service type:** `_lango-companion._tcp`
-- **Discovery:** Automatic on startup when RPC mode is configured
-- **Fallback:** Manual configuration via `security.signer.rpcUrl`
-
-If mDNS discovery fails, configure the companion URL explicitly:
-
-> **Settings:** `lango settings` → Security
-
-```json
-{
-  "security": {
-    "signer": {
-      "provider": "rpc",
-      "rpcUrl": "https://192.168.1.100:8443"
-    }
-  }
-}
-```
+If no companion is connected, companion-backed approval and RPC signing paths are unavailable until a companion connects to the gateway.
 
 ## CLI Commands
 
