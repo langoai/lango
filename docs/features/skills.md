@@ -202,20 +202,17 @@ Import all skills from https://github.com/owner/repo/tree/main/skills
 
 Bulk import respects the `maxBulkImport` limit (default: 50) and runs with configurable concurrency (default: 5).
 
-## Default Skills
+## Embedded Scaffold
 
-Lango ships with **30 embedded default skills** that are deployed to `~/.lango/skills/` on first run. Existing skills are never overwritten, so user customizations are preserved.
+Lango no longer ships a bundle of built-in default skills. The current runtime embeds only a placeholder `SKILL.md` entry so the binary can keep the skill embed path wired without deploying a usable built-in skill by default.
 
-| Category | Skills |
-|---|---|
-| **Agent** | `agent-list`, `agent-status` |
-| **Config** | `config-create`, `config-delete`, `config-list`, `config-use`, `config-validate` |
-| **Cron** | `cron-add`, `cron-delete`, `cron-history`, `cron-list`, `cron-pause`, `cron-resume` |
-| **Graph** | `graph-clear`, `graph-query`, `graph-stats`, `graph-status` |
-| **Memory** | `memory-clear`, `memory-list`, `memory-status` |
-| **Security** | `secrets-list`, `security-status` |
-| **Server** | `serve`, `version`, `doctor` |
-| **Workflow** | `workflow-cancel`, `workflow-history`, `workflow-list`, `workflow-run`, `workflow-status` |
+That means the skills directory starts empty until you:
+
+- create your own skills,
+- import skills from GitHub or another URL, or
+- install extension packs that include skills.
+
+When real embedded skills are added in the future, the deploy path still preserves local customizations: existing skill directories are not overwritten.
 
 ## Storage
 

@@ -250,6 +250,36 @@ Lango provides a comprehensive set of features for building intelligent AI agent
 
 </div>
 
+## Feature Reference Catalog
+
+- [AI Providers](ai-providers.md)
+- [Channels](channels.md)
+- [Knowledge System](knowledge.md)
+- [Agent Response Format](agent-format.md)
+- [Learning Engine](learning.md)
+- [Observational Memory](observational-memory.md)
+- [Embedding & RAG](embedding-rag.md)
+- [Knowledge Graph](knowledge-graph.md)
+- [Knowledge Ontology](ontology.md)
+- [Multi-Agent Orchestration](multi-agent.md)
+- [A2A Protocol](a2a-protocol.md)
+- [P2P Network](p2p-network.md)
+- [P2P Economy](economy.md)
+- [Smart Contracts](contracts.md)
+- [Smart Accounts](smart-accounts.md)
+- [Observability](observability.md)
+- [Skill System](skills.md)
+- [Proactive Librarian](librarian.md)
+- [System Prompts](system-prompts.md)
+- [Operational Alerting](alerting.md)
+- [Exec Safety](exec-safety.md)
+- [Cockpit TUI](cockpit.md)
+- [Config Presets](config-presets.md)
+- [MCP Integration](mcp-integration.md)
+- [RunLedger (Task OS)](run-ledger.md)
+- [Session Provenance](provenance.md)
+- [Zero-Knowledge Proofs](zkp.md)
+
 ## Feature Status
 
 | Feature | Status | Config Key |

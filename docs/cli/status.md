@@ -19,6 +19,14 @@ lango status dead-letter retry <transaction-receipt-id> [flags]
 ## Description
 
 The `status` command provides a single-screen overview of your Lango agent. It shows system info, active channels, and which features are enabled or disabled.
+Displayed provider/model labels, feature names/details, channel names, dead-letter labels, dead-letter summary JSON labels, dead-letter list/detail JSON payload fields, and JSON error payload text are normalized to plain single-line text before rendering or serialization, and both the collected status model and dead-letter retry result payloads use the same normalized form for replay and JSON output.
+The root dashboard path also writes through the Cobra command output stream, so test harnesses and wrappers can capture the same human-readable output that an operator sees.
+The `--output` flag is validated before status bootstrap or dead-letter bridge work begins; only `table` and `json` are accepted.
+Live `/health` feature metadata is normalized the same way before it is stored under `serverInfo.features`, so root status JSON does not preserve raw control-sequence text from the gateway.
+Injected build version text is normalized with the same contract before it reaches the top-level `version` field.
+The same plain single-line contract now also applies to dead-letter retry confirmation prompts and non-JSON retry errors when they echo a transaction receipt ID back to the operator.
+Dead-letter filter validation errors apply the same rule when they echo an invalid flag value back to the operator.
+As a backstop, any non-JSON `status` command failure is sanitized again at the shared command boundary while still preserving the original wrapped cause for tests and callers.
 
 **Live mode**: When the gateway server is running, `status` probes the `/health` endpoint and reports whether the server is healthy.
 
@@ -37,6 +45,8 @@ The `status` command also exposes dead-letter operator views:
 |------|---------|-------------|
 | `--output` | `table` | Output format: `table` or `json` |
 | `--addr` | `http://localhost:18789` | Gateway address to probe for live status |
+
+Unknown `--output` values such as `yaml` fail fast with an actionable error before the command contacts the gateway or loads dead-letter status tooling.
 
 ## Dead-Letter Subcommands
 
@@ -192,6 +202,7 @@ Behavior:
 - rejects before mutation when `can_retry=false`
 - precheck rejection is surfaced as a retry-precheck error, not a mutation failure
 - prompts for confirmation by default
+- the confirmation prompt is driven through the shared confirmation helper on top of Cobra command streams
 - `--yes` skips the prompt
 - reuses the existing retry control path
 - injects a local default operator principal when the invocation context does not already carry one, so replay policy does not evaluate an empty actor

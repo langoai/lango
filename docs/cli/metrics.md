@@ -2,6 +2,8 @@
 
 Commands for viewing observability metrics including token usage, tool execution stats, and agent performance. Requires a running `lango serve` instance.
 
+All metrics commands write table or JSON payloads through the Cobra command output stream so wrappers and test harnesses can capture them directly.
+
 ```
 lango metrics [subcommand] [flags]
 ```
@@ -15,11 +17,13 @@ All metrics commands share these flags:
 | `--output` | string | `table` | Output format: `table` or `json` |
 | `--addr` | string | `http://localhost:18789` | Gateway address |
 
+Unknown `--output` values fail fast with an actionable error before any metrics command contacts the gateway.
+
 ---
 
 ## lango metrics
 
-Show a system metrics snapshot summary including uptime, total token usage, and tool execution count.
+Show a system metrics snapshot summary including uptime, total token usage, and tool execution count. The command writes table or JSON output through the Cobra command output stream so wrappers and test harnesses can capture it directly.
 
 ```
 lango metrics [--output table|json] [--addr <url>]
@@ -104,8 +108,8 @@ lango metrics agents [--output table|json] [--addr <url>]
 ```bash
 $ lango metrics agents
 AGENT       INPUT   OUTPUT  TOOL CALLS
-executor    82000   31200   198
-researcher  45200   15600   96
+operator    82000   31200   198
+librarian   45200   15600   96
 planner     18000   6000    48
 ```
 
@@ -113,7 +117,7 @@ planner     18000   6000    48
 
 ## lango metrics policy
 
-Show policy decision statistics including block and observe counts with per-reason breakdowns. Fetches data from the `/metrics/policy` gateway endpoint.
+Show policy decision statistics including block and observe counts with per-reason breakdowns. Fetches data from the `/metrics/policy` gateway endpoint and writes table or JSON output through the Cobra command output stream so wrappers and test harnesses can capture it directly.
 
 ```
 lango metrics policy [--output table|json] [--addr <url>]

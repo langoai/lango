@@ -39,23 +39,30 @@ staging            1        2026-02-01 09:00:00  2026-02-01 09:00:00
 
 ## lango config create
 
-Create a new configuration profile with default values.
+Create a new configuration profile with default values or a preset template.
 
 ```
-lango config create <name>
+lango config create <name> [--preset <name>]
 ```
 
 | Argument | Required | Description |
 |----------|----------|-------------|
 | `name` | Yes | Name for the new profile |
 
-The profile is created with Lango's default configuration. Use `lango settings` or `lango onboard` to customize it.
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--preset` | string | `""` | Preset template: `minimal`, `researcher`, `collaborator`, or `full` |
+
+Without `--preset`, the profile is created with Lango's default configuration. Use `lango settings` or `lango onboard` to customize it. With `--preset`, the profile starts from a purpose-built template.
 
 **Example:**
 
 ```bash
 $ lango config create production
 Profile "production" created with default configuration.
+
+$ lango config create research-bot --preset researcher
+Profile "research-bot" created from preset "researcher".
 ```
 
 !!! warning
@@ -86,7 +93,7 @@ Switched to profile "staging".
 
 ## lango config delete
 
-Delete a configuration profile. Prompts for confirmation unless `--force` is specified.
+Delete a configuration profile. Prompts for confirmation unless `--force` is specified. The confirmation prompt is driven through the Cobra command input/output streams so wrappers and test harnesses can capture or drive the interaction via `cmd.OutOrStdout()` and `cmd.InOrStdin()`.
 
 ```
 lango config delete <name> [--force]
@@ -171,12 +178,104 @@ WARNING: exported configuration contains sensitive values in plaintext.
 ```
 
 !!! danger "Security Notice"
-    The exported JSON contains sensitive values (API keys, tokens) in plaintext. Handle with care and do not commit to version control.
+The exported JSON contains sensitive values (API keys, tokens) in plaintext. Handle with care and do not commit to version control. Both `lango config export` and `lango config get --output json` emit valid pretty-printed JSON directly on the Cobra command output stream, so wrappers and test harnesses can capture and decode them safely. `lango config get` accepts only `plain` or `json` for `--output` and rejects unknown values before loading the active config.
 
 You can redirect the output to a file:
 
 ```bash
 $ lango config export default > backup.json
+```
+
+---
+
+## lango config get
+
+Read a configuration value by dot-notation path. This is a read-only command and does not require editing the profile.
+
+```
+lango config get <dot.path> [--output plain|json]
+```
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `dot.path` | Yes | Configuration path such as `agent.provider` or `p2p.enabled` |
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--output`, `-o` | string | `plain` | Output format (`plain` or `json`) |
+
+The command writes through the Cobra command output stream, and `--output` accepts only `plain` or `json`. Unknown values fail before the active config is loaded.
+
+**Examples:**
+
+```bash
+$ lango config get agent.provider
+anthropic
+
+$ lango config get p2p.enabled
+false
+
+$ lango config get agent --output json
+{
+  "provider": "anthropic",
+  ...
+}
+```
+
+---
+
+## lango config set
+
+Set a configuration value by dot-notation path. This is a profile-modifying command and therefore requires bootstrap/passphrase verification.
+
+```
+lango config set <dot.path> <value>
+```
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `dot.path` | Yes | Configuration path such as `agent.provider` or `p2p.enabled` |
+| `value` | Yes | New value encoded as text |
+
+**Examples:**
+
+```bash
+$ lango config set agent.provider openai
+Set agent.provider = openai
+
+$ lango config set p2p.enabled true
+Set p2p.enabled = true
+```
+
+!!! info
+    Simple scalar values can be changed here. For complex nested structures and duration-heavy settings, prefer `lango settings`.
+
+---
+
+## lango config keys
+
+List available configuration keys derived from the config schema. Optionally filter by a dot-path prefix.
+
+```
+lango config keys [prefix]
+```
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `prefix` | No | Optional prefix such as `agent` or `p2p.zkp` |
+
+**Examples:**
+
+```bash
+$ lango config keys
+agent.provider
+agent.model
+...
+
+$ lango config keys agent
+agent.provider
+agent.model
+agent.temperature
 ```
 
 ---

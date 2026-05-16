@@ -10,6 +10,8 @@ The exec safety system provides policy-based command evaluation for all shell co
 
 This runs as a toolchain middleware, applied before the approval system.
 
+Wrapper input validation happens even earlier: `exec` and `exec_bg` require `command`, while `exec_status` and `exec_stop` require the background-process `id`. Missing required inputs fail before any policy evaluation or process interaction begins.
+
 ## Architecture
 
 ```

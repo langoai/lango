@@ -97,6 +97,7 @@ Each background task runs in an isolated session with the key format `bg:<task-i
 ## CLI Commands
 
 The CLI provides read-only management commands for background tasks. Task submission is handled exclusively through agent tools.
+All background-task CLI subcommands write through the Cobra command output stream so wrappers and test harnesses can capture their output directly.
 
 ### List Tasks
 

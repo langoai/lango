@@ -46,7 +46,7 @@ In production, those built-in teammate types are routing targets, not attached A
 | **operator** | System operations: shell commands, file I/O, skill execution | `exec_*`, `fs_*`, `skill_*` |
 | **navigator** | Web browsing: bounded search, page navigation, structured extraction, interaction, screenshots | `browser_*` |
 | **vault** | Security: encryption, secret management, blockchain payments | `crypto_*`, `secrets_*`, `payment_*` |
-| **librarian** | Knowledge: search, RAG, graph traversal, skill management, learning data, proactive knowledge extraction | `search_*`, `rag_*`, `graph_*`, `save_knowledge`, `save_learning`, `learning_*`, `create_skill`, `list_skills`, `import_skill`, `librarian_*` |
+| **librarian** | Knowledge: search, lightweight web retrieval, RAG, graph traversal, skill management, learning data, proactive knowledge extraction | `search_*`, `rag_*`, `graph_*`, `save_knowledge`, `save_learning`, `learning_*`, `create_skill`, `list_skills`, `import_skill`, `librarian_*`, `web_*` |
 | **automator** | Automation: cron scheduling, background tasks, workflow pipelines | `cron_*`, `bg_*`, `workflow_*` |
 | **planner** | Task decomposition and planning (LLM reasoning only, no tools) | _(none)_ |
 | **chronicler** | Conversational memory: observations, reflections, recall | `memory_*`, `observe_*`, `reflect_*` |
@@ -74,13 +74,13 @@ Handles security-sensitive operations. Encrypts/decrypts data, manages secrets a
 
 #### librarian
 
-Manages the knowledge layer. Searches information, queries RAG indexes, traverses the knowledge graph, saves knowledge and learnings, manages skills, and handles proactive knowledge inquiries. See [Proactive Librarian](librarian.md) for details on the inquiry system.
+Manages the knowledge layer. Searches information, performs lightweight web retrieval via `web_search` and `web_fetch`, queries RAG indexes, traverses the knowledge graph, saves knowledge and learnings, manages skills, and handles proactive knowledge inquiries. `graph_traverse` requires `start_node`, `graph_query` requires `subject` or `object`, `librarian_dismiss_inquiry` requires `inquiry_id`, and interactive browsing, screenshots, and DOM actions still belong to `navigator`. See [Proactive Librarian](librarian.md) for details on the inquiry system.
 
 **Cannot**: shell commands, web browsing, cryptographic operations, memory management (observations/reflections).
 
 #### automator
 
-Manages automation systems. Schedules recurring cron jobs, submits background tasks, and runs multi-step workflow pipelines.
+Manages automation systems. Schedules recurring cron jobs, submits background tasks, and runs multi-step workflow pipelines. `cron_add` requires `name`, `schedule_type`, `schedule`, and `prompt`; `cron_pause`/`cron_resume`/`cron_remove` require `id`; `bg_submit` requires `prompt`; `bg_status`/`bg_result`/`bg_cancel` require `task_id`; `workflow_status` and `workflow_cancel` require `run_id`; and `workflow_save` requires `name` plus `yaml_content`.
 
 **Cannot**: shell commands, file operations, web browsing, cryptographic operations, knowledge search.
 
@@ -92,7 +92,7 @@ Decomposes complex tasks into clear, actionable steps and designs execution plan
 
 #### chronicler
 
-Manages conversational memory. Records observations, creates reflections, and recalls past interactions. Returns memories with context and timestamps.
+Manages conversational memory. Records observations, creates reflections, and recalls past interactions. Persistent agent memory uses `memory_agent_save` (`key`, `content` required), `memory_agent_recall` (`query` required), and `memory_agent_forget` (`key` required). Returns memories with context and timestamps.
 
 **Cannot**: shell commands, web browsing, file operations, knowledge search, cryptographic operations.
 
@@ -126,10 +126,12 @@ Role max scope is enforced before spawn-time `allowed_tools`. Runtime capability
 ### `agent_spawn`
 
 `agent_spawn` creates an inspectable `AgentRun`. Current projections include the requested teammate type, `spawn_reason`, and the spawn-time `allowed_tools` list. When child-session isolation is active for the selected built-in teammate, the run also carries the child session key used for isolated execution.
+`instruction` is required. If it is omitted, the tool fails immediately with an actionable missing-parameter error before any run row or background submission is created.
 
 ### `agent_wait`
 
 `agent_wait` returns terminal results for completed, failed, or cancelled runs. On timeout, it keeps the run non-terminal and returns the current projected state. For approval-blocked runs, a timeout continues to report the projected blocked condition instead of coercing the run into failure.
+`agent_id` is required. If it is omitted, the tool fails before any run-store lookup begins.
 
 For built-in teammate approval blocking, `grant_request_id` identifies the stable logical blocked request for a given `(run, tool)`. If the same request is surfaced again later during the same active blocked cycle, the request ID stays stable and renewed-attempt semantics appear through separate metadata such as `grant_attempt` and `grant_state`.
 
@@ -138,6 +140,11 @@ When `runLedger.enabled: true` and `runLedger.writeThrough: true` are both activ
 ### `agent_stop`
 
 `agent_stop` cancels a spawned teammate through the existing run store cancellation path.
+`agent_id` is required. If it is omitted, the tool fails before cancellation begins.
+
+### Task Tools
+
+The lightweight task surface remains operational rather than durable mission truth. `task_create` requires `title`; `task_get` requires `task_id`; `task_update` requires `task_id`; and missing those inputs fail immediately at the wrapper before any task-store lookup or mutation begins.
 
 ## Routing Protocol
 
@@ -502,7 +509,7 @@ Lists registered agent definitions from the agent registry. It does not show liv
 lango agent tools
 ```
 
-Shows tool-to-agent assignments in multi-agent mode.
+Shows which tool categories are enabled or disabled in the current config profile. It does not display multi-agent tool partitioning.
 
 ### Agent Hooks
 

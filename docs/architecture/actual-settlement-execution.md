@@ -26,17 +26,22 @@ The slice is intentionally narrow:
 
 `execute_settlement(transaction_receipt_id)` is allowed only when:
 
+- the request includes `transaction_receipt_id`
 - the transaction receipt exists
 - a current submission exists
 - settlement progression is `approved-for-settlement`
 - the settlement amount resolves from transaction context
 
-Current deny reasons:
+If `transaction_receipt_id` is empty, the service returns a validation error (`transaction receipt id is required`) instead of a denied execution result.
+
+Current deny reasons after request validation succeeds:
 
 - `missing_receipt`
 - `no_current_submission`
 - `not_approved_for_settlement`
 - `amount_unresolved`
+
+Here `missing_receipt` means the referenced transaction receipt could not be resolved after validation, not that the request omitted `transaction_receipt_id`.
 
 ## Success / Failure
 

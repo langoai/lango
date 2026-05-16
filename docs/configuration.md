@@ -186,7 +186,7 @@ Session storage and lifecycle settings.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `security.signer.provider` | `string` | `local` | Signer provider (`local`) |
+| `security.signer.provider` | `string` | `local` | Signer provider: `local`, `rpc`, `aws-kms`, `gcp-kms`, `azure-kv`, `pkcs11` (`local` requires bootstrap-backed storage wiring; KMS backends also require the matching build tag and bootstrap-backed storage wiring) |
 
 ### Interceptor
 
@@ -820,7 +820,7 @@ Each firewall rule entry:
 | `p2p.toolIsolation.timeoutPerTool` | `duration` | `30s` | Maximum duration for a single tool execution |
 | `p2p.toolIsolation.maxMemoryMB` | `int` | `256` | Soft memory limit per subprocess in megabytes |
 | `p2p.toolIsolation.container.enabled` | `bool` | `false` | Use container-based sandbox instead of subprocess |
-| `p2p.toolIsolation.container.runtime` | `string` | `auto` | Container runtime: `auto`, `docker`, `gvisor`, `native` |
+| `p2p.toolIsolation.container.runtime` | `string` | `auto` | Container runtime: `auto`, `docker`, `gvisor`, `native` (`gvisor` is currently a stub and explicit selection returns runtime unavailable) |
 | `p2p.toolIsolation.container.image` | `string` | `lango-sandbox:latest` | Docker image for sandbox container |
 | `p2p.toolIsolation.container.networkMode` | `string` | `none` | Docker network mode for sandbox containers |
 | `p2p.toolIsolation.container.readOnlyRootfs` | `bool` | `true` | Mount container root filesystem as read-only |

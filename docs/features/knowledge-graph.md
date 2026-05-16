@@ -165,7 +165,7 @@ The default propagation rate is **0.3**, meaning each success propagates a small
 
 !!! tip
 
-    Enable the graph store via `lango settings` or add it during `lango onboard`. The database file is created automatically at the configured path.
+    Enable the graph store via `lango settings`. The database file is created automatically at the configured path.
 
 ## CLI Commands
 
@@ -200,7 +200,7 @@ lango graph query --subject "error:timeout" --predicate "resolved_by"
 lango graph query --object "tool:http_client"
 
 # Limit results and output as JSON
-lango graph query --subject "error:timeout" --limit 5 --json
+lango graph query --subject "error:timeout" --limit 5 --output json
 ```
 
 ### Stats
@@ -238,4 +238,4 @@ lango graph clear --force
 
     Clearing the graph permanently deletes all relationship data. The graph will be rebuilt over time from new conversations and entity extraction.
 
-All graph CLI commands support `--json` for machine-readable output.
+Graph inspection commands support `--output json` for machine-readable output.

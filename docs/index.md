@@ -67,7 +67,7 @@ See the [Installation Guide](getting-started/installation.md) for detailed instr
 
     ---
 
-    Hierarchical sub-agents (Executor, Researcher, Planner, Memory Manager) working together on complex tasks.
+    Hierarchical sub-agents such as Operator, Librarian, Planner, and Vault working together on complex tasks.
 
 -   :satellite: **A2A Protocol**
 
@@ -220,6 +220,19 @@ See the [Installation Guide](getting-started/installation.md) for detailed instr
     Output sanitization stripping thought tags, internal markers, raw JSON, and custom patterns from agent responses.
 
 </div>
+
+## Documentation Map
+
+- [Getting Started](getting-started/index.md) -- Install, configure, and run your first agent
+- [Architecture](architecture/index.md) -- Understand the system design and internal package boundaries
+- [CLI Reference](cli/index.md) -- Top-level command reference plus dedicated command-family guides
+- [Features](features/index.md) -- Capability-oriented feature deep dives
+- [Security](security/index.md) -- Encryption, approval, exportability, and execution-safety references
+- [Gateway](gateway/index.md) -- HTTP and WebSocket API documentation
+- [Payments](payments/index.md) -- USDC and X402 payment references
+- [Automation](automation/index.md) -- Cron, workflow, and background execution references
+- [Deployment](deployment/index.md) -- Docker and production deployment guidance
+- [Development](development/index.md) -- Build, test, and contributor workflows
 
 ## Next Steps
 

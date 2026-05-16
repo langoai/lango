@@ -3,6 +3,7 @@
 ## lango
 
 Run `lango` without arguments to launch the standalone mission workbench. This is the default interactive entry point. It mounts Mission Control content directly without the full cockpit sidebar shell, while `lango chat` remains the direct focused-chat fallback and `lango cockpit` remains the explicit multi-page dashboard.
+Startup notices such as the banner, log path, and initialization line are written through a seam-aware stderr path so wrappers and regressions can capture them without intercepting process-global stderr.
 
 ```bash
 $ lango
@@ -10,19 +11,43 @@ $ lango
 
 TUI mode does not start the full live network and automation runtime by default. Gateway, live channels, cron, and P2P are not brought up as they are under `lango serve`, while other integrations such as configured MCP servers may still initialize through the local interactive bootstrap path.
 
+If the active profile is still incomplete, the workbench empty state points you to `lango onboard`, `lango settings`, and `lango doctor` before you start chatting into a nonfunctional setup.
+Once the profile is ready, the empty state switches to starter prompts and binds them to `1`, `2`, and `3`.
+Those prompts are workdir-aware: they stay generic outside a repo, but become repository-aware inside a detected project, and they switch to Go-package guidance when a `go.mod` is present.
+When Git metadata is available, the “next change” starter prompt also pivots around the current branch, uncommitted-change state, and the most obvious changed files or directories.
+Pressing `Enter` on that empty ready-profile composer now loads the default, context-aware starter prompt automatically, and pressing `Enter` again submits it, while `1/2/3` still select the explicit starter choices. Once the starter is loaded, the body and footer copy switch to the submit step and keep `1/2/3` available for starter replacement. Once submitted, the same surface switches to a running-state hint that also explains that you can type the next prompt, use `1/2/3` to replace it, and press `Enter` to interrupt-and-run it. If you replace the staged follow-up with a starter prompt, that replacement becomes the next turn that will run. After the turn completes and the composer is empty again, the workbench treats that state as the next step rather than the original quick start: generic workspaces move to the structure-oriented starter, while detected workspaces stay on the next-change starter. Editing keys will pull focus back into the composer for that staged follow-up.
+When the turn completes, the activity lane keeps both the user submission and a short, single-line assistant reply summary so the result remains visible from the workbench shell without flooding the timeline with raw multi-line output.
+The composer placeholder follows the same split so the first line you can type into also reflects whether setup or immediate use is the right next action, including the `Press Enter` / `1-3` quick-start hint for ready profiles.
+The header summary follows that same rule and shows `Model: Setup required` until provider and model configuration are actually usable.
+The empty standalone shell also suppresses cockpit-style degraded warnings until there is real mission/control context to justify them, so first-run attention stays on setup and next actions.
+After a turn finishes, the empty body also shifts from a blank no-missions message to an explicit next-step prompt.
+The hint line likewise switches to "Type the next prompt here" so the next loop stays explicit.
+The empty composer placeholder follows the same shift and switches to `Next step: press Enter ...` wording instead of the original first-run prompt.
+The footer follows that same shift and now says `Type next prompt here` instead of generic chat wording.
+The completed-turn empty body also shows the latest result as a compact preview so the next loop starts with immediate context.
+If the latest result is a failed turn, the completed-turn lead now explicitly says the turn needs attention and asks you to pick the recovery step instead of implying a clean finish.
+In that same failure state, the starter/body/footer wording also shifts from generic next-step language to recovery wording.
+In that recovery state, pressing `Enter` now seeds a recovery-oriented starter instead of reusing the generic completed-turn default.
+That includes the footer itself, which now says `Type recovery prompt here` instead of `Type next prompt here`.
+
 ---
 
 ## lango cockpit
 
 Launch the multi-panel TUI dashboard explicitly. Mission Control still opens first inside this explicit cockpit shell, chat remains available as a cockpit detail page, and `lango chat` still bypasses the cockpit for focused chat. The cockpit provides:
+Startup notices such as the banner, log path, and initialization line are written through a seam-aware stderr path so wrappers and regressions can capture them without intercepting process-global stderr.
 
 - Mission Control as the default first surface, plus Chat, Settings, Tools, Status, Sessions, Tasks, Dead Letters, and Approvals in the sidebar
+- Core cockpit pages remain routable even when some backing services are absent; those pages now surface explicit degraded/unavailable messaging instead of silently disappearing or pretending to be merely empty
+- Settings keeps its own embedded inline help/footer and inline save feedback inside the page, while Status stays read-only and refreshes automatically while active
 - Transcript viewport with assistant markdown reflow on resize
 - Clear visual separation between user, assistant, status, and approval transcript blocks
 - Dedicated turn status strip for ready/streaming/approval/failure states
-- Inline tool approval interrupts (`a` allow / `s` allow session / `d` deny)
-- Slash commands (`/help`, `/clear`, `/model`, `/status`, `/exit`)
-- Key bindings: `Enter` send, `Alt+Enter` newline, `Ctrl+C` cancel/quit, `Ctrl+D` quit
+- Tool lifecycle rows that show running, approval-wait, canceled, and completed states plus compact param previews for tool calls
+- Approval transcript events that can include compact request-id annotations and compact request-summary previews for repeated requests
+- Inline tool approval interrupts (`a` allow / `s` allow session / `d/Esc` deny)
+- Slash commands (`/help`, `/clear`, `/model`, `/status`, `/mode`, `/cost`, `/exit`)
+- Key bindings: `Enter` send, `Alt+Enter` newline, `Ctrl+C` cancel or double-press quit from idle/failed state, `Ctrl+D` quit
 
 ```bash
 $ lango cockpit
@@ -33,6 +58,7 @@ $ lango cockpit
 ## lango chat
 
 Launch the plain chat TUI. A simpler, transcript-first experience without the multi-panel cockpit layout or Mission Control landing page. Suitable for quick interactions that don't require the full dashboard.
+Startup notices such as the banner, log path, and initialization line are written through a seam-aware stderr path so wrappers and regressions can capture them without intercepting process-global stderr.
 
 ```bash
 $ lango chat
@@ -43,6 +69,7 @@ $ lango chat
 ## lango serve
 
 Start the gateway server. This boots the full application stack including all enabled channels, tools, embedding, graph, cron, and workflow engines.
+The startup banner and feature summary are written through the Cobra command output stream so wrappers and test harnesses can capture them directly.
 
 ```
 lango serve
@@ -70,6 +97,7 @@ INFO  server listening  {"address": ":18789"}
 ## lango version
 
 Print the binary version and build timestamp.
+The success output is written through the Cobra command output stream so wrappers and test harnesses can capture it directly.
 
 ```
 lango version
@@ -87,6 +115,8 @@ lango 0.5.0 (built 2026-02-20T12:00:00Z)
 ## lango health
 
 Check whether the gateway server is running and healthy. Sends an HTTP GET to the `/health` endpoint.
+The success output is written through the Cobra command output stream so wrappers and Docker-style callers can capture it directly.
+Failure runs do not emit the `ok` payload or a duplicate Cobra-managed error body through the command output stream; callers receive the returned error instead.
 
 ```
 lango health [--port N]
@@ -115,7 +145,7 @@ ok
 
 ## lango onboard
 
-Launch the guided 5-step setup wizard using an interactive TUI. This is the recommended way to configure Lango for the first time.
+Launch the guided 5-step setup wizard using an interactive TUI. This is the recommended way to configure Lango for the first time. Preset banners, cancel messages, and post-save guidance are written through the Cobra command output stream so wrappers and test harnesses can capture them directly.
 
 ```
 lango onboard [--profile <name>]
@@ -152,7 +182,7 @@ $ lango onboard --profile staging
 
 ## lango settings
 
-Open the full interactive configuration editor. Provides access to all configuration options organized by category, including advanced features like embedding, graph, payment, and automation settings.
+Open the full interactive configuration editor. Provides access to all configuration options organized by category, including advanced features like embedding, graph, payment, and automation settings. Cancel and post-save guidance output are written through the Cobra command output stream so wrappers and test harnesses can capture them directly.
 
 ```
 lango settings [--profile <name>]
@@ -184,15 +214,17 @@ Changes are saved to the active encrypted profile.
 ## lango doctor
 
 Run diagnostics to check your Lango configuration and environment for common issues. Optionally attempt to fix problems automatically.
+Both table and JSON modes write through the Cobra command output stream so wrappers and test harnesses can capture doctor output directly.
+Doctor output also normalizes check names, messages, details, fix actions, and structured trace metadata to plain single-line text before rendering or serialization.
 
 ```
-lango doctor [--fix] [--json]
+lango doctor [--fix] [--output table|json]
 ```
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--fix` | bool | `false` | Attempt to automatically fix issues |
-| `--json` | bool | `false` | Output results as JSON |
+| `--output` | string | `table` | Output format (`table` or `json`) |
 
 **Checks performed include:**
 
@@ -233,232 +265,24 @@ $ lango doctor
 $ lango doctor --fix
 
 # Machine-readable output
-$ lango doctor --json
+$ lango doctor --output json
 ```
 
-When multi-agent runtime failures exist, `--json` now includes structured trace metadata such as `traceFailures[].traceId`, `outcome`, `errorCode`, `causeClass`, and `summary`, plus `isolationLeakCount` when applicable.
+When multi-agent runtime failures exist, `--output json` now includes structured trace metadata such as `traceFailures[].traceId`, `outcome`, `errorCode`, `causeClass`, and `summary`, plus `isolationLeakCount` when applicable. The output remains valid pretty-printed JSON that wrappers can decode directly.
 
 !!! tip
     Run `lango doctor` after `lango onboard` to verify your setup is correct. In multi-agent mode, `doctor` also reports recent failed turn traces and whether isolated specialist turns have leaked into persisted parent history.
 
 ---
 
-## lango agent trace
+## lango agent diagnostics
 
-Inspect turn traces for diagnostics.
-
-```bash
-# List recent failed traces
-$ lango agent trace list
-
-# Filter by outcome
-$ lango agent trace list --outcome timeout --limit 10
-
-# Filter by session
-$ lango agent trace list --session tui-123456
-
-# View detailed event timeline for a trace
-$ lango agent trace abc-123-def
-
-# JSON output
-$ lango agent trace list --json
-```
-
-## lango agent graph
-
-Show the delegation graph for a session, displaying which agents were involved and handoff edges.
-
-```bash
-$ lango agent graph <session-key>
-$ lango agent graph tui-123456 --json
-```
-
-## lango agent trace metrics
-
-Display trace-derived per-agent performance metrics (success rate, turn count, duration percentiles). Distinct from `lango metrics agents` which shows token usage.
-
-```bash
-$ lango agent trace metrics
-$ lango agent trace metrics --agent operator --json
-```
+Agent diagnostics commands now live in the dedicated [Agent CLI Reference](agent.md).
+Use that page for `lango agent trace list`, `lango agent trace show <trace-id>`, `lango agent trace metrics`, and `lango agent graph <session-key>`.
 
 ---
 
 ## lango config
 
-Configuration profile management. Manage multiple configuration profiles for different environments or setups.
-
-```
-lango config <subcommand>
-```
-
-### lango config list
-
-List all configuration profiles.
-
-```
-lango config list
-```
-
-**Output columns:**
-
-| Column | Description |
-|--------|-------------|
-| NAME | Profile name |
-| ACTIVE | `*` if currently active |
-| VERSION | Profile version number |
-| CREATED | Creation timestamp |
-| UPDATED | Last updated timestamp |
-
-**Example:**
-
-```bash
-$ lango config list
-NAME      ACTIVE  VERSION  CREATED              UPDATED
-default   *       3        2026-02-10 08:00:00  2026-02-20 14:30:00
-staging           1        2026-02-15 10:00:00  2026-02-15 10:00:00
-```
-
----
-
-### lango config create
-
-Create a new profile with default configuration.
-
-```
-lango config create <name>
-```
-
-| Argument | Required | Description |
-|----------|----------|-------------|
-| `name` | Yes | Name for the new profile |
-
-**Example:**
-
-```bash
-$ lango config create staging
-Profile "staging" created with default configuration.
-```
-
----
-
-### lango config use
-
-Switch to a different configuration profile.
-
-```
-lango config use <name>
-```
-
-| Argument | Required | Description |
-|----------|----------|-------------|
-| `name` | Yes | Profile name to activate |
-
-**Example:**
-
-```bash
-$ lango config use staging
-Switched to profile "staging".
-```
-
----
-
-### lango config delete
-
-Delete a configuration profile. Prompts for confirmation unless `--force` is used.
-
-```
-lango config delete <name> [--force]
-```
-
-| Argument | Required | Description |
-|----------|----------|-------------|
-| `name` | Yes | Profile name to delete |
-
-| Flag | Type | Default | Description |
-|------|------|---------|-------------|
-| `--force`, `-f` | bool | `false` | Skip confirmation prompt |
-
-**Example:**
-
-```bash
-$ lango config delete staging
-Delete profile "staging"? This cannot be undone. [y/N]: y
-Profile "staging" deleted.
-
-$ lango config delete staging --force
-Profile "staging" deleted.
-```
-
----
-
-### lango config import
-
-Import and encrypt a JSON configuration file. The source file is deleted after import for security.
-
-```
-lango config import <file> [--profile <name>]
-```
-
-| Argument | Required | Description |
-|----------|----------|-------------|
-| `file` | Yes | Path to the JSON configuration file |
-
-| Flag | Type | Default | Description |
-|------|------|---------|-------------|
-| `--profile` | string | `default` | Name for the imported profile |
-
-**Example:**
-
-```bash
-$ lango config import ./config.json --profile production
-Imported "./config.json" as profile "production" (now active).
-Source file deleted for security.
-```
-
----
-
-### lango config export
-
-Export a profile as plaintext JSON. Requires passphrase verification via bootstrap.
-
-```
-lango config export <name>
-```
-
-| Argument | Required | Description |
-|----------|----------|-------------|
-| `name` | Yes | Profile name to export |
-
-**Example:**
-
-```bash
-$ lango config export default
-WARNING: exported configuration contains sensitive values in plaintext.
-{
-  "agent": {
-    "provider": "anthropic",
-    ...
-  }
-}
-```
-
-!!! warning
-    The exported JSON contains sensitive values (API keys, tokens) in plaintext. Handle with care.
-
----
-
-### lango config validate
-
-Validate the active configuration profile.
-
-```
-lango config validate
-```
-
-**Example:**
-
-```bash
-$ lango config validate
-Profile "default" configuration is valid.
-```
+Configuration profile management now lives in the dedicated [Config Management](config.md) reference.
+Use that page for `lango config list/create/use/delete/import/export/get/set/keys/validate`.

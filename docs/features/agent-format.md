@@ -135,7 +135,7 @@ Built-in teammate production work now enters through the `agent_spawn` runtime p
 
 ```bash
 lango agent list              # List all agents (built-in + user-defined)
-lango agent tools             # Show tool-to-agent assignments
+lango agent tools             # Show tool category availability from config
 ```
 
 ## Configuration

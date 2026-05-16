@@ -127,15 +127,13 @@ Each remote agent entry requires:
 
 ## Setup
 
-### Enable via Onboard
+### Enable via Settings
 
-The A2A protocol can be enabled during the interactive onboarding flow:
+Enable the A2A protocol through the full settings editor or config import/export workflow:
 
 ```bash
-lango onboard
+lango settings
 ```
-
-Select the **A2A Protocol** option from the feature menu.
 
 ### Add Remote Agents
 
@@ -143,13 +141,13 @@ Remote agents are configured via the config file. Use the config export/edit/imp
 
 ```bash
 # Export current config
-lango config export > config.json
+lango config export default > config.json
 
 # Edit to add remote agents under a2a.remoteAgents
 # ...
 
 # Import updated config
-lango config import config.json
+lango config import config.json --profile default
 ```
 
 !!! tip "Requires Multi-Agent Mode"

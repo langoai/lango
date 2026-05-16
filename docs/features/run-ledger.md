@@ -235,6 +235,15 @@ Tools are partitioned by caller role. The orchestrator and execution agents have
 | `run_active` | Get the currently active or next executable step |
 | `run_note` | Read or write a scratchpad note on a run |
 
+Required wrapper inputs fail closed before journal or snapshot access begins:
+
+- `run_create` requires `plan_json`, `session_key`, and `original_request`
+- `run_read`, `run_active`, and `run_resume` require `run_id`
+- `run_note` requires `run_id` and `key`
+- `run_propose_step_result` requires `run_id`, `step_id`, and `result`
+- `run_apply_policy` requires `run_id`, `step_id`, `action`, and `reason`
+- `run_approve_step` requires `run_id` and `step_id`
+
 Role detection is based on the agent name in context: `orchestrator`, `lango-orchestrator`, and the explicit internal `system` caller are treated as orchestrators. Empty agent names are rejected for role-gated tools.
 
 ## Rollout Stages

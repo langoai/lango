@@ -1,6 +1,7 @@
 # A2A Commands
 
 Commands for inspecting A2A (Agent-to-Agent) protocol configuration and verifying remote agent connectivity. See the [A2A Protocol](../features/a2a-protocol.md) section for detailed documentation.
+Both table and JSON modes write through the Cobra command output stream so wrappers and test harnesses can capture A2A inspection output directly.
 
 ```
 lango a2a <subcommand>
@@ -13,12 +14,12 @@ lango a2a <subcommand>
 Show the local A2A agent card configuration, including enabled status, base URL, agent name, and configured remote agents.
 
 ```
-lango a2a card [--json]
+lango a2a card [--output table|json]
 ```
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--json` | bool | `false` | Output as JSON |
+| `--output` | string | `table` | Output format (`table` or `json`) |
 
 **Example:**
 
@@ -53,7 +54,7 @@ No remote agents configured.
 Fetch and display a remote agent card from a URL. Useful for verifying that a remote A2A agent is reachable and correctly configured before adding it to your configuration.
 
 ```
-lango a2a check <url> [--json]
+lango a2a check <url> [--output table|json]
 ```
 
 | Argument | Required | Description |
@@ -62,7 +63,7 @@ lango a2a check <url> [--json]
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--json` | bool | `false` | Output as JSON |
+| `--output` | string | `table` | Output format (`table` or `json`) |
 
 **Example:**
 

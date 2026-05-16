@@ -72,7 +72,7 @@ Enables:
 - **Workflow** -- DAG-based YAML workflow engine
 - **MCP** -- Model Context Protocol server integration
 - **Agent Memory** -- Persistent per-agent memory
-- **Multi-Agent** -- Sub-agent orchestration (executor, researcher, planner)
+- **Multi-Agent** -- Sub-agent orchestration (operator, librarian, planner)
 
 !!! note
     The `full` preset does not enable P2P, Payment, or Economy. Add those manually via `lango settings` if needed.

@@ -44,9 +44,9 @@ Or update provider settings at any time:
 lango settings
 ```
 
-### Config File
+### Config Structure
 
-Providers are defined in the `providers` map in your config file (`~/.lango/config.yaml`):
+Providers are defined in the `providers` map managed by `lango settings` or `lango config import/export`:
 
 > **Settings:** `lango settings` → Providers
 

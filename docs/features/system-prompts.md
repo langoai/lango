@@ -1,6 +1,6 @@
 # System Prompts
 
-Lango ships with production-quality default prompts embedded directly in the binary. No configuration is needed to get started -- the agent works out of the box with sensible defaults for identity, safety, conversation rules, and tool usage.
+Lango ships with production-quality default prompts embedded directly in the binary. No configuration is needed to get started -- the agent works out of the box with sensible defaults for global identity, safety, conversation rules, tool usage, and built-in per-agent identities.
 
 ## Built-in Prompt Sections
 
@@ -39,7 +39,7 @@ echo "You are a helpful coding assistant." > ~/.lango/prompts/AGENTS.md
 The system resolves prompts in the following order (first match wins):
 
 1. **`promptsDir`** (directory) -- files from the configured prompts directory override matching built-in sections
-2. **Built-in defaults** -- embedded prompts compiled into the binary
+2. **Built-in defaults** -- embedded prompts compiled into the binary, including built-in per-agent `IDENTITY.md` files
 
 When a file in the prompts directory matches a known filename (e.g., `SAFETY.md`), it replaces the corresponding built-in section entirely (last-writer-wins). Unknown `.md` files are added as **custom sections** with priority 900+.
 
@@ -109,5 +109,5 @@ The prompt system is implemented in `internal/prompt/`:
 
 - **`section.go`** -- defines `SectionID` constants and the `PromptSection` interface
 - **`builder.go`** -- `Builder` assembles sections, supports `Add`, `Remove`, `Clone`, and `Build`
-- **`defaults.go`** -- `DefaultBuilder()` loads the four built-in sections from embedded files
+- **`defaults.go`** -- `DefaultBuilder()` loads the four built-in global sections from embedded files
 - **`loader.go`** -- `LoadFromDir()` and `LoadAgentFromDir()` handle file-based overrides

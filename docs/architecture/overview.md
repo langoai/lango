@@ -236,7 +236,7 @@ The infrastructure layer provides foundational services that all other layers de
 |-----------|---------|------|
 | **Config** | `internal/config/` | YAML config loading with environment variable substitution and validation |
 | **Config Store** | `internal/configstore/` | Encrypted config profile storage (Ent-backed) |
-| **Security** | `internal/security/` | Crypto providers (local passphrase-derived, RPC), key registry, secrets store, companion discovery. KMS providers (AWS KMS, GCP KMS, Azure Key Vault, PKCS#11) with retry and health checking |
+| **Security** | `internal/security/` | Crypto providers (local passphrase-derived, RPC), key registry, secrets store, and RPC signing support for gateway-connected companions. KMS providers (AWS KMS, GCP KMS, Azure Key Vault, PKCS#11) with retry and health checking |
 | **Session** | `internal/session/` | Ent/SQLite session store with TTL and max history turns |
 | **Logging** | `internal/logging/` | Structured logging via Zap with per-package loggers |
 | **AI Providers** | `internal/provider/` | Unified interface with implementations for OpenAI, Google Gemini, and Anthropic Claude |

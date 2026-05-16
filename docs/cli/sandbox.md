@@ -31,7 +31,6 @@ lango sandbox status [flags]
 | Flag | Type | Description |
 |------|------|-------------|
 | `--session` | `string` | Filter Recent Sandbox Decisions by session key prefix (default: show global last 10) |
-| `--json` | `bool` | Output results as JSON |
 
 ### Recent Sandbox Decisions
 
@@ -59,7 +58,7 @@ When `sandbox.failClosed=false` (default) and the sandbox cannot be applied at r
 lango: WARNING — sandbox fallback active (reason: ...); commands run unsandboxed
 ```
 
-The warning fires at most once per process to avoid noise during long-running sessions; the full per-command audit trail is in this `lango sandbox status` section instead.
+The warning fires at most once per process to avoid noise during long-running sessions; the full per-command audit trail is in this `lango sandbox status` section instead. The stderr warning path is exercised under test through a seam-aware writer so the one-shot contract stays deterministic.
 
 ## lango sandbox test
 
@@ -81,9 +80,5 @@ the parent rather than shell redirection so that the sandbox's `(deny default)`
 base on `/dev/null` cannot cause false negatives.
 
 ```
-lango sandbox test [flags]
+lango sandbox test
 ```
-
-| Flag | Type | Description |
-|------|------|-------------|
-| `--json` | `bool` | Output results as JSON |

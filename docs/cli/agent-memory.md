@@ -1,6 +1,6 @@
 # Agent & Memory
 
-Commands for inspecting agent configuration, managing observational memory, and interacting with the knowledge graph store.
+Commands for inspecting agent configuration and managing observational or per-agent memory.
 
 Persistent agent memory stores original content as broker-protected ciphertext. CLI and retrieval flows display decrypted values when available, while SQLite search columns keep only redacted projections.
 
@@ -13,23 +13,32 @@ Persistent agent memory stores original content as broker-protected ciphertext. 
 Show the current agent mode and configuration.
 
 ```
-lango agent status [--json]
+lango agent status [--output table|json]
 ```
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--json` | bool | `false` | Output as JSON |
+| `--output` | string | `table` | Output format (`table` or `json`) |
 
 **Example:**
 
 ```bash
 $ lango agent status
 Agent Status
-  Mode:         single
-  Provider:     anthropic
-  Model:        claude-sonnet-4-20250514
-  Multi-Agent:  false
-  A2A Enabled:  false
+  Mode:              single
+  Provider:          anthropic
+  Model:             claude-sonnet-4-20250514
+  Multi-Agent:       false
+  Max Turns:         50
+  Error Correction:  true
+  A2A Enabled:       false
+  P2P Enabled:       false
+  Hooks Enabled:     true
+
+Agent Registry
+  Builtin Agents:    8
+  User Agents:       0
+  Active Agents:     8
 ```
 
 When multi-agent mode is enabled:
@@ -37,113 +46,149 @@ When multi-agent mode is enabled:
 ```bash
 $ lango agent status
 Agent Status
-  Mode:         multi-agent
-  Provider:     anthropic
-  Model:        claude-sonnet-4-20250514
-  Multi-Agent:  true
-  A2A Enabled:  true
-  A2A Base URL: http://localhost:18789
-  A2A Agent:    lango
+  Mode:              multi-agent
+  Provider:          anthropic
+  Model:             claude-sonnet-4-20250514
+  Multi-Agent:       true
+  Teammate Runtime:  dynamic-v1
+  Max Turns:         75
+  Error Correction:  true
+  Delegation Rounds: 10
+  A2A Enabled:       true
+  A2A Base URL:      http://localhost:18789
+  A2A Agent:         lango
+  Remote Agents:     1
+  P2P Enabled:       true
+  Hooks Enabled:     true
+
+Agent Registry
+  Builtin Agents:    8
+  User Agents:       1
+  Active Agents:     9
+  Agents Dir:        ~/.lango/agents
 ```
 
 ---
 
 ### lango agent list
 
-List all available sub-agents (local) and remote A2A agents.
+List all available sub-agents (local) and remote A2A agents. The command writes through the Cobra command output stream so wrappers and test harnesses can capture table or JSON output directly.
 
 ```
-lango agent list [--json] [--check]
+lango agent list [--output table|json] [--check]
 ```
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--json` | bool | `false` | Output as JSON |
+| `--output` | string | `table` | Output format (`table` or `json`) |
 | `--check` | bool | `false` | Test connectivity to remote agents |
 
-**Local agents** are always listed regardless of multi-agent configuration. This includes built-in agents, embedded default agents, and user-defined agents from `agent.agentsDir`:
+**Local agents** are always listed regardless of multi-agent configuration. This includes embedded default agents and any user-defined agents from `agent.agentsDir`. The `SOURCE` column shows where each definition came from (`embedded`, `user`, or `builtin` when present).
 
-| Agent | Description |
-|-------|-------------|
-| executor | Executes tools including shell commands, file operations, browser automation |
-| researcher | Searches knowledge bases, performs RAG retrieval, graph traversal |
-| planner | Decomposes complex tasks into steps and designs execution plans |
-| memory-manager | Manages conversational memory including observations, reflections |
+Representative built-in local agents:
+
+| Agent | Source | Description |
+|-------|--------|-------------|
+| automator | embedded | Automation: cron scheduling, background tasks, workflow orchestration |
+| librarian | embedded | Knowledge management: search, RAG, graph traversal, skills, inquiries |
+| navigator | embedded | Web browsing: page navigation, interaction, screenshots |
+| vault | embedded | Security operations: encryption, secret management, payments |
 
 **Example:**
 
 ```bash
 $ lango agent list
-NAME              TYPE   DESCRIPTION
-executor          local  Executes tools including shell commands, file operations, browser automation
-researcher        local  Searches knowledge bases, performs RAG retrieval, graph traversal
-planner           local  Decomposes complex tasks into steps and designs execution plans
-memory-manager    local  Manages conversational memory including observations, reflections
+NAME       SOURCE    DESCRIPTION
+automator  embedded  Automation: cron scheduling, background tasks, workflow...
+librarian  embedded  Knowledge management: search, RAG, graph traversal...
+navigator  embedded  Web browsing: page navigation, interaction, screenshots
+vault      embedded  Security operations: encryption, secret management...
 
-NAME              TYPE    URL                                    STATUS
-weather-agent     remote  http://weather-svc:8080/.well-known/agent.json  ok
+NAME           SOURCE  URL                                             STATUS
+weather-agent  a2a     http://weather-svc:8080/.well-known/agent.json  ok
 ```
 
 Use `--check` to verify remote agent connectivity:
 
 ```bash
 $ lango agent list --check
-# Remote agents will show "ok", "unreachable", or HTTP status codes
+# Remote rows show "ok", "unreachable", or an HTTP status code in the STATUS column.
 ```
 
 ---
 
 ### lango agent tools
 
-Show tool-to-agent assignments. Displays how tools are partitioned across sub-agents in multi-agent mode.
+Show tool category availability derived from the active configuration. This command does not list individual tools or tool-to-agent assignments. It writes through the Cobra command output stream so wrappers and test harnesses can capture table or JSON output directly.
 
 ```
-lango agent tools [--json]
+lango agent tools [--output table|json] [--category <name>]
 ```
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--json` | bool | `false` | Output as JSON |
+| `--output` | string | `table` | Output format (`table` or `json`) |
+| `--category` | string | `""` | Filter to a single tool category |
 
 **Example:**
 
 ```bash
 $ lango agent tools
-AGENT           TOOLS
-operator        exec_shell, exec_command, fs_read, fs_write, fs_delete, skill_run
-navigator       browser_navigate, browser_search, browser_observe, browser_extract, browser_action, browser_screenshot
-vault           crypto_encrypt, crypto_decrypt, secrets_set, payment_send
-librarian       search_knowledge, rag_query, graph_traverse, save_knowledge
-automator       cron_add, cron_list, bg_submit, workflow_run
-chronicler      memory_observe, memory_reflect, memory_recall
-(unmatched)     custom_tool_1, custom_tool_2
+CATEGORY      ENABLED  DESCRIPTION
+exec          yes      Shell command execution
+filesystem    yes      File system operations
+browser       no       Web browsing
+crypto        yes      Cryptographic operations
+payment       yes      Blockchain payments (USDC on Base)
 ```
+
+Enabled/disabled values come from the current config profile. Use `--output json` to inspect `name`, `description`, optional `config_key`, and `enabled` fields programmatically.
+
+Operator execution tools validate their wrapper inputs directly: `exec` and `exec_bg` require `command`, while `exec_status` and `exec_stop` require the background-process `id`.
+
+Navigator browser interactions use action-specific validation: `browser_action` requires `selector` for `click`, `get_text`, `get_element_info`, and `wait`; `type` requires both `selector` and `text`; `eval` requires JavaScript in `text`.
+Navigator search/navigation entrypoints also validate top-level inputs directly: `browser_search` requires `query`, and `browser_navigate` requires `url`.
+
+Vault security tools validate required inputs at the tool boundary: `crypto_encrypt`, `crypto_sign`, and `crypto_hash` require `data`; `crypto_decrypt` requires `ciphertext`; `secrets_store` requires `name` and `value`; `secrets_get` and `secrets_delete` require `name`.
 
 ---
 
 ### lango agent hooks
 
 Show registered tool hooks (middleware) in the tool execution chain.
+The command writes through the Cobra command output stream so wrappers and test harnesses can capture text or JSON output directly.
 
 ```
-lango agent hooks [--json]
+lango agent hooks [--output table|json]
 ```
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--json` | bool | `false` | Output as JSON |
+| `--output` | string | `table` | Output format (`table` or `json`) |
 
 **Example:**
 
 ```bash
 $ lango agent hooks
-HOOK                    TYPE          STATUS
-security_filter         pre-execute   active
-approval_gate           pre-execute   active
-learning_observer       post-execute  active
-knowledge_saver         post-execute  active
-event_publisher         post-execute  active
+Hook Configuration
+  Enabled:          true
+  Security Filter:  true
+  Access Control:   true
+  Event Publishing: true
+  Knowledge Save:   true
+  Blocked Commands: rm -rf /
+
+Registered Hooks
+  Pre-hooks:
+    security_filter           priority=100  wirable=true
+    agent_access_control      priority=200  wirable=true
+    eventbus                  wirable=false  (requires a running event bus (unavailable in CLI mode))
+  Post-hooks:
+    knowledge_save            priority=100  wirable=true
+      saveableTools: search_knowledge, search_learnings, graph_traverse
 ```
+
+Use `--output json` to inspect the same information programmatically, including `registry.preHooks`, `registry.postHooks`, and hook-specific `details`.
 
 ---
 
@@ -153,17 +198,17 @@ Manage [observational memory](../features/observational-memory.md) entries. Memo
 
 ### lango memory list
 
-List observations and reflections for a session.
+List observations and reflections for a session. The command writes through the Cobra command output stream so wrappers and test harnesses can capture table or JSON output directly.
 
 ```
-lango memory list --session <key> [--type <type>] [--json]
+lango memory list --session <key> [--type <type>] [--output table|json]
 ```
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--session` | string | *required* | Session key to query |
 | `--type` | string | (all) | Filter by type: `observations` or `reflections` |
-| `--json` | bool | `false` | Output as JSON |
+| `--output` | string | `table` | Output format (`table` or `json`) |
 
 **Example:**
 
@@ -178,16 +223,16 @@ e5f6g7h8  reflection    120     2026-02-20 14:35  The user has shown a consisten
 
 ### lango memory status
 
-Show observational memory status and configuration for a session.
+Show observational memory status and configuration for a session. The command writes through the Cobra command output stream so wrappers and test harnesses can capture table or JSON output directly.
 
 ```
-lango memory status --session <key> [--json]
+lango memory status --session <key> [--output table|json]
 ```
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--session` | string | *required* | Session key to query |
-| `--json` | bool | `false` | Output as JSON |
+| `--output` | string | `table` | Output format (`table` or `json`) |
 
 **Example:**
 
@@ -208,7 +253,7 @@ Observational Memory Status (session: user-123)
 
 ### lango memory clear
 
-Clear all observations and reflections for a session. Prompts for confirmation unless `--force` is specified.
+Clear all observations and reflections for a session. Prompts for confirmation unless `--force` is specified. The command uses Cobra command streams for both prompt output and confirmation input, so wrappers and test harnesses can drive the interaction through `cmd.OutOrStdout()` and `cmd.InOrStdin()`.
 
 ```
 lango memory clear <session-key> [--force]
@@ -227,7 +272,7 @@ lango memory clear <session-key> [--force]
 ```bash
 $ lango memory clear user-123
 This will delete all observations and reflections for session 'user-123'.
-Continue? [y/N] y
+Continue? [y/N]: y
 Cleared all memory entries for session 'user-123'.
 ```
 
@@ -238,210 +283,8 @@ Cleared all memory entries for session 'user-123'.
 
 ## Graph Commands
 
-Manage the [knowledge graph](../features/knowledge-graph.md) store. The graph must be enabled in configuration (`graph.enabled = true`).
-
-### lango graph status
-
-Show knowledge graph status and basic information.
-
-```
-lango graph status [--json]
-```
-
-| Flag | Type | Default | Description |
-|------|------|---------|-------------|
-| `--json` | bool | `false` | Output as JSON |
-
-**Example:**
-
-```bash
-$ lango graph status
-Knowledge Graph Status
-  Enabled:       true
-  Backend:       bolt
-  Database Path: /home/user/.lango/graph.db
-  Triples:       1523
-```
-
-When the graph is disabled:
-
-```bash
-$ lango graph status
-Knowledge Graph Status
-  Enabled:  false
-```
-
----
-
-### lango graph query
-
-Query triples from the knowledge graph by subject, predicate, and/or object.
-
-```
-lango graph query [--subject <s>] [--predicate <p>] [--object <o>] [--limit N] [--json]
-```
-
-| Flag | Type | Default | Description |
-|------|------|---------|-------------|
-| `--subject` | string | | Filter by subject |
-| `--predicate` | string | | Filter by predicate (requires `--subject`) |
-| `--object` | string | | Filter by object |
-| `--limit` | int | `0` | Limit number of results (0 = unlimited) |
-| `--json` | bool | `false` | Output as JSON |
-
-!!! note "Query Requirements"
-    At least one of `--subject` or `--object` is required. The `--predicate` flag can only be used together with `--subject`.
-
-**Examples:**
-
-```bash
-# Query by subject
-$ lango graph query --subject "Go"
-SUBJECT  PREDICATE    OBJECT
-Go       is_a         programming_language
-Go       created_by   Google
-Go       has_feature  goroutines
-
-# Query by subject and predicate
-$ lango graph query --subject "Go" --predicate "has_feature"
-SUBJECT  PREDICATE    OBJECT
-Go       has_feature  goroutines
-Go       has_feature  channels
-Go       has_feature  garbage_collection
-
-# Query by object
-$ lango graph query --object "Google" --limit 5
-
-# JSON output
-$ lango graph query --subject "Go" --json
-```
-
----
-
-### lango graph stats
-
-Show knowledge graph statistics including total triple count and predicate distribution.
-
-```
-lango graph stats [--json]
-```
-
-| Flag | Type | Default | Description |
-|------|------|---------|-------------|
-| `--json` | bool | `false` | Output as JSON |
-
-**Example:**
-
-```bash
-$ lango graph stats
-Knowledge Graph Statistics
-  Total Triples: 1523
-
-PREDICATE       COUNT
-is_a            423
-has_feature     312
-related_to      289
-created_by      156
-```
-
----
-
-### lango graph clear
-
-Clear all triples from the knowledge graph. Prompts for confirmation unless `--force` is specified.
-
-```
-lango graph clear [--force]
-```
-
-| Flag | Type | Default | Description |
-|------|------|---------|-------------|
-| `--force` | bool | `false` | Skip confirmation prompt |
-
-**Example:**
-
-```bash
-$ lango graph clear
-This will delete all triples from the knowledge graph.
-Continue? [y/N] y
-Cleared all triples from the knowledge graph.
-```
-
-!!! danger
-    This operation is irreversible. All graph data will be permanently deleted.
-
----
-
-### lango graph add
-
-Add a triple to the knowledge graph.
-
-```
-lango graph add --subject <s> --predicate <p> --object <o>
-```
-
-| Flag | Type | Default | Description |
-|------|------|---------|-------------|
-| `--subject` | string | *required* | Triple subject |
-| `--predicate` | string | *required* | Triple predicate (relationship) |
-| `--object` | string | *required* | Triple object |
-
-**Example:**
-
-```bash
-$ lango graph add --subject "Go" --predicate "is_a" --object "programming_language"
-Triple added: Go → is_a → programming_language
-```
-
----
-
-### lango graph export
-
-Export graph data to a file.
-
-```
-lango graph export <file> [--format <format>]
-```
-
-| Argument | Required | Description |
-|----------|----------|-------------|
-| `file` | Yes | Output file path |
-
-| Flag | Type | Default | Description |
-|------|------|---------|-------------|
-| `--format` | string | `json` | Export format: `json` or `ntriples` |
-
-**Example:**
-
-```bash
-$ lango graph export ./graph-backup.json
-Exported 1523 triples to ./graph-backup.json
-```
-
----
-
-### lango graph import
-
-Import graph data from a file.
-
-```
-lango graph import <file> [--format <format>]
-```
-
-| Argument | Required | Description |
-|----------|----------|-------------|
-| `file` | Yes | Input file path |
-
-| Flag | Type | Default | Description |
-|------|------|---------|-------------|
-| `--format` | string | `json` | Import format: `json` or `ntriples` |
-
-**Example:**
-
-```bash
-$ lango graph import ./graph-backup.json
-Imported 1523 triples from ./graph-backup.json
-```
+Graph-store commands now live in the dedicated [Graph CLI Reference](graph.md).
+Use that page for `lango graph status/query/stats/clear/add/export/import`.
 
 ---
 
@@ -451,15 +294,15 @@ Manage per-agent persistent memory. Agent memory enables cross-session context r
 
 ### lango memory agents
 
-List all agents that have persistent memory entries.
+List all agents that have persistent memory entries. The command writes through the Cobra command output stream so wrappers and test harnesses can capture table or JSON output directly.
 
 ```
-lango memory agents [--json]
+lango memory agents [--output table|json]
 ```
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--json` | bool | `false` | Output as JSON |
+| `--output` | string | `table` | Output format (`table` or `json`) |
 
 **Example:**
 
@@ -475,10 +318,10 @@ navigator       12       2026-02-28 09:00
 
 ### lango memory agent
 
-Show memory entries for a specific agent.
+Show memory entries for a specific agent. The command writes through the Cobra command output stream so wrappers and test harnesses can capture table or JSON output directly.
 
 ```
-lango memory agent <name> [--limit N] [--json]
+lango memory agent <name> [--limit N] [--output table|json]
 ```
 
 | Argument | Required | Description |
@@ -488,7 +331,7 @@ lango memory agent <name> [--limit N] [--json]
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--limit` | int | `20` | Maximum entries to show |
-| `--json` | bool | `false` | Output as JSON |
+| `--output` | string | `table` | Output format (`table` or `json`) |
 
 **Example:**
 
