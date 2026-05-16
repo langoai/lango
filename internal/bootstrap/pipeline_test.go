@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
@@ -10,7 +11,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/keyring"
 	"github.com/langoai/lango/internal/security"
+	"github.com/langoai/lango/internal/security/passphrase"
 )
 
 func TestPipeline_ExecutesInOrder(t *testing.T) {
@@ -331,6 +334,156 @@ func TestPhaseAcquireCredential_KMSFallback(t *testing.T) {
 	assert.False(t, env.HasSlotType(security.KEKSlotHardware))
 }
 
+type stubSecureProvider struct {
+	setErr error
+	sets   int
+}
+
+func (s *stubSecureProvider) Get(service, key string) (string, error) { return "", keyring.ErrNotFound }
+func (s *stubSecureProvider) Set(service, key, value string) error {
+	s.sets++
+	return s.setErr
+}
+func (s *stubSecureProvider) Delete(service, key string) error { return nil }
+
+func TestPhaseAcquireCredential_StoresPassphraseWhenConfirmed(t *testing.T) {
+	origAcquire := acquirePassphrase
+	origConfirm := confirmStorePass
+	origErrWriter := bootstrapErrWriter
+	t.Cleanup(func() {
+		acquirePassphrase = origAcquire
+		confirmStorePass = origConfirm
+		bootstrapErrWriter = origErrWriter
+	})
+
+	acquirePassphrase = func(opts passphrase.Options) (string, passphrase.Source, error) {
+		return "test-passphrase", passphrase.SourceInteractive, nil
+	}
+	var promptMsg string
+	confirmStorePass = func(msg string) (bool, error) {
+		promptMsg = msg
+		return true, nil
+	}
+	var errBuf bytes.Buffer
+	bootstrapErrWriter = &errBuf
+
+	provider := &stubSecureProvider{}
+	state := &State{
+		Options:        Options{SkipSecureDetection: true, DBPath: t.TempDir() + "/missing.db"},
+		SecureProvider: provider,
+		SecurityTier:   keyring.TierBiometric,
+	}
+
+	err := phaseAcquireCredential().Run(context.Background(), state)
+	require.NoError(t, err)
+	assert.Equal(t, "Secure storage available (biometric). Store passphrase?", promptMsg)
+	assert.Equal(t, 1, provider.sets)
+	assert.Contains(t, errBuf.String(), "Passphrase saved. Next launch will load it automatically.")
+}
+
+func TestPhaseAcquireCredential_EntitlementWarningOnStoreFailure(t *testing.T) {
+	origAcquire := acquirePassphrase
+	origConfirm := confirmStorePass
+	origErrWriter := bootstrapErrWriter
+	t.Cleanup(func() {
+		acquirePassphrase = origAcquire
+		confirmStorePass = origConfirm
+		bootstrapErrWriter = origErrWriter
+	})
+
+	acquirePassphrase = func(opts passphrase.Options) (string, passphrase.Source, error) {
+		return "test-passphrase", passphrase.SourceInteractive, nil
+	}
+	confirmStorePass = func(msg string) (bool, error) { return true, nil }
+	var errBuf bytes.Buffer
+	bootstrapErrWriter = &errBuf
+
+	state := &State{
+		Options:        Options{SkipSecureDetection: true, DBPath: t.TempDir() + "/missing.db"},
+		SecureProvider: &stubSecureProvider{setErr: keyring.ErrEntitlement},
+		SecurityTier:   keyring.TierBiometric,
+	}
+
+	err := phaseAcquireCredential().Run(context.Background(), state)
+	require.NoError(t, err)
+	assert.Contains(t, errBuf.String(), "warning: biometric storage unavailable (binary not codesigned)")
+	assert.Contains(t, errBuf.String(), "Tip: codesign the binary for Touch ID support: make codesign")
+}
+
+func TestPhaseAcquireCredential_GenericStoreFailureWarning(t *testing.T) {
+	origAcquire := acquirePassphrase
+	origConfirm := confirmStorePass
+	origErrWriter := bootstrapErrWriter
+	t.Cleanup(func() {
+		acquirePassphrase = origAcquire
+		confirmStorePass = origConfirm
+		bootstrapErrWriter = origErrWriter
+	})
+
+	acquirePassphrase = func(opts passphrase.Options) (string, passphrase.Source, error) {
+		return "test-passphrase", passphrase.SourceInteractive, nil
+	}
+	confirmStorePass = func(msg string) (bool, error) { return true, nil }
+	var errBuf bytes.Buffer
+	bootstrapErrWriter = &errBuf
+
+	state := &State{
+		Options:        Options{SkipSecureDetection: true, DBPath: t.TempDir() + "/missing.db"},
+		SecureProvider: &stubSecureProvider{setErr: errors.New("boom")},
+		SecurityTier:   keyring.TierBiometric,
+	}
+
+	err := phaseAcquireCredential().Run(context.Background(), state)
+	require.NoError(t, err)
+	assert.Contains(t, errBuf.String(), "warning: store passphrase failed: boom")
+}
+
+func TestPhaseMigrateEnvelope_LegacyModeWritesUpgradeBannerToBootstrapErrWriter(t *testing.T) {
+	origWriter := bootstrapErrWriter
+	t.Cleanup(func() { bootstrapErrWriter = origWriter })
+
+	var errBuf bytes.Buffer
+	bootstrapErrWriter = &errBuf
+
+	state := &State{
+		LegacyMode: true,
+		Broker:     nil,
+		RawDB:      nil,
+		Client:     nil,
+		LangoDir:   t.TempDir(),
+		Passphrase: "test-passphrase",
+		Salt:       []byte("salt"),
+		Checksum:   []byte("checksum"),
+	}
+
+	err := phaseMigrateEnvelope().Run(context.Background(), state)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "legacy migration")
+	assert.Contains(t, errBuf.String(), "Upgrading encryption format (one-time migration)...")
+}
+
+func TestPhaseInitCrypto_ShredKeyfileWarningUsesBootstrapErrWriter(t *testing.T) {
+	origWriter := bootstrapErrWriter
+	t.Cleanup(func() { bootstrapErrWriter = origWriter })
+
+	var errBuf bytes.Buffer
+	bootstrapErrWriter = &errBuf
+
+	state := &State{
+		Options: Options{
+			KeyfilePath: t.TempDir(),
+		},
+		Passphrase: "test-passphrase",
+		PassSource: passphrase.SourceKeyfile,
+		FirstRun:   false,
+		Salt:       []byte("0123456789abcdef"),
+	}
+
+	err := phaseInitCrypto().Run(context.Background(), state)
+	require.NoError(t, err)
+	assert.Contains(t, errBuf.String(), "warning: shred keyfile:")
+}
+
 func TestKMSConfigFromEnv(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -376,11 +529,11 @@ func TestKMSConfigFromEnv(t *testing.T) {
 		{
 			name: "pkcs11",
 			env: map[string]string{
-				"LANGO_KMS_PROVIDER":          "pkcs11",
-				"LANGO_KMS_PKCS11_MODULE":     "/usr/lib/pkcs11.so",
-				"LANGO_KMS_PKCS11_SLOT_ID":    "2",
-				"LANGO_KMS_PKCS11_KEY_LABEL":  "mk-key",
-				"LANGO_PKCS11_PIN":            "1234",
+				"LANGO_KMS_PROVIDER":         "pkcs11",
+				"LANGO_KMS_PKCS11_MODULE":    "/usr/lib/pkcs11.so",
+				"LANGO_KMS_PKCS11_SLOT_ID":   "2",
+				"LANGO_KMS_PKCS11_KEY_LABEL": "mk-key",
+				"LANGO_PKCS11_PIN":           "1234",
 			},
 			wantProvider: "pkcs11",
 			check: func(t *testing.T, cfg *config.KMSConfig) {

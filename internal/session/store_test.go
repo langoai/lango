@@ -4,11 +4,14 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/langoai/lango/internal/security"
+	"github.com/stretchr/testify/require"
 )
 
 func newTestEntStore(t *testing.T, opts ...StoreOption) *EntStore {
@@ -89,6 +92,17 @@ func TestEntStore_Get_NotFound(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for non-existent session")
 	}
+}
+
+func TestNewEntStore_IgnoresDeprecatedPassphraseOptionForPlaintextDB(t *testing.T) {
+	store := newTestEntStore(t, WithPassphrase("legacy-session-passphrase"))
+
+	session := &Session{Key: "sess-passphrase-ignored", Model: "gpt-4"}
+	require.NoError(t, store.Create(session))
+
+	got, err := store.Get("sess-passphrase-ignored")
+	require.NoError(t, err)
+	require.Equal(t, "gpt-4", got.Model)
 }
 
 func TestEntStore_Update(t *testing.T) {
@@ -270,6 +284,58 @@ func TestEntStore_ProtectedDecryptFailureDoesNotFallback(t *testing.T) {
 
 	if _, err := store.Get("sess-fail"); err == nil {
 		t.Fatal("expected decrypt failure")
+	}
+}
+
+func TestNewEntStore_IsSafeForConcurrentConstruction(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	paths := []string{
+		filepath.Join(dir, "one.db"),
+		filepath.Join(dir, "two.db"),
+	}
+
+	var wg sync.WaitGroup
+	errCh := make(chan error, len(paths))
+	panicCh := make(chan interface{}, len(paths))
+	stores := make(chan *EntStore, len(paths))
+
+	for _, dbPath := range paths {
+		dbPath := dbPath
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					panicCh <- r
+				}
+			}()
+
+			store, err := NewEntStore(dbPath)
+			if err != nil {
+				errCh <- err
+				return
+			}
+			stores <- store
+		}()
+	}
+
+	wg.Wait()
+	close(errCh)
+	close(panicCh)
+	close(stores)
+
+	for p := range panicCh {
+		t.Fatalf("concurrent NewEntStore panicked: %v", p)
+	}
+	for err := range errCh {
+		require.NoError(t, err)
+	}
+	for store := range stores {
+		if store != nil {
+			require.NoError(t, store.Close())
+		}
 	}
 }
 

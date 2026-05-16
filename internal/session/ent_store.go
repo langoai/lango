@@ -3,7 +3,6 @@ package session
 import (
 	"context"
 	"database/sql"
-	"encoding/hex"
 	"fmt"
 	"reflect"
 	"strings"
@@ -26,7 +25,9 @@ import (
 // StoreOption defines the functional option pattern for EntStore
 type StoreOption func(*EntStore)
 
-// WithPassphrase sets the encryption passphrase for the database.
+// WithPassphrase is retained for compatibility with older constructors.
+// The current runtime no longer enables SQLCipher page encryption for the
+// session store, so this option is ignored.
 func WithPassphrase(passphrase string) StoreOption {
 	return func(s *EntStore) {
 		s.passphrase = passphrase
@@ -76,6 +77,11 @@ type EntStore struct {
 	hardEndTimeout  time.Duration
 }
 
+// ent's Atlas-backed schema planner is not safe for concurrent mutation during
+// Schema.Create. NewEntStore is a runtime-owned constructor path, so serialize
+// migration at this boundary to avoid concurrent map write crashes.
+var schemaCreateMu sync.Mutex
+
 // NewEntStore creates a new ent-backed session store
 func NewEntStore(dbPath string, opts ...StoreOption) (*EntStore, error) {
 	store := &EntStore{}
@@ -98,23 +104,14 @@ func NewEntStore(dbPath string, opts ...StoreOption) (*EntStore, error) {
 		return nil, err
 	}
 
-	// Set key immediately if provided (essential for SQLCipher)
-	// Use hex-encoded key to avoid SQL injection via passphrase content.
-	// SQLCipher accepts: PRAGMA key = "x'HEX_ENCODED_KEY'"
-	if store.passphrase != "" {
-		hexKey := hex.EncodeToString([]byte(store.passphrase))
-		pragma := fmt.Sprintf(`PRAGMA key = "x'%s'"`, hexKey)
-		if _, err := db.Exec(pragma); err != nil {
-			db.Close()
-			return nil, fmt.Errorf("set encryption key: %w", err)
-		}
-	}
+	// Deprecated compatibility input only: the runtime no longer enables
+	// SQLCipher page encryption for the session store, so passphrase is ignored.
+	_ = store.passphrase
 
-	// Check connectivity and enable foreign keys
-	// This will fail if the DB is encrypted and key wasn't accepted, OR if file path is invalid
+	// Check connectivity and enable foreign keys.
 	if _, err := db.Exec("PRAGMA foreign_keys = ON"); err != nil {
 		db.Close()
-		return nil, fmt.Errorf("enable foreign keys/unlock db: %w", err)
+		return nil, fmt.Errorf("enable foreign keys: %w", err)
 	}
 
 	// Create ent driver with SQLite dialect
@@ -122,10 +119,13 @@ func NewEntStore(dbPath string, opts ...StoreOption) (*EntStore, error) {
 	client := ent.NewClient(ent.Driver(drv))
 
 	// Auto-migrate schema - skip FK check since we've enabled it manually
+	schemaCreateMu.Lock()
 	if err := client.Schema.Create(context.Background(), schema.WithForeignKeys(false)); err != nil {
+		schemaCreateMu.Unlock()
 		client.Close()
 		return nil, fmt.Errorf("create schema: %w", err)
 	}
+	schemaCreateMu.Unlock()
 
 	store.client = client
 	store.db = db

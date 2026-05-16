@@ -134,7 +134,7 @@ type PresidioConfig struct {
 
 // SignerConfig defines Secure Signer settings
 type SignerConfig struct {
-	Provider string `mapstructure:"provider" json:"provider"` // "local", "rpc", "enclave"
+	Provider string `mapstructure:"provider" json:"provider"` // "local", "rpc", "aws-kms", "gcp-kms", "azure-kv", "pkcs11"
 	RPCUrl   string `mapstructure:"rpcUrl" json:"rpcUrl"`     // for RPC provider
 	KeyID    string `mapstructure:"keyId" json:"keyId"`       // Key identifier
 }

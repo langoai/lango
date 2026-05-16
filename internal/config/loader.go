@@ -645,7 +645,7 @@ func Validate(cfg *Config) error {
 	// Validate security config
 	if cfg.Security.Signer.Provider != "" {
 		if !ValidSignerProviders[cfg.Security.Signer.Provider] {
-			errs = append(errs, fmt.Sprintf("invalid security.signer.provider: %q (must be local, rpc, enclave, aws-kms, gcp-kms, azure-kv, or pkcs11)", cfg.Security.Signer.Provider))
+			errs = append(errs, fmt.Sprintf("invalid security.signer.provider: %q (must be local, rpc, aws-kms, gcp-kms, azure-kv, or pkcs11)", cfg.Security.Signer.Provider))
 		}
 		if cfg.Security.Signer.Provider == "rpc" && cfg.Security.Signer.RPCUrl == "" {
 			errs = append(errs, "security.signer.rpcUrl is required when provider is 'rpc'")

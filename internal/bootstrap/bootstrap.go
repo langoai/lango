@@ -127,17 +127,14 @@ func (r *Result) Close() error {
 	return nil
 }
 
-// openDatabase opens the SQLite/SQLCipher database and runs ent schema migration.
-// When encryptionKey is non-empty, PRAGMA key is executed after sql.Open.
+// openDatabase opens the application SQLite database and runs ent schema
+// migration through dbopen.OpenManaged.
 //
-// rawKey distinguishes two SQLCipher key modes:
-//   - rawKey=true: encryptionKey is a hex-encoded 32-byte raw key. Uses
-//     `PRAGMA key = "x'<hex>'"`. SQLCipher skips its internal PBKDF2.
-//     This is the envelope-mode path (DB key = HKDF(MK)).
-//   - rawKey=false: encryptionKey is a passphrase. Uses `PRAGMA key = '<passphrase>'`.
-//     SQLCipher runs its internal PBKDF2. This is the legacy path.
-//
-// When encryptionKey is empty, no PRAGMA key is issued and the DB opens in plaintext mode.
+// encryptionKey/rawKey/cipherPageSize are deprecated compatibility inputs that
+// remain threaded through legacy call sites. The current runtime no longer
+// enables SQLCipher page-level encryption here; legacy encrypted or unreadable
+// files fail fast on header inspection, and plaintext files continue to open
+// normally even when these arguments are non-empty.
 func openDatabase(dbPath, encryptionKey string, rawKey bool, cipherPageSize int) (*ent.Client, *sql.DB, error) {
 	return dbopen.OpenManaged(dbPath, encryptionKey, rawKey, cipherPageSize)
 }
@@ -149,7 +146,7 @@ func OpenDatabaseManaged(dbPath, encryptionKey string, rawKey bool, cipherPageSi
 	return dbopen.OpenManaged(dbPath, encryptionKey, rawKey, cipherPageSize)
 }
 
-// OpenDatabaseReadOnly opens the SQLite/SQLCipher database in read-only mode
+// OpenDatabaseReadOnly opens the application SQLite database in read-only mode
 // without invoking ent schema migration.
 //
 // Contract:
@@ -160,10 +157,9 @@ func OpenDatabaseManaged(dbPath, encryptionKey string, rawKey bool, cipherPageSi
 //   - No prompt: the caller is responsible for obtaining the encryption key
 //     non-interactively. Failure to open returns an error; callers must
 //     gracefully degrade (zero counts, "unavailable" fields).
-//
-// rawKey semantics match openDatabase: rawKey=true uses
-// `PRAGMA key = "x'<hex>'"`, rawKey=false uses `PRAGMA key = '<passphrase>'`,
-// and an empty encryptionKey skips the PRAGMA entirely (plaintext).
+//   - Deprecated encryption inputs: `encryptionKey`, `rawKey`, and
+//     `cipherPageSize` are compatibility-only and do not enable SQLCipher
+//     behavior in the current runtime.
 //
 // The returned *ent.Client shares the underlying *sql.DB so callers should
 // Close() the client (which closes the DB) when done.

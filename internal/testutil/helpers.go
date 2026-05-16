@@ -13,11 +13,11 @@ import (
 
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
-	"entgo.io/ent/dialect/sql/schema"
 	"go.uber.org/zap"
 
 	"github.com/langoai/lango/internal/ent"
 	"github.com/langoai/lango/internal/sqlitedriver"
+	"github.com/langoai/lango/internal/testutil/schemautil"
 )
 
 var testDBSeq uint64
@@ -51,7 +51,7 @@ func TestEntClient(t testing.TB) *ent.Client {
 	}
 	drv := entsql.OpenDB(dialect.SQLite, db)
 	client := ent.NewClient(ent.Driver(drv))
-	if err := client.Schema.Create(context.Background(), schema.WithForeignKeys(false)); err != nil {
+	if err := schemautil.CreateSchema(context.Background(), client); err != nil {
 		_ = client.Close()
 		t.Fatalf("migrate test sqlite db: %v", err)
 	}

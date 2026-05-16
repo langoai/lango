@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
@@ -17,8 +18,20 @@ import (
 
 const dataDirPerm = 0o700
 
+// ent's Atlas-backed schema planner mutates shared table metadata during
+// Schema.Create, so concurrent managed opens can crash with concurrent map writes.
+// Serialize schema migration at this boundary because dbopen is the single
+// runtime-owned entry point for managed application opens.
+var schemaCreateMu sync.Mutex
+
 // OpenManaged opens the application database in read-write mode and applies
 // schema migration.
+//
+// encryptionKey/rawKey/cipherPageSize are retained for compatibility with older
+// call sites, but the current runtime no longer enables SQLCipher page-level
+// encryption here. Legacy encrypted or unreadable files are rejected earlier by
+// CheckFileHeader; plaintext files continue to open normally even when these
+// deprecated arguments are non-empty.
 func OpenManaged(dbPath, encryptionKey string, rawKey bool, cipherPageSize int) (*ent.Client, *sql.DB, error) {
 	dbPath = sqlitedriver.ExpandPath(dbPath)
 	if err := sqlitedriver.CheckFileHeader(dbPath); err != nil {
@@ -56,19 +69,27 @@ func OpenManaged(dbPath, encryptionKey string, rawKey bool, cipherPageSize int) 
 	drv := entsql.OpenDB(dialect.SQLite, db)
 	client := ent.NewClient(ent.Driver(drv))
 
+	schemaCreateMu.Lock()
 	if err := client.Schema.Create(
 		context.Background(),
 		schema.WithForeignKeys(false),
 	); err != nil {
+		schemaCreateMu.Unlock()
 		client.Close()
 		return nil, nil, fmt.Errorf("schema migration: %w", err)
 	}
+	schemaCreateMu.Unlock()
 
 	return client, db, nil
 }
 
 // OpenReadOnly opens the application database in read-only mode without
 // invoking ent schema migration.
+//
+// encryptionKey/rawKey/cipherPageSize are deprecated compatibility inputs only.
+// The current runtime does not attempt SQLCipher unlock for read-only opens; it
+// either opens a plaintext SQLite database or fails fast on a legacy/unreadable
+// header before any SQLCipher-specific behavior would occur.
 func OpenReadOnly(dbPath, encryptionKey string, rawKey bool, cipherPageSize int) (*ent.Client, *sql.DB, error) {
 	dbPath = sqlitedriver.ExpandPath(dbPath)
 	if err := sqlitedriver.CheckFileHeader(dbPath); err != nil {

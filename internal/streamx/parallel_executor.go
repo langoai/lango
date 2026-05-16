@@ -89,6 +89,9 @@ func (e *ParallelReadOnlyExecutor) ExecuteParallel(ctx context.Context, invocati
 			start := time.Now()
 			result, err := inv.Tool.Handler(gctx, inv.Params)
 			duration := time.Since(start)
+			if duration <= 0 {
+				duration = time.Nanosecond
+			}
 
 			results[i] = ToolResult{
 				ToolName: inv.Tool.Name,

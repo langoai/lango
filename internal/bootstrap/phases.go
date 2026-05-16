@@ -5,6 +5,7 @@ import (
 	"crypto/hmac"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -22,6 +23,12 @@ import (
 var startStorageBroker = func(ctx context.Context) (storagebroker.API, error) {
 	return storagebroker.Start(ctx)
 }
+
+var (
+	acquirePassphrase            = passphrase.Acquire
+	confirmStorePass             = prompt.Confirm
+	bootstrapErrWriter io.Writer = os.Stderr
+)
 
 func loadSecurityStateForState(ctx context.Context, s *State) ([]byte, []byte, bool, error) {
 	if s != nil && s.Broker != nil {
@@ -182,9 +189,9 @@ func phaseAcquireCredential() Phase {
 						s.Result.KMSUnwrap = true
 						return nil // Skip passphrase entirely.
 					}
-					fmt.Fprintf(os.Stderr, "warning: KMS unwrap failed: %v (falling back to passphrase)\n", unwrapErr)
+					fmt.Fprintf(bootstrapErrWriter, "warning: KMS unwrap failed: %v (falling back to passphrase)\n", unwrapErr)
 				} else {
-					fmt.Fprintf(os.Stderr, "warning: KMS provider init failed: %v (falling back to passphrase)\n", kmsErr)
+					fmt.Fprintf(bootstrapErrWriter, "warning: KMS provider init failed: %v (falling back to passphrase)\n", kmsErr)
 				}
 			}
 
@@ -197,7 +204,7 @@ func phaseAcquireCredential() Phase {
 			_, statErr := os.Stat(s.Options.DBPath)
 			s.FirstRunGuess = statErr != nil && s.Envelope == nil
 
-			pass, source, err := passphrase.Acquire(passphrase.Options{
+			pass, source, err := acquirePassphrase(passphrase.Options{
 				KeyfilePath:     s.Options.KeyfilePath,
 				AllowCreation:   s.FirstRunGuess,
 				KeyringProvider: s.SecureProvider,
@@ -212,17 +219,17 @@ func phaseAcquireCredential() Phase {
 			if source == passphrase.SourceInteractive && s.SecureProvider != nil {
 				tierLabel := s.SecurityTier.String()
 				msg := fmt.Sprintf("Secure storage available (%s). Store passphrase?", tierLabel)
-				if ok, promptErr := prompt.Confirm(msg); promptErr == nil && ok {
+				if ok, promptErr := confirmStorePass(msg); promptErr == nil && ok {
 					if storeErr := s.SecureProvider.Set(keyring.Service, keyring.KeyMasterPassphrase, pass); storeErr != nil {
 						if errors.Is(storeErr, keyring.ErrEntitlement) {
-							fmt.Fprintf(os.Stderr, "warning: biometric storage unavailable (binary not codesigned)\n")
-							fmt.Fprintf(os.Stderr, "  Tip: codesign the binary for Touch ID support: make codesign\n")
-							fmt.Fprintf(os.Stderr, "  Note: also ensure device passcode is set (required for biometric Keychain)\n")
+							fmt.Fprintf(bootstrapErrWriter, "warning: biometric storage unavailable (binary not codesigned)\n")
+							fmt.Fprintf(bootstrapErrWriter, "  Tip: codesign the binary for Touch ID support: make codesign\n")
+							fmt.Fprintf(bootstrapErrWriter, "  Note: also ensure device passcode is set (required for biometric Keychain)\n")
 						} else {
-							fmt.Fprintf(os.Stderr, "warning: store passphrase failed: %v\n", storeErr)
+							fmt.Fprintf(bootstrapErrWriter, "warning: store passphrase failed: %v\n", storeErr)
 						}
 					} else {
-						fmt.Fprintf(os.Stderr, "Passphrase saved. Next launch will load it automatically.\n")
+						fmt.Fprintf(bootstrapErrWriter, "Passphrase saved. Next launch will load it automatically.\n")
 					}
 				}
 			}
@@ -349,7 +356,7 @@ func phaseMigrateEnvelope() Phase {
 				if s.Broker != nil {
 					return fmt.Errorf("legacy envelope migration requires non-broker bootstrap path")
 				}
-				fmt.Fprintln(os.Stderr, "Upgrading encryption format (one-time migration)...")
+				fmt.Fprintln(bootstrapErrWriter, "Upgrading encryption format (one-time migration)...")
 				env, mk, err := security.MigrateToEnvelope(
 					ctx, s.RawDB, s.Client, s.LangoDir,
 					s.Passphrase, s.Salt, s.Checksum,
@@ -466,7 +473,7 @@ func phaseInitCrypto() Phase {
 			// Shred keyfile after successful crypto initialization.
 			if s.PassSource == passphrase.SourceKeyfile && !s.Options.KeepKeyfile {
 				if err := passphrase.ShredKeyfile(s.Options.KeyfilePath); err != nil {
-					fmt.Fprintf(os.Stderr, "warning: shred keyfile: %v\n", err)
+					fmt.Fprintf(bootstrapErrWriter, "warning: shred keyfile: %v\n", err)
 				}
 			}
 
