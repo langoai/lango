@@ -1,11 +1,55 @@
 package configcmd
 
 import (
-	"reflect"
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
 	"testing"
 
+	"github.com/spf13/cobra"
+	"reflect"
+	"strings"
+
+	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/configstore"
+	"github.com/langoai/lango/internal/storage"
 )
+
+func executeConfigCommand(t *testing.T, cmd *cobra.Command, args ...string) (string, error) {
+	t.Helper()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs(args)
+	err := cmd.Execute()
+	return out.String(), err
+}
+
+type stubProfileStore struct {
+	cfg *config.Config
+}
+
+func (s stubProfileStore) Save(context.Context, string, *config.Config, map[string]bool) error {
+	return errors.New("not implemented")
+}
+func (s stubProfileStore) Load(context.Context, string) (*config.Config, map[string]bool, error) {
+	return s.cfg, nil, nil
+}
+func (s stubProfileStore) LoadActive(context.Context) (string, *config.Config, map[string]bool, error) {
+	return "default", s.cfg, nil, nil
+}
+func (s stubProfileStore) SetActive(context.Context, string) error {
+	return errors.New("not implemented")
+}
+func (s stubProfileStore) List(context.Context) ([]configstore.ProfileInfo, error) {
+	return nil, errors.New("not implemented")
+}
+func (s stubProfileStore) Delete(context.Context, string) error { return errors.New("not implemented") }
+func (s stubProfileStore) Exists(context.Context, string) (bool, error) {
+	return false, errors.New("not implemented")
+}
 
 func TestResolveConfigPath_AgentProvider(t *testing.T) {
 	cfg := config.DefaultConfig()
@@ -152,5 +196,143 @@ func TestFormatPlain(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("formatPlain(%v): want %q, got %q", tt.give, tt.want, got)
 		}
+	}
+}
+
+func TestConfigGet_WritesToCommandOutput(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cmd := NewGetCmd(func() (*config.Config, error) { return cfg, nil })
+
+	out, err := executeConfigCommand(t, cmd, "agent.provider")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out, "anthropic") {
+		t.Fatalf("expected output to contain provider, got %q", out)
+	}
+}
+
+func TestConfigGet_JSONOutputIsValid(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cmd := NewGetCmd(func() (*config.Config, error) { return cfg, nil })
+
+	out, err := executeConfigCommand(t, cmd, "agent", "--output", "json")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var decoded map[string]any
+	if err := json.Unmarshal([]byte(out), &decoded); err != nil {
+		t.Fatalf("expected valid JSON, got error: %v", err)
+	}
+	if _, ok := decoded["provider"]; !ok {
+		t.Fatalf("expected JSON output to include provider, got %v", decoded)
+	}
+}
+
+func TestConfigGet_InvalidOutputRejectsBeforeLoad(t *testing.T) {
+	called := false
+	cmd := NewGetCmd(func() (*config.Config, error) {
+		called = true
+		return config.DefaultConfig(), nil
+	})
+
+	out, err := executeConfigCommand(t, cmd, "agent", "--output", "yaml")
+	if err == nil {
+		t.Fatal("expected invalid output format error")
+	}
+	if !strings.Contains(err.Error(), `unknown output format "yaml"`) {
+		t.Fatalf("expected invalid output error, got %v", err)
+	}
+	if out != "" {
+		t.Fatalf("expected empty command output, got %q", out)
+	}
+	if called {
+		t.Fatal("cfgLoader must not run when output format validation fails")
+	}
+}
+
+func TestConfigSet_WritesToCommandOutput(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cmd := NewSetCmd(
+		func() (*config.Config, func(), error) { return cfg, func() {}, nil },
+		func(updated *config.Config) error {
+			cfg = updated
+			return nil
+		},
+	)
+
+	out, err := executeConfigCommand(t, cmd, "agent.provider", "openai")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out, "Set agent.provider = openai") {
+		t.Fatalf("expected confirmation output, got %q", out)
+	}
+}
+
+func TestConfigKeys_WritesToCommandOutput(t *testing.T) {
+	cmd := NewKeysCmd()
+
+	out, err := executeConfigCommand(t, cmd, "agent")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out, "agent.provider") {
+		t.Fatalf("expected output to contain agent.provider, got %q", out)
+	}
+}
+
+func TestConfigExport_WritesToCommandOutput(t *testing.T) {
+	cfg := config.DefaultConfig()
+	bootLoader := func() (*bootstrap.Result, error) {
+		return &bootstrap.Result{
+			ProfileName: "default",
+			Storage:     storage.NewFacade(stubProfileStore{cfg: cfg}, nil),
+		}, nil
+	}
+	cmd := newExportCmd(bootLoader)
+
+	var out bytes.Buffer
+	var errBuf bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errBuf)
+	cmd.SetArgs([]string{"default"})
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out.String(), `"agent"`) {
+		t.Fatalf("expected JSON config output, got %q", out.String())
+	}
+	if !strings.Contains(errBuf.String(), "WARNING: exported configuration contains sensitive values in plaintext.") {
+		t.Fatalf("expected warning on stderr, got %q", errBuf.String())
+	}
+
+	var decoded map[string]any
+	if err := json.Unmarshal(out.Bytes(), &decoded); err != nil {
+		t.Fatalf("expected valid JSON export, got error: %v", err)
+	}
+	if _, ok := decoded["agent"]; !ok {
+		t.Fatalf("expected JSON export to include agent config, got %v", decoded)
+	}
+}
+
+func TestConfigValidate_WritesToCommandOutput(t *testing.T) {
+	cfg := config.DefaultConfig()
+	bootLoader := func() (*bootstrap.Result, error) {
+		return &bootstrap.Result{
+			Config:      cfg,
+			ProfileName: "default",
+		}, nil
+	}
+	cmd := newValidateCmd(bootLoader)
+
+	out, err := executeConfigCommand(t, cmd)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out, `Profile "default" configuration is valid.`) {
+		t.Fatalf("expected validation confirmation, got %q", out)
 	}
 }

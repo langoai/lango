@@ -4,15 +4,22 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+
+	"github.com/langoai/lango/internal/cli/clihttp"
 )
 
 func newSessionsCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "sessions",
-		Short: "Per-session token usage breakdown",
+		Use:           "sessions",
+		Short:         "Per-session token usage breakdown",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			addr := getAddr(cmd)
-			format := getOutputFormat(cmd)
+			format, err := getOutputFormat(cmd)
+			if err != nil {
+				return err
+			}
 
 			var data struct {
 				Sessions []struct {
@@ -23,20 +30,20 @@ func newSessionsCmd() *cobra.Command {
 					RequestCount int64  `json:"requestCount"`
 				} `json:"sessions"`
 			}
-			if err := fetchJSON(addr, "/metrics/sessions", &data); err != nil {
+			if err := clihttp.FetchJSON(addr, "/metrics/sessions", &data); err != nil {
 				return err
 			}
 
 			if format == "json" {
-				return printJSON(data)
+				return printJSON(cmd.OutOrStdout(), data)
 			}
 
 			if len(data.Sessions) == 0 {
-				fmt.Println("No session data available.")
+				fmt.Fprintln(cmd.OutOrStdout(), "No session data available.")
 				return nil
 			}
 
-			w := newTabWriter()
+			w := newTabWriter(cmd.OutOrStdout())
 			fmt.Fprintln(w, "SESSION\tINPUT\tOUTPUT\tTOTAL\tREQUESTS")
 			for _, s := range data.Sessions {
 				fmt.Fprintf(w, "%s\t%d\t%d\t%d\t%d\n",

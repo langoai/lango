@@ -13,7 +13,7 @@ import (
 )
 
 func newImportCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
-	var jsonOutput bool
+	var output string
 
 	cmd := &cobra.Command{
 		Use:   "import <file>",
@@ -25,8 +25,14 @@ The file should contain a JSON array of triple objects:
   {"Subject": "Alice", "Predicate": "knows", "Object": "Bob"},
   {"Subject": "Bob", "Predicate": "works_at", "Object": "Acme"}
 ]`,
-		Args: cobra.ExactArgs(1),
+		Args:          cobra.ExactArgs(1),
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			output, err := resolveOutput(cmd)
+			if err != nil {
+				return err
+			}
 			filePath := args[0]
 
 			data, err := os.ReadFile(filePath)
@@ -40,7 +46,7 @@ The file should contain a JSON array of triple objects:
 			}
 
 			if len(triples) == 0 {
-				fmt.Println("No triples to import.")
+				fmt.Fprintln(cmd.OutOrStdout(), "No triples to import.")
 				return nil
 			}
 
@@ -59,20 +65,18 @@ The file should contain a JSON array of triple objects:
 				return fmt.Errorf("import triples: %w", err)
 			}
 
-			if jsonOutput {
-				enc := json.NewEncoder(os.Stdout)
-				enc.SetIndent("", "  ")
-				return enc.Encode(map[string]interface{}{
+			if output == "json" {
+				return printJSON(cmd.OutOrStdout(), map[string]interface{}{
 					"imported": len(triples),
 				})
 			}
 
-			fmt.Printf("Imported %d triples.\n", len(triples))
+			fmt.Fprintf(cmd.OutOrStdout(), "Imported %d triples.\n", len(triples))
 			return nil
 		},
 	}
 
-	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
+	cmd.Flags().StringVar(&output, "output", "table", "Output format: table or json")
 
 	return cmd
 }

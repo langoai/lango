@@ -5,10 +5,15 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/langoai/lango/internal/cli/tui"
 	"github.com/langoai/lango/internal/postadjudicationstatus"
 )
+
+func sanitizeStatusText(text string) string {
+	return strings.Join(strings.Fields(ansi.Strip(text)), " ")
+}
 
 func renderDashboard(info StatusInfo) string {
 	var b strings.Builder
@@ -19,7 +24,7 @@ func renderDashboard(info StatusInfo) string {
 		version = "dev"
 	}
 	title := lipgloss.NewStyle().Bold(true).Foreground(tui.Primary).Render(
-		fmt.Sprintf("Lango Status                              v%s (profile: %s)", version, info.Profile),
+		fmt.Sprintf("Lango Status                              v%s (profile: %s)", sanitizeStatusText(version), sanitizeStatusText(info.Profile)),
 	)
 	b.WriteString("\n")
 	b.WriteString(title)
@@ -35,21 +40,25 @@ func renderDashboard(info StatusInfo) string {
 	} else {
 		b.WriteString(infoLine("Server", tui.FormatFail("not running")))
 	}
-	b.WriteString(infoLine("Gateway", lipgloss.NewStyle().Foreground(tui.Muted).Render(info.Gateway)))
-	providerInfo := info.Provider
+	b.WriteString(infoLine("Gateway", lipgloss.NewStyle().Foreground(tui.Muted).Render(sanitizeStatusText(info.Gateway))))
+	providerInfo := sanitizeStatusText(info.Provider)
 	if info.Model != "" {
-		providerInfo += " (" + info.Model + ")"
+		providerInfo += " (" + sanitizeStatusText(info.Model) + ")"
 	}
 	b.WriteString(infoLine("Provider", lipgloss.NewStyle().Foreground(tui.Muted).Render(providerInfo)))
 	if info.ContextProfile != "" {
-		b.WriteString(infoLine("Ctx Profile", lipgloss.NewStyle().Foreground(tui.Muted).Render(info.ContextProfile)))
+		b.WriteString(infoLine("Ctx Profile", lipgloss.NewStyle().Foreground(tui.Muted).Render(sanitizeStatusText(info.ContextProfile))))
 	}
 	b.WriteString("\n")
 
 	// Channels
 	if len(info.Channels) > 0 {
 		b.WriteString(sectionHeader("Channels"))
-		b.WriteString(infoLine("Active", lipgloss.NewStyle().Foreground(tui.Success).Render(strings.Join(info.Channels, ", "))))
+		activeChannels := make([]string, 0, len(info.Channels))
+		for _, ch := range info.Channels {
+			activeChannels = append(activeChannels, sanitizeStatusText(ch))
+		}
+		b.WriteString(infoLine("Active", lipgloss.NewStyle().Foreground(tui.Success).Render(strings.Join(activeChannels, ", "))))
 		b.WriteString("\n")
 	}
 
@@ -59,13 +68,13 @@ func renderDashboard(info StatusInfo) string {
 	var disabled []string
 	for _, f := range info.Features {
 		if f.Enabled {
-			label := f.Name
+			label := sanitizeStatusText(f.Name)
 			if f.Detail != "" {
-				label += " (" + f.Detail + ")"
+				label += " (" + sanitizeStatusText(f.Detail) + ")"
 			}
 			enabled = append(enabled, label)
 		} else {
-			disabled = append(disabled, f.Name)
+			disabled = append(disabled, sanitizeStatusText(f.Name))
 		}
 	}
 
@@ -114,9 +123,9 @@ func renderDeadLetterBacklogTable(page DeadLetterListPage) string {
 	for _, entry := range page.Entries {
 		fmt.Fprintf(&b,
 			"%-20s %-24s %-12s %-8d %-8t\n",
-			tui.Truncate(entry.TransactionReceiptID, 20),
-			tui.Truncate(entry.LatestDeadLetterReason, 24),
-			tui.Truncate(entry.Adjudication, 12),
+			tui.Truncate(sanitizeStatusText(entry.TransactionReceiptID), 20),
+			tui.Truncate(sanitizeStatusText(entry.LatestDeadLetterReason), 24),
+			tui.Truncate(sanitizeStatusText(entry.Adjudication), 12),
 			entry.LatestRetryAttempt,
 			entry.CanRetry,
 		)
@@ -136,19 +145,19 @@ func renderDeadLetterDetail(status postadjudicationstatus.TransactionStatus) str
 	sep := lipgloss.NewStyle().Foreground(tui.Separator).Render(strings.Repeat("\u2500", 72))
 	b.WriteString(sep)
 	b.WriteString("\n")
-	b.WriteString(infoLine("Transaction", status.CanonicalSnapshot.TransactionReceipt.TransactionReceiptID))
-	b.WriteString(infoLine("Submission", status.CanonicalSnapshot.SubmissionReceipt.SubmissionReceiptID))
-	b.WriteString(infoLine("Adjudication", status.Adjudication))
+	b.WriteString(infoLine("Transaction", sanitizeStatusText(status.CanonicalSnapshot.TransactionReceipt.TransactionReceiptID)))
+	b.WriteString(infoLine("Submission", sanitizeStatusText(status.CanonicalSnapshot.SubmissionReceipt.SubmissionReceiptID)))
+	b.WriteString(infoLine("Adjudication", sanitizeStatusText(status.Adjudication)))
 	b.WriteString(infoLine("Dead-lettered", fmt.Sprintf("%t", status.IsDeadLettered)))
 	b.WriteString(infoLine("Retryable", fmt.Sprintf("%t", status.CanRetry)))
-	b.WriteString(infoLine("Latest Reason", fallbackText(status.RetryDeadLetterSummary.LatestDeadLetterReason)))
+	b.WriteString(infoLine("Latest Reason", sanitizeStatusText(fallbackText(status.RetryDeadLetterSummary.LatestDeadLetterReason))))
 	b.WriteString(infoLine("Retry Attempt", fmt.Sprintf("%d", status.RetryDeadLetterSummary.LatestRetryAttempt)))
-	b.WriteString(infoLine("Dispatch Ref", fallbackText(status.RetryDeadLetterSummary.LatestDispatchReference)))
+	b.WriteString(infoLine("Dispatch Ref", sanitizeStatusText(fallbackText(status.RetryDeadLetterSummary.LatestDispatchReference))))
 	if task := status.LatestBackgroundTask; task != nil {
-		b.WriteString(infoLine("Task ID", task.TaskID))
-		b.WriteString(infoLine("Task Status", task.Status))
+		b.WriteString(infoLine("Task ID", sanitizeStatusText(task.TaskID)))
+		b.WriteString(infoLine("Task Status", sanitizeStatusText(task.Status)))
 		b.WriteString(infoLine("Task Attempts", fmt.Sprintf("%d", task.AttemptCount)))
-		b.WriteString(infoLine("Next Retry", fallbackText(task.NextRetryAt)))
+		b.WriteString(infoLine("Next Retry", sanitizeStatusText(fallbackText(task.NextRetryAt))))
 	} else {
 		b.WriteString(infoLine("Task ID", "n/a"))
 	}
@@ -211,7 +220,7 @@ func renderSummaryBuckets(buckets []deadLetterSummaryBucket) string {
 
 	var b strings.Builder
 	for _, bucket := range buckets {
-		fmt.Fprintf(&b, "    %-24s%d\n", bucket.Label, bucket.Count)
+		fmt.Fprintf(&b, "    %-24s%d\n", sanitizeStatusText(bucket.Label), bucket.Count)
 	}
 	return b.String()
 }
@@ -227,7 +236,7 @@ func renderReasonSummaryItems(items []deadLetterReasonSummaryItem) string {
 	b.WriteString(sep)
 	b.WriteString("\n")
 	for _, item := range items {
-		fmt.Fprintf(&b, "%-60s %-8d\n", tui.Truncate(item.Reason, 60), item.Count)
+		fmt.Fprintf(&b, "%-60s %-8d\n", tui.Truncate(sanitizeStatusText(item.Reason), 60), item.Count)
 	}
 	return b.String()
 }
@@ -243,7 +252,7 @@ func renderActorSummaryItems(items []deadLetterActorSummaryItem) string {
 	b.WriteString(sep)
 	b.WriteString("\n")
 	for _, item := range items {
-		fmt.Fprintf(&b, "%-60s %-8d\n", tui.Truncate(item.Actor, 60), item.Count)
+		fmt.Fprintf(&b, "%-60s %-8d\n", tui.Truncate(sanitizeStatusText(item.Actor), 60), item.Count)
 	}
 	return b.String()
 }
@@ -259,7 +268,7 @@ func renderDispatchSummaryItems(items []deadLetterDispatchSummaryItem) string {
 	b.WriteString(sep)
 	b.WriteString("\n")
 	for _, item := range items {
-		fmt.Fprintf(&b, "%-60s %-8d\n", tui.Truncate(item.DispatchReference, 60), item.Count)
+		fmt.Fprintf(&b, "%-60s %-8d\n", tui.Truncate(sanitizeStatusText(item.DispatchReference), 60), item.Count)
 	}
 	return b.String()
 }
@@ -277,14 +286,14 @@ func renderDeadLetterTrend(trend deadLetterTrendWindow) string {
 		return b.String()
 	}
 	for _, bucket := range trend.Buckets {
-		fmt.Fprintf(&b, "    %-40s%d\n", tui.Truncate(bucket.Label, 40), bucket.Count)
+		fmt.Fprintf(&b, "    %-40s%d\n", tui.Truncate(sanitizeStatusText(bucket.Label), 40), bucket.Count)
 	}
 	return b.String()
 }
 
 func renderDeadLetterRetryResult(result deadLetterRetryResult) string {
 	var b strings.Builder
-	b.WriteString(result.Message)
+	b.WriteString(sanitizeStatusText(result.Message))
 	b.WriteString("\n")
 
 	if result.PollCount > 0 {
@@ -294,7 +303,7 @@ func renderDeadLetterRetryResult(result deadLetterRetryResult) string {
 		b.WriteString(infoLine("Wait Timed Out", "true"))
 	}
 	if result.FollowUpError != "" {
-		b.WriteString(infoLine("Follow-up Error", result.FollowUpError))
+		b.WriteString(infoLine("Follow-up Error", sanitizeStatusText(result.FollowUpError)))
 	}
 	if result.FollowUp == nil {
 		return b.String()
@@ -305,9 +314,9 @@ func renderDeadLetterRetryResult(result deadLetterRetryResult) string {
 	b.WriteString(infoLine("Observed At", fallbackText(result.FollowUp.ObservedAt)))
 	b.WriteString(infoLine("Dead-lettered", fmt.Sprintf("%t", result.FollowUp.IsDeadLettered)))
 	b.WriteString(infoLine("Retryable", fmt.Sprintf("%t", result.FollowUp.CanRetry)))
-	b.WriteString(infoLine("Latest Status", fallbackText(result.FollowUp.LatestStatusSubtype)))
-	b.WriteString(infoLine("Latest Family", fallbackText(result.FollowUp.LatestStatusSubtypeFamily)))
-	b.WriteString(infoLine("Latest Reason", fallbackText(result.FollowUp.LatestDeadLetterReason)))
+	b.WriteString(infoLine("Latest Status", sanitizeStatusText(fallbackText(result.FollowUp.LatestStatusSubtype))))
+	b.WriteString(infoLine("Latest Family", sanitizeStatusText(fallbackText(result.FollowUp.LatestStatusSubtypeFamily))))
+	b.WriteString(infoLine("Latest Reason", sanitizeStatusText(fallbackText(result.FollowUp.LatestDeadLetterReason))))
 	b.WriteString(infoLine("Retry Attempt", fmt.Sprintf("%d", result.FollowUp.LatestRetryAttempt)))
 	b.WriteString(infoLine("Dispatch Ref", fallbackText(result.FollowUp.LatestDispatchReference)))
 	if result.FollowUp.BackgroundTask == nil {
@@ -316,7 +325,7 @@ func renderDeadLetterRetryResult(result deadLetterRetryResult) string {
 	}
 
 	b.WriteString(infoLine("Task ID", result.FollowUp.BackgroundTask.TaskID))
-	b.WriteString(infoLine("Task Status", result.FollowUp.BackgroundTask.Status))
+	b.WriteString(infoLine("Task Status", sanitizeStatusText(result.FollowUp.BackgroundTask.Status)))
 	b.WriteString(infoLine("Task Attempts", fmt.Sprintf("%d", result.FollowUp.BackgroundTask.AttemptCount)))
 	b.WriteString(infoLine("Next Retry", fallbackText(result.FollowUp.BackgroundTask.NextRetryAt)))
 	return b.String()

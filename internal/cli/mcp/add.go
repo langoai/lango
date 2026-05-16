@@ -101,13 +101,14 @@ Examples:
 				return fmt.Errorf("save config: %w", err)
 			}
 
-			fmt.Printf("MCP server %q added to %s scope (%s).\n", name, scope, path)
-			fmt.Printf("  Transport: %s\n", transport)
+			out := cmd.OutOrStdout()
+			fmt.Fprintf(out, "MCP server %q added to %s scope (%s).\n", name, scope, path)
+			fmt.Fprintf(out, "  Transport: %s\n", transport)
 			if command != "" {
-				fmt.Printf("  Command:   %s %s\n", command, rawArgs)
+				fmt.Fprintf(out, "  Command:   %s %s\n", command, rawArgs)
 			}
 			if url != "" {
-				fmt.Printf("  URL:       %s\n", url)
+				fmt.Fprintf(out, "  URL:       %s\n", url)
 			}
 			return nil
 		},

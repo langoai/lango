@@ -1,9 +1,7 @@
 package agent
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
@@ -13,13 +11,19 @@ import (
 )
 
 func newGraphCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
-	var jsonOutput bool
+	var output string
 
 	cmd := &cobra.Command{
-		Use:   "graph <session-key>",
-		Short: "Show delegation graph for a session",
-		Args:  cobra.ExactArgs(1),
+		Use:           "graph <session-key>",
+		Short:         "Show delegation graph for a session",
+		Args:          cobra.ExactArgs(1),
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			output, err := resolveOutput(cmd)
+			if err != nil {
+				return err
+			}
 			sessionKey := args[0]
 
 			boot, err := bootLoader()
@@ -50,18 +54,18 @@ func newGraphCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 
 			graph := turntrace.BuildDelegationGraph(sessionKey, traces, allEvents)
 
-			if jsonOutput {
-				return json.NewEncoder(os.Stdout).Encode(graph)
+			if output == "json" {
+				return printPrettyJSON(cmd.OutOrStdout(), graph)
 			}
 
 			if len(graph.Agents) == 0 {
-				fmt.Println("No delegation data found for this session.")
+				fmt.Fprintln(cmd.OutOrStdout(), "No delegation data found for this session.")
 				return nil
 			}
 
-			fmt.Printf("Delegation graph for session: %s\n\n", sessionKey)
+			fmt.Fprintf(cmd.OutOrStdout(), "Delegation graph for session: %s\n\n", sessionKey)
 
-			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
 			fmt.Fprintln(w, "AGENT\tIN\tOUT\tTOOL CALLS")
 			for _, node := range graph.Agents {
 				fmt.Fprintf(w, "%s\t%d\t%d\t%d\n",
@@ -70,9 +74,9 @@ func newGraphCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 			_ = w.Flush()
 
 			if len(graph.Edges) > 0 {
-				fmt.Printf("\nEdges (%d):\n", len(graph.Edges))
+				fmt.Fprintf(cmd.OutOrStdout(), "\nEdges (%d):\n", len(graph.Edges))
 				for _, edge := range graph.Edges {
-					fmt.Printf("  %s → %s  (%s)\n", edge.From, edge.To, edge.Timestamp.Format("15:04:05"))
+					fmt.Fprintf(cmd.OutOrStdout(), "  %s → %s  (%s)\n", edge.From, edge.To, edge.Timestamp.Format("15:04:05"))
 				}
 			}
 
@@ -80,6 +84,6 @@ func newGraphCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
+	cmd.Flags().StringVar(&output, "output", "table", "Output format: table or json")
 	return cmd
 }

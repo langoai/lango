@@ -1,9 +1,7 @@
 package agent
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
@@ -21,15 +19,21 @@ type toolCategoryInfo struct {
 
 func newToolsCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 	var (
-		jsonOutput bool
-		category   string
+		output   string
+		category string
 	)
 
 	cmd := &cobra.Command{
-		Use:   "tools",
-		Short: "List tool categories and their availability based on config",
-		Long:  "Show which tool categories are available given the current configuration. Individual tools are registered at runtime when the server starts.",
+		Use:           "tools",
+		Short:         "List tool categories and their availability based on config",
+		Long:          "Show which tool categories are available given the current configuration. Individual tools are registered at runtime when the server starts.",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			output, err := resolveOutput(cmd)
+			if err != nil {
+				return err
+			}
 			cfg, err := cfgLoader()
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
@@ -47,22 +51,20 @@ func newToolsCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 				categories = filtered
 			}
 
-			if jsonOutput {
-				enc := json.NewEncoder(os.Stdout)
-				enc.SetIndent("", "  ")
-				return enc.Encode(categories)
+			if output == "json" {
+				return printPrettyJSON(cmd.OutOrStdout(), categories)
 			}
 
 			if len(categories) == 0 {
 				if category != "" {
-					fmt.Printf("No tool category %q found.\n", category)
+					fmt.Fprintf(cmd.OutOrStdout(), "No tool category %q found.\n", category)
 				} else {
-					fmt.Println("No tool categories configured.")
+					fmt.Fprintln(cmd.OutOrStdout(), "No tool categories configured.")
 				}
 				return nil
 			}
 
-			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
 			fmt.Fprintln(w, "CATEGORY\tENABLED\tDESCRIPTION")
 			for _, c := range categories {
 				enabled := "yes"
@@ -75,7 +77,7 @@ func newToolsCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
+	cmd.Flags().StringVar(&output, "output", "table", "Output format: table or json")
 	cmd.Flags().StringVar(&category, "category", "", "Filter by category name")
 
 	return cmd

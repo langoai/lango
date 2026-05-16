@@ -1,14 +1,27 @@
 package librarian
 
 import (
+	"bytes"
 	"testing"
 
+	"github.com/langoai/lango/internal/bootstrap"
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/testutil"
 )
+
+func executeLibrarianCmd(t *testing.T, cmd *cobra.Command, args ...string) (string, error) {
+	t.Helper()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs(args)
+	err := cmd.Execute()
+	return out.String(), err
+}
 
 func TestNewLibrarianCmd_Structure(t *testing.T) {
 	cfg := config.DefaultConfig()
@@ -43,9 +56,10 @@ func TestStatusCmd_HappyPath(t *testing.T) {
 	cfg.Librarian.AutoSaveConfidence = "high"
 	cmd := NewLibrarianCmd(testutil.FakeCfgLoader(cfg), testutil.FakeBootLoader(t, cfg))
 
-	result := testutil.ExecCmdOK(t, cmd, "status")
-	assert.Contains(t, result.Stdout, "Librarian Status")
-	assert.Contains(t, result.Stdout, "Enabled:               true")
+	out, err := executeLibrarianCmd(t, cmd, "status")
+	require.NoError(t, err)
+	assert.Contains(t, out, "Librarian Status")
+	assert.Contains(t, out, "Enabled:               true")
 }
 
 func TestStatusCmd_JSONOutput(t *testing.T) {
@@ -55,44 +69,71 @@ func TestStatusCmd_JSONOutput(t *testing.T) {
 	cfg.Librarian.Model = "claude-4"
 	cmd := NewLibrarianCmd(testutil.FakeCfgLoader(cfg), testutil.FakeBootLoader(t, cfg))
 
-	result := testutil.ExecCmdOK(t, cmd, "status", "--json")
-	assert.Contains(t, result.Stdout, `"enabled": false`)
-	assert.Contains(t, result.Stdout, `"provider": "anthropic"`)
-	assert.Contains(t, result.Stdout, `"model": "claude-4"`)
+	out, err := executeLibrarianCmd(t, cmd, "status", "--output", "json")
+	require.NoError(t, err)
+	assert.Contains(t, out, `"enabled": false`)
+	assert.Contains(t, out, `"provider": "anthropic"`)
+	assert.Contains(t, out, `"model": "claude-4"`)
+}
+
+func TestStatusCmd_InvalidOutputFailsBeforeConfigLoad(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cmd := NewLibrarianCmd(func() (*config.Config, error) {
+		t.Fatal("config loader should not be called for invalid output")
+		return nil, nil
+	}, testutil.FakeBootLoader(t, cfg))
+
+	_, err := executeLibrarianCmd(t, cmd, "status", "--output", "yaml")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `unknown output format "yaml"`)
 }
 
 func TestStatusCmd_ConfigError(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cmd := NewLibrarianCmd(testutil.FailCfgLoader(assert.AnError), testutil.FakeBootLoader(t, cfg))
 
-	result := testutil.ExecCmd(t, cmd, "status")
-	require.Error(t, result.Err)
-	assert.Contains(t, result.Err.Error(), "load config")
+	_, err := executeLibrarianCmd(t, cmd, "status")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "load config")
 }
 
 func TestInquiriesCmd_EmptyDB(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cmd := NewLibrarianCmd(testutil.FakeCfgLoader(cfg), testutil.FakeBootLoader(t, cfg))
 
-	result := testutil.ExecCmdOK(t, cmd, "inquiries")
-	assert.Contains(t, result.Stdout, "No pending inquiries.")
+	out, err := executeLibrarianCmd(t, cmd, "inquiries")
+	require.NoError(t, err)
+	assert.Contains(t, out, "No pending inquiries.")
 }
 
 func TestInquiriesCmd_JSONEmptyDB(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cmd := NewLibrarianCmd(testutil.FakeCfgLoader(cfg), testutil.FakeBootLoader(t, cfg))
 
-	result := testutil.ExecCmdOK(t, cmd, "inquiries", "--json")
-	assert.Contains(t, result.Stdout, "[]")
+	out, err := executeLibrarianCmd(t, cmd, "inquiries", "--output", "json")
+	require.NoError(t, err)
+	assert.Contains(t, out, "[]")
+}
+
+func TestInquiriesCmd_InvalidOutputFailsBeforeBootLoad(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cmd := NewLibrarianCmd(testutil.FakeCfgLoader(cfg), func() (*bootstrap.Result, error) {
+		t.Fatal("boot loader should not be called for invalid output")
+		return nil, nil
+	})
+
+	_, err := executeLibrarianCmd(t, cmd, "inquiries", "--output", "yaml")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `unknown output format "yaml"`)
 }
 
 func TestInquiriesCmd_BootError(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cmd := NewLibrarianCmd(testutil.FakeCfgLoader(cfg), testutil.FailBootLoader(assert.AnError))
 
-	result := testutil.ExecCmd(t, cmd, "inquiries")
-	require.Error(t, result.Err)
-	assert.Contains(t, result.Err.Error(), "bootstrap")
+	_, err := executeLibrarianCmd(t, cmd, "inquiries")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "bootstrap")
 }
 
 func TestInquiriesCmd_HasLimitFlag(t *testing.T) {

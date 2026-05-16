@@ -31,14 +31,14 @@ func newPricingStatusCmd(cfgLoader func() (*config.Config, error)) *cobra.Comman
 			}
 
 			if !cfg.Economy.Enabled || !cfg.Economy.Pricing.Enabled {
-				fmt.Println("Dynamic pricing is disabled.")
+				fmt.Fprintln(cmd.OutOrStdout(), "Dynamic pricing is disabled.")
 				return nil
 			}
 
-			fmt.Println("Pricing Configuration:")
-			fmt.Printf("  Trust Discount:  %.0f%%\n", cfg.Economy.Pricing.TrustDiscount*100)
-			fmt.Printf("  Volume Discount: %.0f%%\n", cfg.Economy.Pricing.VolumeDiscount*100)
-			fmt.Printf("  Min Price:       %s USDC\n", cfg.Economy.Pricing.MinPrice)
+			fmt.Fprintln(cmd.OutOrStdout(), "Pricing Configuration:")
+			fmt.Fprintf(cmd.OutOrStdout(), "  Trust Discount:  %.0f%%\n", cfg.Economy.Pricing.TrustDiscount*100)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Volume Discount: %.0f%%\n", cfg.Economy.Pricing.VolumeDiscount*100)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Min Price:       %s USDC\n", cfg.Economy.Pricing.MinPrice)
 			return nil
 		},
 	}

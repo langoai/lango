@@ -34,10 +34,10 @@ func (c *SecurityCheck) Run(ctx context.Context, cfg *config.Config) Result {
 
 	// 1. Check Provider
 	switch cfg.Security.Signer.Provider {
-	case "enclave":
-		// Most secure option — no warnings
 	case "rpc":
 		// Production-ready option — no warnings
+	case "aws-kms", "gcp-kms", "azure-kv", "pkcs11":
+		// KMS-backed providers are production-ready when configured correctly.
 	case "local":
 		issues = append(issues, "Using 'local' security provider (not recommended for production)")
 		if status < StatusWarn {

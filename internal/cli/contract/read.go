@@ -1,7 +1,6 @@
 package contract
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -20,13 +19,19 @@ func newReadCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 		method  string
 		argsStr string
 		chainID int64
-		asJSON  bool
+		output  string
 	)
 
 	cmd := &cobra.Command{
-		Use:   "read",
-		Short: "Read data from a smart contract (view/pure call)",
+		Use:           "read",
+		Short:         "Read data from a smart contract (view/pure call)",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			output, err := resolveOutput(cmd)
+			if err != nil {
+				return err
+			}
 			cfg, err := cfgLoader()
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
@@ -65,13 +70,12 @@ func newReadCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 				return fmt.Errorf("method %q not found in ABI", method)
 			}
 
-			fmt.Fprintf(os.Stderr, "Note: contract read requires a running RPC connection.\n")
-			fmt.Fprintf(os.Stderr, "Use 'lango serve' and the contract_read agent tool for live queries.\n\n")
+			fmt.Fprintln(cmd.ErrOrStderr(), "Note: contract read requires a running RPC connection.")
+			fmt.Fprintln(cmd.ErrOrStderr(), "Use 'lango serve' and the contract_read agent tool for live queries.")
+			fmt.Fprintln(cmd.ErrOrStderr())
 
-			if asJSON {
-				enc := json.NewEncoder(os.Stdout)
-				enc.SetIndent("", "  ")
-				return enc.Encode(map[string]interface{}{
+			if output == "json" {
+				return printJSON(cmd.OutOrStdout(), map[string]interface{}{
 					"address": address,
 					"method":  method,
 					"args":    callArgs,
@@ -80,13 +84,13 @@ func newReadCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 				})
 			}
 
-			fmt.Printf("Contract Read (validated)\n")
-			fmt.Printf("  Address:  %s\n", address)
-			fmt.Printf("  Method:   %s\n", method)
+			fmt.Fprintln(cmd.OutOrStdout(), "Contract Read (validated)")
+			fmt.Fprintf(cmd.OutOrStdout(), "  Address:  %s\n", address)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Method:   %s\n", method)
 			if len(callArgs) > 0 {
-				fmt.Printf("  Args:     %v\n", callArgs)
+				fmt.Fprintf(cmd.OutOrStdout(), "  Args:     %v\n", callArgs)
 			}
-			fmt.Printf("  Chain ID: %d\n", chainID)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Chain ID: %d\n", chainID)
 
 			return nil
 		},
@@ -97,7 +101,7 @@ func newReadCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 	cmd.Flags().StringVar(&method, "method", "", "Method name to call")
 	cmd.Flags().StringVar(&argsStr, "args", "", "Comma-separated method arguments")
 	cmd.Flags().Int64Var(&chainID, "chain-id", 0, "Chain ID (default: from config)")
-	cmd.Flags().BoolVar(&asJSON, "output", false, "Output as JSON")
+	cmd.Flags().StringVar(&output, "output", "table", "Output format: table or json")
 
 	_ = cmd.MarkFlagRequired("address")
 	_ = cmd.MarkFlagRequired("abi")

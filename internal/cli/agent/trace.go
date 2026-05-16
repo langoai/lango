@@ -1,9 +1,7 @@
 package agent
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 	"text/tabwriter"
 	"time"
 
@@ -27,6 +25,7 @@ func newTraceCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 	}
 	cmd.AddCommand(newTraceListCmd(bootLoader))
 	cmd.AddCommand(newTraceDetailCmd(bootLoader))
+	cmd.AddCommand(newTraceMetricsCmd(bootLoader))
 	return cmd
 }
 
@@ -35,13 +34,19 @@ func newTraceListCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comman
 		sessionKey string
 		outcomeStr string
 		limit      int
-		jsonOutput bool
+		output     string
 	)
 
 	cmd := &cobra.Command{
-		Use:   "list",
-		Short: "List recent turn traces",
+		Use:           "list",
+		Short:         "List recent turn traces",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			output, err := resolveOutput(cmd)
+			if err != nil {
+				return err
+			}
 			boot, err := bootLoader()
 			if err != nil {
 				return fmt.Errorf("bootstrap: %w", err)
@@ -69,16 +74,16 @@ func newTraceListCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comman
 				return fmt.Errorf("query traces: %w", err)
 			}
 
-			if jsonOutput {
-				return json.NewEncoder(os.Stdout).Encode(traces)
+			if output == "json" {
+				return printPrettyJSON(cmd.OutOrStdout(), traces)
 			}
 
 			if len(traces) == 0 {
-				fmt.Println("No traces found.")
+				fmt.Fprintln(cmd.OutOrStdout(), "No traces found.")
 				return nil
 			}
 
-			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
 			fmt.Fprintln(w, "TRACE ID\tOUTCOME\tSESSION\tDURATION\tSTARTED")
 			for _, t := range traces {
 				dur := "-"
@@ -100,19 +105,25 @@ func newTraceListCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comman
 	cmd.Flags().StringVar(&sessionKey, "session", "", "Filter by session key")
 	cmd.Flags().StringVar(&outcomeStr, "outcome", "", "Filter by outcome (e.g., timeout, loop_detected)")
 	cmd.Flags().IntVar(&limit, "limit", 20, "Maximum traces to return")
-	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
+	cmd.Flags().StringVar(&output, "output", "table", "Output format: table or json")
 
 	return cmd
 }
 
 func newTraceDetailCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
-	var jsonOutput bool
+	var output string
 
 	cmd := &cobra.Command{
-		Use:   "show <trace-id>",
-		Short: "Show detailed event timeline for a trace",
-		Args:  cobra.ExactArgs(1),
+		Use:           "show <trace-id>",
+		Short:         "Show detailed event timeline for a trace",
+		Args:          cobra.ExactArgs(1),
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			output, err := resolveOutput(cmd)
+			if err != nil {
+				return err
+			}
 			traceID := args[0]
 
 			boot, err := bootLoader()
@@ -132,17 +143,17 @@ func newTraceDetailCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comm
 				return fmt.Errorf("query events: %w", err)
 			}
 
-			if jsonOutput {
-				return json.NewEncoder(os.Stdout).Encode(events)
+			if output == "json" {
+				return printPrettyJSON(cmd.OutOrStdout(), events)
 			}
 
 			if len(events) == 0 {
-				fmt.Printf("No events found for trace %s\n", traceID)
+				fmt.Fprintf(cmd.OutOrStdout(), "No events found for trace %s\n", traceID)
 				return nil
 			}
 
-			fmt.Printf("Trace: %s (%d events)\n\n", traceID, len(events))
-			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+			fmt.Fprintf(cmd.OutOrStdout(), "Trace: %s (%d events)\n\n", traceID, len(events))
+			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
 			fmt.Fprintln(w, "SEQ\tTIME\tTYPE\tAGENT\tTOOL\tPAYLOAD")
 			for _, ev := range events {
 				payload := truncStr(ev.PayloadJSON, 60)
@@ -162,7 +173,7 @@ func newTraceDetailCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comm
 		},
 	}
 
-	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
+	cmd.Flags().StringVar(&output, "output", "table", "Output format: table or json")
 	return cmd
 }
 

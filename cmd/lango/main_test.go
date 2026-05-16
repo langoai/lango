@@ -1,27 +1,39 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"errors"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
 	"os"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
 	"github.com/langoai/lango/internal/app"
+	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/cli/cockpit"
 	"github.com/langoai/lango/internal/cli/cockpit/pages"
+	"github.com/langoai/lango/internal/cli/tui"
 	"github.com/langoai/lango/internal/collabview"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/cron"
 	"github.com/langoai/lango/internal/librarian"
+	"github.com/langoai/lango/internal/logging"
 	"github.com/langoai/lango/internal/mission"
 	"github.com/langoai/lango/internal/postadjudicationstatus"
 	"github.com/langoai/lango/internal/proposal"
+	"github.com/langoai/lango/internal/session"
 )
 
 type fakeServeApp struct {
@@ -36,6 +48,22 @@ func (f *fakeServeApp) Stop(ctx context.Context) error {
 	}
 	return nil
 }
+
+type stubCockpitSessionStore struct{}
+
+func (stubCockpitSessionStore) Create(*session.Session) error               { return nil }
+func (stubCockpitSessionStore) Get(string) (*session.Session, error)        { return nil, nil }
+func (stubCockpitSessionStore) Update(*session.Session) error               { return nil }
+func (stubCockpitSessionStore) Delete(string) error                         { return nil }
+func (stubCockpitSessionStore) AppendMessage(string, session.Message) error { return nil }
+func (stubCockpitSessionStore) AnnotateTimeout(string, string) error        { return nil }
+func (stubCockpitSessionStore) End(string) error                            { return nil }
+func (stubCockpitSessionStore) Close() error                                { return nil }
+func (stubCockpitSessionStore) ListSessions(context.Context) ([]session.SessionSummary, error) {
+	return nil, nil
+}
+func (stubCockpitSessionStore) GetSalt(string) ([]byte, error) { return nil, nil }
+func (stubCockpitSessionStore) SetSalt(string, []byte) error   { return nil }
 
 func TestWatchServeSignals_FirstSignalStartsGracefulShutdown(t *testing.T) {
 	t.Parallel()
@@ -170,7 +198,7 @@ func TestRunCockpitBuildDepsCarriesMissionService(t *testing.T) {
 	learning := cockpit.NewLearningSuggestionBuffer(nil)
 	activity := cockpit.NewMissionActivityBuffer()
 
-	deps := buildMissionControlDeps(application, cfg, "sess-1", nil, "", nil, pending, learning, activity)
+	deps := buildMissionControlDeps(application, cfg, "", "sess-1", nil, "", nil, pending, learning, activity)
 
 	assert.Same(t, svc, deps.MissionService)
 	assert.Same(t, store, deps.MissionReader)
@@ -185,6 +213,61 @@ func TestRunCockpitBuildDepsCarriesMissionService(t *testing.T) {
 	assert.Same(t, collabRuntime, deps.CollabRuntime)
 	assert.Same(t, learning, deps.LearningBuffer)
 	assert.Same(t, activity, deps.ActivityBuffer)
+}
+
+func TestRegisterCockpitPages_AlwaysRegistersStatusAndSettings(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.DefaultConfig()
+	application := &app.App{
+		Store: stubCockpitSessionStore{},
+	}
+	model := cockpit.New(cockpit.Deps{})
+	chatModel := model.ChatModel()
+	require.NotNil(t, chatModel)
+
+	registerCockpitPages(
+		model,
+		application,
+		cfg,
+		"",
+		nil,
+		cockpit.Deps{},
+		chatModel,
+	)
+
+	_, hasStatus := model.Pages()[cockpit.PageStatus]
+	_, hasSettings := model.Pages()[cockpit.PageSettings]
+	require.True(t, hasStatus, "status page should always be registered")
+	require.True(t, hasSettings, "settings page should always be registered")
+	assert.False(t, model.Sidebar().IsDisabled(cockpit.PageStatus.String()))
+	assert.False(t, model.Sidebar().IsDisabled(cockpit.PageSettings.String()))
+}
+
+func TestRegisterCockpitPages_AlwaysRegistersDeadLetters(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.DefaultConfig()
+	application := &app.App{
+		Store: stubCockpitSessionStore{},
+	}
+	model := cockpit.New(cockpit.Deps{})
+	chatModel := model.ChatModel()
+	require.NotNil(t, chatModel)
+
+	registerCockpitPages(
+		model,
+		application,
+		cfg,
+		"",
+		nil,
+		cockpit.Deps{},
+		chatModel,
+	)
+
+	_, hasDeadLetters := model.Pages()[cockpit.PageDeadLetters]
+	require.True(t, hasDeadLetters, "dead letters page should always be registered")
+	assert.False(t, model.Sidebar().IsDisabled(cockpit.PageDeadLetters.String()))
 }
 
 func TestNewRootCmdRoutesInteractiveRootToWorkbench(t *testing.T) {
@@ -263,6 +346,627 @@ func TestChatCmdRoutesToExplicitChatRunner(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, called)
 	assert.Equal(t, "review", gotMode)
+}
+
+func TestCockpitCmd_NonInteractiveReturnsActionableError(t *testing.T) {
+	prevInteractive := isInteractiveFn
+	defer func() { isInteractiveFn = prevInteractive }()
+
+	isInteractiveFn = func() bool { return false }
+
+	cmd := newRootCmd()
+	cmd.SetArgs([]string{"cockpit"})
+
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cockpit requires an interactive terminal")
+}
+
+func TestChatCmd_NonInteractiveReturnsActionableError(t *testing.T) {
+	prevInteractive := isInteractiveFn
+	defer func() { isInteractiveFn = prevInteractive }()
+
+	isInteractiveFn = func() bool { return false }
+
+	cmd := newRootCmd()
+	cmd.SetArgs([]string{"chat"})
+
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "chat requires an interactive terminal")
+}
+
+func TestNewRootCmd_NonInteractiveBareRootWritesHelpToCommandOutput(t *testing.T) {
+	prevInteractive := isInteractiveFn
+	defer func() { isInteractiveFn = prevInteractive }()
+
+	isInteractiveFn = func() bool { return false }
+
+	cmd := newRootCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs(nil)
+
+	err := cmd.Execute()
+	require.NoError(t, err)
+	assert.Contains(t, out.String(), "Lango is a high-performance AI agent built with Go")
+	assert.Contains(t, out.String(), "Usage:")
+}
+
+func TestNewRootCmd_InvalidModeReturnsActionableError(t *testing.T) {
+	prevInteractive := isInteractiveFn
+	prevRunWorkbench := runWorkbenchFn
+	defer func() {
+		isInteractiveFn = prevInteractive
+		runWorkbenchFn = prevRunWorkbench
+	}()
+
+	isInteractiveFn = func() bool { return true }
+	runWorkbenchFn = func(mode string) error {
+		return fmt.Errorf("unknown mode %q; valid modes can be listed via /mode", mode)
+	}
+
+	cmd := newRootCmd()
+	cmd.SetArgs([]string{"--mode", "does-not-exist"})
+
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `unknown mode "does-not-exist"`)
+}
+
+func TestCockpitCmd_InvalidModeReturnsActionableError(t *testing.T) {
+	prevInteractive := isInteractiveFn
+	prevRunCockpit := runCockpitFn
+	defer func() {
+		isInteractiveFn = prevInteractive
+		runCockpitFn = prevRunCockpit
+	}()
+
+	isInteractiveFn = func() bool { return true }
+	runCockpitFn = func(mode string) error {
+		return fmt.Errorf("unknown mode %q; valid modes can be listed via /mode", mode)
+	}
+
+	cmd := newRootCmd()
+	cmd.SetArgs([]string{"cockpit", "--mode", "does-not-exist"})
+
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `unknown mode "does-not-exist"`)
+}
+
+func TestChatCmd_InvalidModeReturnsActionableError(t *testing.T) {
+	prevInteractive := isInteractiveFn
+	prevRunChat := runChatFn
+	defer func() {
+		isInteractiveFn = prevInteractive
+		runChatFn = prevRunChat
+	}()
+
+	isInteractiveFn = func() bool { return true }
+	runChatFn = func(mode string) error {
+		return fmt.Errorf("unknown mode %q; valid modes can be listed via /mode", mode)
+	}
+
+	cmd := newRootCmd()
+	cmd.SetArgs([]string{"chat", "--mode", "does-not-exist"})
+
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `unknown mode "does-not-exist"`)
+}
+
+func TestRunMain_BrokerModeWritesErrorToInjectedStderr(t *testing.T) {
+	origSandbox := isSandboxWorkerModeFn
+	origBroker := isStorageBrokerModeFn
+	origRunBroker := runStorageBrokerServerFn
+	origStdin := mainStdin
+	origStdout := mainStdout
+	origStderr := mainStderr
+	t.Cleanup(func() {
+		isSandboxWorkerModeFn = origSandbox
+		isStorageBrokerModeFn = origBroker
+		runStorageBrokerServerFn = origRunBroker
+		mainStdin = origStdin
+		mainStdout = origStdout
+		mainStderr = origStderr
+	})
+
+	isSandboxWorkerModeFn = func() bool { return false }
+	isStorageBrokerModeFn = func() bool { return true }
+	runStorageBrokerServerFn = func(in io.Reader, out io.Writer) error {
+		return errors.New("broker failed")
+	}
+	mainStdin = bytes.NewBuffer(nil)
+	mainStdout = &bytes.Buffer{}
+	var errBuf bytes.Buffer
+	mainStderr = &errBuf
+
+	code := runMain()
+
+	assert.Equal(t, 1, code)
+	assert.Contains(t, errBuf.String(), "broker failed")
+}
+
+func TestRunMain_BrokerModeUsesInjectedSTDIO(t *testing.T) {
+	origSandbox := isSandboxWorkerModeFn
+	origBroker := isStorageBrokerModeFn
+	origRunBroker := runStorageBrokerServerFn
+	origStdin := mainStdin
+	origStdout := mainStdout
+	origStderr := mainStderr
+	t.Cleanup(func() {
+		isSandboxWorkerModeFn = origSandbox
+		isStorageBrokerModeFn = origBroker
+		runStorageBrokerServerFn = origRunBroker
+		mainStdin = origStdin
+		mainStdout = origStdout
+		mainStderr = origStderr
+	})
+
+	isSandboxWorkerModeFn = func() bool { return false }
+	isStorageBrokerModeFn = func() bool { return true }
+
+	in := bytes.NewBufferString("broker-input")
+	var out bytes.Buffer
+	mainStdin = in
+	mainStdout = &out
+	mainStderr = &bytes.Buffer{}
+
+	called := false
+	runStorageBrokerServerFn = func(gotIn io.Reader, gotOut io.Writer) error {
+		called = true
+		assert.Same(t, in, gotIn)
+		assert.Same(t, &out, gotOut)
+		_, err := gotOut.Write([]byte("broker-output"))
+		return err
+	}
+
+	code := runMain()
+
+	assert.Equal(t, 0, code)
+	assert.True(t, called)
+	assert.Equal(t, "broker-output", out.String())
+}
+
+func TestRunMain_WorkerModeShortCircuitsToWorkerSeam(t *testing.T) {
+	origSandbox := isSandboxWorkerModeFn
+	origRunWorker := runSandboxWorkerFn
+	origBroker := isStorageBrokerModeFn
+	origNewRoot := newRootCmdFn
+	t.Cleanup(func() {
+		isSandboxWorkerModeFn = origSandbox
+		runSandboxWorkerFn = origRunWorker
+		isStorageBrokerModeFn = origBroker
+		newRootCmdFn = origNewRoot
+	})
+
+	isSandboxWorkerModeFn = func() bool { return true }
+	workerCalled := false
+	runSandboxWorkerFn = func() { workerCalled = true }
+
+	isStorageBrokerModeFn = func() bool {
+		t.Fatal("broker mode should not be checked after worker short-circuit")
+		return false
+	}
+	newRootCmdFn = func() *cobra.Command {
+		t.Fatal("root command should not be constructed after worker short-circuit")
+		return nil
+	}
+
+	code := runMain()
+
+	assert.Equal(t, 0, code)
+	assert.True(t, workerCalled)
+}
+
+func TestRunMain_RootCommandErrorWritesToInjectedStderr(t *testing.T) {
+	origSandbox := isSandboxWorkerModeFn
+	origBroker := isStorageBrokerModeFn
+	origNewRoot := newRootCmdFn
+	origStderr := mainStderr
+	t.Cleanup(func() {
+		isSandboxWorkerModeFn = origSandbox
+		isStorageBrokerModeFn = origBroker
+		newRootCmdFn = origNewRoot
+		mainStderr = origStderr
+	})
+
+	isSandboxWorkerModeFn = func() bool { return false }
+	isStorageBrokerModeFn = func() bool { return false }
+	newRootCmdFn = func() *cobra.Command {
+		return &cobra.Command{
+			Use: "lango",
+			RunE: func(cmd *cobra.Command, args []string) error {
+				return errors.New("root execute failed")
+			},
+		}
+	}
+	var errBuf bytes.Buffer
+	mainStderr = &errBuf
+
+	code := runMain()
+
+	assert.Equal(t, 1, code)
+	assert.Contains(t, errBuf.String(), "root execute failed")
+}
+
+func TestVersionCmd_WritesToCommandOutput(t *testing.T) {
+	origVersion := Version
+	origBuildTime := BuildTime
+	t.Cleanup(func() {
+		Version = origVersion
+		BuildTime = origBuildTime
+	})
+
+	Version = "9.9.9-test"
+	BuildTime = "2026-05-14T00:00:00Z"
+
+	cmd := versionCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+
+	err := cmd.Execute()
+	require.NoError(t, err)
+	assert.Equal(t, "lango 9.9.9-test (built 2026-05-14T00:00:00Z)\n", out.String())
+}
+
+func TestVersionCmd_IgnoresRootModeFlag(t *testing.T) {
+	origVersion := Version
+	origBuildTime := BuildTime
+	t.Cleanup(func() {
+		Version = origVersion
+		BuildTime = origBuildTime
+	})
+
+	Version = "9.9.9-test"
+	BuildTime = "2026-05-14T00:00:00Z"
+
+	cmd := newRootCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"version", "--mode", "research"})
+
+	err := cmd.Execute()
+	require.NoError(t, err)
+	assert.Equal(t, "lango 9.9.9-test (built 2026-05-14T00:00:00Z)\n", out.String())
+}
+
+func TestHealthCmd_WritesToCommandOutput(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = listener.Close() })
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	server := &http.Server{Handler: mux}
+	go func() { _ = server.Serve(listener) }()
+	t.Cleanup(func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		_ = server.Shutdown(shutdownCtx)
+	})
+
+	port := listener.Addr().(*net.TCPAddr).Port
+
+	cmd := healthCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"--port", strconv.Itoa(port)})
+
+	err = cmd.Execute()
+	require.NoError(t, err)
+	assert.Equal(t, "ok\n", out.String())
+}
+
+func TestHealthCmd_IgnoresRootModeFlag(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = listener.Close() })
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	server := &http.Server{Handler: mux}
+	go func() { _ = server.Serve(listener) }()
+	t.Cleanup(func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		_ = server.Shutdown(shutdownCtx)
+	})
+
+	port := listener.Addr().(*net.TCPAddr).Port
+
+	cmd := newRootCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"health", "--mode", "research", "--port", strconv.Itoa(port)})
+
+	err = cmd.Execute()
+	require.NoError(t, err)
+	assert.Equal(t, "ok\n", out.String())
+}
+
+func TestHealthCmd_Non200ReturnsActionableErrorWithoutSuccessOutput(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = listener.Close() })
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	})
+	server := &http.Server{Handler: mux}
+	go func() { _ = server.Serve(listener) }()
+	t.Cleanup(func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		_ = server.Shutdown(shutdownCtx)
+	})
+
+	port := listener.Addr().(*net.TCPAddr).Port
+
+	cmd := healthCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"--port", strconv.Itoa(port)})
+
+	err = cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unhealthy: status 503")
+	assert.Empty(t, out.String())
+}
+
+func TestHealthCmd_TimeoutReturnsErrorWithoutSuccessOutput(t *testing.T) {
+	origClientFn := newHealthHTTPClientFn
+	t.Cleanup(func() { newHealthHTTPClientFn = origClientFn })
+	newHealthHTTPClientFn = func() *http.Client {
+		return &http.Client{Timeout: 10 * time.Millisecond}
+	}
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = listener.Close() })
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(100 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+	})
+	server := &http.Server{Handler: mux}
+	go func() { _ = server.Serve(listener) }()
+	t.Cleanup(func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		_ = server.Shutdown(shutdownCtx)
+	})
+
+	port := listener.Addr().(*net.TCPAddr).Port
+
+	cmd := healthCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"--port", strconv.Itoa(port)})
+
+	err = cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "health check:")
+	assert.Empty(t, out.String())
+}
+
+func TestRunWorkbench_InvalidModeRejectsBeforeAppBuild(t *testing.T) {
+	origBootLoader := workbenchBootLoaderFn
+	origAppBuilder := workbenchAppBuilderFn
+	t.Cleanup(func() {
+		workbenchBootLoaderFn = origBootLoader
+		workbenchAppBuilderFn = origAppBuilder
+	})
+
+	workbenchBootLoaderFn = func() (*bootstrap.Result, error) {
+		return &bootstrap.Result{
+			Config:      config.DefaultConfig(),
+			ProfileName: "test",
+		}, nil
+	}
+	workbenchAppBuilderFn = func(*bootstrap.Result) (*app.App, error) {
+		t.Fatal("app builder must not run when mode validation fails")
+		return nil, nil
+	}
+
+	err := runWorkbench("does-not-exist")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `unknown mode "does-not-exist"`)
+}
+
+func TestRunCockpit_InvalidModeRejectsBeforeAppBuild(t *testing.T) {
+	origBootLoader := cockpitBootLoaderFn
+	origAppBuilder := cockpitAppBuilderFn
+	t.Cleanup(func() {
+		cockpitBootLoaderFn = origBootLoader
+		cockpitAppBuilderFn = origAppBuilder
+	})
+
+	cockpitBootLoaderFn = func() (*bootstrap.Result, error) {
+		return &bootstrap.Result{
+			Config:      config.DefaultConfig(),
+			ProfileName: "test",
+		}, nil
+	}
+	cockpitAppBuilderFn = func(*bootstrap.Result, app.AppOption) (*app.App, error) {
+		t.Fatal("app builder must not run when mode validation fails")
+		return nil, nil
+	}
+
+	err := runCockpit("does-not-exist")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `unknown mode "does-not-exist"`)
+}
+
+func TestRunChat_InvalidModeRejectsBeforeAppBuild(t *testing.T) {
+	origBootLoader := chatBootLoaderFn
+	origAppBuilder := chatAppBuilderFn
+	t.Cleanup(func() {
+		chatBootLoaderFn = origBootLoader
+		chatAppBuilderFn = origAppBuilder
+	})
+
+	chatBootLoaderFn = func() (*bootstrap.Result, error) {
+		return &bootstrap.Result{
+			Config:      config.DefaultConfig(),
+			ProfileName: "test",
+		}, nil
+	}
+	chatAppBuilderFn = func(*bootstrap.Result) (*app.App, error) {
+		t.Fatal("app builder must not run when mode validation fails")
+		return nil, nil
+	}
+
+	err := runChat("does-not-exist")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `unknown mode "does-not-exist"`)
+}
+
+func TestServeCmd_WritesBannerAndSummaryToCommandOutput(t *testing.T) {
+	origBootLoader := serveBootLoaderFn
+	origLoggingInit := serveLoggingInitFn
+	origLoggingSync := serveLoggingSyncFn
+	origAppBuilder := serveAppBuilderFn
+	origAwaitShutdown := serveAwaitShutdownFn
+	t.Cleanup(func() {
+		serveBootLoaderFn = origBootLoader
+		serveLoggingInitFn = origLoggingInit
+		serveLoggingSyncFn = origLoggingSync
+		serveAppBuilderFn = origAppBuilder
+		serveAwaitShutdownFn = origAwaitShutdown
+	})
+
+	cfg := config.DefaultConfig()
+	serveBootLoaderFn = func() (*bootstrap.Result, error) {
+		return &bootstrap.Result{Config: cfg, ProfileName: "default"}, nil
+	}
+	serveLoggingInitFn = func(logging.LogConfig) error { return nil }
+	serveLoggingSyncFn = func() error { return nil }
+	serveAppBuilderFn = func(boot *bootstrap.Result) (stoppableApplication, error) {
+		return &fakeServeApp{}, nil
+	}
+	serveAwaitShutdownFn = func(ctx context.Context) {}
+
+	cmd := serveCmd()
+	var out, errOut bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errOut)
+
+	err := cmd.Execute()
+	require.NoError(t, err)
+	assert.Contains(t, out.String(), tui.ServeBanner())
+	assert.Contains(t, out.String(), startupSummary(cfg))
+	assert.Empty(t, errOut.String())
+}
+
+func TestRunCockpit_WritesStartupNoticeToInjectedStderr(t *testing.T) {
+	origBootLoader := cockpitBootLoaderFn
+	origLoggingInit := cockpitLoggingInitFn
+	origLoggingSync := cockpitLoggingSyncFn
+	origWriter := cockpitStartupErrWriter
+	origBuilder := cockpitAppBuilderFn
+	t.Cleanup(func() {
+		cockpitBootLoaderFn = origBootLoader
+		cockpitLoggingInitFn = origLoggingInit
+		cockpitLoggingSyncFn = origLoggingSync
+		cockpitStartupErrWriter = origWriter
+		cockpitAppBuilderFn = origBuilder
+	})
+
+	cfg := config.DefaultConfig()
+	cockpitBootLoaderFn = func() (*bootstrap.Result, error) {
+		return &bootstrap.Result{Config: cfg, ProfileName: "default"}, nil
+	}
+	cockpitLoggingInitFn = func(logging.LogConfig) error { return nil }
+	cockpitLoggingSyncFn = func() error { return nil }
+	var errBuf bytes.Buffer
+	cockpitStartupErrWriter = &errBuf
+	cockpitAppBuilderFn = func(boot *bootstrap.Result, mode app.AppOption) (*app.App, error) {
+		return nil, errors.New("app build failed")
+	}
+
+	err := runCockpit("")
+	require.Error(t, err)
+	assert.Contains(t, errBuf.String(), tui.Banner())
+	assert.Contains(t, errBuf.String(), "Initializing cockpit...")
+}
+
+func TestRunWorkbench_WritesStartupNoticeToInjectedStderr(t *testing.T) {
+	origBootLoader := workbenchBootLoaderFn
+	origLoggingInit := workbenchLoggingInitFn
+	origLoggingSync := workbenchLoggingSyncFn
+	origWriter := workbenchStartupErrWriter
+	origBuilder := workbenchAppBuilderFn
+	t.Cleanup(func() {
+		workbenchBootLoaderFn = origBootLoader
+		workbenchLoggingInitFn = origLoggingInit
+		workbenchLoggingSyncFn = origLoggingSync
+		workbenchStartupErrWriter = origWriter
+		workbenchAppBuilderFn = origBuilder
+	})
+
+	cfg := config.DefaultConfig()
+	workbenchBootLoaderFn = func() (*bootstrap.Result, error) {
+		return &bootstrap.Result{Config: cfg, ProfileName: "default"}, nil
+	}
+	workbenchLoggingInitFn = func(logging.LogConfig) error { return nil }
+	workbenchLoggingSyncFn = func() error { return nil }
+	var errBuf bytes.Buffer
+	workbenchStartupErrWriter = &errBuf
+	workbenchAppBuilderFn = func(boot *bootstrap.Result) (*app.App, error) {
+		return nil, errors.New("app build failed")
+	}
+
+	err := runWorkbench("")
+	require.Error(t, err)
+	assert.Contains(t, errBuf.String(), tui.Banner())
+	assert.Contains(t, errBuf.String(), "Initializing workbench...")
+}
+
+func TestRunChat_WritesStartupNoticeToInjectedStderr(t *testing.T) {
+	origBootLoader := chatBootLoaderFn
+	origLoggingInit := chatLoggingInitFn
+	origLoggingSync := chatLoggingSyncFn
+	origWriter := chatStartupErrWriter
+	origBuilder := chatAppBuilderFn
+	t.Cleanup(func() {
+		chatBootLoaderFn = origBootLoader
+		chatLoggingInitFn = origLoggingInit
+		chatLoggingSyncFn = origLoggingSync
+		chatStartupErrWriter = origWriter
+		chatAppBuilderFn = origBuilder
+	})
+
+	cfg := config.DefaultConfig()
+	chatBootLoaderFn = func() (*bootstrap.Result, error) {
+		return &bootstrap.Result{Config: cfg, ProfileName: "default"}, nil
+	}
+	chatLoggingInitFn = func(logging.LogConfig) error { return nil }
+	chatLoggingSyncFn = func() error { return nil }
+	var errBuf bytes.Buffer
+	chatStartupErrWriter = &errBuf
+	chatAppBuilderFn = func(boot *bootstrap.Result) (*app.App, error) {
+		return nil, errors.New("app build failed")
+	}
+
+	err := runChat("")
+	require.Error(t, err)
+	assert.Contains(t, errBuf.String(), tui.Banner())
+	assert.Contains(t, errBuf.String(), "Initializing...")
 }
 
 func TestCockpitCommandHelpTextNoLongerClaimsBareEquivalence(t *testing.T) {

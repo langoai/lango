@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
@@ -50,7 +51,7 @@ See Also:
   lango config   - View/manage configuration profiles
   lango doctor   - Diagnose configuration issues`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runOnboard(profileName, preset)
+			return runOnboard(cmd.OutOrStdout(), profileName, preset)
 		},
 	}
 
@@ -60,7 +61,7 @@ See Also:
 	return cmd
 }
 
-func runOnboard(profileName, preset string) error {
+func runOnboard(out io.Writer, profileName, preset string) error {
 	if preset != "" && !config.IsValidPreset(preset) {
 		return fmt.Errorf("unknown preset %q (valid: minimal, researcher, collaborator, full)", preset)
 	}
@@ -84,7 +85,7 @@ func runOnboard(profileName, preset string) error {
 	tui.SetProfile(profileName)
 
 	if preset != "" {
-		fmt.Printf("\n  Using preset: %s\n\n", preset)
+		fmt.Fprintf(out, "\n  Using preset: %s\n\n", preset)
 	}
 
 	p := tea.NewProgram(NewWizard(initialCfg))
@@ -99,7 +100,7 @@ func runOnboard(profileName, preset string) error {
 	}
 
 	if wizard.Cancelled {
-		fmt.Println("\nOnboard cancelled.")
+		fmt.Fprintln(out, "\nOnboard cancelled.")
 		return nil
 	}
 
@@ -119,7 +120,7 @@ func runOnboard(profileName, preset string) error {
 		}
 	}
 
-	printNextSteps(profileName, cfg)
+	printNextSteps(out, profileName, cfg)
 
 	return nil
 }
@@ -138,11 +139,15 @@ func loadOrDefault(ctx context.Context, store storage.ConfigProfileStore, name, 
 	return nil, false, err
 }
 
-func printNextSteps(profileName string, cfg *config.Config) {
-	fmt.Printf("\n%s Configuration saved to encrypted profile %q\n", tui.CheckPass, profileName)
-	fmt.Println("  Storage: ~/.lango/lango.db")
+func printNextSteps(out io.Writer, profileName string, cfg *config.Config) {
+	fmt.Fprintf(out, "\n%s Configuration saved to encrypted profile %q\n", tui.CheckPass, profileName)
+	fmt.Fprintln(out, "  Storage: ~/.lango/lango.db")
 
-	fmt.Println("\n  Next: lango serve")
+	fmt.Fprintln(out, "\n  Next steps:")
+	fmt.Fprintln(out, "    lango           Open the default mission workbench")
+	fmt.Fprintln(out, "    lango serve     Start the gateway and live runtime")
+	fmt.Fprintln(out, "    lango doctor    Verify configuration and environment")
+	fmt.Fprintln(out, "    lango settings  Fine-tune the full configuration")
 
 	// Recommend features that are currently disabled.
 	type rec struct {
@@ -166,9 +171,9 @@ func printNextSteps(profileName string, cfg *config.Config) {
 	}
 
 	if len(disabled) > 0 {
-		fmt.Println("\n  Recommended features (enable in 'lango settings'):")
+		fmt.Fprintln(out, "\n  Recommended features (enable in 'lango settings'):")
 		for _, r := range disabled {
-			fmt.Printf("    %s %-22s %s\n",
+			fmt.Fprintf(out, "    %s %-22s %s\n",
 				tui.MutedStyle.Render("\u2022"),
 				r.name,
 				tui.MutedStyle.Render("\u2014 "+r.desc),
@@ -177,20 +182,20 @@ func printNextSteps(profileName string, cfg *config.Config) {
 	}
 
 	// Advanced features hint
-	fmt.Println("\n  Advanced features (when needed):")
-	fmt.Printf("    %s %-22s %s\n",
+	fmt.Fprintln(out, "\n  Advanced features (when needed):")
+	fmt.Fprintf(out, "    %s %-22s %s\n",
 		tui.MutedStyle.Render("\u2022"),
 		"P2P Network",
 		tui.MutedStyle.Render("\u2014 collaborate with other agents"),
 	)
-	fmt.Printf("    %s %-22s %s\n",
+	fmt.Fprintf(out, "    %s %-22s %s\n",
 		tui.MutedStyle.Render("\u2022"),
 		"Payment & Economy",
 		tui.MutedStyle.Render("\u2014 on-chain payments and budget management"),
 	)
 
-	fmt.Println("\n  Quick presets:")
-	fmt.Println("    lango config create <name> --preset researcher")
-	fmt.Println("    lango config create <name> --preset collaborator")
-	fmt.Println("    lango config create <name> --preset full")
+	fmt.Fprintln(out, "\n  Quick presets:")
+	fmt.Fprintln(out, "    lango config create <name> --preset researcher")
+	fmt.Fprintln(out, "    lango config create <name> --preset collaborator")
+	fmt.Fprintln(out, "    lango config create <name> --preset full")
 }

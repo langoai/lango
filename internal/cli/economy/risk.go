@@ -29,14 +29,14 @@ func newRiskStatusCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 			}
 
 			if !cfg.Economy.Enabled {
-				fmt.Println("Economy layer is disabled.")
+				fmt.Fprintln(cmd.OutOrStdout(), "Economy layer is disabled.")
 				return nil
 			}
 
-			fmt.Println("Risk Configuration:")
-			fmt.Printf("  Escrow Threshold: %s USDC\n", cfg.Economy.Risk.EscrowThreshold)
-			fmt.Printf("  High Trust Score: %.2f\n", cfg.Economy.Risk.HighTrustScore)
-			fmt.Printf("  Med Trust Score:  %.2f\n", cfg.Economy.Risk.MediumTrustScore)
+			fmt.Fprintln(cmd.OutOrStdout(), "Risk Configuration:")
+			fmt.Fprintf(cmd.OutOrStdout(), "  Escrow Threshold: %s USDC\n", cfg.Economy.Risk.EscrowThreshold)
+			fmt.Fprintf(cmd.OutOrStdout(), "  High Trust Score: %.2f\n", cfg.Economy.Risk.HighTrustScore)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Med Trust Score:  %.2f\n", cfg.Economy.Risk.MediumTrustScore)
 			return nil
 		},
 	}

@@ -2,7 +2,6 @@ package mcp
 
 import (
 	"fmt"
-	"os"
 	"sort"
 	"text/tabwriter"
 
@@ -24,8 +23,8 @@ func newListCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 
 			merged := mcplib.MergedServers(&cfg.MCP)
 			if len(merged) == 0 {
-				fmt.Println("No MCP servers configured.")
-				fmt.Println("\nAdd one with: lango mcp add <name> --type stdio --command <cmd>")
+				fmt.Fprintln(cmd.OutOrStdout(), "No MCP servers configured.")
+				fmt.Fprintln(cmd.OutOrStdout(), "\nAdd one with: lango mcp add <name> --type stdio --command <cmd>")
 				return nil
 			}
 
@@ -36,7 +35,7 @@ func newListCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 			}
 			sort.Strings(names)
 
-			w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
 			fmt.Fprintln(w, "NAME\tTYPE\tENABLED\tENDPOINT")
 			for _, name := range names {
 				srv := merged[name]

@@ -2,9 +2,7 @@ package graph
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"os"
 	"text/tabwriter"
 
 	"github.com/langoai/lango/internal/config"
@@ -14,11 +12,11 @@ import (
 
 func newQueryCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 	var (
-		subject    string
-		predicate  string
-		object     string
-		limit      int
-		jsonOutput bool
+		subject   string
+		predicate string
+		object    string
+		limit     int
+		output    string
 	)
 
 	cmd := &cobra.Command{
@@ -28,7 +26,13 @@ func newQueryCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 
 At least one of --subject or --object is required.
 The --predicate flag can only be used together with --subject.`,
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			output, err := resolveOutput(cmd)
+			if err != nil {
+				return err
+			}
 			if subject == "" && object == "" {
 				return fmt.Errorf("at least one of --subject or --object is required")
 			}
@@ -66,18 +70,16 @@ The --predicate flag can only be used together with --subject.`,
 				triples = triples[:limit]
 			}
 
-			if jsonOutput {
-				enc := json.NewEncoder(os.Stdout)
-				enc.SetIndent("", "  ")
-				return enc.Encode(triples)
+			if output == "json" {
+				return printJSON(cmd.OutOrStdout(), triples)
 			}
 
 			if len(triples) == 0 {
-				fmt.Println("No triples found.")
+				fmt.Fprintln(cmd.OutOrStdout(), "No triples found.")
 				return nil
 			}
 
-			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
 			fmt.Fprintln(w, "SUBJECT\tPREDICATE\tOBJECT")
 			for _, t := range triples {
 				fmt.Fprintf(w, "%s\t%s\t%s\n", t.Subject, t.Predicate, t.Object)
@@ -90,7 +92,7 @@ The --predicate flag can only be used together with --subject.`,
 	cmd.Flags().StringVar(&predicate, "predicate", "", "Filter by predicate (requires --subject)")
 	cmd.Flags().StringVar(&object, "object", "", "Filter by object")
 	cmd.Flags().IntVar(&limit, "limit", 0, "Limit number of results (0 = unlimited)")
-	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
+	cmd.Flags().StringVar(&output, "output", "table", "Output format: table or json")
 
 	return cmd
 }

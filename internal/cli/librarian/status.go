@@ -1,21 +1,25 @@
 package librarian
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 
 	"github.com/langoai/lango/internal/config"
 	"github.com/spf13/cobra"
 )
 
 func newStatusCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
-	var jsonOutput bool
+	var output string
 
 	cmd := &cobra.Command{
-		Use:   "status",
-		Short: "Show librarian configuration",
+		Use:           "status",
+		Short:         "Show librarian configuration",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			output, err := resolveOutput(cmd)
+			if err != nil {
+				return err
+			}
 			cfg, err := cfgLoader()
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
@@ -41,29 +45,28 @@ func newStatusCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 				Model:                cfg.Librarian.Model,
 			}
 
-			if jsonOutput {
-				enc := json.NewEncoder(os.Stdout)
-				enc.SetIndent("", "  ")
-				return enc.Encode(out)
+			if output == "json" {
+				return printJSON(cmd.OutOrStdout(), out)
 			}
 
-			fmt.Printf("Librarian Status\n")
-			fmt.Printf("  Enabled:               %v\n", out.Enabled)
-			fmt.Printf("  Observation Threshold: %d\n", out.ObservationThreshold)
-			fmt.Printf("  Inquiry Cooldown:      %d turns\n", out.InquiryCooldownTurns)
-			fmt.Printf("  Max Pending Inquiries: %d\n", out.MaxPendingInquiries)
-			fmt.Printf("  Auto-Save Confidence:  %s\n", out.AutoSaveConfidence)
+			writer := cmd.OutOrStdout()
+			fmt.Fprintf(writer, "Librarian Status\n")
+			fmt.Fprintf(writer, "  Enabled:               %v\n", out.Enabled)
+			fmt.Fprintf(writer, "  Observation Threshold: %d\n", out.ObservationThreshold)
+			fmt.Fprintf(writer, "  Inquiry Cooldown:      %d turns\n", out.InquiryCooldownTurns)
+			fmt.Fprintf(writer, "  Max Pending Inquiries: %d\n", out.MaxPendingInquiries)
+			fmt.Fprintf(writer, "  Auto-Save Confidence:  %s\n", out.AutoSaveConfidence)
 			if out.Provider != "" {
-				fmt.Printf("  LLM Provider:          %s\n", out.Provider)
+				fmt.Fprintf(writer, "  LLM Provider:          %s\n", out.Provider)
 			}
 			if out.Model != "" {
-				fmt.Printf("  LLM Model:             %s\n", out.Model)
+				fmt.Fprintf(writer, "  LLM Model:             %s\n", out.Model)
 			}
 
 			return nil
 		},
 	}
 
-	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
+	cmd.Flags().StringVar(&output, "output", "table", "Output format: table or json")
 	return cmd
 }

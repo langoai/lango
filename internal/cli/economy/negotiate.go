@@ -31,15 +31,15 @@ func newNegotiateStatusCmd(cfgLoader func() (*config.Config, error)) *cobra.Comm
 			}
 
 			if !cfg.Economy.Enabled || !cfg.Economy.Negotiate.Enabled {
-				fmt.Println("Negotiation is disabled.")
+				fmt.Fprintln(cmd.OutOrStdout(), "Negotiation is disabled.")
 				return nil
 			}
 
-			fmt.Println("Negotiation Configuration:")
-			fmt.Printf("  Max Rounds:     %d\n", cfg.Economy.Negotiate.MaxRounds)
-			fmt.Printf("  Timeout:        %s\n", cfg.Economy.Negotiate.Timeout)
-			fmt.Printf("  Auto Negotiate: %v\n", cfg.Economy.Negotiate.AutoNegotiate)
-			fmt.Printf("  Max Discount:   %.0f%%\n", cfg.Economy.Negotiate.MaxDiscount*100)
+			fmt.Fprintln(cmd.OutOrStdout(), "Negotiation Configuration:")
+			fmt.Fprintf(cmd.OutOrStdout(), "  Max Rounds:     %d\n", cfg.Economy.Negotiate.MaxRounds)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Timeout:        %s\n", cfg.Economy.Negotiate.Timeout)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Auto Negotiate: %v\n", cfg.Economy.Negotiate.AutoNegotiate)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Max Discount:   %.0f%%\n", cfg.Economy.Negotiate.MaxDiscount*100)
 			return nil
 		},
 	}

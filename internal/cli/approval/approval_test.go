@@ -1,18 +1,30 @@
 package approval
 
 import (
+	"bytes"
+	"encoding/json"
 	"testing"
 
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/langoai/lango/internal/config"
-	"github.com/langoai/lango/internal/testutil"
 )
+
+func executeApprovalCommand(t *testing.T, cmd *cobra.Command, args ...string) (string, error) {
+	t.Helper()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs(args)
+	err := cmd.Execute()
+	return out.String(), err
+}
 
 func TestNewApprovalCmd_Structure(t *testing.T) {
 	cfg := config.DefaultConfig()
-	cmd := NewApprovalCmd(testutil.FakeCfgLoader(cfg))
+	cmd := NewApprovalCmd(func() (*config.Config, error) { return cfg, nil })
 
 	require.NotNil(t, cmd)
 	assert.Equal(t, "approval", cmd.Use)
@@ -21,7 +33,7 @@ func TestNewApprovalCmd_Structure(t *testing.T) {
 
 func TestNewApprovalCmd_Subcommands(t *testing.T) {
 	cfg := config.DefaultConfig()
-	cmd := NewApprovalCmd(testutil.FakeCfgLoader(cfg))
+	cmd := NewApprovalCmd(func() (*config.Config, error) { return cfg, nil })
 
 	subCmds := make(map[string]bool, len(cmd.Commands()))
 	for _, sub := range cmd.Commands() {
@@ -38,13 +50,14 @@ func TestStatusCmd_HappyPath(t *testing.T) {
 	cfg.Security.Interceptor.HeadlessAutoApprove = false
 	cfg.Security.Interceptor.ApprovalTimeoutSec = 30
 	cfg.Security.Interceptor.RedactPII = true
-	cmd := NewApprovalCmd(testutil.FakeCfgLoader(cfg))
+	cmd := NewApprovalCmd(func() (*config.Config, error) { return cfg, nil })
 
-	result := testutil.ExecCmdOK(t, cmd, "status")
-	assert.Contains(t, result.Stdout, "Approval Status")
-	assert.Contains(t, result.Stdout, "Interceptor Enabled:   true")
-	assert.Contains(t, result.Stdout, "Approval Policy:       dangerous")
-	assert.Contains(t, result.Stdout, "Redact PII:            true")
+	out, err := executeApprovalCommand(t, cmd, "status")
+	require.NoError(t, err)
+	assert.Contains(t, out, "Approval Status")
+	assert.Contains(t, out, "Interceptor Enabled:   true")
+	assert.Contains(t, out, "Approval Policy:       dangerous")
+	assert.Contains(t, out, "Redact PII:            true")
 }
 
 func TestStatusCmd_JSONOutput(t *testing.T) {
@@ -53,53 +66,94 @@ func TestStatusCmd_JSONOutput(t *testing.T) {
 	cfg.Security.Interceptor.ApprovalPolicy = config.ApprovalPolicyDangerous
 	cfg.Security.Interceptor.SensitiveTools = []string{"shell_exec", "file_write"}
 	cfg.Security.Interceptor.ExemptTools = []string{"search"}
-	cmd := NewApprovalCmd(testutil.FakeCfgLoader(cfg))
+	cmd := NewApprovalCmd(func() (*config.Config, error) { return cfg, nil })
 
-	result := testutil.ExecCmdOK(t, cmd, "status", "--json")
-	assert.Contains(t, result.Stdout, `"interceptor_enabled": false`)
-	assert.Contains(t, result.Stdout, `"approval_policy": "dangerous"`)
-	assert.Contains(t, result.Stdout, `"shell_exec"`)
-	assert.Contains(t, result.Stdout, `"search"`)
+	out, err := executeApprovalCommand(t, cmd, "status", "--output", "json")
+	require.NoError(t, err)
+	assert.Contains(t, out, `"interceptor_enabled": false`)
+	assert.Contains(t, out, `"approval_policy": "dangerous"`)
+	assert.Contains(t, out, `"shell_exec"`)
+	assert.Contains(t, out, `"search"`)
 }
 
 func TestStatusCmd_ConfigError(t *testing.T) {
-	cmd := NewApprovalCmd(testutil.FailCfgLoader(assert.AnError))
+	cmd := NewApprovalCmd(func() (*config.Config, error) { return nil, assert.AnError })
 
-	result := testutil.ExecCmd(t, cmd, "status")
-	require.Error(t, result.Err)
-	assert.Contains(t, result.Err.Error(), "load config")
+	_, err := executeApprovalCommand(t, cmd, "status")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "load config")
 }
 
 func TestStatusCmd_WithSensitiveTools(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Security.Interceptor.Enabled = true
 	cfg.Security.Interceptor.SensitiveTools = []string{"shell_exec", "file_write"}
-	cmd := NewApprovalCmd(testutil.FakeCfgLoader(cfg))
+	cmd := NewApprovalCmd(func() (*config.Config, error) { return cfg, nil })
 
-	result := testutil.ExecCmdOK(t, cmd, "status")
-	assert.Contains(t, result.Stdout, "Sensitive Tools (2)")
-	assert.Contains(t, result.Stdout, "shell_exec")
-	assert.Contains(t, result.Stdout, "file_write")
+	out, err := executeApprovalCommand(t, cmd, "status")
+	require.NoError(t, err)
+	assert.Contains(t, out, "Sensitive Tools (2)")
+	assert.Contains(t, out, "shell_exec")
+	assert.Contains(t, out, "file_write")
 }
 
 func TestStatusCmd_WithExemptTools(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Security.Interceptor.Enabled = true
 	cfg.Security.Interceptor.ExemptTools = []string{"search", "get_time"}
-	cmd := NewApprovalCmd(testutil.FakeCfgLoader(cfg))
+	cmd := NewApprovalCmd(func() (*config.Config, error) { return cfg, nil })
 
-	result := testutil.ExecCmdOK(t, cmd, "status")
-	assert.Contains(t, result.Stdout, "Exempt Tools (2)")
-	assert.Contains(t, result.Stdout, "search")
-	assert.Contains(t, result.Stdout, "get_time")
+	out, err := executeApprovalCommand(t, cmd, "status")
+	require.NoError(t, err)
+	assert.Contains(t, out, "Exempt Tools (2)")
+	assert.Contains(t, out, "search")
+	assert.Contains(t, out, "get_time")
 }
 
 func TestStatusCmd_WithNotifyChannel(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Security.Interceptor.Enabled = true
 	cfg.Security.Interceptor.NotifyChannel = "discord"
-	cmd := NewApprovalCmd(testutil.FakeCfgLoader(cfg))
+	cmd := NewApprovalCmd(func() (*config.Config, error) { return cfg, nil })
 
-	result := testutil.ExecCmdOK(t, cmd, "status")
-	assert.Contains(t, result.Stdout, "Notify Channel:        discord")
+	out, err := executeApprovalCommand(t, cmd, "status")
+	require.NoError(t, err)
+	assert.Contains(t, out, "Notify Channel:        discord")
+}
+
+func TestStatusCmd_TableWritesToCommandOutput(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Security.Interceptor.Enabled = true
+	cmd := NewApprovalCmd(func() (*config.Config, error) { return cfg, nil })
+
+	out, err := executeApprovalCommand(t, cmd, "status")
+
+	require.NoError(t, err)
+	assert.Contains(t, out, "Approval Status")
+	assert.Contains(t, out, "Interceptor Enabled:")
+}
+
+func TestStatusCmd_JSONWritesToCommandOutput(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Security.Interceptor.Enabled = true
+	cfg.Security.Interceptor.ExemptTools = []string{"search"}
+	cmd := NewApprovalCmd(func() (*config.Config, error) { return cfg, nil })
+
+	out, err := executeApprovalCommand(t, cmd, "status", "--output", "json")
+
+	require.NoError(t, err)
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal([]byte(out), &payload))
+	assert.Equal(t, true, payload["interceptor_enabled"])
+}
+
+func TestStatusCmd_InvalidOutputFailsBeforeConfigLoad(t *testing.T) {
+	cmd := NewApprovalCmd(func() (*config.Config, error) {
+		t.Fatal("config loader should not be called for invalid output")
+		return nil, nil
+	})
+
+	_, err := executeApprovalCommand(t, cmd, "status", "--output", "yaml")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `unknown output format "yaml"`)
 }

@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -15,11 +17,13 @@ import (
 
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/bootstrap"
+	"github.com/langoai/lango/internal/cli/tui"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/ctxkeys"
 	"github.com/langoai/lango/internal/postadjudicationstatus"
 	"github.com/langoai/lango/internal/receipts"
 	"github.com/langoai/lango/internal/toolcatalog"
+	"github.com/langoai/lango/internal/types"
 )
 
 type fakeDeadLetterBridge struct {
@@ -214,6 +218,26 @@ func TestRenderDashboard_NoChannels(t *testing.T) {
 	assert.NotContains(t, output, "Channels")
 }
 
+func TestRenderDashboard_SanitizesDisplayText(t *testing.T) {
+	info := StatusInfo{
+		Version:  "1.0.0",
+		Profile:  "de\x1b[31mfault\n",
+		Gateway:  "http://local\x1b[31mhost\n:18789",
+		Provider: "open\x1b[31mai\n",
+		Model:    "gpt\x1b[31m-5\n",
+		Features: []FeatureInfo{
+			{Name: "Know\x1b[31mledge\n", Enabled: true, Detail: "emb\x1b[31medded\n"},
+		},
+		Channels: []string{"tele\x1b[31mgram\nops"},
+	}
+
+	output := renderDashboard(info)
+	assert.Contains(t, output, "openai (gpt-5)")
+	assert.Contains(t, output, "Knowledge (embedded)")
+	assert.Contains(t, output, "telegram ops")
+	assert.NotContains(t, output, "\x1b")
+}
+
 func TestRenderDashboard_ServerRunning(t *testing.T) {
 	info := StatusInfo{
 		Version:  "dev",
@@ -274,6 +298,56 @@ func TestStatusInfo_JSON(t *testing.T) {
 	assert.True(t, decoded.ServerInfo.Healthy)
 }
 
+func TestCollectStatus_SanitizesCollectedModelText(t *testing.T) {
+	cfg := &config.Config{
+		Server:         config.ServerConfig{Host: "local\x1b[31mhost\n", Port: 8080},
+		Agent:          config.AgentConfig{Provider: "open\x1b[31mai\n", Model: "gpt\x1b[31m-5\n"},
+		ContextProfile: config.ContextProfileName("bal\x1b[31manced\n"),
+		Embedding:      config.EmbeddingConfig{Provider: "emb\x1b[31med\n"},
+		Channels: config.ChannelsConfig{
+			Telegram: config.TelegramConfig{Enabled: true},
+		},
+	}
+
+	info := collectStatus(cfg, "pro\x1b[31md\n", "http://localhost:1")
+	assert.Equal(t, "prod", info.Profile)
+	assert.Equal(t, "balanced", info.ContextProfile)
+	assert.Equal(t, "http://localhost :8080", info.Gateway)
+	assert.Equal(t, "openai", info.Provider)
+	assert.Equal(t, "gpt-5", info.Model)
+	assert.Equal(t, []string{"telegram"}, info.Channels)
+	assert.Contains(t, info.Features[1].Detail, "embed")
+	assert.NotContains(t, info.Provider, "\x1b")
+}
+
+func TestCollectStatus_SanitizesLiveServerInfoFeatures(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		payload := struct {
+			Features []types.FeatureStatus `json:"features"`
+		}{
+			Features: []types.FeatureStatus{{
+				Name:       "Embed\x1b[31mding\n",
+				Enabled:    false,
+				Healthy:    false,
+				Reason:     "no\x1b[31m provider\nconfigured",
+				Suggestion: "set\x1b[31m provider\nfirst",
+			}},
+		}
+		_ = json.NewEncoder(w).Encode(payload)
+	}))
+	defer server.Close()
+
+	info := collectStatus(config.DefaultConfig(), "default", server.URL)
+
+	require.NotNil(t, info.ServerInfo)
+	require.Len(t, info.ServerInfo.Features, 1)
+	assert.Equal(t, "Embedding", info.ServerInfo.Features[0].Name)
+	assert.Equal(t, "no provider configured", info.ServerInfo.Features[0].Reason)
+	assert.Equal(t, "set provider first", info.ServerInfo.Features[0].Suggestion)
+	assert.NotContains(t, info.ServerInfo.Features[0].Name, "\x1b")
+}
+
 func TestCollectStatus_Channels(t *testing.T) {
 	cfg := &config.Config{
 		Server: config.ServerConfig{Host: "0.0.0.0", Port: 8080},
@@ -313,6 +387,65 @@ func TestNewStatusCmd_WiresDeadLetterSummaryCommand(t *testing.T) {
 		names = append(names, sub.Name())
 	}
 	assert.Contains(t, names, "dead-letter-summary")
+}
+
+func TestNewStatusCmd_TableWritesToCommandOutput(t *testing.T) {
+	cmd := NewStatusCmd(func() (*bootstrap.Result, error) {
+		return &bootstrap.Result{
+			Config:      config.DefaultConfig(),
+			ProfileName: "test-profile",
+		}, nil
+	}, func() (DeadLetterBridge, func(), error) {
+		return &fakeDeadLetterBridge{}, func() {}, nil
+	})
+
+	out, err := executeCommand(t, cmd)
+
+	require.NoError(t, err)
+	assert.Contains(t, out, "Lango Status")
+	assert.Contains(t, out, "test-profile")
+}
+
+func TestNewStatusCmd_JSONSanitizesVersion(t *testing.T) {
+	tui.SetVersionInfo("1.2.\x1b[31m3\n", "2026-01-01")
+	defer tui.SetVersionInfo("dev", "unknown")
+
+	cfg := config.DefaultConfig()
+	cfg.Server.Host = "127.0.0.1"
+	cfg.Server.Port = 1
+	cmd := NewStatusCmd(func() (*bootstrap.Result, error) {
+		return &bootstrap.Result{
+			Config:      cfg,
+			ProfileName: "json-profile",
+		}, nil
+	}, func() (DeadLetterBridge, func(), error) {
+		return &fakeDeadLetterBridge{}, func() {}, nil
+	})
+
+	out, err := executeCommand(t, cmd, "--output", "json")
+
+	require.NoError(t, err)
+	var got StatusInfo
+	require.NoError(t, json.Unmarshal([]byte(out), &got))
+	assert.Equal(t, "1.2.3", got.Version)
+	assert.NotContains(t, out, "\u001b")
+	assert.NotContains(t, out, "\\u001b")
+}
+
+func TestNewStatusCmd_InvalidOutputRejectsBeforeBootstrap(t *testing.T) {
+	bootCalls := 0
+	cmd := NewStatusCmd(func() (*bootstrap.Result, error) {
+		bootCalls++
+		return nil, errors.New("boot loader must not run for invalid output")
+	}, func() (DeadLetterBridge, func(), error) {
+		return &fakeDeadLetterBridge{}, func() {}, nil
+	})
+
+	_, err := executeCommand(t, cmd, "--output", "yaml")
+
+	require.Error(t, err)
+	assert.ErrorContains(t, err, `unknown output format "yaml"`)
+	assert.Equal(t, 0, bootCalls)
 }
 
 func TestNewStatusCmd_DeadLetterCommandsUseInjectedLoader(t *testing.T) {
@@ -356,6 +489,22 @@ func TestNewStatusCmd_DeadLetterCommandsUseInjectedLoader(t *testing.T) {
 	}
 }
 
+func TestNewStatusCmd_DeadLettersInvalidOutputRejectsBeforeBridgeLoad(t *testing.T) {
+	loadCalls := 0
+	cmd := NewStatusCmd(func() (*bootstrap.Result, error) {
+		return nil, errors.New("boot loader must not be used by dead-letter subcommands")
+	}, func() (DeadLetterBridge, func(), error) {
+		loadCalls++
+		return &fakeDeadLetterBridge{}, func() {}, nil
+	})
+
+	_, err := executeCommand(t, cmd, "dead-letters", "--output", "yaml")
+
+	require.Error(t, err)
+	assert.ErrorContains(t, err, `unknown output format "yaml"`)
+	assert.Equal(t, 0, loadCalls)
+}
+
 func TestNewStatusCmd_DeadLetterLoaderNilCleanupIsNoop(t *testing.T) {
 	bridge := &fakeDeadLetterBridge{
 		page: DeadLetterListPage{
@@ -389,6 +538,23 @@ func TestNewStatusCmd_DeadLetterLoaderNilBridgeCleansUp(t *testing.T) {
 	require.Error(t, err)
 	assert.ErrorIs(t, err, ErrDeadLetterStatusToolsUnavailable)
 	assert.Equal(t, 1, cleanupCalls)
+}
+
+func TestNewStatusCmd_SanitizesNonJSONErrorsWhilePreservingCause(t *testing.T) {
+	boom := errors.New("bo\x1b[31mom\nfailure")
+	cmd := NewStatusCmd(func() (*bootstrap.Result, error) {
+		return nil, boom
+	}, func() (DeadLetterBridge, func(), error) {
+		return &fakeDeadLetterBridge{}, func() {}, nil
+	})
+
+	_, err := executeCommand(t, cmd)
+
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "bootstrap: boom failure")
+	assert.NotContains(t, err.Error(), "\x1b")
+	assert.NotContains(t, err.Error(), "\n")
+	assert.ErrorIs(t, err, boom)
 }
 
 func TestDeadLetterSummaryCmd_Table(t *testing.T) {
@@ -504,6 +670,46 @@ func TestDeadLetterSummaryCmd_JSON(t *testing.T) {
 	assert.Contains(t, raw, "by_actor_family")
 	assert.Contains(t, raw, "by_reason_family")
 	assert.Contains(t, raw, "top_latest_dead_letter_reasons")
+}
+
+func TestDeadLetterSummaryCmd_JSONSanitizesSummaryLabels(t *testing.T) {
+	bridge := &fakeDeadLetterBridge{
+		page: DeadLetterListPage{
+			Entries: []postadjudicationstatus.DeadLetterBacklogEntry{
+				{
+					TransactionReceiptID:      "tx-1",
+					Adjudication:              "rele\x1b[31mase\n",
+					CanRetry:                  true,
+					LatestStatusSubtypeFamily: "dead-\x1b[31mletter\n",
+					LatestDeadLetterReason:    "worker\x1b[31m exhausted\n",
+					LatestManualReplayActor:   "operator:\x1b[31mbob\n",
+					LatestDispatchReference:   "dispatch-\x1b[31m1\n",
+					LatestDeadLetteredAt:      "2026-04-26T11:30:00Z",
+				},
+			},
+			Count: 1,
+			Total: 1,
+		},
+	}
+	cmd := newDeadLetterSummaryCmd(func() (DeadLetterBridge, func(), error) {
+		return bridge, func() {}, nil
+	})
+
+	out, err := executeCommand(t, cmd, "--output", "json")
+	require.NoError(t, err)
+
+	var got deadLetterSummaryResult
+	require.NoError(t, json.Unmarshal([]byte(out), &got))
+	require.Equal(t, []deadLetterSummaryBucket{{Label: "release", Count: 1}}, got.ByAdjudication)
+	require.Equal(t, []deadLetterSummaryBucket{{Label: "dead-letter", Count: 1}}, got.ByLatestFamily)
+	require.Equal(t, []deadLetterReasonSummaryItem{{Reason: "worker exhausted", Count: 1}}, got.TopLatestDeadLetterReasons)
+	require.Equal(t, []deadLetterActorSummaryItem{{Actor: "operator:bob", Count: 1}}, got.TopLatestManualReplayActors)
+	require.Equal(t, []deadLetterDispatchSummaryItem{{DispatchReference: "dispatch-1", Count: 1}}, got.TopLatestDispatchReferences)
+
+	raw := out
+	assert.NotContains(t, raw, "\u001b")
+	assert.NotContains(t, raw, "\\u001b")
+	assert.NotContains(t, raw, "\\n")
 }
 
 func TestAggregateDeadLetterSummary_ByReasonFamily(t *testing.T) {
@@ -907,9 +1113,12 @@ func TestDeadLettersCmd_RejectsInvalidSubtype(t *testing.T) {
 		return &fakeDeadLetterBridge{}, func() {}, nil
 	})
 
-	_, err := executeCommand(t, cmd, "--latest-status-subtype", "unknown")
+	_, err := executeCommand(t, cmd, "--latest-status-subtype", "unk\x1b[31mnown\n")
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "invalid --latest-status-subtype")
+	assert.ErrorContains(t, err, "unknown")
+	assert.NotContains(t, err.Error(), "\x1b")
+	assert.NotContains(t, err.Error(), "\n")
 	assert.Equal(t, 0, loaderCalls)
 }
 
@@ -920,9 +1129,12 @@ func TestDeadLettersCmd_RejectsInvalidSubtypeFamily(t *testing.T) {
 		return &fakeDeadLetterBridge{}, func() {}, nil
 	})
 
-	_, err := executeCommand(t, cmd, "--latest-status-subtype-family", "terminal")
+	_, err := executeCommand(t, cmd, "--latest-status-subtype-family", "term\x1b[31minal\n")
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "invalid --latest-status-subtype-family")
+	assert.ErrorContains(t, err, "terminal")
+	assert.NotContains(t, err.Error(), "\x1b")
+	assert.NotContains(t, err.Error(), "\n")
 	assert.Equal(t, 0, loaderCalls)
 }
 
@@ -933,9 +1145,12 @@ func TestDeadLettersCmd_RejectsInvalidAnyMatchFamily(t *testing.T) {
 		return &fakeDeadLetterBridge{}, func() {}, nil
 	})
 
-	_, err := executeCommand(t, cmd, "--any-match-family", "terminal")
+	_, err := executeCommand(t, cmd, "--any-match-family", "term\x1b[31minal\n")
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "invalid --any-match-family")
+	assert.ErrorContains(t, err, "terminal")
+	assert.NotContains(t, err.Error(), "\x1b")
+	assert.NotContains(t, err.Error(), "\n")
 	assert.Equal(t, 0, loaderCalls)
 }
 
@@ -946,9 +1161,12 @@ func TestDeadLettersCmd_RejectsInvalidDeadLetteredAfter(t *testing.T) {
 		return &fakeDeadLetterBridge{}, func() {}, nil
 	})
 
-	_, err := executeCommand(t, cmd, "--dead-lettered-after", "not-a-time")
+	_, err := executeCommand(t, cmd, "--dead-lettered-after", "not-\x1b[31ma-time\n")
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "invalid --dead-lettered-after")
+	assert.ErrorContains(t, err, "not-a-time")
+	assert.NotContains(t, err.Error(), "\x1b")
+	assert.NotContains(t, err.Error(), "\n")
 	assert.Equal(t, 0, loaderCalls)
 }
 
@@ -959,9 +1177,12 @@ func TestDeadLettersCmd_RejectsInvalidDeadLetteredBefore(t *testing.T) {
 		return &fakeDeadLetterBridge{}, func() {}, nil
 	})
 
-	_, err := executeCommand(t, cmd, "--dead-lettered-before", "not-a-time")
+	_, err := executeCommand(t, cmd, "--dead-lettered-before", "not-\x1b[31ma-time\n")
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "invalid --dead-lettered-before")
+	assert.ErrorContains(t, err, "not-a-time")
+	assert.NotContains(t, err.Error(), "\x1b")
+	assert.NotContains(t, err.Error(), "\n")
 	assert.Equal(t, 0, loaderCalls)
 }
 
@@ -1130,9 +1351,18 @@ func TestToolCatalogDeadLetterBridge_ForwardsPagination(t *testing.T) {
 func TestDeadLettersCmd_JSON(t *testing.T) {
 	bridge := &fakeDeadLetterBridge{
 		page: DeadLetterListPage{
-			Entries: []postadjudicationstatus.DeadLetterBacklogEntry{{TransactionReceiptID: "tx-1"}},
-			Count:   1,
-			Total:   1,
+			Entries: []postadjudicationstatus.DeadLetterBacklogEntry{{
+				TransactionReceiptID:      "tx-\x1b[31m1\n",
+				SubmissionReceiptID:       "sub-\x1b[31m1\n",
+				LatestDeadLetterReason:    "worker\x1b[31m exhausted\n",
+				LatestManualReplayActor:   "operator:\x1b[31mbob\n",
+				LatestStatusSubtype:       "dead-\x1b[31mlettered\n",
+				LatestStatusSubtypeFamily: "dead-\x1b[31mletter\n",
+				LatestDispatchReference:   "dispatch-\x1b[31m1\n",
+				AnyMatchFamilies:          []string{"retry\x1b[31m\n", "manual-retry"},
+			}},
+			Count: 1,
+			Total: 1,
 		},
 	}
 	cmd := newDeadLettersCmd(func() (DeadLetterBridge, func(), error) {
@@ -1141,8 +1371,20 @@ func TestDeadLettersCmd_JSON(t *testing.T) {
 
 	out, err := executeCommand(t, cmd, "--output", "json")
 	require.NoError(t, err)
-	assert.Contains(t, out, "\"entries\"")
-	assert.Contains(t, out, "\"transaction_receipt_id\": \"tx-1\"")
+
+	var got DeadLetterListPage
+	require.NoError(t, json.Unmarshal([]byte(out), &got))
+	require.Len(t, got.Entries, 1)
+	assert.Equal(t, "tx-1", got.Entries[0].TransactionReceiptID)
+	assert.Equal(t, "sub-1", got.Entries[0].SubmissionReceiptID)
+	assert.Equal(t, "worker exhausted", got.Entries[0].LatestDeadLetterReason)
+	assert.Equal(t, "operator:bob", got.Entries[0].LatestManualReplayActor)
+	assert.Equal(t, "dead-lettered", got.Entries[0].LatestStatusSubtype)
+	assert.Equal(t, "dead-letter", got.Entries[0].LatestStatusSubtypeFamily)
+	assert.Equal(t, "dispatch-1", got.Entries[0].LatestDispatchReference)
+	assert.Equal(t, []string{"retry", "manual-retry"}, got.Entries[0].AnyMatchFamilies)
+	assert.NotContains(t, out, "\u001b")
+	assert.NotContains(t, out, "\\u001b")
 }
 
 func TestDeadLettersCmd_JSONError(t *testing.T) {
@@ -1200,8 +1442,39 @@ func TestDeadLetterCmd_JSON(t *testing.T) {
 	bridge := &fakeDeadLetterBridge{
 		detail: postadjudicationstatus.TransactionStatus{
 			CanonicalSnapshot: postadjudicationstatus.CanonicalSnapshot{
-				TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-1"},
+				TransactionReceipt: receipts.TransactionReceipt{
+					TransactionReceiptID:        "tx-\x1b[31m1\n",
+					TransactionID:               "txn-\x1b[31m1\n",
+					Counterparty:                "did:\x1b[31mexample:bob\n",
+					SettlementProgressionReason: "need\x1b[31m review\n",
+					CanonicalDecision:           "rele\x1b[31mase\n",
+					EscrowExecutionInput:        &receipts.EscrowExecutionInput{Reason: "fund\x1b[31m escrow\n", TaskID: "task-\x1b[31m7\n"},
+				},
+				SubmissionReceipt: receipts.SubmissionReceipt{
+					SubmissionReceiptID: "sub-\x1b[31m1\n",
+					ArtifactLabel:       "arti\x1b[31mfact\n",
+				},
+				SubmissionEvents: []receipts.ReceiptEvent{{
+					SubmissionReceiptID: "sub-\x1b[31m1\n",
+					Source:              "queue\x1b[31m\n",
+					Subtype:             "retry-\x1b[31mscheduled\n",
+					Reason:              "worker\x1b[31m exhausted\n",
+				}},
 			},
+			RetryDeadLetterSummary: postadjudicationstatus.RetryDeadLetterSummary{
+				LatestDeadLetterReason:    "policy\x1b[31m blocked\n",
+				LatestManualReplayActor:   "operator:\x1b[31mbob\n",
+				LatestDispatchReference:   "dispatch-\x1b[31m9\n",
+				LatestStatusSubtype:       "dead-\x1b[31mlettered\n",
+				LatestStatusSubtypeFamily: "dead-\x1b[31mletter\n",
+				AnyMatchFamilies:          []string{"retry\x1b[31m\n", "manual-retry"},
+			},
+			LatestBackgroundTask: &postadjudicationstatus.BackgroundTaskBridge{
+				TaskID:      "task-\x1b[31m1\n",
+				Status:      "retry\x1b[31ming\n",
+				NextRetryAt: "2026-04-25T12:00:00Z\x1b[31m\n",
+			},
+			Adjudication: "rele\x1b[31mase\n",
 		},
 	}
 	cmd := newDeadLetterCmd(func() (DeadLetterBridge, func(), error) {
@@ -1210,8 +1483,36 @@ func TestDeadLetterCmd_JSON(t *testing.T) {
 
 	out, err := executeCommand(t, cmd, "tx-1", "--output", "json")
 	require.NoError(t, err)
-	assert.Contains(t, out, "\"canonical_snapshot\"")
-	assert.Contains(t, out, "\"transaction_receipt_id\": \"tx-1\"")
+
+	var got postadjudicationstatus.TransactionStatus
+	require.NoError(t, json.Unmarshal([]byte(out), &got))
+	assert.Equal(t, "tx-1", got.CanonicalSnapshot.TransactionReceipt.TransactionReceiptID)
+	assert.Equal(t, "txn-1", got.CanonicalSnapshot.TransactionReceipt.TransactionID)
+	assert.Equal(t, "did:example:bob", got.CanonicalSnapshot.TransactionReceipt.Counterparty)
+	assert.Equal(t, "need review", got.CanonicalSnapshot.TransactionReceipt.SettlementProgressionReason)
+	assert.Equal(t, "release", got.CanonicalSnapshot.TransactionReceipt.CanonicalDecision)
+	require.NotNil(t, got.CanonicalSnapshot.TransactionReceipt.EscrowExecutionInput)
+	assert.Equal(t, "fund escrow", got.CanonicalSnapshot.TransactionReceipt.EscrowExecutionInput.Reason)
+	assert.Equal(t, "task-7", got.CanonicalSnapshot.TransactionReceipt.EscrowExecutionInput.TaskID)
+	assert.Equal(t, "sub-1", got.CanonicalSnapshot.SubmissionReceipt.SubmissionReceiptID)
+	assert.Equal(t, "artifact", got.CanonicalSnapshot.SubmissionReceipt.ArtifactLabel)
+	require.Len(t, got.CanonicalSnapshot.SubmissionEvents, 1)
+	assert.Equal(t, "queue", got.CanonicalSnapshot.SubmissionEvents[0].Source)
+	assert.Equal(t, "retry-scheduled", got.CanonicalSnapshot.SubmissionEvents[0].Subtype)
+	assert.Equal(t, "worker exhausted", got.CanonicalSnapshot.SubmissionEvents[0].Reason)
+	assert.Equal(t, "policy blocked", got.RetryDeadLetterSummary.LatestDeadLetterReason)
+	assert.Equal(t, "operator:bob", got.RetryDeadLetterSummary.LatestManualReplayActor)
+	assert.Equal(t, "dispatch-9", got.RetryDeadLetterSummary.LatestDispatchReference)
+	assert.Equal(t, "dead-lettered", got.RetryDeadLetterSummary.LatestStatusSubtype)
+	assert.Equal(t, "dead-letter", got.RetryDeadLetterSummary.LatestStatusSubtypeFamily)
+	assert.Equal(t, []string{"retry", "manual-retry"}, got.RetryDeadLetterSummary.AnyMatchFamilies)
+	require.NotNil(t, got.LatestBackgroundTask)
+	assert.Equal(t, "task-1", got.LatestBackgroundTask.TaskID)
+	assert.Equal(t, "retrying", got.LatestBackgroundTask.Status)
+	assert.Equal(t, "2026-04-25T12:00:00Z", got.LatestBackgroundTask.NextRetryAt)
+	assert.Equal(t, "release", got.Adjudication)
+	assert.NotContains(t, out, "\u001b")
+	assert.NotContains(t, out, "\\u001b")
 }
 
 func TestDeadLetterCmd_PropagatesBridgeErrors(t *testing.T) {
@@ -1289,10 +1590,13 @@ func TestDeadLetterRetryCmd_RejectsWhenCannotRetry(t *testing.T) {
 		return bridge, func() {}, nil
 	})
 
-	_, err := executeCommand(t, cmd, "retry", "tx-1", "--yes")
+	_, err := executeCommand(t, cmd, "retry", "tx-\x1b[31m1\n", "--yes")
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "retry precheck rejected")
 	assert.ErrorContains(t, err, "can_retry=false")
+	assert.ErrorContains(t, err, "tx-1")
+	assert.NotContains(t, err.Error(), "\x1b")
+	assert.NotContains(t, err.Error(), "\n")
 	assert.Equal(t, 1, bridge.detailCalls)
 	assert.Equal(t, 0, bridge.retryCalls)
 }
@@ -1310,7 +1614,30 @@ func TestDeadLetterRetryCmd_RequiresConfirmationByDefault(t *testing.T) {
 		return bridge, func() {}, nil
 	})
 
-	out, err := executeCommandWithInput(t, cmd, "n\n", "retry", "tx-1")
+	out, err := executeCommandWithInput(t, cmd, "n\n", "retry", "tx-\x1b[31m1\n")
+	require.NoError(t, err)
+	assert.Contains(t, out, "Retry dead-lettered execution")
+	assert.Contains(t, out, "tx-1")
+	assert.Contains(t, out, "aborted")
+	assert.NotContains(t, out, "\x1b")
+	assert.Equal(t, 1, bridge.detailCalls)
+	assert.Equal(t, 0, bridge.retryCalls)
+}
+
+func TestDeadLetterRetryCmd_EOFAbortsWithoutRetry(t *testing.T) {
+	bridge := &fakeDeadLetterBridge{
+		detail: postadjudicationstatus.TransactionStatus{
+			CanonicalSnapshot: postadjudicationstatus.CanonicalSnapshot{
+				TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-1"},
+			},
+			CanRetry: true,
+		},
+	}
+	cmd := newDeadLetterCmd(func() (DeadLetterBridge, func(), error) {
+		return bridge, func() {}, nil
+	})
+
+	out, err := executeCommandWithInput(t, cmd, "", "retry", "tx-1")
 	require.NoError(t, err)
 	assert.Contains(t, out, "Retry dead-lettered execution")
 	assert.Contains(t, out, "aborted")
@@ -1371,10 +1698,13 @@ func TestDeadLetterRetryCmd_ReportsInvocationFailureSeparately(t *testing.T) {
 		return bridge, func() {}, nil
 	})
 
-	_, err := executeCommand(t, cmd, "retry", "tx-1", "--yes")
+	_, err := executeCommand(t, cmd, "retry", "tx-\x1b[31m1\n", "--yes")
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "retry request failed")
 	assert.ErrorContains(t, err, "queue unavailable")
+	assert.ErrorContains(t, err, "tx-1")
+	assert.NotContains(t, err.Error(), "\x1b")
+	assert.NotContains(t, err.Error(), "\n")
 	assert.Equal(t, 1, bridge.detailCalls)
 	assert.Equal(t, 1, bridge.retryCalls)
 }
@@ -1387,7 +1717,7 @@ func TestDeadLetterRetryCmd_JSONError(t *testing.T) {
 			},
 			CanRetry: true,
 		},
-		retryErr: errors.New("queue unavailable"),
+		retryErr: errors.New("queue \x1b[31munavailable\nretry request failed"),
 	}
 	cmd := newDeadLetterCmd(func() (DeadLetterBridge, func(), error) {
 		return bridge, func() {}, nil
@@ -1401,6 +1731,8 @@ func TestDeadLetterRetryCmd_JSONError(t *testing.T) {
 	assert.Equal(t, "error", payload.Result)
 	assert.Contains(t, payload.Error, "retry request failed")
 	assert.Contains(t, payload.Error, "queue unavailable")
+	assert.NotContains(t, payload.Error, "\x1b")
+	assert.NotContains(t, payload.Error, "\n")
 }
 
 func TestDeadLetterRetryCmd_JSONReportsAcceptedRequest(t *testing.T) {
@@ -1422,14 +1754,14 @@ func TestDeadLetterRetryCmd_JSONReportsAcceptedRequest(t *testing.T) {
 					TransactionReceipt: receipts.TransactionReceipt{TransactionReceiptID: "tx-1"},
 				},
 				RetryDeadLetterSummary: postadjudicationstatus.RetryDeadLetterSummary{
-					LatestStatusSubtype:       "retry-scheduled",
-					LatestStatusSubtypeFamily: "retry",
+					LatestStatusSubtype:       "retry-\x1b[31mscheduled\n",
+					LatestStatusSubtypeFamily: "re\x1b[31mtry\n",
 					LatestRetryAttempt:        4,
-					LatestDispatchReference:   "dispatch-2",
+					LatestDispatchReference:   "dispatch-\x1b[31m2\n",
 				},
 				LatestBackgroundTask: &postadjudicationstatus.BackgroundTaskBridge{
-					TaskID:       "task-2",
-					Status:       "queued",
+					TaskID:       "task-\x1b[31m2\n",
+					Status:       "que\x1b[31mued\n",
 					AttemptCount: 1,
 				},
 				CanRetry:       true,
@@ -1454,6 +1786,9 @@ func TestDeadLetterRetryCmd_JSONReportsAcceptedRequest(t *testing.T) {
 	assert.Equal(t, "retry", got.FollowUp.LatestStatusSubtypeFamily)
 	require.NotNil(t, got.FollowUp.BackgroundTask)
 	assert.Equal(t, "task-2", got.FollowUp.BackgroundTask.TaskID)
+	assert.Equal(t, "queued", got.FollowUp.BackgroundTask.Status)
+	assert.Equal(t, "dispatch-2", got.FollowUp.LatestDispatchReference)
+	assert.NotContains(t, got.Message, "\x1b")
 	assert.Equal(t, 1, got.PollCount)
 	assert.False(t, got.TimedOut)
 }

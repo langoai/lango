@@ -21,10 +21,10 @@ check negotiation sessions, and manage escrow agreements.
 
 Examples:
   lango economy budget status --task-id=task-1
-  lango economy risk assess --peer-did=did:lango:abc --amount=1.00
-  lango economy pricing quote --tool=code_review
-  lango economy negotiate list
-  lango economy escrow status --escrow-id=abc123`,
+  lango economy risk status
+  lango economy pricing status
+  lango economy negotiate status
+  lango economy escrow show`,
 	}
 
 	cmd.AddCommand(newBudgetCmd(cfgLoader))

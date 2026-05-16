@@ -1,12 +1,10 @@
 package graph
 
 import (
-	"bufio"
 	"context"
 	"fmt"
-	"os"
-	"strings"
 
+	"github.com/langoai/lango/internal/cli/prompt"
 	"github.com/langoai/lango/internal/config"
 	"github.com/spf13/cobra"
 )
@@ -30,15 +28,14 @@ func newClearCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 			defer store.Close()
 
 			if !force {
-				fmt.Println("This will delete all triples from the knowledge graph.")
-				fmt.Print("Continue? [y/N] ")
-				scanner := bufio.NewScanner(os.Stdin)
-				if scanner.Scan() {
-					answer := strings.TrimSpace(strings.ToLower(scanner.Text()))
-					if answer != "y" && answer != "yes" {
-						fmt.Println("Aborted.")
-						return nil
-					}
+				fmt.Fprintln(cmd.OutOrStdout(), "This will delete all triples from the knowledge graph.")
+				ok, err := prompt.ConfirmDenyOnEOFIO(cmd.InOrStdin(), cmd.OutOrStdout(), "Continue?")
+				if err != nil {
+					return err
+				}
+				if !ok {
+					fmt.Fprintln(cmd.OutOrStdout(), "Aborted.")
+					return nil
 				}
 			}
 
@@ -46,7 +43,7 @@ func newClearCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 				return fmt.Errorf("clear graph: %w", err)
 			}
 
-			fmt.Println("Cleared all triples from the knowledge graph.")
+			fmt.Fprintln(cmd.OutOrStdout(), "Cleared all triples from the knowledge graph.")
 			return nil
 		},
 	}

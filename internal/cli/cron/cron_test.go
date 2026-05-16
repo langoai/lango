@@ -1,14 +1,26 @@
 package cron
 
 import (
+	"bytes"
 	"testing"
 
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/testutil"
 )
+
+func executeCronCommand(t *testing.T, cmd *cobra.Command, args ...string) (string, error) {
+	t.Helper()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs(args)
+	err := cmd.Execute()
+	return out.String(), err
+}
 
 func TestNewCronCmd_Structure(t *testing.T) {
 	cfg := config.DefaultConfig()
@@ -38,123 +50,127 @@ func TestListCmd_EmptyDB(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cmd := NewCronCmd(testutil.FakeBootLoader(t, cfg))
 
-	result := testutil.ExecCmdOK(t, cmd, "list")
-	assert.Contains(t, result.Stdout, "No cron jobs found.")
+	out, err := executeCronCommand(t, cmd, "list")
+	require.NoError(t, err)
+	assert.Contains(t, out, "No cron jobs found.")
 }
 
 func TestListCmd_BootError(t *testing.T) {
 	cmd := NewCronCmd(testutil.FailBootLoader(assert.AnError))
 
-	result := testutil.ExecCmd(t, cmd, "list")
-	require.Error(t, result.Err)
-	assert.Contains(t, result.Err.Error(), "bootstrap")
+	_, err := executeCronCommand(t, cmd, "list")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "bootstrap")
 }
 
 func TestHistoryCmd_EmptyDB(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cmd := NewCronCmd(testutil.FakeBootLoader(t, cfg))
 
-	result := testutil.ExecCmdOK(t, cmd, "history")
-	assert.Contains(t, result.Stdout, "No execution history found.")
+	out, err := executeCronCommand(t, cmd, "history")
+	require.NoError(t, err)
+	assert.Contains(t, out, "No execution history found.")
 }
 
 func TestHistoryCmd_BootError(t *testing.T) {
 	cmd := NewCronCmd(testutil.FailBootLoader(assert.AnError))
 
-	result := testutil.ExecCmd(t, cmd, "history")
-	require.Error(t, result.Err)
-	assert.Contains(t, result.Err.Error(), "bootstrap")
+	_, err := executeCronCommand(t, cmd, "history")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "bootstrap")
 }
 
 func TestAddCmd_MissingPrompt(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cmd := NewCronCmd(testutil.FakeBootLoader(t, cfg))
 
-	result := testutil.ExecCmd(t, cmd, "add", "--name", "test", "--schedule", "0 9 * * *")
-	require.Error(t, result.Err)
-	assert.Contains(t, result.Err.Error(), "--prompt is required")
+	_, err := executeCronCommand(t, cmd, "add", "--name", "test", "--schedule", "0 9 * * *")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--prompt is required")
 }
 
 func TestAddCmd_MissingName(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cmd := NewCronCmd(testutil.FakeBootLoader(t, cfg))
 
-	result := testutil.ExecCmd(t, cmd, "add", "--prompt", "do something", "--schedule", "0 9 * * *")
-	require.Error(t, result.Err)
-	assert.Contains(t, result.Err.Error(), "--name is required")
+	_, err := executeCronCommand(t, cmd, "add", "--prompt", "do something", "--schedule", "0 9 * * *")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--name is required")
 }
 
 func TestAddCmd_MissingSchedule(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cmd := NewCronCmd(testutil.FakeBootLoader(t, cfg))
 
-	result := testutil.ExecCmd(t, cmd, "add", "--name", "test", "--prompt", "do something")
-	require.Error(t, result.Err)
-	assert.Contains(t, result.Err.Error(), "one of --schedule, --every, or --at is required")
+	_, err := executeCronCommand(t, cmd, "add", "--name", "test", "--prompt", "do something")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "one of --schedule, --every, or --at is required")
 }
 
 func TestAddCmd_MultipleSchedules(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cmd := NewCronCmd(testutil.FakeBootLoader(t, cfg))
 
-	result := testutil.ExecCmd(t, cmd, "add",
+	_, err := executeCronCommand(t, cmd, "add",
 		"--name", "test",
 		"--prompt", "do something",
 		"--schedule", "0 9 * * *",
 		"--every", "1h",
 	)
-	require.Error(t, result.Err)
-	assert.Contains(t, result.Err.Error(), "only one of --schedule, --every, or --at")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "only one of --schedule, --every, or --at")
 }
 
 func TestAddCmd_HappyPath(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cmd := NewCronCmd(testutil.FakeBootLoader(t, cfg))
 
-	result := testutil.ExecCmdOK(t, cmd, "add",
+	out, err := executeCronCommand(t, cmd, "add",
 		"--name", "test-job",
 		"--prompt", "hello world",
 		"--schedule", "0 9 * * *",
 	)
-	assert.Contains(t, result.Stdout, `Cron job "test-job" created`)
-	assert.Contains(t, result.Stdout, "cron 0 9 * * *")
+	require.NoError(t, err)
+	assert.Contains(t, out, `Cron job "test-job" created`)
+	assert.Contains(t, out, "cron 0 9 * * *")
 }
 
 func TestAddCmd_WithEvery(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cmd := NewCronCmd(testutil.FakeBootLoader(t, cfg))
 
-	result := testutil.ExecCmdOK(t, cmd, "add",
+	out, err := executeCronCommand(t, cmd, "add",
 		"--name", "interval-job",
 		"--prompt", "check status",
 		"--every", "30m",
 	)
-	assert.Contains(t, result.Stdout, `Cron job "interval-job" created`)
-	assert.Contains(t, result.Stdout, "every 30m")
+	require.NoError(t, err)
+	assert.Contains(t, out, `Cron job "interval-job" created`)
+	assert.Contains(t, out, "every 30m")
 }
 
 func TestDeleteCmd_MissingArg(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cmd := NewCronCmd(testutil.FakeBootLoader(t, cfg))
 
-	result := testutil.ExecCmd(t, cmd, "delete")
-	require.Error(t, result.Err)
+	_, err := executeCronCommand(t, cmd, "delete")
+	require.Error(t, err)
 }
 
 func TestPauseCmd_MissingArg(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cmd := NewCronCmd(testutil.FakeBootLoader(t, cfg))
 
-	result := testutil.ExecCmd(t, cmd, "pause")
-	require.Error(t, result.Err)
+	_, err := executeCronCommand(t, cmd, "pause")
+	require.Error(t, err)
 }
 
 func TestResumeCmd_MissingArg(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cmd := NewCronCmd(testutil.FakeBootLoader(t, cfg))
 
-	result := testutil.ExecCmd(t, cmd, "resume")
-	require.Error(t, result.Err)
+	_, err := executeCronCommand(t, cmd, "resume")
+	require.Error(t, err)
 }
 
 func TestShortID(t *testing.T) {

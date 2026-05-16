@@ -4,11 +4,13 @@ package doctor
 import (
 	"context"
 	"fmt"
+	"io"
 
 	"github.com/spf13/cobra"
 
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/cli/cliboot"
+	"github.com/langoai/lango/internal/cli/clihttp"
 	"github.com/langoai/lango/internal/cli/doctor/checks"
 	"github.com/langoai/lango/internal/cli/doctor/output"
 	"github.com/langoai/lango/internal/config"
@@ -16,9 +18,14 @@ import (
 
 // Options holds the doctor command options.
 type Options struct {
-	Fix  bool
-	JSON bool
+	Fix    bool
+	Output string
 }
+
+var (
+	doctorBootstrapRun = bootstrap.Run
+	doctorAllChecks    = checks.AllChecks
+)
 
 // NewCommand creates the doctor command.
 func NewCommand() *cobra.Command {
@@ -80,27 +87,34 @@ Checks performed (27 total):
     - P2P Workspaces          Workspace isolation and connectivity
 
 Use --fix to attempt automatic repair of fixable issues.
-Use --json for machine-readable output.
+Use --output json for machine-readable output.
 
-See Also:
+		See Also:
   lango settings - Interactive settings editor (TUI)
   lango config   - View/manage configuration profiles
   lango onboard  - Guided setup wizard`,
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return run(cmd.Context(), opts)
+			output, err := clihttp.ResolveTableOrJSONOutput(cmd)
+			if err != nil {
+				return err
+			}
+			opts.Output = output
+			return run(cmd.Context(), cmd.OutOrStdout(), opts)
 		},
 	}
 
 	cmd.Flags().BoolVar(&opts.Fix, "fix", false, "Attempt to automatically fix issues")
-	cmd.Flags().BoolVar(&opts.JSON, "json", false, "Output results as JSON")
+	cmd.Flags().StringVar(&opts.Output, "output", "table", "Output format: table or json")
 
 	return cmd
 }
 
-func run(ctx context.Context, opts *Options) error {
+func run(ctx context.Context, out io.Writer, opts *Options) error {
 	// Load configuration from encrypted profile via bootstrap.
 	var cfg *config.Config
-	boot, err := bootstrap.Run(bootstrap.Options{
+	boot, err := doctorBootstrapRun(bootstrap.Options{
 		Version:            cliboot.Version,
 		StartStorageBroker: true,
 	})
@@ -110,7 +124,7 @@ func run(ctx context.Context, opts *Options) error {
 	}
 
 	// Get all checks
-	allChecks := checks.AllChecks()
+	allChecks := doctorAllChecks()
 	results := make([]checks.Result, 0, len(allChecks))
 
 	// Run checks
@@ -131,23 +145,33 @@ func run(ctx context.Context, opts *Options) error {
 	summary := checks.NewSummary(results)
 
 	// Output results
-	if opts.JSON {
+	if opts.Output == "json" {
 		renderer := &output.JSONRenderer{}
 		jsonOutput, err := renderer.Render(summary)
 		if err != nil {
 			return fmt.Errorf("render JSON: %w", err)
 		}
-		fmt.Println(jsonOutput)
+		if _, err := fmt.Fprintln(out, jsonOutput); err != nil {
+			return err
+		}
 	} else {
 		renderer := &output.TUIRenderer{}
-		fmt.Print(renderer.RenderTitle())
-		fmt.Println()
-
-		for _, result := range results {
-			fmt.Print(renderer.RenderResult(result))
+		if _, err := fmt.Fprint(out, renderer.RenderTitle()); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintln(out); err != nil {
+			return err
 		}
 
-		fmt.Print(renderer.RenderSummary(summary))
+		for _, result := range results {
+			if _, err := fmt.Fprint(out, renderer.RenderResult(result)); err != nil {
+				return err
+			}
+		}
+
+		if _, err := fmt.Fprint(out, renderer.RenderSummary(summary)); err != nil {
+			return err
+		}
 
 		// Show fix hint if there are fixable issues
 		hasFixable := false
@@ -157,7 +181,9 @@ func run(ctx context.Context, opts *Options) error {
 				break
 			}
 		}
-		fmt.Print(renderer.RenderFixHint(hasFixable))
+		if _, err := fmt.Fprint(out, renderer.RenderFixHint(hasFixable)); err != nil {
+			return err
+		}
 	}
 
 	// Return error if there are failures

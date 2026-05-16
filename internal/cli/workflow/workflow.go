@@ -4,7 +4,6 @@ package workflow
 import (
 	"context"
 	"fmt"
-	"os"
 	"text/tabwriter"
 	"time"
 
@@ -17,6 +16,33 @@ import (
 	"github.com/langoai/lango/internal/toolchain"
 	"github.com/langoai/lango/internal/workflow"
 )
+
+var cancelWorkflowRun = func(bootLoader func() (*bootstrap.Result, error), runID string) (string, error) {
+	boot, err := bootLoader()
+	if err != nil {
+		return "", fmt.Errorf("bootstrap: %w", err)
+	}
+	defer boot.Close()
+
+	engine := initEngine(boot)
+	if engine == nil {
+		return "", ErrWorkflowDisabled
+	}
+
+	if err := engine.Cancel(runID); err != nil {
+		return "", fmt.Errorf("cancel workflow: %w", err)
+	}
+
+	return fmt.Sprintf("Workflow run %s cancelled.", runID), nil
+}
+
+var executeWorkflowDirect = func(boot *bootstrap.Result, w *workflow.Workflow) (*workflow.RunResult, error) {
+	engine := initEngine(boot)
+	if engine == nil {
+		return nil, ErrWorkflowDisabled
+	}
+	return engine.Run(context.Background(), w)
+}
 
 // NewWorkflowCmd creates the workflow command with lazy bootstrap loading.
 func NewWorkflowCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
@@ -62,49 +88,49 @@ func newRunCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 				return fmt.Errorf("validate workflow: %w", err)
 			}
 
-			fmt.Printf("Workflow: %s\n", w.Name)
-			fmt.Printf("Steps:    %d\n", len(w.Steps))
+			out := cmd.OutOrStdout()
+			fmt.Fprintf(out, "Workflow: %s\n", w.Name)
+			fmt.Fprintf(out, "Steps:    %d\n", len(w.Steps))
 			if w.Schedule != "" {
-				fmt.Printf("Schedule: %s\n", w.Schedule)
+				fmt.Fprintf(out, "Schedule: %s\n", w.Schedule)
 			}
 
 			// For direct execution (no schedule), we need the full app running.
 			// The CLI can only validate and display — actual execution happens via the server.
 			if w.Schedule != "" {
-				fmt.Println("\nWorkflow has a schedule. Register it with the running server:")
-				fmt.Printf("  POST /api/workflow/register with the YAML content\n")
+				fmt.Fprintln(out, "\nWorkflow has a schedule.")
+				fmt.Fprintln(out, "CLI schedule registration is not implemented yet.")
+				fmt.Fprintln(out, "Use `lango cron add` or the runtime automation tools to schedule this workflow.")
 				return nil
 			}
 
-			fmt.Println("\nWorkflow validated successfully.")
-			fmt.Println("To execute, start the server with 'lango serve' and submit via API or TUI.")
+			fmt.Fprintln(out, "\nWorkflow validated successfully.")
+			fmt.Fprintln(out, "To execute, start the server with 'lango serve' and submit via API or TUI.")
 
 			// If server is running, try to execute directly
 			boot, err := bootLoader()
 			if err != nil {
-				fmt.Println("(Server not available for direct execution)")
+				fmt.Fprintln(out, "(Server not available for direct execution)")
 				return nil
 			}
 			defer boot.Close()
 
-			engine := initEngine(boot)
-			if engine == nil {
-				fmt.Println("(Workflow engine not enabled in config)")
+			result, err := executeWorkflowDirect(boot, w)
+			if err == ErrWorkflowDisabled {
+				fmt.Fprintln(out, "(Workflow engine not enabled in config)")
 				return nil
 			}
-
-			fmt.Println("\nExecuting workflow...")
-			result, err := engine.Run(context.Background(), w)
 			if err != nil {
 				return fmt.Errorf("execute workflow: %w", err)
 			}
 
-			fmt.Printf("\nWorkflow completed: %s\n", result.Status)
+			fmt.Fprintln(out, "\nExecuting workflow...")
+			fmt.Fprintf(out, "\nWorkflow completed: %s\n", result.Status)
 			if result.Error != "" {
-				fmt.Printf("Error: %s\n", result.Error)
+				fmt.Fprintf(out, "Error: %s\n", result.Error)
 			}
 			for stepID, stepResult := range result.StepResults {
-				fmt.Printf("\n--- Step: %s ---\n%s\n", stepID, truncate(stepResult, 500))
+				fmt.Fprintf(out, "\n--- Step: %s ---\n%s\n", stepID, truncate(stepResult, 500))
 			}
 			return nil
 		},
@@ -137,10 +163,10 @@ func newWorkflowListCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Com
 					return err
 				}
 				if len(runs) == 0 {
-					fmt.Println("No workflow runs found.")
+					fmt.Fprintln(cmd.OutOrStdout(), "No workflow runs found.")
 					return nil
 				}
-				w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+				w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
 				fmt.Fprintln(w, "ID\tWORKFLOW\tSTATUS\tSTEPS")
 				for _, r := range runs {
 					fmt.Fprintf(w, "%s\t%s\t%s\t%d/%d\n",
@@ -155,11 +181,11 @@ func newWorkflowListCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Com
 			}
 
 			if len(runs) == 0 {
-				fmt.Println("No workflow runs found.")
+				fmt.Fprintln(cmd.OutOrStdout(), "No workflow runs found.")
 				return nil
 			}
 
-			w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
 			fmt.Fprintln(w, "ID\tWORKFLOW\tSTATUS\tSTEPS\tSTARTED")
 			for _, r := range runs {
 				fmt.Fprintf(w, "%s\t%s\t%s\t%d/%d\t%s\n",
@@ -196,18 +222,19 @@ func newWorkflowStatusCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.C
 				if err != nil {
 					return err
 				}
-				fmt.Printf("Run ID:    %s\n", status.RunID)
-				fmt.Printf("Workflow:  %s\n", status.WorkflowName)
-				fmt.Printf("Status:    %s\n", status.Status)
-				fmt.Printf("Progress:  %d/%d steps\n", status.CompletedSteps, status.TotalSteps)
+				out := cmd.OutOrStdout()
+				fmt.Fprintf(out, "Run ID:    %s\n", status.RunID)
+				fmt.Fprintf(out, "Workflow:  %s\n", status.WorkflowName)
+				fmt.Fprintf(out, "Status:    %s\n", status.Status)
+				fmt.Fprintf(out, "Progress:  %d/%d steps\n", status.CompletedSteps, status.TotalSteps)
 				if len(status.StepStatuses) > 0 {
-					fmt.Println("\nSteps:")
+					fmt.Fprintln(out, "\nSteps:")
 					for _, s := range status.StepStatuses {
 						errInfo := ""
 						if s.Error != "" {
 							errInfo = " (" + truncate(s.Error, 40) + ")"
 						}
-						fmt.Printf("  %-20s  %-12s  agent=%-15s%s\n",
+						fmt.Fprintf(out, "  %-20s  %-12s  agent=%-15s%s\n",
 							s.StepID, s.Status, s.Agent, errInfo)
 					}
 				}
@@ -219,19 +246,20 @@ func newWorkflowStatusCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.C
 				return fmt.Errorf("get status: %w", err)
 			}
 
-			fmt.Printf("Run ID:    %s\n", status.RunID)
-			fmt.Printf("Workflow:  %s\n", status.WorkflowName)
-			fmt.Printf("Status:    %s\n", status.Status)
-			fmt.Printf("Progress:  %d/%d steps\n", status.CompletedSteps, status.TotalSteps)
+			out := cmd.OutOrStdout()
+			fmt.Fprintf(out, "Run ID:    %s\n", status.RunID)
+			fmt.Fprintf(out, "Workflow:  %s\n", status.WorkflowName)
+			fmt.Fprintf(out, "Status:    %s\n", status.Status)
+			fmt.Fprintf(out, "Progress:  %d/%d steps\n", status.CompletedSteps, status.TotalSteps)
 
 			if len(status.StepStatuses) > 0 {
-				fmt.Println("\nSteps:")
+				fmt.Fprintln(out, "\nSteps:")
 				for _, s := range status.StepStatuses {
 					errInfo := ""
 					if s.Error != "" {
 						errInfo = " (" + truncate(s.Error, 40) + ")"
 					}
-					fmt.Printf("  %-20s  %-12s  agent=%-15s%s\n",
+					fmt.Fprintf(out, "  %-20s  %-12s  agent=%-15s%s\n",
 						s.StepID, s.Status, s.Agent, errInfo)
 				}
 			}
@@ -246,22 +274,12 @@ func newWorkflowCancelCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.C
 		Short: "Cancel a running workflow",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			boot, err := bootLoader()
+			message, err := cancelWorkflowRun(bootLoader, args[0])
 			if err != nil {
-				return fmt.Errorf("bootstrap: %w", err)
-			}
-			defer boot.Close()
-
-			engine := initEngine(boot)
-			if engine == nil {
-				return ErrWorkflowDisabled
+				return err
 			}
 
-			if err := engine.Cancel(args[0]); err != nil {
-				return fmt.Errorf("cancel workflow: %w", err)
-			}
-
-			fmt.Printf("Workflow run %s cancelled.\n", args[0])
+			fmt.Fprintln(cmd.OutOrStdout(), message)
 			return nil
 		},
 	}
@@ -290,10 +308,10 @@ func newWorkflowHistoryCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.
 					return err
 				}
 				if len(runs) == 0 {
-					fmt.Println("No workflow history found.")
+					fmt.Fprintln(cmd.OutOrStdout(), "No workflow history found.")
 					return nil
 				}
-				w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+				w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
 				fmt.Fprintln(w, "ID\tWORKFLOW\tSTATUS\tSTEPS")
 				for _, r := range runs {
 					fmt.Fprintf(w, "%s\t%s\t%s\t%d/%d\n",
@@ -308,11 +326,11 @@ func newWorkflowHistoryCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.
 			}
 
 			if len(runs) == 0 {
-				fmt.Println("No workflow history found.")
+				fmt.Fprintln(cmd.OutOrStdout(), "No workflow history found.")
 				return nil
 			}
 
-			w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
 			fmt.Fprintln(w, "ID\tWORKFLOW\tSTATUS\tSTEPS")
 			for _, r := range runs {
 				fmt.Fprintf(w, "%s\t%s\t%s\t%d/%d\n",

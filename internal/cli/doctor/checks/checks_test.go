@@ -154,19 +154,19 @@ func TestDatabaseCheck_Run_DirectoryNotExist(t *testing.T) {
 	}
 }
 
-func TestSecurityCheck_Run_EnclaveProvider(t *testing.T) {
+func TestSecurityCheck_Run_KMSProvider(t *testing.T) {
 	cfg := &config.Config{
 		Session: config.SessionConfig{
 			DatabasePath: "", // skip DB checks
 		},
 	}
-	cfg.Security.Signer.Provider = "enclave"
+	cfg.Security.Signer.Provider = "aws-kms"
 
 	check := &SecurityCheck{}
 	result := check.Run(context.Background(), cfg)
 
 	if result.Status == StatusFail {
-		t.Errorf("enclave provider should not return Fail, got: %s", result.Message)
+		t.Errorf("KMS provider should not return Fail, got: %s", result.Message)
 	}
 }
 

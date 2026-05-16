@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"fmt"
+	"io"
 
 	"github.com/spf13/cobra"
 
@@ -16,7 +17,7 @@ func newEnableCmd() *cobra.Command {
 		Short: "Enable an MCP server",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return toggleServer(args[0], scope, true)
+			return toggleServer(cmd.OutOrStdout(), args[0], scope, true)
 		},
 	}
 
@@ -32,7 +33,7 @@ func newDisableCmd() *cobra.Command {
 		Short: "Disable an MCP server",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return toggleServer(args[0], scope, false)
+			return toggleServer(cmd.OutOrStdout(), args[0], scope, false)
 		},
 	}
 
@@ -40,7 +41,7 @@ func newDisableCmd() *cobra.Command {
 	return cmd
 }
 
-func toggleServer(name, scope string, enabled bool) error {
+func toggleServer(w io.Writer, name, scope string, enabled bool) error {
 	paths := scopePaths(scope)
 	for _, sp := range paths {
 		servers, err := mcplib.LoadMCPFile(sp.path)
@@ -63,7 +64,7 @@ func toggleServer(name, scope string, enabled bool) error {
 		if !enabled {
 			action = "disabled"
 		}
-		fmt.Printf("MCP server %q %s.\n", name, action)
+		fmt.Fprintf(w, "MCP server %q %s.\n", name, action)
 		return nil
 	}
 

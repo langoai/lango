@@ -3,7 +3,6 @@ package bg
 
 import (
 	"fmt"
-	"os"
 	"text/tabwriter"
 	"time"
 
@@ -41,11 +40,11 @@ func newBgListCmd(mp func() (*background.Manager, error)) *cobra.Command {
 
 			tasks := mgr.List()
 			if len(tasks) == 0 {
-				fmt.Println("No background tasks.")
-				return nil
+				_, err := fmt.Fprintln(cmd.OutOrStdout(), "No background tasks.")
+				return err
 			}
 
-			w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
 			fmt.Fprintln(w, "ID\tSTATUS\tPROMPT\tSTARTED\tDURATION")
 			for _, t := range tasks {
 				duration := "-"
@@ -83,20 +82,20 @@ func newBgStatusCmd(mp func() (*background.Manager, error)) *cobra.Command {
 				return fmt.Errorf("get status: %w", err)
 			}
 
-			fmt.Printf("ID:      %s\n", task.ID)
-			fmt.Printf("Status:  %s\n", task.Status.String())
-			fmt.Printf("Prompt:  %s\n", task.Prompt)
-			fmt.Printf("Origin:  %s (session: %s)\n", task.OriginChannel, task.OriginSession)
-			fmt.Printf("Started: %s\n", formatTime(task.StartedAt))
+			fmt.Fprintf(cmd.OutOrStdout(), "ID:      %s\n", task.ID)
+			fmt.Fprintf(cmd.OutOrStdout(), "Status:  %s\n", task.Status.String())
+			fmt.Fprintf(cmd.OutOrStdout(), "Prompt:  %s\n", task.Prompt)
+			fmt.Fprintf(cmd.OutOrStdout(), "Origin:  %s (session: %s)\n", task.OriginChannel, task.OriginSession)
+			fmt.Fprintf(cmd.OutOrStdout(), "Started: %s\n", formatTime(task.StartedAt))
 			if !task.CompletedAt.IsZero() {
-				fmt.Printf("Completed: %s\n", formatTime(task.CompletedAt))
-				fmt.Printf("Duration: %s\n", task.CompletedAt.Sub(task.StartedAt).Truncate(time.Millisecond))
+				fmt.Fprintf(cmd.OutOrStdout(), "Completed: %s\n", formatTime(task.CompletedAt))
+				fmt.Fprintf(cmd.OutOrStdout(), "Duration: %s\n", task.CompletedAt.Sub(task.StartedAt).Truncate(time.Millisecond))
 			}
 			if task.Error != "" {
-				fmt.Printf("Error: %s\n", task.Error)
+				fmt.Fprintf(cmd.OutOrStdout(), "Error: %s\n", task.Error)
 			}
 			if task.Result != "" {
-				fmt.Printf("\nResult:\n%s\n", task.Result)
+				fmt.Fprintf(cmd.OutOrStdout(), "\nResult:\n%s\n", task.Result)
 			}
 			return nil
 		},
@@ -118,7 +117,7 @@ func newBgCancelCmd(mp func() (*background.Manager, error)) *cobra.Command {
 				return fmt.Errorf("cancel task: %w", err)
 			}
 
-			fmt.Printf("Task %s cancelled.\n", args[0])
+			fmt.Fprintf(cmd.OutOrStdout(), "Task %s cancelled.\n", args[0])
 			return nil
 		},
 	}
@@ -140,7 +139,7 @@ func newBgResultCmd(mp func() (*background.Manager, error)) *cobra.Command {
 				return fmt.Errorf("get result: %w", err)
 			}
 
-			fmt.Println(result)
+			fmt.Fprintln(cmd.OutOrStdout(), result)
 			return nil
 		},
 	}

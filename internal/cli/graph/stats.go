@@ -2,9 +2,7 @@ package graph
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"os"
 	"sort"
 	"text/tabwriter"
 
@@ -13,12 +11,18 @@ import (
 )
 
 func newStatsCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
-	var jsonOutput bool
+	var output string
 
 	cmd := &cobra.Command{
-		Use:   "stats",
-		Short: "Show knowledge graph statistics",
+		Use:           "stats",
+		Short:         "Show knowledge graph statistics",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			output, err := resolveOutput(cmd)
+			if err != nil {
+				return err
+			}
 			cfg, err := cfgLoader()
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
@@ -64,21 +68,19 @@ func newStatsCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 				PredicateStats: entries,
 			}
 
-			if jsonOutput {
-				enc := json.NewEncoder(os.Stdout)
-				enc.SetIndent("", "  ")
-				return enc.Encode(s)
+			if output == "json" {
+				return printJSON(cmd.OutOrStdout(), s)
 			}
 
-			fmt.Printf("Knowledge Graph Statistics\n")
-			fmt.Printf("  Total Triples: %d\n\n", s.TotalTriples)
+			fmt.Fprintf(cmd.OutOrStdout(), "Knowledge Graph Statistics\n")
+			fmt.Fprintf(cmd.OutOrStdout(), "  Total Triples: %d\n\n", s.TotalTriples)
 
 			if len(entries) == 0 {
-				fmt.Println("No predicate data.")
-				return nil
+				_, err := fmt.Fprintln(cmd.OutOrStdout(), "No predicate data.")
+				return err
 			}
 
-			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
 			fmt.Fprintln(w, "PREDICATE\tCOUNT")
 			for _, e := range entries {
 				fmt.Fprintf(w, "%s\t%d\n", e.Predicate, e.Count)
@@ -87,7 +89,7 @@ func newStatsCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
+	cmd.Flags().StringVar(&output, "output", "table", "Output format: table or json")
 
 	return cmd
 }

@@ -2,8 +2,8 @@
 package configcmd
 
 import (
-	"encoding/json"
 	"fmt"
+	"io"
 	"reflect"
 	"sort"
 	"strconv"
@@ -11,16 +11,17 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/langoai/lango/internal/cli/clihttp"
 	"github.com/langoai/lango/internal/config"
 )
 
 // NewGetCmd creates the "config get <dot.path>" command.
 func NewGetCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
-	var outputFmt string
-
 	cmd := &cobra.Command{
-		Use:   "get <dot.path>",
-		Short: "Read a configuration value by dot-notation path",
+		Use:           "get <dot.path>",
+		Short:         "Read a configuration value by dot-notation path",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		Long: `Read a configuration value using dot-notation (e.g. agent.provider, p2p.enabled).
 
 This is a read-only operation. Use "lango config set" to modify values.
@@ -32,6 +33,10 @@ Examples:
   lango config get agent --output json`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			outputFmt, err := resolvePlainOrJSONOutput(cmd)
+			if err != nil {
+				return err
+			}
 			cfg, err := cfgLoader()
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
@@ -42,12 +47,24 @@ Examples:
 				return err
 			}
 
-			return printValue(val, outputFmt)
+			return printValue(cmd.OutOrStdout(), val, outputFmt)
 		},
 	}
 
-	cmd.Flags().StringVarP(&outputFmt, "output", "o", "plain", "Output format (plain, json)")
+	cmd.Flags().StringP("output", "o", "plain", "Output format (plain, json)")
 	return cmd
+}
+
+func resolvePlainOrJSONOutput(cmd *cobra.Command) (string, error) {
+	flag, _ := cmd.Flags().GetString("output")
+	switch normalized := strings.ToLower(strings.TrimSpace(flag)); normalized {
+	case "", "plain":
+		return "plain", nil
+	case "json":
+		return "json", nil
+	default:
+		return "", fmt.Errorf("unknown output format %q (expected: plain or json)", strings.TrimSpace(flag))
+	}
 }
 
 // NewSetCmd creates the "config set <dot.path> <value>" command.
@@ -89,8 +106,8 @@ Examples:
 				return fmt.Errorf("save config: %w", err)
 			}
 
-			fmt.Printf("Set %s = %s\n", args[0], args[1])
-			return nil
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Set %s = %s\n", args[0], args[1])
+			return err
 		},
 	}
 
@@ -122,7 +139,7 @@ Examples:
 
 			for _, k := range keys {
 				if prefix == "" || strings.HasPrefix(k, prefix) {
-					fmt.Println(k)
+					fmt.Fprintln(cmd.OutOrStdout(), k)
 				}
 			}
 
@@ -318,19 +335,17 @@ func collectKeys(t reflect.Type, prefix string) []string {
 }
 
 // printValue formats and prints a value.
-func printValue(val interface{}, format string) error {
+func printValue(w io.Writer, val interface{}, format string) error {
 	if format == "json" {
-		data, err := json.MarshalIndent(val, "", "  ")
-		if err != nil {
+		if err := clihttp.PrintJSON(w, val); err != nil {
 			return fmt.Errorf("marshal value: %w", err)
 		}
-		fmt.Println(string(data))
 		return nil
 	}
 
 	// plain format
-	fmt.Println(formatPlain(val))
-	return nil
+	_, err := fmt.Fprintln(w, formatPlain(val))
+	return err
 }
 
 // formatPlain converts a value to a human-readable string.

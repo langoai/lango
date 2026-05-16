@@ -1,8 +1,10 @@
 package output
 
 import (
-	"encoding/json"
+	"bytes"
+	"strings"
 
+	"github.com/langoai/lango/internal/cli/clihttp"
 	"github.com/langoai/lango/internal/cli/doctor/checks"
 )
 
@@ -49,21 +51,21 @@ func (r *JSONRenderer) Render(summary checks.Summary) (string, error) {
 
 	for i, result := range summary.Results {
 		output.Results[i] = JSONResult{
-			Name:               result.Name,
+			Name:               sanitizeDoctorText(result.Name),
 			Status:             result.Status.String(),
-			Message:            result.Message,
-			Details:            result.Details,
+			Message:            sanitizeDoctorText(result.Message),
+			Details:            sanitizeDoctorText(result.Details),
 			Fixable:            result.Fixable,
-			FixAction:          result.FixAction,
-			TraceFailures:      result.TraceFailures,
+			FixAction:          sanitizeDoctorText(result.FixAction),
+			TraceFailures:      sanitizeTraceFailures(result.TraceFailures),
 			IsolationLeakCount: result.IsolationLeakCount,
 		}
 	}
 
-	data, err := json.MarshalIndent(output, "", "  ")
-	if err != nil {
+	var buf bytes.Buffer
+	if err := clihttp.PrintJSON(&buf, output); err != nil {
 		return "", err
 	}
 
-	return string(data), nil
+	return strings.TrimSuffix(buf.String(), "\n"), nil
 }

@@ -14,28 +14,32 @@ type TUIRenderer struct{}
 
 // RenderResult renders a single check result.
 func (r *TUIRenderer) RenderResult(result checks.Result) string {
+	name := sanitizeDoctorText(result.Name)
+	message := sanitizeDoctorText(result.Message)
+	details := sanitizeDoctorText(result.Details)
+
 	var indicator string
 	switch result.Status {
 	case checks.StatusPass:
-		indicator = tui.FormatPass(result.Name)
+		indicator = tui.FormatPass(name)
 	case checks.StatusWarn:
-		indicator = tui.FormatWarn(result.Name)
+		indicator = tui.FormatWarn(name)
 	case checks.StatusFail:
-		indicator = tui.FormatFail(result.Name)
+		indicator = tui.FormatFail(name)
 	case checks.StatusSkip:
-		indicator = tui.FormatMuted(result.Name)
+		indicator = tui.FormatMuted(name)
 	}
 
 	var sb strings.Builder
 	sb.WriteString(indicator)
 	sb.WriteString("\n")
 	sb.WriteString("  ")
-	sb.WriteString(result.Message)
+	sb.WriteString(message)
 	sb.WriteString("\n")
 
-	if result.Details != "" {
+	if details != "" {
 		sb.WriteString("  ")
-		sb.WriteString(tui.FormatMuted("→ " + result.Details))
+		sb.WriteString(tui.FormatMuted("→ " + details))
 		sb.WriteString("\n")
 	}
 

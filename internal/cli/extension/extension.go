@@ -7,7 +7,6 @@ package extension
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -19,6 +18,7 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
+	"github.com/langoai/lango/internal/cli/prompt"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/extension"
 )
@@ -29,6 +29,8 @@ const (
 	exitInternal     = 2
 	exitUserDeclined = 3
 )
+
+var extensionExit = os.Exit
 
 // configLoader returns the effective config (matches the existing CLI
 // convention used by memory/learning/agent subcommands).
@@ -158,7 +160,12 @@ func newInstallCmd(loader configLoader) *cobra.Command {
 				return cliExit(cmd, exitInternal, err)
 			}
 			if !yes {
-				ok, promptErr := promptConfirm(cmd.InOrStdin(), cmd.OutOrStdout(), "Install this pack?")
+				ok, promptErr := prompt.ConfirmTTYIO(
+					cmd.InOrStdin(),
+					cmd.OutOrStdout(),
+					"Install this pack?",
+					"stdin is not a TTY; pass --yes for scripted runs",
+				)
 				if promptErr != nil {
 					return cliExit(cmd, exitUserDeclined, promptErr)
 				}
@@ -226,7 +233,12 @@ func newRemoveCmd(loader configLoader) *cobra.Command {
 			extSkillDir := filepath.Join(inst.SkillsDir, "ext-"+name)
 			fmt.Fprintf(cmd.OutOrStdout(), "Will delete:\n  %s\n  %s\n", packDir, extSkillDir)
 			if !yes {
-				ok, promptErr := promptConfirm(cmd.InOrStdin(), cmd.OutOrStdout(), "Remove pack?")
+				ok, promptErr := prompt.ConfirmTTYIO(
+					cmd.InOrStdin(),
+					cmd.OutOrStdout(),
+					"Remove pack?",
+					"stdin is not a TTY; pass --yes for scripted runs",
+				)
 				if promptErr != nil {
 					return cliExit(cmd, exitUserDeclined, promptErr)
 				}
@@ -247,26 +259,6 @@ func newRemoveCmd(loader configLoader) *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&yes, "yes", false, "Skip the interactive confirmation")
 	return cmd
-}
-
-// promptConfirm reads a single line from stdin. Non-TTY stdin without
-// --yes returns (false, error directing the user to pass --yes). "y"/"yes"
-// (case-insensitive) is an accept; anything else is a deny.
-func promptConfirm(in io.Reader, out io.Writer, prompt string) (bool, error) {
-	if f, ok := in.(*os.File); ok && !term.IsTerminal(int(f.Fd())) {
-		return false, fmt.Errorf("stdin is not a TTY; pass --yes for scripted runs")
-	}
-	fmt.Fprintf(out, "%s [y/N]: ", prompt)
-	var resp string
-	_, err := fmt.Fscanln(in, &resp)
-	if err != nil && err != io.EOF {
-		// Fscanln returns "unexpected newline" on an empty response — treat as deny, not error.
-		if !strings.Contains(err.Error(), "unexpected newline") {
-			return false, err
-		}
-	}
-	resp = strings.ToLower(strings.TrimSpace(resp))
-	return resp == "y" || resp == "yes", nil
 }
 
 // outputFormat identifies the rendering mode a subcommand uses.
@@ -309,9 +301,7 @@ func resolveOutput(flag string, out io.Writer) outputFormat {
 func renderInspect(w io.Writer, r *extension.InspectReport, format outputFormat) error {
 	switch format {
 	case outputJSON:
-		enc := json.NewEncoder(w)
-		enc.SetIndent("", "  ")
-		return enc.Encode(struct {
+		return printJSON(w, struct {
 			Name           string            `json:"name"`
 			Version        string            `json:"version"`
 			Author         string            `json:"author,omitempty"`
@@ -415,9 +405,7 @@ func renderList(w io.Writer, packs []extension.InstalledPack, format outputForma
 			}
 			rows = append(rows, r)
 		}
-		enc := json.NewEncoder(w)
-		enc.SetIndent("", "  ")
-		return enc.Encode(rows)
+		return printJSON(w, rows)
 	case outputPlain:
 		for _, p := range packs {
 			name, version := "", ""
@@ -454,12 +442,8 @@ func truncate(s string, n int) string {
 	return s[:n-1] + "…"
 }
 
-// cliExit wraps a cobra RunE failure with a specific exit code using
-// cobra.CheckErr-compatible behavior: the command's parent chain sets
-// SilenceUsage via side effect and we return a wrapped error carrying the
-// exit code. The main binary's errorHandler should translate cliError to
-// os.Exit — for now we use os.Exit directly to match the Phase 4 CLI spec
-// exit-code requirements without a cross-cutting refactor.
+// cliExit writes any error to the command error stream, then exits with the
+// requested status code via the package-level exit seam.
 func cliExit(cmd *cobra.Command, code int, err error) error {
 	if code == exitOK {
 		return nil
@@ -469,7 +453,7 @@ func cliExit(cmd *cobra.Command, code int, err error) error {
 	}
 	cmd.SilenceUsage = true
 	cmd.SilenceErrors = true
-	os.Exit(code)
+	extensionExit(code)
 	return nil
 }
 

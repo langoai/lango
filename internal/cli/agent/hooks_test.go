@@ -1,16 +1,26 @@
 package agent
 
 import (
+	"bytes"
 	"encoding/json"
-	"io"
-	"os"
 	"testing"
 
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/toolchain"
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func executeHooksCmd(t *testing.T, cmd *cobra.Command, args ...string) (string, error) {
+	t.Helper()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs(args)
+	err := cmd.Execute()
+	return out.String(), err
+}
 
 func TestBuildRegistryOutput_PreAndPost(t *testing.T) {
 	t.Parallel()
@@ -103,7 +113,6 @@ func TestPrintJSON_BackwardCompatible(t *testing.T) {
 }
 
 func TestAgentHooksJSONSnapshotShape(t *testing.T) {
-	// Not parallel: captureStdout swaps os.Stdout, which is process-global.
 	cfg := config.DefaultConfig()
 	cfg.Hooks.Enabled = true
 	cfg.Hooks.SecurityFilter = true
@@ -115,9 +124,8 @@ func TestAgentHooksJSONSnapshotShape(t *testing.T) {
 	cmd := newHooksCmd(func() (*config.Config, error) {
 		return cfg, nil
 	})
-	cmd.SetArgs([]string{"--json"})
 
-	output, err := captureStdout(t, cmd.Execute)
+	output, err := executeHooksCmd(t, cmd, "--output", "json")
 	require.NoError(t, err)
 
 	var out fullOutput
@@ -157,33 +165,25 @@ func TestAgentHooksJSONSnapshotShape(t *testing.T) {
 	assert.NotEmpty(t, saveableTools)
 }
 
-func captureStdout(t *testing.T, run func() error) (string, error) {
-	t.Helper()
+func TestAgentHooksTextOutputUsesCommandWriter(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Hooks.Enabled = true
+	cfg.Hooks.SecurityFilter = true
+	cfg.Hooks.AccessControl = true
+	cfg.Hooks.EventPublishing = true
+	cfg.Hooks.KnowledgeSave = true
 
-	oldStdout := os.Stdout
-	reader, writer, err := os.Pipe()
+	cmd := newHooksCmd(func() (*config.Config, error) {
+		return cfg, nil
+	})
+
+	output, err := executeHooksCmd(t, cmd)
 	require.NoError(t, err)
-	defer reader.Close()
 
-	writerClosed := false
-	os.Stdout = writer
-	defer func() {
-		os.Stdout = oldStdout
-		if !writerClosed {
-			_ = writer.Close()
-		}
-	}()
-
-	runErr := run()
-	closeErr := writer.Close()
-	writerClosed = true
-
-	data, readErr := io.ReadAll(reader)
-	require.NoError(t, readErr)
-	if runErr != nil {
-		return string(data), runErr
-	}
-	return string(data), closeErr
+	assert.Contains(t, output, "Hook Configuration")
+	assert.Contains(t, output, "Registered Hooks")
+	assert.Contains(t, output, "security_filter")
+	assert.Contains(t, output, "knowledge_save")
 }
 
 func findHookInfo(hooks []hookInfo, name string) (hookInfo, bool) {

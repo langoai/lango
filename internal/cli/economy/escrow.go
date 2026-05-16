@@ -34,15 +34,15 @@ func newEscrowStatusCmd(cfgLoader func() (*config.Config, error)) *cobra.Command
 			}
 
 			if !cfg.Economy.Enabled || !cfg.Economy.Escrow.Enabled {
-				fmt.Println("Escrow is disabled.")
+				fmt.Fprintln(cmd.OutOrStdout(), "Escrow is disabled.")
 				return nil
 			}
 
-			fmt.Println("Escrow Configuration:")
-			fmt.Printf("  Default Timeout: %s\n", cfg.Economy.Escrow.DefaultTimeout)
-			fmt.Printf("  Max Milestones:  %d\n", cfg.Economy.Escrow.MaxMilestones)
-			fmt.Printf("  Auto Release:    %v\n", cfg.Economy.Escrow.AutoRelease)
-			fmt.Printf("  Dispute Window:  %s\n", cfg.Economy.Escrow.DisputeWindow)
+			fmt.Fprintln(cmd.OutOrStdout(), "Escrow Configuration:")
+			fmt.Fprintf(cmd.OutOrStdout(), "  Default Timeout: %s\n", cfg.Economy.Escrow.DefaultTimeout)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Max Milestones:  %d\n", cfg.Economy.Escrow.MaxMilestones)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Auto Release:    %v\n", cfg.Economy.Escrow.AutoRelease)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Dispute Window:  %s\n", cfg.Economy.Escrow.DisputeWindow)
 			return nil
 		},
 	}
@@ -59,31 +59,31 @@ func newEscrowListCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 			}
 
 			if !cfg.Economy.Enabled {
-				fmt.Println("Economy layer is disabled. Enable with economy.enabled=true")
+				fmt.Fprintln(cmd.OutOrStdout(), "Economy layer is disabled. Enable with economy.enabled=true")
 				return nil
 			}
 
 			if !cfg.Economy.Escrow.Enabled {
-				fmt.Println("Escrow is disabled. Enable with economy.escrow.enabled=true")
+				fmt.Fprintln(cmd.OutOrStdout(), "Escrow is disabled. Enable with economy.escrow.enabled=true")
 				return nil
 			}
 
 			oc := cfg.Economy.Escrow.OnChain
-			fmt.Println("Escrow Summary:")
-			fmt.Printf("  On-Chain Escrow:  %s\n", enabledStr(oc.Enabled))
+			fmt.Fprintln(cmd.OutOrStdout(), "Escrow Summary:")
+			fmt.Fprintf(cmd.OutOrStdout(), "  On-Chain Escrow:  %s\n", enabledStr(oc.Enabled))
 			if oc.Enabled {
-				fmt.Printf("  Mode:             %s\n", valueOrDefault(oc.Mode, "hub"))
+				fmt.Fprintf(cmd.OutOrStdout(), "  Mode:             %s\n", valueOrDefault(oc.Mode, "hub"))
 				if oc.HubAddress != "" {
-					fmt.Printf("  Hub Address:      %s\n", oc.HubAddress)
+					fmt.Fprintf(cmd.OutOrStdout(), "  Hub Address:      %s\n", oc.HubAddress)
 				}
 				if oc.VaultFactoryAddress != "" {
-					fmt.Printf("  Vault Factory:    %s\n", oc.VaultFactoryAddress)
+					fmt.Fprintf(cmd.OutOrStdout(), "  Vault Factory:    %s\n", oc.VaultFactoryAddress)
 				}
 			}
-			fmt.Printf("  Auto Release:     %v\n", cfg.Economy.Escrow.AutoRelease)
-			fmt.Printf("  Default Timeout:  %s\n", cfg.Economy.Escrow.DefaultTimeout)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Auto Release:     %v\n", cfg.Economy.Escrow.AutoRelease)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Default Timeout:  %s\n", cfg.Economy.Escrow.DefaultTimeout)
 
-			fmt.Println("\nUse 'lango economy escrow show' for detailed on-chain configuration.")
+			fmt.Fprintln(cmd.OutOrStdout(), "\nUse 'lango economy escrow show' for detailed on-chain configuration.")
 			return nil
 		},
 	}
@@ -101,35 +101,35 @@ func newEscrowShowCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 			}
 
 			if !cfg.Economy.Enabled || !cfg.Economy.Escrow.Enabled {
-				fmt.Println("Escrow is disabled.")
+				fmt.Fprintln(cmd.OutOrStdout(), "Escrow is disabled.")
 				return nil
 			}
 
 			if id != "" {
-				fmt.Printf("Escrow ID %q: use 'lango serve' and escrow agent tools for live data\n", id)
+				fmt.Fprintf(cmd.OutOrStdout(), "Escrow ID %q: use 'lango serve' and the escrow_status agent tool for live data\n", id)
 				return nil
 			}
 
 			oc := cfg.Economy.Escrow.OnChain
-			fmt.Println("On-Chain Escrow Configuration:")
-			fmt.Printf("  Enabled:              %s\n", enabledStr(oc.Enabled))
-			fmt.Printf("  Mode:                 %s\n", valueOrDefault(oc.Mode, "hub"))
-			fmt.Printf("  Hub Address:          %s\n", valueOrDefault(oc.HubAddress, "(not set)"))
-			fmt.Printf("  Vault Factory:        %s\n", valueOrDefault(oc.VaultFactoryAddress, "(not set)"))
-			fmt.Printf("  Vault Implementation: %s\n", valueOrDefault(oc.VaultImplementation, "(not set)"))
-			fmt.Printf("  Arbitrator:           %s\n", valueOrDefault(oc.ArbitratorAddress, "(not set)"))
-			fmt.Printf("  Token Address:        %s\n", valueOrDefault(oc.TokenAddress, "(not set)"))
-			fmt.Printf("  Poll Interval:        %s\n", oc.PollInterval)
-			fmt.Printf("  Confirmation Depth:   %d\n", oc.ConfirmationDepth)
+			fmt.Fprintln(cmd.OutOrStdout(), "On-Chain Escrow Configuration:")
+			fmt.Fprintf(cmd.OutOrStdout(), "  Enabled:              %s\n", enabledStr(oc.Enabled))
+			fmt.Fprintf(cmd.OutOrStdout(), "  Mode:                 %s\n", valueOrDefault(oc.Mode, "hub"))
+			fmt.Fprintf(cmd.OutOrStdout(), "  Hub Address:          %s\n", valueOrDefault(oc.HubAddress, "(not set)"))
+			fmt.Fprintf(cmd.OutOrStdout(), "  Vault Factory:        %s\n", valueOrDefault(oc.VaultFactoryAddress, "(not set)"))
+			fmt.Fprintf(cmd.OutOrStdout(), "  Vault Implementation: %s\n", valueOrDefault(oc.VaultImplementation, "(not set)"))
+			fmt.Fprintf(cmd.OutOrStdout(), "  Arbitrator:           %s\n", valueOrDefault(oc.ArbitratorAddress, "(not set)"))
+			fmt.Fprintf(cmd.OutOrStdout(), "  Token Address:        %s\n", valueOrDefault(oc.TokenAddress, "(not set)"))
+			fmt.Fprintf(cmd.OutOrStdout(), "  Poll Interval:        %s\n", oc.PollInterval)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Confirmation Depth:   %d\n", oc.ConfirmationDepth)
 
 			st := cfg.Economy.Escrow.Settlement
-			fmt.Println("\nSettlement:")
-			fmt.Printf("  Receipt Timeout:      %s\n", st.ReceiptTimeout)
-			fmt.Printf("  Max Retries:          %d\n", st.MaxRetries)
+			fmt.Fprintln(cmd.OutOrStdout(), "\nSettlement:")
+			fmt.Fprintf(cmd.OutOrStdout(), "  Receipt Timeout:      %s\n", st.ReceiptTimeout)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Max Retries:          %d\n", st.MaxRetries)
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&id, "id", "", "Escrow ID to show (future use)")
+	cmd.Flags().StringVar(&id, "id", "", "Optional escrow ID; prints live-status runtime guidance for that escrow")
 	return cmd
 }
 
@@ -154,21 +154,20 @@ func newEscrowSentinelStatusCmd(cfgLoader func() (*config.Config, error)) *cobra
 			}
 
 			if !cfg.Economy.Enabled || !cfg.Economy.Escrow.Enabled {
-				fmt.Println("Escrow is disabled. Sentinel is not active.")
+				fmt.Fprintln(cmd.OutOrStdout(), "Escrow is disabled. Sentinel is not active.")
 				return nil
 			}
 
 			if !cfg.Economy.Escrow.OnChain.Enabled {
-				fmt.Println("On-chain escrow is disabled. Sentinel monitors on-chain events.")
+				fmt.Fprintln(cmd.OutOrStdout(), "On-chain escrow is disabled. Sentinel monitors on-chain events.")
 				return nil
 			}
 
-			fmt.Println("Sentinel Engine:")
-			fmt.Printf("  Status:  active (monitors on-chain escrow events)\n")
-			fmt.Printf("  Mode:    %s\n", valueOrDefault(cfg.Economy.Escrow.OnChain.Mode, "hub"))
-			fmt.Println("\nThe sentinel engine runs within the application server.")
-			fmt.Println("Use 'lango serve' to start and 'lango economy escrow sentinel alerts'")
-			fmt.Println("(via agent tools) to view detected alerts.")
+			fmt.Fprintln(cmd.OutOrStdout(), "Sentinel Engine:")
+			fmt.Fprintf(cmd.OutOrStdout(), "  Status:  active (monitors on-chain escrow events)\n")
+			fmt.Fprintf(cmd.OutOrStdout(), "  Mode:    %s\n", valueOrDefault(cfg.Economy.Escrow.OnChain.Mode, "hub"))
+			fmt.Fprintln(cmd.OutOrStdout(), "\nThe sentinel engine runs within the application server.")
+			fmt.Fprintln(cmd.OutOrStdout(), "Use 'lango serve' to start the application server, then inspect detected alerts via the sentinel_alerts agent tool.")
 			return nil
 		},
 	}

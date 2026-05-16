@@ -4,7 +4,6 @@ package cron
 import (
 	"context"
 	"fmt"
-	"os"
 	"text/tabwriter"
 	"time"
 
@@ -130,11 +129,12 @@ Examples:
 				return fmt.Errorf("create job: %w", err)
 			}
 
-			fmt.Printf("Cron job %q created (id: %s)\n", name, job.ID)
-			fmt.Printf("  Schedule: %s %s\n", scheduleType, scheduleVal)
-			fmt.Printf("  Prompt: %s\n", truncate(prompt, 80))
+			out := cmd.OutOrStdout()
+			fmt.Fprintf(out, "Cron job %q created (id: %s)\n", name, job.ID)
+			fmt.Fprintf(out, "  Schedule: %s %s\n", scheduleType, scheduleVal)
+			fmt.Fprintf(out, "  Prompt: %s\n", truncate(prompt, 80))
 			if len(deliverTo) > 0 {
-				fmt.Printf("  Deliver to: %v\n", deliverTo)
+				fmt.Fprintf(out, "  Deliver to: %v\n", deliverTo)
 			}
 			return nil
 		},
@@ -170,11 +170,11 @@ func newListCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 			}
 
 			if len(jobs) == 0 {
-				fmt.Println("No cron jobs found.")
+				fmt.Fprintln(cmd.OutOrStdout(), "No cron jobs found.")
 				return nil
 			}
 
-			w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
 			fmt.Fprintln(w, "ID\tNAME\tSCHEDULE\tENABLED\tLAST RUN\tNEXT RUN")
 			for _, j := range jobs {
 				lastRun := "-"
@@ -220,7 +220,7 @@ func newDeleteCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 				return fmt.Errorf("delete job: %w", err)
 			}
 
-			fmt.Printf("Cron job %q deleted.\n", args[0])
+			fmt.Fprintf(cmd.OutOrStdout(), "Cron job %q deleted.\n", args[0])
 			return nil
 		},
 	}
@@ -253,7 +253,7 @@ func newPauseCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 				return fmt.Errorf("update job: %w", err)
 			}
 
-			fmt.Printf("Cron job %q paused.\n", args[0])
+			fmt.Fprintf(cmd.OutOrStdout(), "Cron job %q paused.\n", args[0])
 			return nil
 		},
 	}
@@ -286,7 +286,7 @@ func newResumeCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 				return fmt.Errorf("update job: %w", err)
 			}
 
-			fmt.Printf("Cron job %q resumed.\n", args[0])
+			fmt.Fprintf(cmd.OutOrStdout(), "Cron job %q resumed.\n", args[0])
 			return nil
 		},
 	}
@@ -326,11 +326,11 @@ func newHistoryCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command 
 			}
 
 			if len(entries) == 0 {
-				fmt.Println("No execution history found.")
+				fmt.Fprintln(cmd.OutOrStdout(), "No execution history found.")
 				return nil
 			}
 
-			w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
 			fmt.Fprintln(w, "JOB\tSTATUS\tSTARTED\tDURATION\tRESULT")
 			for _, e := range entries {
 				duration := "-"

@@ -1,9 +1,8 @@
 package learning
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
+	"io"
 	"text/tabwriter"
 	"time"
 
@@ -15,14 +14,20 @@ import (
 
 func newHistoryCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 	var (
-		jsonOutput bool
-		limit      int
+		output string
+		limit  int
 	)
 
 	cmd := &cobra.Command{
-		Use:   "history",
-		Short: "Show recent learning entries and corrections",
+		Use:           "history",
+		Short:         "Show recent learning entries and corrections",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			output, err := resolveOutput(cmd)
+			if err != nil {
+				return err
+			}
 			boot, err := bootLoader()
 			if err != nil {
 				return fmt.Errorf("bootstrap: %w", err)
@@ -37,20 +42,20 @@ func newHistoryCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command 
 				return fmt.Errorf("query learnings: %w", err)
 			}
 
-			if jsonOutput {
-				return printHistoryJSON(entries)
+			if output == "json" {
+				return printHistoryJSON(cmd.OutOrStdout(), entries)
 			}
-			return printHistoryTable(entries)
+			return printHistoryTable(cmd.OutOrStdout(), entries)
 		},
 	}
 
-	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
+	cmd.Flags().StringVar(&output, "output", "table", "Output format: table or json")
 	cmd.Flags().IntVar(&limit, "limit", 20, "Maximum number of entries to show")
 
 	return cmd
 }
 
-func printHistoryJSON(entries []storage.LearningHistoryRecord) error {
+func printHistoryJSON(writer io.Writer, entries []storage.LearningHistoryRecord) error {
 	type entry struct {
 		ID         string  `json:"id"`
 		Trigger    string  `json:"trigger"`
@@ -74,18 +79,16 @@ func printHistoryJSON(entries []storage.LearningHistoryRecord) error {
 		})
 	}
 
-	enc := json.NewEncoder(os.Stdout)
-	enc.SetIndent("", "  ")
-	return enc.Encode(out)
+	return printJSON(writer, out)
 }
 
-func printHistoryTable(entries []storage.LearningHistoryRecord) error {
+func printHistoryTable(writer io.Writer, entries []storage.LearningHistoryRecord) error {
 	if len(entries) == 0 {
-		fmt.Println("No learning entries found.")
+		fmt.Fprintln(writer, "No learning entries found.")
 		return nil
 	}
 
-	w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+	w := tabwriter.NewWriter(writer, 0, 4, 2, ' ', 0)
 	fmt.Fprintln(w, "ID\tCATEGORY\tTRIGGER\tCONFIDENCE\tCREATED")
 	for _, e := range entries {
 		fmt.Fprintf(w, "%s\t%s\t%s\t%.2f\t%s\n",

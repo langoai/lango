@@ -1,24 +1,29 @@
 package agent
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
 
+	"github.com/langoai/lango/internal/cli/clihttp"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/toolchain"
 )
 
 func newHooksCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
-	var jsonOutput bool
+	var output string
 
 	cmd := &cobra.Command{
-		Use:   "hooks",
-		Short: "Show active hook configuration and registry snapshot",
+		Use:           "hooks",
+		Short:         "Show active hook configuration and registry snapshot",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			output, err := resolveOutput(cmd)
+			if err != nil {
+				return err
+			}
 			cfg, err := cfgLoader()
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
@@ -28,15 +33,15 @@ func newHooksCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 
 			registry := toolchain.BuildHookRegistry(cfg, nil, nil, nil)
 
-			if jsonOutput {
-				return printJSON(h, registry)
+			if output == "json" {
+				return printJSON(cmd.OutOrStdout(), h, registry)
 			}
 
-			return printText(h, registry)
+			return printText(cmd.OutOrStdout(), h, registry)
 		},
 	}
 
-	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
+	cmd.Flags().StringVar(&output, "output", "table", "Output format: table or json")
 
 	return cmd
 }
@@ -123,7 +128,7 @@ func buildRegistryOutput(registry *toolchain.HookRegistry, cfg config.HooksConfi
 	return out
 }
 
-func printJSON(h config.HooksConfig, registry *toolchain.HookRegistry) error {
+func printJSON(writer interface{ Write([]byte) (int, error) }, h config.HooksConfig, registry *toolchain.HookRegistry) error {
 	out := fullOutput{
 		hooksConfigOutput: hooksConfigOutput{
 			Enabled:         h.Enabled,
@@ -135,63 +140,61 @@ func printJSON(h config.HooksConfig, registry *toolchain.HookRegistry) error {
 		},
 		Registry: buildRegistryOutput(registry, h),
 	}
-	enc := json.NewEncoder(os.Stdout)
-	enc.SetIndent("", "  ")
-	return enc.Encode(out)
+	return clihttp.PrintJSON(writer, out)
 }
 
-func printText(h config.HooksConfig, registry *toolchain.HookRegistry) error {
-	fmt.Println("Hook Configuration")
+func printText(writer interface{ Write([]byte) (int, error) }, h config.HooksConfig, registry *toolchain.HookRegistry) error {
+	fmt.Fprintln(writer, "Hook Configuration")
 
 	if !h.Enabled {
-		fmt.Println("  Hooks are disabled")
+		fmt.Fprintln(writer, "  Hooks are disabled")
 	}
 
-	fmt.Printf("  Enabled:          %v\n", h.Enabled)
-	fmt.Printf("  Security Filter:  %v\n", h.SecurityFilter)
-	fmt.Printf("  Access Control:   %v\n", h.AccessControl)
-	fmt.Printf("  Event Publishing: %v\n", h.EventPublishing)
-	fmt.Printf("  Knowledge Save:   %v\n", h.KnowledgeSave)
+	fmt.Fprintf(writer, "  Enabled:          %v\n", h.Enabled)
+	fmt.Fprintf(writer, "  Security Filter:  %v\n", h.SecurityFilter)
+	fmt.Fprintf(writer, "  Access Control:   %v\n", h.AccessControl)
+	fmt.Fprintf(writer, "  Event Publishing: %v\n", h.EventPublishing)
+	fmt.Fprintf(writer, "  Knowledge Save:   %v\n", h.KnowledgeSave)
 	if len(h.BlockedCommands) > 0 {
-		fmt.Printf("  Blocked Commands: %s\n", strings.Join(h.BlockedCommands, ", "))
+		fmt.Fprintf(writer, "  Blocked Commands: %s\n", strings.Join(h.BlockedCommands, ", "))
 	} else {
-		fmt.Printf("  Blocked Commands: (none)\n")
+		fmt.Fprintf(writer, "  Blocked Commands: (none)\n")
 	}
 
-	fmt.Println()
-	fmt.Println("Registered Hooks")
+	fmt.Fprintln(writer)
+	fmt.Fprintln(writer, "Registered Hooks")
 
 	regOut := buildRegistryOutput(registry, h)
 
 	if len(regOut.PreHooks) > 0 {
-		fmt.Println("  Pre-hooks:")
+		fmt.Fprintln(writer, "  Pre-hooks:")
 		for _, hi := range regOut.PreHooks {
 			if hi.Wirable {
-				fmt.Printf("    %-25s priority=%d  wirable=%v\n", hi.Name, hi.Priority, hi.Wirable)
+				fmt.Fprintf(writer, "    %-25s priority=%d  wirable=%v\n", hi.Name, hi.Priority, hi.Wirable)
 			} else {
-				fmt.Printf("    %-25s wirable=false  (%s)\n", hi.Name, hi.Reason)
+				fmt.Fprintf(writer, "    %-25s wirable=false  (%s)\n", hi.Name, hi.Reason)
 			}
 		}
 	}
 
 	if len(regOut.PostHooks) > 0 {
-		fmt.Println("  Post-hooks:")
+		fmt.Fprintln(writer, "  Post-hooks:")
 		for _, hi := range regOut.PostHooks {
 			if hi.Wirable {
-				fmt.Printf("    %-25s priority=%d  wirable=%v\n", hi.Name, hi.Priority, hi.Wirable)
+				fmt.Fprintf(writer, "    %-25s priority=%d  wirable=%v\n", hi.Name, hi.Priority, hi.Wirable)
 			} else {
-				fmt.Printf("    %-25s wirable=false  (%s)\n", hi.Name, hi.Reason)
+				fmt.Fprintf(writer, "    %-25s wirable=false  (%s)\n", hi.Name, hi.Reason)
 			}
 			if tools, ok := hi.Details["saveableTools"]; ok {
 				if toolList, ok := tools.([]string); ok && len(toolList) > 0 {
-					fmt.Printf("      saveableTools: %s\n", strings.Join(toolList, ", "))
+					fmt.Fprintf(writer, "      saveableTools: %s\n", strings.Join(toolList, ", "))
 				}
 			}
 		}
 	}
 
 	if len(regOut.PreHooks) == 0 && len(regOut.PostHooks) == 0 {
-		fmt.Println("  (none)")
+		fmt.Fprintln(writer, "  (none)")
 	}
 
 	return nil

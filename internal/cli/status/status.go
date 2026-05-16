@@ -2,7 +2,6 @@
 package status
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -16,10 +15,13 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/langoai/lango/internal/bootstrap"
+	"github.com/langoai/lango/internal/cli/clihttp"
+	"github.com/langoai/lango/internal/cli/prompt"
 	"github.com/langoai/lango/internal/cli/tui"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/ctxkeys"
 	"github.com/langoai/lango/internal/postadjudicationstatus"
+	"github.com/langoai/lango/internal/receipts"
 	"github.com/langoai/lango/internal/toolcatalog"
 	"github.com/langoai/lango/internal/types"
 )
@@ -92,6 +94,33 @@ type deadLetterRetryResult struct {
 type statusJSONError struct {
 	Result string `json:"result"`
 	Error  string `json:"error"`
+}
+
+type sanitizedCLIError struct {
+	msg   string
+	cause error
+}
+
+func (e *sanitizedCLIError) Error() string {
+	return e.msg
+}
+
+func (e *sanitizedCLIError) Unwrap() error {
+	return e.cause
+}
+
+func normalizeStatusOutputFormat(flag string) (string, error) {
+	switch normalized := strings.ToLower(strings.TrimSpace(flag)); normalized {
+	case "", "table":
+		return "table", nil
+	case "json":
+		return "json", nil
+	default:
+		return "", fmt.Errorf(
+			"unknown output format %q (expected: table or json)",
+			sanitizeStatusText(flag),
+		)
+	}
 }
 
 type deadLetterRetryFollowUp struct {
@@ -197,6 +226,10 @@ Examples:
   lango status --output json  # Machine-readable JSON output`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return handleStatusCommandError(cmd, outputFmt, func() error {
+				normalizedOutputFmt, err := normalizeStatusOutputFormat(outputFmt)
+				if err != nil {
+					return err
+				}
 				boot, err := bootLoader()
 				if err != nil {
 					return fmt.Errorf("bootstrap: %w", err)
@@ -204,13 +237,13 @@ Examples:
 				defer boot.Close()
 
 				info := collectStatus(boot.Config, boot.ProfileName, addr)
-				info.Version = tui.GetVersion()
+				info.Version = sanitizeStatusText(tui.GetVersion())
 
-				if outputFmt == "json" {
+				if normalizedOutputFmt == "json" {
 					return printJSONTo(cmd.OutOrStdout(), info)
 				}
-				fmt.Print(renderDashboard(info))
-				return nil
+				_, err = fmt.Fprint(cmd.OutOrStdout(), renderDashboard(info))
+				return err
 			}())
 		},
 	}
@@ -252,6 +285,10 @@ func newDeadLetterSummaryCmd(loader DeadLetterBridgeLoader) *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return handleStatusCommandError(cmd, outputFmt, func() error {
+				normalizedOutputFmt, err := normalizeStatusOutputFormat(outputFmt)
+				if err != nil {
+					return err
+				}
 				bridge, cleanup, err := loadDeadLetterBridge(loader)
 				if err != nil {
 					return err
@@ -268,7 +305,7 @@ func newDeadLetterSummaryCmd(loader DeadLetterBridgeLoader) *cobra.Command {
 					TrendWindow: trendWindow,
 					TrendBucket: trendBucket,
 				})
-				if outputFmt == "json" {
+				if normalizedOutputFmt == "json" {
 					return printJSONTo(cmd.OutOrStdout(), summary)
 				}
 				_, err = fmt.Fprint(cmd.OutOrStdout(), renderDeadLetterSummaryTable(summary))
@@ -306,6 +343,10 @@ func newDeadLettersCmd(loader DeadLetterBridgeLoader) *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return handleStatusCommandError(cmd, outputFmt, func() error {
+				normalizedOutputFmt, err := normalizeStatusOutputFormat(outputFmt)
+				if err != nil {
+					return err
+				}
 				subtype, err := normalizeLatestStatusSubtype(latestStatusSubtype)
 				if err != nil {
 					return err
@@ -350,8 +391,8 @@ func newDeadLettersCmd(loader DeadLetterBridgeLoader) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				if outputFmt == "json" {
-					return printJSONTo(cmd.OutOrStdout(), page)
+				if normalizedOutputFmt == "json" {
+					return printJSONTo(cmd.OutOrStdout(), sanitizeDeadLetterListPageJSON(page))
 				}
 				_, err = fmt.Fprint(cmd.OutOrStdout(), renderDeadLetterBacklogTable(page))
 				return err
@@ -383,6 +424,10 @@ func newDeadLetterCmd(loader DeadLetterBridgeLoader) *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return handleStatusCommandError(cmd, outputFmt, func() error {
+				normalizedOutputFmt, err := normalizeStatusOutputFormat(outputFmt)
+				if err != nil {
+					return err
+				}
 				bridge, cleanup, err := loadDeadLetterBridge(loader)
 				if err != nil {
 					return err
@@ -393,8 +438,8 @@ func newDeadLetterCmd(loader DeadLetterBridgeLoader) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				if outputFmt == "json" {
-					return printJSONTo(cmd.OutOrStdout(), status)
+				if normalizedOutputFmt == "json" {
+					return printJSONTo(cmd.OutOrStdout(), sanitizeTransactionStatusJSON(status))
 				}
 				_, err = fmt.Fprint(cmd.OutOrStdout(), renderDeadLetterDetail(status))
 				return err
@@ -422,6 +467,10 @@ func newDeadLetterRetryCmd(loader DeadLetterBridgeLoader) *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return handleStatusCommandError(cmd, outputFmt, func() error {
+				normalizedOutputFmt, err := normalizeStatusOutputFormat(outputFmt)
+				if err != nil {
+					return err
+				}
 				transactionReceiptID := strings.TrimSpace(args[0])
 
 				bridge, cleanup, err := loadDeadLetterBridge(loader)
@@ -432,10 +481,17 @@ func newDeadLetterRetryCmd(loader DeadLetterBridgeLoader) *cobra.Command {
 
 				status, err := bridge.Detail(cmd.Context(), transactionReceiptID)
 				if err != nil {
-					return fmt.Errorf("read dead-letter status for transaction %q: %w", transactionReceiptID, err)
+					return fmt.Errorf(
+						"read dead-letter status for transaction %q: %w",
+						sanitizeStatusText(transactionReceiptID),
+						err,
+					)
 				}
 				if !status.CanRetry {
-					return fmt.Errorf("retry precheck rejected for transaction %q: can_retry=false", transactionReceiptID)
+					return fmt.Errorf(
+						"retry precheck rejected for transaction %q: can_retry=false",
+						sanitizeStatusText(transactionReceiptID),
+					)
 				}
 
 				if !yes {
@@ -454,15 +510,19 @@ func newDeadLetterRetryCmd(loader DeadLetterBridgeLoader) *cobra.Command {
 					retryCtx = ctxkeys.WithPrincipal(retryCtx, explicitActor)
 				}
 				if err := bridge.Retry(retryCtx, transactionReceiptID); err != nil {
-					return fmt.Errorf("retry request failed for transaction %q: %w", transactionReceiptID, err)
+					return fmt.Errorf(
+						"retry request failed for transaction %q: %w",
+						sanitizeStatusText(transactionReceiptID),
+						err,
+					)
 				}
 
 				result := deadLetterRetryResult{
 					TransactionReceiptID: transactionReceiptID,
 					Result:               "accepted",
-					Message:              fmt.Sprintf("Retry request accepted for transaction %s.", transactionReceiptID),
+					Message:              sanitizeStatusText(fmt.Sprintf("Retry request accepted for transaction %s.", transactionReceiptID)),
 				}
-				if outputFmt != "json" && wait {
+				if normalizedOutputFmt != "json" && wait {
 					if _, err := fmt.Fprintf(
 						cmd.OutOrStdout(),
 						"Polling follow-up status every %s for up to %s...\n",
@@ -485,9 +545,9 @@ func newDeadLetterRetryCmd(loader DeadLetterBridgeLoader) *cobra.Command {
 				result.PollCount = pollCount
 				result.TimedOut = timedOut
 				if followUpErr != nil {
-					result.FollowUpError = followUpErr.Error()
+					result.FollowUpError = sanitizeStatusText(followUpErr.Error())
 				}
-				if outputFmt == "json" {
+				if normalizedOutputFmt == "json" {
 					return printJSONTo(cmd.OutOrStdout(), result)
 				}
 				_, err = fmt.Fprint(cmd.OutOrStdout(), renderDeadLetterRetryResult(result))
@@ -598,7 +658,10 @@ func normalizeLatestStatusSubtype(value string) (string, error) {
 	case "", "retry-scheduled", "manual-retry-requested", "dead-lettered":
 		return strings.TrimSpace(value), nil
 	default:
-		return "", fmt.Errorf("invalid --latest-status-subtype %q: must be one of retry-scheduled, manual-retry-requested, dead-lettered", value)
+		return "", fmt.Errorf(
+			"invalid --latest-status-subtype %q: must be one of retry-scheduled, manual-retry-requested, dead-lettered",
+			sanitizeStatusText(value),
+		)
 	}
 }
 
@@ -615,7 +678,11 @@ func normalizeDeadLetterFamilyFlag(name, value string) (string, error) {
 	case "", "retry", "manual-retry", "dead-letter":
 		return strings.TrimSpace(value), nil
 	default:
-		return "", fmt.Errorf("invalid --%s %q: must be one of retry, manual-retry, dead-letter", name, value)
+		return "", fmt.Errorf(
+			"invalid --%s %q: must be one of retry, manual-retry, dead-letter",
+			name,
+			sanitizeStatusText(value),
+		)
 	}
 }
 
@@ -625,7 +692,7 @@ func normalizeRFC3339Flag(name, value string) (string, error) {
 		return "", nil
 	}
 	if _, err := time.Parse(time.RFC3339, trimmed); err != nil {
-		return "", fmt.Errorf("invalid --%s %q: must be RFC3339", name, value)
+		return "", fmt.Errorf("invalid --%s %q: must be RFC3339", name, sanitizeStatusText(value))
 	}
 	return trimmed, nil
 }
@@ -683,13 +750,13 @@ func aggregateDeadLetterSummaryWithOptions(
 			entry.LatestManualReplayActor,
 		)
 		actorFamilyCounts[actorFamily]++
-		if reason := strings.TrimSpace(entry.LatestDeadLetterReason); reason != "" {
+		if reason := sanitizeSummaryLabel(entry.LatestDeadLetterReason); reason != "" && reason != "unknown" {
 			reasonCounts[reason]++
 		}
-		if actor := strings.TrimSpace(entry.LatestManualReplayActor); actor != "" {
+		if actor := sanitizeSummaryLabel(entry.LatestManualReplayActor); actor != "" && actor != "unknown" {
 			actorCounts[actor]++
 		}
-		if dispatchReference := strings.TrimSpace(entry.LatestDispatchReference); dispatchReference != "" {
+		if dispatchReference := sanitizeSummaryLabel(entry.LatestDispatchReference); dispatchReference != "" && dispatchReference != "unknown" {
 			dispatchFamilyCounts[postadjudicationstatus.ClassifyDispatchReferenceFamily(dispatchReference)]++
 			dispatchCounts[dispatchReference]++
 		}
@@ -845,14 +912,17 @@ func deadLetterRetryFollowUpFromStatus(
 		ObservedAt:                time.Now().UTC().Format(time.RFC3339),
 		IsDeadLettered:            status.IsDeadLettered,
 		CanRetry:                  status.CanRetry,
-		LatestStatusSubtype:       status.RetryDeadLetterSummary.LatestStatusSubtype,
-		LatestStatusSubtypeFamily: status.RetryDeadLetterSummary.LatestStatusSubtypeFamily,
-		LatestDeadLetterReason:    status.RetryDeadLetterSummary.LatestDeadLetterReason,
+		LatestStatusSubtype:       sanitizeStatusText(status.RetryDeadLetterSummary.LatestStatusSubtype),
+		LatestStatusSubtypeFamily: sanitizeStatusText(status.RetryDeadLetterSummary.LatestStatusSubtypeFamily),
+		LatestDeadLetterReason:    sanitizeStatusText(status.RetryDeadLetterSummary.LatestDeadLetterReason),
 		LatestRetryAttempt:        status.RetryDeadLetterSummary.LatestRetryAttempt,
-		LatestDispatchReference:   status.RetryDeadLetterSummary.LatestDispatchReference,
+		LatestDispatchReference:   sanitizeStatusText(status.RetryDeadLetterSummary.LatestDispatchReference),
 	}
 	if status.LatestBackgroundTask != nil {
 		backgroundTask := *status.LatestBackgroundTask
+		backgroundTask.TaskID = sanitizeStatusText(backgroundTask.TaskID)
+		backgroundTask.Status = sanitizeStatusText(backgroundTask.Status)
+		backgroundTask.NextRetryAt = sanitizeStatusText(backgroundTask.NextRetryAt)
 		followUp.BackgroundTask = &backgroundTask
 	}
 	return followUp
@@ -926,11 +996,15 @@ func summaryTotal(page DeadLetterListPage) int {
 }
 
 func summaryBucketLabel(value string) string {
-	trimmed := strings.TrimSpace(value)
-	if trimmed == "" {
+	return sanitizeSummaryLabel(value)
+}
+
+func sanitizeSummaryLabel(value string) string {
+	safe := sanitizeStatusText(value)
+	if safe == "" {
 		return "unknown"
 	}
-	return trimmed
+	return safe
 }
 
 func orderedSummaryBuckets(counts map[string]int, preferredOrder []string) []deadLetterSummaryBucket {
@@ -1067,20 +1141,13 @@ func (b *toolCatalogDeadLetterBridge) Retry(ctx context.Context, transactionRece
 }
 
 func confirmDeadLetterRetry(cmd *cobra.Command, transactionReceiptID string) (bool, error) {
-	if _, err := fmt.Fprintf(
+	displayID := sanitizeStatusText(transactionReceiptID)
+	ok, err := prompt.ConfirmDenyOnEOFIO(
+		cmd.InOrStdin(),
 		cmd.OutOrStdout(),
-		"Retry dead-lettered execution for transaction %s? [y/N]: ",
-		transactionReceiptID,
-	); err != nil {
-		return false, err
-	}
-	reader := bufio.NewReader(cmd.InOrStdin())
-	answer, err := reader.ReadString('\n')
-	if err != nil && err != io.EOF {
-		return false, err
-	}
-	answer = strings.ToLower(strings.TrimSpace(answer))
-	return answer == "y" || answer == "yes", nil
+		fmt.Sprintf("Retry dead-lettered execution for transaction %s?", displayID),
+	)
+	return ok, err
 }
 
 func optionalInt(payload map[string]interface{}, key string) int {
@@ -1132,11 +1199,11 @@ type LiveInfo struct {
 
 func collectStatus(cfg *config.Config, profile, addr string) StatusInfo {
 	info := StatusInfo{
-		Profile:        profile,
-		ContextProfile: string(cfg.ContextProfile),
-		Gateway:        fmt.Sprintf("http://%s:%d", cfg.Server.Host, cfg.Server.Port),
-		Provider:       cfg.Agent.Provider,
-		Model:          cfg.Agent.Model,
+		Profile:        sanitizeStatusText(profile),
+		ContextProfile: sanitizeStatusText(string(cfg.ContextProfile)),
+		Gateway:        sanitizeStatusText(fmt.Sprintf("http://%s:%d", cfg.Server.Host, cfg.Server.Port)),
+		Provider:       sanitizeStatusText(cfg.Agent.Provider),
+		Model:          sanitizeStatusText(cfg.Agent.Model),
 	}
 
 	// Check server health.
@@ -1144,13 +1211,13 @@ func collectStatus(cfg *config.Config, profile, addr string) StatusInfo {
 
 	// Collect channels.
 	if cfg.Channels.Telegram.Enabled {
-		info.Channels = append(info.Channels, "telegram")
+		info.Channels = append(info.Channels, sanitizeStatusText("telegram"))
 	}
 	if cfg.Channels.Discord.Enabled {
-		info.Channels = append(info.Channels, "discord")
+		info.Channels = append(info.Channels, sanitizeStatusText("discord"))
 	}
 	if cfg.Channels.Slack.Enabled {
-		info.Channels = append(info.Channels, "slack")
+		info.Channels = append(info.Channels, sanitizeStatusText("slack"))
 	}
 
 	// Collect features.
@@ -1165,7 +1232,7 @@ func collectStatus(cfg *config.Config, profile, addr string) StatusInfo {
 		for i := range info.Features {
 			if live, ok := liveByName[info.Features[i].Name]; ok && info.Features[i].Detail == "" {
 				if live.Reason != "" {
-					info.Features[i].Detail = live.Reason
+					info.Features[i].Detail = sanitizeStatusText(live.Reason)
 				}
 			}
 		}
@@ -1184,22 +1251,22 @@ func profileDetail(cfg *config.Config) string {
 func collectFeatures(cfg *config.Config) []FeatureInfo {
 	pd := profileDetail(cfg)
 	return []FeatureInfo{
-		{"Knowledge", cfg.Knowledge.Enabled, pd},
-		{"Embedding & RAG", cfg.Embedding.Provider != "", cfg.Embedding.Provider},
-		{"Graph", cfg.Graph.Enabled, pd},
-		{"Obs. Memory", cfg.ObservationalMemory.Enabled, pd},
-		{"Librarian", cfg.Librarian.Enabled, pd},
-		{"Multi-Agent", cfg.Agent.MultiAgent, ""},
-		{"Cron", cfg.Cron.Enabled, ""},
-		{"Background", cfg.Background.Enabled, ""},
-		{"Workflow", cfg.Workflow.Enabled, ""},
-		{"MCP", cfg.MCP.Enabled, mcpDetail(cfg)},
-		{"P2P", cfg.P2P.Enabled, ""},
-		{"Payment", cfg.Payment.Enabled, ""},
-		{"Economy", cfg.Economy.Enabled, ""},
-		{"A2A", cfg.A2A.Enabled, ""},
-		{"RunLedger", cfg.RunLedger.Enabled, ""},
-		{"Provenance", cfg.Provenance.Enabled, ""},
+		{sanitizeStatusText("Knowledge"), cfg.Knowledge.Enabled, sanitizeStatusText(pd)},
+		{sanitizeStatusText("Embedding & RAG"), cfg.Embedding.Provider != "", sanitizeStatusText(cfg.Embedding.Provider)},
+		{sanitizeStatusText("Graph"), cfg.Graph.Enabled, sanitizeStatusText(pd)},
+		{sanitizeStatusText("Obs. Memory"), cfg.ObservationalMemory.Enabled, sanitizeStatusText(pd)},
+		{sanitizeStatusText("Librarian"), cfg.Librarian.Enabled, sanitizeStatusText(pd)},
+		{sanitizeStatusText("Multi-Agent"), cfg.Agent.MultiAgent, ""},
+		{sanitizeStatusText("Cron"), cfg.Cron.Enabled, ""},
+		{sanitizeStatusText("Background"), cfg.Background.Enabled, ""},
+		{sanitizeStatusText("Workflow"), cfg.Workflow.Enabled, ""},
+		{sanitizeStatusText("MCP"), cfg.MCP.Enabled, sanitizeStatusText(mcpDetail(cfg))},
+		{sanitizeStatusText("P2P"), cfg.P2P.Enabled, ""},
+		{sanitizeStatusText("Payment"), cfg.Payment.Enabled, ""},
+		{sanitizeStatusText("Economy"), cfg.Economy.Enabled, ""},
+		{sanitizeStatusText("A2A"), cfg.A2A.Enabled, ""},
+		{sanitizeStatusText("RunLedger"), cfg.RunLedger.Enabled, ""},
+		{sanitizeStatusText("Provenance"), cfg.Provenance.Enabled, ""},
 	}
 }
 
@@ -1233,15 +1300,203 @@ func probeServer(addr string) (bool, *LiveInfo) {
 		Features []types.FeatureStatus `json:"features"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&healthResp); err == nil {
-		live.Features = healthResp.Features
+		live.Features = sanitizeLiveFeatureStatuses(healthResp.Features)
 	}
 	return true, live
 }
 
 func printJSONTo(w io.Writer, v interface{}) error {
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	return enc.Encode(v)
+	return clihttp.PrintJSON(w, v)
+}
+
+func sanitizeOptionalStatusText(text string) string {
+	return sanitizeStatusText(text)
+}
+
+func sanitizeLiveFeatureStatuses(features []types.FeatureStatus) []types.FeatureStatus {
+	if len(features) == 0 {
+		return features
+	}
+	out := make([]types.FeatureStatus, len(features))
+	for i, feature := range features {
+		feature.Name = sanitizeOptionalStatusText(feature.Name)
+		feature.Reason = sanitizeOptionalStatusText(feature.Reason)
+		feature.Suggestion = sanitizeOptionalStatusText(feature.Suggestion)
+		out[i] = feature
+	}
+	return out
+}
+
+func sanitizeStringSlice(values []string) []string {
+	if len(values) == 0 {
+		return values
+	}
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		safe := sanitizeOptionalStatusText(value)
+		if safe == "" {
+			continue
+		}
+		out = append(out, safe)
+	}
+	return out
+}
+
+func sanitizeDeadLetterListPageJSON(page DeadLetterListPage) DeadLetterListPage {
+	out := page
+	if len(page.Entries) == 0 {
+		return out
+	}
+	out.Entries = make([]postadjudicationstatus.DeadLetterBacklogEntry, len(page.Entries))
+	for i, entry := range page.Entries {
+		out.Entries[i] = sanitizeDeadLetterBacklogEntryJSON(entry)
+	}
+	return out
+}
+
+func sanitizeDeadLetterBacklogEntryJSON(
+	entry postadjudicationstatus.DeadLetterBacklogEntry,
+) postadjudicationstatus.DeadLetterBacklogEntry {
+	out := entry
+	out.TransactionReceiptID = sanitizeOptionalStatusText(out.TransactionReceiptID)
+	out.SubmissionReceiptID = sanitizeOptionalStatusText(out.SubmissionReceiptID)
+	out.Adjudication = sanitizeOptionalStatusText(out.Adjudication)
+	out.LatestDeadLetterReason = sanitizeOptionalStatusText(out.LatestDeadLetterReason)
+	out.LatestDeadLetteredAt = sanitizeOptionalStatusText(out.LatestDeadLetteredAt)
+	out.LatestManualReplayActor = sanitizeOptionalStatusText(out.LatestManualReplayActor)
+	out.LatestManualReplayAt = sanitizeOptionalStatusText(out.LatestManualReplayAt)
+	out.LatestStatusSubtype = sanitizeOptionalStatusText(out.LatestStatusSubtype)
+	out.LatestStatusSubtypeFamily = sanitizeOptionalStatusText(out.LatestStatusSubtypeFamily)
+	out.DominantFamily = sanitizeOptionalStatusText(out.DominantFamily)
+	out.AnyMatchFamilies = sanitizeStringSlice(out.AnyMatchFamilies)
+	out.TransactionGlobalAnyMatchFamilies = sanitizeStringSlice(out.TransactionGlobalAnyMatchFamilies)
+	out.TransactionGlobalDominantFamily = sanitizeOptionalStatusText(out.TransactionGlobalDominantFamily)
+	out.LatestDispatchReference = sanitizeOptionalStatusText(out.LatestDispatchReference)
+	if len(out.SubmissionBreakdown) > 0 {
+		items := make([]postadjudicationstatus.SubmissionBreakdownItem, len(out.SubmissionBreakdown))
+		for i, item := range out.SubmissionBreakdown {
+			item.SubmissionReceiptID = sanitizeOptionalStatusText(item.SubmissionReceiptID)
+			item.AnyMatchFamilies = sanitizeStringSlice(item.AnyMatchFamilies)
+			items[i] = item
+		}
+		out.SubmissionBreakdown = items
+	}
+	return out
+}
+
+func sanitizeTransactionStatusJSON(
+	status postadjudicationstatus.TransactionStatus,
+) postadjudicationstatus.TransactionStatus {
+	out := status
+	out.CanonicalSnapshot = sanitizeCanonicalSnapshotJSON(out.CanonicalSnapshot)
+	out.RetryDeadLetterSummary = sanitizeRetryDeadLetterSummaryJSON(out.RetryDeadLetterSummary)
+	if out.LatestBackgroundTask != nil {
+		task := *out.LatestBackgroundTask
+		task.TaskID = sanitizeOptionalStatusText(task.TaskID)
+		task.Status = sanitizeOptionalStatusText(task.Status)
+		task.NextRetryAt = sanitizeOptionalStatusText(task.NextRetryAt)
+		out.LatestBackgroundTask = &task
+	}
+	out.Adjudication = sanitizeOptionalStatusText(out.Adjudication)
+	return out
+}
+
+func sanitizeCanonicalSnapshotJSON(
+	snapshot postadjudicationstatus.CanonicalSnapshot,
+) postadjudicationstatus.CanonicalSnapshot {
+	out := snapshot
+	out.TransactionReceipt = sanitizeTransactionReceiptJSON(out.TransactionReceipt)
+	out.SubmissionReceipt = sanitizeSubmissionReceiptJSON(out.SubmissionReceipt)
+	if len(out.SubmissionEvents) > 0 {
+		events := make([]receipts.ReceiptEvent, len(out.SubmissionEvents))
+		for i, event := range out.SubmissionEvents {
+			event.SubmissionReceiptID = sanitizeOptionalStatusText(event.SubmissionReceiptID)
+			event.Source = sanitizeOptionalStatusText(event.Source)
+			event.Subtype = sanitizeOptionalStatusText(event.Subtype)
+			event.Reason = sanitizeOptionalStatusText(event.Reason)
+			event.Type = receipts.EventType(sanitizeOptionalStatusText(string(event.Type)))
+			events[i] = event
+		}
+		out.SubmissionEvents = events
+	}
+	return out
+}
+
+func sanitizeRetryDeadLetterSummaryJSON(
+	summary postadjudicationstatus.RetryDeadLetterSummary,
+) postadjudicationstatus.RetryDeadLetterSummary {
+	out := summary
+	out.LatestDeadLetterReason = sanitizeOptionalStatusText(out.LatestDeadLetterReason)
+	out.LatestDeadLetteredAt = sanitizeOptionalStatusText(out.LatestDeadLetteredAt)
+	out.LatestManualReplayActor = sanitizeOptionalStatusText(out.LatestManualReplayActor)
+	out.LatestManualReplayAt = sanitizeOptionalStatusText(out.LatestManualReplayAt)
+	out.LatestDispatchReference = sanitizeOptionalStatusText(out.LatestDispatchReference)
+	out.LatestStatusSubtype = sanitizeOptionalStatusText(out.LatestStatusSubtype)
+	out.LatestStatusSubtypeFamily = sanitizeOptionalStatusText(out.LatestStatusSubtypeFamily)
+	out.DominantFamily = sanitizeOptionalStatusText(out.DominantFamily)
+	out.AnyMatchFamilies = sanitizeStringSlice(out.AnyMatchFamilies)
+	out.TransactionGlobalDominantFamily = sanitizeOptionalStatusText(out.TransactionGlobalDominantFamily)
+	return out
+}
+
+func sanitizeSubmissionReceiptJSON(receipt receipts.SubmissionReceipt) receipts.SubmissionReceipt {
+	out := receipt
+	out.SubmissionReceiptID = sanitizeOptionalStatusText(out.SubmissionReceiptID)
+	out.TransactionReceiptID = sanitizeOptionalStatusText(out.TransactionReceiptID)
+	out.ArtifactLabel = sanitizeOptionalStatusText(out.ArtifactLabel)
+	out.PayloadHash = sanitizeOptionalStatusText(out.PayloadHash)
+	out.SourceLineageDigest = sanitizeOptionalStatusText(out.SourceLineageDigest)
+	out.CanonicalApprovalStatus = receipts.ApprovalStatus(sanitizeOptionalStatusText(string(out.CanonicalApprovalStatus)))
+	out.CanonicalSettlementHint = sanitizeOptionalStatusText(out.CanonicalSettlementHint)
+	out.ProvenanceSummary.ReferenceID = sanitizeOptionalStatusText(out.ProvenanceSummary.ReferenceID)
+	out.ProvenanceSummary.ConfigFingerprint = sanitizeOptionalStatusText(out.ProvenanceSummary.ConfigFingerprint)
+	out.ProvenanceSummary.SignerSummary = sanitizeOptionalStatusText(out.ProvenanceSummary.SignerSummary)
+	out.ProvenanceSummary.AttributionSummary = sanitizeOptionalStatusText(out.ProvenanceSummary.AttributionSummary)
+	return out
+}
+
+func sanitizeTransactionReceiptJSON(receipt receipts.TransactionReceipt) receipts.TransactionReceipt {
+	out := receipt
+	out.TransactionReceiptID = sanitizeOptionalStatusText(out.TransactionReceiptID)
+	out.TransactionID = sanitizeOptionalStatusText(out.TransactionID)
+	out.Counterparty = sanitizeOptionalStatusText(out.Counterparty)
+	out.RequestedScope = sanitizeOptionalStatusText(out.RequestedScope)
+	out.PriceContext = sanitizeOptionalStatusText(out.PriceContext)
+	out.TrustContext = sanitizeOptionalStatusText(out.TrustContext)
+	out.KnowledgeExchangeRuntimeStatus = receipts.KnowledgeExchangeRuntimeStatus(sanitizeOptionalStatusText(string(out.KnowledgeExchangeRuntimeStatus)))
+	out.SettlementProgressionStatus = receipts.SettlementProgressionStatus(sanitizeOptionalStatusText(string(out.SettlementProgressionStatus)))
+	out.SettlementProgressionReasonCode = receipts.SettlementProgressionReasonCode(sanitizeOptionalStatusText(string(out.SettlementProgressionReasonCode)))
+	out.SettlementProgressionReason = sanitizeOptionalStatusText(out.SettlementProgressionReason)
+	out.PartialSettlementHint = sanitizeOptionalStatusText(out.PartialSettlementHint)
+	out.DisputeLifecycleStatus = receipts.DisputeLifecycleStatus(sanitizeOptionalStatusText(string(out.DisputeLifecycleStatus)))
+	out.CurrentSubmissionReceiptID = sanitizeOptionalStatusText(out.CurrentSubmissionReceiptID)
+	out.CanonicalApprovalStatus = receipts.ApprovalStatus(sanitizeOptionalStatusText(string(out.CanonicalApprovalStatus)))
+	out.CanonicalSettlementStatus = receipts.SettlementStatus(sanitizeOptionalStatusText(string(out.CanonicalSettlementStatus)))
+	out.CurrentPaymentApprovalStatus = receipts.PaymentApprovalStatus(sanitizeOptionalStatusText(string(out.CurrentPaymentApprovalStatus)))
+	out.CanonicalDecision = sanitizeOptionalStatusText(out.CanonicalDecision)
+	out.CanonicalSettlementHint = sanitizeOptionalStatusText(out.CanonicalSettlementHint)
+	out.EscrowExecutionStatus = receipts.EscrowExecutionStatus(sanitizeOptionalStatusText(string(out.EscrowExecutionStatus)))
+	out.EscrowReference = sanitizeOptionalStatusText(out.EscrowReference)
+	out.EscrowAdjudication = receipts.EscrowAdjudicationDecision(sanitizeOptionalStatusText(string(out.EscrowAdjudication)))
+	if out.EscrowExecutionInput != nil {
+		input := *out.EscrowExecutionInput
+		input.BuyerDID = sanitizeOptionalStatusText(input.BuyerDID)
+		input.SellerDID = sanitizeOptionalStatusText(input.SellerDID)
+		input.Amount = sanitizeOptionalStatusText(input.Amount)
+		input.Reason = sanitizeOptionalStatusText(input.Reason)
+		input.TaskID = sanitizeOptionalStatusText(input.TaskID)
+		if len(input.Milestones) > 0 {
+			milestones := make([]receipts.EscrowMilestoneInput, len(input.Milestones))
+			for i, item := range input.Milestones {
+				item.Description = sanitizeOptionalStatusText(item.Description)
+				item.Amount = sanitizeOptionalStatusText(item.Amount)
+				milestones[i] = item
+			}
+			input.Milestones = milestones
+		}
+		out.EscrowExecutionInput = &input
+	}
+	return out
 }
 
 func printJSONErrorTo(w io.Writer, err error) error {
@@ -1250,7 +1505,7 @@ func printJSONErrorTo(w io.Writer, err error) error {
 	}
 	return printJSONTo(w, statusJSONError{
 		Result: "error",
-		Error:  err.Error(),
+		Error:  sanitizeStatusText(err.Error()),
 	})
 }
 
@@ -1261,5 +1516,16 @@ func handleStatusCommandError(cmd *cobra.Command, outputFmt string, err error) e
 	if strings.EqualFold(strings.TrimSpace(outputFmt), "json") {
 		return printJSONErrorTo(cmd.OutOrStdout(), err)
 	}
-	return err
+	return sanitizeCLIError(err)
+}
+
+func sanitizeCLIError(err error) error {
+	if err == nil {
+		return nil
+	}
+	msg := sanitizeStatusText(err.Error())
+	if msg == "" {
+		msg = "status command failed"
+	}
+	return &sanitizedCLIError{msg: msg, cause: err}
 }

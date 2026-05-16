@@ -34,53 +34,53 @@ func newGetCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 				transport = "stdio"
 			}
 
-			fmt.Printf("Server: %s\n", name)
-			fmt.Printf("  Transport:    %s\n", transport)
-			fmt.Printf("  Enabled:      %v\n", srv.IsEnabled())
-			fmt.Printf("  Safety Level: %s\n", safetylevel(srv.SafetyLevel))
+			fmt.Fprintf(cmd.OutOrStdout(), "Server: %s\n", name)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Transport:    %s\n", transport)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Enabled:      %v\n", srv.IsEnabled())
+			fmt.Fprintf(cmd.OutOrStdout(), "  Safety Level: %s\n", safetylevel(srv.SafetyLevel))
 
 			switch transport {
 			case "stdio":
-				fmt.Printf("  Command:      %s\n", srv.Command)
+				fmt.Fprintf(cmd.OutOrStdout(), "  Command:      %s\n", srv.Command)
 				if len(srv.Args) > 0 {
-					fmt.Printf("  Args:         %v\n", srv.Args)
+					fmt.Fprintf(cmd.OutOrStdout(), "  Args:         %v\n", srv.Args)
 				}
 				if len(srv.Env) > 0 {
-					fmt.Printf("  Env vars:     %d configured\n", len(srv.Env))
+					fmt.Fprintf(cmd.OutOrStdout(), "  Env vars:     %d configured\n", len(srv.Env))
 				}
 			case "http", "sse":
-				fmt.Printf("  URL:          %s\n", srv.URL)
+				fmt.Fprintf(cmd.OutOrStdout(), "  URL:          %s\n", srv.URL)
 				if len(srv.Headers) > 0 {
-					fmt.Printf("  Headers:      %d configured\n", len(srv.Headers))
+					fmt.Fprintf(cmd.OutOrStdout(), "  Headers:      %d configured\n", len(srv.Headers))
 				}
 			}
 
 			if srv.Timeout > 0 {
-				fmt.Printf("  Timeout:      %s\n", srv.Timeout)
+				fmt.Fprintf(cmd.OutOrStdout(), "  Timeout:      %s\n", srv.Timeout)
 			}
 
 			// Try to connect and list tools
 			if !srv.IsEnabled() {
-				fmt.Println("\n  (server is disabled)")
+				fmt.Fprintln(cmd.OutOrStdout(), "\n  (server is disabled)")
 				return nil
 			}
 
-			fmt.Println("\n  Connecting to discover tools...")
+			fmt.Fprintln(cmd.OutOrStdout(), "\n  Connecting to discover tools...")
 			conn := mcplib.NewServerConnection(name, srv, cfg.MCP)
 			if err := conn.Connect(context.Background()); err != nil {
-				fmt.Printf("  Connection: FAILED (%v)\n", err)
+				fmt.Fprintf(cmd.OutOrStdout(), "  Connection: FAILED (%v)\n", err)
 				return nil
 			}
 			defer func() { _ = conn.Disconnect(context.Background()) }()
 
 			tools := conn.Tools()
-			fmt.Printf("  Tools:        %d available\n", len(tools))
+			fmt.Fprintf(cmd.OutOrStdout(), "  Tools:        %d available\n", len(tools))
 			for _, dt := range tools {
 				desc := dt.Tool.Description
 				if len(desc) > 60 {
 					desc = desc[:57] + "..."
 				}
-				fmt.Printf("    - mcp__%s__%s: %s\n", name, dt.Tool.Name, desc)
+				fmt.Fprintf(cmd.OutOrStdout(), "    - mcp__%s__%s: %s\n", name, dt.Tool.Name, desc)
 			}
 
 			return nil

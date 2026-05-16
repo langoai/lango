@@ -3,9 +3,7 @@ package graph
 import (
 	"context"
 	"encoding/csv"
-	"encoding/json"
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 
@@ -42,12 +40,10 @@ func newExportCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 
 			switch format {
 			case "json":
-				enc := json.NewEncoder(os.Stdout)
-				enc.SetIndent("", "  ")
-				return enc.Encode(triples)
+				return printJSON(cmd.OutOrStdout(), triples)
 
 			case "csv":
-				w := csv.NewWriter(os.Stdout)
+				w := csv.NewWriter(cmd.OutOrStdout())
 				if err := w.Write([]string{"subject", "predicate", "object"}); err != nil {
 					return fmt.Errorf("write csv header: %w", err)
 				}

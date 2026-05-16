@@ -1,14 +1,27 @@
 package learning
 
 import (
+	"bytes"
 	"testing"
 
+	"github.com/langoai/lango/internal/bootstrap"
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/testutil"
 )
+
+func executeLearningCmd(t *testing.T, cmd *cobra.Command, args ...string) (string, error) {
+	t.Helper()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs(args)
+	err := cmd.Execute()
+	return out.String(), err
+}
 
 func TestNewLearningCmd_Structure(t *testing.T) {
 	cfg := config.DefaultConfig()
@@ -40,9 +53,10 @@ func TestStatusCmd_HappyPath(t *testing.T) {
 	cfg.Graph.Enabled = false
 	cmd := NewLearningCmd(testutil.FakeCfgLoader(cfg), testutil.FakeBootLoader(t, cfg))
 
-	result := testutil.ExecCmdOK(t, cmd, "status")
-	assert.Contains(t, result.Stdout, "Learning Status")
-	assert.Contains(t, result.Stdout, "Knowledge Enabled")
+	out, err := executeLearningCmd(t, cmd, "status")
+	require.NoError(t, err)
+	assert.Contains(t, out, "Learning Status")
+	assert.Contains(t, out, "Knowledge Enabled")
 }
 
 func TestStatusCmd_JSONOutput(t *testing.T) {
@@ -53,44 +67,71 @@ func TestStatusCmd_JSONOutput(t *testing.T) {
 	cfg.Embedding.RAG.Enabled = true
 	cmd := NewLearningCmd(testutil.FakeCfgLoader(cfg), testutil.FakeBootLoader(t, cfg))
 
-	result := testutil.ExecCmdOK(t, cmd, "status", "--json")
-	assert.Contains(t, result.Stdout, `"knowledge_enabled": true`)
-	assert.Contains(t, result.Stdout, `"embedding_provider": "local"`)
-	assert.Contains(t, result.Stdout, `"rag_enabled": true`)
+	out, err := executeLearningCmd(t, cmd, "status", "--output", "json")
+	require.NoError(t, err)
+	assert.Contains(t, out, `"knowledge_enabled": true`)
+	assert.Contains(t, out, `"embedding_provider": "local"`)
+	assert.Contains(t, out, `"rag_enabled": true`)
+}
+
+func TestStatusCmd_InvalidOutputFailsBeforeConfigLoad(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cmd := NewLearningCmd(func() (*config.Config, error) {
+		t.Fatal("config loader should not be called for invalid output")
+		return nil, nil
+	}, testutil.FakeBootLoader(t, cfg))
+
+	_, err := executeLearningCmd(t, cmd, "status", "--output", "yaml")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `unknown output format "yaml"`)
 }
 
 func TestStatusCmd_ConfigError(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cmd := NewLearningCmd(testutil.FailCfgLoader(assert.AnError), testutil.FakeBootLoader(t, cfg))
 
-	result := testutil.ExecCmd(t, cmd, "status")
-	require.Error(t, result.Err)
-	assert.Contains(t, result.Err.Error(), "load config")
+	_, err := executeLearningCmd(t, cmd, "status")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "load config")
 }
 
 func TestHistoryCmd_EmptyDB(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cmd := NewLearningCmd(testutil.FakeCfgLoader(cfg), testutil.FakeBootLoader(t, cfg))
 
-	result := testutil.ExecCmdOK(t, cmd, "history")
-	assert.Contains(t, result.Stdout, "No learning entries found.")
+	out, err := executeLearningCmd(t, cmd, "history")
+	require.NoError(t, err)
+	assert.Contains(t, out, "No learning entries found.")
 }
 
 func TestHistoryCmd_JSONEmptyDB(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cmd := NewLearningCmd(testutil.FakeCfgLoader(cfg), testutil.FakeBootLoader(t, cfg))
 
-	result := testutil.ExecCmdOK(t, cmd, "history", "--json")
-	assert.Contains(t, result.Stdout, "[]")
+	out, err := executeLearningCmd(t, cmd, "history", "--output", "json")
+	require.NoError(t, err)
+	assert.Contains(t, out, "[]")
+}
+
+func TestHistoryCmd_InvalidOutputFailsBeforeBootLoad(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cmd := NewLearningCmd(testutil.FakeCfgLoader(cfg), func() (*bootstrap.Result, error) {
+		t.Fatal("boot loader should not be called for invalid output")
+		return nil, nil
+	})
+
+	_, err := executeLearningCmd(t, cmd, "history", "--output", "yaml")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `unknown output format "yaml"`)
 }
 
 func TestHistoryCmd_BootError(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cmd := NewLearningCmd(testutil.FakeCfgLoader(cfg), testutil.FailBootLoader(assert.AnError))
 
-	result := testutil.ExecCmd(t, cmd, "history")
-	require.Error(t, result.Err)
-	assert.Contains(t, result.Err.Error(), "bootstrap")
+	_, err := executeLearningCmd(t, cmd, "history")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "bootstrap")
 }
 
 func TestHistoryCmd_HasLimitFlag(t *testing.T) {

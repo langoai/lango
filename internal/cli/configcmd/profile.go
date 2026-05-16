@@ -2,15 +2,15 @@ package configcmd
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"os"
 	"text/tabwriter"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/langoai/lango/internal/bootstrap"
+	"github.com/langoai/lango/internal/cli/clihttp"
+	"github.com/langoai/lango/internal/cli/prompt"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/configstore"
 	"github.com/langoai/lango/internal/storage"
@@ -72,11 +72,11 @@ func newListCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 			}
 
 			if len(profiles) == 0 {
-				fmt.Println("No profiles found.")
-				return nil
+				_, err := fmt.Fprintln(cmd.OutOrStdout(), "No profiles found.")
+				return err
 			}
 
-			w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
 			fmt.Fprintln(w, "NAME\tACTIVE\tVERSION\tCREATED\tUPDATED")
 			for _, p := range profiles {
 				active := ""
@@ -157,11 +157,11 @@ Examples:
 			}
 
 			if preset != "" {
-				fmt.Printf("Profile %q created from preset %q.\n", name, preset)
+				_, err = fmt.Fprintf(cmd.OutOrStdout(), "Profile %q created from preset %q.\n", name, preset)
 			} else {
-				fmt.Printf("Profile %q created with default configuration.\n", name)
+				_, err = fmt.Fprintf(cmd.OutOrStdout(), "Profile %q created with default configuration.\n", name)
 			}
-			return nil
+			return err
 		},
 	}
 
@@ -191,8 +191,8 @@ func newUseCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 				return fmt.Errorf("switch profile: %w", err)
 			}
 
-			fmt.Printf("Switched to profile %q.\n", name)
-			return nil
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Switched to profile %q.\n", name)
+			return err
 		},
 	}
 }
@@ -208,12 +208,17 @@ func newDeleteCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 			name := args[0]
 
 			if !force {
-				fmt.Printf("Delete profile %q? This cannot be undone. [y/N]: ", name)
-				var answer string
-				_, _ = fmt.Scanln(&answer)
-				if answer != "y" && answer != "Y" {
-					fmt.Println("Aborted.")
-					return nil
+				ok, err := prompt.ConfirmDenyOnEOFIO(
+					cmd.InOrStdin(),
+					cmd.OutOrStdout(),
+					fmt.Sprintf("Delete profile %q? This cannot be undone.", name),
+				)
+				if err != nil {
+					return err
+				}
+				if !ok {
+					_, err := fmt.Fprintln(cmd.OutOrStdout(), "Aborted.")
+					return err
 				}
 			}
 
@@ -231,8 +236,8 @@ func newDeleteCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 				return fmt.Errorf("delete profile: %w", err)
 			}
 
-			fmt.Printf("Profile %q deleted.\n", name)
-			return nil
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Profile %q deleted.\n", name)
+			return err
 		},
 	}
 
@@ -265,9 +270,11 @@ func newImportCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 				return fmt.Errorf("import config: %w", err)
 			}
 
-			fmt.Printf("Imported %q as profile %q (now active).\n", filePath, profileName)
-			fmt.Println("Source file deleted for security.")
-			return nil
+			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "Imported %q as profile %q (now active).\n", filePath, profileName); err != nil {
+				return err
+			}
+			_, err = fmt.Fprintln(cmd.OutOrStdout(), "Source file deleted for security.")
+			return err
 		},
 	}
 
@@ -298,14 +305,11 @@ func newExportCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 				return fmt.Errorf("load profile: %w", err)
 			}
 
-			fmt.Fprintln(os.Stderr, "WARNING: exported configuration contains sensitive values in plaintext.")
+			fmt.Fprintln(cmd.ErrOrStderr(), "WARNING: exported configuration contains sensitive values in plaintext.")
 
-			data, err := json.MarshalIndent(cfg, "", "  ")
-			if err != nil {
+			if err := clihttp.PrintJSON(cmd.OutOrStdout(), cfg); err != nil {
 				return fmt.Errorf("marshal config: %w", err)
 			}
-
-			fmt.Println(string(data))
 			return nil
 		},
 	}
@@ -326,8 +330,8 @@ func newValidateCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command
 				return fmt.Errorf("validation failed: %w", err)
 			}
 
-			fmt.Printf("Profile %q configuration is valid.\n", boot.ProfileName)
-			return nil
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Profile %q configuration is valid.\n", boot.ProfileName)
+			return err
 		},
 	}
 }

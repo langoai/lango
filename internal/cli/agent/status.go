@@ -1,9 +1,7 @@
 package agent
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 
 	"github.com/langoai/lango/internal/agentregistry"
 	"github.com/langoai/lango/internal/config"
@@ -26,12 +24,18 @@ var loadAgentRegistryCounts = func(cfg *config.Config) (builtinCount, userCount,
 }
 
 func newStatusCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
-	var jsonOutput bool
+	var output string
 
 	cmd := &cobra.Command{
-		Use:   "status",
-		Short: "Show agent mode, configuration, and registry info",
+		Use:           "status",
+		Short:         "Show agent mode, configuration, and registry info",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			output, err := resolveOutput(cmd)
+			if err != nil {
+				return err
+			}
 			cfg, err := cfgLoader()
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
@@ -119,50 +123,49 @@ func newStatusCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 				s.A2AAgent = cfg.A2A.AgentName
 			}
 
-			if jsonOutput {
-				enc := json.NewEncoder(os.Stdout)
-				enc.SetIndent("", "  ")
-				return enc.Encode(s)
+			if output == "json" {
+				return printPrettyJSON(cmd.OutOrStdout(), s)
 			}
 
-			fmt.Printf("Agent Status\n")
-			fmt.Printf("  Mode:              %s\n", s.Mode)
-			fmt.Printf("  Provider:          %s\n", s.Provider)
-			fmt.Printf("  Model:             %s\n", s.Model)
-			fmt.Printf("  Multi-Agent:       %v\n", s.MultiAgent)
+			writer := cmd.OutOrStdout()
+			fmt.Fprintf(writer, "Agent Status\n")
+			fmt.Fprintf(writer, "  Mode:              %s\n", s.Mode)
+			fmt.Fprintf(writer, "  Provider:          %s\n", s.Provider)
+			fmt.Fprintf(writer, "  Model:             %s\n", s.Model)
+			fmt.Fprintf(writer, "  Multi-Agent:       %v\n", s.MultiAgent)
 			if s.TeammateRuntime != "" {
-				fmt.Printf("  Teammate Runtime:  %s\n", s.TeammateRuntime)
+				fmt.Fprintf(writer, "  Teammate Runtime:  %s\n", s.TeammateRuntime)
 			} else if teammateRuntimeHint != "" {
-				fmt.Printf("  Teammate Runtime:  unavailable\n")
-				fmt.Printf("  Runtime Hint:      %s\n", teammateRuntimeHint)
+				fmt.Fprintf(writer, "  Teammate Runtime:  unavailable\n")
+				fmt.Fprintf(writer, "  Runtime Hint:      %s\n", teammateRuntimeHint)
 			}
-			fmt.Printf("  Max Turns:         %d\n", s.MaxTurns)
-			fmt.Printf("  Error Correction:  %v\n", s.ErrorCorrectionEnabled)
+			fmt.Fprintf(writer, "  Max Turns:         %d\n", s.MaxTurns)
+			fmt.Fprintf(writer, "  Error Correction:  %v\n", s.ErrorCorrectionEnabled)
 			if s.MultiAgent {
-				fmt.Printf("  Delegation Rounds: %d\n", s.MaxDelegationRounds)
+				fmt.Fprintf(writer, "  Delegation Rounds: %d\n", s.MaxDelegationRounds)
 			}
-			fmt.Printf("  A2A Enabled:       %v\n", s.A2AEnabled)
+			fmt.Fprintf(writer, "  A2A Enabled:       %v\n", s.A2AEnabled)
 			if s.A2AEnabled {
-				fmt.Printf("  A2A Base URL:      %s\n", s.A2ABaseURL)
-				fmt.Printf("  A2A Agent:         %s\n", s.A2AAgent)
-				fmt.Printf("  Remote Agents:     %d\n", s.RemoteAgents)
+				fmt.Fprintf(writer, "  A2A Base URL:      %s\n", s.A2ABaseURL)
+				fmt.Fprintf(writer, "  A2A Agent:         %s\n", s.A2AAgent)
+				fmt.Fprintf(writer, "  Remote Agents:     %d\n", s.RemoteAgents)
 			}
-			fmt.Printf("  P2P Enabled:       %v\n", s.P2PEnabled)
-			fmt.Printf("  Hooks Enabled:     %v\n", s.HooksEnabled)
-			fmt.Println()
-			fmt.Printf("Agent Registry\n")
-			fmt.Printf("  Builtin Agents:    %d\n", s.Registry.Builtin)
-			fmt.Printf("  User Agents:       %d\n", s.Registry.User)
-			fmt.Printf("  Active Agents:     %d\n", s.Registry.Active)
+			fmt.Fprintf(writer, "  P2P Enabled:       %v\n", s.P2PEnabled)
+			fmt.Fprintf(writer, "  Hooks Enabled:     %v\n", s.HooksEnabled)
+			fmt.Fprintln(writer)
+			fmt.Fprintf(writer, "Agent Registry\n")
+			fmt.Fprintf(writer, "  Builtin Agents:    %d\n", s.Registry.Builtin)
+			fmt.Fprintf(writer, "  User Agents:       %d\n", s.Registry.User)
+			fmt.Fprintf(writer, "  Active Agents:     %d\n", s.Registry.Active)
 			if s.Registry.AgentDir != "" {
-				fmt.Printf("  Agents Dir:        %s\n", s.Registry.AgentDir)
+				fmt.Fprintf(writer, "  Agents Dir:        %s\n", s.Registry.AgentDir)
 			}
 
 			return nil
 		},
 	}
 
-	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
+	cmd.Flags().StringVar(&output, "output", "table", "Output format: table or json")
 
 	return cmd
 }

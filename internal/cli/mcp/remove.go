@@ -36,7 +36,7 @@ func newRemoveCmd() *cobra.Command {
 				if err := mcplib.SaveMCPFile(sp.path, servers); err != nil {
 					return fmt.Errorf("save config: %w", err)
 				}
-				fmt.Printf("MCP server %q removed from %s scope.\n", name, sp.scope)
+				fmt.Fprintf(cmd.OutOrStdout(), "MCP server %q removed from %s scope.\n", name, sp.scope)
 				return nil
 			}
 
