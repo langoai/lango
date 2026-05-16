@@ -1,9 +1,7 @@
 package p2p
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 
@@ -18,7 +16,10 @@ func newWorkspaceCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comman
 
 Workspaces are real runtime structures for shared context, code exchange, and
 GossipSub messaging. The current CLI mostly points operators to the running
-server and agent/tool-backed flows instead of providing full live control.`,
+server plus the concrete workspace tool surface (p2p_workspace_create,
+p2p_workspace_join, p2p_workspace_leave, p2p_workspace_list,
+p2p_workspace_status, p2p_workspace_read) instead of providing full live
+control.`,
 	}
 
 	cmd.AddCommand(newWorkspaceCreateCmd(bootLoader))
@@ -32,16 +33,23 @@ server and agent/tool-backed flows instead of providing full live control.`,
 
 func newWorkspaceCreateCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 	var (
-		goal       string
-		jsonOutput bool
+		goal   string
+		output string
 	)
 
 	cmd := &cobra.Command{
-		Use:   "create <name>",
-		Short: "Create a new workspace",
-		Long:  "Describe how to create a runtime-backed P2P workspace with a name and optional goal.",
-		Args:  cobra.ExactArgs(1),
+		Use:           "create <name>",
+		Short:         "Create a new workspace",
+		Long:          "Describe how to create a runtime-backed P2P workspace with a name and optional goal.",
+		Args:          cobra.ExactArgs(1),
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			output, err := resolveOutput(cmd)
+			if err != nil {
+				return err
+			}
+
 			boot, err := bootLoader()
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
@@ -59,35 +67,40 @@ func newWorkspaceCreateCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.
 			result := map[string]interface{}{
 				"name":   name,
 				"goal":   goal,
-				"status": "Use 'lango serve' and create workspaces via the runtime API or agent tools",
+				"status": "Use 'lango serve' and create workspaces via p2p_workspace_create.",
 			}
 
-			if jsonOutput {
-				enc := json.NewEncoder(os.Stdout)
-				enc.SetIndent("", "  ")
-				return enc.Encode(result)
+			if output == "json" {
+				return printJSON(cmd.OutOrStdout(), result)
 			}
 
-			fmt.Printf("Workspace creation requires a running server.\n")
-			fmt.Printf("Start the server with 'lango serve' and use the runtime API or agent tools.\n")
-			fmt.Printf("\nExample: p2p_workspace_create name=%q goal=%q\n", name, goal)
+			fmt.Fprintln(cmd.OutOrStdout(), "Workspace creation requires a running server.")
+			fmt.Fprintln(cmd.OutOrStdout(), "Start the server with 'lango serve' and use p2p_workspace_create.")
+			fmt.Fprintf(cmd.OutOrStdout(), "\nExample: p2p_workspace_create name=%q goal=%q\n", name, goal)
 			return nil
 		},
 	}
 
 	cmd.Flags().StringVar(&goal, "goal", "", "Workspace goal/description")
-	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
+	cmd.Flags().StringVar(&output, "output", "table", "Output format: table or json")
 	return cmd
 }
 
 func newWorkspaceListCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
-	var jsonOutput bool
+	var output string
 
 	cmd := &cobra.Command{
-		Use:   "list",
-		Short: "List workspaces",
-		Long:  "Describe how to inspect runtime-backed P2P collaborative workspaces.",
+		Use:           "list",
+		Short:         "List workspaces",
+		Long:          "Describe how to inspect runtime-backed P2P collaborative workspaces.",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			output, err := resolveOutput(cmd)
+			if err != nil {
+				return err
+			}
+
 			boot, err := bootLoader()
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
@@ -98,33 +111,38 @@ func newWorkspaceListCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Co
 				return errP2PDisabled
 			}
 
-			if jsonOutput {
-				enc := json.NewEncoder(os.Stdout)
-				enc.SetIndent("", "  ")
-				return enc.Encode([]interface{}{})
+			if output == "json" {
+				return printJSON(cmd.OutOrStdout(), []interface{}{})
 			}
 
-			fmt.Println("No workspaces found.")
-			fmt.Println()
-			fmt.Println("Workspaces are runtime structures managed by the running server.")
-			fmt.Println("Start the server with 'lango serve' and use the runtime API or p2p_workspace_* tools.")
+			fmt.Fprintln(cmd.OutOrStdout(), "No workspaces found.")
+			fmt.Fprintln(cmd.OutOrStdout())
+			fmt.Fprintln(cmd.OutOrStdout(), "Workspaces are runtime structures managed by the running server.")
+			fmt.Fprintln(cmd.OutOrStdout(), "Start the server with 'lango serve' and use p2p_workspace_list, p2p_workspace_create, or p2p_workspace_join.")
 			return nil
 		},
 	}
 
-	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
+	cmd.Flags().StringVar(&output, "output", "table", "Output format: table or json")
 	return cmd
 }
 
 func newWorkspaceStatusCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
-	var jsonOutput bool
+	var output string
 
 	cmd := &cobra.Command{
-		Use:   "status <workspace-id>",
-		Short: "Show workspace details",
-		Long:  "Explain how to inspect a runtime-backed P2P workspace including members and contributions.",
-		Args:  cobra.ExactArgs(1),
+		Use:           "status <workspace-id>",
+		Short:         "Show workspace details",
+		Long:          "Explain how to inspect a runtime-backed P2P workspace including members and contributions.",
+		Args:          cobra.ExactArgs(1),
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			output, err := resolveOutput(cmd)
+			if err != nil {
+				return err
+			}
+
 			boot, err := bootLoader()
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
@@ -137,23 +155,21 @@ func newWorkspaceStatusCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.
 
 			_ = args[0] // workspaceID
 
-			if jsonOutput {
-				enc := json.NewEncoder(os.Stdout)
-				enc.SetIndent("", "  ")
-				return enc.Encode(map[string]interface{}{
+			if output == "json" {
+				return printJSON(cmd.OutOrStdout(), map[string]interface{}{
 					"error": "workspace not found (workspaces are runtime-only)",
 				})
 			}
 
-			fmt.Println("Workspace not found.")
-			fmt.Println()
-			fmt.Println("Workspaces are runtime structures.")
-			fmt.Println("Use the running server plus workspace runtime integrations or agent tools for inspection.")
+			fmt.Fprintln(cmd.OutOrStdout(), "Workspace not found.")
+			fmt.Fprintln(cmd.OutOrStdout())
+			fmt.Fprintln(cmd.OutOrStdout(), "Workspaces are runtime structures.")
+			fmt.Fprintln(cmd.OutOrStdout(), "Use the running server plus the p2p_workspace_status or p2p_workspace_read tools for inspection.")
 			return nil
 		},
 	}
 
-	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
+	cmd.Flags().StringVar(&output, "output", "table", "Output format: table or json")
 	return cmd
 }
 
@@ -175,8 +191,8 @@ func newWorkspaceJoinCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Co
 			}
 
 			_ = args[0] // workspaceID
-			fmt.Println("Joining a workspace requires a running server.")
-			fmt.Println("Use 'lango serve' and the runtime API or p2p_workspace_join tool.")
+			fmt.Fprintln(cmd.OutOrStdout(), "Joining a workspace requires a running server.")
+			fmt.Fprintln(cmd.OutOrStdout(), "Use 'lango serve' and the server-backed runtime or p2p_workspace_join tool.")
 			return nil
 		},
 	}
@@ -202,8 +218,8 @@ func newWorkspaceLeaveCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.C
 			}
 
 			_ = args[0] // workspaceID
-			fmt.Println("Leaving a workspace requires a running server.")
-			fmt.Println("Use 'lango serve' and the runtime API or p2p_workspace_leave tool.")
+			fmt.Fprintln(cmd.OutOrStdout(), "Leaving a workspace requires a running server.")
+			fmt.Fprintln(cmd.OutOrStdout(), "Use 'lango serve' and the server-backed runtime or p2p_workspace_leave tool.")
 			return nil
 		},
 	}

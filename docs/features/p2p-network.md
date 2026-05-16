@@ -50,7 +50,7 @@ Each Lango agent supports two DID forms:
 - `did:lango:<hex>` for legacy wallet-derived identities
 - `did:lango:v2:<hash>` for bundle-backed identities
 
-The active DID is exposed by `GET /api/p2p/identity` when the local identity provider can resolve one. The current `lango p2p identity` CLI still focuses on peer/node identity and listen addresses rather than printing the DID directly.
+The active DID is exposed by `GET /api/p2p/identity` when the local identity provider can resolve one. The `lango p2p identity` CLI also prints the active DID directly when available, alongside the peer ID, key storage mode, and listen addresses.
 
 The DID is deterministically mapped to a libp2p peer ID, ensuring cryptographic binding between the wallet identity and the network identity. Private keys never leave the wallet layer.
 
@@ -437,7 +437,7 @@ These endpoints query the running server's persistent P2P node. They are public 
 
 ## CLI Commands
 
-The CLI commands create ephemeral P2P nodes for one-off operations, independent of the running server:
+Core inspection commands create ephemeral P2P nodes for one-off operations, independent of the running server. The `team`, `workspace`, and `git` families below are still guidance surfaces for server-backed runtime workflows rather than full direct live control:
 
 ```bash
 lango p2p status               # Show node status
@@ -447,7 +447,7 @@ lango p2p disconnect <peer-id> # Disconnect from a peer
 lango p2p firewall list        # List firewall rules
 lango p2p firewall add         # Add a firewall rule
 lango p2p discover             # Discover agents
-lango p2p identity             # Show local peer identity and listen addresses
+lango p2p identity             # Show local DID, peer identity, and listen addresses
 lango p2p reputation --peer-did <did>  # Query trust score
 lango p2p pricing              # Show provider-side public quote configuration
 lango p2p session list                          # List active sessions
@@ -458,6 +458,15 @@ lango p2p sandbox test                          # Run sandbox smoke test
 lango p2p sandbox cleanup                       # Remove orphaned containers
 lango p2p team list                             # Inspect the current team CLI surface
 lango p2p team status <id>                      # Inspect team guidance for a specific ID
+```
+
+The workspace tool cluster fails closed at the wrapper boundary too: missing required `workspaceId` or `content` inputs for `p2p_workspace_join`, `p2p_workspace_leave`, `p2p_workspace_status`, `p2p_workspace_post`, or `p2p_workspace_read` fail before workspace lookup, membership mutation, or message persistence begin.
+
+The same rule applies to the git bundle tool cluster: missing required `workspaceId`, `from`, or `to` inputs for `p2p_git_init`, `p2p_git_push`, `p2p_git_log`, `p2p_git_diff`, or `p2p_git_leaves` fail before repository lookup, bundle creation, or diff resolution begin.
+
+Capability metadata now matches that split too: `p2p_workspace_list` and `p2p_workspace_status` are query-classified inspection paths, while `p2p_workspace_read`, `p2p_git_log`, `p2p_git_diff`, and `p2p_git_leaves` are read-classified review paths.
+
+```bash
 lango p2p team disband <id>                     # Inspect disband guidance for a live team
 lango p2p zkp status                            # Show ZKP configuration
 lango p2p zkp circuits                          # List ZKP circuits
@@ -469,8 +478,8 @@ lango p2p workspace leave <id>                  # Inspect workspace-leave guidan
 lango p2p git init <workspace-id>               # Inspect git-init guidance for workspaces
 lango p2p git log <workspace-id>                # Inspect runtime-backed workspace commit history guidance
 lango p2p git diff <workspace-id> <from> <to>   # Inspect workspace diff guidance
-lango p2p git push <workspace-id>               # Create and push git bundle
-lango p2p git fetch <workspace-id>              # Fetch and apply git bundle
+lango p2p git push <workspace-id>               # Inspect server-backed git bundle push guidance
+lango p2p git fetch <workspace-id>              # Inspect server-backed git bundle fetch guidance
 ```
 
 See the [P2P CLI Reference](../cli/p2p.md) for detailed command documentation.
@@ -487,8 +496,10 @@ Those higher-level policies are owned by the economy subsystem.
 
 1. **Price Query** — The caller queries the provider's pricing via `p2p_price_query` or `GET /api/p2p/pricing`
 2. **Price Quote** — The provider returns a `PriceQuoteResult` with the tool price in USDC
-3. **Payment** — The caller sends USDC via `p2p_pay` to the provider's wallet address. In the current direct-payment slice, this call is receipt-backed: `transaction_receipt_id` is required, `submission_receipt_id` is optional, and the canonical payment state must be approved for `prepay`.
+3. **Payment** — The caller sends USDC via `p2p_pay` to the provider's wallet address. In the current direct-payment slice, this call is receipt-backed: `peer_did`, `transaction_receipt_id`, and `amount` are required, `submission_receipt_id` is optional, and the canonical payment state must be approved for `prepay`. If any required wrapper input is omitted, the tool fails immediately with an actionable missing-parameter error.
 4. **Tool Invocation** — After payment confirmation, the caller invokes the tool via `p2p_query`
+
+The same wrapper rule applies across the main P2P entrypoints: missing required inputs for `p2p_connect`, `p2p_disconnect`, `p2p_query`, `p2p_firewall_add`, `p2p_firewall_remove`, `p2p_price_query`, `p2p_reputation`, and `p2p_invoke_paid` fail before session lookup, remote invocation, pricing lookup, or firewall mutation begin.
 
 ### Auto-Approval for Small Amounts
 

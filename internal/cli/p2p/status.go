@@ -1,70 +1,102 @@
 package p2p
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 
 	"github.com/langoai/lango/internal/bootstrap"
 )
 
+type statusCommandData struct {
+	peerID         string
+	listenAddrs    []string
+	connectedPeers int
+	maxPeers       int
+	mdns           bool
+	relay          bool
+	zkHandshake    bool
+}
+
+var loadStatusCommandData = func(boot *bootstrap.Result) (statusCommandData, func(), error) {
+	deps, err := initP2PDeps(boot)
+	if err != nil {
+		return statusCommandData{}, nil, err
+	}
+
+	peerID := deps.node.PeerID().String()
+	addrs := deps.node.Multiaddrs()
+	connectedPeers := deps.node.ConnectedPeers()
+
+	listenAddrs := make([]string, len(addrs))
+	for i, a := range addrs {
+		listenAddrs[i] = a.String()
+	}
+
+	return statusCommandData{
+		peerID:         peerID,
+		listenAddrs:    listenAddrs,
+		connectedPeers: len(connectedPeers),
+		maxPeers:       deps.config.MaxPeers,
+		mdns:           deps.config.EnableMDNS,
+		relay:          deps.config.EnableRelay,
+		zkHandshake:    deps.config.ZKHandshake,
+	}, deps.cleanup, nil
+}
+
 func newStatusCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
-	var jsonOutput bool
+	var output string
 
 	cmd := &cobra.Command{
-		Use:   "status",
-		Short: "Show P2P node status",
-		Long:  "Show P2P node status (creates an ephemeral node). For the running server's node, use GET /api/p2p/status.",
+		Use:           "status",
+		Short:         "Show P2P node status",
+		Long:          "Show P2P node status (creates an ephemeral node). For the running server's node, use GET /api/p2p/status.",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			output, err := resolveOutput(cmd)
+			if err != nil {
+				return err
+			}
+
 			boot, err := bootLoader()
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
 			defer boot.Close()
 
-			deps, err := initP2PDeps(boot)
+			data, cleanup, err := loadStatusCommandData(boot)
 			if err != nil {
 				return err
 			}
-			defer deps.cleanup()
-
-			peerID := deps.node.PeerID().String()
-			addrs := deps.node.Multiaddrs()
-			connectedPeers := deps.node.ConnectedPeers()
-
-			listenAddrs := make([]string, len(addrs))
-			for i, a := range addrs {
-				listenAddrs[i] = a.String()
+			if cleanup != nil {
+				defer cleanup()
 			}
 
-			if jsonOutput {
-				enc := json.NewEncoder(os.Stdout)
-				enc.SetIndent("", "  ")
-				return enc.Encode(map[string]interface{}{
-					"peerId":         peerID,
-					"listenAddrs":    listenAddrs,
-					"connectedPeers": len(connectedPeers),
-					"maxPeers":       deps.config.MaxPeers,
-					"mdns":           deps.config.EnableMDNS,
-					"relay":          deps.config.EnableRelay,
-					"zkHandshake":    deps.config.ZKHandshake,
+			if output == "json" {
+				return printJSON(cmd.OutOrStdout(), map[string]interface{}{
+					"peerId":         data.peerID,
+					"listenAddrs":    data.listenAddrs,
+					"connectedPeers": data.connectedPeers,
+					"maxPeers":       data.maxPeers,
+					"mdns":           data.mdns,
+					"relay":          data.relay,
+					"zkHandshake":    data.zkHandshake,
 				})
 			}
 
-			fmt.Println("P2P Node Status")
-			fmt.Printf("  Peer ID:          %s\n", peerID)
-			fmt.Printf("  Listen Addrs:     %v\n", listenAddrs)
-			fmt.Printf("  Connected Peers:  %d / %d\n", len(connectedPeers), deps.config.MaxPeers)
-			fmt.Printf("  mDNS:             %v\n", deps.config.EnableMDNS)
-			fmt.Printf("  Relay:            %v\n", deps.config.EnableRelay)
-			fmt.Printf("  ZK Handshake:     %v\n", deps.config.ZKHandshake)
+			fmt.Fprintln(cmd.OutOrStdout(), "P2P Node Status")
+			fmt.Fprintf(cmd.OutOrStdout(), "  Peer ID:          %s\n", data.peerID)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Listen Addrs:     %v\n", data.listenAddrs)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Connected Peers:  %d / %d\n", data.connectedPeers, data.maxPeers)
+			fmt.Fprintf(cmd.OutOrStdout(), "  mDNS:             %v\n", data.mdns)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Relay:            %v\n", data.relay)
+			fmt.Fprintf(cmd.OutOrStdout(), "  ZK Handshake:     %v\n", data.zkHandshake)
 
 			return nil
 		},
 	}
 
-	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
+	cmd.Flags().StringVar(&output, "output", "table", "Output format: table or json")
 	return cmd
 }

@@ -1,9 +1,7 @@
 package p2p
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
@@ -36,13 +34,20 @@ func newZKPCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 }
 
 func newZKPStatusCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
-	var jsonOutput bool
+	var output string
 
 	cmd := &cobra.Command{
-		Use:   "status",
-		Short: "Show ZKP configuration",
-		Long:  "Display the current ZKP proving scheme, SRS mode, and configuration.",
+		Use:           "status",
+		Short:         "Show ZKP configuration",
+		Long:          "Display the current ZKP proving scheme, SRS mode, and configuration.",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			output, err := resolveOutput(cmd)
+			if err != nil {
+				return err
+			}
+
 			boot, err := bootLoader()
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
@@ -61,41 +66,46 @@ func newZKPStatusCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comman
 				"maxCredentialAge": cfg.ZKP.MaxCredentialAge,
 			}
 
-			if jsonOutput {
-				enc := json.NewEncoder(os.Stdout)
-				enc.SetIndent("", "  ")
-				return enc.Encode(status)
+			if output == "json" {
+				return printJSON(cmd.OutOrStdout(), status)
 			}
 
-			fmt.Println("ZKP Configuration")
-			fmt.Printf("  ZK Handshake:       %v\n", cfg.ZKHandshake)
-			fmt.Printf("  ZK Attestation:     %v\n", cfg.ZKAttestation)
-			fmt.Printf("  Proving Scheme:     %s\n", cfg.ZKP.ProvingScheme)
-			fmt.Printf("  SRS Mode:           %s\n", cfg.ZKP.SRSMode)
+			fmt.Fprintln(cmd.OutOrStdout(), "ZKP Configuration")
+			fmt.Fprintf(cmd.OutOrStdout(), "  ZK Handshake:       %v\n", cfg.ZKHandshake)
+			fmt.Fprintf(cmd.OutOrStdout(), "  ZK Attestation:     %v\n", cfg.ZKAttestation)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Proving Scheme:     %s\n", cfg.ZKP.ProvingScheme)
+			fmt.Fprintf(cmd.OutOrStdout(), "  SRS Mode:           %s\n", cfg.ZKP.SRSMode)
 			if cfg.ZKP.SRSPath != "" {
-				fmt.Printf("  SRS Path:           %s\n", cfg.ZKP.SRSPath)
+				fmt.Fprintf(cmd.OutOrStdout(), "  SRS Path:           %s\n", cfg.ZKP.SRSPath)
 			}
-			fmt.Printf("  Proof Cache Dir:    %s\n", cfg.ZKP.ProofCacheDir)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Proof Cache Dir:    %s\n", cfg.ZKP.ProofCacheDir)
 			if cfg.ZKP.MaxCredentialAge != "" {
-				fmt.Printf("  Max Credential Age: %s\n", cfg.ZKP.MaxCredentialAge)
+				fmt.Fprintf(cmd.OutOrStdout(), "  Max Credential Age: %s\n", cfg.ZKP.MaxCredentialAge)
 			}
 
 			return nil
 		},
 	}
 
-	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
+	cmd.Flags().StringVar(&output, "output", "table", "Output format: table or json")
 	return cmd
 }
 
 func newZKPCircuitsCmd() *cobra.Command {
-	var jsonOutput bool
+	var output string
 
 	cmd := &cobra.Command{
-		Use:   "circuits",
-		Short: "List available ZKP circuits",
-		Long:  "List all available zero-knowledge proof circuits and their descriptions.",
+		Use:           "circuits",
+		Short:         "List available ZKP circuits",
+		Long:          "List all available zero-knowledge proof circuits and their descriptions.",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			output, err := resolveOutput(cmd)
+			if err != nil {
+				return err
+			}
+
 			type circuitInfo struct {
 				ID          string `json:"id"`
 				Description string `json:"description"`
@@ -109,13 +119,11 @@ func newZKPCircuitsCmd() *cobra.Command {
 				}
 			}
 
-			if jsonOutput {
-				enc := json.NewEncoder(os.Stdout)
-				enc.SetIndent("", "  ")
-				return enc.Encode(circuits)
+			if output == "json" {
+				return printJSON(cmd.OutOrStdout(), circuits)
 			}
 
-			w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
 			fmt.Fprintln(w, "CIRCUIT\tDESCRIPTION")
 			for _, c := range circuits {
 				fmt.Fprintf(w, "%s\t%s\n", c.ID, c.Description)
@@ -124,6 +132,6 @@ func newZKPCircuitsCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
+	cmd.Flags().StringVar(&output, "output", "table", "Output format: table or json")
 	return cmd
 }

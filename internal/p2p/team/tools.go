@@ -39,7 +39,10 @@ func BuildTools(coord *Coordinator) []*agent.Tool {
 			if err != nil {
 				return nil, err
 			}
-			goal := toolparam.OptionalString(params, "goal", "")
+			goal, err := toolparam.RequireString(params, "goal")
+			if err != nil {
+				return nil, err
+			}
 			capability, err := toolparam.RequireString(params, "capability")
 			if err != nil {
 				return nil, err
@@ -48,7 +51,10 @@ func BuildTools(coord *Coordinator) []*agent.Tool {
 			if err != nil {
 				return nil, err
 			}
-			memberCount := toolparam.OptionalInt(params, "memberCount", 1)
+			memberCount, err := toolparam.RequireInt(params, "memberCount")
+			if err != nil {
+				return nil, err
+			}
 
 			t, err := coord.FormTeam(ctx, FormTeamRequest{
 				TeamID:      uuid.New().String(),

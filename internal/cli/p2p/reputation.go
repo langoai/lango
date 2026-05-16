@@ -1,28 +1,40 @@
 package p2p
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
-	"go.uber.org/zap"
 
 	"github.com/langoai/lango/internal/bootstrap"
-	"github.com/langoai/lango/internal/logging"
+	p2preputation "github.com/langoai/lango/internal/p2p/reputation"
 )
+
+var loadReputationDetails = func(boot *bootstrap.Result, peerDID string) (*p2preputation.PeerDetails, error) {
+	if boot.Storage == nil {
+		return nil, fmt.Errorf("p2p reputation storage unavailable")
+	}
+	return boot.Storage.ReputationDetails(context.Background(), peerDID)
+}
 
 func newReputationCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 	var (
-		peerDID    string
-		jsonOutput bool
+		peerDID string
+		output  string
 	)
 
 	cmd := &cobra.Command{
-		Use:   "reputation",
-		Short: "Show peer reputation and trust score",
-		Long:  "Query the reputation system for a peer's trust score, exchange history, and interaction timeline.",
+		Use:           "reputation",
+		Short:         "Show peer reputation and trust score",
+		Long:          "Query the reputation system for a peer's trust score, exchange history, and interaction timeline.",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			output, err := resolveOutput(cmd)
+			if err != nil {
+				return err
+			}
+
 			if peerDID == "" {
 				return fmt.Errorf("--peer-did is required")
 			}
@@ -33,56 +45,40 @@ func newReputationCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comma
 			}
 			defer boot.Close()
 
-			logger := logging.Sugar()
-			if logger == nil {
-				l, _ := zap.NewProduction()
-				logger = l.Sugar()
-			}
-
-			if boot.Storage == nil {
-				return fmt.Errorf("p2p reputation storage unavailable")
-			}
-			details, err := boot.Storage.ReputationDetails(cmd.Context(), peerDID)
+			details, err := loadReputationDetails(boot, peerDID)
 			if err != nil {
 				return fmt.Errorf("get reputation: %w", err)
 			}
 			if details == nil {
-				if jsonOutput {
-					enc := json.NewEncoder(os.Stdout)
-					enc.SetIndent("", "  ")
-					return enc.Encode(map[string]interface{}{
+				if output == "json" {
+					return printJSON(cmd.OutOrStdout(), map[string]interface{}{
 						"peerDid":    peerDID,
 						"trustScore": 0.0,
 						"message":    "no reputation record found",
 					})
 				}
-				fmt.Printf("No reputation record found for %s\n", peerDID)
+				fmt.Fprintf(cmd.OutOrStdout(), "No reputation record found for %s\n", peerDID)
 				return nil
 			}
-			if logger == nil {
-				return fmt.Errorf("p2p reputation storage unavailable")
+
+			if output == "json" {
+				return printJSON(cmd.OutOrStdout(), details)
 			}
 
-			if jsonOutput {
-				enc := json.NewEncoder(os.Stdout)
-				enc.SetIndent("", "  ")
-				return enc.Encode(details)
-			}
-
-			fmt.Println("Peer Reputation")
-			fmt.Printf("  Peer DID:          %s\n", details.PeerDID)
-			fmt.Printf("  Trust Score:       %.4f\n", details.TrustScore)
-			fmt.Printf("  Successes:         %d\n", details.SuccessfulExchanges)
-			fmt.Printf("  Failures:          %d\n", details.FailedExchanges)
-			fmt.Printf("  Timeouts:          %d\n", details.TimeoutCount)
-			fmt.Printf("  First Seen:        %s\n", details.FirstSeen.Format("2006-01-02 15:04:05"))
-			fmt.Printf("  Last Interaction:  %s\n", details.LastInteraction.Format("2006-01-02 15:04:05"))
+			fmt.Fprintln(cmd.OutOrStdout(), "Peer Reputation")
+			fmt.Fprintf(cmd.OutOrStdout(), "  Peer DID:          %s\n", details.PeerDID)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Trust Score:       %.4f\n", details.TrustScore)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Successes:         %d\n", details.SuccessfulExchanges)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Failures:          %d\n", details.FailedExchanges)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Timeouts:          %d\n", details.TimeoutCount)
+			fmt.Fprintf(cmd.OutOrStdout(), "  First Seen:        %s\n", details.FirstSeen.Format("2006-01-02 15:04:05"))
+			fmt.Fprintf(cmd.OutOrStdout(), "  Last Interaction:  %s\n", details.LastInteraction.Format("2006-01-02 15:04:05"))
 
 			return nil
 		},
 	}
 
 	cmd.Flags().StringVar(&peerDID, "peer-did", "", "The DID of the peer to query")
-	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
+	cmd.Flags().StringVar(&output, "output", "table", "Output format: table or json")
 	return cmd
 }

@@ -1,9 +1,7 @@
 package p2p
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 
@@ -48,8 +46,8 @@ func newGitInitCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command 
 			}
 
 			_ = args[0] // workspaceID
-			fmt.Println("Git init requires a running server.")
-			fmt.Println("Use 'lango serve' and the runtime API or p2p_git_init tool.")
+			fmt.Fprintln(cmd.OutOrStdout(), "Git init requires a running server.")
+			fmt.Fprintln(cmd.OutOrStdout(), "Use 'lango serve' and the server-backed runtime or p2p_git_init tool.")
 			return nil
 		},
 	}
@@ -58,16 +56,23 @@ func newGitInitCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command 
 
 func newGitLogCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 	var (
-		limit      int
-		jsonOutput bool
+		limit  int
+		output string
 	)
 
 	cmd := &cobra.Command{
-		Use:   "log <workspace-id>",
-		Short: "Show commit log",
-		Long:  "Describe how to inspect commit history from a runtime-backed workspace git repository.",
-		Args:  cobra.ExactArgs(1),
+		Use:           "log <workspace-id>",
+		Short:         "Show commit log",
+		Long:          "Describe how to inspect commit history from a runtime-backed workspace git repository.",
+		Args:          cobra.ExactArgs(1),
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			output, err := resolveOutput(cmd)
+			if err != nil {
+				return err
+			}
+
 			boot, err := bootLoader()
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
@@ -81,21 +86,19 @@ func newGitLogCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 			_ = args[0] // workspaceID
 			_ = limit
 
-			if jsonOutput {
-				enc := json.NewEncoder(os.Stdout)
-				enc.SetIndent("", "  ")
-				return enc.Encode([]interface{}{})
+			if output == "json" {
+				return printJSON(cmd.OutOrStdout(), []interface{}{})
 			}
 
-			fmt.Println("No commits found.")
-			fmt.Println("Git operations require a running server with workspace enabled.")
-			fmt.Println("Use the runtime API or p2p_git_* tools for live repository inspection.")
+			fmt.Fprintln(cmd.OutOrStdout(), "No commits found.")
+			fmt.Fprintln(cmd.OutOrStdout(), "Git operations require a running server with workspace enabled.")
+			fmt.Fprintln(cmd.OutOrStdout(), "Use the server-backed runtime or p2p_git_* tools for live repository inspection.")
 			return nil
 		},
 	}
 
 	cmd.Flags().IntVar(&limit, "limit", 20, "Maximum commits to show")
-	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
+	cmd.Flags().StringVar(&output, "output", "table", "Output format: table or json")
 	return cmd
 }
 
@@ -116,8 +119,8 @@ func newGitDiffCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command 
 				return errP2PDisabled
 			}
 
-			fmt.Println("Diff requires a running server.")
-			fmt.Println("Use 'lango serve' and the runtime API or p2p_git_diff tool.")
+			fmt.Fprintln(cmd.OutOrStdout(), "Diff requires a running server.")
+			fmt.Fprintln(cmd.OutOrStdout(), "Use 'lango serve' and the server-backed runtime or p2p_git_diff tool.")
 			return nil
 		},
 	}
@@ -141,8 +144,8 @@ func newGitPushCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command 
 				return errP2PDisabled
 			}
 
-			fmt.Println("Push requires a running server.")
-			fmt.Println("Use 'lango serve' and the runtime API or p2p_git_push tool.")
+			fmt.Fprintln(cmd.OutOrStdout(), "Push requires a running server.")
+			fmt.Fprintln(cmd.OutOrStdout(), "Use 'lango serve' and the server-backed runtime or p2p_git_push tool.")
 			return nil
 		},
 	}
@@ -166,8 +169,8 @@ func newGitFetchCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command
 				return errP2PDisabled
 			}
 
-			fmt.Println("Fetch requires a running server.")
-			fmt.Println("Use 'lango serve' and the runtime API or p2p_git_fetch tool.")
+			fmt.Fprintln(cmd.OutOrStdout(), "Fetch requires a running server.")
+			fmt.Fprintln(cmd.OutOrStdout(), "Use 'lango serve' and the server-backed runtime plus provenance or workspace artifact tools for live exchange.")
 			return nil
 		},
 	}

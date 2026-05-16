@@ -13,15 +13,15 @@ lango p2p <subcommand>
 
 ## lango p2p status
 
-Show the P2P node status including peer ID, listen addresses, connected peer count, and feature flags.
+Show the P2P node status including peer ID, listen addresses, connected peer count, and feature flags. The command writes through the Cobra command output stream so wrappers and test harnesses can capture text or JSON output directly.
 
 ```
-lango p2p status [--json]
+lango p2p status [--output table|json]
 ```
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--json` | bool | `false` | Output as JSON |
+| `--output` | string | `table` | Output format: `table` or `json` |
 
 **Example:**
 
@@ -40,15 +40,15 @@ P2P Node Status
 
 ## lango p2p peers
 
-List all currently connected peers with their peer IDs and multiaddrs.
+List all currently connected peers with their peer IDs and multiaddrs. The command writes through the Cobra command output stream so wrappers and test harnesses can capture table or JSON output directly.
 
 ```
-lango p2p peers [--json]
+lango p2p peers [--output table|json]
 ```
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--json` | bool | `false` | Output as JSON |
+| `--output` | string | `table` | Output format: `table` or `json` |
 
 **Example:**
 
@@ -63,7 +63,7 @@ QmPeer2def456...                 /ip4/10.0.0.3/tcp/9001
 
 ## lango p2p connect
 
-Connect to a peer by its full multiaddr (including the `/p2p/<peer-id>` suffix).
+Connect to a peer by its full multiaddr (including the `/p2p/<peer-id>` suffix). The command writes its success confirmation through the Cobra command output stream.
 
 ```
 lango p2p connect <multiaddr>
@@ -84,7 +84,7 @@ Connected to peer QmPeer1abc123
 
 ## lango p2p disconnect
 
-Disconnect from a peer by its peer ID.
+Disconnect from a peer by its peer ID. The command writes its success confirmation through the Cobra command output stream.
 
 ```
 lango p2p disconnect <peer-id>
@@ -109,15 +109,15 @@ Manage knowledge firewall ACL rules that control peer access.
 
 ### lango p2p firewall list
 
-List all configured firewall ACL rules.
+List all configured firewall ACL rules. The command writes through the Cobra command output stream so wrappers and test harnesses can capture table or JSON output directly.
 
 ```
-lango p2p firewall list [--json]
+lango p2p firewall list [--output table|json]
 ```
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--json` | bool | `false` | Output as JSON |
+| `--output` | string | `table` | Output format: `table` or `json` |
 
 **Example:**
 
@@ -130,7 +130,7 @@ did:lango:02abc...                    allow   search_*      10/min
 
 ### lango p2p firewall add
 
-Add a new firewall ACL rule (runtime only — persist by updating configuration).
+Add a new firewall ACL rule (runtime only — persist by updating configuration). The command writes its guidance output through the Cobra command output stream.
 
 ```
 lango p2p firewall add --peer-did <did> --action <allow|deny> [--tools <patterns>] [--rate-limit <n>]
@@ -156,7 +156,7 @@ Firewall rule added (runtime only):
 
 ### lango p2p firewall remove
 
-Remove all firewall rules matching a peer DID.
+Remove all firewall rules matching a peer DID. The command writes its guidance output through the Cobra command output stream.
 
 ```
 lango p2p firewall remove <peer-did>
@@ -170,16 +170,16 @@ lango p2p firewall remove <peer-did>
 
 ## lango p2p discover
 
-Discover agents on the P2P network via GossipSub. Optionally filter by capability tag.
+Discover agents on the P2P network via GossipSub. Optionally filter by capability tag. The command writes through the Cobra command output stream so wrappers and test harnesses can capture empty-state, table, or JSON output directly.
 
 ```
-lango p2p discover [--tag <capability>] [--json]
+lango p2p discover [--tag <capability>] [--output table|json]
 ```
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--tag` | string | `""` | Filter by capability tag |
-| `--json` | bool | `false` | Output as JSON |
+| `--output` | string | `table` | Output format: `table` or `json` |
 
 **Example:**
 
@@ -193,23 +193,24 @@ research-bot      did:lango:02abc...      research, summarize   QmPeer1abc123
 
 ## lango p2p identity
 
-Show the local P2P node identity, including peer ID, key storage mode, and listen addresses.
+Show the local P2P node identity, including the active DID when available, peer ID, key storage mode, and listen addresses. The command writes through the Cobra command output stream so wrappers and test harnesses can capture text or JSON output directly.
 
-Lango supports both legacy wallet-derived `did:lango:<hex>` identities and bundle-backed `did:lango:v2:<hash>` identities. The current CLI identity command does not print the DID directly; use `GET /api/p2p/identity` to query the active DID when available. The `/api/p2p/*` routes are public only when gateway auth is disabled; otherwise the subtree is protected by gateway auth.
+Lango supports both legacy wallet-derived `did:lango:<hex>` identities and bundle-backed `did:lango:v2:<hash>` identities. The `/api/p2p/*` routes are public only when gateway auth is disabled; otherwise the subtree is protected by gateway auth.
 
 ```
-lango p2p identity [--json]
+lango p2p identity [--output table|json]
 ```
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--json` | bool | `false` | Output as JSON |
+| `--output` | string | `table` | Output format: `table` or `json` |
 
 **Example:**
 
 ```bash
 $ lango p2p identity
 P2P Identity
+  DID:          did:lango:v2:abc123...
   Peer ID:      QmYourPeerId123...
   Key Storage:  secrets-store
   Listen Addrs:
@@ -221,12 +222,12 @@ P2P Identity
 
 ## `lango p2p reputation`
 
-Show peer reputation and trust score details.
+Show peer reputation and trust score details. The command writes through the Cobra command output stream so wrappers and test harnesses can capture text or JSON output directly.
 
 ### Usage
 
 ```bash
-lango p2p reputation --peer-did <did> [--json]
+lango p2p reputation --peer-did <did> [--output table|json]
 ```
 
 ### Flags
@@ -234,7 +235,7 @@ lango p2p reputation --peer-did <did> [--json]
 | Flag | Description |
 |------|-------------|
 | `--peer-did` | The DID of the peer to query (required) |
-| `--json` | Output as JSON |
+| `--output` | Output format: `table` or `json` |
 
 ### Examples
 
@@ -243,7 +244,7 @@ lango p2p reputation --peer-did <did> [--json]
 lango p2p reputation --peer-did "did:lango:abc123"
 
 # Output as JSON
-lango p2p reputation --peer-did "did:lango:abc123" --json
+lango p2p reputation --peer-did "did:lango:abc123" --output json
 ```
 
 ### Output Fields
@@ -265,15 +266,15 @@ Manage P2P sessions. List, revoke, or revoke all authenticated peer sessions.
 
 ### lango p2p session list
 
-List all active (non-expired, non-invalidated) peer sessions.
+List all active (non-expired, non-invalidated) peer sessions. The command writes through the Cobra command output stream so wrappers and test harnesses can capture table or JSON output directly.
 
 ```
-lango p2p session list [--json]
+lango p2p session list [--output table|json]
 ```
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--json` | bool | `false` | Output as JSON |
+| `--output` | string | `table` | Output format: `table` or `json` |
 
 **Example:**
 
@@ -288,7 +289,7 @@ did:lango:03def456...                 2026-02-25T10:30:00Z       2026-02-25T11:3
 
 ### lango p2p session revoke
 
-Revoke a specific peer's session by DID.
+Revoke a specific peer's session by DID. The command writes its confirmation through the Cobra command output stream.
 
 ```
 lango p2p session revoke --peer-did <did>
@@ -309,7 +310,7 @@ Session for did:lango:02abc123... revoked.
 
 ### lango p2p session revoke-all
 
-Revoke all active peer sessions.
+Revoke all active peer sessions. The command writes its confirmation through the Cobra command output stream.
 
 ```
 lango p2p session revoke-all
@@ -326,7 +327,7 @@ All sessions revoked.
 
 ## lango p2p provenance
 
-Exchange signed provenance bundles with peers through the running gateway.
+Exchange signed provenance bundles with peers through the running gateway. Success output is written through the Cobra command output stream so wrappers and test harnesses can capture it directly.
 
 These commands are server-backed. They require:
 
@@ -358,7 +359,7 @@ Manage the P2P tool execution sandbox. Inspect sandbox status, run smoke tests, 
 
 ### lango p2p sandbox status
 
-Show the current sandbox runtime status including isolation configuration, container mode, and active runtime.
+Show the current sandbox runtime status including isolation configuration, container mode, and active runtime. The command writes through the Cobra command output stream so wrappers and test harnesses can capture status output directly.
 
 ```
 lango p2p sandbox status
@@ -393,7 +394,7 @@ Tool isolation: enabled
 
 ### lango p2p sandbox test
 
-Run a sandbox smoke test by executing a simple echo tool through the sandbox.
+Run a sandbox smoke test by executing a simple echo tool through the sandbox. The command writes its runtime-selection and success output through the Cobra command output stream.
 
 ```
 lango p2p sandbox test
@@ -411,7 +412,7 @@ Smoke test passed: map[msg:sandbox-smoke-test]
 
 ### lango p2p sandbox cleanup
 
-Find and remove orphaned Docker containers with the `lango.sandbox=true` label.
+Find and remove orphaned Docker containers with the `lango.sandbox=true` label. The command writes its success output through the Cobra command output stream.
 
 ```
 lango p2p sandbox cleanup
@@ -428,12 +429,12 @@ Orphaned sandbox containers cleaned up.
 
 ## `lango p2p pricing`
 
-Show provider-side P2P quote configuration.
+Show provider-side P2P quote configuration. The command writes through the Cobra command output stream so wrappers and test harnesses can capture text or JSON output directly.
 
 ### Usage
 
 ```bash
-lango p2p pricing [--tool <name>] [--json]
+lango p2p pricing [--tool <name>] [--output table|json]
 ```
 
 ### Flags
@@ -441,7 +442,7 @@ lango p2p pricing [--tool <name>] [--json]
 | Flag | Description |
 |------|-------------|
 | `--tool` | Filter pricing for a specific tool |
-| `--json` | Output as JSON |
+| `--output` | Output format: `table` or `json` |
 
 ### Examples
 
@@ -453,26 +454,27 @@ lango p2p pricing
 lango p2p pricing --tool "knowledge_search"
 
 # Output as JSON
-lango p2p pricing --json
+lango p2p pricing --output json
 ```
 
 ---
 
 ## lango p2p team
 
-Inspect the current team operator surface for the running P2P runtime. Teams are real runtime-only coordination structures, but the CLI commands below currently act as truth-aligned guidance rather than full live team control. See the [P2P Teams](../features/p2p-network.md#p2p-team-coordination) section for subsystem details.
+Inspect the current team operator surface for the running P2P runtime. Teams are real runtime-only coordination structures, and the stable live path is the running server plus the concrete `team_form`, `team_form_with_budget`, `team_status`, `team_list`, and `team_disband` tools. The CLI commands below remain guidance-oriented rather than full live team control. See the [P2P Teams](../features/p2p-network.md#p2p-team-coordination) section for subsystem details.
 
 ### lango p2p team list
 
 Inspect what the CLI currently reports for active P2P teams.
+The command writes through the Cobra command output stream so wrappers and test harnesses can capture text or JSON guidance output directly.
 
 ```
-lango p2p team list [--json]
+lango p2p team list [--output table|json]
 ```
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--json` | bool | `false` | Output as JSON |
+| `--output` | string | `table` | Output format: `table` or `json` |
 
 **Example:**
 
@@ -481,15 +483,16 @@ $ lango p2p team list
 No active teams.
 
 Teams are runtime-only structures created during agent collaboration.
-Start the server with 'lango serve' and inspect/form teams via runtime integrations and agent tools.
+Start the server with 'lango serve' and inspect/form teams via `team_list`, `team_form`, and `team_form_with_budget`.
 ```
 
 ### lango p2p team status
 
 Inspect how the CLI currently guides operators toward live team inspection.
+The command writes through the Cobra command output stream so wrappers and test harnesses can capture text or JSON guidance output directly.
 
 ```
-lango p2p team status <team-id> [--json]
+lango p2p team status <team-id> [--output table|json]
 ```
 
 | Argument | Required | Description |
@@ -498,7 +501,7 @@ lango p2p team status <team-id> [--json]
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--json` | bool | `false` | Output as JSON |
+| `--output` | string | `table` | Output format: `table` or `json` |
 
 **Example:**
 
@@ -507,12 +510,13 @@ $ lango p2p team status a1b2c3d4-5678-9012-abcd-ef1234567890
 Team not found.
 
 Teams are runtime-only structures that exist only while the server is running.
-Use the running server plus the team runtime or agent tools for live inspection.
+Use the running server plus the `team_status` tool for live inspection.
 ```
 
 ### lango p2p team disband
 
 Inspect how the CLI currently guides operators toward live team disband.
+The command writes through the Cobra command output stream so wrappers and test harnesses can capture text guidance output directly.
 
 ```
 lango p2p team disband <team-id>
@@ -529,7 +533,7 @@ $ lango p2p team disband a1b2c3d4-5678-9012-abcd-ef1234567890
 Team not found.
 
 Teams are runtime-only structures.
-Use the running server plus the team runtime or agent tools to disband a live team.
+Use the running server plus the `team_disband` tool to disband a live team.
 ```
 
 ### Team Coordination Features
@@ -552,63 +556,64 @@ Inspect ZKP (zero-knowledge proof) configuration and compiled circuits. See the 
 
 ### lango p2p zkp status
 
-Show ZKP configuration, including proving scheme, SRS mode, and compiled circuit count.
+Show ZKP configuration, including proving scheme, SRS mode, and related runtime settings. The command writes through the Cobra command output stream so wrappers and test harnesses can capture text or JSON output directly.
 
 ```
-lango p2p zkp status [--json]
+lango p2p zkp status [--output table|json]
 ```
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--json` | bool | `false` | Output as JSON |
+| `--output` | string | `table` | Output format: `table` or `json` |
 
 **Example:**
 
 ```bash
 $ lango p2p zkp status
-ZKP Status
-  Proving Scheme:   plonk
-  SRS Mode:         unsafe
-  ZK Handshake:     true
-  ZK Attestation:   true
-  Compiled Circuits: 4
+ZKP Configuration
+  ZK Handshake:       true
+  ZK Attestation:     true
+  Proving Scheme:     plonk
+  SRS Mode:           unsafe
+  Proof Cache Dir:    .lango/zkp
 ```
 
 ### lango p2p zkp circuits
 
-List all available ZKP circuits and their compilation status.
+List all available ZKP circuits and their descriptions. The command writes through the Cobra command output stream so wrappers and test harnesses can capture table or JSON output directly.
 
 ```
-lango p2p zkp circuits [--json]
+lango p2p zkp circuits [--output table|json]
 ```
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--json` | bool | `false` | Output as JSON |
+| `--output` | string | `table` | Output format: `table` or `json` |
 
 **Example:**
 
 ```bash
 $ lango p2p zkp circuits
-CIRCUIT              COMPILED  CONSTRAINTS  SCHEME
-ownership            true      245          plonk
-capability           true      512          plonk
-balance_range        true      128          plonk
-attestation          true      389          plonk
+CIRCUIT      DESCRIPTION
+identity     Prove agent identity without revealing private key
+capability   Prove possession of a capability without revealing all capabilities
+reputation   Prove reputation score meets a threshold without revealing exact value
+attestation  Prove attestation validity with timestamp range assertions
 ```
 
 ---
 
 ## lango p2p workspace
 
-Inspect the current workspace operator surface for the running P2P runtime. Workspaces are real runtime structures, but the CLI commands below mostly point operators toward server-backed or tool-backed flows rather than performing full live control directly. See the [Collaborative Workspaces](../features/p2p-network.md#collaborative-workspaces) section for details.
+Inspect the current workspace operator surface for the running P2P runtime. Workspaces are real runtime structures, and the stable live path is the running server plus the concrete `p2p_workspace_create`, `p2p_workspace_join`, `p2p_workspace_leave`, `p2p_workspace_list`, `p2p_workspace_status`, and `p2p_workspace_read` tools. The CLI commands below remain guidance-oriented rather than performing full live control directly. See the [Collaborative Workspaces](../features/p2p-network.md#collaborative-workspaces) section for details.
 
 ### lango p2p workspace create
 
 Inspect how the CLI currently guides operators toward live workspace creation.
+The command writes through the Cobra command output stream so wrappers and test harnesses can capture text or JSON guidance output directly.
 
 ```
-lango p2p workspace create <name> [--goal <goal>] [--json]
+lango p2p workspace create <name> [--goal <goal>] [--output table|json]
 ```
 
 | Argument | Required | Description |
@@ -618,14 +623,14 @@ lango p2p workspace create <name> [--goal <goal>] [--json]
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--goal` | string | `""` | Description of the workspace goal |
-| `--json` | bool | `false` | Output as JSON |
+| `--output` | string | `table` | Output format: `table` or `json` |
 
 **Example:**
 
 ```bash
 $ lango p2p workspace create "research-project" --goal "Collaborative research on RAG optimization"
 Workspace creation requires a running server.
-Start the server with 'lango serve' and use the server-backed runtime or agent tools.
+Start the server with 'lango serve' and use `p2p_workspace_create`.
 
 Example: p2p_workspace_create name="research-project" goal="Collaborative research on RAG optimization"
 ```
@@ -633,14 +638,15 @@ Example: p2p_workspace_create name="research-project" goal="Collaborative resear
 ### lango p2p workspace list
 
 Inspect what the CLI currently reports for runtime-backed workspaces.
+The command writes through the Cobra command output stream so wrappers and test harnesses can capture text or JSON guidance output directly.
 
 ```
-lango p2p workspace list [--json]
+lango p2p workspace list [--output table|json]
 ```
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--json` | bool | `false` | Output as JSON |
+| `--output` | string | `table` | Output format: `table` or `json` |
 
 **Example:**
 
@@ -649,15 +655,16 @@ $ lango p2p workspace list
 No workspaces found.
 
 Workspaces are runtime structures managed by the running server.
-Start the server with 'lango serve' and use the server-backed runtime or p2p_workspace_* tools.
+Start the server with 'lango serve' and use `p2p_workspace_list`, `p2p_workspace_create`, or `p2p_workspace_join`.
 ```
 
 ### lango p2p workspace status
 
 Inspect how the CLI currently guides operators toward live workspace inspection.
+The command writes through the Cobra command output stream so wrappers and test harnesses can capture text or JSON guidance output directly.
 
 ```
-lango p2p workspace status <id> [--json]
+lango p2p workspace status <id> [--output table|json]
 ```
 
 | Argument | Required | Description |
@@ -666,7 +673,7 @@ lango p2p workspace status <id> [--json]
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--json` | bool | `false` | Output as JSON |
+| `--output` | string | `table` | Output format: `table` or `json` |
 
 **Example:**
 
@@ -675,12 +682,13 @@ $ lango p2p workspace status a1b2c3d4-5678-9012-abcd-ef1234567890
 Workspace not found.
 
 Workspaces are runtime structures.
-Use the running server plus workspace runtime integrations or agent tools for inspection.
+Use the running server plus the `p2p_workspace_status` or `p2p_workspace_read` tools for inspection.
 ```
 
 ### lango p2p workspace join
 
 Inspect how the CLI currently guides operators toward live workspace join.
+The command writes through the Cobra command output stream so wrappers and test harnesses can capture text guidance output directly.
 
 ```
 lango p2p workspace join <id>
@@ -701,6 +709,7 @@ Use 'lango serve' and the server-backed runtime or p2p_workspace_join tool.
 ### lango p2p workspace leave
 
 Inspect how the CLI currently guides operators toward live workspace leave.
+The command writes through the Cobra command output stream so wrappers and test harnesses can capture text guidance output directly.
 
 ```
 lango p2p workspace leave <id>
@@ -728,13 +737,13 @@ Workspaces support configurable collaboration features:
 - **Contribution Tracking**: Per-agent metrics (commits, code bytes, messages)
 - **Auto Sandbox**: Optionally isolate workspace operations in sandboxed environments
 
-Workspaces are runtime structures managed by the running server. Today the stable operator path is server-backed or tool-backed (`p2p_workspace_create`, `p2p_workspace_join`, `p2p_workspace_leave`), while these CLI commands remain guidance-oriented.
+Workspaces are runtime structures managed by the running server. Today the stable operator path is server-backed or tool-backed (`p2p_workspace_create`, `p2p_workspace_join`, `p2p_workspace_leave`, `p2p_workspace_list`, `p2p_workspace_status`, `p2p_workspace_read`), while these CLI commands remain guidance-oriented.
 
 ---
 
 ## lango p2p git
 
-Inspect the current git bundle operator surface for workspace code collaboration. The git bundle runtime is real, but these CLI commands mostly point operators toward server-backed or tool-backed flows instead of providing full direct live repository control.
+Inspect the current git bundle operator surface for workspace code collaboration. The git bundle runtime is real, but these CLI commands mostly point operators toward server-backed or tool-backed flows instead of providing full direct live repository control. Guidance and JSON output are written through the Cobra command output stream so wrappers and test harnesses can capture them directly.
 
 ### lango p2p git init
 
@@ -753,7 +762,7 @@ lango p2p git init <workspace-id>
 ```bash
 $ lango p2p git init a1b2c3d4-5678-9012-abcd-ef1234567890
 Git init requires a running server.
-Use 'lango serve' and the runtime API or p2p_git_init tool.
+Use 'lango serve' and the server-backed runtime or p2p_git_init tool.
 ```
 
 ### lango p2p git log
@@ -761,7 +770,7 @@ Use 'lango serve' and the runtime API or p2p_git_init tool.
 Inspect how the CLI currently guides operators toward live workspace git history.
 
 ```
-lango p2p git log <workspace-id> [--limit <n>] [--json]
+lango p2p git log <workspace-id> [--limit <n>] [--output table|json]
 ```
 
 | Argument | Required | Description |
@@ -771,7 +780,7 @@ lango p2p git log <workspace-id> [--limit <n>] [--json]
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--limit` | int | `20` | Maximum number of commits to show |
-| `--json` | bool | `false` | Output as JSON |
+| `--output` | string | `table` | Output format: `table` or `json` |
 
 **Example:**
 
@@ -779,7 +788,7 @@ lango p2p git log <workspace-id> [--limit <n>] [--json]
 $ lango p2p git log a1b2c3d4-5678-9012-abcd-ef1234567890 --limit 5
 No commits found.
 Git operations require a running server with workspace enabled.
-Use the runtime API or p2p_git_* tools for live repository inspection.
+Use the server-backed runtime or p2p_git_* tools for live repository inspection.
 ```
 
 ### lango p2p git diff
@@ -801,7 +810,7 @@ lango p2p git diff <workspace-id> <from> <to>
 ```bash
 $ lango p2p git diff a1b2c3d4-... abc1234 def5678
 Diff requires a running server.
-Use 'lango serve' and the runtime API or p2p_git_diff tool.
+Use 'lango serve' and the server-backed runtime or p2p_git_diff tool.
 ```
 
 ### lango p2p git push
@@ -870,9 +879,10 @@ A typical runtime-backed collaboration workflow using git bundles:
 lango serve
 
 # 2. Use the workspace/git tools to initialize and exchange bundles
-p2p_git_init workspace_id="a1b2c3d4-..."
-p2p_git_push workspace_id="a1b2c3d4-..."
-p2p_git_fetch workspace_id="a1b2c3d4-..."
+p2p_git_init workspaceId="a1b2c3d4-..."
+p2p_git_push workspaceId="a1b2c3d4-..." message="share latest research notes"
+p2p_git_log workspaceId="a1b2c3d4-..." limit=10
+p2p_git_diff workspaceId="a1b2c3d4-..." from="abc1234" to="def5678"
 
 # 3. Use the guidance commands when you need CLI reminders about the operator path
 lango p2p git log a1b2c3d4-... --limit 10

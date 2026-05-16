@@ -8,8 +8,31 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/langoai/lango/internal/bootstrap"
+	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/sandbox"
 )
+
+type namedSandboxExecutor interface {
+	sandbox.Executor
+	RuntimeName() string
+}
+
+type sandboxCleanupRuntime interface {
+	IsAvailable(ctx context.Context) bool
+	Cleanup(ctx context.Context, id string) error
+}
+
+var newContainerSandboxExecutor = func(cfg sandbox.Config, containerCfg config.ContainerSandboxConfig) (namedSandboxExecutor, error) {
+	return sandbox.NewContainerExecutor(cfg, containerCfg)
+}
+
+var newSubprocessSandboxExecutor = func(cfg sandbox.Config) sandbox.Executor {
+	return sandbox.NewSubprocessExecutor(cfg)
+}
+
+var newSandboxDockerRuntime = func() (sandboxCleanupRuntime, error) {
+	return sandbox.NewDockerRuntime()
+}
 
 func newSandboxCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 	cmd := &cobra.Command{
@@ -37,23 +60,23 @@ func newSandboxStatusCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Co
 
 			cfg := boot.Config
 			if !cfg.P2P.ToolIsolation.Enabled {
-				fmt.Println("Tool isolation: disabled")
+				fmt.Fprintln(cmd.OutOrStdout(), "Tool isolation: disabled")
 				return nil
 			}
 
-			fmt.Println("Tool isolation: enabled")
-			fmt.Printf("  Timeout per tool: %v\n", cfg.P2P.ToolIsolation.TimeoutPerTool)
-			fmt.Printf("  Max memory (MB):  %d\n", cfg.P2P.ToolIsolation.MaxMemoryMB)
+			fmt.Fprintln(cmd.OutOrStdout(), "Tool isolation: enabled")
+			fmt.Fprintf(cmd.OutOrStdout(), "  Timeout per tool: %v\n", cfg.P2P.ToolIsolation.TimeoutPerTool)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Max memory (MB):  %d\n", cfg.P2P.ToolIsolation.MaxMemoryMB)
 
 			if !cfg.P2P.ToolIsolation.Container.Enabled {
-				fmt.Println("  Container mode:   disabled (subprocess fallback)")
+				fmt.Fprintln(cmd.OutOrStdout(), "  Container mode:   disabled (subprocess fallback)")
 				return nil
 			}
 
-			fmt.Println("  Container mode:   enabled")
-			fmt.Printf("  Runtime config:   %s\n", cfg.P2P.ToolIsolation.Container.Runtime)
-			fmt.Printf("  Image:            %s\n", cfg.P2P.ToolIsolation.Container.Image)
-			fmt.Printf("  Network mode:     %s\n", cfg.P2P.ToolIsolation.Container.NetworkMode)
+			fmt.Fprintln(cmd.OutOrStdout(), "  Container mode:   enabled")
+			fmt.Fprintf(cmd.OutOrStdout(), "  Runtime config:   %s\n", cfg.P2P.ToolIsolation.Container.Runtime)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Image:            %s\n", cfg.P2P.ToolIsolation.Container.Image)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Network mode:     %s\n", cfg.P2P.ToolIsolation.Container.NetworkMode)
 
 			// Probe actual runtime availability.
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -64,14 +87,14 @@ func newSandboxStatusCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Co
 				TimeoutPerTool: cfg.P2P.ToolIsolation.TimeoutPerTool,
 				MaxMemoryMB:    cfg.P2P.ToolIsolation.MaxMemoryMB,
 			}
-			exec, err := sandbox.NewContainerExecutor(sbxCfg, cfg.P2P.ToolIsolation.Container)
+			exec, err := newContainerSandboxExecutor(sbxCfg, cfg.P2P.ToolIsolation.Container)
 			if err != nil {
-				fmt.Printf("  Active runtime:   unavailable (%v)\n", err)
+				fmt.Fprintf(cmd.OutOrStdout(), "  Active runtime:   unavailable (%v)\n", err)
 				return nil
 			}
 			_ = ctx
-			fmt.Printf("  Active runtime:   %s\n", exec.RuntimeName())
-			fmt.Printf("  Pool size:        %d\n", cfg.P2P.ToolIsolation.Container.PoolSize)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Active runtime:   %s\n", exec.RuntimeName())
+			fmt.Fprintf(cmd.OutOrStdout(), "  Pool size:        %d\n", cfg.P2P.ToolIsolation.Container.PoolSize)
 
 			return nil
 		},
@@ -102,17 +125,17 @@ func newSandboxTestCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comm
 
 			var exec sandbox.Executor
 			if cfg.P2P.ToolIsolation.Container.Enabled {
-				containerExec, cErr := sandbox.NewContainerExecutor(sbxCfg, cfg.P2P.ToolIsolation.Container)
+				containerExec, cErr := newContainerSandboxExecutor(sbxCfg, cfg.P2P.ToolIsolation.Container)
 				if cErr != nil {
-					fmt.Printf("Container sandbox unavailable, using subprocess: %v\n", cErr)
-					exec = sandbox.NewSubprocessExecutor(sbxCfg)
+					fmt.Fprintf(cmd.OutOrStdout(), "Container sandbox unavailable, using subprocess: %v\n", cErr)
+					exec = newSubprocessSandboxExecutor(sbxCfg)
 				} else {
-					fmt.Printf("Using container runtime: %s\n", containerExec.RuntimeName())
+					fmt.Fprintf(cmd.OutOrStdout(), "Using container runtime: %s\n", containerExec.RuntimeName())
 					exec = containerExec
 				}
 			} else {
-				fmt.Println("Using subprocess sandbox")
-				exec = sandbox.NewSubprocessExecutor(sbxCfg)
+				fmt.Fprintln(cmd.OutOrStdout(), "Using subprocess sandbox")
+				exec = newSubprocessSandboxExecutor(sbxCfg)
 			}
 
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -124,7 +147,7 @@ func newSandboxTestCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comm
 				return fmt.Errorf("smoke test: %w", err)
 			}
 
-			fmt.Printf("Smoke test passed: %v\n", result)
+			fmt.Fprintf(cmd.OutOrStdout(), "Smoke test passed: %v\n", result)
 			return nil
 		},
 	}
@@ -136,7 +159,7 @@ func newSandboxCleanupCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.C
 		Short: "Remove orphaned sandbox containers",
 		Long:  "Find and remove Docker containers with label lango.sandbox=true.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			dr, err := sandbox.NewDockerRuntime()
+			dr, err := newSandboxDockerRuntime()
 			if err != nil {
 				return fmt.Errorf("docker unavailable: %w", err)
 			}
@@ -152,7 +175,7 @@ func newSandboxCleanupCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.C
 				return fmt.Errorf("cleanup: %w", err)
 			}
 
-			fmt.Println("Orphaned sandbox containers cleaned up.")
+			fmt.Fprintln(cmd.OutOrStdout(), "Orphaned sandbox containers cleaned up.")
 			return nil
 		},
 	}

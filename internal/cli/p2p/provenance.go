@@ -15,6 +15,8 @@ import (
 	"github.com/langoai/lango/internal/bootstrap"
 )
 
+var provenancePostJSON = postJSON
+
 func newProvenanceCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "provenance",
@@ -49,10 +51,10 @@ func newProvenancePushCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.C
 			addr = gatewayAddr(addr, boot)
 			body := provenanceRequestBody(args[0], args[1], redaction)
 			var out map[string]any
-			if err := postJSON(addr, "/api/p2p/provenance/push", body, &out); err != nil {
+			if err := provenancePostJSON(addr, "/api/p2p/provenance/push", body, &out); err != nil {
 				return err
 			}
-			fmt.Printf("Pushed provenance bundle to %s (redaction=%s)\n", args[0], redaction)
+			fmt.Fprintf(cmd.OutOrStdout(), "Pushed provenance bundle to %s (redaction=%s)\n", args[0], redaction)
 			return nil
 		},
 	}
@@ -82,10 +84,10 @@ func newProvenanceFetchCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.
 			addr = gatewayAddr(addr, boot)
 			body := provenanceRequestBody(args[0], args[1], redaction)
 			var out map[string]any
-			if err := postJSON(addr, "/api/p2p/provenance/fetch", body, &out); err != nil {
+			if err := provenancePostJSON(addr, "/api/p2p/provenance/fetch", body, &out); err != nil {
 				return err
 			}
-			fmt.Printf("Fetched provenance bundle from %s (redaction=%v)\n", args[0], out["redaction"])
+			fmt.Fprintf(cmd.OutOrStdout(), "Fetched provenance bundle from %s (redaction=%v)\n", args[0], out["redaction"])
 			return nil
 		},
 	}

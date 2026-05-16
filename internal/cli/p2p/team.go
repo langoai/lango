@@ -1,9 +1,7 @@
 package p2p
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 
@@ -17,8 +15,10 @@ func newTeamCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 		Long: `Inspect the truth-aligned team operator surface for the running P2P runtime.
 
 Teams are real runtime-only structures that exist while the lango server is running.
-The current CLI primarily explains how to use the server-backed runtime and
-agent/tool-backed control paths rather than providing full live team control.`,
+The current CLI primarily explains how to use the server-backed runtime plus
+the concrete team tool surface (team_form, team_form_with_budget,
+team_status, team_list, team_disband) rather than providing full live team
+control.`,
 	}
 
 	cmd.AddCommand(newTeamListCmd(bootLoader))
@@ -29,16 +29,24 @@ agent/tool-backed control paths rather than providing full live team control.`,
 }
 
 func newTeamListCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
-	var jsonOutput bool
+	var output string
 
 	cmd := &cobra.Command{
-		Use:   "list",
-		Short: "List active P2P teams",
+		Use:           "list",
+		Short:         "List active P2P teams",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		Long: `Describe how to inspect active agent teams in the running P2P runtime.
 
 Note: Teams are runtime-only and exist only while the server is running.
-Use lango serve plus the server-backed runtime and agent tools for live teams.`,
+		Use lango serve plus the server-backed runtime and team_list, team_form,
+and team_form_with_budget for live teams.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			output, err := resolveOutput(cmd)
+			if err != nil {
+				return err
+			}
+
 			boot, err := bootLoader()
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
@@ -49,33 +57,38 @@ Use lango serve plus the server-backed runtime and agent tools for live teams.`,
 				return fmt.Errorf("P2P networking is not enabled (set p2p.enabled = true)")
 			}
 
-			if jsonOutput {
-				enc := json.NewEncoder(os.Stdout)
-				enc.SetIndent("", "  ")
-				return enc.Encode([]interface{}{})
+			if output == "json" {
+				return printJSON(cmd.OutOrStdout(), []interface{}{})
 			}
 
-			fmt.Println("No active teams.")
-			fmt.Println()
-			fmt.Println("Teams are runtime-only structures created during agent collaboration.")
-			fmt.Println("Start the server with 'lango serve' and inspect/form teams via runtime integrations and agent tools.")
+			fmt.Fprintln(cmd.OutOrStdout(), "No active teams.")
+			fmt.Fprintln(cmd.OutOrStdout())
+			fmt.Fprintln(cmd.OutOrStdout(), "Teams are runtime-only structures created during agent collaboration.")
+			fmt.Fprintln(cmd.OutOrStdout(), "Start the server with 'lango serve' and inspect/form teams via team_list, team_form, and team_form_with_budget.")
 			return nil
 		},
 	}
 
-	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
+	cmd.Flags().StringVar(&output, "output", "table", "Output format: table or json")
 	return cmd
 }
 
 func newTeamStatusCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
-	var jsonOutput bool
+	var output string
 
 	cmd := &cobra.Command{
-		Use:   "status <team-id>",
-		Short: "Show team details",
-		Long:  "Explain how to inspect a specific runtime-backed P2P agent team, including members, budget, and status.",
-		Args:  cobra.ExactArgs(1),
+		Use:           "status <team-id>",
+		Short:         "Show team details",
+		Long:          "Explain how to inspect a specific runtime-backed P2P agent team, including members, budget, and status.",
+		Args:          cobra.ExactArgs(1),
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			output, err := resolveOutput(cmd)
+			if err != nil {
+				return err
+			}
+
 			boot, err := bootLoader()
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
@@ -88,23 +101,21 @@ func newTeamStatusCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comma
 
 			_ = args[0] // teamID
 
-			if jsonOutput {
-				enc := json.NewEncoder(os.Stdout)
-				enc.SetIndent("", "  ")
-				return enc.Encode(map[string]interface{}{
+			if output == "json" {
+				return printJSON(cmd.OutOrStdout(), map[string]interface{}{
 					"error": "team not found (teams are runtime-only)",
 				})
 			}
 
-			fmt.Println("Team not found.")
-			fmt.Println()
-			fmt.Println("Teams are runtime-only structures that exist only while the server is running.")
-			fmt.Println("Use the running server plus the team runtime or agent tools for live inspection.")
+			fmt.Fprintln(cmd.OutOrStdout(), "Team not found.")
+			fmt.Fprintln(cmd.OutOrStdout())
+			fmt.Fprintln(cmd.OutOrStdout(), "Teams are runtime-only structures that exist only while the server is running.")
+			fmt.Fprintln(cmd.OutOrStdout(), "Use the running server plus the team_status tool for live inspection.")
 			return nil
 		},
 	}
 
-	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
+	cmd.Flags().StringVar(&output, "output", "table", "Output format: table or json")
 	return cmd
 }
 
@@ -127,10 +138,10 @@ func newTeamDisbandCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comm
 
 			_ = args[0] // teamID
 
-			fmt.Println("Team not found.")
-			fmt.Println()
-			fmt.Println("Teams are runtime-only structures.")
-			fmt.Println("Use the running server plus the team runtime or agent tools to disband a live team.")
+			fmt.Fprintln(cmd.OutOrStdout(), "Team not found.")
+			fmt.Fprintln(cmd.OutOrStdout())
+			fmt.Fprintln(cmd.OutOrStdout(), "Teams are runtime-only structures.")
+			fmt.Fprintln(cmd.OutOrStdout(), "Use the running server plus the team_disband tool to disband a live team.")
 			return nil
 		},
 	}

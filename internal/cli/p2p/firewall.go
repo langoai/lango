@@ -1,9 +1,7 @@
 package p2p
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 	"text/tabwriter"
 
@@ -28,12 +26,19 @@ func newFirewallCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command
 }
 
 func newFirewallListCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
-	var jsonOutput bool
+	var output string
 
 	cmd := &cobra.Command{
-		Use:   "list",
-		Short: "List firewall ACL rules",
+		Use:           "list",
+		Short:         "List firewall ACL rules",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			output, err := resolveOutput(cmd)
+			if err != nil {
+				return err
+			}
+
 			boot, err := bootLoader()
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
@@ -56,18 +61,16 @@ func newFirewallListCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Com
 				}
 			}
 
-			if jsonOutput {
-				enc := json.NewEncoder(os.Stdout)
-				enc.SetIndent("", "  ")
-				return enc.Encode(rules)
+			if output == "json" {
+				return printJSON(cmd.OutOrStdout(), rules)
 			}
 
 			if len(rules) == 0 {
-				fmt.Println("No firewall rules configured. Default policy: deny-all.")
+				fmt.Fprintln(cmd.OutOrStdout(), "No firewall rules configured. Default policy: deny-all.")
 				return nil
 			}
 
-			w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
 			fmt.Fprintln(w, "PEER DID\tACTION\tTOOLS\tRATE LIMIT")
 			for _, r := range rules {
 				tools := "*"
@@ -84,7 +87,7 @@ func newFirewallListCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Com
 		},
 	}
 
-	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
+	cmd.Flags().StringVar(&output, "output", "table", "Output format: table or json")
 	return cmd
 }
 
@@ -119,14 +122,14 @@ func newFirewallAddCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comm
 				toolsStr = strings.Join(tools, ", ")
 			}
 
-			fmt.Println("Firewall rule added (runtime only):")
-			fmt.Printf("  Peer DID:    %s\n", rule.PeerDID)
-			fmt.Printf("  Action:      %s\n", rule.Action)
-			fmt.Printf("  Tools:       %s\n", toolsStr)
+			fmt.Fprintln(cmd.OutOrStdout(), "Firewall rule added (runtime only):")
+			fmt.Fprintf(cmd.OutOrStdout(), "  Peer DID:    %s\n", rule.PeerDID)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Action:      %s\n", rule.Action)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Tools:       %s\n", toolsStr)
 			if rateLimit > 0 {
-				fmt.Printf("  Rate Limit:  %d/min\n", rateLimit)
+				fmt.Fprintf(cmd.OutOrStdout(), "  Rate Limit:  %d/min\n", rateLimit)
 			}
-			fmt.Println("\nTo persist this rule, add it to p2p.firewallRules in your configuration.")
+			fmt.Fprintln(cmd.OutOrStdout(), "\nTo persist this rule, add it to p2p.firewallRules in your configuration.")
 			return nil
 		},
 	}
@@ -146,8 +149,8 @@ func newFirewallRemoveCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.C
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			peerDID := args[0]
-			fmt.Printf("To remove rules for peer %s, edit p2p.firewallRules in your configuration.\n", peerDID)
-			fmt.Println("Runtime rule removal requires the P2P node to be running via 'lango serve'.")
+			fmt.Fprintf(cmd.OutOrStdout(), "To remove rules for peer %s, edit p2p.firewallRules in your configuration.\n", peerDID)
+			fmt.Fprintln(cmd.OutOrStdout(), "Runtime rule removal requires the P2P node to be running via 'lango serve'.")
 			return nil
 		},
 	}

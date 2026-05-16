@@ -4,9 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/ed25519"
-	"encoding/json"
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 
@@ -101,57 +99,84 @@ func bundleMatchesIdentityKey(bundle *p2pidentity.IdentityBundle, identityKey ed
 	return bundle.SigningKey.Algorithm == "ed25519" && bytes.Equal(bundle.SigningKey.PublicKey, pub)
 }
 
+type identityCommandData struct {
+	did         string
+	peerID      string
+	keyStorage  string
+	listenAddrs []string
+}
+
+var loadIdentityCommandData = func(boot *bootstrap.Result) (identityCommandData, func(), error) {
+	deps, err := initP2PDeps(boot)
+	if err != nil {
+		return identityCommandData{}, nil, err
+	}
+
+	peerID := deps.node.PeerID().String()
+	addrs := deps.node.Multiaddrs()
+	listenAddrs := make([]string, len(addrs))
+	for i, a := range addrs {
+		listenAddrs[i] = a.String()
+	}
+
+	return identityCommandData{
+		did:         resolveIdentityDID(boot),
+		peerID:      peerID,
+		keyStorage:  deps.keyStorage,
+		listenAddrs: listenAddrs,
+	}, deps.cleanup, nil
+}
+
 func newIdentityCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
-	var jsonOutput bool
+	var output string
 
 	cmd := &cobra.Command{
-		Use:   "identity",
-		Short: "Show local DID and peer identity",
-		Long:  "Show local DID and peer identity (creates an ephemeral node). For the running server's identity, use GET /api/p2p/identity.",
+		Use:           "identity",
+		Short:         "Show local DID and peer identity",
+		Long:          "Show local DID and peer identity (creates an ephemeral node). For the running server's identity, use GET /api/p2p/identity.",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			output, err := resolveOutput(cmd)
+			if err != nil {
+				return err
+			}
+
 			boot, err := bootLoader()
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
 			defer boot.Close()
 
-			deps, err := initP2PDeps(boot)
+			data, cleanup, err := loadIdentityCommandData(boot)
 			if err != nil {
 				return err
 			}
-			defer deps.cleanup()
-
-			peerID := deps.node.PeerID().String()
-			addrs := deps.node.Multiaddrs()
-
-			listenAddrs := make([]string, len(addrs))
-			for i, a := range addrs {
-				listenAddrs[i] = a.String()
-			}
-			did := resolveIdentityDID(boot)
-			view := buildIdentityView(didJSONValue(did), peerID, deps.keyStorage, listenAddrs)
-
-			if jsonOutput {
-				enc := json.NewEncoder(os.Stdout)
-				enc.SetIndent("", "  ")
-				return enc.Encode(view)
+			if cleanup != nil {
+				defer cleanup()
 			}
 
-			fmt.Println("P2P Identity")
-			if did != "" {
-				fmt.Printf("  DID:          %s\n", did)
+			view := buildIdentityView(didJSONValue(data.did), data.peerID, data.keyStorage, data.listenAddrs)
+
+			if output == "json" {
+				return printJSON(cmd.OutOrStdout(), view)
 			}
-			fmt.Printf("  Peer ID:      %s\n", peerID)
-			fmt.Printf("  Key Storage:  %s\n", deps.keyStorage)
-			fmt.Printf("  Listen Addrs:\n")
-			for _, a := range listenAddrs {
-				fmt.Printf("    %s\n", a)
+
+			fmt.Fprintln(cmd.OutOrStdout(), "P2P Identity")
+			if data.did != "" {
+				fmt.Fprintf(cmd.OutOrStdout(), "  DID:          %s\n", data.did)
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "  Peer ID:      %s\n", data.peerID)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Key Storage:  %s\n", data.keyStorage)
+			fmt.Fprintln(cmd.OutOrStdout(), "  Listen Addrs:")
+			for _, a := range data.listenAddrs {
+				fmt.Fprintf(cmd.OutOrStdout(), "    %s\n", a)
 			}
 
 			return nil
 		},
 	}
 
-	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
+	cmd.Flags().StringVar(&output, "output", "table", "Output format: table or json")
 	return cmd
 }

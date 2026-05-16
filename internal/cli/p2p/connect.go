@@ -11,6 +11,32 @@ import (
 	"github.com/langoai/lango/internal/bootstrap"
 )
 
+var connectToPeer = func(boot *bootstrap.Result, target string) (string, func(), error) {
+	deps, err := initP2PDeps(boot)
+	if err != nil {
+		return "", nil, err
+	}
+
+	maddr, err := ma.NewMultiaddr(target)
+	if err != nil {
+		deps.cleanup()
+		return "", nil, fmt.Errorf("parse multiaddr: %w", err)
+	}
+
+	pi, err := peer.AddrInfoFromP2pAddr(maddr)
+	if err != nil {
+		deps.cleanup()
+		return "", nil, fmt.Errorf("parse peer info: %w", err)
+	}
+
+	if err := deps.node.Host().Connect(context.Background(), *pi); err != nil {
+		deps.cleanup()
+		return "", nil, fmt.Errorf("connect to %s: %w", pi.ID, err)
+	}
+
+	return pi.ID.String(), deps.cleanup, nil
+}
+
 func newConnectCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "connect <multiaddr>",
@@ -23,27 +49,15 @@ func newConnectCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command 
 			}
 			defer boot.Close()
 
-			deps, err := initP2PDeps(boot)
+			peerID, cleanup, err := connectToPeer(boot, args[0])
 			if err != nil {
 				return err
 			}
-			defer deps.cleanup()
-
-			maddr, err := ma.NewMultiaddr(args[0])
-			if err != nil {
-				return fmt.Errorf("parse multiaddr: %w", err)
+			if cleanup != nil {
+				defer cleanup()
 			}
 
-			pi, err := peer.AddrInfoFromP2pAddr(maddr)
-			if err != nil {
-				return fmt.Errorf("parse peer info: %w", err)
-			}
-
-			if err := deps.node.Host().Connect(context.Background(), *pi); err != nil {
-				return fmt.Errorf("connect to %s: %w", pi.ID, err)
-			}
-
-			fmt.Printf("Connected to peer %s\n", pi.ID)
+			fmt.Fprintf(cmd.OutOrStdout(), "Connected to peer %s\n", peerID)
 			return nil
 		},
 	}

@@ -1,9 +1,7 @@
 package p2p
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
@@ -11,59 +9,74 @@ import (
 	"github.com/langoai/lango/internal/bootstrap"
 )
 
+type peersCommandInfo struct {
+	PeerID string   `json:"peerId"`
+	Addrs  []string `json:"addrs"`
+}
+
+var loadPeersCommandData = func(boot *bootstrap.Result) ([]peersCommandInfo, func(), error) {
+	deps, err := initP2PDeps(boot)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	peers := deps.node.ConnectedPeers()
+	host := deps.node.Host()
+	infos := make([]peersCommandInfo, 0, len(peers))
+	for _, pid := range peers {
+		conns := host.Network().ConnsToPeer(pid)
+		addrs := make([]string, 0)
+		for _, c := range conns {
+			addrs = append(addrs, c.RemoteMultiaddr().String())
+		}
+		infos = append(infos, peersCommandInfo{
+			PeerID: pid.String(),
+			Addrs:  addrs,
+		})
+	}
+
+	return infos, deps.cleanup, nil
+}
+
 func newPeersCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
-	var jsonOutput bool
+	var output string
 
 	cmd := &cobra.Command{
-		Use:   "peers",
-		Short: "List connected peers",
-		Long:  "List connected peers (creates an ephemeral node). For the running server's peers, use GET /api/p2p/peers.",
+		Use:           "peers",
+		Short:         "List connected peers",
+		Long:          "List connected peers (creates an ephemeral node). For the running server's peers, use GET /api/p2p/peers.",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			output, err := resolveOutput(cmd)
+			if err != nil {
+				return err
+			}
+
 			boot, err := bootLoader()
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
 			defer boot.Close()
 
-			deps, err := initP2PDeps(boot)
+			infos, cleanup, err := loadPeersCommandData(boot)
 			if err != nil {
 				return err
 			}
-			defer deps.cleanup()
-
-			peers := deps.node.ConnectedPeers()
-			host := deps.node.Host()
-
-			type peerInfo struct {
-				PeerID string   `json:"peerId"`
-				Addrs  []string `json:"addrs"`
+			if cleanup != nil {
+				defer cleanup()
 			}
 
-			infos := make([]peerInfo, 0, len(peers))
-			for _, pid := range peers {
-				conns := host.Network().ConnsToPeer(pid)
-				addrs := make([]string, 0)
-				for _, c := range conns {
-					addrs = append(addrs, c.RemoteMultiaddr().String())
-				}
-				infos = append(infos, peerInfo{
-					PeerID: pid.String(),
-					Addrs:  addrs,
-				})
-			}
-
-			if jsonOutput {
-				enc := json.NewEncoder(os.Stdout)
-				enc.SetIndent("", "  ")
-				return enc.Encode(infos)
+			if output == "json" {
+				return printJSON(cmd.OutOrStdout(), infos)
 			}
 
 			if len(infos) == 0 {
-				fmt.Println("No connected peers.")
+				fmt.Fprintln(cmd.OutOrStdout(), "No connected peers.")
 				return nil
 			}
 
-			w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
 			fmt.Fprintln(w, "PEER ID\tADDRESS")
 			for _, p := range infos {
 				addr := ""
@@ -76,6 +89,6 @@ func newPeersCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
+	cmd.Flags().StringVar(&output, "output", "table", "Output format: table or json")
 	return cmd
 }

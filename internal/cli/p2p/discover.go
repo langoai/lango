@@ -1,9 +1,7 @@
 package p2p
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 	"text/tabwriter"
 
@@ -13,57 +11,76 @@ import (
 	"github.com/langoai/lango/internal/p2p/discovery"
 )
 
+var loadDiscoverCommandData = func(boot *bootstrap.Result, tag string) ([]*discovery.GossipCard, func(), error) {
+	deps, err := initP2PDeps(boot)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	gossip, err := discovery.NewGossipService(discovery.GossipConfig{
+		Host:     deps.node.Host(),
+		Interval: deps.config.GossipInterval,
+	})
+	if err != nil {
+		deps.cleanup()
+		return nil, nil, fmt.Errorf("init gossip service: %w", err)
+	}
+
+	var cards []*discovery.GossipCard
+	if tag != "" {
+		cards = gossip.FindByCapability(tag)
+	} else {
+		cards = gossip.KnownPeers()
+	}
+
+	return cards, func() {
+		gossip.Stop()
+		deps.cleanup()
+	}, nil
+}
+
 func newDiscoverCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 	var (
-		tag        string
-		jsonOutput bool
+		tag    string
+		output string
 	)
 
 	cmd := &cobra.Command{
-		Use:   "discover",
-		Short: "Discover agents by capability",
-		Long:  "Search for agents on the P2P network that advertise specific capabilities via GossipSub.",
+		Use:           "discover",
+		Short:         "Discover agents by capability",
+		Long:          "Search for agents on the P2P network that advertise specific capabilities via GossipSub.",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			output, err := resolveOutput(cmd)
+			if err != nil {
+				return err
+			}
+
 			boot, err := bootLoader()
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
 			defer boot.Close()
 
-			deps, err := initP2PDeps(boot)
+			cards, cleanup, err := loadDiscoverCommandData(boot, tag)
 			if err != nil {
 				return err
 			}
-			defer deps.cleanup()
-
-			gossip, err := discovery.NewGossipService(discovery.GossipConfig{
-				Host:     deps.node.Host(),
-				Interval: deps.config.GossipInterval,
-			})
-			if err != nil {
-				return fmt.Errorf("init gossip service: %w", err)
-			}
-			defer gossip.Stop()
-
-			var cards []*discovery.GossipCard
-			if tag != "" {
-				cards = gossip.FindByCapability(tag)
-			} else {
-				cards = gossip.KnownPeers()
+			if cleanup != nil {
+				defer cleanup()
 			}
 
-			if jsonOutput {
-				enc := json.NewEncoder(os.Stdout)
-				enc.SetIndent("", "  ")
-				return enc.Encode(cards)
+			if output == "json" {
+				return printJSON(cmd.OutOrStdout(), cards)
 			}
 
 			if len(cards) == 0 {
-				fmt.Println("No agents discovered. Try connecting to bootstrap peers first.")
+				fmt.Fprintln(cmd.OutOrStdout(), "No agents discovered. Try connecting to bootstrap peers first.")
 				return nil
 			}
 
-			w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
 			fmt.Fprintln(w, "NAME\tDID\tCAPABILITIES\tPEER ID")
 			for _, c := range cards {
 				caps := strings.Join(c.Capabilities, ", ")
@@ -74,6 +91,6 @@ func newDiscoverCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command
 	}
 
 	cmd.Flags().StringVar(&tag, "tag", "", "Filter agents by capability tag")
-	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
+	cmd.Flags().StringVar(&output, "output", "table", "Output format: table or json")
 	return cmd
 }

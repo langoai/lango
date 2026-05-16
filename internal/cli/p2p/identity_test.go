@@ -1,9 +1,11 @@
 package p2p
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/json"
 	"os"
 	"reflect"
 	"testing"
@@ -16,10 +18,21 @@ import (
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/storage"
 	"github.com/langoai/lango/internal/wallet"
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 
 	_ "github.com/mattn/go-sqlite3"
 )
+
+func executeIdentityCmd(t *testing.T, cmd *cobra.Command, args ...string) (string, error) {
+	t.Helper()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs(args)
+	err := cmd.Execute()
+	return out.String(), err
+}
 
 func TestBuildIdentityView_PreservesDidAndListenAddrs(t *testing.T) {
 	listenAddrs := []string{
@@ -157,6 +170,61 @@ func TestResolveIdentityDID_RpcWalletProviderDoesNotFallbackToLegacy(t *testing.
 	if got != "" {
 		t.Fatalf("resolveIdentityDID() = %q, want empty string", got)
 	}
+}
+
+func TestIdentityCmd_WritesTextToCommandWriter(t *testing.T) {
+	original := loadIdentityCommandData
+	loadIdentityCommandData = func(_ *bootstrap.Result) (identityCommandData, func(), error) {
+		return identityCommandData{
+			did:        "did:lango:v2:test-identity",
+			peerID:     "12D3KooWTestPeer",
+			keyStorage: "secrets-store",
+			listenAddrs: []string{
+				"/ip4/127.0.0.1/tcp/9000",
+				"/ip6/::/tcp/9000",
+			},
+		}, func() {}, nil
+	}
+	t.Cleanup(func() { loadIdentityCommandData = original })
+
+	cmd := newIdentityCmd(func() (*bootstrap.Result, error) {
+		return &bootstrap.Result{}, nil
+	})
+
+	out, err := executeIdentityCmd(t, cmd)
+	require.NoError(t, err)
+	require.Contains(t, out, "P2P Identity")
+	require.Contains(t, out, "DID:          did:lango:v2:test-identity")
+	require.Contains(t, out, "Peer ID:      12D3KooWTestPeer")
+	require.Contains(t, out, "Key Storage:  secrets-store")
+	require.Contains(t, out, "/ip4/127.0.0.1/tcp/9000")
+}
+
+func TestIdentityCmd_WritesJSONToCommandWriter(t *testing.T) {
+	original := loadIdentityCommandData
+	loadIdentityCommandData = func(_ *bootstrap.Result) (identityCommandData, func(), error) {
+		return identityCommandData{
+			did:         "",
+			peerID:      "12D3KooWJsonPeer",
+			keyStorage:  "file",
+			listenAddrs: []string{"/ip4/127.0.0.1/tcp/9000"},
+		}, func() {}, nil
+	}
+	t.Cleanup(func() { loadIdentityCommandData = original })
+
+	cmd := newIdentityCmd(func() (*bootstrap.Result, error) {
+		return &bootstrap.Result{}, nil
+	})
+
+	out, err := executeIdentityCmd(t, cmd, "--output", "json")
+	require.NoError(t, err)
+
+	var decoded map[string]any
+	require.NoError(t, json.Unmarshal([]byte(out), &decoded))
+	require.Equal(t, nil, decoded["did"])
+	require.Equal(t, "12D3KooWJsonPeer", decoded["peerId"])
+	require.Equal(t, "file", decoded["keyStorage"])
+	require.Len(t, decoded["listenAddrs"], 1)
 }
 
 func newLegacyIdentityBoot(t *testing.T, walletProvider string) (*bootstrap.Result, string) {
