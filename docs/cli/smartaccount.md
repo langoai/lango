@@ -1,9 +1,26 @@
 # Smart Account Commands
 
 Commands for managing ERC-7579 smart accounts with session keys, modules, and policies. Requires both smart account and payment to be enabled (`smartAccount.enabled = true`, `payment.enabled = true`).
+Commands that expose `--output` accept only `table` or `json`. Unknown values fail fast with an actionable error before smart-account bootstrap or load work begins.
 
 ```
 lango account <subcommand>
+```
+
+Representative top-level commands:
+
+```bash
+lango account info
+lango account deploy
+lango account session list
+lango account session create
+lango account session revoke
+lango account module list
+lango account module install
+lango account policy show
+lango account policy set
+lango account paymaster status
+lango account paymaster approve
 ```
 
 !!! warning "Experimental Feature"
@@ -13,7 +30,7 @@ lango account <subcommand>
 
 ## lango account info
 
-Show smart account configuration and status including address, deployment state, installed modules, and paymaster status.
+Show smart account configuration and status including address, deployment state, installed modules, and paymaster status. The command writes table or JSON output through the Cobra command output stream so wrappers and test harnesses can capture it directly.
 
 ```
 lango account info [--output table|json]
@@ -22,6 +39,8 @@ lango account info [--output table|json]
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--output` | string | `table` | Output format (`table` or `json`) |
+
+The command writes table or JSON output through the Cobra command output stream so wrappers and test harnesses can capture it directly.
 
 **Example:**
 
@@ -59,7 +78,7 @@ No modules installed.
 
 ## lango account deploy
 
-Deploy a new Safe smart account with the ERC-7579 adapter. If the account already exists, returns the existing account information.
+Deploy a new Safe smart account with the ERC-7579 adapter. If the account already exists, returns the existing account information. The command writes table or JSON output through the Cobra command output stream so wrappers and test harnesses can capture it directly.
 
 ```
 lango account deploy [--output table|json]
@@ -96,7 +115,7 @@ $ lango account deploy --output json
 
 ## lango account session list
 
-List all session keys with their status, expiry, and spend limits.
+List all session keys with their status, expiry, and spend limits. The command writes table or JSON output through the Cobra command output stream so wrappers and test harnesses can capture it directly.
 
 ```
 lango account session list [--output table|json]
@@ -137,7 +156,7 @@ No session keys found.
 
 ## lango account session create
 
-Create a new session key with delegated transaction signing permissions. Specify allowed targets, function selectors, spend limits, and duration.
+Create a new session key with delegated transaction signing permissions. Specify allowed targets, function selectors, spend limits, and duration. The command writes table or JSON output through the Cobra command output stream so wrappers and test harnesses can capture it directly.
 
 ```
 lango account session create [--targets <addrs>] [--functions <selectors>] [--limit <wei>] [--duration <dur>] [--output table|json]
@@ -174,7 +193,7 @@ Created:     2026-03-08T14:30:00Z
 
 ## lango account session revoke
 
-Revoke a specific session key by ID, or revoke all active session keys with `--all`.
+Revoke a specific session key by ID, or revoke all active session keys with `--all`. The command writes revocation confirmation through the Cobra command output stream so wrappers and test harnesses can capture it directly.
 
 ```
 lango account session revoke [session-id] [--all]
@@ -242,7 +261,7 @@ No modules registered.
 
 ## lango account module install
 
-Install an ERC-7579 module on the smart account. Requires specifying the module type.
+Install an ERC-7579 module on the smart account. Requires specifying the module type. The command writes the success summary through the Cobra command output stream so wrappers and test harnesses can capture it directly.
 
 ```
 lango account module install <module-address> [--type validator|executor|fallback|hook]
@@ -269,7 +288,7 @@ Module installed successfully.
 
 ## lango account policy show
 
-Show the current harness policy configuration for the smart account, including spending limits, allowed targets, and risk score requirements.
+Show the current harness policy configuration for the smart account, including spending limits, allowed targets, and risk score requirements. The command writes table or JSON output through the Cobra command output stream so wrappers and test harnesses can capture it directly.
 
 ```
 lango account policy show [--output table|json]
@@ -324,7 +343,7 @@ Use 'lango account policy set' to configure limits.
 
 ## lango account policy set
 
-Set harness policy spending limits. At least one limit flag must be provided. Updates the existing policy or creates a new one.
+Set harness policy spending limits. At least one limit flag must be provided. Updates the existing policy or creates a new one. The command writes the update summary through the Cobra command output stream so wrappers and test harnesses can capture it directly.
 
 ```
 lango account policy set [--max-tx <wei>] [--daily <wei>] [--monthly <wei>]
@@ -358,7 +377,7 @@ Monthly Limit: 500000000
 
 ## lango account paymaster status
 
-Show paymaster configuration and approval status, including provider type and RPC endpoint.
+Show paymaster configuration and approval status, including provider type and RPC endpoint. The command writes table or JSON output through the Cobra command output stream so wrappers and test harnesses can capture it directly.
 
 ```
 lango account paymaster status [--output table|json]
@@ -395,7 +414,7 @@ $ lango account paymaster status --output json
 
 ## lango account paymaster approve
 
-Approve the paymaster to spend USDC from the smart account. This is required before the paymaster can sponsor gas in USDC. Submits an ERC-20 `approve` transaction through the ERC-4337 bundler.
+Approve the paymaster to spend USDC from the smart account. This is required before the paymaster can sponsor gas in USDC. Submits an ERC-20 `approve` transaction through the ERC-4337 bundler. The command writes table or JSON output through the Cobra command output stream so wrappers and test harnesses can capture it directly.
 
 ```
 lango account paymaster approve [--amount <usdc>] [--output table|json]

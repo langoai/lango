@@ -249,6 +249,8 @@ Uninstallation follows the same pattern with `uninstallModule`.
 | `paymaster_status` | safe | Check paymaster configuration and provider type |
 | `paymaster_approve` | dangerous | Approve USDC spending for the paymaster (enables gasless transactions) |
 
+Required smart-account inputs fail at the wrapper boundary: `session_key_create` requires `targets` and `duration`; `session_key_revoke` requires `session_id`; `session_execute` requires `session_id` and `target`; `policy_check` requires `target`; `module_install` and `module_uninstall` require `module_type` and `address`; `paymaster_approve` requires `token_address`, `paymaster_address`, and `amount`.
+
 ## Integration Points
 
 The smart account system integrates with several other Lango subsystems:

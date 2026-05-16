@@ -2,84 +2,97 @@ package smartaccount
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"os"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
 )
 
+type infoModuleEntry struct {
+	Name    string `json:"name"`
+	Type    string `json:"type"`
+	Address string `json:"address"`
+}
+
+type infoAccountResult struct {
+	Address    string            `json:"address"`
+	IsDeployed bool              `json:"isDeployed"`
+	Owner      string            `json:"ownerAddress"`
+	ChainID    int64             `json:"chainId"`
+	EntryPoint string            `json:"entryPoint"`
+	Modules    []infoModuleEntry `json:"modules"`
+	Paymaster  bool              `json:"paymasterEnabled"`
+}
+
+var loadInfoAccountResult = func(bootLoader BootLoader) (infoAccountResult, func(), error) {
+	boot, err := bootLoader()
+	if err != nil {
+		return infoAccountResult{}, nil, fmt.Errorf("bootstrap: %w", err)
+	}
+
+	deps, err := initSmartAccountDeps(boot)
+	if err != nil {
+		boot.Close()
+		return infoAccountResult{}, nil, err
+	}
+
+	ctx := context.Background()
+	info, err := deps.manager.Info(ctx)
+	if err != nil {
+		deps.cleanup()
+		boot.Close()
+		return infoAccountResult{}, nil, fmt.Errorf("get account info: %w", err)
+	}
+
+	modules := make([]infoModuleEntry, 0, len(info.Modules))
+	for _, m := range info.Modules {
+		modules = append(modules, infoModuleEntry{
+			Name:    m.Name,
+			Type:    m.Type.String(),
+			Address: m.Address.Hex(),
+		})
+	}
+
+	result := infoAccountResult{
+		Address:    info.Address.Hex(),
+		IsDeployed: info.IsDeployed,
+		Owner:      info.OwnerAddress.Hex(),
+		ChainID:    info.ChainID,
+		EntryPoint: info.EntryPoint.Hex(),
+		Modules:    modules,
+		Paymaster:  deps.paymasterProv != nil,
+	}
+
+	return result, func() {
+		deps.cleanup()
+		boot.Close()
+	}, nil
+}
+
 func infoCmd(bootLoader BootLoader) *cobra.Command {
-	var output string
-
 	cmd := &cobra.Command{
-		Use:   "info",
-		Short: "Show smart account configuration and status",
+		Use:           "info",
+		Short:         "Show smart account configuration and status",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			boot, err := bootLoader()
-			if err != nil {
-				return fmt.Errorf("bootstrap: %w", err)
-			}
-			defer boot.Close()
-
-			deps, err := initSmartAccountDeps(boot)
+			output, err := resolveTableOrJSONOutput(cmd)
 			if err != nil {
 				return err
 			}
-			defer deps.cleanup()
-
-			ctx := context.Background()
-			info, err := deps.manager.Info(ctx)
+			result, cleanup, err := loadInfoAccountResult(bootLoader)
 			if err != nil {
-				return fmt.Errorf("get account info: %w", err)
+				return err
 			}
-
-			type moduleEntry struct {
-				Name    string `json:"name"`
-				Type    string `json:"type"`
-				Address string `json:"address"`
-			}
-
-			type accountInfo struct {
-				Address    string        `json:"address"`
-				IsDeployed bool          `json:"isDeployed"`
-				Owner      string        `json:"ownerAddress"`
-				ChainID    int64         `json:"chainId"`
-				EntryPoint string        `json:"entryPoint"`
-				Modules    []moduleEntry `json:"modules"`
-				Paymaster  bool          `json:"paymasterEnabled"`
-			}
-
-			modules := make([]moduleEntry, 0, len(info.Modules))
-			for _, m := range info.Modules {
-				modules = append(modules, moduleEntry{
-					Name:    m.Name,
-					Type:    m.Type.String(),
-					Address: m.Address.Hex(),
-				})
-			}
-
-			result := accountInfo{
-				Address:    info.Address.Hex(),
-				IsDeployed: info.IsDeployed,
-				Owner:      info.OwnerAddress.Hex(),
-				ChainID:    info.ChainID,
-				EntryPoint: info.EntryPoint.Hex(),
-				Modules:    modules,
-				Paymaster:  deps.paymasterProv != nil,
+			if cleanup != nil {
+				defer cleanup()
 			}
 
 			if output == "json" {
-				data, marshalErr := json.MarshalIndent(result, "", "  ")
-				if marshalErr != nil {
-					return fmt.Errorf("marshal json: %w", marshalErr)
-				}
-				fmt.Println(string(data))
-				return nil
+				return printJSON(cmd.OutOrStdout(), result)
 			}
 
-			w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
 			fmt.Fprintln(w, "Smart Account Info")
 			fmt.Fprintln(w, "==================")
 			fmt.Fprintf(w, "Address:\t%s\n", result.Address)
@@ -105,6 +118,6 @@ func infoCmd(bootLoader BootLoader) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&output, "output", "table", "output format (table|json)")
+	cmd.Flags().String("output", "table", "output format (table|json)")
 	return cmd
 }
