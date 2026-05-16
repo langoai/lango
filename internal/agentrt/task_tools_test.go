@@ -299,6 +299,7 @@ func TestTaskCreateTool(t *testing.T) {
 			result, err := createTool.call(tt.giveParams)
 			if tt.wantErr {
 				require.Error(t, err)
+				assert.Equal(t, "missing title parameter", err.Error())
 				return
 			}
 			require.NoError(t, err)
@@ -355,6 +356,9 @@ func TestTaskGetTool(t *testing.T) {
 			result, err := getTool.call(tt.giveParams)
 			if tt.wantErr {
 				require.Error(t, err)
+				if tt.give == "missing task_id" {
+					assert.Equal(t, "missing task_id parameter", err.Error())
+				}
 				return
 			}
 			require.NoError(t, err)
@@ -469,6 +473,9 @@ func TestTaskUpdateTool(t *testing.T) {
 			result, err := updateTool.call(tt.giveParams)
 			if tt.wantErr {
 				require.Error(t, err)
+				if tt.give == "missing task_id" {
+					assert.Equal(t, "missing task_id parameter", err.Error())
+				}
 				return
 			}
 			require.NoError(t, err)

@@ -106,3 +106,19 @@ func TestExecuteEscrowRecommendation_SuccessfulPayloadOnPreparedEscrowRecommende
 	assert.Equal(t, receipts.EscrowExecutionStatusFunded, updatedTx.EscrowExecutionStatus)
 	assert.NotEmpty(t, updatedTx.EscrowReference)
 }
+
+func TestExecuteEscrowRecommendation_RequiresTransactionReceiptIDParameter(t *testing.T) {
+	t.Parallel()
+
+	store := receipts.NewStore()
+	escrowEngine := escrow.NewEngine(escrow.NewMemoryStore(), escrow.NoopSettler{}, escrow.DefaultEngineConfig())
+
+	tools := buildMetaToolsWithEscrow(nil, nil, nil, config.SkillConfig{}, nil, store, escrowEngine)
+	tool := findTool(tools, "execute_escrow_recommendation")
+	require.NotNil(t, tool)
+
+	got, err := tool.Handler(context.Background(), map[string]interface{}{})
+	require.Error(t, err)
+	assert.Nil(t, got)
+	assert.ErrorContains(t, err, "missing transaction_receipt_id parameter")
+}

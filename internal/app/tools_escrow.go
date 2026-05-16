@@ -83,6 +83,9 @@ func escrowCreateTool(ee *escrow.Engine) *agent.Tool {
 			}
 
 			rawMilestones, _ := params["milestones"].([]interface{})
+			if len(rawMilestones) == 0 {
+				return nil, &toolparam.ErrMissingParam{Name: "milestones"}
+			}
 			milestones := make([]escrow.MilestoneRequest, 0, len(rawMilestones))
 			for _, rm := range rawMilestones {
 				m, ok := rm.(map[string]interface{})
@@ -520,7 +523,10 @@ func escrowResolveTool(ee *escrow.Engine, settler escrow.SettlementExecutor) *ag
 			if err != nil {
 				return nil, err
 			}
-			sellerPctFloat, _ := params["sellerPercent"].(float64)
+			sellerPctFloat, err := toolparam.RequireFloat64(params, "sellerPercent")
+			if err != nil {
+				return nil, err
+			}
 			if sellerPctFloat < 0 || sellerPctFloat > 100 {
 				return nil, fmt.Errorf("sellerPercent must be between 0 and 100")
 			}

@@ -135,17 +135,18 @@ func TestInitSecurity_LocalRequiresBootstrap(t *testing.T) {
 
 	_, _, _, err := initSecurity(cfg, nil, nil)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "requires bootstrap")
+	assert.EqualError(t, err, "local security provider requires bootstrap")
 }
 
 func TestInitSecurity_KMSRequiresBootstrap(t *testing.T) {
 	tests := []struct {
-		give string
+		give         string
+		wantTagHint  string
 	}{
-		{give: "aws-kms"},
-		{give: "gcp-kms"},
-		{give: "azure-kv"},
-		{give: "pkcs11"},
+		{give: "aws-kms", wantTagHint: "kms_aws"},
+		{give: "gcp-kms", wantTagHint: "kms_gcp"},
+		{give: "azure-kv", wantTagHint: "kms_azure"},
+		{give: "pkcs11", wantTagHint: "kms_pkcs11"},
 	}
 
 	for _, tt := range tests {
@@ -155,8 +156,9 @@ func TestInitSecurity_KMSRequiresBootstrap(t *testing.T) {
 
 			_, _, _, err := initSecurity(cfg, nil, nil)
 			require.Error(t, err)
-			// Either "requires bootstrap" or KMS provider init error.
-			assert.Error(t, err)
+			assert.Contains(t, err.Error(), tt.give)
+			assert.Contains(t, err.Error(), "support not compiled")
+			assert.Contains(t, err.Error(), "rebuild with -tags "+tt.wantTagHint)
 		})
 	}
 }

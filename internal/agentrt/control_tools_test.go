@@ -350,7 +350,7 @@ func TestAgentSpawn_MissingInstruction(t *testing.T) {
 
 	_, err := spawnTool.call(context.Background(), map[string]interface{}{})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "instruction")
+	assert.Equal(t, "missing instruction parameter", err.Error())
 }
 
 func TestAgentSpawn_NilProjection(t *testing.T) {
@@ -655,7 +655,7 @@ func TestAgentWait_MissingAgentID(t *testing.T) {
 
 	_, err := waitTool.call(context.Background(), map[string]interface{}{})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "agent_id")
+	assert.Equal(t, "missing agent_id parameter", err.Error())
 }
 
 func TestAgentWait_SafetyLevel(t *testing.T) {
@@ -735,7 +735,7 @@ func TestAgentStop_MissingAgentID(t *testing.T) {
 
 	_, err := stopTool.call(context.Background(), map[string]interface{}{})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "agent_id")
+	assert.Equal(t, "missing agent_id parameter", err.Error())
 }
 
 func TestAgentStop_SafetyLevel(t *testing.T) {

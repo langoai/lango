@@ -38,6 +38,17 @@ func OptionalInt(params map[string]interface{}, key string, fallback int) int {
 	return fallback
 }
 
+// RequireInt extracts a required integer parameter.
+// JSON numbers arrive as float64, so this handles the conversion.
+// Returns ErrMissingParam when the key is absent or not numeric.
+func RequireInt(params map[string]interface{}, key string) (int, error) {
+	v, ok := params[key].(float64)
+	if !ok {
+		return 0, &ErrMissingParam{Name: key}
+	}
+	return int(v), nil
+}
+
 // OptionalBool extracts an optional boolean parameter with a fallback.
 func OptionalBool(params map[string]interface{}, key string, fallback bool) bool {
 	if v, ok := params[key].(bool); ok {
@@ -77,4 +88,14 @@ func StringSlice(params map[string]interface{}, key string) []string {
 		}
 	}
 	return result
+}
+
+// RequireStringSlice extracts a required string slice parameter.
+// Returns ErrMissingParam when the key is absent or the resulting slice is empty.
+func RequireStringSlice(params map[string]interface{}, key string) ([]string, error) {
+	result := StringSlice(params, key)
+	if len(result) == 0 {
+		return nil, &ErrMissingParam{Name: key}
+	}
+	return result, nil
 }

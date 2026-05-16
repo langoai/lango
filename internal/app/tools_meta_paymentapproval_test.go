@@ -336,3 +336,96 @@ func TestApproveUpfrontPayment_ReportsMissingReceiptsDependency(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "receipts store dependency is not configured")
 }
+
+func TestApproveUpfrontPayment_RequiresTransactionReceiptIDParameter(t *testing.T) {
+	tool := findTool(buildMetaTools(nil, nil, nil, config.SkillConfig{}, nil, receipts.NewStore()), "approve_upfront_payment")
+	require.NotNil(t, tool)
+
+	got, err := tool.Handler(context.Background(), map[string]interface{}{
+		"submission_receipt_id": "sub-1",
+		"amount":                "2.00",
+		"trust_score":           0.95,
+		"user_max_prepay":       "5.00",
+		"remaining_budget":      "9.00",
+	})
+	require.Error(t, err)
+	assert.Nil(t, got)
+	assert.ErrorContains(t, err, "missing transaction_receipt_id parameter")
+}
+
+func TestApproveUpfrontPayment_RequiresCanonicalApprovalInputs(t *testing.T) {
+	tool := findTool(buildMetaTools(nil, nil, nil, config.SkillConfig{}, nil, receipts.NewStore()), "approve_upfront_payment")
+	require.NotNil(t, tool)
+
+	cases := []struct {
+		name      string
+		params    map[string]interface{}
+		wantError string
+	}{
+		{
+			name: "missing submission_receipt_id",
+			params: map[string]interface{}{
+				"transaction_receipt_id": "tx-1",
+				"amount":                 "2.00",
+				"trust_score":            0.95,
+				"user_max_prepay":        "5.00",
+				"remaining_budget":       "9.00",
+			},
+			wantError: "missing submission_receipt_id parameter",
+		},
+		{
+			name: "missing amount",
+			params: map[string]interface{}{
+				"transaction_receipt_id": "tx-1",
+				"submission_receipt_id":  "sub-1",
+				"trust_score":            0.95,
+				"user_max_prepay":        "5.00",
+				"remaining_budget":       "9.00",
+			},
+			wantError: "missing amount parameter",
+		},
+		{
+			name: "missing trust_score",
+			params: map[string]interface{}{
+				"transaction_receipt_id": "tx-1",
+				"submission_receipt_id":  "sub-1",
+				"amount":                 "2.00",
+				"user_max_prepay":        "5.00",
+				"remaining_budget":       "9.00",
+			},
+			wantError: "missing trust_score parameter",
+		},
+		{
+			name: "missing user_max_prepay",
+			params: map[string]interface{}{
+				"transaction_receipt_id": "tx-1",
+				"submission_receipt_id":  "sub-1",
+				"amount":                 "2.00",
+				"trust_score":            0.95,
+				"remaining_budget":       "9.00",
+			},
+			wantError: "missing user_max_prepay parameter",
+		},
+		{
+			name: "missing remaining_budget",
+			params: map[string]interface{}{
+				"transaction_receipt_id": "tx-1",
+				"submission_receipt_id":  "sub-1",
+				"amount":                 "2.00",
+				"trust_score":            0.95,
+				"user_max_prepay":        "5.00",
+			},
+			wantError: "missing remaining_budget parameter",
+		},
+	}
+
+	for _, tt := range cases {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tool.Handler(context.Background(), tt.params)
+			require.Error(t, err)
+			assert.Nil(t, got)
+			assert.ErrorContains(t, err, tt.wantError)
+		})
+	}
+}

@@ -568,7 +568,10 @@ func buildP2PPaymentTool(p2pc *p2pComponents, pc *paymentComponents, receiptStor
 				if err != nil {
 					return nil, err
 				}
-				transactionReceiptID := toolparam.OptionalString(params, "transaction_receipt_id", "")
+				transactionReceiptID, err := toolparam.RequireString(params, "transaction_receipt_id")
+				if err != nil {
+					return nil, err
+				}
 				submissionReceiptID := toolparam.OptionalString(params, "submission_receipt_id", "")
 				amount, err := toolparam.RequireString(params, "amount")
 				if err != nil {

@@ -62,6 +62,89 @@ func TestBuildTools_Count(t *testing.T) {
 	assert.True(t, names["run_resume"])
 }
 
+func TestRunTools_RequireCanonicalInputs(t *testing.T) {
+	store := NewMemoryStore()
+	pev := NewPEVEngine(store, DefaultValidators())
+	tm := toolMap(store, pev, nil)
+
+	testCases := []struct {
+		name    string
+		tool    string
+		ctx     context.Context
+		params  map[string]interface{}
+		wantErr string
+	}{
+		{
+			name:    "run_create requires plan_json",
+			tool:    "run_create",
+			ctx:     orchestratorCtx(),
+			params:  map[string]interface{}{"session_key": "s1", "original_request": "test"},
+			wantErr: "missing plan_json parameter",
+		},
+		{
+			name:    "run_read requires run_id",
+			tool:    "run_read",
+			ctx:     orchestratorCtx(),
+			params:  map[string]interface{}{},
+			wantErr: "missing run_id parameter",
+		},
+		{
+			name:    "run_active requires run_id",
+			tool:    "run_active",
+			ctx:     orchestratorCtx(),
+			params:  map[string]interface{}{},
+			wantErr: "missing run_id parameter",
+		},
+		{
+			name:    "run_note requires key",
+			tool:    "run_note",
+			ctx:     orchestratorCtx(),
+			params:  map[string]interface{}{"run_id": "run-1"},
+			wantErr: "missing key parameter",
+		},
+		{
+			name:    "run_propose_step_result requires result",
+			tool:    "run_propose_step_result",
+			ctx:     executionCtx(),
+			params:  map[string]interface{}{"run_id": "run-1", "step_id": "s1"},
+			wantErr: "missing result parameter",
+		},
+		{
+			name:    "run_apply_policy requires action",
+			tool:    "run_apply_policy",
+			ctx:     orchestratorCtx(),
+			params:  map[string]interface{}{"run_id": "run-1", "step_id": "s1", "reason": "retry"},
+			wantErr: "missing action parameter",
+		},
+		{
+			name:    "run_approve_step requires step_id",
+			tool:    "run_approve_step",
+			ctx:     orchestratorCtx(),
+			params:  map[string]interface{}{"run_id": "run-1"},
+			wantErr: "missing step_id parameter",
+		},
+		{
+			name:    "run_resume requires run_id",
+			tool:    "run_resume",
+			ctx:     orchestratorCtx(),
+			params:  map[string]interface{}{},
+			wantErr: "missing run_id parameter",
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			result, err := tm[tc.tool].call(tc.ctx, tc.params)
+			require.Error(t, err)
+			assert.Nil(t, result)
+			assert.EqualError(t, err, tc.wantErr)
+		})
+	}
+}
+
 // toolMap builds a map of tool name -> handler for convenient test calls.
 func toolMap(store *MemoryStore, pev *PEVEngine, linker MissionExecutionLinker) map[string]*runCreateHelper {
 	tools := BuildTools(store, pev, linker)

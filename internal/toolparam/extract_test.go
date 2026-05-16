@@ -131,6 +131,49 @@ func TestOptionalInt(t *testing.T) {
 	}
 }
 
+func TestRequireInt(t *testing.T) {
+	tests := []struct {
+		give     map[string]interface{}
+		giveKey  string
+		wantVal  int
+		wantErr  bool
+		wantName string
+	}{
+		{
+			give:    map[string]interface{}{"limit": float64(42)},
+			giveKey: "limit",
+			wantVal: 42,
+		},
+		{
+			give:     map[string]interface{}{},
+			giveKey:  "limit",
+			wantErr:  true,
+			wantName: "limit",
+		},
+		{
+			give:     map[string]interface{}{"limit": "forty-two"},
+			giveKey:  "limit",
+			wantErr:  true,
+			wantName: "limit",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.giveKey, func(t *testing.T) {
+			val, err := RequireInt(tt.give, tt.giveKey)
+			if tt.wantErr {
+				require.Error(t, err)
+				var missing *ErrMissingParam
+				require.True(t, errors.As(err, &missing))
+				assert.Equal(t, tt.wantName, missing.Name)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tt.wantVal, val)
+			}
+		})
+	}
+}
+
 func TestOptionalBool(t *testing.T) {
 	tests := []struct {
 		give    map[string]interface{}
@@ -197,6 +240,60 @@ func TestStringSlice(t *testing.T) {
 		t.Run(tt.giveKey, func(t *testing.T) {
 			result := StringSlice(tt.give, tt.giveKey)
 			assert.Equal(t, tt.wantVal, result)
+		})
+	}
+}
+
+func TestRequireStringSlice(t *testing.T) {
+	tests := []struct {
+		name     string
+		give     map[string]interface{}
+		giveKey  string
+		wantVal  []string
+		wantErr  bool
+		wantName string
+	}{
+		{
+			name:    "present and non-empty",
+			give:    map[string]interface{}{"targets": []interface{}{"0x1", "0x2"}},
+			giveKey: "targets",
+			wantVal: []string{"0x1", "0x2"},
+		},
+		{
+			name:     "missing key",
+			give:     map[string]interface{}{},
+			giveKey:  "targets",
+			wantErr:  true,
+			wantName: "targets",
+		},
+		{
+			name:     "empty slice",
+			give:     map[string]interface{}{"targets": []interface{}{}},
+			giveKey:  "targets",
+			wantErr:  true,
+			wantName: "targets",
+		},
+		{
+			name:     "non-string values only",
+			give:     map[string]interface{}{"targets": []interface{}{42}},
+			giveKey:  "targets",
+			wantErr:  true,
+			wantName: "targets",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			val, err := RequireStringSlice(tt.give, tt.giveKey)
+			if tt.wantErr {
+				require.Error(t, err)
+				var missing *ErrMissingParam
+				require.True(t, errors.As(err, &missing))
+				assert.Equal(t, tt.wantName, missing.Name)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tt.wantVal, val)
+			}
 		})
 	}
 }

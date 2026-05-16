@@ -1,11 +1,13 @@
 package filesystem
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/langoai/lango/internal/agent"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -71,6 +73,78 @@ func TestListDir(t *testing.T) {
 	files, err := tool.ListDir(tmpDir)
 	require.NoError(t, err)
 	assert.Len(t, files, 3)
+}
+
+func TestBuildTools_FsListKeepsPathOptionalAndDefaultsToDot(t *testing.T) {
+	t.Parallel()
+
+	tool := New(Config{})
+	tools := BuildTools(tool)
+
+	var listTool *agent.Tool
+	for _, candidate := range tools {
+		if candidate.Name == "fs_list" {
+			listTool = candidate
+			break
+		}
+	}
+	require.NotNil(t, listTool)
+
+	required, ok := listTool.Parameters["required"].([]string)
+	if ok {
+		assert.NotContains(t, required, "path")
+	}
+
+	cwd := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(cwd, "visible.txt"), []byte("x"), 0644))
+	oldwd, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(cwd))
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	got, err := listTool.Handler(context.Background(), map[string]interface{}{})
+	require.NoError(t, err)
+
+	entries, ok := got.([]FileInfo)
+	require.True(t, ok)
+	require.NotEmpty(t, entries)
+	assert.Contains(t, entries[0].Path, cwd)
+}
+
+func TestBuildTools_FsWriteAndFsEditRequireCanonicalInputs(t *testing.T) {
+	t.Parallel()
+
+	tool := New(Config{})
+	tools := BuildTools(tool)
+
+	var writeTool *agent.Tool
+	var editTool *agent.Tool
+	for _, candidate := range tools {
+		switch candidate.Name {
+		case "fs_write":
+			writeTool = candidate
+		case "fs_edit":
+			editTool = candidate
+		}
+	}
+	require.NotNil(t, writeTool)
+	require.NotNil(t, editTool)
+
+	writeResult, err := writeTool.Handler(context.Background(), map[string]interface{}{
+		"path": "tmp.txt",
+	})
+	require.Error(t, err)
+	assert.Nil(t, writeResult)
+	assert.ErrorContains(t, err, "missing content parameter")
+
+	editResult, err := editTool.Handler(context.Background(), map[string]interface{}{
+		"path":      "tmp.txt",
+		"startLine": float64(1),
+		"content":   "patched",
+	})
+	require.Error(t, err)
+	assert.Nil(t, editResult)
+	assert.ErrorContains(t, err, "missing endLine parameter")
 }
 
 func TestPathValidation(t *testing.T) {
@@ -175,9 +249,9 @@ func TestReadWithMeta(t *testing.T) {
 	require.NoError(t, os.WriteFile(testFile, []byte("line1\nline2\nline3\nline4\nline5"), 0644))
 
 	tests := []struct {
-		give       string
-		giveOffset int
-		giveLimit  int
+		give        string
+		giveOffset  int
+		giveLimit   int
 		wantContent string
 		wantTotal   int
 		wantOffset  int

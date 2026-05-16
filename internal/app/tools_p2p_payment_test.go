@@ -242,6 +242,89 @@ func TestP2PPayment_FailsWhenReceiptTrailIsMissing(t *testing.T) {
 	assert.Contains(t, err.Error(), "payment execution receipt trail is required")
 }
 
+func TestP2PPayment_RequiresTransactionReceiptIDParameter(t *testing.T) {
+	t.Parallel()
+
+	pk, err := ethcrypto.GenerateKey()
+	require.NoError(t, err)
+	did, err := identity.DIDFromPublicKey(ethcrypto.CompressPubkey(&pk.PublicKey))
+	require.NoError(t, err)
+
+	sessions, err := handshake.NewSessionStore(time.Hour)
+	require.NoError(t, err)
+	_, err = sessions.Create(did.ID, false)
+	require.NoError(t, err)
+
+	pc, cleanup := newTestP2PPaymentComponents(t)
+	t.Cleanup(cleanup)
+	p2pc := &p2pComponents{sessions: sessions}
+	tools := buildP2PPaymentTool(p2pc, pc, receipts.NewStore(), &fakeP2PAuditor{})
+	require.Len(t, tools, 1)
+
+	got, err := tools[0].Handler(context.Background(), map[string]interface{}{
+		"peer_did": did.ID,
+		"amount":   "0.50",
+	})
+	require.Error(t, err)
+	assert.Nil(t, got)
+	assert.ErrorContains(t, err, "missing transaction_receipt_id parameter")
+}
+
+func TestP2PPayment_RequiresCanonicalWrapperInputs(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name    string
+		params  map[string]interface{}
+		wantErr string
+	}{
+		{
+			name:    "missing peer did",
+			params:  map[string]interface{}{"transaction_receipt_id": "tx-1", "amount": "0.50"},
+			wantErr: "missing peer_did parameter",
+		},
+		{
+			name:    "missing amount",
+			params:  map[string]interface{}{"peer_did": "did:lango:test", "transaction_receipt_id": "tx-1"},
+			wantErr: "missing amount parameter",
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			pk, err := ethcrypto.GenerateKey()
+			require.NoError(t, err)
+			did, err := identity.DIDFromPublicKey(ethcrypto.CompressPubkey(&pk.PublicKey))
+			require.NoError(t, err)
+
+			sessions, err := handshake.NewSessionStore(time.Hour)
+			require.NoError(t, err)
+			_, err = sessions.Create(did.ID, false)
+			require.NoError(t, err)
+
+			pc, cleanup := newTestP2PPaymentComponents(t)
+			t.Cleanup(cleanup)
+			p2pc := &p2pComponents{sessions: sessions}
+			tools := buildP2PPaymentTool(p2pc, pc, receipts.NewStore(), &fakeP2PAuditor{})
+			require.Len(t, tools, 1)
+
+			params := make(map[string]interface{}, len(tc.params))
+			for k, v := range tc.params {
+				params[k] = v
+			}
+			if peer, ok := params["peer_did"].(string); ok && peer == "did:lango:test" {
+				params["peer_did"] = did.ID
+			}
+
+			got, err := tools[0].Handler(context.Background(), params)
+			require.Error(t, err)
+			assert.Nil(t, got)
+			assert.ErrorContains(t, err, tc.wantErr)
+		})
+	}
+}
+
 type fakeP2PAuditor struct {
 	entries []toolpayment.PaymentExecutionAuditEntry
 }

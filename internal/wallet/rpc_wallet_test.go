@@ -347,6 +347,54 @@ func TestRPCWallet_PendingCleanup_AfterResponse(t *testing.T) {
 	w.mu.Unlock()
 }
 
+func TestRPCWallet_PendingCleanup_AfterSignTransactionResponse(t *testing.T) {
+	w := NewRPCWallet()
+	w.timeout = 2 * time.Second
+
+	w.SetSender(func(_ string, payload interface{}) error {
+		go func() {
+			req := payload.(SignTxRequest)
+			w.HandleSignTxResponse(SignTxResponse{
+				RequestID: req.RequestID,
+				Signature: []byte("sig"),
+			})
+		}()
+		return nil
+	})
+
+	ctx := context.Background()
+	_, err := w.SignTransaction(ctx, []byte("raw-tx"))
+	require.NoError(t, err)
+
+	w.mu.Lock()
+	assert.Empty(t, w.pendingSignTx)
+	w.mu.Unlock()
+}
+
+func TestRPCWallet_PendingCleanup_AfterSignMessageResponse(t *testing.T) {
+	w := NewRPCWallet()
+	w.timeout = 2 * time.Second
+
+	w.SetSender(func(_ string, payload interface{}) error {
+		go func() {
+			req := payload.(SignMsgRequest)
+			w.HandleSignMsgResponse(SignMsgResponse{
+				RequestID: req.RequestID,
+				Signature: []byte("sig"),
+			})
+		}()
+		return nil
+	})
+
+	ctx := context.Background()
+	_, err := w.SignMessage(ctx, []byte("msg"))
+	require.NoError(t, err)
+
+	w.mu.Lock()
+	assert.Empty(t, w.pendingSignMsg)
+	w.mu.Unlock()
+}
+
 func TestRPCWallet_PendingCleanup_AfterTimeout(t *testing.T) {
 	w := NewRPCWallet()
 	w.timeout = 50 * time.Millisecond
@@ -361,6 +409,218 @@ func TestRPCWallet_PendingCleanup_AfterTimeout(t *testing.T) {
 	// After timeout, the pending map should be cleaned up.
 	w.mu.Lock()
 	assert.Empty(t, w.pendingSignTx)
+	w.mu.Unlock()
+}
+
+func TestRPCWallet_PendingCleanup_AfterSignMessageTimeout(t *testing.T) {
+	w := NewRPCWallet()
+	w.timeout = 50 * time.Millisecond
+
+	w.SetSender(func(_ string, _ interface{}) error {
+		return nil
+	})
+
+	ctx := context.Background()
+	_, _ = w.SignMessage(ctx, []byte("msg"))
+
+	w.mu.Lock()
+	assert.Empty(t, w.pendingSignMsg)
+	w.mu.Unlock()
+}
+
+func TestRPCWallet_PendingCleanup_AfterAddressSenderError(t *testing.T) {
+	w := NewRPCWallet()
+	w.timeout = 2 * time.Second
+
+	w.SetSender(func(_ string, _ interface{}) error {
+		return assert.AnError
+	})
+
+	ctx := context.Background()
+	_, err := w.Address(ctx)
+	require.Error(t, err)
+
+	w.mu.Lock()
+	assert.Empty(t, w.pendingAddr)
+	w.mu.Unlock()
+}
+
+func TestRPCWallet_PendingCleanup_AfterAddressCompanionError(t *testing.T) {
+	w := NewRPCWallet()
+	w.timeout = 2 * time.Second
+
+	w.SetSender(func(_ string, payload interface{}) error {
+		go func() {
+			req := payload.(AddressRequest)
+			w.HandleAddressResponse(AddressResponse{
+				RequestID: req.RequestID,
+				Error:     "wallet locked",
+			})
+		}()
+		return nil
+	})
+
+	ctx := context.Background()
+	_, err := w.Address(ctx)
+	require.Error(t, err)
+
+	w.mu.Lock()
+	assert.Empty(t, w.pendingAddr)
+	w.mu.Unlock()
+}
+
+func TestRPCWallet_PendingCleanup_AfterAddressTimeout(t *testing.T) {
+	w := NewRPCWallet()
+	w.timeout = 50 * time.Millisecond
+
+	w.SetSender(func(_ string, _ interface{}) error {
+		return nil
+	})
+
+	ctx := context.Background()
+	_, _ = w.Address(ctx)
+
+	w.mu.Lock()
+	assert.Empty(t, w.pendingAddr)
+	w.mu.Unlock()
+}
+
+func TestRPCWallet_PendingCleanup_AfterSignMessageSenderError(t *testing.T) {
+	w := NewRPCWallet()
+	w.timeout = 2 * time.Second
+
+	w.SetSender(func(_ string, _ interface{}) error {
+		return assert.AnError
+	})
+
+	ctx := context.Background()
+	_, err := w.SignMessage(ctx, []byte("msg"))
+	require.Error(t, err)
+
+	w.mu.Lock()
+	assert.Empty(t, w.pendingSignMsg)
+	w.mu.Unlock()
+}
+
+func TestRPCWallet_PendingCleanup_AfterAddressContextCanceled(t *testing.T) {
+	w := NewRPCWallet()
+	w.timeout = 5 * time.Second
+
+	w.SetSender(func(_ string, _ interface{}) error {
+		return nil
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := w.Address(ctx)
+	require.Error(t, err)
+
+	w.mu.Lock()
+	assert.Empty(t, w.pendingAddr)
+	w.mu.Unlock()
+}
+
+func TestRPCWallet_PendingCleanup_AfterSignTransactionSenderError(t *testing.T) {
+	w := NewRPCWallet()
+	w.timeout = 2 * time.Second
+
+	w.SetSender(func(_ string, _ interface{}) error {
+		return assert.AnError
+	})
+
+	ctx := context.Background()
+	_, err := w.SignTransaction(ctx, []byte("tx"))
+	require.Error(t, err)
+
+	w.mu.Lock()
+	assert.Empty(t, w.pendingSignTx)
+	w.mu.Unlock()
+}
+
+func TestRPCWallet_PendingCleanup_AfterSignTransactionCompanionError(t *testing.T) {
+	w := NewRPCWallet()
+	w.timeout = 2 * time.Second
+
+	w.SetSender(func(_ string, payload interface{}) error {
+		go func() {
+			req := payload.(SignTxRequest)
+			w.HandleSignTxResponse(SignTxResponse{
+				RequestID: req.RequestID,
+				Error:     "user rejected",
+			})
+		}()
+		return nil
+	})
+
+	ctx := context.Background()
+	_, err := w.SignTransaction(ctx, []byte("tx"))
+	require.Error(t, err)
+
+	w.mu.Lock()
+	assert.Empty(t, w.pendingSignTx)
+	w.mu.Unlock()
+}
+
+func TestRPCWallet_PendingCleanup_AfterSignTransactionContextCanceled(t *testing.T) {
+	w := NewRPCWallet()
+	w.timeout = 5 * time.Second
+
+	w.SetSender(func(_ string, _ interface{}) error {
+		return nil
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := w.SignTransaction(ctx, []byte("tx"))
+	require.Error(t, err)
+
+	w.mu.Lock()
+	assert.Empty(t, w.pendingSignTx)
+	w.mu.Unlock()
+}
+
+func TestRPCWallet_PendingCleanup_AfterSignMessageContextCanceled(t *testing.T) {
+	w := NewRPCWallet()
+	w.timeout = 5 * time.Second
+
+	w.SetSender(func(_ string, _ interface{}) error {
+		return nil
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := w.SignMessage(ctx, []byte("msg"))
+	require.Error(t, err)
+
+	w.mu.Lock()
+	assert.Empty(t, w.pendingSignMsg)
+	w.mu.Unlock()
+}
+
+func TestRPCWallet_PendingCleanup_AfterSignMessageCompanionError(t *testing.T) {
+	w := NewRPCWallet()
+	w.timeout = 2 * time.Second
+
+	w.SetSender(func(_ string, payload interface{}) error {
+		go func() {
+			req := payload.(SignMsgRequest)
+			w.HandleSignMsgResponse(SignMsgResponse{
+				RequestID: req.RequestID,
+				Error:     "invalid key",
+			})
+		}()
+		return nil
+	})
+
+	ctx := context.Background()
+	_, err := w.SignMessage(ctx, []byte("msg"))
+	require.Error(t, err)
+
+	w.mu.Lock()
+	assert.Empty(t, w.pendingSignMsg)
 	w.mu.Unlock()
 }
 

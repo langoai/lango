@@ -600,6 +600,18 @@ func TestGetPostAdjudicationExecutionStatus_IncludesLatestBackgroundTask(t *test
 	}, status.LatestBackgroundTask)
 }
 
+func TestGetPostAdjudicationExecutionStatus_RequiresTransactionReceiptIDParameter(t *testing.T) {
+	t.Parallel()
+
+	tool := findTool(buildMetaTools(nil, nil, nil, config.SkillConfig{}, nil, receipts.NewStore()), "get_post_adjudication_execution_status")
+	require.NotNil(t, tool)
+
+	got, err := tool.Handler(context.Background(), map[string]interface{}{})
+	require.Error(t, err)
+	assert.Nil(t, got)
+	assert.ErrorContains(t, err, "missing transaction_receipt_id parameter")
+}
+
 func decodeDeadLetterEntriesFromPayload(t *testing.T, value interface{}) []postadjudicationstatus.DeadLetterBacklogEntry {
 	t.Helper()
 

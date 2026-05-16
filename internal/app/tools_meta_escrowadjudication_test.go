@@ -220,6 +220,34 @@ func TestAdjudicateEscrowDispute_RejectsMutuallyExclusiveExecutionModes(t *testi
 	assert.ErrorContains(t, err, "mutually exclusive")
 }
 
+func TestAdjudicateEscrowDispute_RequiresTransactionReceiptIDParameter(t *testing.T) {
+	t.Parallel()
+
+	tool := findTool(buildMetaTools(nil, nil, nil, config.SkillConfig{}, nil, receipts.NewStore()), "adjudicate_escrow_dispute")
+	require.NotNil(t, tool)
+
+	got, err := tool.Handler(context.Background(), map[string]interface{}{
+		"outcome": "release",
+	})
+	require.Error(t, err)
+	assert.Nil(t, got)
+	assert.ErrorContains(t, err, "missing transaction_receipt_id parameter")
+}
+
+func TestAdjudicateEscrowDispute_RequiresOutcomeParameter(t *testing.T) {
+	t.Parallel()
+
+	tool := findTool(buildMetaTools(nil, nil, nil, config.SkillConfig{}, nil, receipts.NewStore()), "adjudicate_escrow_dispute")
+	require.NotNil(t, tool)
+
+	got, err := tool.Handler(context.Background(), map[string]interface{}{
+		"transaction_receipt_id": "tx-1",
+	})
+	require.Error(t, err)
+	assert.Nil(t, got)
+	assert.ErrorContains(t, err, "missing outcome parameter")
+}
+
 func TestAdjudicateEscrowDispute_DefaultsToManualRecoveryWhenExecutionFlagsAreAbsent(t *testing.T) {
 	t.Parallel()
 

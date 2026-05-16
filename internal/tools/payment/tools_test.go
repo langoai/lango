@@ -97,7 +97,21 @@ func TestBuildTools_DisabledInterceptor(t *testing.T) {
 	require.Len(t, tools, 5, "disabled interceptor = base set only")
 }
 
-func TestPaymentSend_DeniesWithoutTransactionReceiptID(t *testing.T) {
+func TestPaymentX402Fetch_RequiresURLParameter(t *testing.T) {
+	t.Parallel()
+
+	interceptor := x402.NewInterceptor(nil, nil, x402.Config{Enabled: true}, zap.NewNop().Sugar())
+	tools := BuildTools(nil, nil, nil, 84532, interceptor, nil, nil)
+	fetchTool := findTool(tools, "payment_x402_fetch")
+	require.NotNil(t, fetchTool)
+
+	got, err := fetchTool.Handler(context.Background(), map[string]interface{}{})
+	require.Error(t, err)
+	assert.Nil(t, got)
+	assert.ErrorContains(t, err, "missing url parameter")
+}
+
+func TestPaymentSend_RequiresCanonicalInputsAtWrapper(t *testing.T) {
 	t.Parallel()
 
 	receiptStore := receipts.NewStore()
@@ -114,23 +128,60 @@ func TestPaymentSend_DeniesWithoutTransactionReceiptID(t *testing.T) {
 	sendTool := findTool(tools, "payment_send")
 	require.NotNil(t, sendTool)
 
-	result, err := sendTool.Handler(context.Background(), map[string]interface{}{
-		"to":                    "0x1111111111111111111111111111111111111111",
-		"submission_receipt_id": sub.SubmissionReceiptID,
-		"amount":                "1.00",
-		"purpose":               "missing tx receipt",
-	})
-	require.NoError(t, err)
+	cases := []struct {
+		name      string
+		params    map[string]interface{}
+		wantError string
+	}{
+		{
+			name: "missing to",
+			params: map[string]interface{}{
+				"transaction_receipt_id": "tx-1",
+				"amount":                 "1.00",
+				"purpose":                "missing recipient",
+			},
+			wantError: "missing to parameter",
+		},
+		{
+			name: "missing transaction_receipt_id",
+			params: map[string]interface{}{
+				"to":                    "0x1111111111111111111111111111111111111111",
+				"submission_receipt_id": sub.SubmissionReceiptID,
+				"amount":                "1.00",
+				"purpose":               "missing tx receipt",
+			},
+			wantError: "missing transaction_receipt_id parameter",
+		},
+		{
+			name: "missing amount",
+			params: map[string]interface{}{
+				"to":                     "0x1111111111111111111111111111111111111111",
+				"transaction_receipt_id": "tx-1",
+				"purpose":                "missing amount",
+			},
+			wantError: "missing amount parameter",
+		},
+		{
+			name: "missing purpose",
+			params: map[string]interface{}{
+				"to":                     "0x1111111111111111111111111111111111111111",
+				"transaction_receipt_id": "tx-1",
+				"amount":                 "1.00",
+			},
+			wantError: "missing purpose parameter",
+		},
+	}
 
-	denied, ok := result.(*PaymentExecutionDeniedResult)
-	require.True(t, ok)
-	assert.Equal(t, "denied", denied.Status)
-	assert.Equal(t, "missing_receipt", denied.Reason)
-	assert.Contains(t, denied.Message, "transaction_receipt_id")
-
-	require.Len(t, auditor.entries, 1)
-	assert.Equal(t, "denied", auditor.entries[0].Outcome)
-	assert.Equal(t, "missing_receipt", auditor.entries[0].Reason)
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			result, err := sendTool.Handler(context.Background(), tc.params)
+			require.Error(t, err)
+			assert.Nil(t, result)
+			assert.ErrorContains(t, err, tc.wantError)
+		})
+	}
+	assert.Empty(t, auditor.entries)
 }
 
 func TestPaymentSend_DeniesWithUnknownTransactionReceiptID(t *testing.T) {

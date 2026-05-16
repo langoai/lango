@@ -176,3 +176,50 @@ func TestApproveArtifactRelease_InvalidExportabilityState(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid exportability_state")
 }
+
+func TestApproveArtifactRelease_RequiresCanonicalInputs(t *testing.T) {
+	store, _ := newApprovalFlowToolStore(t)
+	tools := buildMetaTools(store, nil, nil, config.SkillConfig{}, nil, nil)
+	tool := findTool(tools, "approve_artifact_release")
+	require.NotNil(t, tool)
+
+	cases := []struct {
+		name      string
+		params    map[string]interface{}
+		wantError string
+	}{
+		{
+			name: "missing artifact_label",
+			params: map[string]interface{}{
+				"requested_scope":     "artifact/final-memo",
+				"exportability_state": "exportable",
+			},
+			wantError: "missing artifact_label parameter",
+		},
+		{
+			name: "missing requested_scope",
+			params: map[string]interface{}{
+				"artifact_label":      "artifact/final-memo",
+				"exportability_state": "exportable",
+			},
+			wantError: "missing requested_scope parameter",
+		},
+		{
+			name: "missing exportability_state",
+			params: map[string]interface{}{
+				"artifact_label":  "artifact/final-memo",
+				"requested_scope": "artifact/final-memo",
+			},
+			wantError: "missing exportability_state parameter",
+		},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tool.Handler(context.Background(), tt.params)
+			require.Error(t, err)
+			assert.Nil(t, got)
+			assert.ErrorContains(t, err, tt.wantError)
+		})
+	}
+}

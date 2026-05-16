@@ -202,3 +202,15 @@ func TestHoldEscrowForDispute_PropagatesRuntimeFailure(t *testing.T) {
 	})
 	require.Error(t, err)
 }
+
+func TestHoldEscrowForDispute_RequiresTransactionReceiptIDParameter(t *testing.T) {
+	t.Parallel()
+
+	tool := findTool(buildMetaToolsWithRuntimes(nil, nil, nil, config.SkillConfig{}, nil, receipts.NewStore(), nil, nil, nil, &fakeDisputeHoldRuntime{}, nil, nil), "hold_escrow_for_dispute")
+	require.NotNil(t, tool)
+
+	got, err := tool.Handler(context.Background(), map[string]interface{}{})
+	require.Error(t, err)
+	assert.Nil(t, got)
+	assert.ErrorContains(t, err, "missing transaction_receipt_id parameter")
+}

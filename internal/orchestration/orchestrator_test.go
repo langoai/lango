@@ -3,6 +3,9 @@ package orchestration
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -391,8 +394,8 @@ func TestBuildAgentTree_EscalationProtocolInInstructions(t *testing.T) {
 		}
 		assert.Contains(t, spec.Instruction, "Return control cleanly to the root runtime",
 			"spec %q should return control to the root runtime", spec.Name)
-		assert.Contains(t, spec.Instruction, "Do not call transfer_to_agent for built-in teammate escalation",
-			"spec %q should forbid built-in transfer_to_agent escalation", spec.Name)
+		assert.Contains(t, spec.Instruction, "Do not use built-in handoff calls for escalation",
+			"spec %q should forbid built-in handoff escalation", spec.Name)
 	}
 }
 
@@ -1012,8 +1015,8 @@ func TestAgentSpecs_AllHaveEscalationProtocol(t *testing.T) {
 			"spec %q must have escalation protocol section", spec.Name)
 		assert.Contains(t, spec.Instruction, "Return control cleanly to the root runtime",
 			"spec %q must return control to the root runtime", spec.Name)
-		assert.Contains(t, spec.Instruction, "Do not call transfer_to_agent for built-in teammate escalation",
-			"spec %q must forbid built-in transfer_to_agent escalation", spec.Name)
+		assert.Contains(t, spec.Instruction, "Do not use built-in handoff calls for escalation",
+			"spec %q must forbid built-in handoff escalation", spec.Name)
 	}
 }
 
@@ -1472,6 +1475,26 @@ func TestAgentSpecs_NonPlannerHaveOutputHandling(t *testing.T) {
 		assert.Contains(t, spec.Instruction, "_meta.compressed",
 			"spec %q Output Handling should mention _meta.compressed", spec.Name)
 	}
+}
+
+func TestAgentSpecs_MatchEmbeddedIdentityPrompts(t *testing.T) {
+	t.Helper()
+
+	_, thisFile, _, ok := runtime.Caller(0)
+	require.True(t, ok)
+	repoRoot := filepath.Clean(filepath.Join(filepath.Dir(thisFile), "..", ".."))
+
+	for _, spec := range agentSpecs {
+		promptPath := filepath.Join(repoRoot, "prompts", "agents", spec.Name, "IDENTITY.md")
+		data, err := os.ReadFile(promptPath)
+		require.NoError(t, err, "read prompt for %s", spec.Name)
+		assert.Equal(t, normalizeEmbeddedPrompt(strings.TrimSpace(spec.Instruction)), normalizeEmbeddedPrompt(strings.TrimSpace(string(data))),
+			"embedded prompt should match agent spec instruction for %s", spec.Name)
+	}
+}
+
+func normalizeEmbeddedPrompt(s string) string {
+	return strings.ReplaceAll(s, "`", "\"")
 }
 
 // --- helpers ---

@@ -46,8 +46,6 @@ func (f *fakeTurnTraceStore) RecentByOutcome(context.Context, turntrace.Outcome,
 }
 
 func TestCollaborationRuntimeBridge_StoresOnlyMissionAttributedRecords(t *testing.T) {
-	t.Parallel()
-
 	bus := eventbus.New()
 	bridge := newCollaborationRuntimeBridge(bus)
 	client := testutil.TestEntClient(t)
@@ -92,8 +90,6 @@ func TestCollaborationRuntimeBridge_StoresOnlyMissionAttributedRecords(t *testin
 }
 
 func TestCollaborationRuntimeBridge_StoresMissionAttributedBackgroundSignals(t *testing.T) {
-	t.Parallel()
-
 	bus := eventbus.New()
 	bridge := newCollaborationRuntimeBridge(bus)
 	client := testutil.TestEntClient(t)

@@ -103,7 +103,17 @@ func buildActionTool(svc OntologyService, action *ActionType) *agent.Tool {
 		},
 		Handler: func(ctx context.Context, rawParams map[string]interface{}) (interface{}, error) {
 			strParams := make(map[string]string, len(rawParams))
+			for name := range action.ParamSchema {
+				val, err := toolparam.RequireString(rawParams, name)
+				if err != nil {
+					return nil, err
+				}
+				strParams[name] = val
+			}
 			for k, v := range rawParams {
+				if _, ok := strParams[k]; ok {
+					continue
+				}
 				strParams[k] = fmt.Sprintf("%v", v)
 			}
 			result, err := svc.ExecuteAction(ctx, action.Name, strParams)
@@ -142,9 +152,19 @@ func buildPromoteType(svc OntologyService) *agent.Tool {
 			"required": []string{"type_name", "target_status", "reason"},
 		},
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-			typeName := fmt.Sprintf("%v", params["type_name"])
-			target := SchemaStatus(fmt.Sprintf("%v", params["target_status"]))
-			reason := fmt.Sprintf("%v", params["reason"])
+			typeName, err := toolparam.RequireString(params, "type_name")
+			if err != nil {
+				return nil, err
+			}
+			targetStr, err := toolparam.RequireString(params, "target_status")
+			if err != nil {
+				return nil, err
+			}
+			reason, err := toolparam.RequireString(params, "reason")
+			if err != nil {
+				return nil, err
+			}
+			target := SchemaStatus(targetStr)
 			if err := svc.PromoteType(ctx, typeName, target, reason); err != nil {
 				return nil, err
 			}
@@ -173,9 +193,19 @@ func buildPromotePredicate(svc OntologyService) *agent.Tool {
 			"required": []string{"predicate_name", "target_status", "reason"},
 		},
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-			predName := fmt.Sprintf("%v", params["predicate_name"])
-			target := SchemaStatus(fmt.Sprintf("%v", params["target_status"]))
-			reason := fmt.Sprintf("%v", params["reason"])
+			predName, err := toolparam.RequireString(params, "predicate_name")
+			if err != nil {
+				return nil, err
+			}
+			targetStr, err := toolparam.RequireString(params, "target_status")
+			if err != nil {
+				return nil, err
+			}
+			reason, err := toolparam.RequireString(params, "reason")
+			if err != nil {
+				return nil, err
+			}
+			target := SchemaStatus(targetStr)
 			if err := svc.PromotePredicate(ctx, predName, target, reason); err != nil {
 				return nil, err
 			}
@@ -230,7 +260,10 @@ func buildTypeUsage(svc OntologyService) *agent.Tool {
 			"required": []string{"type_name"},
 		},
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-			typeName := fmt.Sprintf("%v", params["type_name"])
+			typeName, err := toolparam.RequireString(params, "type_name")
+			if err != nil {
+				return nil, err
+			}
 			info, err := svc.TypeUsage(ctx, typeName)
 			if err != nil {
 				return nil, err

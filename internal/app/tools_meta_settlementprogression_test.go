@@ -172,3 +172,33 @@ func TestApplySettlementProgression_EscalateFromReviewNeededReturnsCanonicalDisp
 	assert.Empty(t, updatedTx.PartialSettlementHint)
 	assert.Empty(t, updatedTx.DisputeLifecycleStatus)
 }
+
+func TestApplySettlementProgression_RequiresTransactionReceiptIDParameter(t *testing.T) {
+	t.Parallel()
+
+	tool := findTool(buildMetaTools(nil, nil, nil, config.SkillConfig{}, nil, receipts.NewStore()), "apply_settlement_progression")
+	require.NotNil(t, tool)
+
+	got, err := tool.Handler(context.Background(), map[string]interface{}{
+		"outcome": "approve",
+	})
+	require.Error(t, err)
+	assert.Nil(t, got)
+	assert.ErrorContains(t, err, "missing transaction_receipt_id parameter")
+}
+
+func TestApplySettlementProgression_RequiresOutcomeParameter(t *testing.T) {
+	t.Parallel()
+
+	store := receipts.NewStore()
+	tx := createSubmittedTransaction(t, store, context.Background(), "deal-settlement-progress-missing-outcome")
+	tool := findTool(buildMetaTools(nil, nil, nil, config.SkillConfig{}, nil, store), "apply_settlement_progression")
+	require.NotNil(t, tool)
+
+	got, err := tool.Handler(context.Background(), map[string]interface{}{
+		"transaction_receipt_id": tx.TransactionReceiptID,
+	})
+	require.Error(t, err)
+	assert.Nil(t, got)
+	assert.ErrorContains(t, err, "missing outcome parameter")
+}

@@ -124,3 +124,15 @@ func TestExecutePartialSettlement_RejectsMissingOrInvalidPartialHint(t *testing.
 		})
 	}
 }
+
+func TestExecutePartialSettlement_RequiresTransactionReceiptIDParameter(t *testing.T) {
+	t.Parallel()
+
+	tool := findTool(buildMetaToolsWithRuntimes(nil, nil, nil, config.SkillConfig{}, nil, receipts.NewStore(), nil, nil, &fakePartialSettlementExecutionRuntime{}, nil, nil, nil), "execute_partial_settlement")
+	require.NotNil(t, tool)
+
+	got, err := tool.Handler(context.Background(), map[string]interface{}{})
+	require.Error(t, err)
+	assert.Nil(t, got)
+	assert.ErrorContains(t, err, "missing transaction_receipt_id parameter")
+}

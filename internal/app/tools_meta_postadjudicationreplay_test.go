@@ -195,3 +195,15 @@ func TestRetryPostAdjudicationExecution_FailsWhenOnlyManualRetryEvidenceExists(t
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "dead-letter")
 }
+
+func TestRetryPostAdjudicationExecution_RequiresTransactionReceiptIDParameter(t *testing.T) {
+	t.Parallel()
+
+	tool := findTool(buildMetaToolsWithRuntimes(nil, nil, nil, config.SkillConfig{}, replayToolConfig(), receipts.NewStore(), nil, nil, nil, nil, nil, nil, &fakeAdjudicationBackgroundDispatcher{}), "retry_post_adjudication_execution")
+	require.NotNil(t, tool)
+
+	got, err := tool.Handler(context.Background(), map[string]interface{}{})
+	require.Error(t, err)
+	assert.Nil(t, got)
+	assert.ErrorContains(t, err, "missing transaction_receipt_id parameter")
+}

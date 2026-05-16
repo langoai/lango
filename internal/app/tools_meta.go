@@ -472,7 +472,10 @@ func buildMetaToolsWithRuntimes(
 				"required": []string{"query"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				query := toolparam.OptionalString(params, "query", "")
+				query, err := toolparam.RequireString(params, "query")
+				if err != nil {
+					return nil, err
+				}
 				category := toolparam.OptionalString(params, "category", "")
 
 				entries, err := store.SearchKnowledge(ctx, query, category, 10)
@@ -563,7 +566,10 @@ func buildMetaToolsWithRuntimes(
 				"required": []string{"query"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				query := toolparam.OptionalString(params, "query", "")
+				query, err := toolparam.RequireString(params, "query")
+				if err != nil {
+					return nil, err
+				}
 				category := toolparam.OptionalString(params, "category", "")
 
 				entries, err := store.SearchLearnings(ctx, query, category, 10)

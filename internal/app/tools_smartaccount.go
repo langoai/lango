@@ -156,13 +156,13 @@ func sessionKeyCreateTool(sac *smartAccountComponents) *agent.Tool {
 			"required": []string{"targets", "duration"},
 		},
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-			// Parse targets
-			rawTargets, _ := params["targets"].([]interface{})
-			targets := make([]common.Address, 0, len(rawTargets))
-			for _, rt := range rawTargets {
-				if s, ok := rt.(string); ok {
-					targets = append(targets, common.HexToAddress(s))
-				}
+			targetStrings, err := toolparam.RequireStringSlice(params, "targets")
+			if err != nil {
+				return nil, err
+			}
+			targets := make([]common.Address, 0, len(targetStrings))
+			for _, target := range targetStrings {
+				targets = append(targets, common.HexToAddress(target))
 			}
 
 			// Parse functions
@@ -186,9 +186,9 @@ func sessionKeyCreateTool(sac *smartAccountComponents) *agent.Tool {
 			}
 
 			// Parse duration
-			durationStr, _ := params["duration"].(string)
-			if durationStr == "" {
-				durationStr = "1h"
+			durationStr, err := toolparam.RequireString(params, "duration")
+			if err != nil {
+				return nil, err
 			}
 			duration, err := time.ParseDuration(durationStr)
 			if err != nil {
@@ -527,17 +527,11 @@ func moduleInstallTool(sac *smartAccountComponents) *agent.Tool {
 			"required": []string{"module_type", "address"},
 		},
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-			// Parse module type — JSON numbers come as float64
-			moduleTypeRaw := params["module_type"]
-			var moduleType sa.ModuleType
-			switch v := moduleTypeRaw.(type) {
-			case float64:
-				moduleType = sa.ModuleType(uint8(v))
-			case int:
-				moduleType = sa.ModuleType(uint8(v))
-			default:
-				return nil, fmt.Errorf("module_type must be an integer (1-4)")
+			moduleTypeInt, err := toolparam.RequireInt(params, "module_type")
+			if err != nil {
+				return nil, err
 			}
+			moduleType := sa.ModuleType(uint8(moduleTypeInt))
 
 			addrStr, err := toolparam.RequireString(params, "address")
 			if err != nil {
@@ -597,16 +591,11 @@ func moduleUninstallTool(sac *smartAccountComponents) *agent.Tool {
 			"required": []string{"module_type", "address"},
 		},
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-			moduleTypeRaw := params["module_type"]
-			var moduleType sa.ModuleType
-			switch v := moduleTypeRaw.(type) {
-			case float64:
-				moduleType = sa.ModuleType(uint8(v))
-			case int:
-				moduleType = sa.ModuleType(uint8(v))
-			default:
-				return nil, fmt.Errorf("module_type must be an integer (1-4)")
+			moduleTypeInt, err := toolparam.RequireInt(params, "module_type")
+			if err != nil {
+				return nil, err
 			}
+			moduleType := sa.ModuleType(uint8(moduleTypeInt))
 
 			addrStr, err := toolparam.RequireString(params, "address")
 			if err != nil {

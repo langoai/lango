@@ -48,3 +48,69 @@ func TestSaveKnowledge_SourceClassValidationAndDefaults(t *testing.T) {
 	assert.Equal(t, "private-confidential", got.SourceClass)
 	assert.Equal(t, "app-defaults", got.AssetLabel)
 }
+
+func TestSaveKnowledge_RequiresCanonicalInputs(t *testing.T) {
+	store := newAppKnowledgeStore(t)
+	tools := buildMetaTools(store, nil, nil, config.SkillConfig{}, nil, nil)
+	tool := findTool(tools, "save_knowledge")
+	require.NotNil(t, tool)
+
+	cases := []struct {
+		name      string
+		params    map[string]interface{}
+		wantError string
+	}{
+		{
+			name: "missing key",
+			params: map[string]interface{}{
+				"category": "fact",
+				"content":  "knowledge content",
+			},
+			wantError: "missing key parameter",
+		},
+		{
+			name: "missing category",
+			params: map[string]interface{}{
+				"key":     "app-missing-category",
+				"content": "knowledge content",
+			},
+			wantError: "missing category parameter",
+		},
+		{
+			name: "missing content",
+			params: map[string]interface{}{
+				"key":      "app-missing-content",
+				"category": "fact",
+			},
+			wantError: "missing content parameter",
+		},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tool.Handler(context.Background(), tt.params)
+			require.Error(t, err)
+			assert.Nil(t, got)
+			assert.ErrorContains(t, err, tt.wantError)
+		})
+	}
+}
+
+func TestKnowledgeHistoryAndSearch_RequireCanonicalInputs(t *testing.T) {
+	store := newAppKnowledgeStore(t)
+	tools := buildMetaTools(store, nil, nil, config.SkillConfig{}, nil, nil)
+	historyTool := findTool(tools, "get_knowledge_history")
+	searchTool := findTool(tools, "search_knowledge")
+	require.NotNil(t, historyTool)
+	require.NotNil(t, searchTool)
+
+	historyResult, err := historyTool.Handler(context.Background(), map[string]interface{}{})
+	require.Error(t, err)
+	assert.Nil(t, historyResult)
+	assert.ErrorContains(t, err, "missing key parameter")
+
+	searchResult, err := searchTool.Handler(context.Background(), map[string]interface{}{})
+	require.Error(t, err)
+	assert.Nil(t, searchResult)
+	assert.ErrorContains(t, err, "missing query parameter")
+}

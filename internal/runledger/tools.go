@@ -68,9 +68,18 @@ func buildRunCreate(store RunLedgerStore, linker MissionExecutionLinker) *agent.
 				return nil, err
 			}
 
-			planJSON := toolparam.OptionalString(params, "plan_json", "")
-			sessionKey := toolparam.OptionalString(params, "session_key", "")
-			originalRequest := toolparam.OptionalString(params, "original_request", "")
+			planJSON, err := toolparam.RequireString(params, "plan_json")
+			if err != nil {
+				return nil, err
+			}
+			sessionKey, err := toolparam.RequireString(params, "session_key")
+			if err != nil {
+				return nil, err
+			}
+			originalRequest, err := toolparam.RequireString(params, "original_request")
+			if err != nil {
+				return nil, err
+			}
 
 			// Parse planner output.
 			plan, err := ParsePlannerOutput(planJSON)
@@ -156,7 +165,10 @@ func buildRunRead(store RunLedgerStore) *agent.Tool {
 			Required("run_id").
 			Build(),
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-			runID := toolparam.OptionalString(params, "run_id", "")
+			runID, err := toolparam.RequireString(params, "run_id")
+			if err != nil {
+				return nil, err
+			}
 			snap, err := store.GetRunSnapshot(ctx, runID)
 			if err != nil {
 				return nil, fmt.Errorf("get run snapshot: %w", err)
@@ -181,7 +193,10 @@ func buildRunActive(store RunLedgerStore) *agent.Tool {
 			Required("run_id").
 			Build(),
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-			runID := toolparam.OptionalString(params, "run_id", "")
+			runID, err := toolparam.RequireString(params, "run_id")
+			if err != nil {
+				return nil, err
+			}
 			snap, err := store.GetRunSnapshot(ctx, runID)
 			if err != nil {
 				return nil, fmt.Errorf("get run snapshot: %w", err)
@@ -234,8 +249,14 @@ func buildRunNote(store RunLedgerStore) *agent.Tool {
 			Required("run_id", "key").
 			Build(),
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-			runID := toolparam.OptionalString(params, "run_id", "")
-			key := toolparam.OptionalString(params, "key", "")
+			runID, err := toolparam.RequireString(params, "run_id")
+			if err != nil {
+				return nil, err
+			}
+			key, err := toolparam.RequireString(params, "key")
+			if err != nil {
+				return nil, err
+			}
 			value := toolparam.OptionalString(params, "value", "")
 			hasValue := value != ""
 
@@ -292,9 +313,18 @@ func buildRunProposeStepResult(store RunLedgerStore, pev *PEVEngine) *agent.Tool
 				return nil, err
 			}
 
-			runID := toolparam.OptionalString(params, "run_id", "")
-			stepID := toolparam.OptionalString(params, "step_id", "")
-			result := toolparam.OptionalString(params, "result", "")
+			runID, err := toolparam.RequireString(params, "run_id")
+			if err != nil {
+				return nil, err
+			}
+			stepID, err := toolparam.RequireString(params, "step_id")
+			if err != nil {
+				return nil, err
+			}
+			result, err := toolparam.RequireString(params, "result")
+			if err != nil {
+				return nil, err
+			}
 
 			var evidence []Evidence
 			if ejson := toolparam.OptionalString(params, "evidence_json", ""); ejson != "" {
@@ -409,10 +439,22 @@ func buildRunApplyPolicy(store RunLedgerStore) *agent.Tool {
 				return nil, err
 			}
 
-			runID := toolparam.OptionalString(params, "run_id", "")
-			stepID := toolparam.OptionalString(params, "step_id", "")
-			action := toolparam.OptionalString(params, "action", "")
-			reason := toolparam.OptionalString(params, "reason", "")
+			runID, err := toolparam.RequireString(params, "run_id")
+			if err != nil {
+				return nil, err
+			}
+			stepID, err := toolparam.RequireString(params, "step_id")
+			if err != nil {
+				return nil, err
+			}
+			action, err := toolparam.RequireString(params, "action")
+			if err != nil {
+				return nil, err
+			}
+			reason, err := toolparam.RequireString(params, "reason")
+			if err != nil {
+				return nil, err
+			}
 
 			decision := PolicyDecision{
 				Action: PolicyAction(action),
@@ -484,8 +526,14 @@ func buildRunApproveStep(store RunLedgerStore, pev *PEVEngine) *agent.Tool {
 				return nil, err
 			}
 
-			runID := toolparam.OptionalString(params, "run_id", "")
-			stepID := toolparam.OptionalString(params, "step_id", "")
+			runID, err := toolparam.RequireString(params, "run_id")
+			if err != nil {
+				return nil, err
+			}
+			stepID, err := toolparam.RequireString(params, "step_id")
+			if err != nil {
+				return nil, err
+			}
 			reason := toolparam.OptionalString(params, "reason", "")
 			if reason == "" {
 				reason = "orchestrator approved"
@@ -559,7 +607,10 @@ func buildRunResume(store RunLedgerStore) *agent.Tool {
 				return nil, err
 			}
 
-			runID := toolparam.OptionalString(params, "run_id", "")
+			runID, err := toolparam.RequireString(params, "run_id")
+			if err != nil {
+				return nil, err
+			}
 			agentName := toolchain.AgentNameFromContext(ctx)
 
 			rm := NewResumeManager(store, time.Hour)

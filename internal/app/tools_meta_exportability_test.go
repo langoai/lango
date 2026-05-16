@@ -172,3 +172,50 @@ func TestEvaluateExportability_PolicyDisabled(t *testing.T) {
 	assert.Equal(t, "needs-human-review", payload["state"])
 	assert.Equal(t, "review_policy_disabled", payload["policy_code"])
 }
+
+func TestEvaluateExportability_RequiresCanonicalInputs(t *testing.T) {
+	store, _ := newExportabilityToolStore(t)
+	tools := buildMetaTools(store, nil, nil, config.SkillConfig{}, newExportabilityToolConfig(true), nil)
+	tool := findTool(tools, "evaluate_exportability")
+	require.NotNil(t, tool)
+
+	cases := []struct {
+		name      string
+		params    map[string]interface{}
+		wantError string
+	}{
+		{
+			name: "missing artifact_label",
+			params: map[string]interface{}{
+				"source_keys": []interface{}{"source-1"},
+				"stage":       "final",
+			},
+			wantError: "missing artifact_label parameter",
+		},
+		{
+			name: "missing stage",
+			params: map[string]interface{}{
+				"artifact_label": "artifact/final-doc",
+				"source_keys":    []interface{}{"source-1"},
+			},
+			wantError: "missing stage parameter",
+		},
+		{
+			name: "missing source_keys",
+			params: map[string]interface{}{
+				"artifact_label": "artifact/final-doc",
+				"stage":          "final",
+			},
+			wantError: "source_keys must not be empty",
+		},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tool.Handler(context.Background(), tt.params)
+			require.Error(t, err)
+			assert.Nil(t, got)
+			assert.ErrorContains(t, err, tt.wantError)
+		})
+	}
+}

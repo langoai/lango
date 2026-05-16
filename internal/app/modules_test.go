@@ -461,6 +461,7 @@ func TestProposalModule_LearningSuggestionEventCreatesAndUpdatesProposal(t *test
 
 	vals := result.Values[appinit.ProvidesProposal].(*proposalValues)
 	require.NotNil(t, vals.registry)
+	now := time.Now().UTC()
 
 	bus.Publish(eventbus.LearningSuggestionEvent{
 		SessionKey:   "sess-1",
@@ -469,7 +470,7 @@ func TestProposalModule_LearningSuggestionEventCreatesAndUpdatesProposal(t *test
 		ProposedRule: "Use bounded retry",
 		Confidence:   0.61,
 		Rationale:    "Repeated timeout failures benefited from bounded retry.",
-		Timestamp:    time.Date(2026, 5, 3, 12, 0, 0, 0, time.UTC),
+		Timestamp:    now,
 	})
 
 	items := vals.registry.ListBySession("sess-1")
@@ -485,7 +486,7 @@ func TestProposalModule_LearningSuggestionEventCreatesAndUpdatesProposal(t *test
 		ProposedRule: "Use bounded retry",
 		Confidence:   0.84,
 		Rationale:    "Updated rationale.",
-		Timestamp:    time.Date(2026, 5, 3, 12, 5, 0, 0, time.UTC),
+		Timestamp:    now.Add(5 * time.Minute),
 	})
 
 	items = vals.registry.ListBySession("sess-1")

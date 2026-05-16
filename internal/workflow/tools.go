@@ -36,6 +36,9 @@ func BuildTools(engine *Engine, stateDir string, defaultDeliverTo []string) []*a
 				if filePath == "" && yamlContent == "" {
 					return nil, fmt.Errorf("either file_path or yaml_content is required")
 				}
+				if filePath != "" && yamlContent != "" {
+					return nil, fmt.Errorf("file_path and yaml_content are mutually exclusive")
+				}
 
 				var w *Workflow
 				var err error

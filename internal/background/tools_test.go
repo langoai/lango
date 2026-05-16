@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/langoai/lango/internal/agent"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -85,4 +86,68 @@ func TestBuildTools_SubmitPropagatesMissionLinkFailure(t *testing.T) {
 	}
 
 	t.Fatal("bg_submit tool not found")
+}
+
+func TestBuildTools_RequireCanonicalInputs(t *testing.T) {
+	t.Parallel()
+
+	mgr := NewManager(&mockRunner{result: "done"}, nil, 2, time.Minute, testLogger())
+	tools := BuildTools(mgr, nil, nil)
+
+	testCases := []struct {
+		name    string
+		tool    string
+		params  map[string]interface{}
+		wantErr string
+	}{
+		{
+			name:    "submit requires prompt",
+			tool:    "bg_submit",
+			params:  map[string]interface{}{},
+			wantErr: "missing prompt parameter",
+		},
+		{
+			name:    "status requires task id",
+			tool:    "bg_status",
+			params:  map[string]interface{}{},
+			wantErr: "missing task_id parameter",
+		},
+		{
+			name:    "result requires task id",
+			tool:    "bg_result",
+			params:  map[string]interface{}{},
+			wantErr: "missing task_id parameter",
+		},
+		{
+			name:    "cancel requires task id",
+			tool:    "bg_cancel",
+			params:  map[string]interface{}{},
+			wantErr: "missing task_id parameter",
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			result, err := findBackgroundTool(t, tools, tc.tool).Handler(context.Background(), tc.params)
+			require.Error(t, err)
+			assert.Nil(t, result)
+			assert.EqualError(t, err, tc.wantErr)
+		})
+	}
+}
+
+func findBackgroundTool(t *testing.T, tools []*agent.Tool, name string) *agent.Tool {
+	t.Helper()
+
+	for _, tool := range tools {
+		if tool.Name == name {
+			return tool
+		}
+	}
+
+	t.Fatalf("tool %q not found", name)
+	return nil
 }

@@ -136,3 +136,89 @@ func TestOpenKnowledgeExchangeTransaction_SelectKnowledgeExchangePath_ReturnsBra
 	require.NoError(t, err)
 	assert.Equal(t, receipts.RuntimeStatusPaymentApproved, stored.KnowledgeExchangeRuntimeStatus)
 }
+
+func TestSelectKnowledgeExchangePath_RequiresTransactionReceiptIDParameter(t *testing.T) {
+	t.Parallel()
+
+	tool := findTool(buildMetaTools(nil, nil, nil, config.SkillConfig{}, nil, receipts.NewStore()), "select_knowledge_exchange_path")
+	require.NotNil(t, tool)
+
+	got, err := tool.Handler(context.Background(), map[string]interface{}{})
+	require.Error(t, err)
+	assert.Nil(t, got)
+	assert.ErrorContains(t, err, "missing transaction_receipt_id parameter")
+}
+
+func TestOpenKnowledgeExchangeTransaction_RequiresCanonicalOpenInputs(t *testing.T) {
+	t.Parallel()
+
+	tool := findTool(buildMetaTools(nil, nil, nil, config.SkillConfig{}, nil, receipts.NewStore()), "open_knowledge_exchange_transaction")
+	require.NotNil(t, tool)
+
+	cases := []struct {
+		name      string
+		params    map[string]interface{}
+		wantError string
+	}{
+		{
+			name: "missing transaction_id",
+			params: map[string]interface{}{
+				"counterparty":    "did:lango:peer-1",
+				"requested_scope": "artifact/research-note",
+				"price_context":   "quote:0.50-usdc",
+				"trust_context":   "trust:0.71",
+			},
+			wantError: "missing transaction_id parameter",
+		},
+		{
+			name: "missing counterparty",
+			params: map[string]interface{}{
+				"transaction_id":  "deal-tool-open-1",
+				"requested_scope": "artifact/research-note",
+				"price_context":   "quote:0.50-usdc",
+				"trust_context":   "trust:0.71",
+			},
+			wantError: "missing counterparty parameter",
+		},
+		{
+			name: "missing requested_scope",
+			params: map[string]interface{}{
+				"transaction_id": "deal-tool-open-1",
+				"counterparty":   "did:lango:peer-1",
+				"price_context":  "quote:0.50-usdc",
+				"trust_context":  "trust:0.71",
+			},
+			wantError: "missing requested_scope parameter",
+		},
+		{
+			name: "missing price_context",
+			params: map[string]interface{}{
+				"transaction_id":  "deal-tool-open-1",
+				"counterparty":    "did:lango:peer-1",
+				"requested_scope": "artifact/research-note",
+				"trust_context":   "trust:0.71",
+			},
+			wantError: "missing price_context parameter",
+		},
+		{
+			name: "missing trust_context",
+			params: map[string]interface{}{
+				"transaction_id":  "deal-tool-open-1",
+				"counterparty":    "did:lango:peer-1",
+				"requested_scope": "artifact/research-note",
+				"price_context":   "quote:0.50-usdc",
+			},
+			wantError: "missing trust_context parameter",
+		},
+	}
+
+	for _, tt := range cases {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := tool.Handler(context.Background(), tt.params)
+			require.Error(t, err)
+			assert.Nil(t, got)
+			assert.ErrorContains(t, err, tt.wantError)
+		})
+	}
+}

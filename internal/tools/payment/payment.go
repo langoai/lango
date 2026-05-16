@@ -135,14 +135,22 @@ func buildSendTool(svc ServiceAPI, gate PaymentExecutionGate, trail PaymentExecu
 			"required": []string{"to", "transaction_receipt_id", "amount", "purpose"},
 		},
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-			to := toolparam.OptionalString(params, "to", "")
-			transactionReceiptID := toolparam.OptionalString(params, "transaction_receipt_id", "")
+			to, err := toolparam.RequireString(params, "to")
+			if err != nil {
+				return nil, err
+			}
+			transactionReceiptID, err := toolparam.RequireString(params, "transaction_receipt_id")
+			if err != nil {
+				return nil, err
+			}
 			submissionReceiptID := toolparam.OptionalString(params, "submission_receipt_id", "")
-			amount := toolparam.OptionalString(params, "amount", "")
-			purpose := toolparam.OptionalString(params, "purpose", "")
-
-			if to == "" || amount == "" || purpose == "" {
-				return nil, fmt.Errorf("to, amount, and purpose are required")
+			amount, err := toolparam.RequireString(params, "amount")
+			if err != nil {
+				return nil, err
+			}
+			purpose, err := toolparam.RequireString(params, "purpose")
+			if err != nil {
+				return nil, err
 			}
 
 			allowed, denied, err := CheckDirectPaymentExecution(ctx, "payment_send", transactionReceiptID, submissionReceiptID, gate, trail, auditor)
@@ -408,9 +416,9 @@ func buildX402FetchTool(interceptor *x402.Interceptor, svc ServiceAPI) *agent.To
 			"required": []string{"url"},
 		},
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-			url := toolparam.OptionalString(params, "url", "")
-			if url == "" {
-				return nil, fmt.Errorf("url is required")
+			url, err := toolparam.RequireString(params, "url")
+			if err != nil {
+				return nil, err
 			}
 
 			method := toolparam.OptionalString(params, "method", "")

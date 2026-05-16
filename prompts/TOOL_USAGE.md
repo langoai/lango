@@ -11,6 +11,7 @@
 - **OS sandbox awareness.** When `sandbox.enabled=true`, every exec command runs under kernel-level isolation: workspace + `/tmp` writable, the lango control-plane (`~/.lango`) and the workspace's `.git` directory are denied (read AND write). Do not try to read or modify files under `~/.lango` from exec — those operations will fail. If the user has listed a command in `sandbox.excludedCommands` (e.g. `git`, `docker`), those specific basenames bypass the sandbox entirely and run unsandboxed; this is recorded in audit and is the user's explicit decision, not yours to expand. Do not invent shell tricks (`/usr/bin/git ...`, basename aliasing) to bypass the sandbox — assume the user wants the policy applied.
 - Prefer read-only commands first (`cat`, `ls`, `grep`, `ps`) before modifying anything.
 - Set appropriate timeouts for long-running commands. Default is 30 seconds.
+- `exec` and `exec_bg` require `command`. `exec_status` and `exec_stop` require the background-process `id`; missing those inputs fails before any command execution or status lookup begins.
 - Use background execution (`exec_bg`) for processes that run indefinitely (servers, watchers). Monitor with `exec_status`, stop with `exec_stop`.
 - Use reference tokens in commands when secrets are needed: `curl -H "Authorization: Bearer {{secret:api-key}}" https://api.example.com`. The token resolves at execution time.
 - Chain related commands with `&&` for atomic sequences: `cd /app && go build ./...`.
@@ -18,6 +19,8 @@
 
 ### Filesystem Tool
 - Always verify existence before modifying: use `fs_read` or `fs_list` to confirm the target exists and contains what you expect.
+- `fs_list` accepts an optional `path`; when omitted, it lists the current working directory.
+- `fs_write` requires both `path` and `content`. `fs_edit` requires `path`, `startLine`, `endLine`, and `content`; missing required edit inputs fail before any file mutation begins.
 - Follow the read-modify-write pattern: read the current content, apply changes, write the result.
 - Writes are atomic — the file is written to a temporary location first, then renamed. This prevents partial writes.
 - Respect the 10MB read size limit. For larger files, use exec tool with `head`, `tail`, or `awk` to read specific sections.
@@ -25,6 +28,7 @@
 
 ### Browser Tool
 - Sessions are created automatically on the first browser action — you do not need to manage session lifecycle.
+- `browser_search` requires `query`. `browser_navigate` requires `url`; missing those top-level inputs fails before any session creation or network navigation begins.
 - Use `browser_search` for open-ended live web queries instead of manually driving a search engine page.
 - Call `browser_search` ONCE. If it returns results (`resultCount > 0`), do NOT call `browser_search` again — present the results or use `browser_navigate` on a result URL for details.
 - You may reformulate and call `browser_search` EXACTLY once more, only when the first search returns zero results or results clearly unrelated to the request. This is your last search.
@@ -37,12 +41,20 @@
 - Use `browser_extract` with mode `search_results` to pull result cards from a search page, or `article` to pull the main readable content.
 - If the user asks for a fixed number of items such as "3 news articles", stop searching once you have that many credible candidates. Do not expand beyond the requested count.
 - If a browser action is denied by approval or the approval request expires, do not immediately retry the exact same browser action. Explain the approval issue or choose a materially different lower-risk browser step instead.
+- `browser_action` enforces action-specific required inputs: `click`, `get_text`, `get_element_info`, and `wait` require `selector`; `type` requires both `selector` and `text`; `eval` requires JavaScript in `text`.
 - Use `browser_action` with action `wait` (selector, timeout) before clicking or typing on dynamically loaded elements.
 - Capture screenshots with `browser_screenshot` to verify visual state when interactions produce visual changes.
 - Use `browser_action` with action `eval` (JavaScript) for operations that CSS selectors cannot express, such as scrolling, reading computed styles, or interacting with shadow DOM.
 - Sessions expire after 5 minutes of inactivity.
 
+### Web Retrieval Tool
+- Use `web_search` for lightweight web search when you need structured results without starting a browser session.
+- Use `web_fetch` when you already have a URL and need text, HTML, or markdown extraction without browser interaction.
+- `web_search` requires `query`. `web_fetch` requires `url`; missing those inputs fails before any HTTP request begins.
+- Use `browser_*` instead when the task needs screenshots, DOM interaction, clicking, typing, or page-state inspection.
+
 ### Crypto Tool
+- `crypto_encrypt`, `crypto_sign`, and `crypto_hash` require `data`. `crypto_decrypt` requires `ciphertext`; missing required crypto input fails before any key lookup or cryptographic operation begins.
 - Encrypted data is returned as base64 — safe to store or transmit.
 - Decrypted data is **never returned to you**. Decryption produces a reference token (`{{decrypt:id}}`) that you pass to exec commands for use.
 - Use `crypto_hash` for integrity verification (SHA-256/SHA-512). Hashes are safe to display.
@@ -50,6 +62,7 @@
 - Use `crypto_keys` to list available keys before attempting encryption or signing.
 
 ### Secrets Tool
+- `secrets_store` requires both `name` and `value`. `secrets_get` and `secrets_delete` require `name`; missing required secret input fails before any store lookup or mutation begins.
 - `secrets_store` encrypts and saves a secret. Use this for API keys, tokens, and credentials the user wants to persist.
 - `secrets_get` returns a reference token (`{{secret:name}}`), not the actual value. Use this token in exec commands.
 - `secrets_list` shows metadata (name, creation date, access count) without revealing values.
@@ -78,6 +91,7 @@
 ### Graph Tool
 - `graph_traverse` traverses the knowledge graph from a start node using BFS. Specify `start_node` (required), optional `max_depth` (default 2), and optional `predicates` array to filter by predicate types. Returns matching triples and count.
 - `graph_query` queries the knowledge graph by subject or object node. Provide `subject` and/or `object`, with optional `predicate` filter. At least one of subject or object is required. Returns matching triples and count.
+- Missing required graph inputs fail before graph traversal or lookup begins.
 
 ### Memory Tool (Observational)
 - `memory_list_observations` lists observations for a session. Specify optional `session_key` (uses current session if empty). Returns compressed notes from conversation history.
@@ -87,9 +101,21 @@
 - `memory_agent_save` saves a persistent memory entry for this agent. Specify `key` (required), `content` (required), optional `kind` (pattern, preference, fact, skill — default: fact), optional `tags` array, and optional `confidence` (0.0-1.0, default 0.5). Memories persist across sessions.
 - `memory_agent_recall` searches agent memories. Specify `query` (required), optional `limit` (default 10), and optional `kind` filter. Searches across instance and global scopes. Increments use count for returned results.
 - `memory_agent_forget` deletes a specific memory entry by `key`. Permanently removes the memory.
+- Missing required agent-memory inputs fail before memory store lookup or mutation begins.
+
+### Agent Control Plane Tool
+- `agent_spawn` creates an inspectable child `AgentRun`. Specify `instruction` (required), optional advisory `agent`, optional `spawn_reason`, optional `timeout`, and optional `allowed_tools`. Missing `instruction` fails at the wrapper before any run row or background submission is created.
+- `agent_wait` waits for a child `AgentRun` to reach terminal state. Specify `agent_id` (required) and optional `timeout` (default 300 seconds). Missing `agent_id` fails before run-store lookup begins.
+- `agent_stop` cancels a child `AgentRun`. Specify `agent_id` (required). Missing `agent_id` fails before cancellation begins.
+
+### Task Tool
+- `task_create` creates a lightweight operational task entry. Specify `title` (required), optional `description`, and optional `parent_id`. Missing `title` fails before task creation begins.
+- `task_get` reads a task entry by `task_id` (required). Missing `task_id` fails before task-store lookup begins.
+- `task_list` lists task entries with optional `status` and `parent_id` filters.
+- `task_update` updates a task entry. Specify `task_id` (required), plus optional `status` and/or `description`. Missing `task_id` fails before task-store mutation begins.
 
 ### Payment Tool
-- `payment_send` sends a USDC payment on Base blockchain. Specify `to` (recipient address), `amount` (USDC, e.g. "0.50"), and `purpose`. Requires approval.
+- `payment_send` sends a USDC payment on Base blockchain. Specify required `to` (recipient address), `transaction_receipt_id`, `amount` (USDC, e.g. "0.50"), and `purpose`. Requires approval.
 - `payment_balance` checks the USDC balance of the agent wallet. Returns balance, currency, address, chain ID, and network name.
 - `payment_history` views recent payment transaction history. Optional `limit` parameter (default 20).
 - `payment_limits` shows current spending limits (maxPerTx, maxDaily), daily spent, and daily remaining.
@@ -114,6 +140,8 @@
 - `cron_pause` and `cron_resume` control job execution without deleting the schedule. Specify `id`.
 - `cron_remove` permanently deletes a job and its history. Specify `id`.
 - `cron_history` shows past executions. Optional `job_id` filter and `limit` (default 20).
+- `cron_list` and `cron_history` are read-only query paths; use them for schedule and execution inspection without mutating scheduler state.
+- Missing required cron inputs fail before scheduler lookup or mutation begins.
 - Each job runs in an isolated session by default. Specify `deliver_to` to send results to a channel (telegram, discord, slack).
 
 ### Background Tool
@@ -122,6 +150,7 @@
 - `bg_list` shows all background tasks with their current status.
 - `bg_result` retrieves the output of a completed task. Specify `task_id`. Only works when the task status is `done`.
 - `bg_cancel` cancels a pending or running background task. Specify `task_id`.
+- Missing required background inputs fail before queue submission or task lookup begins.
 - Background tasks are ephemeral (in-memory only) and do not persist across server restarts.
 
 ### Workflow Tool
@@ -130,6 +159,7 @@
 - `workflow_list` lists recent workflow executions. Optional `limit` (default 20).
 - `workflow_cancel` stops a running workflow. Specify `run_id`. Steps already completed retain their results.
 - `workflow_save` saves a YAML workflow definition to the workflows directory for reuse. Specify `name` and `yaml_content`. The YAML is validated before saving.
+- Missing required workflow inputs fail before workflow lookup, cancellation, or file writes begin.
 - Workflow YAML defines steps with `id`, `agent`, `prompt`, and optional `depends_on` for DAG ordering. Use `{{step-id.result}}` to reference outputs from previous steps.
 
 ### MCP Tool
@@ -149,10 +179,11 @@
 - `p2p_firewall_rules` lists current firewall ACL rules. Default policy is deny-all.
 - `p2p_firewall_add` adds a new firewall rule. Specify `peer_did` ("*" for all), `action` (allow/deny), optional `tools` (patterns), and optional `rate_limit` (max requests per minute).
 - `p2p_firewall_remove` removes all rules matching a given `peer_did`.
-- `p2p_pay` sends a USDC payment to a connected peer by `peer_did`. Specify `amount` (USDC, e.g. "0.50") and optional `memo`. Requires an active session with the peer. Payments below the `autoApproveBelow` threshold are auto-approved without user confirmation; larger amounts require explicit approval.
+- `p2p_pay` sends a USDC payment to a connected peer by `peer_did`. Specify required `peer_did`, `transaction_receipt_id`, and `amount` (USDC, e.g. "0.50"), plus optional `submission_receipt_id` and `memo`. Requires an active session with the peer. If `transaction_receipt_id` is omitted, the tool fails immediately with an actionable missing-parameter error. Payments below the `autoApproveBelow` threshold are auto-approved without user confirmation; larger amounts require explicit approval.
 - `p2p_price_query` queries the pricing for a specific tool on a remote peer before invoking it. Specify `peer_did` and `tool_name`. Returns tool name, price, currency, USDC contract, chain ID, seller address, quote expiry, and whether the tool is free.
 - `p2p_reputation` checks a peer's trust score and exchange history (successes, failures, timeouts). Specify `peer_did`. Always check reputation for unfamiliar peers before sending payments or invoking expensive tools.
 - `p2p_invoke_paid` automates buyer-side paid tool invocation: queries price, checks spending limits, signs EIP-3009 authorization, and executes the paid call. Specify `peer_did`, `tool_name`, and optional `params` (JSON string). Free tools are invoked directly. For paid tools exceeding the auto-approve threshold, returns `approval_required` status. Records spending after successful paid invocation.
+- Missing required P2P wrapper inputs fail before session lookup, remote invocation, pricing lookup, or firewall mutation begin.
 - **Paid tool workflow**: (1) `p2p_discover` to find peers, (2) `p2p_reputation` to verify trust, (3) `p2p_invoke_paid` for automatic price query + payment + invocation — or manually: (3a) `p2p_price_query` to check cost, (4) `p2p_pay` to send payment, (5) `p2p_query` to invoke the tool.
 - **Inbound tool invocations** from remote peers pass through a three-stage gate on the local node: (1) firewall ACL check, (2) reputation score verification against `minTrustScore`, and (3) owner approval (auto-approved for paid tools below `autoApproveBelow`, otherwise interactive confirmation).
 - REST API also exposes `GET /api/p2p/reputation?peer_did=<did>` and `GET /api/p2p/pricing?tool=<name>` for external integrations.
@@ -172,11 +203,14 @@
 - `p2p_workspace_status` shows detailed status of a P2P workspace including members and contributions. Specify `workspaceId` (required). Returns workspace details, `members` array (DID, name, role, joinedAt), and `contributions` array (DID, commits, codeBytes, messages, lastActive) if contribution tracking is enabled. **Safety: Safe**.
 - `p2p_workspace_post` posts a message to a P2P workspace, broadcast to all members via GossipSub. Specify `workspaceId` (required), `content` (required), optional `type` (TASK_PROPOSAL, LOG_STREAM, COMMIT_SIGNAL, KNOWLEDGE_SHARE — default KNOWLEDGE_SHARE), and optional `parentId` for replies. **Safety: Dangerous**.
 - `p2p_workspace_read` reads messages from a P2P workspace. Specify `workspaceId` (required), optional `limit` (default 20), and optional `type` to filter by message type. Returns `messages` array (id, type, sender, content, parentId, timestamp) and `count`. **Safety: Safe**.
+- `p2p_workspace_list` and `p2p_workspace_status` are query-classified inspection paths. `p2p_workspace_read`, `p2p_git_log`, `p2p_git_diff`, and `p2p_git_leaves` are read-classified inspection paths for stored workspace state and repository review.
+- Missing required workspace inputs fail before workspace lookup, membership mutation, or message persistence begin.
 - `p2p_git_init` initializes a git repository for a P2P workspace. Specify `workspaceId` (required). **Safety: Dangerous**.
 - `p2p_git_push` creates a git bundle from the workspace repo and broadcasts a commit signal to peers. Specify `workspaceId` (required) and optional `message` (push description). Returns `pushed`, `headCommit`, `bundleSize`, and `message`. **Safety: Dangerous**.
 - `p2p_git_log` shows the commit log for a workspace's git repository. Specify `workspaceId` (required) and optional `limit` (default 20). Returns `commits` array (hash, message, author, timestamp) and `count`. **Safety: Safe**.
 - `p2p_git_diff` shows the diff between two commits in a workspace repository. Specify `workspaceId` (required), `from` (source commit hash, required), and `to` (target commit hash, required). Returns the `diff` content. **Safety: Safe**.
 - `p2p_git_leaves` finds DAG leaf commits (commits with no children) in a workspace repository. Specify `workspaceId` (required). Returns `leaves` array and `count`. **Safety: Safe**.
+- Missing required git inputs fail before repository lookup, bundle creation, or diff resolution begin.
 - **Workspace workflow**: (1) `p2p_workspace_create` to create a shared workspace, (2) `p2p_workspace_post` to coordinate via messages, (3) `p2p_git_init` to initialize a git repo, (4) `p2p_git_push` to share code bundles, (5) `p2p_git_log`/`p2p_git_diff` to review changes.
 
 ### Team Tools
@@ -190,7 +224,7 @@
 - **Team workflow**: (1) `team_form` or `team_form_with_budget` to assemble a team, (2) `team_delegate` to distribute work to all workers, (3) `team_status` to monitor progress, (4) `team_complete_milestone` to mark milestones and release escrow funds, (5) `team_disband` when the task is complete.
 
 ### Output Tools
-- `tool_output_get` retrieves full or partial stored tool output by reference. When a tool result is too large, it is compressed and a reference token is returned in `_meta.storedRef`. Use this tool to access the original output. Specify `ref` (required — the UUID from `_meta.storedRef`), optional `mode` (`full` (default), `range`, or `grep`), optional `offset` (line offset for range mode, 0-indexed, default 0), optional `limit` (max lines for range mode, default 100), and optional `pattern` (regex pattern for grep mode). Returns `content` for full mode, `content`/`totalLines`/`offset`/`limit` for range mode, or `matches` for grep mode. Returns an error if the reference is not found or expired (10-minute TTL). **Safety: Safe**.
+- `tool_output_get` retrieves full or partial stored tool output by reference. When a tool result is too large, it is compressed and a reference token is returned in `_meta.storedRef`. Use this tool to access the original output. Specify `ref` (required — the UUID from `_meta.storedRef`), optional `mode` (`full` (default), `range`, or `grep`), optional `offset` (line offset for range mode, 0-indexed, default 0), optional `limit` (max lines for range mode, default 100), and optional `pattern` (regex pattern for grep mode, required when `mode=grep`). Returns `content` for full mode, `content`/`totalLines`/`offset`/`limit` for range mode, or `matches` for grep mode. Returns an error if the reference is not found or expired (10-minute TTL). **Safety: Safe**.
 
 ### Economy Tool
 - `economy_budget_allocate` allocates a spending budget for a task. Specify `taskId` (required) and optional `amount` (USDC, e.g. '5.00'). Returns budget ID and status.
@@ -200,7 +234,8 @@
 - `economy_price_quote` gets a price quote for a tool invocation, optionally applying peer-specific trust discounts. Specify `toolName` (required) and optional `peerDid`. Returns tool name, base price, final price, currency, or isFree.
 - `economy_negotiate` starts a price negotiation with a peer. Specify `peerDid`, `toolName`, and `price` (USDC). Returns session ID, phase, and round number.
 - `economy_negotiate_status` checks the status of a negotiation session by `sessionId`. Returns current phase, round, max rounds, initiator/responder DIDs, and current terms.
-- `economy_escrow_create` creates a milestone-based escrow (economy-layer version). Specify `buyerDid`, `sellerDid`, `amount`, optional `reason`, and `milestones` array. Returns escrow ID, status, and amount.
+- Missing required economy inputs fail before budget lookup, risk assessment, negotiation lookup, or pricing lookup begin.
+- `economy_escrow_create` creates a milestone-based escrow (economy-layer version). Specify required `buyerDid`, `sellerDid`, `amount`, and `milestones` array, plus optional `reason`. Returns escrow ID, status, and amount.
 - `economy_escrow_milestone` completes a milestone in an economy-layer escrow. Specify `escrowId`, `milestoneId`, and optional `evidence`.
 - `economy_escrow_status` checks economy-layer escrow status with milestones. Specify `escrowId`.
 - `economy_escrow_release` releases economy-layer escrow funds to the seller. Specify `escrowId`.
@@ -218,13 +253,14 @@
 - `escrow_resolve` resolves a disputed escrow as arbitrator. Specify `escrowId`, `favor` (buyer/seller), and `sellerPercent` (0-100). Returns `escrowId`, `favor`, `sellerAmount`, `buyerAmount`, and `onChainTxHash` (if on-chain).
 - `escrow_status` gets detailed escrow status including on-chain state if available. Specify `escrowId`. Returns `escrowId`, `buyerDid`, `sellerDid`, `amount`, `status`, `reason`, `milestones`, `expiresAt`, plus `onChainStatus`/`onChainAmount` if on-chain.
 - `escrow_list` lists all escrows with optional filter. Specify optional `filter` (all/active/disputed) and optional `peerDid`. Returns `count` and `escrows[]`.
+- Missing required on-chain escrow inputs fail before escrow lookup, dispute mutation, or settlement execution begin.
 - **Escrow workflow (on-chain)**: (1) `escrow_create` to set up the deal, (2) `escrow_fund` to deposit USDC, (3) `escrow_activate` to begin work, (4) `escrow_submit_work` to submit proof, (5) `escrow_release` to pay the seller — or `escrow_dispute` to raise a dispute, then `escrow_resolve` to settle.
 
 ### Sentinel Tool
 - `sentinel_status` gets Security Sentinel engine status including running state and alert counts. No parameters required.
 - `sentinel_alerts` lists security alerts with optional severity filter. Specify optional `severity` (critical/high/medium/low) and optional `limit` (default 20). Returns `count` and `alerts[]`.
 - `sentinel_config` shows current Security Sentinel detection thresholds. No parameters required. Returns `rapidCreationWindow`, `rapidCreationMax`, `largeWithdrawalAmount`, and other threshold values.
-- `sentinel_acknowledge` acknowledges and dismisses a security alert by ID. Specify `alertId`. Returns `alertId` and `acknowledged`.
+- `sentinel_acknowledge` acknowledges and dismisses a security alert by ID. This is the dangerous write-path for alert state. Specify `alertId` (required). Missing `alertId` fails before alert-store mutation begins. Returns `alertId` and `acknowledged`.
 
 ### Smart Account Tool
 - `smart_account_deploy` deploys a new Safe smart account with ERC-7579 modules. Returns `address`, `isDeployed`, `ownerAddress`, `chainId`, `entryPoint`, and `modules` array. **Safety: Dangerous** — creates an on-chain smart account.
@@ -239,6 +275,7 @@
 - `spending_status` views on-chain spending status and registered module information. Optional `session_id` to query spending for a specific session. Returns `onChainSpent` (if session specified) and `registeredModules` array with name, address, type, version. **Safety: Safe**.
 - `paymaster_status` checks paymaster configuration and provider type. Returns `enabled` (bool) and `provider` (circle/pimlico/alchemy/none). **Safety: Safe**.
 - `paymaster_approve` approves USDC spending for the paymaster contract. Specify `token_address` (required, hex), `paymaster_address` (required, hex), and `amount` (required, USDC e.g. '1000.00' or 'max' for unlimited). Returns `txHash`, `token`, `paymaster`, `amount`, `status`. **Safety: Dangerous** — approves token spending.
+- Missing required smart-account inputs fail before session creation, policy validation, module mutation, or paymaster approval submission begin.
 - **Smart Account workflow**: (1) `smart_account_deploy` to create a Safe account, (2) `session_key_create` to create scoped session keys, (3) `policy_check` to validate calls before executing, (4) `session_execute` to execute transactions via session keys, (5) `spending_status` to monitor on-chain spending.
 - **Paymaster workflow**: (1) `paymaster_status` to check paymaster configuration, (2) `paymaster_approve` to approve USDC for the paymaster, then transactions via `session_execute` will be gasless.
 - **NEVER use exec to run `lango account` commands** — these require passphrase authentication. Use the built-in smart account tools instead.
@@ -247,6 +284,7 @@
 - `contract_abi_load` pre-loads and caches a contract ABI for faster subsequent calls. Provide `address` and `abi` (JSON string), and optionally `chainId`. Always load the ABI before calling read/write methods.
 - `contract_read` calls a view/pure smart contract method (no gas cost, no state change). Specify `address`, `abi`, `method`, and optional `args` array and `chainId`. Returns the decoded result.
 - `contract_call` sends a state-changing transaction to a smart contract (costs gas). Specify `address`, `abi`, `method`, optional `args`, optional `value` (ETH to send, e.g. '0.01'), and optional `chainId`. Requires a funded wallet. Returns transaction hash and gas used.
+- Missing required contract inputs fail before ABI parsing, RPC reads, cache mutation, or transaction submission begin.
 - **Contract workflow**: (1) `contract_abi_load` to cache the ABI, (2) `contract_read` to inspect state, (3) `contract_call` only when state changes are needed.
 
 ### Error Handling
