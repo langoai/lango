@@ -157,19 +157,20 @@ func TestChannelCheck_Run_TelegramEnabledNoToken(t *testing.T) {
 }
 
 func TestNetworkCheck_Run_PortAvailable(t *testing.T) {
+	port := freeTCPPort(t)
 	cfg := &config.Config{
 		Server: config.ServerConfig{
 			Host: "127.0.0.1",
-			Port: 19999, // Use a high port unlikely to be in use
+			Port: port,
 		},
 	}
 
 	check := &NetworkCheck{}
 	result := check.Run(context.Background(), cfg)
 
-	if result.Status != StatusPass {
-		t.Errorf("expected StatusPass, got %v: %s", result.Status, result.Message)
-	}
+	assert.Equal(t, StatusPass, result.Status, result.Message)
+	assert.Equal(t, "Port "+strconv.Itoa(port)+" available", result.Message)
+	assert.Equal(t, "127.0.0.1:"+strconv.Itoa(port), result.Details)
 }
 
 func TestNetworkCheck_Run_PortInUseReportsConflict(t *testing.T) {
@@ -271,6 +272,20 @@ func freeIPv6Port(t *testing.T) int {
 	if err != nil {
 		t.Skipf("IPv6 loopback is unavailable: %v", err)
 	}
+	defer listener.Close()
+
+	_, portText, err := net.SplitHostPort(listener.Addr().String())
+	require.NoError(t, err)
+	port, err := strconv.Atoi(portText)
+	require.NoError(t, err)
+	return port
+}
+
+func freeTCPPort(t *testing.T) int {
+	t.Helper()
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
 	defer listener.Close()
 
 	_, portText, err := net.SplitHostPort(listener.Addr().String())

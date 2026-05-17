@@ -37,11 +37,11 @@ The `internal/tools/crypto/` and `internal/tools/secrets/` packages SHALL have t
 - **THEN** it SHALL cover hashing, encrypt/decrypt round trips, signing, key listing, secret lifecycle operations, and secret upsert behavior
 
 ### REQ-5: Existing Test Enhancements
-Existing test files SHALL be expanded with additional scenarios.
+Existing test files SHALL be expanded with additional scenarios and SHALL avoid fixed-port assumptions where the OS can allocate an available loopback port.
 
 #### Scenario: Existing package tests gain targeted enhancements
 - **WHEN** the enhanced regression suite runs
-- **THEN** it SHALL cover session-store CRUD and TTL behavior, anthropic model listing, openai unavailable-server handling, app startup failure modes, and doctor non-conflict listen failures
+- **THEN** it SHALL cover session-store CRUD and TTL behavior, anthropic model listing, openai unavailable-server handling, app startup failure modes, doctor non-conflict listen failures, and doctor port-available checks without fixed-port assumptions
 
 ### REQ-6: Channel Mock Thread Safety
 Channel test mock types SHALL use mutex synchronization to protect shared slices from concurrent access by handler goroutines and test assertions.
