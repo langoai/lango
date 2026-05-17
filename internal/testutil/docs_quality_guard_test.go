@@ -171,6 +171,30 @@ func TestPublicDocsExplainBareRootNonInteractiveFallback(t *testing.T) {
 	}
 }
 
+func TestP2PDocsExplainConnectTimeoutContract(t *testing.T) {
+	t.Parallel()
+
+	repoRoot := docsQualityRepoRoot(t)
+	target := filepath.Join(repoRoot, "docs", "cli", "p2p.md")
+
+	data, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatalf("read %s: %v", target, err)
+	}
+	text := string(data)
+
+	requiredSnippets := []string{
+		"`lango p2p connect` uses `p2p.handshakeTimeout` as its connection timeout",
+		"falls back to 30 seconds when that setting is unset or invalid",
+		"Canceling the command context also cancels the in-flight connect attempt",
+	}
+	for _, snippet := range requiredSnippets {
+		if !strings.Contains(text, snippet) {
+			t.Fatalf("%s is missing P2P connect timeout contract snippet %q", target, snippet)
+		}
+	}
+}
+
 func TestArchitectureProjectStructureUsesCurrentGraphAndMetricsCLISurface(t *testing.T) {
 	t.Parallel()
 

@@ -197,6 +197,27 @@ Repository-level regressions in background CLI boundary messaging SHALL be enfor
 - **THEN** executable tests SHALL fail if the error implies `lango serve` alone makes standalone `lango bg` work
 - **AND** executable docs guards SHALL fail if public docs list `lango bg` commands without the in-memory/root-CLI boundary caveat
 
+### Requirement: P2P connect timeout coverage stays executable
+Executable tests SHALL cover `lango p2p connect` command-context cancellation, timeout selection, and cleanup on connect failure.
+
+#### Scenario: P2P connect context coverage blocks regressions
+- **WHEN** P2P connect tests run
+- **THEN** they SHALL fail if connect uses `context.Background()` instead of a command-derived context
+- **AND** they SHALL fail if configured positive `p2p.handshakeTimeout` is not used
+- **AND** they SHALL fail if a shorter parent command deadline is reported as the configured timeout
+- **AND** they SHALL fail if an earlier configured timeout is reported as a later parent command deadline
+- **AND** they SHALL fail if the 30 second fallback is not used for invalid timeout values
+- **AND** they SHALL fail if cleanup is skipped after connect failure
+
+### Requirement: P2P connect docs guard stays executable
+Executable docs quality coverage SHALL fail when public P2P CLI docs omit the bounded connect timeout and cancellation contract.
+
+#### Scenario: P2P docs guard checks connect timeout contract
+- **WHEN** docs quality tests run
+- **THEN** `docs/cli/p2p.md` SHALL be checked for the `p2p.handshakeTimeout` connect timeout contract
+- **AND** it SHALL be checked for the 30 second fallback
+- **AND** it SHALL be checked for command cancellation behavior
+
 ### Requirement: CLI pretty-JSON writer guards stay executable
 Repository-level CLI pretty-JSON writer regressions that are cheap to detect mechanically SHALL be enforced by executable tests instead of relying only on manual review.
 

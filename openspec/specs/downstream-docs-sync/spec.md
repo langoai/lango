@@ -152,6 +152,15 @@ Public documentation that lists `lango bg` commands SHALL explain that the curre
 - **WHEN** a user reads README, `docs/cli/index.md`, or `docs/automation/background.md`
 - **THEN** any `lango bg list/status/cancel/result` command reference SHALL be accompanied by a caveat that task state is in-memory and root CLI management is not yet connected to the running server process
 
+### Requirement: P2P connect docs describe bounded timeout
+Public P2P CLI documentation SHALL describe that `lango p2p connect` uses a bounded connect attempt tied to the P2P handshake timeout.
+
+#### Scenario: P2P CLI docs mention bounded connect behavior
+- **WHEN** a user reads `docs/cli/p2p.md`
+- **THEN** the `lango p2p connect` section SHALL mention that connect attempts use `p2p.handshakeTimeout`
+- **AND** it SHALL mention the 30 second fallback when the timeout is unset or invalid
+- **AND** it SHALL mention that command cancellation stops the connect attempt
+
 ### Requirement: Feature index pages updated
 The feature index pages SHALL include cards for P2P Workspaces, P2P Teams, and Config Presets.
 

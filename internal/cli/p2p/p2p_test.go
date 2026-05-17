@@ -2,7 +2,9 @@ package p2p
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -12,6 +14,7 @@ import (
 	"github.com/langoai/lango/internal/p2p/discovery"
 	"github.com/langoai/lango/internal/p2p/handshake"
 	p2preputation "github.com/langoai/lango/internal/p2p/reputation"
+	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -551,7 +554,7 @@ func TestSessionRevokeAllCmd_WritesToCommandWriter(t *testing.T) {
 
 func TestConnectCmd_WritesToCommandWriter(t *testing.T) {
 	original := connectToPeer
-	connectToPeer = func(_ *bootstrap.Result, target string) (string, func(), error) {
+	connectToPeer = func(_ context.Context, _ *bootstrap.Result, target string) (string, func(), error) {
 		require.Equal(t, "/ip4/192.168.1.5/tcp/9000/p2p/12D3KooWConnect", target)
 		return "12D3KooWConnect", func() {}, nil
 	}
@@ -564,6 +567,195 @@ func TestConnectCmd_WritesToCommandWriter(t *testing.T) {
 	out, err := executeP2PCmd(t, cmd, "/ip4/192.168.1.5/tcp/9000/p2p/12D3KooWConnect")
 	require.NoError(t, err)
 	assert.Contains(t, out, "Connected to peer 12D3KooWConnect")
+}
+
+func TestConnectCmd_PassesCommandContextToConnect(t *testing.T) {
+	parent, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	original := connectToPeer
+	connectToPeer = func(ctx context.Context, _ *bootstrap.Result, _ string) (string, func(), error) {
+		require.ErrorIs(t, ctx.Err(), context.Canceled)
+		return "", nil, ctx.Err()
+	}
+	t.Cleanup(func() { connectToPeer = original })
+
+	cmd := newConnectCmd(func() (*bootstrap.Result, error) {
+		return &bootstrap.Result{}, nil
+	})
+	cmd.SetContext(parent)
+
+	_, err := executeP2PCmd(t, cmd, validConnectMultiaddr())
+	require.ErrorIs(t, err, context.Canceled)
+}
+
+func TestConnectToPeer_UsesConfiguredHandshakeTimeout(t *testing.T) {
+	var gotDeadline time.Time
+	restoreConnectDeps(t, connectDeps{
+		config: connectTestP2PConfig(75 * time.Millisecond),
+		connect: func(ctx context.Context, _ peer.AddrInfo) error {
+			var ok bool
+			gotDeadline, ok = ctx.Deadline()
+			require.True(t, ok, "connect context should have a deadline")
+			return context.DeadlineExceeded
+		},
+		cleanup: func() {},
+	})
+
+	start := time.Now()
+	_, _, err := connectToPeer(context.Background(), &bootstrap.Result{}, validConnectMultiaddr())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "timed out after 75ms")
+	assert.Contains(t, err.Error(), validConnectPeerID())
+	assert.WithinDuration(t, start.Add(75*time.Millisecond), gotDeadline, 250*time.Millisecond)
+}
+
+func TestConnectToPeer_FallsBackToDefaultTimeout(t *testing.T) {
+	testCases := []struct {
+		name    string
+		timeout time.Duration
+	}{
+		{name: "zero", timeout: 0},
+		{name: "negative", timeout: -time.Second},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			var gotDeadline time.Time
+			restoreConnectDeps(t, connectDeps{
+				config: connectTestP2PConfig(tc.timeout),
+				connect: func(ctx context.Context, _ peer.AddrInfo) error {
+					var ok bool
+					gotDeadline, ok = ctx.Deadline()
+					require.True(t, ok, "connect context should have a deadline")
+					return errors.New("dial failed")
+				},
+				cleanup: func() {},
+			})
+
+			start := time.Now()
+			_, _, err := connectToPeer(context.Background(), &bootstrap.Result{}, validConnectMultiaddr())
+			require.Error(t, err)
+			assert.WithinDuration(t, start.Add(30*time.Second), gotDeadline, 250*time.Millisecond)
+		})
+	}
+}
+
+func TestConnectToPeer_CommandCancellationReachesHostConnect(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	restoreConnectDeps(t, connectDeps{
+		config: connectTestP2PConfig(time.Second),
+		connect: func(got context.Context, _ peer.AddrInfo) error {
+			cancel()
+			<-got.Done()
+			return got.Err()
+		},
+		cleanup: func() {},
+	})
+
+	_, _, err := connectToPeer(ctx, &bootstrap.Result{}, validConnectMultiaddr())
+	require.ErrorIs(t, err, context.Canceled)
+	assert.Contains(t, err.Error(), "canceled")
+	assert.Contains(t, err.Error(), validConnectPeerID())
+}
+
+func TestConnectToPeer_ReportsParentDeadlineSeparatelyFromConfiguredTimeout(t *testing.T) {
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(10*time.Millisecond))
+	defer cancel()
+
+	restoreConnectDeps(t, connectDeps{
+		config: connectTestP2PConfig(30 * time.Second),
+		connect: func(got context.Context, _ peer.AddrInfo) error {
+			<-got.Done()
+			return got.Err()
+		},
+		cleanup: func() {},
+	})
+
+	_, _, err := connectToPeer(ctx, &bootstrap.Result{}, validConnectMultiaddr())
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	assert.Contains(t, err.Error(), "timed out by command context deadline")
+	assert.Contains(t, err.Error(), validConnectPeerID())
+	assert.NotContains(t, err.Error(), "timed out after 30s")
+}
+
+func TestConnectToPeer_ReportsConfiguredTimeoutWhenItExpiresBeforeParentDeadline(t *testing.T) {
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(25*time.Millisecond))
+	defer cancel()
+
+	restoreConnectDeps(t, connectDeps{
+		config: connectTestP2PConfig(10 * time.Millisecond),
+		connect: func(got context.Context, _ peer.AddrInfo) error {
+			<-got.Done()
+			time.Sleep(20 * time.Millisecond)
+			return got.Err()
+		},
+		cleanup: func() {},
+	})
+
+	_, _, err := connectToPeer(ctx, &bootstrap.Result{}, validConnectMultiaddr())
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	assert.Contains(t, err.Error(), "timed out after 10ms")
+	assert.Contains(t, err.Error(), validConnectPeerID())
+	assert.NotContains(t, err.Error(), "timed out by command context deadline")
+}
+
+func TestConnectToPeer_CleansUpAfterConnectFailure(t *testing.T) {
+	testCases := []struct {
+		name       string
+		connectErr error
+	}{
+		{name: "timeout", connectErr: context.DeadlineExceeded},
+		{name: "canceled", connectErr: context.Canceled},
+		{name: "other", connectErr: errors.New("dial refused")},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			cleanedUp := false
+			restoreConnectDeps(t, connectDeps{
+				config: connectTestP2PConfig(time.Second),
+				connect: func(context.Context, peer.AddrInfo) error {
+					return tc.connectErr
+				},
+				cleanup: func() {
+					cleanedUp = true
+				},
+			})
+
+			_, cleanup, err := connectToPeer(context.Background(), &bootstrap.Result{}, validConnectMultiaddr())
+			require.Error(t, err)
+			assert.Nil(t, cleanup)
+			assert.True(t, cleanedUp, "cleanup should run on connect failure")
+			assert.Contains(t, err.Error(), validConnectPeerID())
+		})
+	}
+}
+
+func restoreConnectDeps(t *testing.T, deps connectDeps) {
+	t.Helper()
+	original := loadConnectDeps
+	loadConnectDeps = func(*bootstrap.Result) (connectDeps, error) {
+		return deps, nil
+	}
+	t.Cleanup(func() { loadConnectDeps = original })
+}
+
+func connectTestP2PConfig(timeout time.Duration) *config.P2PConfig {
+	cfg := config.DefaultConfig()
+	cfg.P2P.Enabled = true
+	cfg.P2P.HandshakeTimeout = timeout
+	return &cfg.P2P
+}
+
+func validConnectMultiaddr() string {
+	return "/ip4/127.0.0.1/tcp/9000/p2p/" + validConnectPeerID()
+}
+
+func validConnectPeerID() string {
+	return "12D3KooWDpJ7As7BWAwRMfu1VU2WCqNjvq387JEYKDBj4kx6nXTN"
 }
 
 func TestDisconnectCmd_WritesToCommandWriter(t *testing.T) {

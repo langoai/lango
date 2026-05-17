@@ -65,6 +65,8 @@ QmPeer2def456...                 /ip4/10.0.0.3/tcp/9001
 
 Connect to a peer by its full multiaddr (including the `/p2p/<peer-id>` suffix). The command writes its success confirmation through the Cobra command output stream.
 
+`lango p2p connect` uses `p2p.handshakeTimeout` as its connection timeout and falls back to 30 seconds when that setting is unset or invalid. Canceling the command context also cancels the in-flight connect attempt, so wrappers and operators are not left waiting on an unbounded network dial.
+
 ```
 lango p2p connect <multiaddr>
 ```
