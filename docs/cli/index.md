@@ -225,11 +225,11 @@ Librarian command output is routed through the Cobra command writer, so wrappers
 | `lango p2p identity` | Show local DID and peer identity |
 | `lango p2p reputation --peer-did <did>` | Query peer trust score |
 | `lango p2p pricing` | Show tool pricing |
-| `lango p2p workspace create <name>` | Describe how to create a collaborative workspace |
-| `lango p2p workspace list` | Describe how to inspect collaborative workspaces |
-| `lango p2p workspace status <workspace-id>` | Describe how to inspect one collaborative workspace |
-| `lango p2p workspace join <workspace-id>` | Describe how to join a collaborative workspace |
-| `lango p2p workspace leave <workspace-id>` | Describe how to leave a collaborative workspace |
+| `lango p2p workspace create <name>` | Create a local collaborative workspace |
+| `lango p2p workspace list` | List local collaborative workspaces |
+| `lango p2p workspace status <workspace-id>` | Show one local collaborative workspace |
+| `lango p2p workspace join <workspace-id>` | Join a local collaborative workspace |
+| `lango p2p workspace leave <workspace-id>` | Leave a local collaborative workspace |
 | `lango p2p git init <workspace-id>` | Describe how to initialize a workspace git repository |
 | `lango p2p git log <workspace-id>` | Describe how to inspect workspace commit history |
 | `lango p2p git diff <workspace-id> <from> <to>` | Describe how to diff workspace commits |

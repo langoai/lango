@@ -455,22 +455,25 @@ The `lango p2p team` CLI surface SHALL describe the current runtime honestly: te
 - **THEN** the help text SHALL mention the concrete `team_form`, `team_form_with_budget`, `team_status`, `team_list`, and `team_disband` tools
 - **AND** it SHALL NOT rely on vague `agent/tool-backed` wording alone
 
-### Requirement: Workspace and git CLI are guidance-oriented until live control exists
-The `lango p2p workspace` and `lango p2p git` CLI surfaces SHALL describe the current runtime honestly: the runtime subsystems are real, but the CLI commands mainly guide operators toward server-backed or tool-backed flows until fuller live control exists.
+### Requirement: Workspace CLI manages local workspace records
+The `lango p2p workspace` CLI surface SHALL manage local collaborative workspace records through the same BoltDB-backed workspace manager used by the runtime while keeping distributed messaging and peer exchange delegated to the running server and workspace tools.
 
-#### Scenario: Workspace create guidance
-- **WHEN** user runs `lango p2p workspace create`
-- **THEN** the command SHALL explain the server-backed or tool-backed creation path instead of implying a fully direct live CLI operation
+#### Scenario: Workspace create persists locally
+- **WHEN** user runs `lango p2p workspace create <name>`
+- **THEN** the command SHALL create a local workspace record
+- **AND** it SHALL print the workspace ID, name, goal, status, and member count
 
-#### Scenario: Workspace guidance does not imply a generic runtime API path
-- **WHEN** user runs `lango p2p workspace create`, `list`, `join`, or `leave`
-- **THEN** the command SHALL direct the operator to the server-backed runtime and the real `p2p_workspace_*` tools
-- **AND** it SHALL NOT imply a generic public runtime API path for workspace control
+#### Scenario: Workspace list reads local records
+- **WHEN** user runs `lango p2p workspace list`
+- **THEN** the command SHALL list locally persisted workspace records or print an empty state
 
-#### Scenario: Workspace guidance names the concrete workspace tools
-- **WHEN** user runs `lango p2p workspace create`, `list`, or `status`
-- **THEN** the command SHALL point to the concrete `p2p_workspace_*` tool surface for the corresponding live action
-- **AND** it SHALL NOT rely only on vague phrases such as `agent tools` or `workspace runtime integrations`
+#### Scenario: Workspace status reads one local record
+- **WHEN** user runs `lango p2p workspace status <workspace-id>`
+- **THEN** the command SHALL show the local workspace record including member details
+
+#### Scenario: Workspace join and leave mutate local membership
+- **WHEN** user runs `lango p2p workspace join <workspace-id>` or `leave <workspace-id>`
+- **THEN** the command SHALL add or remove the local agent identity from the persisted workspace membership
 
 #### Scenario: Workspace top-level help names the concrete workspace tools
 - **WHEN** user runs `lango p2p workspace --help`
@@ -478,11 +481,11 @@ The `lango p2p workspace` and `lango p2p git` CLI surfaces SHALL describe the cu
 - **AND** it SHALL NOT rely on vague `agent/tool-backed` wording alone
 
 ### Requirement: P2P workspace output routing
-`lango p2p workspace` guidance commands SHALL write all non-error output through the Cobra command output stream so wrappers and test harnesses can capture text and JSON guidance output without intercepting process-global stdout.
+`lango p2p workspace` commands SHALL write all non-error output through the Cobra command output stream so wrappers and test harnesses can capture text and JSON output without intercepting process-global stdout.
 
 #### Scenario: Workspace create text output writes to command output
 - **WHEN** user runs `lango p2p workspace create <name>`
-- **THEN** the command writes the guidance text to the Cobra command output stream
+- **THEN** the command writes the created workspace summary to the Cobra command output stream
 
 #### Scenario: Workspace create JSON output writes to command output
 - **WHEN** user runs `lango p2p workspace create <name> --output json`
@@ -490,7 +493,7 @@ The `lango p2p workspace` and `lango p2p git` CLI surfaces SHALL describe the cu
 
 #### Scenario: Workspace list text output writes to command output
 - **WHEN** user runs `lango p2p workspace list`
-- **THEN** the command writes the guidance text to the Cobra command output stream
+- **THEN** the command writes the local workspace list to the Cobra command output stream
 
 #### Scenario: Workspace list JSON output writes to command output
 - **WHEN** user runs `lango p2p workspace list --output json`
@@ -498,20 +501,23 @@ The `lango p2p workspace` and `lango p2p git` CLI surfaces SHALL describe the cu
 
 #### Scenario: Workspace status text output writes to command output
 - **WHEN** user runs `lango p2p workspace status <workspace-id>`
-- **THEN** the command writes the guidance text to the Cobra command output stream
+- **THEN** the command writes the workspace details to the Cobra command output stream
 
 #### Scenario: Workspace status JSON output writes to command output
 - **WHEN** user runs `lango p2p workspace status <workspace-id> --output json`
 - **THEN** the command writes the JSON payload to the Cobra command output stream
 
-#### Scenario: Workspace guidance commands reject unknown output format before bootstrap
+#### Scenario: Workspace commands reject unknown output format before bootstrap
 - **WHEN** user runs `lango p2p workspace create <name> --output yaml`, `list --output yaml`, or `status <workspace-id> --output yaml`
 - **THEN** the command returns `unknown output format "yaml" (expected: table or json)`
 - **AND** it does not invoke bootstrap loading
 
 #### Scenario: Workspace join/leave text output writes to command output
 - **WHEN** user runs `lango p2p workspace join <workspace-id>` or `leave <workspace-id>`
-- **THEN** the command writes the guidance text to the Cobra command output stream
+- **THEN** the command writes the membership mutation result to the Cobra command output stream
+
+### Requirement: Git CLI remains guidance-oriented until live control exists
+The `lango p2p git` CLI surface SHALL describe the current runtime honestly: git bundle subsystems are real, but the CLI commands guide operators toward server-backed or tool-backed flows until fuller live control exists.
 
 #### Scenario: Git bundle guidance
 - **WHEN** user runs `lango p2p git push` or `lango p2p git fetch`

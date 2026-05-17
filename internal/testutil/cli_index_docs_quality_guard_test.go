@@ -96,6 +96,43 @@ func TestCLIIndexAvoidsStaleP2PTeamLiveControlSummaries(t *testing.T) {
 	}
 }
 
+func TestCLIIndexUsesDirectWorkspaceActionSummaries(t *testing.T) {
+	t.Parallel()
+
+	indexPath := filepath.Join(cliIndexDocsRepoRoot(t), "docs", "cli", "index.md")
+	data, err := os.ReadFile(indexPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", indexPath, err)
+	}
+	text := string(data)
+
+	requiredSnippets := []string{
+		"| `lango p2p workspace create <name>` | Create a local collaborative workspace |",
+		"| `lango p2p workspace list` | List local collaborative workspaces |",
+		"| `lango p2p workspace status <workspace-id>` | Show one local collaborative workspace |",
+		"| `lango p2p workspace join <workspace-id>` | Join a local collaborative workspace |",
+		"| `lango p2p workspace leave <workspace-id>` | Leave a local collaborative workspace |",
+	}
+	for _, snippet := range requiredSnippets {
+		if !strings.Contains(text, snippet) {
+			t.Fatalf("%s is missing direct workspace action summary %q", indexPath, snippet)
+		}
+	}
+
+	forbiddenSnippets := []string{
+		"| `lango p2p workspace create <name>` | Describe how to create a collaborative workspace |",
+		"| `lango p2p workspace list` | Describe how to inspect collaborative workspaces |",
+		"| `lango p2p workspace status <workspace-id>` | Describe how to inspect one collaborative workspace |",
+		"| `lango p2p workspace join <workspace-id>` | Describe how to join a collaborative workspace |",
+		"| `lango p2p workspace leave <workspace-id>` | Describe how to leave a collaborative workspace |",
+	}
+	for _, snippet := range forbiddenSnippets {
+		if strings.Contains(text, snippet) {
+			t.Fatalf("%s contains stale guidance-only workspace summary %q", indexPath, snippet)
+		}
+	}
+}
+
 func TestCLIIndexHasNoProseEmbeddedInsideAgentMemoryTable(t *testing.T) {
 	t.Parallel()
 

@@ -9,12 +9,13 @@ The p2p-workspace capability SHALL be documented through the sections in this sp
 - **WHEN** the p2p-workspace spec.md file is read
 - **THEN** it SHALL describe the capability's behavior in sections below
 
-### Requirement: Workspace operator surfaces remain truthful until live control is implemented
-Workspace and git-bundle operator surfaces SHALL distinguish between the real runtime subsystems and the current guidance-oriented CLI surfaces.
+### Requirement: Workspace CLI manages local lifecycle state
+Workspace CLI operator surfaces SHALL distinguish between direct local lifecycle state management and distributed runtime exchange.
 
-#### Scenario: Workspace CLI guidance
+#### Scenario: Workspace CLI local state control
 - **WHEN** a user reads or runs `lango p2p workspace` commands
-- **THEN** the system SHALL describe the current server-backed or tool-backed path instead of implying a fully direct live CLI control path
+- **THEN** the system SHALL create, list, inspect, join, and leave locally persisted workspace records
+- **AND** it SHALL not imply that local CLI lifecycle commands start distributed workspace messaging or peer exchange
 
 #### Scenario: Git bundle CLI guidance
 - **WHEN** a user reads or runs `lango p2p git` commands

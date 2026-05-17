@@ -605,12 +605,12 @@ attestation  Prove attestation validity with timestamp range assertions
 
 ## lango p2p workspace
 
-Inspect the current workspace operator surface for the running P2P runtime. Workspaces are real runtime structures, and the stable live path is the running server plus the concrete `p2p_workspace_create`, `p2p_workspace_join`, `p2p_workspace_leave`, `p2p_workspace_list`, `p2p_workspace_status`, and `p2p_workspace_read` tools. The CLI commands below remain guidance-oriented rather than performing full live control directly. See the [Collaborative Workspaces](../features/p2p-network.md#collaborative-workspaces) section for details.
+Manage local P2P collaborative workspace records. The CLI uses the same BoltDB-backed workspace manager as the runtime and stores records under `p2p.workspace.dataDir`, or `~/.lango/workspaces` when that value is empty. Distributed workspace messaging and peer exchange still require the running server plus the concrete `p2p_workspace_create`, `p2p_workspace_join`, `p2p_workspace_leave`, `p2p_workspace_list`, `p2p_workspace_status`, and `p2p_workspace_read` tools. See the [Collaborative Workspaces](../features/p2p-network.md#collaborative-workspaces) section for details.
 
 ### lango p2p workspace create
 
-Inspect how the CLI currently guides operators toward live workspace creation.
-The command writes through the Cobra command output stream so wrappers and test harnesses can capture text or JSON guidance output directly.
+Create a locally persisted P2P collaborative workspace with an optional goal.
+The command writes through the Cobra command output stream so wrappers and test harnesses can capture text or JSON output directly.
 
 ```
 lango p2p workspace create <name> [--goal <goal>] [--output table|json]
@@ -629,16 +629,18 @@ lango p2p workspace create <name> [--goal <goal>] [--output table|json]
 
 ```bash
 $ lango p2p workspace create "research-project" --goal "Collaborative research on RAG optimization"
-Workspace creation requires a running server.
-Start the server with 'lango serve' and use `p2p_workspace_create`.
-
-Example: p2p_workspace_create name="research-project" goal="Collaborative research on RAG optimization"
+Workspace created
+  ID:      a1b2c3d4-5678-9012-abcd-ef1234567890
+  Name:    research-project
+  Goal:    Collaborative research on RAG optimization
+  Status:  forming
+  Members: 1
 ```
 
 ### lango p2p workspace list
 
-Inspect what the CLI currently reports for runtime-backed workspaces.
-The command writes through the Cobra command output stream so wrappers and test harnesses can capture text or JSON guidance output directly.
+List locally persisted P2P collaborative workspaces.
+The command writes through the Cobra command output stream so wrappers and test harnesses can capture text or JSON output directly.
 
 ```
 lango p2p workspace list [--output table|json]
@@ -652,24 +654,22 @@ lango p2p workspace list [--output table|json]
 
 ```bash
 $ lango p2p workspace list
-No workspaces found.
-
-Workspaces are runtime structures managed by the running server.
-Start the server with 'lango serve' and use `p2p_workspace_list`, `p2p_workspace_create`, or `p2p_workspace_join`.
+Local Workspaces
+  a1b2c3d4-5678-9012-abcd-ef1234567890  research-project  forming  members=1
 ```
 
 ### lango p2p workspace status
 
-Inspect how the CLI currently guides operators toward live workspace inspection.
-The command writes through the Cobra command output stream so wrappers and test harnesses can capture text or JSON guidance output directly.
+Show one locally persisted P2P collaborative workspace, including local member records.
+The command writes through the Cobra command output stream so wrappers and test harnesses can capture text or JSON output directly.
 
 ```
-lango p2p workspace status <id> [--output table|json]
+lango p2p workspace status <workspace-id> [--output table|json]
 ```
 
 | Argument | Required | Description |
 |----------|----------|-------------|
-| `id` | Yes | Workspace ID |
+| `workspace-id` | Yes | Workspace ID |
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
@@ -679,52 +679,53 @@ lango p2p workspace status <id> [--output table|json]
 
 ```bash
 $ lango p2p workspace status a1b2c3d4-5678-9012-abcd-ef1234567890
-Workspace not found.
-
-Workspaces are runtime structures.
-Use the running server plus the `p2p_workspace_status` or `p2p_workspace_read` tools for inspection.
+Workspace
+  ID:      a1b2c3d4-5678-9012-abcd-ef1234567890
+  Name:    research-project
+  Goal:    Collaborative research on RAG optimization
+  Status:  forming
+  Members: 1
+    did:lango:local-cli  creator
 ```
 
 ### lango p2p workspace join
 
-Inspect how the CLI currently guides operators toward live workspace join.
-The command writes through the Cobra command output stream so wrappers and test harnesses can capture text guidance output directly.
+Join the local agent identity to a locally persisted P2P collaborative workspace.
+The command writes through the Cobra command output stream so wrappers and test harnesses can capture text output directly.
 
 ```
-lango p2p workspace join <id>
+lango p2p workspace join <workspace-id>
 ```
 
 | Argument | Required | Description |
 |----------|----------|-------------|
-| `id` | Yes | Workspace ID to join |
+| `workspace-id` | Yes | Workspace ID to join |
 
 **Example:**
 
 ```bash
 $ lango p2p workspace join a1b2c3d4-5678-9012-abcd-ef1234567890
-Joining a workspace requires a running server.
-Use 'lango serve' and the server-backed runtime or p2p_workspace_join tool.
+Joined workspace a1b2c3d4-5678-9012-abcd-ef1234567890
 ```
 
 ### lango p2p workspace leave
 
-Inspect how the CLI currently guides operators toward live workspace leave.
-The command writes through the Cobra command output stream so wrappers and test harnesses can capture text guidance output directly.
+Remove the local agent identity from a locally persisted P2P collaborative workspace.
+The command writes through the Cobra command output stream so wrappers and test harnesses can capture text output directly.
 
 ```
-lango p2p workspace leave <id>
+lango p2p workspace leave <workspace-id>
 ```
 
 | Argument | Required | Description |
 |----------|----------|-------------|
-| `id` | Yes | Workspace ID to leave |
+| `workspace-id` | Yes | Workspace ID to leave |
 
 **Example:**
 
 ```bash
 $ lango p2p workspace leave a1b2c3d4-5678-9012-abcd-ef1234567890
-Leaving a workspace requires a running server.
-Use 'lango serve' and the server-backed runtime or p2p_workspace_leave tool.
+Left workspace a1b2c3d4-5678-9012-abcd-ef1234567890
 ```
 
 ### Workspace Features
@@ -737,7 +738,7 @@ Workspaces support configurable collaboration features:
 - **Contribution Tracking**: Per-agent metrics (commits, code bytes, messages)
 - **Auto Sandbox**: Optionally isolate workspace operations in sandboxed environments
 
-Workspaces are runtime structures managed by the running server. Today the stable operator path is server-backed or tool-backed (`p2p_workspace_create`, `p2p_workspace_join`, `p2p_workspace_leave`, `p2p_workspace_list`, `p2p_workspace_status`, `p2p_workspace_read`), while these CLI commands remain guidance-oriented.
+The CLI commands above manage local workspace lifecycle records. Distributed messaging, workspace message reads/posts, and peer exchange still use the running server and the server-backed `p2p_workspace_create`, `p2p_workspace_join`, `p2p_workspace_leave`, `p2p_workspace_list`, `p2p_workspace_status`, and `p2p_workspace_read` tools.
 
 ---
 

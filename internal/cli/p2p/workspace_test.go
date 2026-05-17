@@ -2,78 +2,150 @@ package p2p
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
+
+	"go.etcd.io/bbolt"
 
 	"github.com/langoai/lango/internal/bootstrap"
-	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/langoai/lango/internal/config"
 )
 
-func TestWorkspaceRuntimeGuidance_UsesServerBackedRuntimeWording(t *testing.T) {
+func TestWorkspaceCommands_ManageLocalPersistentWorkspace(t *testing.T) {
+	cfg, bootLoader := workspaceCommandTestBoot(t)
+
+	createOut, err := executeP2PCmd(t, newWorkspaceCreateCmd(bootLoader), "research-project", "--goal", "shared context", "--output", "json")
+	require.NoError(t, err)
+
+	var created map[string]any
+	require.NoError(t, json.Unmarshal([]byte(createOut), &created))
+	workspaceID, ok := created["id"].(string)
+	require.True(t, ok)
+	require.NotEmpty(t, workspaceID)
+	assert.Equal(t, "research-project", created["name"])
+	assert.Equal(t, "shared context", created["goal"])
+	assert.Equal(t, "forming", created["status"])
+	assert.Equal(t, float64(1), created["memberCount"])
+
+	listOut, err := executeP2PCmd(t, newWorkspaceListCmd(bootLoader), "--output", "json")
+	require.NoError(t, err)
+
+	var listed map[string]any
+	require.NoError(t, json.Unmarshal([]byte(listOut), &listed))
+	require.Equal(t, float64(1), listed["count"])
+	workspaces, ok := listed["workspaces"].([]any)
+	require.True(t, ok)
+	require.Len(t, workspaces, 1)
+
+	statusOut, err := executeP2PCmd(t, newWorkspaceStatusCmd(bootLoader), workspaceID, "--output", "json")
+	require.NoError(t, err)
+
+	var status map[string]any
+	require.NoError(t, json.Unmarshal([]byte(statusOut), &status))
+	assert.Equal(t, workspaceID, status["id"])
+	assert.Equal(t, "research-project", status["name"])
+	assert.Equal(t, float64(1), status["memberCount"])
+
+	// A second command invocation opens the same local workspace DB, proving
+	// the CLI path uses persisted state instead of in-memory command state.
+	tableOut, err := executeP2PCmd(t, newWorkspaceListCmd(func() (*bootstrap.Result, error) {
+		return &bootstrap.Result{Config: cfg, LangoDir: filepath.Dir(cfg.P2P.Workspace.DataDir)}, nil
+	}))
+	require.NoError(t, err)
+	assert.Contains(t, tableOut, workspaceID)
+	assert.Contains(t, tableOut, "research-project")
+}
+
+func TestWorkspaceCommands_MutateLocalMembership(t *testing.T) {
+	_, bootLoader := workspaceCommandTestBoot(t)
+
+	createOut, err := executeP2PCmd(t, newWorkspaceCreateCmd(bootLoader), "membership-project", "--output", "json")
+	require.NoError(t, err)
+
+	var created map[string]any
+	require.NoError(t, json.Unmarshal([]byte(createOut), &created))
+	workspaceID, ok := created["id"].(string)
+	require.True(t, ok)
+	require.NotEmpty(t, workspaceID)
+
+	leaveOut, err := executeP2PCmd(t, newWorkspaceLeaveCmd(bootLoader), workspaceID)
+	require.NoError(t, err)
+	assert.Contains(t, leaveOut, "Left workspace")
+
+	statusAfterLeave, err := executeP2PCmd(t, newWorkspaceStatusCmd(bootLoader), workspaceID, "--output", "json")
+	require.NoError(t, err)
+	var leftStatus map[string]any
+	require.NoError(t, json.Unmarshal([]byte(statusAfterLeave), &leftStatus))
+	assert.Equal(t, float64(0), leftStatus["memberCount"])
+
+	joinOut, err := executeP2PCmd(t, newWorkspaceJoinCmd(bootLoader), workspaceID)
+	require.NoError(t, err)
+	assert.Contains(t, joinOut, "Joined workspace")
+
+	statusAfterJoin, err := executeP2PCmd(t, newWorkspaceStatusCmd(bootLoader), workspaceID, "--output", "json")
+	require.NoError(t, err)
+	var joinedStatus map[string]any
+	require.NoError(t, json.Unmarshal([]byte(statusAfterJoin), &joinedStatus))
+	assert.Equal(t, float64(1), joinedStatus["memberCount"])
+}
+
+func TestWorkspaceCommands_RequireFeatureGatesBeforeOpeningStore(t *testing.T) {
+	cfg, bootLoader := workspaceCommandTestBoot(t)
+	dataDir := cfg.P2P.Workspace.DataDir
+
+	cfg.P2P.Enabled = false
+	out, err := executeP2PCmd(t, newWorkspaceCreateCmd(bootLoader), "blocked-project")
+	require.Error(t, err)
+	assert.Empty(t, out)
+	assert.Contains(t, err.Error(), "P2P networking is not enabled")
+	assert.NoDirExists(t, dataDir)
+
+	cfg.P2P.Enabled = true
+	cfg.P2P.Workspace.Enabled = false
+	out, err = executeP2PCmd(t, newWorkspaceListCmd(bootLoader))
+	require.Error(t, err)
+	assert.Empty(t, out)
+	assert.Contains(t, err.Error(), "P2P workspace is not enabled")
+	assert.NoDirExists(t, dataDir)
+}
+
+func TestWorkspaceCommands_ReturnErrorWhenWorkspaceDBIsLocked(t *testing.T) {
+	cfg, bootLoader := workspaceCommandTestBoot(t)
+	require.NoError(t, os.MkdirAll(cfg.P2P.Workspace.DataDir, 0o700))
+
+	dbPath := filepath.Join(cfg.P2P.Workspace.DataDir, "workspaces.db")
+	lockedDB, err := bbolt.Open(dbPath, 0o600, &bbolt.Options{Timeout: time.Second})
+	require.NoError(t, err)
+	defer lockedDB.Close()
+
+	originalTimeout := workspaceDBOpenTimeout
+	workspaceDBOpenTimeout = 10 * time.Millisecond
+	t.Cleanup(func() { workspaceDBOpenTimeout = originalTimeout })
+
+	started := time.Now()
+	out, err := executeP2PCmd(t, newWorkspaceListCmd(bootLoader))
+	require.Error(t, err)
+	assert.Empty(t, out)
+	assert.Contains(t, err.Error(), "open workspace db")
+	assert.Less(t, time.Since(started), 500*time.Millisecond)
+}
+
+func workspaceCommandTestBoot(t *testing.T) (*config.Config, func() (*bootstrap.Result, error)) {
+	t.Helper()
+
 	cfg := config.DefaultConfig()
 	cfg.P2P.Enabled = true
 	cfg.P2P.Workspace.Enabled = true
+	langoDir := t.TempDir()
+	cfg.P2P.Workspace.DataDir = filepath.Join(langoDir, "workspaces")
 
-	testCases := []struct {
-		name         string
-		cmd          *cobra.Command
-		args         []string
-		wantContains string
-	}{
-		{
-			name: "create guidance",
-			cmd: newWorkspaceCreateCmd(func() (*bootstrap.Result, error) {
-				return &bootstrap.Result{Config: cfg}, nil
-			}),
-			args:         []string{"research-project", "--goal", "shared context"},
-			wantContains: "Start the server with 'lango serve' and use p2p_workspace_create.",
-		},
-		{
-			name: "list guidance",
-			cmd: newWorkspaceListCmd(func() (*bootstrap.Result, error) {
-				return &bootstrap.Result{Config: cfg}, nil
-			}),
-			args:         nil,
-			wantContains: "Start the server with 'lango serve' and use p2p_workspace_list, p2p_workspace_create, or p2p_workspace_join.",
-		},
-		{
-			name: "status guidance",
-			cmd: newWorkspaceStatusCmd(func() (*bootstrap.Result, error) {
-				return &bootstrap.Result{Config: cfg}, nil
-			}),
-			args:         []string{"workspace-123"},
-			wantContains: "Use the running server plus the p2p_workspace_status or p2p_workspace_read tools for inspection.",
-		},
-		{
-			name: "join guidance",
-			cmd: newWorkspaceJoinCmd(func() (*bootstrap.Result, error) {
-				return &bootstrap.Result{Config: cfg}, nil
-			}),
-			args:         []string{"workspace-123"},
-			wantContains: "Use 'lango serve' and the server-backed runtime or p2p_workspace_join tool.",
-		},
-		{
-			name: "leave guidance",
-			cmd: newWorkspaceLeaveCmd(func() (*bootstrap.Result, error) {
-				return &bootstrap.Result{Config: cfg}, nil
-			}),
-			args:         []string{"workspace-123"},
-			wantContains: "Use 'lango serve' and the server-backed runtime or p2p_workspace_leave tool.",
-		},
-	}
-
-	for _, tc := range testCases {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			out, err := executeP2PCmd(t, tc.cmd, tc.args...)
-			assert.NoError(t, err)
-			assert.Contains(t, out, tc.wantContains)
-			assert.NotContains(t, out, "runtime API")
-			assert.NotContains(t, out, "agent tools")
-		})
+	return cfg, func() (*bootstrap.Result, error) {
+		return &bootstrap.Result{Config: cfg, LangoDir: langoDir}, nil
 	}
 }
 
@@ -98,13 +170,9 @@ func TestWorkspaceCmd_HelpUsesConcreteToolSurfaceWording(t *testing.T) {
 }
 
 func TestWorkspaceCreateCmd_WritesJSONToCommandWriter(t *testing.T) {
-	cfg := config.DefaultConfig()
-	cfg.P2P.Enabled = true
-	cfg.P2P.Workspace.Enabled = true
+	_, bootLoader := workspaceCommandTestBoot(t)
 
-	cmd := newWorkspaceCreateCmd(func() (*bootstrap.Result, error) {
-		return &bootstrap.Result{Config: cfg}, nil
-	})
+	cmd := newWorkspaceCreateCmd(bootLoader)
 	out, err := executeP2PCmd(t, cmd, "research-project", "--goal", "shared context", "--output", "json")
 	require.NoError(t, err)
 
@@ -112,34 +180,27 @@ func TestWorkspaceCreateCmd_WritesJSONToCommandWriter(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(out), &decoded))
 	assert.Equal(t, "research-project", decoded["name"])
 	assert.Equal(t, "shared context", decoded["goal"])
+	assert.NotEmpty(t, decoded["id"])
 }
 
 func TestWorkspaceListCmd_WritesJSONToCommandWriter(t *testing.T) {
-	cfg := config.DefaultConfig()
-	cfg.P2P.Enabled = true
+	_, bootLoader := workspaceCommandTestBoot(t)
 
-	cmd := newWorkspaceListCmd(func() (*bootstrap.Result, error) {
-		return &bootstrap.Result{Config: cfg}, nil
-	})
+	cmd := newWorkspaceListCmd(bootLoader)
 	out, err := executeP2PCmd(t, cmd, "--output", "json")
-	require.NoError(t, err)
-
-	var decoded []any
-	require.NoError(t, json.Unmarshal([]byte(out), &decoded))
-	assert.Empty(t, decoded)
-}
-
-func TestWorkspaceStatusCmd_WritesJSONToCommandWriter(t *testing.T) {
-	cfg := config.DefaultConfig()
-	cfg.P2P.Enabled = true
-
-	cmd := newWorkspaceStatusCmd(func() (*bootstrap.Result, error) {
-		return &bootstrap.Result{Config: cfg}, nil
-	})
-	out, err := executeP2PCmd(t, cmd, "workspace-123", "--output", "json")
 	require.NoError(t, err)
 
 	var decoded map[string]any
 	require.NoError(t, json.Unmarshal([]byte(out), &decoded))
-	assert.Equal(t, "workspace not found (workspaces are runtime-only)", decoded["error"])
+	assert.Equal(t, float64(0), decoded["count"])
+	assert.Empty(t, decoded["workspaces"])
+}
+
+func TestWorkspaceStatusCmd_WritesJSONToCommandWriter(t *testing.T) {
+	_, bootLoader := workspaceCommandTestBoot(t)
+	cmd := newWorkspaceStatusCmd(bootLoader)
+	out, err := executeP2PCmd(t, cmd, "workspace-123", "--output", "json")
+	require.Error(t, err)
+	assert.Empty(t, out)
+	assert.Contains(t, err.Error(), "workspace-123")
 }

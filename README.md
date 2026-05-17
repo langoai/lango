@@ -258,11 +258,11 @@ lango p2p session revoke-all     Revoke all active peer sessions
 lango p2p sandbox status         Show sandbox runtime status
 lango p2p sandbox test           Run sandbox smoke test
 lango p2p sandbox cleanup        Remove orphaned sandbox containers
-lango p2p workspace create <name>    Describe how to create a collaborative workspace
-lango p2p workspace list             Describe how to inspect collaborative workspaces
-lango p2p workspace status <workspace-id>  Describe how to inspect one collaborative workspace
-lango p2p workspace join <workspace-id>    Describe how to join a collaborative workspace
-lango p2p workspace leave <workspace-id>   Describe how to leave a collaborative workspace
+lango p2p workspace create <name>    Create a local collaborative workspace
+lango p2p workspace list             List local collaborative workspaces
+lango p2p workspace status <workspace-id>  Show one local collaborative workspace
+lango p2p workspace join <workspace-id>    Join a local collaborative workspace
+lango p2p workspace leave <workspace-id>   Leave a local collaborative workspace
 lango p2p team list                  Describe how to inspect active P2P teams
 lango p2p team status <id>           Describe how to inspect runtime-backed team status
 lango p2p team disband <id>          Describe how to disband a runtime-backed team

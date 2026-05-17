@@ -1,25 +1,157 @@
 package p2p
 
 import (
+	"context"
 	"fmt"
+	"os"
+	"path/filepath"
+	"time"
 
 	"github.com/spf13/cobra"
+	"go.etcd.io/bbolt"
+	"go.uber.org/zap"
 
 	"github.com/langoai/lango/internal/bootstrap"
+	"github.com/langoai/lango/internal/logging"
+	"github.com/langoai/lango/internal/p2p/workspace"
 )
+
+type workspaceCLIManager interface {
+	Create(context.Context, workspace.CreateRequest) (*workspace.Workspace, error)
+	List(context.Context) ([]*workspace.Workspace, error)
+	Get(context.Context, string) (*workspace.Workspace, error)
+	Join(context.Context, string) error
+	Leave(context.Context, string) error
+	Close() error
+}
+
+type localWorkspaceCLIManager struct {
+	manager *workspace.Manager
+	db      *bbolt.DB
+}
+
+func (m *localWorkspaceCLIManager) Create(ctx context.Context, req workspace.CreateRequest) (*workspace.Workspace, error) {
+	return m.manager.Create(ctx, req)
+}
+
+func (m *localWorkspaceCLIManager) List(ctx context.Context) ([]*workspace.Workspace, error) {
+	return m.manager.List(ctx)
+}
+
+func (m *localWorkspaceCLIManager) Get(ctx context.Context, workspaceID string) (*workspace.Workspace, error) {
+	return m.manager.Get(ctx, workspaceID)
+}
+
+func (m *localWorkspaceCLIManager) Join(ctx context.Context, workspaceID string) error {
+	return m.manager.Join(ctx, workspaceID)
+}
+
+func (m *localWorkspaceCLIManager) Leave(ctx context.Context, workspaceID string) error {
+	return m.manager.Leave(ctx, workspaceID)
+}
+
+func (m *localWorkspaceCLIManager) Close() error {
+	if m == nil || m.db == nil {
+		return nil
+	}
+	return m.db.Close()
+}
+
+var (
+	openWorkspaceCLIManager = openLocalWorkspaceCLIManager
+	workspaceDBOpenTimeout  = 2 * time.Second
+)
+
+func openLocalWorkspaceCLIManager(boot *bootstrap.Result) (workspaceCLIManager, error) {
+	if boot == nil || boot.Config == nil {
+		return nil, fmt.Errorf("load config: missing bootstrap config")
+	}
+	if !boot.Config.P2P.Enabled {
+		return nil, errP2PDisabled
+	}
+	if !boot.Config.P2P.Workspace.Enabled {
+		return nil, fmt.Errorf("P2P workspace is not enabled (set p2p.workspace.enabled = true)")
+	}
+
+	dataDir := boot.Config.P2P.Workspace.DataDir
+	if dataDir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return nil, fmt.Errorf("resolve workspace data dir: %w", err)
+		}
+		dataDir = filepath.Join(home, ".lango", "workspaces")
+	}
+	if err := os.MkdirAll(dataDir, 0o700); err != nil {
+		return nil, fmt.Errorf("create workspace data dir: %w", err)
+	}
+
+	db, err := bbolt.Open(filepath.Join(dataDir, "workspaces.db"), 0o600, &bbolt.Options{
+		Timeout: workspaceDBOpenTimeout,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("open workspace db: %w", err)
+	}
+
+	log := logging.Sugar()
+	if log == nil {
+		log = zap.NewNop().Sugar()
+	}
+	localDID := resolveIdentityDID(boot)
+	if localDID == "" {
+		localDID = "did:lango:local-cli"
+	}
+
+	manager, err := workspace.NewManager(workspace.ManagerConfig{
+		DB:            db,
+		LocalDID:      localDID,
+		MaxWorkspaces: boot.Config.P2P.Workspace.MaxWorkspaces,
+		Logger:        log,
+	})
+	if err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("open workspace manager: %w", err)
+	}
+
+	return &localWorkspaceCLIManager{manager: manager, db: db}, nil
+}
+
+func workspaceView(ws *workspace.Workspace) map[string]interface{} {
+	members := make([]map[string]interface{}, 0, len(ws.Members))
+	for _, member := range ws.Members {
+		if member == nil {
+			continue
+		}
+		members = append(members, map[string]interface{}{
+			"did":      member.DID,
+			"name":     member.Name,
+			"role":     member.Role,
+			"joinedAt": member.JoinedAt,
+		})
+	}
+
+	return map[string]interface{}{
+		"id":          ws.ID,
+		"name":        ws.Name,
+		"goal":        ws.Goal,
+		"status":      ws.Status,
+		"memberCount": len(members),
+		"members":     members,
+		"createdAt":   ws.CreatedAt,
+		"updatedAt":   ws.UpdatedAt,
+	}
+}
 
 func newWorkspaceCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "workspace",
 		Short: "Manage P2P collaborative workspaces",
-		Long: `Inspect the truth-aligned workspace operator surface for the running P2P runtime.
+		Long: `Manage local P2P collaborative workspace records.
 
-Workspaces are real runtime structures for shared context, code exchange, and
-GossipSub messaging. The current CLI mostly points operators to the running
-server plus the concrete workspace tool surface (p2p_workspace_create,
-p2p_workspace_join, p2p_workspace_leave, p2p_workspace_list,
-p2p_workspace_status, p2p_workspace_read) instead of providing full live
-control.`,
+These commands persist local workspace lifecycle state through the same
+workspace manager used by the runtime. Distributed workspace messaging and peer
+	exchange still require the running server tools:
+	p2p_workspace_create, p2p_workspace_join, p2p_workspace_leave,
+	p2p_workspace_list, p2p_workspace_status, and p2p_workspace_read.`,
 	}
 
 	cmd.AddCommand(newWorkspaceCreateCmd(bootLoader))
@@ -40,12 +172,12 @@ func newWorkspaceCreateCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.
 	cmd := &cobra.Command{
 		Use:           "create <name>",
 		Short:         "Create a new workspace",
-		Long:          "Describe how to create a runtime-backed P2P workspace with a name and optional goal.",
+		Long:          "Create a local P2P workspace record with a name and optional goal.",
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			output, err := resolveOutput(cmd)
+			resolvedOutput, err := resolveOutput(cmd)
 			if err != nil {
 				return err
 			}
@@ -56,27 +188,29 @@ func newWorkspaceCreateCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.
 			}
 			defer boot.Close()
 
-			if !boot.Config.P2P.Enabled {
-				return errP2PDisabled
+			manager, err := openWorkspaceCLIManager(boot)
+			if err != nil {
+				return err
 			}
-			if !boot.Config.P2P.Workspace.Enabled {
-				return fmt.Errorf("P2P workspace is not enabled (set p2p.workspace.enabled = true)")
-			}
+			defer manager.Close()
 
 			name := args[0]
-			result := map[string]interface{}{
-				"name":   name,
-				"goal":   goal,
-				"status": "Use 'lango serve' and create workspaces via p2p_workspace_create.",
+			ws, err := manager.Create(cmd.Context(), workspace.CreateRequest{Name: name, Goal: goal})
+			if err != nil {
+				return err
 			}
+			result := workspaceView(ws)
 
-			if output == "json" {
+			if resolvedOutput == "json" {
 				return printJSON(cmd.OutOrStdout(), result)
 			}
 
-			fmt.Fprintln(cmd.OutOrStdout(), "Workspace creation requires a running server.")
-			fmt.Fprintln(cmd.OutOrStdout(), "Start the server with 'lango serve' and use p2p_workspace_create.")
-			fmt.Fprintf(cmd.OutOrStdout(), "\nExample: p2p_workspace_create name=%q goal=%q\n", name, goal)
+			fmt.Fprintln(cmd.OutOrStdout(), "Workspace created")
+			fmt.Fprintf(cmd.OutOrStdout(), "  ID:      %s\n", ws.ID)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Name:    %s\n", ws.Name)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Goal:    %s\n", ws.Goal)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Status:  %s\n", ws.Status)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Members: %d\n", len(ws.Members))
 			return nil
 		},
 	}
@@ -92,11 +226,11 @@ func newWorkspaceListCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Co
 	cmd := &cobra.Command{
 		Use:           "list",
 		Short:         "List workspaces",
-		Long:          "Describe how to inspect runtime-backed P2P collaborative workspaces.",
+		Long:          "List locally persisted P2P collaborative workspaces.",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			output, err := resolveOutput(cmd)
+			resolvedOutput, err := resolveOutput(cmd)
 			if err != nil {
 				return err
 			}
@@ -107,18 +241,35 @@ func newWorkspaceListCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Co
 			}
 			defer boot.Close()
 
-			if !boot.Config.P2P.Enabled {
-				return errP2PDisabled
+			manager, err := openWorkspaceCLIManager(boot)
+			if err != nil {
+				return err
+			}
+			defer manager.Close()
+
+			workspaces, err := manager.List(cmd.Context())
+			if err != nil {
+				return err
+			}
+			items := make([]map[string]interface{}, 0, len(workspaces))
+			for _, ws := range workspaces {
+				items = append(items, workspaceView(ws))
+			}
+			result := map[string]interface{}{"workspaces": items, "count": len(items)}
+
+			if resolvedOutput == "json" {
+				return printJSON(cmd.OutOrStdout(), result)
 			}
 
-			if output == "json" {
-				return printJSON(cmd.OutOrStdout(), []interface{}{})
+			if len(workspaces) == 0 {
+				fmt.Fprintln(cmd.OutOrStdout(), "No local workspaces found.")
+				return nil
 			}
 
-			fmt.Fprintln(cmd.OutOrStdout(), "No workspaces found.")
-			fmt.Fprintln(cmd.OutOrStdout())
-			fmt.Fprintln(cmd.OutOrStdout(), "Workspaces are runtime structures managed by the running server.")
-			fmt.Fprintln(cmd.OutOrStdout(), "Start the server with 'lango serve' and use p2p_workspace_list, p2p_workspace_create, or p2p_workspace_join.")
+			fmt.Fprintln(cmd.OutOrStdout(), "Local Workspaces")
+			for _, ws := range workspaces {
+				fmt.Fprintf(cmd.OutOrStdout(), "  %s  %s  %s  members=%d\n", ws.ID, ws.Name, ws.Status, len(ws.Members))
+			}
 			return nil
 		},
 	}
@@ -133,12 +284,12 @@ func newWorkspaceStatusCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.
 	cmd := &cobra.Command{
 		Use:           "status <workspace-id>",
 		Short:         "Show workspace details",
-		Long:          "Explain how to inspect a runtime-backed P2P workspace including members and contributions.",
+		Long:          "Show one locally persisted P2P collaborative workspace including members.",
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			output, err := resolveOutput(cmd)
+			resolvedOutput, err := resolveOutput(cmd)
 			if err != nil {
 				return err
 			}
@@ -149,22 +300,34 @@ func newWorkspaceStatusCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.
 			}
 			defer boot.Close()
 
-			if !boot.Config.P2P.Enabled {
-				return errP2PDisabled
+			manager, err := openWorkspaceCLIManager(boot)
+			if err != nil {
+				return err
+			}
+			defer manager.Close()
+
+			ws, err := manager.Get(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
+			result := workspaceView(ws)
+
+			if resolvedOutput == "json" {
+				return printJSON(cmd.OutOrStdout(), result)
 			}
 
-			_ = args[0] // workspaceID
-
-			if output == "json" {
-				return printJSON(cmd.OutOrStdout(), map[string]interface{}{
-					"error": "workspace not found (workspaces are runtime-only)",
-				})
+			fmt.Fprintln(cmd.OutOrStdout(), "Workspace")
+			fmt.Fprintf(cmd.OutOrStdout(), "  ID:      %s\n", ws.ID)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Name:    %s\n", ws.Name)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Goal:    %s\n", ws.Goal)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Status:  %s\n", ws.Status)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Members: %d\n", len(ws.Members))
+			for _, member := range ws.Members {
+				if member == nil {
+					continue
+				}
+				fmt.Fprintf(cmd.OutOrStdout(), "    %s  %s\n", member.DID, member.Role)
 			}
-
-			fmt.Fprintln(cmd.OutOrStdout(), "Workspace not found.")
-			fmt.Fprintln(cmd.OutOrStdout())
-			fmt.Fprintln(cmd.OutOrStdout(), "Workspaces are runtime structures.")
-			fmt.Fprintln(cmd.OutOrStdout(), "Use the running server plus the p2p_workspace_status or p2p_workspace_read tools for inspection.")
 			return nil
 		},
 	}
@@ -177,7 +340,7 @@ func newWorkspaceJoinCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Co
 	cmd := &cobra.Command{
 		Use:   "join <workspace-id>",
 		Short: "Join a workspace",
-		Long:  "Describe how to join an existing runtime-backed P2P collaborative workspace.",
+		Long:  "Join an existing local P2P collaborative workspace.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			boot, err := bootLoader()
@@ -186,13 +349,17 @@ func newWorkspaceJoinCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Co
 			}
 			defer boot.Close()
 
-			if !boot.Config.P2P.Enabled {
-				return errP2PDisabled
+			manager, err := openWorkspaceCLIManager(boot)
+			if err != nil {
+				return err
 			}
+			defer manager.Close()
 
-			_ = args[0] // workspaceID
-			fmt.Fprintln(cmd.OutOrStdout(), "Joining a workspace requires a running server.")
-			fmt.Fprintln(cmd.OutOrStdout(), "Use 'lango serve' and the server-backed runtime or p2p_workspace_join tool.")
+			workspaceID := args[0]
+			if err := manager.Join(cmd.Context(), workspaceID); err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Joined workspace %s\n", workspaceID)
 			return nil
 		},
 	}
@@ -204,7 +371,7 @@ func newWorkspaceLeaveCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.C
 	cmd := &cobra.Command{
 		Use:   "leave <workspace-id>",
 		Short: "Leave a workspace",
-		Long:  "Describe how to leave a runtime-backed P2P collaborative workspace.",
+		Long:  "Leave a local P2P collaborative workspace.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			boot, err := bootLoader()
@@ -213,13 +380,17 @@ func newWorkspaceLeaveCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.C
 			}
 			defer boot.Close()
 
-			if !boot.Config.P2P.Enabled {
-				return errP2PDisabled
+			manager, err := openWorkspaceCLIManager(boot)
+			if err != nil {
+				return err
 			}
+			defer manager.Close()
 
-			_ = args[0] // workspaceID
-			fmt.Fprintln(cmd.OutOrStdout(), "Leaving a workspace requires a running server.")
-			fmt.Fprintln(cmd.OutOrStdout(), "Use 'lango serve' and the server-backed runtime or p2p_workspace_leave tool.")
+			workspaceID := args[0]
+			if err := manager.Leave(cmd.Context(), workspaceID); err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Left workspace %s\n", workspaceID)
 			return nil
 		},
 	}

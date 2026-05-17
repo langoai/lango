@@ -304,7 +304,7 @@ Allowed judgments:
 - Product-path linkage: `Phase 3: Leader-Led Team Execution`, `Phase 4: Long-Running Multi-Agent Projects`
 - Current surface area: `docs/features/p2p-network.md`, `docs/cli/p2p.md`, `internal/p2p/workspace/*`, `internal/p2p/gitbundle/*`, `internal/p2p/provenanceproto/*`, `internal/cli/p2p/workspace.go`, `internal/cli/p2p/git.go`, `internal/cli/p2p/provenance.go`, `internal/app/wiring_workspace.go`, `internal/app/bridge_workspace_team.go`, `internal/app/tools_workspace.go`
 - Core value: `Provide collaborative external workspaces, shared artifact exchange, and auditable handoff mechanisms for code and provenance.`
-- Current problem: `The runtime subsystems are real, but the operator surface is uneven: provenance exchange is live, while workspace and git bundle controls are mostly truth-aligned guidance around server-backed or tool-backed flows rather than full direct CLI control.`
+- Current problem: `The runtime subsystems are real, but the operator surface is uneven: provenance exchange and local workspace lifecycle control are live, while distributed workspace messaging and git bundle controls still rely on server-backed or tool-backed flows rather than full direct CLI control.`
 - Judgment: `stabilize`
 - Execution track: `Leader-Led Team Execution Track`
 - Secondary capability areas:
@@ -320,10 +320,10 @@ Allowed judgments:
    - This is a genuine Phase 3/4 capability, not a speculative placeholder.
    - References: `internal/p2p/workspace/manager.go:17-223`, `internal/p2p/workspace/gossip.go:14-160`, `internal/p2p/gitbundle/bundle.go:51-470`, `internal/app/bridge_workspace_team.go:14-102`, `internal/app/p2p_routes.go:36-37`
 
-2. `Major` Workspace CLI docs overstate direct command behavior.
-   - The docs show `workspace create/list/status/join/leave` as if they return live workspace data.
-   - The actual CLI commands are truth-aligned runtime guidance that direct the operator to `lango serve` and runtime/tool-backed flows instead of performing the documented live action themselves.
-   - The workspace runtime is real; the CLI is mostly a guidance layer today.
+2. `Major` Workspace CLI lifecycle control is now direct locally, while distributed exchange remains server-backed.
+   - The CLI directly creates, lists, inspects, joins, and leaves locally persisted workspace records through the BoltDB-backed workspace manager.
+   - Distributed workspace messaging, message reads/posts, and peer exchange still require `lango serve` and the concrete `p2p_workspace_*` tools.
+   - The workspace runtime is real; the remaining gap is full direct CLI control for distributed workspace operations, not local lifecycle records.
    - References: `docs/cli/p2p.md:601-732`, `internal/cli/p2p/workspace.go:15-204`
 
 3. `Major` Git bundle CLI docs also overstate direct command behavior.
@@ -332,9 +332,10 @@ Allowed judgments:
    - The underlying gitbundle service is real; the operator-facing CLI is mostly guidance-oriented today, and provenance remains the main live exception in this family.
    - References: `docs/cli/p2p.md:738-888`, `internal/cli/p2p/git.go:13-151`, `internal/app/tools_workspace.go`
 
-4. `Major` Provenance bundle exchange is the one genuinely live operator surface in this family, which makes the shared-artifact model uneven.
+4. `Major` Provenance bundle exchange and local workspace lifecycle are the genuinely live CLI surfaces in this family, which makes the shared-artifact model uneven.
    - `lango p2p provenance push/fetch` actually talks to gateway-backed `/api/p2p/provenance/*` endpoints.
-   - That means one shared-artifact path is live and concrete, while neighboring workspace/git surfaces remain mostly truth-aligned guidance around server-backed or tool-backed flows.
+   - `lango p2p workspace create/list/status/join/leave` directly manages local workspace records.
+   - Git bundle exchange and distributed workspace messaging remain mostly truth-aligned guidance around server-backed or tool-backed flows.
    - References: `docs/cli/p2p.md:327-349`, `internal/cli/p2p/provenance.go:15-142`, `internal/app/p2p_routes.go:36-37`, `internal/app/p2p_routes.go:183-260`
 
 5. `Major` The chronicler path is documented as persistent graph-triple capture, but the current app wiring still leaves the triple adder pending.
@@ -363,7 +364,7 @@ Allowed judgments:
 
 ### Post-Implementation Notes
 
-- Landed operator-surface alignment clarified which workspace and shared-artifact flows are live, which remain guidance-oriented, and where provenance is the concrete external exchange path today.
+- Landed operator-surface alignment clarified that local workspace lifecycle and provenance exchange are live, while git bundle exchange and distributed workspace messaging remain server-backed or tool-backed.
 - The audit closeout now reflects the narrower, runtime-true collaboration surface rather than the previously overstated workspace and git control story.
 
 ## Next Plan

@@ -34,6 +34,7 @@ The README SHALL list all implemented features including Team Health Monitoring,
 #### Scenario: P2P reputation quick reference includes required peer DID
 - **WHEN** a user reads the P2P quick reference in `README.md`
 - **THEN** it SHALL include `lango p2p reputation --peer-did <did>`
+- **AND** workspace quick-reference summaries SHALL describe direct local workspace actions for create, list, status, join, and leave
 
 ### Requirement: CLI index quick references include required operands
 The CLI index SHALL list quick-reference commands with required positional
@@ -49,6 +50,7 @@ arguments and required flags for provenance and P2P reputation commands.
 #### Scenario: CLI index P2P reputation includes required peer DID
 - **WHEN** a user reads `docs/cli/index.md`
 - **THEN** it SHALL include `lango p2p reputation --peer-did <did>`
+- **AND** workspace quick-reference summaries SHALL describe direct local workspace actions for create, list, status, join, and leave
 
 ### Requirement: Public cron automation docs match CLI flags
 Public cron automation documentation SHALL use command examples accepted by the current CLI.
