@@ -41,7 +41,7 @@ Existing test files SHALL be expanded with additional scenarios.
 
 #### Scenario: Existing package tests gain targeted enhancements
 - **WHEN** the enhanced regression suite runs
-- **THEN** it SHALL cover session-store CRUD and TTL behavior, anthropic model listing, openai unavailable-server handling, and app startup failure modes
+- **THEN** it SHALL cover session-store CRUD and TTL behavior, anthropic model listing, openai unavailable-server handling, app startup failure modes, and doctor non-conflict listen failures
 
 ### REQ-6: Channel Mock Thread Safety
 Channel test mock types SHALL use mutex synchronization to protect shared slices from concurrent access by handler goroutines and test assertions.

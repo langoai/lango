@@ -197,6 +197,23 @@ func TestNetworkCheck_Run_PortInUseReportsConflict(t *testing.T) {
 	assert.NotEmpty(t, result.Details)
 }
 
+func TestNetworkCheck_Run_InvalidBindHostReportsAddressFailure(t *testing.T) {
+	cfg := &config.Config{
+		Server: config.ServerConfig{
+			Host: "[::1",
+			Port: 18789,
+		},
+	}
+
+	check := &NetworkCheck{}
+	result := check.Run(context.Background(), cfg)
+
+	assert.Equal(t, StatusFail, result.Status)
+	assert.Equal(t, "Server bind address unavailable", result.Message)
+	assert.NotEmpty(t, result.Details)
+	assert.NotContains(t, result.Message, "in use")
+}
+
 func TestNetworkCheck_Run_IPv6HostAvailable(t *testing.T) {
 	port := freeIPv6Port(t)
 	cfg := &config.Config{
