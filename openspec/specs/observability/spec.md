@@ -1,9 +1,7 @@
 ## Purpose
 
 Capability spec for observability. See requirements below for scope and behavior contracts.
-
 ## Requirements
-
 ### Requirement: Audit recorder handles AlertEvent
 The audit recorder SHALL subscribe to AlertEvent via SubscribeTyped and persist each alert to the audit log with action="alert", actor="system", target=alert type, and details containing severity, message, and alert-specific metadata.
 
@@ -17,8 +15,6 @@ The `/alerts` HTTP route SHALL be registered alongside existing observability ro
 #### Scenario: Alerts endpoint available
 - **WHEN** observability is enabled and the application starts
 - **THEN** the GET `/alerts` endpoint is registered on the chi router
-
-
 
 ### Requirement: Session map capacity limit
 The `MetricsCollector` MUST support a `MaxSessions` field (default: 10,000) that caps the number of tracked sessions. When the cap is reached and a new session is inserted, the least-recently-updated session MUST be evicted.
@@ -177,3 +173,20 @@ default stderr behavior.
 - **WHEN** the tracing writer seam is replaced for a test
 - **AND** stdout tracing emits and flushes a span
 - **THEN** the span SHALL be written through the injected writer
+
+### Requirement: Default logging output is stderr and seam-aware
+
+When logging is initialized without an explicit writer or output path, the system SHALL write log entries through a package-level default writer seam that defaults to stderr. Explicit `LogConfig.Writer` and `LogConfig.OutputPath` SHALL keep precedence over the default seam.
+
+#### Scenario: Default logging uses injected writer seam
+
+- **WHEN** `logging.Init(...)` is called without `Writer` or `OutputPath`
+- **AND** a test replaces the default logging writer seam
+- **THEN** emitted log entries SHALL be written through the injected seam
+- **AND** no process-global stdout interception SHALL be required
+
+#### Scenario: Default logging does not use stdout
+
+- **WHEN** `logging.Init(...)` is called without `Writer` or `OutputPath`
+- **THEN** the default writer seam SHALL point at stderr
+- **AND** stdout SHALL remain reserved for command result output

@@ -1196,6 +1196,7 @@ of relying only on manual review.
 - **WHEN** the storage broker command is constructed
 - **THEN** an executable test SHALL verify that child stderr uses the injected
   writer seam
+
 ### Requirement: Tracing exporter writer seam regressions stay executable
 Tracing exporter writer routing regressions SHALL be enforced by executable
 tests instead of relying only on manual review.
@@ -1204,3 +1205,12 @@ tests instead of relying only on manual review.
 - **WHEN** the stdout trace exporter is initialized
 - **THEN** an executable test SHALL verify that flushed spans use the injected
   writer seam
+
+### Requirement: Logging default writer seam regressions stay executable
+
+Repository-level regressions that route default logs back to stdout or bypass the default logging writer seam SHALL be enforced by executable tests instead of relying only on manual review.
+
+#### Scenario: Default logging writer seam is covered
+
+- **WHEN** the logging package tests run
+- **THEN** they SHALL fail if default logging output stops using the injected writer seam
