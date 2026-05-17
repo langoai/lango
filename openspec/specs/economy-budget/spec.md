@@ -28,7 +28,7 @@ The system SHALL provide a `Guard` interface in `internal/economy/budget/` with 
 - **THEN** an error is returned and no reservation is made
 
 ### Requirement: TaskBudget allocation and lifecycle
-The system SHALL manage task budgets through a `Store` with `Allocate`, `Get`, `List`, `Update`, and `Delete` operations. Each task has exactly one TaskBudget identified by TaskID.
+The system SHALL manage task budgets through a `Store` with `Allocate`, `Get`, `List`, `Update`, and `Delete` operations. Each task has exactly one TaskBudget identified by TaskID. Store methods that return or accept `TaskBudget` values SHALL isolate stored state from caller-owned mutable pointers and slices.
 
 #### Scenario: Allocate a new task budget
 - **WHEN** `Store.Allocate(taskID, total)` is called for a new task
@@ -41,6 +41,16 @@ The system SHALL manage task budgets through a `Store` with `Allocate`, `Get`, `
 #### Scenario: Get budget for unknown task
 - **WHEN** `Store.Get(taskID)` is called for a non-existent task
 - **THEN** `ErrBudgetNotFound` is returned
+
+#### Scenario: Returned budgets are detached snapshots
+- **WHEN** a caller mutates a TaskBudget returned by `Allocate`, `Get`, or `List`
+- **THEN** the stored TaskBudget SHALL remain unchanged until `Store.Update` is called
+- **AND** nested mutable fields such as `TotalBudget`, `Spent`, `Reserved`, and spend entry amounts SHALL NOT alias stored values
+
+#### Scenario: Update stores a detached snapshot
+- **WHEN** `Store.Update(budget)` succeeds
+- **AND** the caller later mutates the same `budget` pointer or its nested mutable fields
+- **THEN** the stored TaskBudget SHALL retain the state captured at update time
 
 ### Requirement: Budget remaining calculation
 `TaskBudget.Remaining()` SHALL return `TotalBudget - Spent - Reserved`, representing the truly available budget.
