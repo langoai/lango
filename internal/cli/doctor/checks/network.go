@@ -6,6 +6,7 @@ import (
 	"net"
 
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/gatewayaddr"
 )
 
 // NetworkCheck validates network-related configuration.
@@ -28,7 +29,7 @@ func (c *NetworkCheck) Run(ctx context.Context, cfg *config.Config) Result {
 		host = cfg.Server.Host
 	}
 
-	addr := fmt.Sprintf("%s:%d", host, port)
+	addr := gatewayaddr.ListenAddress(host, port)
 
 	// Try to listen on the port
 	listener, err := net.Listen("tcp", addr)

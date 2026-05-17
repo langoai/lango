@@ -2,6 +2,8 @@ package checks
 
 import (
 	"context"
+	"net"
+	"strconv"
 	"testing"
 
 	"github.com/langoai/lango/internal/config"
@@ -170,6 +172,38 @@ func TestNetworkCheck_Run_PortAvailable(t *testing.T) {
 	}
 }
 
+func TestNetworkCheck_Run_IPv6HostAvailable(t *testing.T) {
+	port := freeIPv6Port(t)
+	cfg := &config.Config{
+		Server: config.ServerConfig{
+			Host: "::1",
+			Port: port,
+		},
+	}
+
+	check := &NetworkCheck{}
+	result := check.Run(context.Background(), cfg)
+
+	assert.Equal(t, StatusPass, result.Status, result.Message)
+	assert.Equal(t, "[::1]:"+strconv.Itoa(port), result.Details)
+}
+
+func TestNetworkCheck_Run_BracketedIPv6HostAvailable(t *testing.T) {
+	port := freeIPv6Port(t)
+	cfg := &config.Config{
+		Server: config.ServerConfig{
+			Host: "[::1]",
+			Port: port,
+		},
+	}
+
+	check := &NetworkCheck{}
+	result := check.Run(context.Background(), cfg)
+
+	assert.Equal(t, StatusPass, result.Status, result.Message)
+	assert.Equal(t, "[::1]:"+strconv.Itoa(port), result.Details)
+}
+
 func TestDatabaseCheck_Run_DirectoryNotExist(t *testing.T) {
 	cfg := &config.Config{
 		Session: config.SessionConfig{
@@ -186,6 +220,22 @@ func TestDatabaseCheck_Run_DirectoryNotExist(t *testing.T) {
 	if !result.Fixable {
 		t.Error("expected Fixable to be true")
 	}
+}
+
+func freeIPv6Port(t *testing.T) int {
+	t.Helper()
+
+	listener, err := net.Listen("tcp", "[::1]:0")
+	if err != nil {
+		t.Skipf("IPv6 loopback is unavailable: %v", err)
+	}
+	defer listener.Close()
+
+	_, portText, err := net.SplitHostPort(listener.Addr().String())
+	require.NoError(t, err)
+	port, err := strconv.Atoi(portText)
+	require.NoError(t, err)
+	return port
 }
 
 func TestSecurityCheck_Run_KMSProvider(t *testing.T) {
