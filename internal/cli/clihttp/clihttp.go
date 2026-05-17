@@ -2,7 +2,10 @@
 package clihttp
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,17 +17,71 @@ import (
 
 // FetchJSON reads JSON from the given gateway path with a bounded timeout.
 func FetchJSON(addr, path string, out interface{}) error {
+	return FetchJSONContext(context.Background(), addr, path, out)
+}
+
+// FetchJSONContext reads JSON from the given gateway path with a bounded timeout.
+func FetchJSONContext(ctx context.Context, addr, path string, out interface{}) error {
 	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Get(addr + path)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, addr+path, nil)
+	if err != nil {
+		return fmt.Errorf("build gateway request: %w", err)
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("connect to gateway: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("gateway returned status %d", resp.StatusCode)
+		return decodeGatewayError(resp)
 	}
 	return json.NewDecoder(resp.Body).Decode(out)
+}
+
+// PostJSON posts a JSON request body to the given gateway path and decodes JSON.
+func PostJSON(addr, path string, body interface{}, out interface{}) error {
+	return PostJSONContext(context.Background(), addr, path, body, out)
+}
+
+// PostJSONContext posts a JSON request body to the given gateway path and decodes JSON.
+func PostJSONContext(ctx context.Context, addr, path string, body interface{}, out interface{}) error {
+	data, err := json.Marshal(body)
+	if err != nil {
+		return fmt.Errorf("marshal request: %w", err)
+	}
+	client := &http.Client{Timeout: 10 * time.Second}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, addr+path, bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("build gateway request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("connect to gateway: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return decodeGatewayError(resp)
+	}
+	if out == nil {
+		return nil
+	}
+	return json.NewDecoder(resp.Body).Decode(out)
+}
+
+func decodeGatewayError(resp *http.Response) error {
+	body, _ := io.ReadAll(resp.Body)
+	var payload map[string]interface{}
+	if json.Unmarshal(body, &payload) == nil {
+		for _, key := range []string{"error", "message"} {
+			if msg, ok := payload[key].(string); ok && strings.TrimSpace(msg) != "" {
+				return errors.New(msg)
+			}
+		}
+	}
+	return fmt.Errorf("gateway returned status %d", resp.StatusCode)
 }
 
 // ResolveTableOrJSONOutput validates a Cobra --output flag that only accepts table or json.

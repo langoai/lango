@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Background list command
-The CLI SHALL provide `lango bg list` that displays all background tasks with columns: ID, Status, Prompt (truncated), Started, Completed.
+The CLI SHALL provide `lango bg list` that displays all background tasks with columns: ID, Status, Prompt (truncated), Started, Duration.
 
 #### Scenario: List background tasks
 - **WHEN** user runs `lango bg list`

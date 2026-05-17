@@ -109,7 +109,7 @@ func TestArchitectureProjectStructureUsesCurrentSecurityCLISurface(t *testing.T)
 	}
 }
 
-func TestPublicDocsExplainBackgroundCLIServerBoundary(t *testing.T) {
+func TestPublicDocsExplainBackgroundCLIGatewayBoundary(t *testing.T) {
 	t.Parallel()
 
 	repoRoot := docsQualityRepoRoot(t)
@@ -119,10 +119,12 @@ func TestPublicDocsExplainBackgroundCLIServerBoundary(t *testing.T) {
 		filepath.Join(repoRoot, "docs", "automation", "background.md"),
 	}
 	requiredSnippets := []string{
-		"Background task state is in-memory and owned by the running app/server process",
-		"The current root CLI `lango bg` surface is not yet a remote gateway client",
-		"in-app/cockpit task surfaces or agent `bg_*` tools",
-		"until a remote management API exists",
+		"Background task state remains in-memory and owned by the target running app/server process",
+		"Root `lango bg` commands talk to that process through the Lango gateway",
+		"use `--addr <url>` to target a non-default gateway",
+		"otherwise the CLI uses the configured server host/port",
+		"Server restart clears tasks",
+		"Auth-enabled gateways require gateway session authentication and reject unauthenticated root CLI background requests",
 	}
 
 	for _, target := range targets {
@@ -136,7 +138,7 @@ func TestPublicDocsExplainBackgroundCLIServerBoundary(t *testing.T) {
 		}
 		for _, snippet := range requiredSnippets {
 			if !strings.Contains(text, snippet) {
-				t.Fatalf("%s is missing background CLI server-boundary caveat snippet %q", target, snippet)
+				t.Fatalf("%s is missing background CLI gateway-boundary caveat snippet %q", target, snippet)
 			}
 		}
 	}
@@ -159,13 +161,13 @@ func TestPublicDocsExplainBackgroundCLIMutability(t *testing.T) {
 	}
 
 	requiredPatterns := map[string]*regexp.Regexp{
-		"in-process manager": regexp.MustCompile(`(?is)CLI\b.{0,80}\bin-process management commands\b.{0,120}\bin-process manager\b`),
-		"inspect commands":   regexp.MustCompile(`(?is)lango bg list\b.{0,80}lango bg status <id>.{0,80}lango bg result <id>.{0,80}\binspect task state\b`),
-		"cancel mutability":  regexp.MustCompile(`(?is)lango bg cancel <id>.{0,120}\brequests cancellation\b.{0,120}\bpending or running task\b.{0,120}\bsame process\b`),
+		"gateway-backed management": regexp.MustCompile(`(?is)CLI\b.{0,80}\bgateway-backed management commands\b`),
+		"inspect commands":          regexp.MustCompile(`(?is)lango bg list\b.{0,80}lango bg status <id>.{0,80}lango bg result <id>.{0,80}\binspect task state\b.{0,80}\btarget gateway process\b`),
+		"cancel mutability":         regexp.MustCompile(`(?is)lango bg cancel <id>.{0,120}\brequests cancellation\b.{0,120}\bpending or running task\b.{0,120}\btarget gateway process\b`),
 		"submission boundary": regexp.MustCompile(
 			regexp.QuoteMeta("Task submission is handled exclusively through agent tools"),
 		),
-		"remote boundary": regexp.MustCompile(`(?is)root CLI\b.{0,80}lango bg\b.{0,80}\bnot yet a remote gateway client\b`),
+		"gateway boundary": regexp.MustCompile(`(?is)Root ` + "`" + `lango bg` + "`" + ` commands\b.{0,120}\bLango gateway\b`),
 	}
 	for name, pattern := range requiredPatterns {
 		if !pattern.MatchString(text) {

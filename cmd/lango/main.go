@@ -75,10 +75,6 @@ var (
 	BuildTime = "unknown"
 )
 
-const rootBgBoundaryError = "background task state is in-memory and owned by the running app/server process; " +
-	"the standalone root CLI is not yet connected to that process through a gateway API. " +
-	"Use in-app/cockpit task surfaces or agent bg_* tools for current task management"
-
 var (
 	exitFn                             = os.Exit
 	runWorkbenchFn                     = runWorkbench
@@ -267,9 +263,7 @@ func newRootCmd() *cobra.Command {
 	provenanceCmd.GroupID = "auto"
 	rootCmd.AddCommand(provenanceCmd)
 
-	bgCmd := clibg.NewBgCmd(func() (*background.Manager, error) {
-		return nil, fmt.Errorf(rootBgBoundaryError)
-	})
+	bgCmd := clibg.NewGatewayCmd(cliboot.BootResult)
 	bgCmd.GroupID = "auto"
 	rootCmd.AddCommand(bgCmd)
 

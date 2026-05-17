@@ -3,11 +3,13 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -421,22 +423,39 @@ func TestNewRootCmd_NonInteractiveBareRootWritesHelpToCommandOutput(t *testing.T
 	assert.Contains(t, out.String(), "Usage:")
 }
 
-func TestNewRootCmdBgListReportsStandaloneBoundary(t *testing.T) {
+func TestNewRootCmdBgListUsesGatewayAddr(t *testing.T) {
+	var gotPath string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		require.Equal(t, http.MethodGet, r.Method)
+		require.Equal(t, "/api/bg/tasks", r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		err := json.NewEncoder(w).Encode(map[string]any{
+			"tasks": []map[string]any{
+				{
+					"id":        "task-root-123",
+					"status":    "running",
+					"prompt":    "root bg prompt",
+					"startedAt": "2026-05-18 10:00:00",
+					"duration":  "3s (running)",
+				},
+			},
+		})
+		require.NoError(t, err)
+	}))
+	defer server.Close()
+
 	cmd := newRootCmd()
 	var out bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&out)
-	cmd.SetArgs([]string{"bg", "list"})
+	cmd.SetArgs([]string{"bg", "list", "--addr", server.URL})
 
 	err := cmd.Execute()
-	require.Error(t, err)
-
-	msg := err.Error()
-	assert.Contains(t, msg, "background task state is in-memory")
-	assert.Contains(t, msg, "owned by the running app/server process")
-	assert.Contains(t, msg, "standalone root CLI is not yet connected")
-	assert.Contains(t, msg, "gateway API")
-	assert.NotContains(t, msg, "lango serve")
+	require.NoError(t, err)
+	assert.Equal(t, "/api/bg/tasks", gotPath)
+	assert.Contains(t, out.String(), "STATUS")
+	assert.Contains(t, out.String(), "root bg prompt")
 }
 
 func TestNewRootCmd_InvalidModeReturnsActionableError(t *testing.T) {

@@ -145,18 +145,20 @@ Public CLI documentation that describes bare `lango` SHALL state that the workbe
 - **AND** the document SHALL state that non-interactive bare `lango` prints help and exits successfully without starting the TUI
 - **AND** the document SHALL distinguish this fallback from `lango cockpit` and `lango chat` non-interactive errors
 
-### Requirement: Background CLI docs describe server-boundary caveat
-Public documentation that lists `lango bg` commands SHALL explain that the current root CLI is not a remote client for the server process's in-memory background manager.
+### Requirement: Background CLI docs describe gateway-backed runtime boundary
+Public documentation that lists `lango bg` commands SHALL explain that root CLI background management talks to the running Lango gateway and still manages only that process's in-memory task state.
 
-#### Scenario: Public bg command references include runtime caveat
+#### Scenario: Public bg command references include gateway runtime caveat
 - **WHEN** a user reads README, `docs/cli/index.md`, or `docs/automation/background.md`
-- **THEN** any `lango bg list/status/cancel/result` command reference SHALL be accompanied by a caveat that task state is in-memory and root CLI management is not yet connected to the running server process
+- **THEN** any `lango bg list/status/cancel/result` command reference SHALL be accompanied by a caveat that task state is in-memory and lost on server restart
+- **AND** the docs SHALL state that root CLI management requires a reachable Lango gateway
+- **AND** the docs SHALL mention the `--addr` override for selecting the gateway address
+- **AND** the docs SHALL state that auth-enabled gateways require gateway session authentication and reject unauthenticated root CLI background requests
 
 #### Scenario: Background automation docs describe cancel mutability
 - **WHEN** a user reads `docs/automation/background.md`
 - **THEN** the document SHALL NOT describe all `lango bg` CLI commands as read-only management commands
-- **AND** it SHALL state that the CLI provides in-process management commands when supplied an in-process manager
-- **AND** it SHALL distinguish inspect-only `list/status/result` behavior from `cancel` requesting cancellation for a pending or running task in that same process
+- **AND** it SHALL distinguish inspect-only `list/status/result` behavior from `cancel` requesting cancellation for a pending or running task in the target gateway process
 
 ### Requirement: P2P connect docs describe bounded timeout
 Public P2P CLI documentation SHALL describe that `lango p2p connect` uses a bounded connect attempt tied to the P2P handshake timeout.

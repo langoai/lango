@@ -8,6 +8,7 @@ Public documentation that lists `lango bg` commands SHALL explain that root CLI 
 - **THEN** any `lango bg list/status/cancel/result` command reference SHALL be accompanied by a caveat that task state is in-memory and lost on server restart
 - **AND** the docs SHALL state that root CLI management requires a reachable Lango gateway
 - **AND** the docs SHALL mention the `--addr` override for selecting the gateway address
+- **AND** the docs SHALL state that auth-enabled gateways require gateway session authentication and reject unauthenticated root CLI background requests
 
 #### Scenario: Background automation docs describe cancel mutability
 - **WHEN** a user reads `docs/automation/background.md`

@@ -96,10 +96,10 @@ Each background task runs in an isolated session with the key format `bg:<task-i
 
 ## CLI Commands
 
-The CLI provides in-process management commands for background tasks when supplied an in-process manager. `lango bg list`, `lango bg status <id>`, and `lango bg result <id>` inspect task state; `lango bg cancel <id>` requests cancellation for a pending or running task in that same process. Task submission is handled exclusively through agent tools.
+The CLI provides gateway-backed management commands for background tasks. `lango bg list`, `lango bg status <id>`, and `lango bg result <id>` inspect task state in the target gateway process; `lango bg cancel <id>` requests cancellation for a pending or running task in that target gateway process. Task submission is handled exclusively through agent tools.
 All background-task CLI subcommands write through the Cobra command output stream so wrappers and test harnesses can capture their output directly.
 
-Background task state is in-memory and owned by the running app/server process. The current root CLI `lango bg` surface is not yet a remote gateway client for that process, so use in-app/cockpit task surfaces or agent `bg_*` tools for live task management until a remote management API exists.
+Background task state remains in-memory and owned by the target running app/server process. Root `lango bg` commands talk to that process through the Lango gateway; use `--addr <url>` to target a non-default gateway, otherwise the CLI uses the configured server host/port. Server restart clears tasks. Auth-enabled gateways require gateway session authentication and reject unauthenticated root CLI background requests.
 
 ### List Tasks
 

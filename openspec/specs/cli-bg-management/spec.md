@@ -5,7 +5,7 @@ Define the CLI commands for managing background task execution (list, status, ca
 ## Requirements
 
 ### Requirement: Background list command
-The CLI SHALL provide `lango bg list` that displays all background tasks with columns: ID, Status, Prompt (truncated), Started, Completed.
+The CLI SHALL provide `lango bg list` that displays all background tasks with columns: ID, Status, Prompt (truncated), Started, Duration.
 
 #### Scenario: List background tasks
 - **WHEN** user runs `lango bg list`
@@ -20,12 +20,16 @@ The CLI SHALL provide `lango bg list` that displays all background tasks with co
 - **THEN** it SHALL write the full output through the Cobra command output writer
 - **AND** wrappers or tests that replace `cmd.OutOrStdout()` SHALL capture the command output
 
+#### Scenario: Background CLI supports JSON output
+- **WHEN** user runs `lango bg list`, `status`, `cancel`, or `result` with `--output json`
+- **THEN** the CLI SHALL write the command result as JSON through the Cobra command output writer
+
 ### Requirement: Background status command
 The CLI SHALL provide `lango bg status <id>` that displays detailed task information.
 
 #### Scenario: View task status
 - **WHEN** user runs `lango bg status <uuid>`
-- **THEN** the CLI SHALL display the task's full details including status, prompt, origin, timing, and tokens used
+- **THEN** the CLI SHALL display the task's full details including status, prompt, origin, timing, and result/error fields when present
 
 ### Requirement: Background cancel command
 The CLI SHALL provide `lango bg cancel <id>` that cancels a running task.
@@ -45,9 +49,19 @@ The CLI SHALL provide `lango bg result <id>` that displays the result of a compl
 - **WHEN** user runs `lango bg result <uuid>` for a task that is not yet complete
 - **THEN** the CLI SHALL display an error indicating the task is not done
 
-### Requirement: In-memory manager dependency
-The bg CLI commands SHALL require access to the running server's in-memory Manager instance via a provider function.
+### Requirement: Background CLI client boundary
+The bg CLI commands SHALL operate through a narrow background task client interface that supports both in-process manager adapters and gateway-backed remote adapters.
 
-#### Scenario: Server not running
-- **WHEN** bg commands are invoked without a running server providing the Manager
-- **THEN** the CLI SHALL return an error indicating the background manager is not available
+#### Scenario: Embedded in-process manager remains supported
+- **WHEN** `internal/cli/bg.NewBgCmd` is constructed with an in-process background manager adapter
+- **THEN** `list`, `status`, `cancel`, and `result` SHALL continue to operate on that in-process manager
+
+#### Scenario: Gateway-backed root CLI
+- **WHEN** root `lango bg` is constructed by `cmd/lango/main.go`
+- **THEN** it SHALL use a gateway-backed background client
+- **AND** it SHALL resolve the gateway address from `--addr` when supplied
+- **AND** it SHALL otherwise resolve the address from configured server host and port
+
+#### Scenario: Gateway unavailable
+- **WHEN** the gateway-backed bg client cannot connect to the configured gateway
+- **THEN** the CLI SHALL return an actionable connection error that includes gateway context

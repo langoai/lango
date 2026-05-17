@@ -320,7 +320,7 @@ Librarian command output is routed through the Cobra command writer, so wrappers
 | `lango bg cancel <id>` | Cancel a running background task |
 | `lango bg result <id>` | Show completed task result |
 
-Background task state is in-memory and owned by the running app/server process. The current root CLI `lango bg` surface is not yet a remote gateway client for that process, so use in-app/cockpit task surfaces or agent `bg_*` tools for live task management until a remote management API exists.
+Background task state remains in-memory and owned by the target running app/server process. Root `lango bg` commands talk to that process through the Lango gateway; use `--addr <url>` to target a non-default gateway, otherwise the CLI uses the configured server host/port. Server restart clears tasks. Auth-enabled gateways require gateway session authentication and reject unauthenticated root CLI background requests.
 
 ### MCP Servers
 

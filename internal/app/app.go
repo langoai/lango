@@ -771,6 +771,9 @@ func wirePostAgent(app *App, r appinit.Resolver, tools []*agent.Tool, bus *event
 		logger().Info("observability API routes registered")
 	}
 
+	registerBackgroundRoutes(app.Gateway.Router(), app, auth)
+	logger().Info("background management API routes registered")
+
 	// Audit recorder.
 	if cfg.Observability.Audit.Enabled {
 		var auditRec *audit.Recorder

@@ -17,4 +17,4 @@ Repository-level regressions in background CLI boundary messaging SHALL be enfor
 #### Scenario: Background automation docs guard checks gateway wording
 - **WHEN** docs quality tests run
 - **THEN** README, `docs/cli/index.md`, and `docs/automation/background.md` SHALL fail the test suite if they describe root `lango bg` as disconnected from gateway management after the gateway-backed client is implemented
-- **AND** they SHALL be checked for the in-memory restart caveat and `--addr` override guidance
+- **AND** they SHALL be checked for the in-memory restart caveat, `--addr` override guidance, and auth-enabled gateway rejection caveat
