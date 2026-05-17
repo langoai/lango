@@ -269,11 +269,18 @@ The EventMonitor SHALL detect and correctly parse V2 contract events that includ
 - **THEN** the EventMonitor SHALL treat it as a V2 dispute event with refId at topic index 1 and dealID at topic index 2
 
 ### Requirement: DanglingDetector periodic scan
-The `DanglingDetector` SHALL periodically scan for escrows stuck in `Pending` status beyond `maxPending` duration and expire them. The scan SHALL use `Store.ListByStatus(StatusPending)` instead of loading all escrows via `Store.List()`.
+The `DanglingDetector` SHALL periodically scan for escrows stuck in `Pending` status beyond `maxPending` duration and expire only those whose `ExpiresAt` has been reached. The scan SHALL use `Store.ListByStatusBefore(StatusPending, cutoff)` instead of loading all escrows via `Store.List()`.
 
 #### Scenario: Scan expires old pending escrows
 - **WHEN** the scan runs and an escrow has been in `Pending` status longer than `maxPending`
+- **AND** the escrow has reached ExpiresAt
 - **THEN** the detector SHALL call `Engine.Expire` on that escrow and publish an `EscrowDanglingEvent`
+
+#### Scenario: Scan skips old pending escrows before expiry
+- **WHEN** the scan runs and an escrow has been in `Pending` status longer than `maxPending`
+- **AND** the escrow has not reached ExpiresAt
+- **THEN** the detector SHALL leave the escrow in `Pending`
+- **AND** SHALL NOT publish an `EscrowDanglingEvent`
 
 #### Scenario: Scan skips non-pending escrows
 - **WHEN** the scan runs

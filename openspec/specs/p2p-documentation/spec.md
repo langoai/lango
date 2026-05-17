@@ -129,7 +129,7 @@ The economy feature documentation SHALL include Hub V2, milestone settler, and d
 
 #### Scenario: Dangling detector documented
 - **WHEN** a user reads `docs/features/economy.md`
-- **THEN** a Dangling Escrow Detector section SHALL describe `DanglingDetector`, `EscrowDanglingEvent`, and auto-refund
+- **THEN** a Dangling Escrow Detector section SHALL describe `DanglingDetector`, `EscrowDanglingEvent`, and ExpiresAt-gated auto-expiry
 
 ### Requirement: Cron documentation covers per-job timeout
 The cron automation documentation SHALL include per-job timeout configuration.

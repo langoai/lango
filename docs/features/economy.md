@@ -283,18 +283,19 @@ Source: `internal/economy/escrow/hub/hub_settler.go`
 
 ### Dangling Escrow Detector
 
-The `DanglingDetector` is a lifecycle component that periodically scans for escrows stuck in `Pending` status longer than a configurable threshold. It auto-expires stale escrows and publishes an `EscrowDanglingEvent`.
+The `DanglingDetector` is a lifecycle component that periodically scans for escrows stuck in `Pending` status longer than a configurable threshold. It auto-expires stale escrows only after their `ExpiresAt` timestamp has been reached, then publishes an `EscrowDanglingEvent`.
 
 **Behavior:**
 
 1. Every `scanInterval` (default: 5m), query all escrows with `StatusPending` created before `now - maxPending`
-2. For each dangling escrow, call `engine.Expire()` to transition it to expired
-3. Publish `EscrowDanglingEvent` with escrow details and `action: "expired"`
+2. For each dangling escrow, skip expiry until `ExpiresAt` has been reached
+3. Once `ExpiresAt` is reached, call `engine.Expire()` to transition it to expired
+4. Publish `EscrowDanglingEvent` with escrow details and `action: "expired"`
 
 | Config | Default | Description |
 |--------|---------|-------------|
 | `scanInterval` | `5m` | Time between scan sweeps |
-| `maxPending` | `10m` | Maximum time an escrow can stay in Pending |
+| `maxPending` | `10m` | Age threshold for detecting pending escrows; expiry still waits for `ExpiresAt` |
 
 Source: `internal/economy/escrow/hub/dangling_detector.go`
 

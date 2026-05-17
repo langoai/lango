@@ -49,7 +49,7 @@ func TestDanglingDetector_ScanExpiresDangling(t *testing.T) {
 		Milestones: []escrow.MilestoneRequest{
 			{Description: "m1", Amount: big.NewInt(500)},
 		},
-		ExpiresAt: func() *time.Time { t := time.Now().Add(1 * time.Hour); return &t }(),
+		ExpiresAt: func() *time.Time { t := time.Now().Add(-1 * time.Minute); return &t }(),
 	})
 	require.NoError(t, err)
 
@@ -77,6 +77,47 @@ func TestDanglingDetector_ScanExpiresDangling(t *testing.T) {
 	assert.Equal(t, entry.ID, published[0].EscrowID)
 	assert.Equal(t, "expired", published[0].Action)
 	assert.Equal(t, "did:test:buyer", published[0].BuyerDID)
+}
+
+func TestDanglingDetector_ScanSkipsDanglingBeforeExpiresAt(t *testing.T) {
+	t.Parallel()
+
+	engine, store := createTestEngine(t)
+	bus := eventbus.New()
+
+	var published []eventbus.EscrowDanglingEvent
+	eventbus.SubscribeTyped(bus, func(ev eventbus.EscrowDanglingEvent) {
+		published = append(published, ev)
+	})
+
+	entry, err := engine.Create(context.Background(), escrow.CreateRequest{
+		BuyerDID:  "did:test:buyer",
+		SellerDID: "did:test:seller",
+		Amount:    big.NewInt(500),
+		Reason:    "test",
+		Milestones: []escrow.MilestoneRequest{
+			{Description: "m1", Amount: big.NewInt(500)},
+		},
+		ExpiresAt: func() *time.Time { t := time.Now().Add(1 * time.Hour); return &t }(),
+	})
+	require.NoError(t, err)
+
+	e, err := store.Get(entry.ID)
+	require.NoError(t, err)
+	e.CreatedAt = time.Now().Add(-15 * time.Minute)
+	require.NoError(t, store.Update(e))
+
+	dd := NewDanglingDetector(store, engine, bus,
+		WithMaxPending(10*time.Minute),
+		WithDanglingLogger(zap.NewNop().Sugar()),
+	)
+
+	dd.scan()
+
+	updated, err := engine.Get(entry.ID)
+	require.NoError(t, err)
+	assert.Equal(t, escrow.StatusPending, updated.Status)
+	assert.Empty(t, published)
 }
 
 func TestDanglingDetector_ScanIgnoresYoung(t *testing.T) {
