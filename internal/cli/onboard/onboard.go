@@ -10,7 +10,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 
-	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/cli/cliboot"
 	cliprompt "github.com/langoai/lango/internal/cli/prompt"
 	"github.com/langoai/lango/internal/cli/tui"
@@ -25,6 +24,7 @@ const nonInteractiveOnboardError = "onboard requires an interactive terminal; " 
 var (
 	requireInteractiveTerminal = cliprompt.RequireInteractiveTerminal
 	runOnboardFn               = runOnboard
+	onboardBootResult          = cliboot.BootResult
 )
 
 // NewCommand creates the onboard command.
@@ -78,10 +78,7 @@ func runOnboard(out io.Writer, profileName, preset string) error {
 		return fmt.Errorf("unknown preset %q (valid: minimal, researcher, collaborator, full)", preset)
 	}
 
-	boot, err := bootstrap.Run(bootstrap.Options{
-		Version:            cliboot.Version,
-		StartStorageBroker: true,
-	})
+	boot, err := onboardBootResult()
 	if err != nil {
 		return fmt.Errorf("bootstrap: %w", err)
 	}

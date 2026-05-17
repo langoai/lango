@@ -6,6 +6,8 @@ import (
 	"io"
 	"strings"
 	"testing"
+
+	"github.com/langoai/lango/internal/bootstrap"
 )
 
 func TestPrintNextStepsIncludesServeDoctorAndProfileManagement(t *testing.T) {
@@ -56,5 +58,28 @@ func TestNewCommand_NonInteractiveGuardRunsBeforeSettings(t *testing.T) {
 	}
 	if runCalled {
 		t.Fatal("settings run path should not start after non-interactive guard failure")
+	}
+}
+
+func TestRunSettingsUsesBootLoader(t *testing.T) {
+	bootErr := errors.New("bootstrap unavailable")
+	prevBoot := settingsBootResult
+	defer func() {
+		settingsBootResult = prevBoot
+	}()
+
+	called := false
+	settingsBootResult = func() (*bootstrap.Result, error) {
+		called = true
+		return nil, bootErr
+	}
+
+	err := runSettings(io.Discard, "default")
+
+	if !called {
+		t.Fatal("runSettings should use the shared boot loader seam")
+	}
+	if !errors.Is(err, bootErr) {
+		t.Fatalf("expected bootstrap error, got %v", err)
 	}
 }

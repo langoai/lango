@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
 )
 
@@ -59,5 +60,28 @@ func TestNewCommand_NonInteractiveGuardRunsBeforeOnboard(t *testing.T) {
 	}
 	if runCalled {
 		t.Fatal("onboard run path should not start after non-interactive guard failure")
+	}
+}
+
+func TestRunOnboardUsesBootLoader(t *testing.T) {
+	bootErr := errors.New("bootstrap unavailable")
+	prevBoot := onboardBootResult
+	defer func() {
+		onboardBootResult = prevBoot
+	}()
+
+	called := false
+	onboardBootResult = func() (*bootstrap.Result, error) {
+		called = true
+		return nil, bootErr
+	}
+
+	err := runOnboard(io.Discard, "default", "")
+
+	if !called {
+		t.Fatal("runOnboard should use the shared boot loader seam")
+	}
+	if !errors.Is(err, bootErr) {
+		t.Fatalf("expected bootstrap error, got %v", err)
 	}
 }

@@ -41,14 +41,14 @@ func executeDoctorCommand(t *testing.T, cmd *cobra.Command, args ...string) (str
 }
 
 func TestDoctorCommand_TableWritesToCommandOutput(t *testing.T) {
-	origBootstrapRun := doctorBootstrapRun
+	origBootstrapRun := doctorBootResult
 	origAllChecks := doctorAllChecks
 	t.Cleanup(func() {
-		doctorBootstrapRun = origBootstrapRun
+		doctorBootResult = origBootstrapRun
 		doctorAllChecks = origAllChecks
 	})
 
-	doctorBootstrapRun = func(opts bootstrap.Options) (*bootstrap.Result, error) {
+	doctorBootResult = func() (*bootstrap.Result, error) {
 		return &bootstrap.Result{Config: config.DefaultConfig()}, nil
 	}
 	doctorAllChecks = func() []checks.Check {
@@ -71,14 +71,14 @@ func TestDoctorCommand_TableWritesToCommandOutput(t *testing.T) {
 }
 
 func TestDoctorCommand_JSONWritesToCommandOutput(t *testing.T) {
-	origBootstrapRun := doctorBootstrapRun
+	origBootstrapRun := doctorBootResult
 	origAllChecks := doctorAllChecks
 	t.Cleanup(func() {
-		doctorBootstrapRun = origBootstrapRun
+		doctorBootResult = origBootstrapRun
 		doctorAllChecks = origAllChecks
 	})
 
-	doctorBootstrapRun = func(opts bootstrap.Options) (*bootstrap.Result, error) {
+	doctorBootResult = func() (*bootstrap.Result, error) {
 		return &bootstrap.Result{Config: config.DefaultConfig()}, nil
 	}
 	doctorAllChecks = func() []checks.Check {
@@ -103,12 +103,12 @@ func TestDoctorCommand_JSONWritesToCommandOutput(t *testing.T) {
 }
 
 func TestDoctorCommand_InvalidOutputFailsBeforeBootstrap(t *testing.T) {
-	origBootstrapRun := doctorBootstrapRun
+	origBootstrapRun := doctorBootResult
 	t.Cleanup(func() {
-		doctorBootstrapRun = origBootstrapRun
+		doctorBootResult = origBootstrapRun
 	})
 
-	doctorBootstrapRun = func(opts bootstrap.Options) (*bootstrap.Result, error) {
+	doctorBootResult = func() (*bootstrap.Result, error) {
 		t.Fatal("bootstrap should not run for invalid output")
 		return nil, nil
 	}
@@ -122,14 +122,14 @@ func TestDoctorCommand_InvalidOutputFailsBeforeBootstrap(t *testing.T) {
 }
 
 func TestDoctorCommand_TableSurfacesBootstrapFailure(t *testing.T) {
-	origBootstrapRun := doctorBootstrapRun
+	origBootstrapRun := doctorBootResult
 	origAllChecks := doctorAllChecks
 	t.Cleanup(func() {
-		doctorBootstrapRun = origBootstrapRun
+		doctorBootResult = origBootstrapRun
 		doctorAllChecks = origAllChecks
 	})
 
-	doctorBootstrapRun = func(opts bootstrap.Options) (*bootstrap.Result, error) {
+	doctorBootResult = func() (*bootstrap.Result, error) {
 		return nil, errors.New("corrupt envelope")
 	}
 	doctorAllChecks = func() []checks.Check {
@@ -154,14 +154,14 @@ func TestDoctorCommand_TableSurfacesBootstrapFailure(t *testing.T) {
 }
 
 func TestDoctorCommand_JSONSurfacesBootstrapFailure(t *testing.T) {
-	origBootstrapRun := doctorBootstrapRun
+	origBootstrapRun := doctorBootResult
 	origAllChecks := doctorAllChecks
 	t.Cleanup(func() {
-		doctorBootstrapRun = origBootstrapRun
+		doctorBootResult = origBootstrapRun
 		doctorAllChecks = origAllChecks
 	})
 
-	doctorBootstrapRun = func(opts bootstrap.Options) (*bootstrap.Result, error) {
+	doctorBootResult = func() (*bootstrap.Result, error) {
 		return nil, errors.New("corrupt envelope")
 	}
 	doctorAllChecks = func() []checks.Check {

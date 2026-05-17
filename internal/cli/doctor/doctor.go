@@ -8,7 +8,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/cli/cliboot"
 	"github.com/langoai/lango/internal/cli/clihttp"
 	"github.com/langoai/lango/internal/cli/doctor/checks"
@@ -23,8 +22,8 @@ type Options struct {
 }
 
 var (
-	doctorBootstrapRun = bootstrap.Run
-	doctorAllChecks    = checks.AllChecks
+	doctorBootResult = cliboot.BootResult
+	doctorAllChecks  = checks.AllChecks
 )
 
 // NewCommand creates the doctor command.
@@ -114,10 +113,7 @@ Use --output json for machine-readable output.
 func run(ctx context.Context, out io.Writer, opts *Options) error {
 	// Load configuration from encrypted profile via bootstrap.
 	var cfg *config.Config
-	boot, err := doctorBootstrapRun(bootstrap.Options{
-		Version:            cliboot.Version,
-		StartStorageBroker: true,
-	})
+	boot, err := doctorBootResult()
 	if boot != nil {
 		if err == nil {
 			cfg = boot.Config

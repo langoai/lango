@@ -10,7 +10,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 
-	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/cli/cliboot"
 	cliprompt "github.com/langoai/lango/internal/cli/prompt"
 	"github.com/langoai/lango/internal/cli/tui"
@@ -25,6 +24,7 @@ const nonInteractiveSettingsError = "settings requires an interactive terminal; 
 var (
 	requireInteractiveTerminal = cliprompt.RequireInteractiveTerminal
 	runSettingsFn              = runSettings
+	settingsBootResult         = cliboot.BootResult
 )
 
 // NewCommand creates the settings command.
@@ -76,10 +76,7 @@ See Also:
 }
 
 func runSettings(out io.Writer, profileName string) error {
-	boot, err := bootstrap.Run(bootstrap.Options{
-		Version:            cliboot.Version,
-		StartStorageBroker: true,
-	})
+	boot, err := settingsBootResult()
 	if err != nil {
 		return fmt.Errorf("bootstrap: %w", err)
 	}

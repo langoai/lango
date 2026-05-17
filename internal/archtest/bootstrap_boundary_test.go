@@ -1,7 +1,12 @@
 package archtest
 
 import (
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"io/fs"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -151,6 +156,96 @@ func TestNoBootstrapDBHandlesRemainInAppAndMigratedCLI(t *testing.T) {
 		return
 	}
 	t.Fatalf("rg failed: %v\n%s", err, string(out))
+}
+
+func TestProductionCLIUsesSharedBootstrapLoader(t *testing.T) {
+	root := findModuleRoot(t)
+	fset := token.NewFileSet()
+	var violations []string
+
+	for _, scanRoot := range []string{
+		filepath.Join(root, "cmd"),
+		filepath.Join(root, "internal", "cli"),
+	} {
+		if err := filepath.WalkDir(scanRoot, func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+				return nil
+			}
+
+			rel, err := filepath.Rel(root, path)
+			if err != nil {
+				return err
+			}
+			rel = filepath.ToSlash(rel)
+			if strings.HasPrefix(rel, "internal/cli/cliboot/") {
+				return nil
+			}
+
+			file, err := parser.ParseFile(fset, path, nil, parser.ImportsOnly)
+			if err != nil {
+				return err
+			}
+
+			bootstrapNames := map[string]bool{}
+			dotImported := false
+			for _, imp := range file.Imports {
+				if strings.Trim(imp.Path.Value, `"`) != "github.com/langoai/lango/internal/bootstrap" {
+					continue
+				}
+				name := "bootstrap"
+				if imp.Name != nil {
+					switch imp.Name.Name {
+					case "_":
+						continue
+					case ".":
+						dotImported = true
+						continue
+					default:
+						name = imp.Name.Name
+					}
+				}
+				bootstrapNames[name] = true
+			}
+			if len(bootstrapNames) == 0 && !dotImported {
+				return nil
+			}
+
+			file, err = parser.ParseFile(fset, path, nil, 0)
+			if err != nil {
+				return err
+			}
+			ast.Inspect(file, func(n ast.Node) bool {
+				call, ok := n.(*ast.CallExpr)
+				if !ok {
+					return true
+				}
+				switch fun := call.Fun.(type) {
+				case *ast.SelectorExpr:
+					ident, ok := fun.X.(*ast.Ident)
+					if ok && fun.Sel.Name == "Run" && bootstrapNames[ident.Name] {
+						pos := fset.Position(fun.Pos())
+						violations = append(violations, pos.String())
+					}
+				case *ast.Ident:
+					if dotImported && fun.Name == "Run" {
+						pos := fset.Position(fun.Pos())
+						violations = append(violations, pos.String())
+					}
+				}
+				return true
+			})
+			return nil
+		}); err != nil {
+			t.Fatalf("scan production CLI bootstrap usage: %v", err)
+		}
+	}
+
+	if len(violations) > 0 {
+		t.Fatalf("production CLI must use cliboot shared loaders instead of bootstrap.Run:\n%s", strings.Join(violations, "\n"))
+	}
 }
 
 func TestExtraFilesOnlyConfiguredByBroker(t *testing.T) {
