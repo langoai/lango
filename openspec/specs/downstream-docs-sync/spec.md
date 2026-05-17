@@ -74,6 +74,11 @@ arguments and required flags for provenance and P2P reputation commands.
 - **WHEN** a user reads `docs/cli/index.md`
 - **THEN** it SHALL include `lango config get <dot.path> [--output plain|json] [--show-secrets]`
 
+#### Scenario: Config CLI docs explain dynamic key placeholders
+- **WHEN** a user reads `docs/cli/config.md`
+- **THEN** the config keys section SHALL show dynamic map-backed templates such as `providers.<name>.apiKey`, `mcp.servers.<name>.env.<key>`, and `mcp.servers.<name>.headers.<key>`
+- **AND** it SHALL explain what `<name>` and `<key>` represent
+
 ### Requirement: Feature docs include required command operands
 Public feature docs SHALL include required operands when showing runnable command examples.
 

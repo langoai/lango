@@ -349,6 +349,14 @@ Repository-level regressions that drop `config get` output or secret flags from 
 - **WHEN** the repository still ships `lango config get <dot.path>` with `--output plain|json` and `--show-secrets`
 - **THEN** an executable repository test SHALL fail if `README.md` or `docs/cli/index.md` omits the full usage string
 
+### Requirement: Config CLI behavior coverage stays executable
+Repository-level regressions in config get/set/keys behavior SHALL be enforced by executable tests.
+
+#### Scenario: Dynamic config key templates remain listed
+- **WHEN** the repository still supports map-backed config set paths for providers, MCP server env/header values, and auth providers
+- **THEN** executable config CLI tests SHALL fail if `collectKeys` or `lango config keys <prefix>` omits the corresponding dynamic templates
+- **AND** the tests SHALL fail if dynamic templates include unsupported `time.Duration` leaves such as `mcp.servers.<name>.timeout`
+
 ### Requirement: Economy quick-reference completeness guard stays executable
 Repository-level regressions that drop implemented `economy escrow list/show/sentinel status` commands from the public quick references SHALL be enforced by an executable test.
 

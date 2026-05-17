@@ -54,6 +54,10 @@ func TestPublicConfigCLIDocsIncludeImplementedReadWriteCommands(t *testing.T) {
 	configSnippets := []string{
 		"lango config get <dot.path> [--output plain|json] [--show-secrets]",
 		"Sensitive scalar paths and nested sensitive fields inside object or map reads are redacted by default.",
+		"providers.<name>.apiKey",
+		"mcp.servers.<name>.env.<key>",
+		"mcp.servers.<name>.headers.<key>",
+		"`<name>` is the dynamic provider, server, mode, or auth provider name.",
 	}
 	for _, snippet := range configSnippets {
 		if !strings.Contains(text, snippet) {

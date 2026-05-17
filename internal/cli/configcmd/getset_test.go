@@ -292,6 +292,15 @@ func TestCollectKeys_ContainsExpectedKeys(t *testing.T) {
 		"logging.level",
 		"server.port",
 		"p2p.enabled",
+		"providers.<name>.type",
+		"providers.<name>.apiKey",
+		"providers.<name>.baseUrl",
+		"mcp.servers.<name>.env.<key>",
+		"mcp.servers.<name>.headers.<key>",
+		"auth.providers.<name>.clientSecret",
+	}
+	rejectedKeys := []string{
+		"mcp.servers.<name>.timeout",
 	}
 
 	keySet := make(map[string]bool, len(keys))
@@ -302,6 +311,11 @@ func TestCollectKeys_ContainsExpectedKeys(t *testing.T) {
 	for _, wk := range wantKeys {
 		if !keySet[wk] {
 			t.Errorf("expected key %q in output", wk)
+		}
+	}
+	for _, rejected := range rejectedKeys {
+		if keySet[rejected] {
+			t.Errorf("expected key %q to be omitted because config set does not accept duration values", rejected)
 		}
 	}
 }
@@ -1351,6 +1365,59 @@ func TestConfigKeys_WritesToCommandOutput(t *testing.T) {
 	}
 	if !strings.Contains(out, "agent.provider") {
 		t.Fatalf("expected output to contain agent.provider, got %q", out)
+	}
+}
+
+func TestConfigKeys_WritesDynamicMapTemplatesToCommandOutput(t *testing.T) {
+	tests := []struct {
+		givePrefix string
+		want       []string
+		reject     []string
+	}{
+		{
+			givePrefix: "providers",
+			want: []string{
+				"providers.<name>.type",
+				"providers.<name>.apiKey",
+				"providers.<name>.baseUrl",
+			},
+		},
+		{
+			givePrefix: "mcp.servers",
+			want: []string{
+				"mcp.servers.<name>.env.<key>",
+				"mcp.servers.<name>.headers.<key>",
+			},
+			reject: []string{
+				"mcp.servers.<name>.timeout",
+			},
+		},
+		{
+			givePrefix: "auth.providers",
+			want: []string{
+				"auth.providers.<name>.clientSecret",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.givePrefix, func(t *testing.T) {
+			cmd := NewKeysCmd()
+			out, err := executeConfigCommand(t, cmd, tt.givePrefix)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			for _, want := range tt.want {
+				if !strings.Contains(out, want) {
+					t.Fatalf("expected output to contain %q, got %q", want, out)
+				}
+			}
+			for _, reject := range tt.reject {
+				if strings.Contains(out, reject) {
+					t.Fatalf("expected output to omit unsupported dynamic template %q, got %q", reject, out)
+				}
+			}
+		})
 	}
 }
 

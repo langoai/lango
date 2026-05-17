@@ -843,11 +843,15 @@ func collectKeys(t reflect.Type, prefix string) []string {
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()
 	}
+
+	var keys []string
+	if t.Kind() == reflect.Map {
+		return collectMapKeys(t, prefix)
+	}
 	if t.Kind() != reflect.Struct {
 		return nil
 	}
 
-	var keys []string
 	for i := 0; i < t.NumField(); i++ {
 		f := t.Field(i)
 		tag := f.Tag.Get("mapstructure")
@@ -865,18 +869,101 @@ func collectKeys(t reflect.Type, prefix string) []string {
 			ft = ft.Elem()
 		}
 
-		if ft.Kind() == reflect.Struct && ft.String() != "time.Duration" {
-			// Skip map types (providers, servers, etc.)
-			if f.Type.Kind() == reflect.Map {
-				keys = append(keys, fullKey+".<name>.*")
-				continue
-			}
+		switch {
+		case ft.Kind() == reflect.Map:
+			keys = append(keys, fullKey)
+			keys = append(keys, collectMapKeys(ft, fullKey)...)
+		case ft.Kind() == reflect.Struct && ft.String() != "time.Duration":
 			keys = append(keys, collectKeys(ft, fullKey)...)
-		} else {
+		default:
 			keys = append(keys, fullKey)
 		}
 	}
 	return keys
+}
+
+func collectMapKeys(t reflect.Type, prefix string) []string {
+	if t.Key().Kind() != reflect.String {
+		return nil
+	}
+
+	elem := t.Elem()
+	if elem.Kind() == reflect.Ptr {
+		elem = elem.Elem()
+	}
+
+	switch {
+	case elem.Kind() == reflect.Struct && elem.String() != "time.Duration":
+		return collectSettableConfigKeys(elem, joinConfigKey(prefix, "<name>"))
+	case elem.Kind() == reflect.Map:
+		return collectMapKeys(elem, joinConfigKey(prefix, "<name>"))
+	default:
+		return []string{joinConfigKey(prefix, "<key>")}
+	}
+}
+
+func collectSettableConfigKeys(t reflect.Type, prefix string) []string {
+	if t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+	if t.Kind() == reflect.Map {
+		return collectMapKeys(t, prefix)
+	}
+	if t.Kind() != reflect.Struct {
+		if configSetFieldTypeIsSupported(t) {
+			return []string{prefix}
+		}
+		return nil
+	}
+
+	var keys []string
+	for i := 0; i < t.NumField(); i++ {
+		f := t.Field(i)
+		tag := f.Tag.Get("mapstructure")
+		if tag == "" || tag == "-" {
+			continue
+		}
+
+		fullKey := joinConfigKey(prefix, tag)
+		ft := f.Type
+		if ft.Kind() == reflect.Ptr {
+			ft = ft.Elem()
+		}
+
+		switch {
+		case ft.Kind() == reflect.Map:
+			keys = append(keys, collectMapKeys(ft, fullKey)...)
+		case ft.Kind() == reflect.Struct && ft.String() != "time.Duration":
+			keys = append(keys, collectSettableConfigKeys(ft, fullKey)...)
+		case configSetFieldTypeIsSupported(ft):
+			keys = append(keys, fullKey)
+		}
+	}
+	return keys
+}
+
+func configSetFieldTypeIsSupported(t reflect.Type) bool {
+	if t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+	if t.String() == "time.Duration" {
+		return false
+	}
+	switch t.Kind() {
+	case reflect.String, reflect.Bool, reflect.Int, reflect.Int64, reflect.Uint64, reflect.Float64:
+		return true
+	case reflect.Slice:
+		return t.Elem().Kind() == reflect.String
+	default:
+		return false
+	}
+}
+
+func joinConfigKey(prefix, segment string) string {
+	if prefix == "" {
+		return segment
+	}
+	return prefix + "." + segment
 }
 
 // printValue formats and prints a value.

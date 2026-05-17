@@ -296,7 +296,21 @@ $ lango config keys agent
 agent.provider
 agent.model
 agent.temperature
+
+$ lango config keys providers
+providers
+providers.<name>.apiKey
+providers.<name>.baseUrl
+providers.<name>.type
+
+$ lango config keys mcp.servers
+mcp.servers
+mcp.servers.<name>.env.<key>
+mcp.servers.<name>.headers.<key>
+...
 ```
+
+Map-backed configuration keys use placeholders in discovery output. `<name>` is the dynamic provider, server, mode, or auth provider name. `<key>` is a dynamic string-map key such as an MCP environment variable or HTTP header name.
 
 ---
 
