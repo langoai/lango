@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -92,6 +94,67 @@ func TestGatewayServer(t *testing.T) {
 	case <-time.After(1 * time.Second):
 		t.Error("timeout waiting for broadcast")
 	}
+}
+
+func TestServerStartReturnsListenError(t *testing.T) {
+	t.Parallel()
+
+	occupied, port := occupyGatewayPort(t)
+	defer occupied.Close()
+
+	server := New(Config{
+		Host:             "127.0.0.1",
+		Port:             port,
+		HTTPEnabled:      true,
+		WebSocketEnabled: true,
+	}, nil, nil, nil, nil)
+
+	err := server.Start()
+	require.Error(t, err)
+}
+
+func TestServerServeGracefulShutdown(t *testing.T) {
+	t.Parallel()
+
+	server := New(Config{
+		Host:             "127.0.0.1",
+		Port:             0,
+		HTTPEnabled:      true,
+		WebSocketEnabled: true,
+	}, nil, nil, nil, nil)
+
+	listener, err := server.listen()
+	require.NoError(t, err)
+
+	done := make(chan error, 1)
+	go func() {
+		done <- server.serve(listener)
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	require.NoError(t, server.Shutdown(ctx))
+
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("gateway serve did not stop after shutdown")
+	}
+}
+
+func occupyGatewayPort(t *testing.T) (net.Listener, int) {
+	t.Helper()
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+
+	_, port, err := net.SplitHostPort(listener.Addr().String())
+	require.NoError(t, err)
+	parsed, err := strconv.Atoi(port)
+	require.NoError(t, err)
+
+	return listener, parsed
 }
 
 func TestChatMessage_UnauthenticatedUsesDefault(t *testing.T) {

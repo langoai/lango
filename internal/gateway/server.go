@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -626,6 +627,31 @@ func (s *Server) RegisterHandler(method string, handler RPCHandler) {
 
 // Start starts the gateway server
 func (s *Server) Start() error {
+	listener, err := s.listen()
+	if err != nil {
+		return err
+	}
+	return s.serve(listener)
+}
+
+// StartBackground binds the gateway synchronously, then serves it in a managed goroutine.
+func (s *Server) StartBackground(wg *sync.WaitGroup, onError func(error)) error {
+	listener, err := s.listen()
+	if err != nil {
+		return err
+	}
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := s.serve(listener); err != nil && onError != nil {
+			onError(err)
+		}
+	}()
+	return nil
+}
+
+func (s *Server) listen() (net.Listener, error) {
 	addr := gatewayaddr.ListenAddress(s.config.Host, s.config.Port)
 	s.httpServer = &http.Server{
 		Addr:         addr,
@@ -635,8 +661,26 @@ func (s *Server) Start() error {
 		IdleTimeout:  60 * time.Second,
 	}
 
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		return nil, err
+	}
 	logger().Infow("gateway server is listening", "address", addr, "http", s.config.HTTPEnabled, "ws", s.config.WebSocketEnabled)
-	err := s.httpServer.ListenAndServe()
+	return listener, nil
+}
+
+func (s *Server) serve(listener net.Listener) error {
+	if s.httpServer == nil {
+		s.httpServer = &http.Server{
+			Addr:         listener.Addr().String(),
+			Handler:      s.router,
+			ReadTimeout:  15 * time.Second,
+			WriteTimeout: 15 * time.Second,
+			IdleTimeout:  60 * time.Second,
+		}
+	}
+
+	err := s.httpServer.Serve(listener)
 	if errors.Is(err, http.ErrServerClosed) {
 		return nil
 	}

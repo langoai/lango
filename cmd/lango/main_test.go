@@ -44,10 +44,16 @@ import (
 )
 
 type fakeServeApp struct {
-	stopFn func(ctx context.Context) error
+	startFn func(ctx context.Context) error
+	stopFn  func(ctx context.Context) error
 }
 
-func (f *fakeServeApp) Start(ctx context.Context) error { return nil }
+func (f *fakeServeApp) Start(ctx context.Context) error {
+	if f.startFn != nil {
+		return f.startFn(ctx)
+	}
+	return nil
+}
 
 func (f *fakeServeApp) Stop(ctx context.Context) error {
 	if f.stopFn != nil {
@@ -1051,6 +1057,46 @@ func TestServeCmd_WritesBannerAndSummaryToCommandOutput(t *testing.T) {
 	assert.Contains(t, out.String(), tui.ServeBanner())
 	assert.Contains(t, out.String(), startupSummary(cfg))
 	assert.Empty(t, errOut.String())
+}
+
+func TestServeCmd_SuppressesSummaryWhenApplicationStartFails(t *testing.T) {
+	origBootLoader := serveBootLoaderFn
+	origLoggingInit := serveLoggingInitFn
+	origLoggingSync := serveLoggingSyncFn
+	origAppBuilder := serveAppBuilderFn
+	origAwaitShutdown := serveAwaitShutdownFn
+	t.Cleanup(func() {
+		serveBootLoaderFn = origBootLoader
+		serveLoggingInitFn = origLoggingInit
+		serveLoggingSyncFn = origLoggingSync
+		serveAppBuilderFn = origAppBuilder
+		serveAwaitShutdownFn = origAwaitShutdown
+	})
+
+	cfg := config.DefaultConfig()
+	startErr := errors.New("gateway bind failed")
+	serveBootLoaderFn = func() (*bootstrap.Result, error) {
+		return &bootstrap.Result{Config: cfg, ProfileName: "default"}, nil
+	}
+	serveLoggingInitFn = func(logging.LogConfig) error { return nil }
+	serveLoggingSyncFn = func() error { return nil }
+	serveAppBuilderFn = func(boot *bootstrap.Result) (stoppableApplication, error) {
+		return &fakeServeApp{startFn: func(context.Context) error { return startErr }}, nil
+	}
+	serveAwaitShutdownFn = func(ctx context.Context) {
+		t.Fatal("serve must not wait for shutdown when startup fails")
+	}
+
+	cmd := serveCmd()
+	var out, errOut bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errOut)
+
+	err := cmd.Execute()
+	require.ErrorIs(t, err, startErr)
+	assert.Contains(t, out.String(), tui.ServeBanner())
+	assert.NotContains(t, out.String(), startupSummary(cfg))
+	assert.NotContains(t, errOut.String(), startupSummary(cfg))
 }
 
 func TestRunCockpit_WritesStartupNoticeToInjectedStderr(t *testing.T) {

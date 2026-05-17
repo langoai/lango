@@ -2,8 +2,11 @@ package app
 
 import (
 	"context"
+	"net"
 	"path/filepath"
 	"sort"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -113,6 +116,47 @@ func TestRegisterPostBuildLifecycle_Names(t *testing.T) {
 		registerPostBuildLifecycle(a)
 		assert.Equal(t, []string{"gateway", "channel-0", "channel-1"}, reg.Names())
 	})
+}
+
+func TestRegisterPostBuildLifecycle_GatewayBindFailurePropagates(t *testing.T) {
+	t.Parallel()
+
+	occupied := occupyLoopbackPort(t)
+	defer occupied.Close()
+
+	cfg := config.DefaultConfig()
+	cfg.Server.Host = "127.0.0.1"
+	cfg.Server.Port = occupiedPort(t, occupied)
+
+	reg := lifecycle.NewRegistry()
+	a := &App{
+		Gateway:  initGateway(cfg, nil, nil, nil),
+		registry: reg,
+	}
+	registerPostBuildLifecycle(a)
+
+	err := a.Start(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "start gateway")
+}
+
+func occupyLoopbackPort(t *testing.T) net.Listener {
+	t.Helper()
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	return listener
+}
+
+func occupiedPort(t *testing.T, listener net.Listener) int {
+	t.Helper()
+
+	_, port, err := net.SplitHostPort(listener.Addr().String())
+	require.NoError(t, err)
+	parsed, err := strconv.Atoi(port)
+	require.NoError(t, err)
+	require.True(t, strings.HasPrefix(listener.Addr().String(), "127.0.0.1:"))
+	return parsed
 }
 
 // noopChannel satisfies the Channel interface for testing.

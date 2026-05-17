@@ -833,14 +833,9 @@ func registerPostBuildLifecycle(app *App) {
 	// Gateway.
 	reg.Register(lifecycle.NewFuncComponent("gateway",
 		func(_ context.Context, wg *sync.WaitGroup) error {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				if err := app.Gateway.Start(); err != nil {
-					logger().Errorw("gateway server error", "error", err)
-				}
-			}()
-			return nil
+			return app.Gateway.StartBackground(wg, func(err error) {
+				logger().Errorw("gateway server error", "error", err)
+			})
 		},
 		func(ctx context.Context) error {
 			return app.Gateway.Shutdown(ctx)
