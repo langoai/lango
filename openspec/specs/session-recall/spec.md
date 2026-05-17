@@ -44,7 +44,7 @@ The system SHALL provide a dedicated FTS5 virtual table `fts_session_recall` (vi
 - **THEN** the existing row for `sess-1` SHALL be replaced (delete-then-insert) rather than duplicated
 
 ### Requirement: SessionRecallRetriever
-The system SHALL provide a `SessionRecallRetriever` that implements the existing context retriever interface consumed by `ContextAwareModelAdapter`. At turn start, the retriever SHALL query `fts_session_recall` using the user's current input as the MATCH string, return up to `N` top-ranked results (default 3), apply a BM25 rank floor (default `0.2`), and exclude results whose `session_key` equals the current session. Truncation to fit the available RAG section budget SHALL use the existing `SectionBudgets.RAG` value.
+The system SHALL provide a `SessionRecallRetriever` that implements the existing context retriever interface consumed by `ContextAwareModelAdapter`. At turn start, the retriever SHALL query `fts_session_recall` using the user's current input as the MATCH string, return up to `N` top-ranked results (default 3), apply a BM25 rank floor (default `0.2`), and exclude results whose `session_key` equals the current session. Truncation to fit the available RAG section budget SHALL use the existing `SectionBudgets.RAG` value. If summary loading fails for a retained match, the retriever SHALL return a non-nil error instead of returning a match with an empty or incomplete summary.
 
 #### Scenario: Retriever returns matches above floor
 - **WHEN** the user's input matches two prior-session summaries with BM25 rank 0.4 and 0.5
@@ -62,6 +62,11 @@ The system SHALL provide a `SessionRecallRetriever` that implements the existing
 #### Scenario: Feature disabled returns nothing
 - **WHEN** `context.recall.enabled` is `false`
 - **THEN** the retriever SHALL return an empty result set without querying FTS
+
+#### Scenario: Summary load failure is reported
+- **WHEN** a search hit survives filtering but loading its summary fails
+- **THEN** the retriever SHALL return a non-nil error that identifies the session key
+- **AND** it SHALL NOT return a recall match with an empty summary for that hit
 
 ### Requirement: Recall respects section budget
 The injected recall content SHALL truncate to fit within the available RAG section budget from `ContextBudgetManager.SectionBudgets()`. Lower-ranked items SHALL be dropped first if the full set would exceed the budget.

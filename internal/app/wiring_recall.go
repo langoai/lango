@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -115,7 +116,10 @@ func (a *recallProviderAdapter) RecallRecent(ctx context.Context, currentSession
 		if score < a.minRank {
 			continue
 		}
-		summary, _ := a.idx.GetSummary(ctx, r.RowID)
+		summary, err := a.idx.GetSummary(ctx, r.RowID)
+		if err != nil {
+			return nil, fmt.Errorf("get recall summary for session %q: %w", r.RowID, err)
+		}
 		out = append(out, adk.RecallMatch{
 			SessionKey: r.RowID,
 			Summary:    summary,
