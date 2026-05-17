@@ -89,6 +89,40 @@ func TestRunWorkerWithIO_MapSuccess(t *testing.T) {
 	assert.Equal(t, map[string]interface{}{"echo": "hello"}, result.Output)
 }
 
+func TestRunWorker_UsesPublicStdioSeams(t *testing.T) {
+	restoreWorkerStdioSeams(t)
+
+	var out bytes.Buffer
+	workerStdin = encodeWorkerRequest(t, ExecutionRequest{
+		ToolName: "map-tool",
+		Params:   map[string]interface{}{"input": "hello"},
+	})
+	workerStdout = &out
+	registry := ToolRegistry{
+		"map-tool": func(_ context.Context, params map[string]interface{}) (interface{}, error) {
+			return map[string]interface{}{"echo": params["input"]}, nil
+		},
+	}
+
+	exitCode := RunWorker(registry)
+
+	assert.Equal(t, 0, exitCode)
+	result := decodeWorkerResult(t, &out)
+	assert.Empty(t, result.Error)
+	assert.Equal(t, map[string]interface{}{"echo": "hello"}, result.Output)
+}
+
+func restoreWorkerStdioSeams(t *testing.T) {
+	t.Helper()
+
+	originalStdin := workerStdin
+	originalStdout := workerStdout
+	t.Cleanup(func() {
+		workerStdin = originalStdin
+		workerStdout = originalStdout
+	})
+}
+
 func encodeWorkerRequest(t *testing.T, req ExecutionRequest) *bytes.Buffer {
 	t.Helper()
 

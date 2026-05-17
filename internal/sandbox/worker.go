@@ -27,12 +27,17 @@ type ToolHandler func(ctx context.Context, params map[string]interface{}) (inter
 // ToolRegistry maps tool names to their handlers for the worker process.
 type ToolRegistry map[string]ToolHandler
 
+var (
+	workerStdin  io.Reader = os.Stdin
+	workerStdout io.Writer = os.Stdout
+)
+
 // RunWorker is the entry point for the sandbox worker subprocess.
 // It reads an ExecutionRequest from stdin, executes the named tool
 // from the registry, writes an ExecutionResult to stdout, and returns
 // the intended process exit code.
 func RunWorker(registry ToolRegistry) int {
-	return RunWorkerWithIO(registry, os.Stdin, os.Stdout)
+	return RunWorkerWithIO(registry, workerStdin, workerStdout)
 }
 
 // RunWorkerWithIO executes one sandbox worker request using injected IO.

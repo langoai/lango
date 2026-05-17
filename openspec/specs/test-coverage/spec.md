@@ -159,6 +159,12 @@ Repository-level test-harness regressions that are cheap to detect mechanically 
 - **THEN** they SHALL fail if `Acquire` stops using injected stdin, stderr, or terminal-detection seams
 - **AND** they SHALL fail if `AcquireNonInteractive` stops using the injected stderr seam
 
+#### Scenario: Sandbox worker public wrapper stdio seams stay covered
+
+- **WHEN** sandbox worker wrapper tests run
+- **THEN** they SHALL fail if `RunWorker` stops reading from the injected stdin seam
+- **AND** they SHALL fail if `RunWorker` stops writing JSON results to the injected stdout seam
+
 ### Requirement: CLI production stream guards stay executable
 Repository-level CLI production stream regressions that are cheap to detect mechanically SHALL be enforced by executable tests instead of relying only on manual review.
 
