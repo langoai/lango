@@ -160,7 +160,7 @@ Repository-level test-harness regressions that are cheap to detect mechanically 
 Repository-level CLI production stream regressions that are cheap to detect mechanically SHALL be enforced by executable tests instead of relying only on manual review.
 
 #### Scenario: CLI production stream regressions are rejected
-- **WHEN** CLI production code reintroduces raw print calls or forbidden direct standard-stream references
+- **WHEN** CLI production code reintroduces raw print calls or forbidden direct standard-stream references including `os.Stdin`, `os.Stdout`, or `os.Stderr`
 - **THEN** an executable repository test SHALL fail
 
 ### Requirement: TUI runtime status coverage stays executable
