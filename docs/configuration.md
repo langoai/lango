@@ -188,6 +188,57 @@ Session storage and lifecycle settings.
 |-----|------|---------|-------------|
 | `security.signer.provider` | `string` | `local` | Signer provider: `local`, `rpc`, `aws-kms`, `gcp-kms`, `azure-kv`, `pkcs11` (`local` requires bootstrap-backed storage wiring; KMS backends also require the matching build tag and bootstrap-backed storage wiring) |
 
+### Cloud KMS
+
+Cloud KMS settings configure managed KMS and HSM providers used by signer and envelope workflows.
+
+> **Settings:** `lango settings` → Security
+
+```json
+{
+  "security": {
+    "signer": {
+      "provider": "aws-kms"
+    },
+    "kms": {
+      "region": "us-east-1",
+      "keyId": "arn:aws:kms:us-east-1:123456789012:key/example-key",
+      "endpoint": "",
+      "fallbackToLocal": true,
+      "timeoutPerOperation": "5s",
+      "maxRetries": 3,
+      "azure": {
+        "vaultUrl": "",
+        "keyVersion": ""
+      },
+      "pkcs11": {
+        "modulePath": "",
+        "slotId": 0,
+        "pin": "",
+        "keyLabel": ""
+      }
+    }
+  }
+}
+```
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `security.kms.region` | `string` | | Cloud region for KMS API calls |
+| `security.kms.keyId` | `string` | | KMS key identifier (ARN, resource name, alias, or HSM label depending on backend) |
+| `security.kms.endpoint` | `string` | | Optional custom KMS endpoint, primarily for testing |
+| `security.kms.fallbackToLocal` | `bool` | `true` | Auto-fallback to local CryptoProvider when KMS unavailable after profile config is loaded |
+| `security.kms.timeoutPerOperation` | `duration` | `5s` | Maximum duration for a single KMS API call |
+| `security.kms.maxRetries` | `int` | `3` | Retry attempts for transient KMS errors |
+| `security.kms.azure.vaultUrl` | `string` | | Azure Key Vault URL |
+| `security.kms.azure.keyVersion` | `string` | | Optional Azure Key Vault key version (empty = latest) |
+| `security.kms.pkcs11.modulePath` | `string` | | Path to the PKCS#11 shared library (`.so`, `.dylib`, or `.dll`) |
+| `security.kms.pkcs11.slotId` | `int` | `0` | PKCS#11 slot number |
+| `security.kms.pkcs11.pin` | `string` | | PKCS#11 user PIN; prefer `LANGO_PKCS11_PIN` for secret material |
+| `security.kms.pkcs11.keyLabel` | `string` | | Key label in the HSM |
+
+During encrypted profile bootstrap, profile settings are not available before profile config is loaded. If KMS is selected through `LANGO_KMS_PROVIDER`, set `LANGO_KMS_FALLBACK_TO_LOCAL=false` to fail closed on KMS provider initialization or unwrap failures instead of falling back to the local passphrase prompt.
+
 ### Interceptor
 
 The security interceptor controls tool execution approval and PII protection. See [Tool Approval](security/tool-approval.md) and [PII Redaction](security/pii-redaction.md).

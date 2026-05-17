@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -75,6 +76,104 @@ func checkNoForbiddenConfigDocPattern(t *testing.T, path string, patterns []stru
 			t.Fatalf("%s contains %s", path, pattern.reason)
 		}
 	}
+}
+
+func TestPublicConfigurationDocsIncludeCloudKMSSettings(t *testing.T) {
+	t.Parallel()
+
+	repoRoot := configDocsQualityRepoRoot(t)
+	targets := []string{
+		filepath.Join(repoRoot, "README.md"),
+		filepath.Join(repoRoot, "docs", "configuration.md"),
+	}
+
+	requiredRows := []struct {
+		key      string
+		typ      string
+		defaults []string
+	}{
+		{key: "security.kms.region", typ: "string", defaults: []string{"", "-"}},
+		{key: "security.kms.keyId", typ: "string", defaults: []string{"", "-"}},
+		{key: "security.kms.endpoint", typ: "string", defaults: []string{"", "-"}},
+		{key: "security.kms.fallbackToLocal", typ: "bool", defaults: []string{"`true`"}},
+		{key: "security.kms.timeoutPerOperation", typ: "duration", defaults: []string{"`5s`"}},
+		{key: "security.kms.maxRetries", typ: "int", defaults: []string{"`3`"}},
+		{key: "security.kms.azure.vaultUrl", typ: "string", defaults: []string{"", "-"}},
+		{key: "security.kms.azure.keyVersion", typ: "string", defaults: []string{"", "-"}},
+		{key: "security.kms.pkcs11.modulePath", typ: "string", defaults: []string{"", "-"}},
+		{key: "security.kms.pkcs11.slotId", typ: "int", defaults: []string{"`0`"}},
+		{key: "security.kms.pkcs11.pin", typ: "string", defaults: []string{"", "-"}},
+		{key: "security.kms.pkcs11.keyLabel", typ: "string", defaults: []string{"", "-"}},
+	}
+	requiredNotes := []string{
+		"`LANGO_KMS_PROVIDER`",
+		"`LANGO_KMS_FALLBACK_TO_LOCAL=false`",
+		"before profile config is loaded",
+	}
+	for _, target := range targets {
+		data, err := os.ReadFile(target)
+		if err != nil {
+			t.Fatalf("read %s: %v", target, err)
+		}
+		content := string(data)
+		for _, row := range requiredRows {
+			assertMarkdownConfigRow(t, target, content, row.key, row.typ, row.defaults)
+		}
+		for _, want := range requiredNotes {
+			if !strings.Contains(content, want) {
+				t.Fatalf("%s missing Cloud KMS configuration docs token %q", target, want)
+			}
+		}
+	}
+}
+
+func assertMarkdownConfigRow(t *testing.T, path, content, key, wantType string, wantDefaults []string) {
+	t.Helper()
+
+	needle := "`" + key + "`"
+	for _, line := range strings.Split(content, "\n") {
+		cols := splitMarkdownRow(line)
+		if len(cols) < 4 || cols[0] != needle {
+			continue
+		}
+		if normalizeMarkdownCell(cols[1]) != wantType {
+			t.Fatalf("%s row %s has type %q, want %q", path, key, cols[1], wantType)
+		}
+		if !containsMarkdownCell(wantDefaults, cols[2]) {
+			t.Fatalf("%s row %s has default %q, want one of %v", path, key, cols[2], wantDefaults)
+		}
+		if cols[3] == "" {
+			t.Fatalf("%s row %s has empty description", path, key)
+		}
+		return
+	}
+	t.Fatalf("%s missing Cloud KMS configuration docs row %q", path, needle)
+}
+
+func splitMarkdownRow(line string) []string {
+	line = strings.TrimSpace(line)
+	if !strings.HasPrefix(line, "|") || !strings.HasSuffix(line, "|") {
+		return nil
+	}
+	parts := strings.Split(strings.Trim(line, "|"), "|")
+	for i := range parts {
+		parts[i] = strings.TrimSpace(parts[i])
+	}
+	return parts
+}
+
+func containsMarkdownCell(values []string, want string) bool {
+	normalizedWant := normalizeMarkdownCell(want)
+	for _, value := range values {
+		if normalizeMarkdownCell(value) == normalizedWant {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeMarkdownCell(value string) string {
+	return strings.Trim(strings.TrimSpace(value), "`")
 }
 
 func configDocsQualityRepoRoot(t *testing.T) string {

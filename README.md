@@ -680,6 +680,20 @@ All settings are managed via `lango onboard` (guided wizard), `lango settings` (
 | `session.maxHistoryTurns`                              | int      | -                           | Maximum history turns per session                                                                                 |
 | **Security**                                           |          |                             |                                                                                                                   |
 | `security.signer.provider`                             | string   | `local`                     | Signer provider: `local`, `rpc`, `aws-kms`, `gcp-kms`, `azure-kv`, `pkcs11` (`local` requires bootstrap-backed storage wiring; KMS backends also require the matching build tag and bootstrap-backed storage wiring) |
+| `security.dbEncryption.enabled`                        | bool     | `false`                     | Deprecated legacy SQLCipher flag; ignored by the current runtime                                                  |
+| `security.dbEncryption.cipherPageSize`                 | int      | `4096`                      | Deprecated legacy SQLCipher page-size setting; retained for parsing older configs                                 |
+| `security.kms.region`                                  | string   | -                           | Cloud region for KMS API calls                                                                                    |
+| `security.kms.keyId`                                   | string   | -                           | KMS key identifier (ARN, resource name, or alias)                                                                 |
+| `security.kms.endpoint`                                | string   | -                           | Optional custom KMS endpoint, primarily for testing                                                               |
+| `security.kms.fallbackToLocal`                         | bool     | `true`                      | Auto-fallback to local CryptoProvider when KMS unavailable after profile config is loaded                         |
+| `security.kms.timeoutPerOperation`                     | duration | `5s`                        | Max duration per KMS API call                                                                                     |
+| `security.kms.maxRetries`                              | int      | `3`                         | Retry attempts for transient KMS errors                                                                           |
+| `security.kms.azure.vaultUrl`                          | string   | -                           | Azure Key Vault URL                                                                                               |
+| `security.kms.azure.keyVersion`                        | string   | -                           | Optional Azure Key Vault key version (empty = latest)                                                             |
+| `security.kms.pkcs11.modulePath`                       | string   | -                           | Path to PKCS#11 shared library                                                                                    |
+| `security.kms.pkcs11.slotId`                           | int      | `0`                         | PKCS#11 slot number                                                                                               |
+| `security.kms.pkcs11.pin`                              | string   | -                           | PKCS#11 user PIN; prefer `LANGO_PKCS11_PIN` for secret material                                                   |
+| `security.kms.pkcs11.keyLabel`                         | string   | -                           | Key label in HSM                                                                                                  |
 | `security.interceptor.enabled`                         | bool     | `true`                      | Enable AI Privacy Interceptor                                                                                     |
 | `security.interceptor.redactPii`                       | bool     | `false`                     | Redact PII from AI interactions                                                                                   |
 | `security.interceptor.approvalRequired`                | bool     | `false`                     | (deprecated) Require approval for sensitive tool use                                                              |
@@ -817,19 +831,6 @@ All settings are managed via `lango onboard` (guided wizard), `lango settings` (
 | `p2p.zkp.srsMode`                                      | string   | `unsafe`                    | SRS generation mode: `unsafe` or `file`                                                                           |
 | `p2p.zkp.srsPath`                                      | string   | -                           | Path to SRS file (when srsMode = file)                                                                            |
 | `p2p.zkp.maxCredentialAge`                             | string   | `24h`                       | Maximum age for ZK credentials                                                                                    |
-| **Security**                                           |          |                             |                                                                                                                   |
-| `security.dbEncryption.enabled`                        | bool     | `false`                     | Deprecated legacy SQLCipher flag; ignored by the current runtime                                                  |
-| `security.dbEncryption.cipherPageSize`                 | int      | `4096`                      | Deprecated legacy SQLCipher page-size setting; retained for parsing older configs                                 |
-| `security.signer.provider`                             | string   | `local`                     | Signer provider: `local`, `rpc`, `aws-kms`, `gcp-kms`, `azure-kv`, `pkcs11` (`local` requires bootstrap-backed storage wiring; KMS backends also require the matching build tag and bootstrap-backed storage wiring) |
-| `security.kms.region`                                  | string   | -                           | Cloud region for KMS API calls                                                                                    |
-| `security.kms.keyId`                                   | string   | -                           | KMS key identifier (ARN, resource name, or alias)                                                                 |
-| `security.kms.fallbackToLocal`                         | bool     | `true`                      | Auto-fallback to local CryptoProvider when KMS unavailable after profile config is loaded                         |
-| `security.kms.timeoutPerOperation`                     | duration | `5s`                        | Max duration per KMS API call                                                                                     |
-| `security.kms.maxRetries`                              | int      | `3`                         | Retry attempts for transient KMS errors                                                                           |
-| `security.kms.azure.vaultUrl`                          | string   | -                           | Azure Key Vault URL                                                                                               |
-| `security.kms.pkcs11.modulePath`                       | string   | -                           | Path to PKCS#11 shared library                                                                                    |
-| `security.kms.pkcs11.slotId`                           | int      | `0`                         | PKCS#11 slot number                                                                                               |
-| `security.kms.pkcs11.keyLabel`                         | string   | -                           | Key label in HSM                                                                                                  |
 | **Cron Scheduling**                                    |          |                             |                                                                                                                   |
 | `cron.enabled`                                         | bool     | `false`                     | Enable cron job scheduling                                                                                        |
 | `cron.timezone`                                        | string   | `UTC`                       | Default timezone for cron expressions                                                                             |
@@ -1721,6 +1722,8 @@ lango security kms keys      # List registered keys
 ```
 
 Set `security.signer.provider` to the desired KMS backend and configure `security.kms.*` settings. KMS providers also require the matching build tag in the current binary, and the runtime still expects bootstrap-backed storage wiring for the key registry and secrets store.
+
+During encrypted profile bootstrap, profile settings are not available before profile config is loaded. If KMS is selected through `LANGO_KMS_PROVIDER`, set `LANGO_KMS_FALLBACK_TO_LOCAL=false` to fail closed on KMS provider initialization or unwrap failures instead of falling back to the local passphrase prompt.
 
 ### P2P Security Hardening
 
