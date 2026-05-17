@@ -548,7 +548,10 @@ func TestRunMain_WorkerModeShortCircuitsToWorkerSeam(t *testing.T) {
 
 	isSandboxWorkerModeFn = func() bool { return true }
 	workerCalled := false
-	runSandboxWorkerFn = func() { workerCalled = true }
+	runSandboxWorkerFn = func() int {
+		workerCalled = true
+		return 7
+	}
 
 	isStorageBrokerModeFn = func() bool {
 		t.Fatal("broker mode should not be checked after worker short-circuit")
@@ -561,7 +564,7 @@ func TestRunMain_WorkerModeShortCircuitsToWorkerSeam(t *testing.T) {
 
 	code := runMain()
 
-	assert.Equal(t, 0, code)
+	assert.Equal(t, 7, code)
 	assert.True(t, workerCalled)
 }
 

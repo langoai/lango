@@ -77,11 +77,13 @@ Top-level startup commands that emit non-error banner or summary output SHALL ro
 - **THEN** the startup banner and feature summary SHALL be written through the Cobra command output stream
 
 ### Requirement: Root entrypoint failure paths remain seam-aware
-The top-level `lango` entrypoint SHALL route broker-mode and root-command failure messages through the configured stderr seam and produce deterministic exit codes under test.
+The top-level `lango` entrypoint SHALL route broker-mode and root-command failure messages through the configured stderr seam and produce deterministic exit codes under test. Sandbox worker mode SHALL return the worker seam's exit code without evaluating broker mode or constructing the root command.
 
-#### Scenario: Worker mode short-circuits before broker and root command setup
+#### Scenario: Worker mode returns worker exit code
 - **WHEN** sandbox worker mode is active
-- **THEN** the entrypoint SHALL invoke the sandbox worker seam and return success without evaluating broker mode or constructing the root command
+- **THEN** the entrypoint SHALL invoke the sandbox worker seam
+- **AND** it SHALL return the worker seam's exit code
+- **AND** it SHALL NOT evaluate broker mode or construct the root command
 
 ### Requirement: TUI startup notices remain seam-aware
 Interactive top-level TUI entrypoints SHALL route their startup notice text through seam-aware stderr writers so wrapper and regression captures do not depend on process-global stderr interception.

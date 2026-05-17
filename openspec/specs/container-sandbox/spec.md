@@ -148,19 +148,24 @@ The system MUST provide `lango p2p sandbox status`, `lango p2p sandbox test`, an
 - **THEN** orphaned containers with label `lango.sandbox=true` are removed
 
 ### Requirement: Sandbox Docker image
-A `build/sandbox/Dockerfile` MUST define a minimal Debian-based image with the lango binary, running as non-root `sandbox` user with `--sandbox-worker` entrypoint.
+A `build/sandbox/Dockerfile` MUST define a minimal Debian-based image with the lango binary, running as non-root `sandbox` user with `--sandbox-worker` entrypoint. The sandbox worker entrypoint SHALL expose testable exit-code-returning execution while preserving process exit-code semantics when launched as a binary.
 
 #### Scenario: Sandbox image runs as non-root worker
 - **WHEN** the sandbox image is built from `build/sandbox/Dockerfile`
 - **THEN** it MUST run as the non-root `sandbox` user
 - **AND** use the sandbox worker entrypoint
 
-#### Scenario: Sandbox image runs as non-root worker
-- **WHEN** the sandbox image is built from `build/sandbox/Dockerfile`
-- **THEN** it MUST run as the non-root `sandbox` user
-- **AND** use the lango sandbox worker entrypoint
+#### Scenario: Sandbox worker preserves protocol exit codes
+- **WHEN** the sandbox worker receives malformed input or an unregistered tool
+- **THEN** worker execution SHALL return exit code `1` and write a JSON error result
 
+#### Scenario: Sandbox worker tool errors stay JSON-level errors
+- **WHEN** a registered worker tool returns an error
+- **THEN** worker execution SHALL return exit code `0` and write a JSON error result
 
+#### Scenario: Sandbox worker success writes JSON output
+- **WHEN** a registered worker tool succeeds
+- **THEN** worker execution SHALL return exit code `0` and write a JSON output result
 
 ### Requirement: Fail-closed container enforcement
 The `ContainerExecutor` MUST support a `requireContainer` mode. When enabled and the runtime resolves to `NativeRuntime` in auto mode, the executor MUST return an error wrapping `ErrRuntimeUnavailable` instead of silently falling back.

@@ -85,7 +85,7 @@ var (
 	mainStdout               io.Writer = os.Stdout
 	mainStderr               io.Writer = os.Stderr
 	isSandboxWorkerModeFn              = sandbox.IsWorkerMode
-	runSandboxWorkerFn                 = func() { sandbox.RunWorker(sandbox.ToolRegistry{}) }
+	runSandboxWorkerFn                 = func() int { return sandbox.RunWorker(sandbox.ToolRegistry{}) }
 	isStorageBrokerModeFn              = storagebroker.IsBrokerMode
 	runStorageBrokerServerFn           = func(in io.Reader, out io.Writer) error {
 		return storagebroker.NewServer().Run(in, out)
@@ -134,8 +134,7 @@ func main() {
 func runMain() int {
 	// Check if running as sandbox worker subprocess.
 	if isSandboxWorkerModeFn() {
-		runSandboxWorkerFn()
-		return 0
+		return runSandboxWorkerFn()
 	}
 	if isStorageBrokerModeFn() {
 		if err := runStorageBrokerServerFn(mainStdin, mainStdout); err != nil {

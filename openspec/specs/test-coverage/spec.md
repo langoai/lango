@@ -230,6 +230,14 @@ Repository-level docs regressions that reintroduce stale `--json` UX for migrate
 - **WHEN** the P2P operator family (`status`, `peers`, `identity`, `discover`, `firewall list`, `pricing`, `reputation`, `session list`, `team list`, `team status`, `zkp status`, `zkp circuits`, `workspace create`, `workspace list`, `workspace status`, `git log`) has already migrated to `--output table|json`
 - **THEN** an executable repository test SHALL continue to reject stale `--json` docs and spec regressions for that subset
 
+### Requirement: Sandbox worker exit-code regressions stay executable
+Executable tests SHALL cover sandbox worker exit-code behavior without intercepting `os.Exit`.
+
+#### Scenario: Worker protocol exit-code paths are covered
+- **WHEN** sandbox worker tests run
+- **THEN** they SHALL exercise malformed input, unregistered tool, tool error, and successful tool paths
+- **AND** they SHALL assert returned exit codes and JSON results without process-global exit interception
+
 ### Requirement: Cmd entrypoint stream guards stay executable
 Repository-level top-level entrypoint stream regressions that are cheap to detect mechanically SHALL be enforced by executable tests instead of relying only on manual review.
 
