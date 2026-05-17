@@ -220,42 +220,102 @@ func resolveConfigPath(cfg *config.Config, path string) (interface{}, error) {
 func setConfigPath(cfg *config.Config, path, rawVal string) error {
 	parts := strings.Split(path, ".")
 	v := reflect.ValueOf(cfg).Elem()
-	prefixParts := make([]string, 0, len(parts))
+	return setConfigValue(v, parts, rawVal, path, nil)
+}
 
-	for i, part := range parts {
-		if v.Kind() == reflect.Ptr {
-			if v.IsNil() {
-				v.Set(reflect.New(v.Type().Elem()))
-			}
-			v = v.Elem()
-		}
-
-		if v.Kind() != reflect.Struct {
-			return nonStructConfigPathError(
-				path,
-				part,
-				"",
-				strings.Join(prefixParts, "."),
-			)
-		}
-
-		idx := findFieldByTag(v.Type(), part)
-		if idx < 0 {
-			return unknownConfigFieldError(path, part, strings.Join(prefixParts, "."))
-		}
-
-		if i < len(parts)-1 {
-			v = v.Field(idx)
-			prefixParts = append(prefixParts, part)
-			continue
-		}
-
-		// Last segment — set the value.
-		field := v.Field(idx)
-		return setField(field, rawVal, path)
+func setConfigValue(
+	v reflect.Value,
+	parts []string,
+	rawVal string,
+	fullPath string,
+	prefixParts []string,
+) error {
+	if len(parts) == 0 {
+		return fmt.Errorf("config path %q: empty path", fullPath)
 	}
 
-	return fmt.Errorf("config path %q: empty path", path)
+	for v.Kind() == reflect.Ptr {
+		if v.IsNil() {
+			v.Set(reflect.New(v.Type().Elem()))
+		}
+		v = v.Elem()
+	}
+
+	part := parts[0]
+	switch v.Kind() {
+	case reflect.Struct:
+		idx := findFieldByTag(v.Type(), part)
+		if idx < 0 {
+			return unknownConfigFieldError(fullPath, part, strings.Join(prefixParts, "."))
+		}
+
+		field := v.Field(idx)
+		if len(parts) == 1 {
+			return setField(field, rawVal, fullPath)
+		}
+		return setConfigValue(field, parts[1:], rawVal, fullPath, append(prefixParts, part))
+	case reflect.Map:
+		return setMapConfigValue(v, parts, rawVal, fullPath, prefixParts)
+	default:
+		return nonStructConfigPathError(
+			fullPath,
+			part,
+			"",
+			strings.Join(prefixParts, "."),
+		)
+	}
+}
+
+func setMapConfigValue(
+	v reflect.Value,
+	parts []string,
+	rawVal string,
+	fullPath string,
+	prefixParts []string,
+) error {
+	if v.Type().Key().Kind() != reflect.String {
+		return fmt.Errorf(
+			"config path %q: unsupported map key type %s",
+			fullPath,
+			v.Type().Key(),
+		)
+	}
+	if v.IsNil() {
+		v.Set(reflect.MakeMap(v.Type()))
+	}
+
+	key := reflect.ValueOf(parts[0]).Convert(v.Type().Key())
+	elemType := v.Type().Elem()
+	if len(parts) == 1 {
+		if elemType.Kind() != reflect.String {
+			return fmt.Errorf(
+				"config path %q: unsupported map value type %s",
+				fullPath,
+				elemType,
+			)
+		}
+		elem := reflect.New(elemType).Elem()
+		elem.SetString(rawVal)
+		v.SetMapIndex(key, elem)
+		return nil
+	}
+
+	elem := reflect.New(elemType).Elem()
+	if current := v.MapIndex(key); current.IsValid() {
+		elem.Set(current)
+	}
+
+	if err := setConfigValue(
+		elem,
+		parts[1:],
+		rawVal,
+		fullPath,
+		append(prefixParts, parts[0]),
+	); err != nil {
+		return err
+	}
+	v.SetMapIndex(key, elem)
+	return nil
 }
 
 func unknownConfigFieldError(path, field, validPrefix string) error {

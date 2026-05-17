@@ -5,11 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
-	"reflect"
-	"strings"
 
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
@@ -195,6 +195,83 @@ func TestSetConfigPath_FloatField(t *testing.T) {
 	}
 	if cfg.Agent.Temperature != 0.5 {
 		t.Errorf("want 0.5, got %f", cfg.Agent.Temperature)
+	}
+}
+
+func TestSetConfigPath_CreatesProviderMapEntry(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Providers = nil
+
+	err := setConfigPath(cfg, "providers.openai.type", "openai")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Providers == nil {
+		t.Fatal("expected providers map to be created")
+	}
+	if got := cfg.Providers["openai"].Type; got != "openai" {
+		t.Fatalf("expected providers.openai.type to be set, got %q", got)
+	}
+}
+
+func TestSetConfigPath_UpdatesProviderMapEntryWithoutLosingFields(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Providers = map[string]config.ProviderConfig{
+		"openai": {
+			Type:   "openai",
+			APIKey: "existing-key",
+		},
+	}
+
+	err := setConfigPath(cfg, "providers.openai.baseUrl", "http://localhost:11434/v1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	got := cfg.Providers["openai"]
+	if got.BaseURL != "http://localhost:11434/v1" {
+		t.Fatalf("expected baseUrl to be updated, got %q", got.BaseURL)
+	}
+	if got.Type != "openai" {
+		t.Fatalf("expected provider type to be preserved, got %q", got.Type)
+	}
+	if got.APIKey != "existing-key" {
+		t.Fatalf("expected apiKey to be preserved, got %q", got.APIKey)
+	}
+}
+
+func TestSetConfigPath_CreatesNestedStringMapEntry(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.MCP.Servers = nil
+
+	err := setConfigPath(cfg, "mcp.servers.docs.env.LOG_LEVEL", "debug")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.MCP.Servers == nil {
+		t.Fatal("expected mcp.servers map to be created")
+	}
+	if cfg.MCP.Servers["docs"].Env == nil {
+		t.Fatal("expected mcp.servers.docs.env map to be created")
+	}
+	if got := cfg.MCP.Servers["docs"].Env["LOG_LEVEL"]; got != "debug" {
+		t.Fatalf("expected mcp.servers.docs.env.LOG_LEVEL to be set, got %q", got)
+	}
+}
+
+func TestSetConfigPath_CreatesAuthProviderMapEntry(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Auth.Providers = nil
+
+	err := setConfigPath(cfg, "auth.providers.google.clientId", "${GOOGLE_CLIENT_ID}")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Auth.Providers == nil {
+		t.Fatal("expected auth.providers map to be created")
+	}
+	if got := cfg.Auth.Providers["google"].ClientID; got != "${GOOGLE_CLIENT_ID}" {
+		t.Fatalf("expected auth.providers.google.clientId to be set, got %q", got)
 	}
 }
 
@@ -437,6 +514,29 @@ func TestConfigSet_InvalidPathSuggestsNearbyKeyAndDoesNotSave(t *testing.T) {
 	}
 	if saveCalled {
 		t.Fatal("save must not be called after invalid path")
+	}
+}
+
+func TestConfigSet_InvalidMapBackedPathDoesNotSave(t *testing.T) {
+	cfg := config.DefaultConfig()
+	saveCalled := false
+
+	cmd := NewSetCmd(
+		func() (*config.Config, map[string]bool, func(), error) {
+			return cfg, nil, func() {}, nil
+		},
+		func(updated *config.Config, explicitKeys map[string]bool) error {
+			saveCalled = true
+			return nil
+		},
+	)
+
+	_, err := executeConfigCommand(t, cmd, "providers.openai.notAField", "value")
+	if err == nil {
+		t.Fatal("expected invalid path error")
+	}
+	if saveCalled {
+		t.Fatal("save must not be called after invalid map-backed path")
 	}
 }
 

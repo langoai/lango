@@ -671,6 +671,13 @@ All settings are managed via `lango onboard` (guided wizard), `lango settings` (
 | `providers.<id>.type`                                  | string   | -                           | Provider type (openai, anthropic, gemini)                                                                         |
 | `providers.<id>.apiKey`                                | string   | -                           | Provider API key                                                                                                  |
 | `providers.<id>.baseUrl`                               | string   | -                           | Custom base URL (e.g. for Ollama)                                                                                 |
+
+Map-backed scalar fields can be updated directly with `lango config set`, for example:
+
+```bash
+lango config set providers.openai.type openai
+```
+
 | **Logging**                                            |          |                             |                                                                                                                   |
 | `logging.level`                                        | string   | `info`                      | Log level                                                                                                         |
 | `logging.format`                                       | string   | `console`                   | `json` or `console`                                                                                               |

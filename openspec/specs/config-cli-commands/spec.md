@@ -95,6 +95,8 @@ The `config set` command SHALL bootstrap exactly once. The cfgLoader function SH
 
 Invalid dot-path errors from `config set` SHALL include actionable key discovery help. When nearby valid keys exist, the error SHALL include up to three deterministic suggestions. The command SHALL NOT save after an invalid path.
 
+`config set` SHALL support map-backed dot paths whose map keys are dynamic user names. When a map entry is missing and the remaining path is valid for the map value type, the command SHALL create the map and entry before setting the requested value. When the final map value is a `string`, the final path segment SHALL be treated as the map key and the provided value SHALL be stored as the map value.
+
 #### Scenario: Successful set closes DB client
 - **WHEN** `config set agent.provider openai` succeeds
 - **THEN** the DB client is closed after the command completes
@@ -139,6 +141,22 @@ Invalid dot-path errors from `config set` SHALL include actionable key discovery
 - **THEN** the command SHALL fail before saving
 - **AND** the error SHALL include `agent.provider`
 - **AND** the error SHALL include `lango config keys agent`
+
+#### Scenario: Config set creates provider map entry
+- **WHEN** `lango config set providers.openai.type openai` is run on a profile with no `providers.openai` entry
+- **THEN** the saved profile SHALL include `providers.openai.type` set to `openai`
+
+#### Scenario: Config set updates map-backed struct field
+- **WHEN** `lango config set providers.openai.baseUrl http://localhost:11434/v1` is run on a profile with an existing `providers.openai` entry
+- **THEN** the saved profile SHALL update only the `providers.openai.baseUrl` field
+
+#### Scenario: Config set creates nested string map value
+- **WHEN** `lango config set mcp.servers.docs.env.LOG_LEVEL debug` is run on a profile with no `mcp.servers.docs` entry
+- **THEN** the saved profile SHALL include `mcp.servers.docs.env.LOG_LEVEL` set to `debug`
+
+#### Scenario: Invalid map-backed set path does not save
+- **WHEN** `lango config set providers.openai.notAField value` is run
+- **THEN** the command SHALL fail before saving
 
 ### Requirement: Config get actionable key errors
 The `config get <dot.path>` command SHALL return actionable key discovery help when the dot path cannot be resolved. When nearby valid keys exist, the error SHALL include up to three deterministic suggestions. When no nearby keys exist, the error SHALL still include a `lango config keys` discovery hint.
