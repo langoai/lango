@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"os"
 	"testing"
 
@@ -592,6 +593,40 @@ func TestPhaseAcquireCredential_StoresPassphraseWhenConfirmed(t *testing.T) {
 	assert.Equal(t, "Secure storage available (biometric). Store passphrase?", promptMsg)
 	assert.Equal(t, 1, provider.sets)
 	assert.Contains(t, errBuf.String(), "Passphrase saved. Next launch will load it automatically.")
+}
+
+func TestConfirmStorePassphrase_UsesBootstrapPromptStreams(t *testing.T) {
+	origInput := bootstrapConfirmInput
+	origOutput := bootstrapConfirmOutput
+	t.Cleanup(func() {
+		bootstrapConfirmInput = origInput
+		bootstrapConfirmOutput = origOutput
+	})
+
+	bootstrapConfirmInput = bytes.NewBufferString("yes\n")
+	var out bytes.Buffer
+	bootstrapConfirmOutput = &out
+
+	ok, err := confirmStorePassphrase("Store passphrase?")
+	require.NoError(t, err)
+	assert.True(t, ok)
+	assert.Equal(t, "Store passphrase? [y/N]: ", out.String())
+}
+
+func TestConfirmStorePassphrase_DeniesOnEOF(t *testing.T) {
+	origInput := bootstrapConfirmInput
+	origOutput := bootstrapConfirmOutput
+	t.Cleanup(func() {
+		bootstrapConfirmInput = origInput
+		bootstrapConfirmOutput = origOutput
+	})
+
+	bootstrapConfirmInput = bytes.NewBuffer(nil)
+	bootstrapConfirmOutput = io.Discard
+
+	ok, err := confirmStorePassphrase("Store passphrase?")
+	require.NoError(t, err)
+	assert.False(t, ok)
 }
 
 func TestPhaseAcquireCredential_EntitlementWarningOnStoreFailure(t *testing.T) {

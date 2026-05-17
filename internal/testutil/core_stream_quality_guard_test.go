@@ -21,6 +21,8 @@ func TestCoreProductionCodeAvoidsUnapprovedDirectStdStreams(t *testing.T) {
 			"ttyError      io.Writer = os.Stderr",
 		},
 		filepath.Join("internal", "bootstrap", "phases.go"): {
+			"bootstrapConfirmInput   io.Reader = os.Stdin",
+			"bootstrapConfirmOutput  io.Writer = os.Stdout",
 			"bootstrapErrWriter      io.Writer = os.Stderr",
 		},
 		filepath.Join("internal", "logging", "logger.go"): {

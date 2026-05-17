@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"github.com/langoai/lango/internal/cli/prompt"
 	"github.com/langoai/lango/internal/keyring"
 	"golang.org/x/term"
 )
@@ -31,10 +30,12 @@ type Options struct {
 }
 
 var (
-	passphrasePrompt                  = prompt.PassphraseIO
-	passphraseConfirmPrompt           = prompt.PassphraseConfirmIO
+	passphrasePrompt                  = promptPassphraseIO
+	passphraseConfirmPrompt           = promptPassphraseConfirmIO
 	passphraseStdin         io.Reader = os.Stdin
 	passphraseStderr        io.Writer = os.Stderr
+	passphraseInputFD                 = func() int { return int(syscall.Stdin) }
+	passphraseReadPassword            = term.ReadPassword
 	passphraseIsTerminal              = func() bool { return term.IsTerminal(int(syscall.Stdin)) }
 )
 
@@ -102,4 +103,33 @@ func acquireInteractive(allowCreation bool, out io.Writer) (string, error) {
 		)
 	}
 	return passphrasePrompt(out, "Enter passphrase: ")
+}
+
+func promptPassphraseIO(out io.Writer, promptText string) (string, error) {
+	if _, err := fmt.Fprint(out, promptText); err != nil {
+		return "", err
+	}
+	bytePassword, err := passphraseReadPassword(passphraseInputFD())
+	if _, writeErr := fmt.Fprintln(out); err == nil && writeErr != nil {
+		return "", writeErr
+	}
+	if err != nil {
+		return "", err
+	}
+	return string(bytePassword), nil
+}
+
+func promptPassphraseConfirmIO(out io.Writer, promptText, confirmPromptText string) (string, error) {
+	pass1, err := promptPassphraseIO(out, promptText)
+	if err != nil {
+		return "", err
+	}
+	pass2, err := promptPassphraseIO(out, confirmPromptText)
+	if err != nil {
+		return "", err
+	}
+	if pass1 != pass2 {
+		return "", fmt.Errorf("passphrases do not match")
+	}
+	return pass1, nil
 }

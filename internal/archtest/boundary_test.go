@@ -96,6 +96,18 @@ var rules = []boundaryRule{
 				strings.HasPrefix(dep, modulePath+"internal/p2p/identity/")
 		},
 	},
+	{
+		name: "non-cli internal packages must not import internal/cli",
+		sourceMatch: func(importPath string) bool {
+			return strings.HasPrefix(importPath, modulePath+"internal/") &&
+				importPath != modulePath+"internal/cli" &&
+				!strings.HasPrefix(importPath, modulePath+"internal/cli/")
+		},
+		forbiddenMatch: func(dep string) bool {
+			return dep == modulePath+"internal/cli" ||
+				strings.HasPrefix(dep, modulePath+"internal/cli/")
+		},
+	},
 }
 
 func TestBoundaryViolations(t *testing.T) {

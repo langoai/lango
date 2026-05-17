@@ -111,6 +111,45 @@ func TestAcquire_InteractiveCreationPromptsUseInjectedWriter(t *testing.T) {
 	assert.Equal(t, "Enter new passphrase: Confirm passphrase: ", errBuf.String())
 }
 
+func TestPromptPassphraseIO_RoutesPromptToExplicitWriter(t *testing.T) {
+	oldInputFD := passphraseInputFD
+	oldReadPassword := passphraseReadPassword
+	t.Cleanup(func() {
+		passphraseInputFD = oldInputFD
+		passphraseReadPassword = oldReadPassword
+	})
+
+	passphraseInputFD = func() int { return 42 }
+	passphraseReadPassword = func(fd int) ([]byte, error) {
+		assert.Equal(t, 42, fd)
+		return []byte("hidden-passphrase"), nil
+	}
+
+	var out bytes.Buffer
+	got, err := promptPassphraseIO(&out, "Enter secret: ")
+	require.NoError(t, err)
+	assert.Equal(t, "hidden-passphrase", got)
+	assert.Equal(t, "Enter secret: \n", out.String())
+}
+
+func TestPromptPassphraseConfirmIORejectsMismatch(t *testing.T) {
+	oldReadPassword := passphraseReadPassword
+	t.Cleanup(func() { passphraseReadPassword = oldReadPassword })
+
+	reads := [][]byte{[]byte("first"), []byte("second")}
+	passphraseReadPassword = func(int) ([]byte, error) {
+		next := reads[0]
+		reads = reads[1:]
+		return next, nil
+	}
+
+	var out bytes.Buffer
+	_, err := promptPassphraseConfirmIO(&out, "Enter: ", "Confirm: ")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "passphrases do not match")
+	assert.Equal(t, "Enter: \nConfirm: \n", out.String())
+}
+
 func TestAcquire_InvalidKeyfilePermissions(t *testing.T) {
 	// Keyfile exists but has wrong permissions — should fall through
 	dir := t.TempDir()
@@ -197,10 +236,14 @@ func restorePassphraseStdioSeams(t *testing.T) {
 	oldStdin := passphraseStdin
 	oldStderr := passphraseStderr
 	oldIsTerminal := passphraseIsTerminal
+	oldInputFD := passphraseInputFD
+	oldReadPassword := passphraseReadPassword
 
 	t.Cleanup(func() {
 		passphraseStdin = oldStdin
 		passphraseStderr = oldStderr
 		passphraseIsTerminal = oldIsTerminal
+		passphraseInputFD = oldInputFD
+		passphraseReadPassword = oldReadPassword
 	})
 }

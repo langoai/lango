@@ -8,11 +8,12 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
-	"github.com/langoai/lango/internal/cli/prompt"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/configstore"
 	"github.com/langoai/lango/internal/keyring"
+	"github.com/langoai/lango/internal/lineio"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/security/passphrase"
 	"github.com/langoai/lango/internal/sqlitedriver"
@@ -26,8 +27,10 @@ var startStorageBroker = func(ctx context.Context) (storagebroker.API, error) {
 
 var (
 	acquirePassphrase                 = passphrase.Acquire
-	confirmStorePass                  = prompt.Confirm
+	confirmStorePass                  = confirmStorePassphrase
 	newBootstrapKMSProvider           = security.NewKMSProvider
+	bootstrapConfirmInput   io.Reader = os.Stdin
+	bootstrapConfirmOutput  io.Writer = os.Stdout
 	bootstrapErrWriter      io.Writer = os.Stderr
 )
 
@@ -50,6 +53,25 @@ func storeChecksumForState(ctx context.Context, s *State, checksum []byte) error
 		return storeChecksumViaBroker(ctx, s.Broker, checksum)
 	}
 	return storeChecksum(s.RawDB, checksum)
+}
+
+func confirmStorePassphrase(msg string) (bool, error) {
+	line, err := readBootstrapConfirmation(bootstrapConfirmInput, bootstrapConfirmOutput, msg)
+	if errors.Is(err, io.EOF) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	answer := strings.TrimSpace(strings.ToLower(line))
+	return answer == "y" || answer == "yes", nil
+}
+
+func readBootstrapConfirmation(in io.Reader, out io.Writer, msg string) (string, error) {
+	if _, err := fmt.Fprintf(out, "%s [y/N]: ", msg); err != nil {
+		return "", err
+	}
+	return lineio.ReadLine(in)
 }
 
 // dataDirPerm is the permission mode for all ~/.lango/ directories.
