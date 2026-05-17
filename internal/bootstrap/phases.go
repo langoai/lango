@@ -57,7 +57,7 @@ func storeChecksumForState(ctx context.Context, s *State, checksum []byte) error
 // encrypted secrets, database files, and keyfiles).
 const dataDirPerm = 0700
 
-// DefaultPhases returns the standard bootstrap phase sequence (11 phases).
+// DefaultPhases returns the standard bootstrap phase sequence (12 phases).
 //
 // Envelope-aware order: envelope loads BEFORE DB open so recovery credentials
 // (mnemonic) and MK-derived DB keys are available when we actually open

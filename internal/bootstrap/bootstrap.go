@@ -95,14 +95,19 @@ type Options struct {
 	StartStorageBroker bool
 }
 
-// Run executes the full bootstrap sequence using the phase pipeline:
-//  1. Ensure ~/.lango/ directory
-//  2. Detect DB encryption status
-//  3. Acquire passphrase
-//  4. Open SQLite/SQLCipher DB + ent schema migration
-//  5. Load security state (salt/checksum)
-//  6. Initialize crypto provider
-//  7. Load or create configuration profile
+// Run executes the full bootstrap sequence using the DefaultPhases inventory:
+//  1. ensure data directory
+//  2. detect encryption
+//  3. load envelope file
+//  4. acquire credential
+//  5. unwrap or create master key
+//  6. open database
+//  7. load security state
+//  8. migrate envelope
+//  9. initialize crypto
+//  10. derive identity key
+//  11. derive PQ signing key
+//  12. load profile
 func Run(opts Options) (*Result, error) {
 	// Explicit Options > env vars: only read env when Options are empty.
 	if opts.KMSConfig == nil && opts.KMSProviderName == "" {
