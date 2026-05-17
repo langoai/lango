@@ -142,6 +142,38 @@ func TestPublicDocsExplainBackgroundCLIServerBoundary(t *testing.T) {
 	}
 }
 
+func TestPublicDocsExplainBackgroundCLIMutability(t *testing.T) {
+	t.Parallel()
+
+	repoRoot := docsQualityRepoRoot(t)
+	target := filepath.Join(repoRoot, "docs", "automation", "background.md")
+	data, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatalf("read %s: %v", target, err)
+	}
+	text := string(data)
+
+	staleReadOnlyCLI := regexp.MustCompile(`(?is)\bCLI\b.{0,80}\bread-only\b.{0,80}\bbackground tasks\b`)
+	if staleReadOnlyCLI.MatchString(text) {
+		t.Fatalf("%s still describes background CLI management as read-only", target)
+	}
+
+	requiredPatterns := map[string]*regexp.Regexp{
+		"in-process manager": regexp.MustCompile(`(?is)CLI\b.{0,80}\bin-process management commands\b.{0,120}\bin-process manager\b`),
+		"inspect commands":   regexp.MustCompile(`(?is)lango bg list\b.{0,80}lango bg status <id>.{0,80}lango bg result <id>.{0,80}\binspect task state\b`),
+		"cancel mutability":  regexp.MustCompile(`(?is)lango bg cancel <id>.{0,120}\brequests cancellation\b.{0,120}\bpending or running task\b.{0,120}\bsame process\b`),
+		"submission boundary": regexp.MustCompile(
+			regexp.QuoteMeta("Task submission is handled exclusively through agent tools"),
+		),
+		"remote boundary": regexp.MustCompile(`(?is)root CLI\b.{0,80}lango bg\b.{0,80}\bnot yet a remote gateway client\b`),
+	}
+	for name, pattern := range requiredPatterns {
+		if !pattern.MatchString(text) {
+			t.Fatalf("%s is missing background CLI mutability contract %q", target, name)
+		}
+	}
+}
+
 func TestPublicDocsExplainBareRootNonInteractiveFallback(t *testing.T) {
 	t.Parallel()
 
