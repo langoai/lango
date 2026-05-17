@@ -1184,3 +1184,12 @@ Repository-level docs guards SHALL prevent gateway-backed CLI docs from presenti
 #### Scenario: P2P provenance address docs guard remains covered
 - **WHEN** public P2P CLI docs are checked
 - **THEN** executable tests SHALL fail if they omit P2P provenance gateway override, configured fallback, or explicit address normalization wording
+
+### Requirement: Broker stderr seam regressions stay executable
+Broker stderr routing regressions SHALL be enforced by executable tests instead
+of relying only on manual review.
+
+#### Scenario: Broker child stderr seam is covered
+- **WHEN** the storage broker command is constructed
+- **THEN** an executable test SHALL verify that child stderr uses the injected
+  writer seam

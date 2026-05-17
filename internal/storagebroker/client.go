@@ -67,6 +67,8 @@ type Client struct {
 	pending map[uint64]chan Response
 }
 
+var brokerStderr io.Writer = os.Stderr
+
 // Start launches the current executable in broker mode.
 func Start(ctx context.Context) (*Client, error) {
 	selfPath, err := os.Executable()
@@ -74,18 +76,10 @@ func Start(ctx context.Context) (*Client, error) {
 		return nil, fmt.Errorf("resolve broker executable: %w", err)
 	}
 
-	cmd := exec.CommandContext(ctx, selfPath, brokerFlag)
-	cmd.ExtraFiles = nil
-	stdin, err := cmd.StdinPipe()
+	cmd, stdin, stdout, err := newBrokerCommand(ctx, selfPath, brokerStderr)
 	if err != nil {
-		return nil, fmt.Errorf("broker stdin pipe: %w", err)
+		return nil, err
 	}
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return nil, fmt.Errorf("broker stdout pipe: %w", err)
-	}
-	markFilesCloseOnExec(stdin, stdout)
-	cmd.Stderr = os.Stderr
 
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("start storage broker: %w", err)
@@ -99,6 +93,22 @@ func Start(ctx context.Context) (*Client, error) {
 	}
 	go c.readLoop()
 	return c, nil
+}
+
+func newBrokerCommand(ctx context.Context, selfPath string, stderr io.Writer) (*exec.Cmd, io.WriteCloser, io.ReadCloser, error) {
+	cmd := exec.CommandContext(ctx, selfPath, brokerFlag)
+	cmd.ExtraFiles = nil
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("broker stdin pipe: %w", err)
+	}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("broker stdout pipe: %w", err)
+	}
+	markFilesCloseOnExec(stdin, stdout)
+	cmd.Stderr = stderr
+	return cmd, stdin, stdout, nil
 }
 
 func (c *Client) Health(ctx context.Context) (HealthResult, error) {
