@@ -242,7 +242,7 @@ func newRootCmd() *cobra.Command {
 	librarianCmd.GroupID = "ai"
 	rootCmd.AddCommand(librarianCmd)
 
-	metricsCmd := climetrics.NewMetricsCmd()
+	metricsCmd := climetrics.NewMetricsCmdWithConfig(cliboot.Config)
 	metricsCmd.GroupID = "ai"
 	rootCmd.AddCommand(metricsCmd)
 
@@ -296,7 +296,7 @@ func newRootCmd() *cobra.Command {
 	sandboxCmd.GroupID = "sys"
 	rootCmd.AddCommand(sandboxCmd)
 
-	alertsCmd := clialerts.NewAlertsCmd()
+	alertsCmd := clialerts.NewAlertsCmdWithConfig(cliboot.Config)
 	alertsCmd.GroupID = "sys"
 	rootCmd.AddCommand(alertsCmd)
 

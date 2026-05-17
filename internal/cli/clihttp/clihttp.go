@@ -13,7 +13,12 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+
+	"github.com/langoai/lango/internal/config"
 )
+
+// DefaultGatewayAddr is the CLI fallback when no configured gateway is available.
+const DefaultGatewayAddr = "http://localhost:18789"
 
 // FetchJSON reads JSON from the given gateway path with a bounded timeout.
 func FetchJSON(addr, path string, out interface{}) error {
@@ -69,6 +74,24 @@ func PostJSONContext(ctx context.Context, addr, path string, body interface{}, o
 		return nil
 	}
 	return json.NewDecoder(resp.Body).Decode(out)
+}
+
+// ResolveGatewayAddr returns an explicit CLI address or derives one from server config.
+func ResolveGatewayAddr(explicit string, cfg *config.Config) string {
+	if addr := strings.TrimSpace(explicit); addr != "" {
+		return addr
+	}
+	host := "localhost"
+	port := 18789
+	if cfg != nil {
+		if configuredHost := strings.TrimSpace(cfg.Server.Host); configuredHost != "" {
+			host = configuredHost
+		}
+		if cfg.Server.Port > 0 {
+			port = cfg.Server.Port
+		}
+	}
+	return fmt.Sprintf("http://%s:%d", host, port)
 }
 
 func decodeGatewayError(resp *http.Response) error {

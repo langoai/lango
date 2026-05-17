@@ -26,7 +26,7 @@ import (
 	"github.com/langoai/lango/internal/types"
 )
 
-const defaultAddr = "http://localhost:18789"
+const defaultAddr = clihttp.DefaultGatewayAddr
 
 const (
 	defaultDeadLetterSummaryTopN       = 5
@@ -236,7 +236,8 @@ Examples:
 				}
 				defer boot.Close()
 
-				info := collectStatus(boot.Config, boot.ProfileName, addr)
+				probeAddr := clihttp.ResolveGatewayAddr(addr, boot.Config)
+				info := collectStatus(boot.Config, boot.ProfileName, probeAddr)
 				info.Version = sanitizeStatusText(tui.GetVersion())
 
 				if normalizedOutputFmt == "json" {
@@ -249,7 +250,7 @@ Examples:
 	}
 
 	cmd.Flags().StringVar(&outputFmt, "output", "table", "Output format: table or json")
-	cmd.Flags().StringVar(&addr, "addr", defaultAddr, "Gateway address")
+	cmd.Flags().StringVar(&addr, "addr", "", "Gateway address (default: configured server host/port)")
 	cmd.AddCommand(newDeadLetterSummaryCmd(deadLetterLoader))
 	cmd.AddCommand(newDeadLettersCmd(deadLetterLoader))
 	cmd.AddCommand(newDeadLetterCmd(deadLetterLoader))
@@ -1201,7 +1202,7 @@ func collectStatus(cfg *config.Config, profile, addr string) StatusInfo {
 	info := StatusInfo{
 		Profile:        sanitizeStatusText(profile),
 		ContextProfile: sanitizeStatusText(string(cfg.ContextProfile)),
-		Gateway:        sanitizeStatusText(fmt.Sprintf("http://%s:%d", cfg.Server.Host, cfg.Server.Port)),
+		Gateway:        sanitizeStatusText(clihttp.ResolveGatewayAddr("", cfg)),
 		Provider:       sanitizeStatusText(cfg.Agent.Provider),
 		Model:          sanitizeStatusText(cfg.Agent.Model),
 	}

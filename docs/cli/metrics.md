@@ -15,9 +15,9 @@ All metrics commands share these flags:
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--output` | string | `table` | Output format: `table` or `json` |
-| `--addr` | string | `http://localhost:18789` | Gateway address |
+| `--addr` | string | configured server address | Gateway address override |
 
-Unknown `--output` values fail fast with an actionable error before any metrics command contacts the gateway.
+When `--addr` is omitted, metrics commands use the configured `server.host` and `server.port`, falling back to `http://localhost:18789` only when those values are unavailable. Unknown `--output` values fail fast with an actionable error before any metrics command contacts the gateway.
 
 ---
 

@@ -56,7 +56,7 @@ When `observability.metrics.format` is `"prometheus"`, the system MUST register 
 - **THEN** `/metrics/prometheus` SHALL NOT be registered
 
 ### Requirement: CLI system metrics summary
-The CLI SHALL provide `lango metrics` that fetches the `/metrics` JSON endpoint and renders a system metrics snapshot summary as table (default) or JSON.
+The CLI SHALL provide `lango metrics` that fetches the `/metrics` JSON endpoint and renders a system metrics snapshot summary as table (default) or JSON. When `--addr` is omitted, the command SHALL resolve the gateway address from configured `server.host` and `server.port`, falling back to `http://localhost:18789` only when configuration is unavailable, blank, or zero-valued.
 
 #### Scenario: Metrics summary table output
 - **WHEN** `lango metrics` is run without --output flag
@@ -71,6 +71,15 @@ The CLI SHALL provide `lango metrics` that fetches the `/metrics` JSON endpoint 
 - **THEN** it SHALL return an actionable unknown-output-format error
 - **AND** it SHALL NOT contact the gateway
 
+#### Scenario: Metrics summary uses configured gateway by default
+- **WHEN** configuration sets `server.host` and `server.port`
+- **AND** the user runs `lango metrics` without `--addr`
+- **THEN** the command SHALL fetch `/metrics` from that configured gateway address
+
+#### Scenario: Metrics summary explicit address override
+- **WHEN** the user runs `lango metrics --addr <url>`
+- **THEN** the command SHALL fetch `/metrics` from `<url>` instead of the configured gateway address
+
 ### Requirement: CLI system metrics output routing
 `lango metrics` SHALL write all non-error output through the Cobra command output stream so wrappers and test harnesses can capture table and JSON output without intercepting process-global stdout.
 
@@ -83,7 +92,7 @@ The CLI SHALL provide `lango metrics` that fetches the `/metrics` JSON endpoint 
 - **THEN** the command writes the JSON payload to the Cobra command output stream
 
 ### Requirement: CLI metrics breakdown subcommands
-The CLI SHALL provide `lango metrics sessions`, `lango metrics tools`, `lango metrics agents`, and `lango metrics history` that fetch their respective `/metrics/*` endpoints and render table (default) or JSON output.
+The CLI SHALL provide `lango metrics sessions`, `lango metrics tools`, `lango metrics agents`, and `lango metrics history` that fetch their respective `/metrics/*` endpoints and render table (default) or JSON output. When `--addr` is omitted, each subcommand SHALL resolve the gateway address from configured `server.host` and `server.port`, falling back to `http://localhost:18789` only when configuration is unavailable, blank, or zero-valued.
 
 #### Scenario: Sessions output
 - **WHEN** `lango metrics sessions` is run
@@ -100,6 +109,11 @@ The CLI SHALL provide `lango metrics sessions`, `lango metrics tools`, `lango me
 #### Scenario: History output
 - **WHEN** `lango metrics history --days 7` is run
 - **THEN** it SHALL display historical token usage records and aggregate totals or an empty-state message when no history exists
+
+#### Scenario: Metrics breakdown uses configured gateway by default
+- **WHEN** configuration sets `server.host` and `server.port`
+- **AND** the user runs a metrics breakdown subcommand without `--addr`
+- **THEN** the command SHALL fetch its gateway endpoint from that configured gateway address
 
 ### Requirement: CLI metrics breakdown output routing
 `lango metrics sessions`, `lango metrics tools`, `lango metrics agents`, and `lango metrics history` SHALL write all non-error output through the Cobra command output stream so wrappers and test harnesses can capture table and JSON output without intercepting process-global stdout.

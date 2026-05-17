@@ -10,12 +10,20 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/langoai/lango/internal/cli/clihttp"
+	"github.com/langoai/lango/internal/config"
 )
 
-const defaultGatewayAddr = "http://localhost:18789"
+const defaultGatewayAddr = clihttp.DefaultGatewayAddr
+
+type configLoader func() (*config.Config, error)
 
 // NewAlertsCmd creates the alerts command group.
 func NewAlertsCmd() *cobra.Command {
+	return NewAlertsCmdWithConfig(nil)
+}
+
+// NewAlertsCmdWithConfig creates the alerts command group with config-backed gateway defaults.
+func NewAlertsCmdWithConfig(loadConfig configLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "alerts",
 		Short:         "View operational alerts",
@@ -29,37 +37,37 @@ Examples:
   lango alerts list                    # Recent alerts (last 7 days)
   lango alerts list --days=3           # Alerts from last 3 days
   lango alerts summary                 # Alert counts by type`,
-		RunE: listRunE,
+		RunE: listRunEWithConfig(loadConfig),
 	}
 
 	cmd.PersistentFlags().String("output", "table", "Output format: table or json")
-	cmd.PersistentFlags().String("addr", defaultGatewayAddr, "Gateway address")
+	cmd.PersistentFlags().String("addr", "", "Gateway address (default: configured server host/port)")
 
-	cmd.AddCommand(newListCmd())
-	cmd.AddCommand(newSummaryCmd())
+	cmd.AddCommand(newListCmd(loadConfig))
+	cmd.AddCommand(newSummaryCmd(loadConfig))
 
 	return cmd
 }
 
-func newListCmd() *cobra.Command {
+func newListCmd(loadConfig configLoader) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "list",
 		Short:         "List recent alerts",
 		SilenceUsage:  true,
 		SilenceErrors: true,
-		RunE:          listRunE,
+		RunE:          listRunEWithConfig(loadConfig),
 	}
 	cmd.Flags().Int("days", 7, "Number of days to look back")
 	return cmd
 }
 
-func newSummaryCmd() *cobra.Command {
+func newSummaryCmd(loadConfig configLoader) *cobra.Command {
 	return &cobra.Command{
 		Use:           "summary",
 		Short:         "Show alert counts by type",
 		SilenceUsage:  true,
 		SilenceErrors: true,
-		RunE:          summaryRunE,
+		RunE:          summaryRunEWithConfig(loadConfig),
 	}
 }
 
@@ -78,103 +86,125 @@ type alertEntry struct {
 }
 
 func listRunE(cmd *cobra.Command, _ []string) error {
-	addr := getAddr(cmd)
-	format, err := getOutputFormat(cmd)
-	if err != nil {
-		return err
-	}
+	return listRunEWithConfig(nil)(cmd, nil)
+}
 
-	days := 7
-	if d, err := cmd.Flags().GetInt("days"); err == nil && d > 0 {
-		days = d
-	}
-
-	var resp alertsResponse
-	if err := clihttp.FetchJSON(addr, fmt.Sprintf("/alerts?days=%d", days), &resp); err != nil {
-		return err
-	}
-
-	if format == "json" {
-		return printJSON(cmd.OutOrStdout(), resp)
-	}
-
-	if resp.Total == 0 {
-		_, err := fmt.Fprintf(cmd.OutOrStdout(), "No alerts in the last %d day(s).\n", days)
-		return err
-	}
-
-	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "=== Alerts (last %d day(s)) === [%d total]\n\n", days, resp.Total); err != nil {
-		return err
-	}
-
-	w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
-	fmt.Fprintln(w, "TIME\tTYPE\tSEVERITY\tMESSAGE")
-	fmt.Fprintln(w, "----\t----\t--------\t-------")
-	for _, a := range resp.Alerts {
-		severity, _ := a.Details["severity"].(string)
-		message, _ := a.Details["message"].(string)
-		ts := a.Timestamp
-		if t, err := time.Parse(time.RFC3339, a.Timestamp); err == nil {
-			ts = t.Local().Format("2006-01-02 15:04:05")
+func listRunEWithConfig(loadConfig configLoader) func(*cobra.Command, []string) error {
+	return func(cmd *cobra.Command, _ []string) error {
+		format, err := getOutputFormat(cmd)
+		if err != nil {
+			return err
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", ts, a.Type, severity, message)
+		addr, err := getAddr(cmd, loadConfig)
+		if err != nil {
+			return err
+		}
+
+		days := 7
+		if d, err := cmd.Flags().GetInt("days"); err == nil && d > 0 {
+			days = d
+		}
+
+		var resp alertsResponse
+		if err := clihttp.FetchJSON(addr, fmt.Sprintf("/alerts?days=%d", days), &resp); err != nil {
+			return err
+		}
+
+		if format == "json" {
+			return printJSON(cmd.OutOrStdout(), resp)
+		}
+
+		if resp.Total == 0 {
+			_, err := fmt.Fprintf(cmd.OutOrStdout(), "No alerts in the last %d day(s).\n", days)
+			return err
+		}
+
+		if _, err := fmt.Fprintf(cmd.OutOrStdout(), "=== Alerts (last %d day(s)) === [%d total]\n\n", days, resp.Total); err != nil {
+			return err
+		}
+
+		w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
+		fmt.Fprintln(w, "TIME\tTYPE\tSEVERITY\tMESSAGE")
+		fmt.Fprintln(w, "----\t----\t--------\t-------")
+		for _, a := range resp.Alerts {
+			severity, _ := a.Details["severity"].(string)
+			message, _ := a.Details["message"].(string)
+			ts := a.Timestamp
+			if t, err := time.Parse(time.RFC3339, a.Timestamp); err == nil {
+				ts = t.Local().Format("2006-01-02 15:04:05")
+			}
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", ts, a.Type, severity, message)
+		}
+		return w.Flush()
 	}
-	return w.Flush()
 }
 
 func summaryRunE(cmd *cobra.Command, _ []string) error {
-	addr := getAddr(cmd)
-	format, err := getOutputFormat(cmd)
-	if err != nil {
-		return err
-	}
+	return summaryRunEWithConfig(nil)(cmd, nil)
+}
 
-	var resp alertsResponse
-	if err := clihttp.FetchJSON(addr, "/alerts?days=30", &resp); err != nil {
-		return err
-	}
+func summaryRunEWithConfig(loadConfig configLoader) func(*cobra.Command, []string) error {
+	return func(cmd *cobra.Command, _ []string) error {
+		format, err := getOutputFormat(cmd)
+		if err != nil {
+			return err
+		}
+		addr, err := getAddr(cmd, loadConfig)
+		if err != nil {
+			return err
+		}
 
-	// Aggregate by type.
-	counts := make(map[string]int)
-	for _, a := range resp.Alerts {
-		counts[a.Type]++
-	}
+		var resp alertsResponse
+		if err := clihttp.FetchJSON(addr, "/alerts?days=30", &resp); err != nil {
+			return err
+		}
 
-	if format == "json" {
-		return printJSON(cmd.OutOrStdout(), map[string]interface{}{
-			"summary":     counts,
-			"totalAlerts": resp.Total,
-		})
-	}
+		// Aggregate by type.
+		counts := make(map[string]int)
+		for _, a := range resp.Alerts {
+			counts[a.Type]++
+		}
 
-	if len(counts) == 0 {
-		_, err := fmt.Fprintln(cmd.OutOrStdout(), "No alerts in the last 30 days.")
-		return err
-	}
+		if format == "json" {
+			return printJSON(cmd.OutOrStdout(), map[string]interface{}{
+				"summary":     counts,
+				"totalAlerts": resp.Total,
+			})
+		}
 
-	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "=== Alert Summary (last 30 days) === [%d total]\n\n", resp.Total); err != nil {
-		return err
-	}
+		if len(counts) == 0 {
+			_, err := fmt.Fprintln(cmd.OutOrStdout(), "No alerts in the last 30 days.")
+			return err
+		}
 
-	w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
-	fmt.Fprintln(w, "TYPE\tCOUNT")
-	fmt.Fprintln(w, "----\t-----")
-	for typ, count := range counts {
-		fmt.Fprintf(w, "%s\t%d\n", typ, count)
+		if _, err := fmt.Fprintf(cmd.OutOrStdout(), "=== Alert Summary (last 30 days) === [%d total]\n\n", resp.Total); err != nil {
+			return err
+		}
+
+		w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
+		fmt.Fprintln(w, "TYPE\tCOUNT")
+		fmt.Fprintln(w, "----\t-----")
+		for typ, count := range counts {
+			fmt.Fprintf(w, "%s\t%d\n", typ, count)
+		}
+		return w.Flush()
 	}
-	return w.Flush()
 }
 
 func getOutputFormat(cmd *cobra.Command) (string, error) {
 	return clihttp.ResolveTableOrJSONOutput(cmd)
 }
 
-func getAddr(cmd *cobra.Command) string {
+func getAddr(cmd *cobra.Command, loadConfig configLoader) (string, error) {
 	a, _ := cmd.Flags().GetString("addr")
-	if a == "" {
-		a = defaultGatewayAddr
+	if a != "" || loadConfig == nil {
+		return clihttp.ResolveGatewayAddr(a, nil), nil
 	}
-	return a
+	cfg, err := loadConfig()
+	if err != nil {
+		return "", fmt.Errorf("load config: %w", err)
+	}
+	return clihttp.ResolveGatewayAddr("", cfg), nil
 }
 
 func printJSON(w io.Writer, v interface{}) error {

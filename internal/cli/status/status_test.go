@@ -5,8 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -101,6 +104,21 @@ func executeCommandWithInput(t *testing.T, cmd *cobra.Command, input string, arg
 	cmd.SetArgs(args)
 	err := cmd.Execute()
 	return out.String(), err
+}
+
+func configForStatusServer(t *testing.T, rawURL string) *config.Config {
+	t.Helper()
+	parsed, err := url.Parse(rawURL)
+	require.NoError(t, err)
+	host, portText, err := net.SplitHostPort(parsed.Host)
+	require.NoError(t, err)
+	port, err := strconv.Atoi(portText)
+	require.NoError(t, err)
+
+	cfg := config.DefaultConfig()
+	cfg.Server.Host = host
+	cfg.Server.Port = port
+	return cfg
 }
 
 func TestCollectStatus_DefaultConfig(t *testing.T) {
@@ -312,7 +330,7 @@ func TestCollectStatus_SanitizesCollectedModelText(t *testing.T) {
 	info := collectStatus(cfg, "pro\x1b[31md\n", "http://localhost:1")
 	assert.Equal(t, "prod", info.Profile)
 	assert.Equal(t, "balanced", info.ContextProfile)
-	assert.Equal(t, "http://localhost :8080", info.Gateway)
+	assert.Equal(t, "http://localhost:8080", info.Gateway)
 	assert.Equal(t, "openai", info.Provider)
 	assert.Equal(t, "gpt-5", info.Model)
 	assert.Equal(t, []string{"telegram"}, info.Channels)
@@ -430,6 +448,32 @@ func TestNewStatusCmd_JSONSanitizesVersion(t *testing.T) {
 	assert.Equal(t, "1.2.3", got.Version)
 	assert.NotContains(t, out, "\u001b")
 	assert.NotContains(t, out, "\\u001b")
+}
+
+func TestNewStatusCmd_UsesConfiguredGatewayForProbeWhenAddrOmitted(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/health", r.URL.Path)
+		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{"features": []any{}}))
+	}))
+	defer server.Close()
+
+	cfg := configForStatusServer(t, server.URL)
+	cmd := NewStatusCmd(func() (*bootstrap.Result, error) {
+		return &bootstrap.Result{
+			Config:      cfg,
+			ProfileName: "configured-profile",
+		}, nil
+	}, func() (DeadLetterBridge, func(), error) {
+		return &fakeDeadLetterBridge{}, func() {}, nil
+	})
+
+	out, err := executeCommand(t, cmd, "--output", "json")
+
+	require.NoError(t, err)
+	var got StatusInfo
+	require.NoError(t, json.Unmarshal([]byte(out), &got))
+	assert.True(t, got.ServerUp)
+	assert.Equal(t, server.URL, got.Gateway)
 }
 
 func TestNewStatusCmd_InvalidOutputRejectsBeforeBootstrap(t *testing.T) {

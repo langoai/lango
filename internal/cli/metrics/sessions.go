@@ -8,15 +8,18 @@ import (
 	"github.com/langoai/lango/internal/cli/clihttp"
 )
 
-func newSessionsCmd() *cobra.Command {
+func newSessionsCmd(loadConfig configLoader) *cobra.Command {
 	return &cobra.Command{
 		Use:           "sessions",
 		Short:         "Per-session token usage breakdown",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			addr := getAddr(cmd)
 			format, err := getOutputFormat(cmd)
+			if err != nil {
+				return err
+			}
+			addr, err := getAddr(cmd, loadConfig)
 			if err != nil {
 				return err
 			}

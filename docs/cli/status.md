@@ -44,9 +44,9 @@ The `status` command also exposes dead-letter operator views:
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--output` | `table` | Output format: `table` or `json` |
-| `--addr` | `http://localhost:18789` | Gateway address to probe for live status |
+| `--addr` | configured server address | Gateway address override for live status probing |
 
-Unknown `--output` values such as `yaml` fail fast with an actionable error before the command contacts the gateway or loads dead-letter status tooling.
+When `--addr` is omitted, `lango status` probes the configured `server.host` and `server.port`, falling back to `http://localhost:18789` only when those values are unavailable. Unknown `--output` values such as `yaml` fail fast with an actionable error before the command contacts the gateway or loads dead-letter status tooling.
 
 ## Dead-Letter Subcommands
 

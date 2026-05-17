@@ -204,15 +204,7 @@ func resolveGatewayAddr(addr string, bootLoader func() (*bootstrap.Result, error
 		return "", fmt.Errorf("load config for gateway address: config is unavailable")
 	}
 	defer func() { _ = boot.Close() }()
-	host := boot.Config.Server.Host
-	if strings.TrimSpace(host) == "" {
-		host = "localhost"
-	}
-	port := boot.Config.Server.Port
-	if port == 0 {
-		port = 18789
-	}
-	return fmt.Sprintf("http://%s:%d", host, port), nil
+	return clihttp.ResolveGatewayAddr("", boot.Config), nil
 }
 
 func newBgListCmd(cp ClientProvider) *cobra.Command {

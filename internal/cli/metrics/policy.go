@@ -10,7 +10,11 @@ import (
 	"github.com/langoai/lango/internal/cli/clihttp"
 )
 
-func newPolicyCmd() *cobra.Command {
+func newPolicyCmd(loadConfig ...configLoader) *cobra.Command {
+	var loader configLoader
+	if len(loadConfig) > 0 {
+		loader = loadConfig[0]
+	}
 	return &cobra.Command{
 		Use:           "policy",
 		Short:         "Policy decision statistics",
@@ -23,8 +27,11 @@ Examples:
   lango metrics policy                  # Table summary
   lango metrics policy --output json    # JSON output`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			addr := getAddr(cmd)
 			format, err := getOutputFormat(cmd)
+			if err != nil {
+				return err
+			}
+			addr, err := getAddr(cmd, loader)
 			if err != nil {
 				return err
 			}

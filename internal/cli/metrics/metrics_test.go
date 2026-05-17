@@ -3,14 +3,19 @@ package metrics
 import (
 	"bytes"
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strconv"
 	"sync/atomic"
 	"testing"
 
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/langoai/lango/internal/config"
 )
 
 func executeMetricsCmd(t *testing.T, cmd *cobra.Command, args ...string) (string, error) {
@@ -21,6 +26,192 @@ func executeMetricsCmd(t *testing.T, cmd *cobra.Command, args ...string) (string
 	cmd.SetArgs(args)
 	err := cmd.Execute()
 	return out.String(), err
+}
+
+func configForMetricsServer(t *testing.T, rawURL string) *config.Config {
+	t.Helper()
+	parsed, err := url.Parse(rawURL)
+	require.NoError(t, err)
+	host, portText, err := net.SplitHostPort(parsed.Host)
+	require.NoError(t, err)
+	port, err := strconv.Atoi(portText)
+	require.NoError(t, err)
+
+	cfg := config.DefaultConfig()
+	cfg.Server.Host = host
+	cfg.Server.Port = port
+	return cfg
+}
+
+func TestMetricsSummary_UsesConfiguredGatewayWhenAddrOmitted(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/metrics", r.URL.Path)
+		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
+			"uptime":         "configured",
+			"toolExecutions": 9,
+		}))
+	}))
+	defer srv.Close()
+
+	cmd := NewMetricsCmdWithConfig(func() (*config.Config, error) {
+		return configForMetricsServer(t, srv.URL), nil
+	})
+	out, err := executeMetricsCmd(t, cmd)
+
+	require.NoError(t, err)
+	assert.Contains(t, out, "configured")
+	assert.Contains(t, out, "Tool Executions:  9")
+}
+
+func TestMetricsSummary_ExplicitAddrSkipsConfigLoader(t *testing.T) {
+	var configLoads atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/metrics", r.URL.Path)
+		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
+			"uptime":         "explicit",
+			"toolExecutions": 4,
+		}))
+	}))
+	defer srv.Close()
+
+	cmd := NewMetricsCmdWithConfig(func() (*config.Config, error) {
+		configLoads.Add(1)
+		return config.DefaultConfig(), nil
+	})
+	out, err := executeMetricsCmd(t, cmd, "--addr", srv.URL)
+
+	require.NoError(t, err)
+	assert.Contains(t, out, "explicit")
+	assert.Equal(t, int32(0), configLoads.Load())
+}
+
+func TestMetricsSubcommands_UseConfiguredGatewayWhenAddrOmitted(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		path string
+		body map[string]any
+		want string
+	}{
+		{
+			name: "sessions",
+			args: []string{"sessions"},
+			path: "/metrics/sessions",
+			body: map[string]any{"sessions": []map[string]any{{
+				"sessionKey":   "configured-session",
+				"inputTokens":  7,
+				"outputTokens": 5,
+				"totalTokens":  12,
+				"requestCount": 2,
+			}}},
+			want: "configured-session",
+		},
+		{
+			name: "tools",
+			args: []string{"tools"},
+			path: "/metrics/tools",
+			body: map[string]any{"tools": []map[string]any{{
+				"name":        "configured_tool",
+				"count":       3,
+				"errors":      0,
+				"avgDuration": "1ms",
+				"errorRate":   0,
+			}}},
+			want: "configured_tool",
+		},
+		{
+			name: "agents",
+			args: []string{"agents"},
+			path: "/metrics/agents",
+			body: map[string]any{"agents": []map[string]any{{
+				"name":         "configured-agent",
+				"inputTokens":  11,
+				"outputTokens": 13,
+				"toolCalls":    2,
+			}}},
+			want: "configured-agent",
+		},
+		{
+			name: "history",
+			args: []string{"history", "--days", "2"},
+			path: "/metrics/history",
+			body: map[string]any{
+				"records": []map[string]any{{
+					"provider":    "configured-provider",
+					"model":       "configured-model",
+					"sessionKey":  "configured-history",
+					"agentName":   "configured-agent",
+					"inputTokens": 1,
+					"timestamp":   "2026-05-14T01:02:03Z",
+				}},
+				"total": map[string]any{"inputTokens": 1, "outputTokens": 0, "recordCount": 1},
+			},
+			want: "configured-provider",
+		},
+		{
+			name: "policy",
+			args: []string{"policy"},
+			path: "/metrics/policy",
+			body: map[string]any{"blocks": 1, "observes": 2, "byReason": map[string]int64{
+				"configured_reason": 1,
+			}},
+			want: "configured_reason",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				require.Equal(t, tt.path, r.URL.Path)
+				require.NoError(t, json.NewEncoder(w).Encode(tt.body))
+			}))
+			defer srv.Close()
+
+			cmd := NewMetricsCmdWithConfig(func() (*config.Config, error) {
+				return configForMetricsServer(t, srv.URL), nil
+			})
+			out, err := executeMetricsCmd(t, cmd, tt.args...)
+
+			require.NoError(t, err)
+			assert.Contains(t, out, tt.want)
+		})
+	}
+}
+
+func TestMetricsSubcommands_ExplicitAddrSkipsConfigLoader(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		path string
+		body map[string]any
+	}{
+		{name: "sessions", args: []string{"sessions"}, path: "/metrics/sessions", body: map[string]any{"sessions": []any{}}},
+		{name: "tools", args: []string{"tools"}, path: "/metrics/tools", body: map[string]any{"tools": []any{}}},
+		{name: "agents", args: []string{"agents"}, path: "/metrics/agents", body: map[string]any{"agents": []any{}}},
+		{name: "history", args: []string{"history"}, path: "/metrics/history", body: map[string]any{"records": []any{}, "total": map[string]any{}}},
+		{name: "policy", args: []string{"policy"}, path: "/metrics/policy", body: map[string]any{"blocks": 0, "observes": 0, "byReason": map[string]int64{}}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var configLoads atomic.Int32
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				require.Equal(t, tt.path, r.URL.Path)
+				require.NoError(t, json.NewEncoder(w).Encode(tt.body))
+			}))
+			defer srv.Close()
+
+			cmd := NewMetricsCmdWithConfig(func() (*config.Config, error) {
+				configLoads.Add(1)
+				return config.DefaultConfig(), nil
+			})
+			args := append(append([]string{}, tt.args...), "--addr", srv.URL)
+			_, err := executeMetricsCmd(t, cmd, args...)
+
+			require.NoError(t, err)
+			assert.Equal(t, int32(0), configLoads.Load())
+		})
+	}
 }
 
 func TestMetricsPolicy_WritesTableToCommandWriter(t *testing.T) {

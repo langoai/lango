@@ -9,7 +9,7 @@ import (
 	"github.com/langoai/lango/internal/cli/clihttp"
 )
 
-func newHistoryCmd() *cobra.Command {
+func newHistoryCmd(loadConfig configLoader) *cobra.Command {
 	var days int
 
 	cmd := &cobra.Command{
@@ -18,8 +18,11 @@ func newHistoryCmd() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			addr := getAddr(cmd)
 			format, err := getOutputFormat(cmd)
+			if err != nil {
+				return err
+			}
+			addr, err := getAddr(cmd, loadConfig)
 			if err != nil {
 				return err
 			}

@@ -15,7 +15,7 @@ Unknown `--output` values fail fast with an actionable error before any alerts c
 List recent operational alerts.
 
 ```
-lango alerts list [--days=7] [--output table|json] [--addr http://localhost:18789]
+lango alerts list [--days=7] [--output table|json] [--addr <url>]
 ```
 
 **Flags:**
@@ -24,7 +24,9 @@ lango alerts list [--days=7] [--output table|json] [--addr http://localhost:1878
 |------|---------|-------------|
 | `--days` | `7` | Number of days to look back |
 | `--output` | `table` | Output format: `table` or `json` |
-| `--addr` | `http://localhost:18789` | Gateway address |
+| `--addr` | configured server address | Gateway address override |
+
+When `--addr` is omitted, alerts commands use the configured `server.host` and `server.port`, falling back to `http://localhost:18789` only when those values are unavailable.
 
 **Example:**
 
@@ -41,7 +43,7 @@ lango alerts list --output json
 Show aggregated alert counts by type.
 
 ```
-lango alerts summary [--output table|json] [--addr http://localhost:18789]
+lango alerts summary [--output table|json] [--addr <url>]
 ```
 
 **Example:**

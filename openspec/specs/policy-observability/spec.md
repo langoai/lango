@@ -54,7 +54,7 @@ The observability routes SHALL include a GET `/metrics/policy` endpoint that ret
 - **THEN** the response SHALL be JSON containing blocks, observes, and byReason fields
 
 ### Requirement: CLI subcommand for policy metrics
-The CLI SHALL provide a `lango metrics policy` subcommand that fetches from `/metrics/policy` and renders as table (default) or JSON.
+The CLI SHALL provide a `lango metrics policy` subcommand that fetches from `/metrics/policy` and renders as table (default) or JSON. When `--addr` is omitted, the command SHALL resolve the gateway address from configured `server.host` and `server.port`, falling back to `http://localhost:18789` only when configuration is unavailable, blank, or zero-valued.
 
 #### Scenario: Table output
 - **WHEN** `lango metrics policy` is run without --output flag
@@ -63,6 +63,11 @@ The CLI SHALL provide a `lango metrics policy` subcommand that fetches from `/me
 #### Scenario: JSON output
 - **WHEN** `lango metrics policy --output json` is run
 - **THEN** it SHALL output raw JSON from the endpoint
+
+#### Scenario: Policy metrics uses configured gateway by default
+- **WHEN** configuration sets `server.host` and `server.port`
+- **AND** the user runs `lango metrics policy` without `--addr`
+- **THEN** the command SHALL fetch `/metrics/policy` from that configured gateway address
 
 ### Requirement: CLI policy metrics output routing
 `lango metrics policy` SHALL write all non-error output through the Cobra command output stream so wrappers and test harnesses can capture table and JSON output without intercepting process-global stdout.

@@ -120,6 +120,20 @@ A dedicated CLI reference page SHALL exist for the `lango status` command.
 #### Scenario: Status doc page
 - **WHEN** a user navigates to `docs/cli/status.md`
 - **THEN** the page SHALL document `--output` flag, `--addr` flag, output sections, and JSON schema
+- **AND** the `--addr` documentation SHALL state that omission uses configured `server.host` and `server.port` before falling back to localhost/18789
+
+### Requirement: Gateway-backed CLI docs describe configured address defaults
+Public CLI docs for gateway-backed metrics, alerts, and status commands SHALL document that `--addr` is an override and that omission uses configured server host and port before falling back to localhost/18789.
+
+#### Scenario: Metrics docs use configured gateway default wording
+- **WHEN** a user reads `docs/cli/metrics.md`
+- **THEN** the page SHALL document that `--addr` overrides the configured gateway address
+- **AND** it SHALL not describe `http://localhost:18789` as the only default for `lango metrics`
+
+#### Scenario: Alerts docs use configured gateway default wording
+- **WHEN** a user reads `docs/cli/alerts.md`
+- **THEN** the page SHALL document that `--addr` overrides the configured gateway address
+- **AND** it SHALL not describe `http://localhost:18789` as the only default for `lango alerts`
 
 ### Requirement: TUI core docs describe local runtime status boundaries
 Public TUI core documentation SHALL describe which configured features may still initialize in local interactive mode and how `/status` distinguishes configured intent from active runtime state.
