@@ -400,6 +400,288 @@ func TestConfigSet_WritesToCommandOutput(t *testing.T) {
 	}
 }
 
+func TestConfigSet_RedactsProviderAPIKeyOutputAndSavesRawValue(t *testing.T) {
+	cfg := config.DefaultConfig()
+	rawSecret := "sk-raw-secret"
+	cmd := NewSetCmd(
+		func() (*config.Config, map[string]bool, func(), error) {
+			return cfg, nil, func() {}, nil
+		},
+		func(updated *config.Config, explicitKeys map[string]bool) error {
+			cfg = updated
+			return nil
+		},
+	)
+
+	out, err := executeConfigCommand(t, cmd, "providers.openai.apiKey", rawSecret)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out, "Set providers.openai.apiKey = <redacted>") {
+		t.Fatalf("expected redacted confirmation output, got %q", out)
+	}
+	if strings.Contains(out, rawSecret) {
+		t.Fatalf("confirmation output must not contain raw secret, got %q", out)
+	}
+	if got := cfg.Providers["openai"].APIKey; got != rawSecret {
+		t.Fatalf("expected raw provider API key to be saved, got %q", got)
+	}
+}
+
+func TestConfigSet_RedactsMCPEnvSecretOutputAndSavesRawValue(t *testing.T) {
+	cfg := config.DefaultConfig()
+	rawSecret := "docs-env-secret"
+	cmd := NewSetCmd(
+		func() (*config.Config, map[string]bool, func(), error) {
+			return cfg, nil, func() {}, nil
+		},
+		func(updated *config.Config, explicitKeys map[string]bool) error {
+			cfg = updated
+			return nil
+		},
+	)
+
+	out, err := executeConfigCommand(t, cmd, "mcp.servers.docs.env.API_KEY", rawSecret)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out, "Set mcp.servers.docs.env.API_KEY = <redacted>") {
+		t.Fatalf("expected redacted confirmation output, got %q", out)
+	}
+	if strings.Contains(out, rawSecret) {
+		t.Fatalf("confirmation output must not contain raw secret, got %q", out)
+	}
+	if got := cfg.MCP.Servers["docs"].Env["API_KEY"]; got != rawSecret {
+		t.Fatalf("expected raw MCP env value to be saved, got %q", got)
+	}
+}
+
+func TestConfigSet_RedactsMCPEnvAPIKeyVariantOutputAndSavesRawValue(t *testing.T) {
+	cfg := config.DefaultConfig()
+	rawSecret := "docs-openai-secret"
+	cmd := NewSetCmd(
+		func() (*config.Config, map[string]bool, func(), error) {
+			return cfg, nil, func() {}, nil
+		},
+		func(updated *config.Config, explicitKeys map[string]bool) error {
+			cfg = updated
+			return nil
+		},
+	)
+
+	out, err := executeConfigCommand(t, cmd, "mcp.servers.docs.env.OPENAI_API_KEY", rawSecret)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out, "Set mcp.servers.docs.env.OPENAI_API_KEY = <redacted>") {
+		t.Fatalf("expected redacted confirmation output, got %q", out)
+	}
+	if strings.Contains(out, rawSecret) {
+		t.Fatalf("confirmation output must not contain raw secret, got %q", out)
+	}
+	if got := cfg.MCP.Servers["docs"].Env["OPENAI_API_KEY"]; got != rawSecret {
+		t.Fatalf("expected raw MCP env value to be saved, got %q", got)
+	}
+}
+
+func TestConfigSet_RedactsMCPHeaderAuthorizationVariantOutputAndSavesRawValue(t *testing.T) {
+	cfg := config.DefaultConfig()
+	rawSecret := "Bearer docs-secret"
+	cmd := NewSetCmd(
+		func() (*config.Config, map[string]bool, func(), error) {
+			return cfg, nil, func() {}, nil
+		},
+		func(updated *config.Config, explicitKeys map[string]bool) error {
+			cfg = updated
+			return nil
+		},
+	)
+
+	out, err := executeConfigCommand(t, cmd, "mcp.servers.docs.headers.Proxy-Authorization", rawSecret)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out, "Set mcp.servers.docs.headers.Proxy-Authorization = <redacted>") {
+		t.Fatalf("expected redacted confirmation output, got %q", out)
+	}
+	if strings.Contains(out, rawSecret) {
+		t.Fatalf("confirmation output must not contain raw secret, got %q", out)
+	}
+	if got := cfg.MCP.Servers["docs"].Headers["Proxy-Authorization"]; got != rawSecret {
+		t.Fatalf("expected raw MCP header value to be saved, got %q", got)
+	}
+}
+
+func TestConfigSet_RedactsPKCS11PinOutputAndSavesRawValue(t *testing.T) {
+	cfg := config.DefaultConfig()
+	rawSecret := "123456"
+	cmd := NewSetCmd(
+		func() (*config.Config, map[string]bool, func(), error) {
+			return cfg, nil, func() {}, nil
+		},
+		func(updated *config.Config, explicitKeys map[string]bool) error {
+			cfg = updated
+			return nil
+		},
+	)
+
+	out, err := executeConfigCommand(t, cmd, "security.kms.pkcs11.pin", rawSecret)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out, "Set security.kms.pkcs11.pin = <redacted>") {
+		t.Fatalf("expected redacted confirmation output, got %q", out)
+	}
+	if strings.Contains(out, rawSecret) {
+		t.Fatalf("confirmation output must not contain raw secret, got %q", out)
+	}
+	if got := cfg.Security.KMS.PKCS11.Pin; got != rawSecret {
+		t.Fatalf("expected raw PKCS#11 pin to be saved, got %q", got)
+	}
+}
+
+func TestConfigSet_DoesNotRedactNonSecretKeyDirOutput(t *testing.T) {
+	cfg := config.DefaultConfig()
+	keyDir := "/tmp/lango-node-keys"
+	cmd := NewSetCmd(
+		func() (*config.Config, map[string]bool, func(), error) {
+			return cfg, nil, func() {}, nil
+		},
+		func(updated *config.Config, explicitKeys map[string]bool) error {
+			cfg = updated
+			return nil
+		},
+	)
+
+	out, err := executeConfigCommand(t, cmd, "p2p.keyDir", keyDir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out, "Set p2p.keyDir = "+keyDir) {
+		t.Fatalf("expected keyDir confirmation to remain visible, got %q", out)
+	}
+	if strings.Contains(out, "<redacted>") {
+		t.Fatalf("keyDir output must not be redacted, got %q", out)
+	}
+	if cfg.P2P.KeyDir != keyDir {
+		t.Fatalf("expected raw keyDir to be saved, got %q", cfg.P2P.KeyDir)
+	}
+}
+
+func TestConfigSet_DoesNotRedactNonSecretCredentialAgeOutput(t *testing.T) {
+	cfg := config.DefaultConfig()
+	credentialAge := "48h"
+	cmd := NewSetCmd(
+		func() (*config.Config, map[string]bool, func(), error) {
+			return cfg, nil, func() {}, nil
+		},
+		func(updated *config.Config, explicitKeys map[string]bool) error {
+			cfg = updated
+			return nil
+		},
+	)
+
+	out, err := executeConfigCommand(t, cmd, "p2p.zkp.maxCredentialAge", credentialAge)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out, "Set p2p.zkp.maxCredentialAge = "+credentialAge) {
+		t.Fatalf("expected maxCredentialAge confirmation to remain visible, got %q", out)
+	}
+	if strings.Contains(out, "<redacted>") {
+		t.Fatalf("maxCredentialAge output must not be redacted, got %q", out)
+	}
+	if cfg.P2P.ZKP.MaxCredentialAge != credentialAge {
+		t.Fatalf("expected maxCredentialAge to be saved, got %q", cfg.P2P.ZKP.MaxCredentialAge)
+	}
+}
+
+func TestConfigSet_DoesNotRedactNonSecretTokenCountOutput(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cmd := NewSetCmd(
+		func() (*config.Config, map[string]bool, func(), error) {
+			return cfg, nil, func() {}, nil
+		},
+		func(updated *config.Config, explicitKeys map[string]bool) error {
+			cfg = updated
+			return nil
+		},
+	)
+
+	out, err := executeConfigCommand(t, cmd, "agent.maxTokens", "8192")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out, "Set agent.maxTokens = 8192") {
+		t.Fatalf("expected maxTokens confirmation to remain visible, got %q", out)
+	}
+	if strings.Contains(out, "<redacted>") {
+		t.Fatalf("maxTokens output must not be redacted, got %q", out)
+	}
+	if cfg.Agent.MaxTokens != 8192 {
+		t.Fatalf("expected maxTokens to be saved, got %d", cfg.Agent.MaxTokens)
+	}
+}
+
+func TestConfigSet_DoesNotRedactNonSecretKeyIDOutput(t *testing.T) {
+	cfg := config.DefaultConfig()
+	keyID := "signer-key-id"
+	cmd := NewSetCmd(
+		func() (*config.Config, map[string]bool, func(), error) {
+			return cfg, nil, func() {}, nil
+		},
+		func(updated *config.Config, explicitKeys map[string]bool) error {
+			cfg = updated
+			return nil
+		},
+	)
+
+	out, err := executeConfigCommand(t, cmd, "security.signer.keyId", keyID)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out, "Set security.signer.keyId = "+keyID) {
+		t.Fatalf("expected keyId confirmation to remain visible, got %q", out)
+	}
+	if strings.Contains(out, "<redacted>") {
+		t.Fatalf("keyId output must not be redacted, got %q", out)
+	}
+	if cfg.Security.Signer.KeyID != keyID {
+		t.Fatalf("expected keyId to be saved, got %q", cfg.Security.Signer.KeyID)
+	}
+}
+
+func TestConfigSetPathIsSensitive(t *testing.T) {
+	tests := []struct {
+		givePath string
+		want     bool
+	}{
+		{givePath: "providers.openai.apiKey", want: true},
+		{givePath: "channels.slack.botToken", want: true},
+		{givePath: "channels.slack.signingSecret", want: true},
+		{givePath: "mcp.servers.docs.headers.Authorization", want: true},
+		{givePath: "mcp.servers.docs.headers.Proxy-Authorization", want: true},
+		{givePath: "mcp.servers.docs.headers.X-API-Key", want: true},
+		{givePath: "mcp.servers.docs.env.API_KEY", want: true},
+		{givePath: "mcp.servers.docs.env.OPENAI_API_KEY", want: true},
+		{givePath: "security.kms.pkcs11.pin", want: true},
+		{givePath: "auth.providers.okta.clientCredential", want: true},
+		{givePath: "agent.maxTokens", want: false},
+		{givePath: "p2p.keyDir", want: false},
+		{givePath: "p2p.zkp.maxCredentialAge", want: false},
+		{givePath: "security.signer.keyId", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.givePath, func(t *testing.T) {
+			got := configSetPathIsSensitive(tt.givePath)
+			if got != tt.want {
+				t.Fatalf("expected %v, got %v", tt.want, got)
+			}
+		})
+	}
+}
+
 func TestConfigSet_PreservesExistingExplicitKeys(t *testing.T) {
 	cfg := config.DefaultConfig()
 	loadedExplicit := map[string]bool{

@@ -254,7 +254,7 @@ Set providers.openai.type = openai
     Simple scalar values can be changed here, including scalar fields inside map-backed paths such as `providers.<id>.*` and `mcp.servers.<name>.env.<KEY>`. For complex nested structures and duration-heavy settings, prefer `lango settings`.
 
 !!! warning
-    Avoid using `lango config set` examples or shell history for raw secrets. Credential fields may be environment-expanded during profile save, and the command confirmation echoes the value that was provided.
+    Avoid using `lango config set` examples or shell history for raw secrets. Credential fields may be environment-expanded during profile save. When a sensitive path is set, the success confirmation prints `<redacted>` instead of echoing the provided value.
 
 ---
 

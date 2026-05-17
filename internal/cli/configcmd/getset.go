@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/spf13/cobra"
 
@@ -108,12 +109,72 @@ Examples:
 				return fmt.Errorf("save config: %w", err)
 			}
 
-			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Set %s = %s\n", args[0], args[1])
+			displayValue := configSetDisplayValue(args[0], args[1])
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Set %s = %s\n", args[0], displayValue)
 			return err
 		},
 	}
 
 	return cmd
+}
+
+func configSetDisplayValue(path, value string) string {
+	if configSetPathIsSensitive(path) {
+		return "<redacted>"
+	}
+	return value
+}
+
+func configSetPathIsSensitive(path string) bool {
+	for _, segment := range strings.Split(path, ".") {
+		if configSetSegmentIsSensitive(normalizeConfigPathSegment(segment)) {
+			return true
+		}
+	}
+	return false
+}
+
+func configSetSegmentIsSensitive(segment string) bool {
+	switch {
+	case strings.HasSuffix(segment, "apikey"):
+		return true
+	case strings.Contains(segment, "authorization"):
+		return true
+	case strings.Contains(segment, "secret"):
+		return true
+	case strings.Contains(segment, "password"):
+		return true
+	case segment == "pin":
+		return true
+	case segment == "credential":
+		return true
+	case segment == "credentials":
+		return true
+	case strings.HasSuffix(segment, "credential"):
+		return true
+	case strings.HasSuffix(segment, "credentials"):
+		return true
+	case strings.HasSuffix(segment, "token"):
+		return true
+	case strings.HasSuffix(segment, "privatekey"):
+		return true
+	case strings.HasSuffix(segment, "accesskey"):
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizeConfigPathSegment(segment string) string {
+	var builder strings.Builder
+	builder.Grow(len(segment))
+	for _, r := range segment {
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
+			continue
+		}
+		builder.WriteRune(unicode.ToLower(r))
+	}
+	return builder.String()
 }
 
 func explicitKeysForSetPath(existing map[string]bool, path string) map[string]bool {
