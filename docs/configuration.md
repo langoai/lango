@@ -144,7 +144,8 @@ Named AI provider configurations. Referenced by other sections via provider ID.
 {
   "logging": {
     "level": "info",
-    "format": "console"
+    "format": "console",
+    "outputPath": ""
   }
 }
 ```
@@ -153,6 +154,7 @@ Named AI provider configurations. Referenced by other sections via provider ID.
 |-----|------|---------|-------------|
 | `logging.level` | `string` | `info` | Log level: `debug`, `info`, `warn`, `error` |
 | `logging.format` | `string` | `console` | Output format: `console`, `json` |
+| `logging.outputPath` | `string` | empty | Optional log file path; empty uses stderr |
 
 ---
 

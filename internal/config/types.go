@@ -439,7 +439,7 @@ type LoggingConfig struct {
 	// Output format (json, console)
 	Format string `mapstructure:"format" json:"format"`
 
-	// Output file path (empty = stdout)
+	// Output file path (empty = stderr)
 	OutputPath string `mapstructure:"outputPath" json:"outputPath"`
 }
 

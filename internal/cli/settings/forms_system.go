@@ -30,8 +30,8 @@ func NewLoggingForm(cfg *config.Config) *tuicore.FormModel {
 	form.AddField(&tuicore.Field{
 		Key: "log_output_path", Label: "Output Path", Type: tuicore.InputText,
 		Value:       cfg.Logging.OutputPath,
-		Placeholder: "stdout (leave empty for stdout)",
-		Description: "File path for log output (empty = stdout)",
+		Placeholder: "stderr (leave empty for default)",
+		Description: "File path for log output (empty = stderr)",
 	})
 
 	return &form

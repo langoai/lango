@@ -1116,6 +1116,15 @@ func TestNewLoggingForm_AllFields(t *testing.T) {
 	if f := fieldByKey(form, "log_format"); f.Type != tuicore.InputSelect {
 		t.Errorf("log_format: want InputSelect, got %d", f.Type)
 	}
+	if f := fieldByKey(form, "log_output_path"); f != nil {
+		copy := strings.ToLower(f.Placeholder + " " + f.Description)
+		if !strings.Contains(copy, "stderr") {
+			t.Errorf("log_output_path copy should mention stderr fallback, got placeholder=%q description=%q", f.Placeholder, f.Description)
+		}
+		if strings.Contains(copy, "empty = stdout") || strings.Contains(copy, "empty for stdout") {
+			t.Errorf("log_output_path copy should not describe empty value as stdout, got placeholder=%q description=%q", f.Placeholder, f.Description)
+		}
+	}
 }
 
 func TestNewGatekeeperForm_AllFields(t *testing.T) {
