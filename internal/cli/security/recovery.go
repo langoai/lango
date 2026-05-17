@@ -19,7 +19,10 @@ import (
 )
 
 var executeRecoverySetup = func(cmd *cobra.Command, bootLoader func() (*bootstrap.Result, error)) error {
-	if err := securityRequireInteractiveTerminal("recovery setup requires an interactive terminal"); err != nil {
+	if err := securityRequireInteractiveInput(
+		cmd.InOrStdin(),
+		"recovery setup requires an interactive terminal",
+	); err != nil {
 		return err
 	}
 	out := cmd.OutOrStdout()
@@ -95,7 +98,10 @@ var executeRecoverySetup = func(cmd *cobra.Command, bootLoader func() (*bootstra
 }
 
 var executeRecoveryRestore = func(cmd *cobra.Command, errWriter io.Writer) error {
-	if err := securityRequireInteractiveTerminal("recovery restore requires an interactive terminal"); err != nil {
+	if err := securityRequireInteractiveInput(
+		cmd.InOrStdin(),
+		"recovery restore requires an interactive terminal",
+	); err != nil {
 		return err
 	}
 	out := cmd.OutOrStdout()

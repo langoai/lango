@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/langoai/lango/internal/bootstrap"
@@ -77,16 +79,16 @@ func installSecurityPromptSeams(
 	confirmFn func(io.Writer, string, string) (string, error),
 ) {
 	t.Helper()
-	origRequire := securityRequireInteractiveTerminal
+	origRequire := securityRequireInteractiveInput
 	origPassphrase := securityPassphrase
 	origConfirm := securityPassphraseConfirm
 	t.Cleanup(func() {
-		securityRequireInteractiveTerminal = origRequire
+		securityRequireInteractiveInput = origRequire
 		securityPassphrase = origPassphrase
 		securityPassphraseConfirm = origConfirm
 	})
 
-	securityRequireInteractiveTerminal = func(string) error { return nil }
+	securityRequireInteractiveInput = func(io.Reader, string) error { return nil }
 	if passphraseFn != nil {
 		securityPassphrase = passphraseFn
 	}
@@ -185,6 +187,88 @@ func TestNewSecurityCmd_SubcommandCount(t *testing.T) {
 	assert.Equal(t, 9, len(cmd.Commands()), "expected 9 security subcommands")
 }
 
+func TestSecurityInteractiveGuardsUseCommandInput(t *testing.T) {
+	guardErr := errors.New("interactive guard stopped command")
+	prevRequire := securityRequireInteractiveInput
+	prevDetect := detectSecureProvider
+	t.Cleanup(func() {
+		securityRequireInteractiveInput = prevRequire
+		detectSecureProvider = prevDetect
+	})
+
+	cfg := config.DefaultConfig()
+	cfg.Security.Signer.Provider = "local"
+	bootLoader := func() (*bootstrap.Result, error) {
+		return &bootstrap.Result{Config: cfg}, nil
+	}
+
+	tests := []struct {
+		name  string
+		build func() *cobra.Command
+		setup func()
+	}{
+		{
+			name: "change-passphrase",
+			build: func() *cobra.Command {
+				return newChangePassphraseCmd(bootLoader)
+			},
+		},
+		{
+			name: "migrate-passphrase",
+			build: func() *cobra.Command {
+				return newMigratePassphraseCmd(bootLoader)
+			},
+		},
+		{
+			name: "keyring-store",
+			build: func() *cobra.Command {
+				return newKeyringStoreCmd(bootLoader)
+			},
+			setup: func() {
+				detectSecureProvider = func() (keyring.Provider, keyring.SecurityTier) {
+					return stubKeyCheckerProvider{}, keyring.TierBiometric
+				}
+			},
+		},
+		{
+			name: "recovery-setup",
+			build: func() *cobra.Command {
+				return newRecoverySetupCmd(bootLoader)
+			},
+		},
+		{
+			name: "recovery-restore",
+			build: func() *cobra.Command {
+				return newRecoveryRestoreCmd()
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			detectSecureProvider = prevDetect
+			if tt.setup != nil {
+				tt.setup()
+			}
+			input := bytes.NewBufferString("typed input\n")
+			var gotInput io.Reader
+			securityRequireInteractiveInput = func(in io.Reader, message string) error {
+				gotInput = in
+				if strings.TrimSpace(message) == "" {
+					t.Fatal("guard message should be actionable")
+				}
+				return guardErr
+			}
+
+			cmd := tt.build()
+			cmd.SetIn(input)
+			err := cmd.Execute()
+			require.ErrorIs(t, err, guardErr)
+			assert.Same(t, input, gotInput)
+		})
+	}
+}
+
 func TestSecretsCmd_HasSubcommands(t *testing.T) {
 	cmd := NewSecurityCmd(dummyBootLoader())
 	for _, sub := range cmd.Commands() {
@@ -272,6 +356,7 @@ func TestChangePassphrase_WritesSuccessToCommandWriter(t *testing.T) {
 	original := executeChangePassphrase
 	executeChangePassphrase = func(
 		_ func() (*bootstrap.Result, error),
+		_ io.Reader,
 		_ io.Writer,
 		_ io.Writer,
 	) (string, error) {
@@ -339,6 +424,7 @@ func TestChangePassphrase_WritesWarningsToCommandErrorWriter(t *testing.T) {
 	original := executeChangePassphrase
 	executeChangePassphrase = func(
 		_ func() (*bootstrap.Result, error),
+		_ io.Reader,
 		_ io.Writer,
 		errWriter io.Writer,
 	) (string, error) {
@@ -894,14 +980,14 @@ func TestSecretsSetValueHexDoesNotPrompt(t *testing.T) {
 	cfg.Session.DatabasePath = filepath.Join(t.TempDir(), "security-secrets-hex.db")
 	bootLoader := persistentSecurityBootLoader(t, cfg)
 
-	prevRequire := secretsRequireInteractiveTerminal
+	prevRequire := secretsRequireInteractiveInput
 	prevPassphrase := secretsPassphrase
 	t.Cleanup(func() {
-		secretsRequireInteractiveTerminal = prevRequire
+		secretsRequireInteractiveInput = prevRequire
 		secretsPassphrase = prevPassphrase
 	})
 
-	secretsRequireInteractiveTerminal = func(message string) error {
+	secretsRequireInteractiveInput = func(io.Reader, string) error {
 		t.Fatal("interactive terminal check should not run with --value-hex")
 		return nil
 	}
@@ -923,14 +1009,14 @@ func TestSecretsSetInteractivePromptUsesCommandWriter(t *testing.T) {
 	cfg.Session.DatabasePath = filepath.Join(t.TempDir(), "security-secrets-interactive.db")
 	bootLoader := persistentSecurityBootLoader(t, cfg)
 
-	prevRequire := secretsRequireInteractiveTerminal
+	prevRequire := secretsRequireInteractiveInput
 	prevPassphrase := secretsPassphrase
 	t.Cleanup(func() {
-		secretsRequireInteractiveTerminal = prevRequire
+		secretsRequireInteractiveInput = prevRequire
 		secretsPassphrase = prevPassphrase
 	})
 
-	secretsRequireInteractiveTerminal = func(message string) error {
+	secretsRequireInteractiveInput = func(io.Reader, string) error {
 		return nil
 	}
 	secretsPassphrase = func(out io.Writer, promptText string) (string, error) {
@@ -945,6 +1031,35 @@ func TestSecretsSetInteractivePromptUsesCommandWriter(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, out, "Enter secret value: \n")
 	assert.Contains(t, out, "Secret 'api-key' stored successfully.")
+}
+
+func TestSecretsSetInteractiveGuardUsesCommandInput(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Session.DatabasePath = filepath.Join(t.TempDir(), "security-secrets-guard.db")
+	bootLoader := persistentSecurityBootLoader(t, cfg)
+
+	guardErr := errors.New("interactive guard stopped command")
+	prevRequire := secretsRequireInteractiveInput
+	t.Cleanup(func() {
+		secretsRequireInteractiveInput = prevRequire
+	})
+
+	input := bytes.NewBufferString("typed input\n")
+	var gotInput io.Reader
+	secretsRequireInteractiveInput = func(in io.Reader, message string) error {
+		gotInput = in
+		if !strings.Contains(message, "--value-hex") {
+			t.Fatalf("guard message should mention --value-hex, got %q", message)
+		}
+		return guardErr
+	}
+
+	cmd := newSecretsSetCmd(bootLoader)
+	cmd.SetIn(input)
+	cmd.SetArgs([]string{"api-key"})
+	err := cmd.Execute()
+	require.ErrorIs(t, err, guardErr)
+	assert.Same(t, input, gotInput)
 }
 
 func TestSecurityInspectionCommands_InvalidOutputFailFast(t *testing.T) {

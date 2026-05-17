@@ -15,8 +15,8 @@ import (
 )
 
 var (
-	secretsRequireInteractiveTerminal = prompt.RequireInteractiveTerminal
-	secretsPassphrase                 = prompt.PassphraseIO
+	secretsRequireInteractiveInput = prompt.RequireInteractiveInput
+	secretsPassphrase              = prompt.PassphraseIO
 )
 
 func newSecretsCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
@@ -138,7 +138,8 @@ func newSecretsSetCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comma
 				}
 				raw = decoded
 			} else {
-				if err := secretsRequireInteractiveTerminal(
+				if err := secretsRequireInteractiveInput(
+					cmd.InOrStdin(),
 					"this command requires an interactive terminal (use --value-hex for non-interactive)",
 				); err != nil {
 					return err

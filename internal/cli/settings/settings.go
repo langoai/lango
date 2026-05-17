@@ -22,7 +22,7 @@ const nonInteractiveSettingsError = "settings requires an interactive terminal; 
 	"use 'lango config import' or 'lango config set' for scripted configuration"
 
 var (
-	requireInteractiveTerminal = cliprompt.RequireInteractiveTerminal
+	requireInteractiveTerminal = cliprompt.RequireInteractiveInput
 	runSettingsFn              = runSettings
 	settingsBootResult         = cliboot.BootResult
 )
@@ -63,7 +63,7 @@ See Also:
   lango onboard     - Guided setup wizard
   lango doctor      - Diagnose configuration issues`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := requireInteractiveTerminal(nonInteractiveSettingsError); err != nil {
+			if err := requireInteractiveTerminal(cmd.InOrStdin(), nonInteractiveSettingsError); err != nil {
 				return err
 			}
 			return runSettingsFn(cmd.OutOrStdout(), profileName)

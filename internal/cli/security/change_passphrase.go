@@ -15,6 +15,7 @@ import (
 
 var executeChangePassphrase = func(
 	bootLoader func() (*bootstrap.Result, error),
+	inReader io.Reader,
 	outWriter io.Writer,
 	errWriter io.Writer,
 ) (string, error) {
@@ -24,7 +25,7 @@ var executeChangePassphrase = func(
 	}
 	defer boot.Close()
 
-	if err := securityRequireInteractiveTerminal("this command requires an interactive terminal"); err != nil {
+	if err := securityRequireInteractiveInput(inReader, "this command requires an interactive terminal"); err != nil {
 		return "", err
 	}
 
@@ -108,6 +109,7 @@ Recovery mnemonic slots (if present) are unchanged.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			message, err := executeChangePassphrase(
 				bootLoader,
+				cmd.InOrStdin(),
 				cmd.OutOrStdout(),
 				cmd.ErrOrStderr(),
 			)

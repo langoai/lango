@@ -359,6 +359,33 @@ func TestRequireTTYInput_AllowsNonFileReader(t *testing.T) {
 	}
 }
 
+func TestRequireInteractiveInput_RejectsNonTTYFile(t *testing.T) {
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe failed: %v", err)
+	}
+	t.Cleanup(func() { _ = reader.Close() })
+	t.Cleanup(func() { _ = writer.Close() })
+
+	err = RequireInteractiveInput(reader, "this command requires an interactive terminal")
+	if err == nil {
+		t.Fatal("expected non-tty guidance error")
+	}
+	if err.Error() != "this command requires an interactive terminal" {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRequireInteractiveInput_AllowsInjectedReader(t *testing.T) {
+	err := RequireInteractiveInput(
+		bytes.NewBufferString("typed input\n"),
+		"this command requires an interactive terminal",
+	)
+	if err != nil {
+		t.Fatalf("expected injected reader to pass, got error: %v", err)
+	}
+}
+
 func TestRequireInteractiveTerminal_UsesInjectedInteractiveState(t *testing.T) {
 	origInteractive := interactiveCheck
 	t.Cleanup(func() {

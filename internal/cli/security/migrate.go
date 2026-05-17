@@ -24,7 +24,10 @@ var executeMigratePassphrase = func(cmd *cobra.Command, bootLoader func() (*boot
 		return fmt.Errorf("this command is only available when using 'local' security provider")
 	}
 
-	if err := securityRequireInteractiveTerminal("this command requires an interactive terminal"); err != nil {
+	if err := securityRequireInteractiveInput(
+		cmd.InOrStdin(),
+		"this command requires an interactive terminal",
+	); err != nil {
 		return err
 	}
 

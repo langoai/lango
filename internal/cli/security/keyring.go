@@ -65,7 +65,10 @@ the passphrase to avoid exposing it to same-UID attacks via plain OS keyring.`,
 				}
 			}
 
-			if err := securityRequireInteractiveTerminal("this command requires an interactive terminal"); err != nil {
+			if err := securityRequireInteractiveInput(
+				cmd.InOrStdin(),
+				"this command requires an interactive terminal",
+			); err != nil {
 				return err
 			}
 

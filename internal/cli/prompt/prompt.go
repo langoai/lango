@@ -35,6 +35,12 @@ func RequireInteractiveTerminal(message string) error {
 	return nil
 }
 
+// RequireInteractiveInput fails when the supplied command input is a
+// non-interactive terminal stream.
+func RequireInteractiveInput(in io.Reader, message string) error {
+	return RequireTTYInput(in, message)
+}
+
 // Passphrase prompts the user for a passphrase with hidden input
 func Passphrase(prompt string) (string, error) {
 	return PassphraseIO(passphraseOutput, prompt)

@@ -41,7 +41,10 @@ func TestNewCommand_NonInteractiveGuardRunsBeforeOnboard(t *testing.T) {
 		runOnboardFn = prevRun
 	}()
 
-	requireInteractiveTerminal = func(message string) error {
+	requireInteractiveTerminal = func(in io.Reader, message string) error {
+		if in == nil {
+			t.Fatal("guard should receive command input stream")
+		}
 		if !strings.Contains(message, "lango config import") {
 			t.Fatalf("guard message should include scripted setup guidance, got %q", message)
 		}

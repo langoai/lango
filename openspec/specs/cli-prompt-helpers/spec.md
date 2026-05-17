@@ -66,6 +66,17 @@ The shared CLI prompt package SHALL provide a helper that fails when the current
 - **WHEN** the shared interactive-terminal guard runs while stdin is interactive
 - **THEN** it SHALL return nil
 
+### Requirement: Shared interactive guard supports explicit input streams
+The shared CLI prompt package SHALL provide an interactive guard helper that validates a caller-supplied input stream and returns a caller-supplied guidance error when that stream is a non-interactive terminal file.
+
+#### Scenario: Explicit guard rejects non-terminal file input
+- **WHEN** the explicit interactive guard receives a non-terminal `*os.File` input stream
+- **THEN** it SHALL return the caller-supplied guidance error
+
+#### Scenario: Explicit guard allows injected readers
+- **WHEN** the explicit interactive guard receives an injected non-file reader such as `bytes.Buffer`
+- **THEN** it SHALL return nil so command tests and embedded wrappers can drive the subsequent interaction through explicit streams
+
 ### Requirement: CLI prompt helpers use shared raw line reader
 The shared CLI prompt package SHALL build its visible line-entry prompt helper on top of the shared raw line reader instead of owning a second local line-reader implementation.
 

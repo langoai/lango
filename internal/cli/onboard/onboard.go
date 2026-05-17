@@ -22,7 +22,7 @@ const nonInteractiveOnboardError = "onboard requires an interactive terminal; " 
 	"use 'lango config create --preset <name>' or 'lango config import' for scripted setup"
 
 var (
-	requireInteractiveTerminal = cliprompt.RequireInteractiveTerminal
+	requireInteractiveTerminal = cliprompt.RequireInteractiveInput
 	runOnboardFn               = runOnboard
 	onboardBootResult          = cliboot.BootResult
 )
@@ -60,7 +60,7 @@ See Also:
   lango config   - View/manage configuration profiles
   lango doctor   - Diagnose configuration issues`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := requireInteractiveTerminal(nonInteractiveOnboardError); err != nil {
+			if err := requireInteractiveTerminal(cmd.InOrStdin(), nonInteractiveOnboardError); err != nil {
 				return err
 			}
 			return runOnboardFn(cmd.OutOrStdout(), profileName, preset)
