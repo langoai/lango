@@ -125,6 +125,7 @@ All application code lives under `internal/` to enforce Go's visibility boundary
 | `cli/tui/` | TUI styling and banner components for interactive terminal sessions |
 | `cli/workflow/` | `lango workflow run`, `list`, `status`, `cancel`, `history`, `validate <file>` -- workflow management |
 | `channels/` | Channel bot integrations for Telegram, Discord, and Slack. Each adapter converts platform-specific messages to the Gateway's internal format |
+| `gatewayaddr/` | Shared gateway host/port formatting helpers for bracket-safe CLI URLs, doctor reachability checks, and server listen addresses |
 | `gateway/` | HTTP REST + WebSocket server built on chi router. Handles JSON-RPC over WebSocket, OIDC authentication (`AuthManager`), turn callbacks, and approval routing. Provides `Server.SetAgent()` for late-binding the agent after initialization |
 
 ### Intelligence

@@ -13,6 +13,7 @@ import (
 
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/gatewayaddr"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/sqlitedriver"
 )
@@ -149,11 +150,8 @@ func (c *CompanionConnectionCheck) Run(ctx context.Context, cfg *config.Config) 
 		}
 	}
 
-	// Check if server is reachable
-	statusURL := fmt.Sprintf("http://localhost:%d/status", cfg.Server.Port)
-	if cfg.Server.Host != "" && cfg.Server.Host != "0.0.0.0" {
-		statusURL = fmt.Sprintf("http://%s:%d/status", cfg.Server.Host, cfg.Server.Port)
-	}
+	// Check if server is reachable. Wildcard bind hosts are not dial targets.
+	statusURL := gatewayaddr.DialHTTPURL(cfg.Server.Host, cfg.Server.Port) + "/status"
 
 	client := http.Client{Timeout: 2 * time.Second}
 	resp, err := client.Get(statusURL)

@@ -548,6 +548,7 @@ lango/
 │   ├── ent/                # Ent ORM schemas and generated code
 │   ├── eventbus/           # Typed synchronous event pub/sub
 │   ├── gatekeeper/         # Response sanitization (thought tags, internal markers, raw JSON, custom patterns)
+│   ├── gatewayaddr/        # Shared gateway host/port formatting for CLI URLs and listen addresses
 │   ├── gateway/            # WebSocket/HTTP server, OIDC auth
 │   ├── graph/              # BoltDB triple store, Graph RAG, entity extractor
 │   ├── knowledge/          # Knowledge store, 8-layer context retriever

@@ -149,7 +149,7 @@ The system SHALL provide `lango p2p disconnect <peer-id>` that closes the connec
 - **THEN** the command writes `Disconnected from peer QmPeerId` to the Cobra command output stream
 
 ### Requirement: P2P provenance command group
-The system SHALL provide `lango p2p provenance push` and `lango p2p provenance fetch` for exchanging signed provenance bundles through the running gateway using authenticated P2P sessions.
+The system SHALL provide `lango p2p provenance push` and `lango p2p provenance fetch` for exchanging signed provenance bundles through the running gateway using authenticated P2P sessions. When `--addr` is supplied, the command SHALL use the normalized explicit gateway address. When `--addr` is omitted, the command SHALL use the gateway address resolved from configured `server.host` and `server.port`, including bracket-safe IPv6 host formatting.
 
 #### Scenario: Provenance push
 - **WHEN** user runs `lango p2p provenance push <peer-did> <session-key>`
@@ -158,6 +158,14 @@ The system SHALL provide `lango p2p provenance push` and `lango p2p provenance f
 #### Scenario: Provenance fetch
 - **WHEN** user runs `lango p2p provenance fetch <peer-did> <session-key>`
 - **THEN** the command fetches a provenance bundle through the gateway and reports success for the target peer DID
+
+#### Scenario: P2P provenance explicit address is normalized
+- **WHEN** user runs `lango p2p provenance push <peer-did> <session-key> --addr http://127.0.0.1:18789/`
+- **THEN** the command SHALL post to the gateway using `http://127.0.0.1:18789`
+
+#### Scenario: P2P provenance uses configured gateway when address omitted
+- **WHEN** user runs `lango p2p provenance fetch <peer-did> <session-key>` with configured `server.host` and `server.port`
+- **THEN** the command SHALL post to the configured gateway address
 
 ### Requirement: P2P provenance output routing
 `lango p2p provenance push` and `lango p2p provenance fetch` SHALL write success confirmations through the Cobra command output stream so wrappers and test harnesses can capture them without intercepting process-global stdout.

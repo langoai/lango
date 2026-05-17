@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/langoai/lango/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -62,4 +63,16 @@ func TestResolveGatewayAddrTrimsExplicitTrailingSlashes(t *testing.T) {
 	got := ResolveGatewayAddr("  http://127.0.0.1:18789///  ", nil)
 
 	assert.Equal(t, "http://127.0.0.1:18789", got)
+}
+
+func TestResolveGatewayAddrFormatsConfiguredIPv6Host(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.DefaultConfig()
+	cfg.Server.Host = "::1"
+	cfg.Server.Port = 18789
+
+	got := ResolveGatewayAddr("", cfg)
+
+	assert.Equal(t, "http://[::1]:18789", got)
 }

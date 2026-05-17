@@ -15,6 +15,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/gatewayaddr"
 )
 
 // DefaultGatewayAddr is the CLI fallback when no configured gateway is available.
@@ -81,8 +82,8 @@ func ResolveGatewayAddr(explicit string, cfg *config.Config) string {
 	if addr := strings.TrimSpace(explicit); addr != "" {
 		return strings.TrimRight(addr, "/")
 	}
-	host := "localhost"
-	port := 18789
+	host := gatewayaddr.DefaultHost
+	port := gatewayaddr.DefaultPort
 	if cfg != nil {
 		if configuredHost := strings.TrimSpace(cfg.Server.Host); configuredHost != "" {
 			host = configuredHost
@@ -91,7 +92,7 @@ func ResolveGatewayAddr(explicit string, cfg *config.Config) string {
 			port = cfg.Server.Port
 		}
 	}
-	return fmt.Sprintf("http://%s:%d", host, port)
+	return gatewayaddr.HTTPURL(host, port)
 }
 
 func decodeGatewayError(resp *http.Response) error {

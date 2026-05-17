@@ -1125,6 +1125,14 @@ Executable tests SHALL prevent production `panic` calls from being reintroduced 
 
 Repository-level regressions in gateway-backed CLI default address resolution SHALL be enforced by executable tests.
 
+#### Scenario: Gateway IPv6 formatting remains covered
+- **WHEN** gateway URL or listen address helpers receive an IPv6 host
+- **THEN** executable tests SHALL fail if the formatted address omits required IPv6 brackets
+
+#### Scenario: Gateway wildcard doctor reachability remains covered
+- **WHEN** the companion connectivity doctor check receives a wildcard gateway bind host
+- **THEN** executable tests SHALL fail if the check dials the wildcard host instead of a loopback host
+
 #### Scenario: Metrics CLI configured gateway default remains covered
 - **WHEN** `lango metrics` and metrics subcommands are constructed with a config loader
 - **THEN** executable tests SHALL fail if they ignore configured `server.host` and `server.port` when `--addr` is omitted
@@ -1147,6 +1155,11 @@ Repository-level regressions in gateway-backed CLI default address resolution SH
 - **WHEN** `lango status --addr <url>` probes a custom gateway
 - **THEN** executable tests SHALL fail if the status output reports the configured gateway instead of the normalized explicit probe target
 
+#### Scenario: P2P provenance gateway resolution remains covered
+- **WHEN** P2P provenance push or fetch is constructed with explicit or configured gateway inputs
+- **THEN** executable tests SHALL fail if explicit trailing slashes reach the gateway POST client
+- **AND** executable tests SHALL fail if omitted `--addr` ignores configured `server.host` and `server.port`
+
 ### Requirement: Gateway CLI docs default wording guard stays executable
 
 Repository-level docs guards SHALL prevent gateway-backed CLI docs from presenting localhost/18789 as the only default when the command now honors configured server host and port.
@@ -1159,3 +1172,7 @@ Repository-level docs guards SHALL prevent gateway-backed CLI docs from presenti
 - **WHEN** public status CLI docs are checked
 - **THEN** executable tests SHALL fail if they omit that explicit `--addr` probes the normalized address
 - **AND** executable tests SHALL fail if they omit that status output reports the same normalized gateway target
+
+#### Scenario: P2P provenance address docs guard remains covered
+- **WHEN** public P2P CLI docs are checked
+- **THEN** executable tests SHALL fail if they omit P2P provenance gateway override, configured fallback, or explicit address normalization wording

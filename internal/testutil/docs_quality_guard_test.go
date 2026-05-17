@@ -1308,6 +1308,31 @@ func checkNoStaleConfirmExample(t *testing.T, path string, re *regexp.Regexp) {
 	}
 }
 
+func TestP2PDocsExplainProvenanceGatewayAddressContract(t *testing.T) {
+	t.Parallel()
+
+	repoRoot := docsQualityRepoRoot(t)
+	target := filepath.Join(repoRoot, "docs", "cli", "p2p.md")
+
+	data, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatalf("read %s: %v", target, err)
+	}
+	text := string(data)
+
+	requiredSnippets := []string{
+		"`--addr` overrides the configured gateway address",
+		"uses configured `server.host` and `server.port`",
+		"Explicit `--addr` values are",
+		"normalized before gateway requests",
+	}
+	for _, snippet := range requiredSnippets {
+		if !strings.Contains(text, snippet) {
+			t.Fatalf("%s is missing P2P provenance gateway address snippet %q", target, snippet)
+		}
+	}
+}
+
 func docsQualityRepoRoot(t *testing.T) string {
 	t.Helper()
 

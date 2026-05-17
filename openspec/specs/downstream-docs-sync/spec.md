@@ -189,6 +189,15 @@ Public P2P CLI documentation SHALL describe that `lango p2p connect` uses a boun
 - **AND** it SHALL mention the 30 second fallback when the timeout is unset or invalid
 - **AND** it SHALL mention that command cancellation stops the connect attempt
 
+### Requirement: Public P2P docs describe provenance gateway address selection
+Public P2P documentation SHALL document gateway-backed P2P provenance address selection.
+
+#### Scenario: P2P provenance docs describe gateway address selection
+- **WHEN** a user reads `docs/cli/p2p.md`
+- **THEN** the provenance section SHALL state that `--addr` overrides the configured gateway
+- **AND** it SHALL state that omitted `--addr` uses configured `server.host` and `server.port`
+- **AND** it SHALL state that explicit `--addr` values are normalized before gateway requests
+
 ### Requirement: P2P CLI docs describe command-scoped ephemeral node startup
 Public P2P CLI documentation SHALL describe cancellation behavior for commands that start ephemeral P2P nodes.
 

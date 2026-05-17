@@ -1066,6 +1066,29 @@ func TestProvenancePushCmd_WritesToCommandWriter(t *testing.T) {
 	assert.Contains(t, out, "Pushed provenance bundle to did:lango:peer1 (redaction=full)")
 }
 
+func TestProvenancePushCmd_NormalizesExplicitGatewayAddr(t *testing.T) {
+	original := provenancePostJSON
+	provenancePostJSON = func(addr, path string, body any, out any) error {
+		require.Equal(t, "http://127.0.0.1:7777", addr)
+		require.Equal(t, "/api/p2p/provenance/push", path)
+		if outMap, ok := out.(*map[string]any); ok {
+			*outMap = map[string]any{"ok": true}
+		}
+		return nil
+	}
+	t.Cleanup(func() { provenancePostJSON = original })
+
+	cfg := config.DefaultConfig()
+	cfg.P2P.Enabled = true
+	cmd := newProvenancePushCmd(func() (*bootstrap.Result, error) {
+		return &bootstrap.Result{Config: cfg}, nil
+	})
+
+	out, err := executeP2PCmd(t, cmd, "did:lango:peer1", "session-key-1", "--addr", "http://127.0.0.1:7777/")
+	require.NoError(t, err)
+	assert.Contains(t, out, "Pushed provenance bundle to did:lango:peer1")
+}
+
 func TestProvenanceFetchCmd_WritesToCommandWriter(t *testing.T) {
 	original := provenancePostJSON
 	provenancePostJSON = func(addr, path string, body any, out any) error {
@@ -1087,6 +1110,31 @@ func TestProvenanceFetchCmd_WritesToCommandWriter(t *testing.T) {
 	out, err := executeP2PCmd(t, cmd, "did:lango:peer2", "session-key-2", "--addr", "http://127.0.0.1:8888")
 	require.NoError(t, err)
 	assert.Contains(t, out, "Fetched provenance bundle from did:lango:peer2 (redaction=content)")
+}
+
+func TestProvenanceFetchCmd_UsesConfiguredIPv6GatewayWhenAddrOmitted(t *testing.T) {
+	original := provenancePostJSON
+	provenancePostJSON = func(addr, path string, body any, out any) error {
+		require.Equal(t, "http://[::1]:18888", addr)
+		require.Equal(t, "/api/p2p/provenance/fetch", path)
+		if outMap, ok := out.(*map[string]any); ok {
+			*outMap = map[string]any{"redaction": "content"}
+		}
+		return nil
+	}
+	t.Cleanup(func() { provenancePostJSON = original })
+
+	cfg := config.DefaultConfig()
+	cfg.P2P.Enabled = true
+	cfg.Server.Host = "::1"
+	cfg.Server.Port = 18888
+	cmd := newProvenanceFetchCmd(func() (*bootstrap.Result, error) {
+		return &bootstrap.Result{Config: cfg}, nil
+	})
+
+	out, err := executeP2PCmd(t, cmd, "did:lango:peer2", "session-key-2")
+	require.NoError(t, err)
+	assert.Contains(t, out, "Fetched provenance bundle from did:lango:peer2")
 }
 
 func TestPricingCmd_WritesTextToCommandWriter(t *testing.T) {

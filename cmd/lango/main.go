@@ -60,6 +60,7 @@ import (
 	"github.com/langoai/lango/internal/cli/workbench"
 	cliworkflow "github.com/langoai/lango/internal/cli/workflow"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/gatewayaddr"
 	"github.com/langoai/lango/internal/logging"
 	"github.com/langoai/lango/internal/postadjudicationstatus"
 	"github.com/langoai/lango/internal/sandbox"
@@ -645,7 +646,7 @@ func startupSummary(cfg *config.Config) string {
 	}
 
 	features := []tui.FeatureLine{
-		{Name: "Gateway", Enabled: cfg.Server.HTTPEnabled, Detail: fmt.Sprintf("http://%s:%d", cfg.Server.Host, cfg.Server.Port)},
+		{Name: "Gateway", Enabled: cfg.Server.HTTPEnabled, Detail: gatewayaddr.HTTPURL(cfg.Server.Host, cfg.Server.Port)},
 		{Name: "Channels", Enabled: len(channels) > 0, Detail: channelDetail},
 		{Name: "Knowledge", Enabled: cfg.Knowledge.Enabled},
 		{Name: "Embedding & RAG", Enabled: cfg.Embedding.Provider != "", Detail: cfg.Embedding.Provider},

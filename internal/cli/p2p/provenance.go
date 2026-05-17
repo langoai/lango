@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/langoai/lango/internal/bootstrap"
+	"github.com/langoai/lango/internal/cli/clihttp"
 )
 
 var provenancePostJSON = postJSON
@@ -96,10 +97,7 @@ func newProvenanceFetchCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.
 }
 
 func gatewayAddr(addr string, boot *bootstrap.Result) string {
-	if addr != "" {
-		return addr
-	}
-	return fmt.Sprintf("http://%s:%d", boot.Config.Server.Host, boot.Config.Server.Port)
+	return clihttp.ResolveGatewayAddr(addr, boot.Config)
 }
 
 func provenanceRequestBody(peerDID, sessionKey, redaction string) map[string]string {

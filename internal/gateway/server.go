@@ -19,6 +19,7 @@ import (
 	"github.com/langoai/lango/internal/approval"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/gatekeeper"
+	"github.com/langoai/lango/internal/gatewayaddr"
 	"github.com/langoai/lango/internal/logging"
 	"github.com/langoai/lango/internal/runledger"
 	"github.com/langoai/lango/internal/security"
@@ -625,7 +626,7 @@ func (s *Server) RegisterHandler(method string, handler RPCHandler) {
 
 // Start starts the gateway server
 func (s *Server) Start() error {
-	addr := fmt.Sprintf("%s:%d", s.config.Host, s.config.Port)
+	addr := gatewayaddr.ListenAddress(s.config.Host, s.config.Port)
 	s.httpServer = &http.Server{
 		Addr:         addr,
 		Handler:      s.router,

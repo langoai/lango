@@ -340,6 +340,11 @@ These commands are server-backed. They require:
 - `p2p.enabled = true`
 - an active authenticated session for the target peer DID
 
+`--addr` overrides the configured gateway address. When omitted, the command
+uses configured `server.host` and `server.port`. Explicit `--addr` values are
+normalized before gateway requests so trailing slashes do not create double-slash
+API paths.
+
 ### lango p2p provenance push
 
 ```bash
