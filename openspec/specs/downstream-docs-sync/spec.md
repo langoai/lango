@@ -24,6 +24,32 @@ The README SHALL list all implemented features including Team Health Monitoring,
 - **WHEN** a user reads the CLI commands section of `README.md`
 - **THEN** `lango status`, `lango onboard --preset`, cron `--timeout`, cron `--deliver`, and cron management by `id-or-name` SHALL be documented
 
+#### Scenario: Provenance quick reference includes required operands
+- **WHEN** a user reads the provenance quick reference in `README.md`
+- **THEN** it SHALL include `lango provenance checkpoint list --run <id>`, `lango provenance checkpoint create <label> --run <id>`, and `lango provenance checkpoint show <id>`
+- **AND** it SHALL include `lango provenance session tree <session-key>` and `lango provenance session list`
+- **AND** it SHALL include `lango provenance attribution show <session-key>` and `lango provenance attribution report <session-key>`
+- **AND** it SHALL include `lango provenance bundle export <session-key>` and `lango provenance bundle import <file>`
+
+#### Scenario: P2P reputation quick reference includes required peer DID
+- **WHEN** a user reads the P2P quick reference in `README.md`
+- **THEN** it SHALL include `lango p2p reputation --peer-did <did>`
+
+### Requirement: CLI index quick references include required operands
+The CLI index SHALL list quick-reference commands with required positional
+arguments and required flags for provenance and P2P reputation commands.
+
+#### Scenario: CLI index provenance quick reference includes required operands
+- **WHEN** a user reads `docs/cli/index.md`
+- **THEN** it SHALL include `lango provenance checkpoint list --run <id>`, `lango provenance checkpoint create <label> --run <id>`, and `lango provenance checkpoint show <id>`
+- **AND** it SHALL include `lango provenance session tree <session-key>` and `lango provenance session list`
+- **AND** it SHALL include `lango provenance attribution show <session-key>` and `lango provenance attribution report <session-key>`
+- **AND** it SHALL include `lango provenance bundle export <session-key>` and `lango provenance bundle import <file>`
+
+#### Scenario: CLI index P2P reputation includes required peer DID
+- **WHEN** a user reads `docs/cli/index.md`
+- **THEN** it SHALL include `lango p2p reputation --peer-did <did>`
+
 ### Requirement: Public cron automation docs match CLI flags
 Public cron automation documentation SHALL use command examples accepted by the current CLI.
 

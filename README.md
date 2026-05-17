@@ -243,7 +243,7 @@ lango p2p firewall add           Add a firewall ACL rule
 lango p2p firewall remove        Remove firewall rules for a peer
 lango p2p discover               Discover agents by capability
 lango p2p identity               Show local DID and peer identity
-lango p2p reputation             Query peer trust score
+lango p2p reputation --peer-did <did>  Query peer trust score
 lango p2p pricing                Show tool pricing
 lango p2p git init <workspace-id>    Describe how to initialize a workspace git repository
 lango p2p git log <workspace-id>     Describe how to inspect workspace commit history
@@ -329,15 +329,15 @@ lango payment info                   Show wallet and payment system info
 lango payment send                   Send a USDC payment
 lango payment x402                   Show X402 auto-pay configuration
 lango provenance status              Show provenance configuration and state
-lango provenance checkpoint list     List checkpoints
-lango provenance checkpoint create   Create a manual checkpoint
+lango provenance checkpoint list --run <id>  List checkpoints
+lango provenance checkpoint create <label> --run <id>  Create a manual checkpoint
 lango provenance checkpoint show <id> Show checkpoint details
-lango provenance session tree        Show session hierarchy tree
+lango provenance session tree <session-key>  Show session hierarchy tree
 lango provenance session list        List persisted session nodes
-lango provenance attribution show <session>  Show attribution data for a session
-lango provenance attribution report  Generate attribution report
-lango provenance bundle export       Export a signed provenance bundle
-lango provenance bundle import       Import a signed provenance bundle
+lango provenance attribution show <session-key>  Show attribution data for a session
+lango provenance attribution report <session-key>  Generate attribution report
+lango provenance bundle export <session-key>  Export a signed provenance bundle
+lango provenance bundle import <file>  Import a signed provenance bundle
 lango sandbox status                 Show sandbox configuration and platform capabilities
 lango sandbox test                   Run OS sandbox smoke tests
 

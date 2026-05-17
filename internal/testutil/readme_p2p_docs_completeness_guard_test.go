@@ -3,6 +3,7 @@ package testutil
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -30,7 +31,7 @@ func TestREADMEIncludesImplementedP2POperatorCommands(t *testing.T) {
 		"lango p2p firewall remove",
 		"lango p2p discover",
 		"lango p2p identity",
-		"lango p2p reputation",
+		"lango p2p reputation --peer-did <did>",
 		"lango p2p pricing",
 		"lango p2p provenance push <peer-did> <session-key>",
 		"lango p2p provenance fetch <peer-did> <session-key>",
@@ -55,6 +56,42 @@ func TestREADMEIncludesImplementedP2POperatorCommands(t *testing.T) {
 	for _, snippet := range requiredSnippets {
 		if !strings.Contains(text, snippet) {
 			t.Fatalf("%s is missing required README P2P snippet %q", target, snippet)
+		}
+	}
+}
+
+func TestREADMERejectsBareP2PReputationQuickReferenceRow(t *testing.T) {
+	t.Parallel()
+
+	target := filepath.Join(readmeP2PDocsGuardRepoRoot(t), "README.md")
+	data, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatalf("read %s: %v", target, err)
+	}
+	text := string(data)
+
+	rowPattern := `(?m)^lango p2p reputation\s+Query peer trust score$`
+	if regexp.MustCompile(rowPattern).MatchString(text) {
+		t.Fatalf("%s contains stale bare P2P reputation quick-reference row", target)
+	}
+}
+
+func TestMainSpecsIncludeP2PReputationRequiredPeerDID(t *testing.T) {
+	t.Parallel()
+
+	repoRoot := readmeP2PDocsGuardRepoRoot(t)
+	targets := []string{
+		filepath.Join(repoRoot, "openspec", "specs", "docs-only", "spec.md"),
+		filepath.Join(repoRoot, "openspec", "specs", "downstream-docs-sync", "spec.md"),
+	}
+
+	for _, target := range targets {
+		data, err := os.ReadFile(target)
+		if err != nil {
+			t.Fatalf("read %s: %v", target, err)
+		}
+		if !strings.Contains(string(data), "lango p2p reputation --peer-did <did>") {
+			t.Fatalf("%s is missing required P2P reputation peer DID snippet", target)
 		}
 	}
 }

@@ -712,10 +712,10 @@ The README quick reference SHALL include the implemented `lango provenance` comm
 #### Scenario: Implemented provenance commands stay discoverable
 - **WHEN** a maintainer updates `README.md`
 - **THEN** it SHALL include the implemented `lango provenance status`
-- **AND** it SHALL include `lango provenance checkpoint list`, `lango provenance checkpoint create`, and `lango provenance checkpoint show <id>`
-- **AND** it SHALL include `lango provenance session tree` and `lango provenance session list`
-- **AND** it SHALL include `lango provenance attribution show <session>` and `lango provenance attribution report`
-- **AND** it SHALL include `lango provenance bundle export` and `lango provenance bundle import`
+- **AND** it SHALL include `lango provenance checkpoint list --run <id>`, `lango provenance checkpoint create <label> --run <id>`, and `lango provenance checkpoint show <id>`
+- **AND** it SHALL include `lango provenance session tree <session-key>` and `lango provenance session list`
+- **AND** it SHALL include `lango provenance attribution show <session-key>` and `lango provenance attribution report <session-key>`
+- **AND** it SHALL include `lango provenance bundle export <session-key>` and `lango provenance bundle import <file>`
 
 ### Requirement: README includes implemented background-task commands
 The README quick reference SHALL include the implemented `lango bg` command family that is already present in the public CLI index and dedicated automation docs.
@@ -743,7 +743,7 @@ The README quick reference SHALL include the implemented core `p2p` read/control
 
 #### Scenario: Core P2P command families stay discoverable
 - **WHEN** a maintainer updates `README.md`
-- **THEN** it SHALL include the implemented `lango p2p status`, `peers`, `connect`, `disconnect`, `firewall`, `discover`, `identity`, `reputation`, `pricing`, `provenance`, `session`, and `sandbox` command entries
+- **THEN** it SHALL include the implemented `lango p2p status`, `peers`, `connect`, `disconnect`, `firewall`, `discover`, `identity`, `lango p2p reputation --peer-did <did>`, `pricing`, `provenance`, `session`, and `sandbox` command entries
 
 ### Requirement: P2P feature CLI intro stays truthful about mixed command modes
 Public P2P feature docs SHALL not describe the entire `lango p2p` surface as ephemeral-node execution when some command families are still server-backed guidance surfaces.
