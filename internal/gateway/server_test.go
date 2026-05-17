@@ -113,6 +113,56 @@ func TestServerStartReturnsListenError(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestServerShutdownBeforeStartIsSafe(t *testing.T) {
+	t.Parallel()
+
+	server := New(Config{
+		Host:             "127.0.0.1",
+		Port:             0,
+		HTTPEnabled:      true,
+		WebSocketEnabled: true,
+	}, nil, nil, nil, nil)
+
+	require.NotPanics(t, func() {
+		require.NoError(t, server.Shutdown(context.Background()))
+	})
+}
+
+func TestServerShutdownAfterFailedStartIsSafe(t *testing.T) {
+	t.Parallel()
+
+	occupied, port := occupyGatewayPort(t)
+	defer occupied.Close()
+
+	server := New(Config{
+		Host:             "127.0.0.1",
+		Port:             port,
+		HTTPEnabled:      true,
+		WebSocketEnabled: true,
+	}, nil, nil, nil, nil)
+
+	require.Error(t, server.Start())
+	require.NotPanics(t, func() {
+		require.NoError(t, server.Shutdown(context.Background()))
+	})
+}
+
+func TestServerRepeatedShutdownIsSafe(t *testing.T) {
+	t.Parallel()
+
+	server := New(Config{
+		Host:             "127.0.0.1",
+		Port:             0,
+		HTTPEnabled:      true,
+		WebSocketEnabled: true,
+	}, nil, nil, nil, nil)
+
+	require.NoError(t, server.Shutdown(context.Background()))
+	require.NotPanics(t, func() {
+		require.NoError(t, server.Shutdown(context.Background()))
+	})
+}
+
 func TestServerServeGracefulShutdown(t *testing.T) {
 	t.Parallel()
 

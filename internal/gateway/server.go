@@ -699,6 +699,9 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	}
 	s.clientsMu.Unlock()
 
+	if s.httpServer == nil {
+		return nil
+	}
 	return s.httpServer.Shutdown(ctx)
 }
 
