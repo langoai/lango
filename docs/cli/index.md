@@ -12,6 +12,7 @@ Lango provides a comprehensive command-line interface built with [Cobra](https:/
 | `lango serve` | Start the gateway server |
 | `lango version` | Print version and build info |
 | `lango health` | Check gateway health |
+| `lango completion` | Generate shell completion scripts for bash, zsh, fish, and powershell |
 | `lango status` | [Unified status dashboard](status.md) (health, config, features) |
 | `lango status dead-letter-summary` | Show overview counts, grouped reason/actor/dispatch-family buckets, configurable raw top-N sections, and recent trend windows for the current dead-letter backlog |
 | `lango status dead-letters` | List current dead-lettered post-adjudication executions with latest-family and any-match-family filtering |
@@ -66,6 +67,7 @@ Use the dedicated page for command families that have deeper semantics, examples
 | `lango serve` | Start the gateway server |
 | `lango version` | Print version and build info |
 | `lango health` | Check gateway health |
+| `lango completion` | Generate shell completion scripts for bash, zsh, fish, and powershell |
 | `lango onboard` | Guided 5-step setup wizard |
 | `lango settings` | Full interactive configuration editor |
 | `lango doctor` | Diagnostics and health checks |

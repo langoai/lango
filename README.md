@@ -158,6 +158,8 @@ See the full [CLI Reference](docs/cli/index.md) for the complete command set.
 
 Top-level utility commands follow the same capture-friendly stream contracts as the rest of the CLI: `lango version`, `lango health`, and `lango serve` write their success output through command-oriented stdout paths, while interactive TUI entrypoints (`lango`, `lango cockpit`, `lango chat`) emit startup notices through seam-aware stderr paths.
 
+Shell completion is available through Cobra's generated `lango completion` command for `bash`, `zsh`, `fish`, and `powershell`.
+
 Interactive bare `lango` starts the mission workbench TUI. Non-interactive bare `lango` prints help to command stdout and exits successfully without starting the TUI. Unlike `lango cockpit` and `lango chat`, this bare-root fallback is not an actionable non-interactive error.
 
 ```
@@ -166,6 +168,7 @@ lango cockpit                    Launch multi-panel operator dashboard
 lango serve                      Start the gateway server
 lango version                    Print version and build info
 lango health                     Check gateway health
+lango completion                 Generate shell completion scripts for bash, zsh, fish, and powershell
 lango chat                       Launch focused chat TUI
 lango onboard                    Guided 5-step setup wizard
 lango settings                   Full interactive configuration editor
