@@ -237,7 +237,7 @@ Examples:
 				defer boot.Close()
 
 				probeAddr := clihttp.ResolveGatewayAddr(addr, boot.Config)
-				info := collectStatus(boot.Config, boot.ProfileName, probeAddr)
+				info := collectStatusWithGateway(boot.Config, boot.ProfileName, probeAddr, probeAddr)
 				info.Version = sanitizeStatusText(tui.GetVersion())
 
 				if normalizedOutputFmt == "json" {
@@ -1199,10 +1199,14 @@ type LiveInfo struct {
 }
 
 func collectStatus(cfg *config.Config, profile, addr string) StatusInfo {
+	return collectStatusWithGateway(cfg, profile, addr, clihttp.ResolveGatewayAddr("", cfg))
+}
+
+func collectStatusWithGateway(cfg *config.Config, profile, addr, gateway string) StatusInfo {
 	info := StatusInfo{
 		Profile:        sanitizeStatusText(profile),
 		ContextProfile: sanitizeStatusText(string(cfg.ContextProfile)),
-		Gateway:        sanitizeStatusText(clihttp.ResolveGatewayAddr("", cfg)),
+		Gateway:        sanitizeStatusText(gateway),
 		Provider:       sanitizeStatusText(cfg.Agent.Provider),
 		Model:          sanitizeStatusText(cfg.Agent.Model),
 	}

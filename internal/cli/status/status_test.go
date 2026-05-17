@@ -476,6 +476,34 @@ func TestNewStatusCmd_UsesConfiguredGatewayForProbeWhenAddrOmitted(t *testing.T)
 	assert.Equal(t, server.URL, got.Gateway)
 }
 
+func TestNewStatusCmd_ExplicitAddrDisplaysNormalizedProbeTarget(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/health", r.URL.Path)
+		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{"features": []any{}}))
+	}))
+	defer server.Close()
+
+	cfg := config.DefaultConfig()
+	cfg.Server.Host = "configured.example"
+	cfg.Server.Port = 9999
+	cmd := NewStatusCmd(func() (*bootstrap.Result, error) {
+		return &bootstrap.Result{
+			Config:      cfg,
+			ProfileName: "explicit-profile",
+		}, nil
+	}, func() (DeadLetterBridge, func(), error) {
+		return &fakeDeadLetterBridge{}, func() {}, nil
+	})
+
+	out, err := executeCommand(t, cmd, "--output", "json", "--addr", server.URL+"/")
+
+	require.NoError(t, err)
+	var got StatusInfo
+	require.NoError(t, json.Unmarshal([]byte(out), &got))
+	assert.True(t, got.ServerUp)
+	assert.Equal(t, server.URL, got.Gateway)
+}
+
 func TestNewStatusCmd_InvalidOutputRejectsBeforeBootstrap(t *testing.T) {
 	bootCalls := 0
 	cmd := NewStatusCmd(func() (*bootstrap.Result, error) {

@@ -1139,6 +1139,14 @@ Repository-level regressions in gateway-backed CLI default address resolution SH
 - **WHEN** `lango status` bootstraps a config with custom `server.host` and `server.port`
 - **THEN** executable tests SHALL fail if the live `/health` probe still uses a hardcoded localhost/18789 default
 
+#### Scenario: Explicit gateway trailing slash normalization remains covered
+- **WHEN** the shared CLI gateway address resolver receives an explicit address with trailing slashes
+- **THEN** executable tests SHALL fail if it returns the trailing slash or causes double-slash gateway request paths
+
+#### Scenario: Status explicit gateway display remains covered
+- **WHEN** `lango status --addr <url>` probes a custom gateway
+- **THEN** executable tests SHALL fail if the status output reports the configured gateway instead of the normalized explicit probe target
+
 ### Requirement: Gateway CLI docs default wording guard stays executable
 
 Repository-level docs guards SHALL prevent gateway-backed CLI docs from presenting localhost/18789 as the only default when the command now honors configured server host and port.

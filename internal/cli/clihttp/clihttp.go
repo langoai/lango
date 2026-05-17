@@ -79,7 +79,7 @@ func PostJSONContext(ctx context.Context, addr, path string, body interface{}, o
 // ResolveGatewayAddr returns an explicit CLI address or derives one from server config.
 func ResolveGatewayAddr(explicit string, cfg *config.Config) string {
 	if addr := strings.TrimSpace(explicit); addr != "" {
-		return addr
+		return strings.TrimRight(addr, "/")
 	}
 	host := "localhost"
 	port := 18789

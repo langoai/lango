@@ -55,3 +55,11 @@ func TestFetchJSONContextCancelsRequest(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "connect to gateway")
 }
+
+func TestResolveGatewayAddrTrimsExplicitTrailingSlashes(t *testing.T) {
+	t.Parallel()
+
+	got := ResolveGatewayAddr("  http://127.0.0.1:18789///  ", nil)
+
+	assert.Equal(t, "http://127.0.0.1:18789", got)
+}
