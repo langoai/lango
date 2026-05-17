@@ -150,11 +150,14 @@ Repository-level CLI test-harness regressions that are cheap to detect mechanica
 - **THEN** an executable repository test SHALL fail
 
 ### Requirement: Repository test-harness guards stay executable
-Repository-level test-harness regressions that are cheap to detect mechanically SHALL be enforced by executable tests instead of relying only on manual review.
 
-#### Scenario: Repository test harness regressions are rejected
-- **WHEN** a repository test reintroduces global stdio reassignment or legacy shared exec helpers
-- **THEN** an executable repository test SHALL fail
+Repository-level test-harness regressions that are cheap to detect mechanically SHALL be enforced by executable tests instead of relying only on manual review. Security-sensitive public wrappers that expose stdio-backed behavior SHALL have focused tests proving they can be exercised through injected seams instead of process-global stdio replacement.
+
+#### Scenario: Passphrase public wrapper stdio seams stay covered
+
+- **WHEN** passphrase wrapper tests run
+- **THEN** they SHALL fail if `Acquire` stops using injected stdin, stderr, or terminal-detection seams
+- **AND** they SHALL fail if `AcquireNonInteractive` stops using the injected stderr seam
 
 ### Requirement: CLI production stream guards stay executable
 Repository-level CLI production stream regressions that are cheap to detect mechanically SHALL be enforced by executable tests instead of relying only on manual review.
@@ -1193,7 +1196,6 @@ of relying only on manual review.
 - **WHEN** the storage broker command is constructed
 - **THEN** an executable test SHALL verify that child stderr uses the injected
   writer seam
-
 ### Requirement: Tracing exporter writer seam regressions stay executable
 Tracing exporter writer routing regressions SHALL be enforced by executable
 tests instead of relying only on manual review.

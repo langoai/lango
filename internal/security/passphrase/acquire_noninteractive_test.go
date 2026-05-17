@@ -93,6 +93,37 @@ func TestAcquireNonInteractive_KeyringErrorWarnsAndFallsThrough(t *testing.T) {
 	}
 }
 
+func TestAcquireNonInteractive_PublicWrapperUsesStderrSeam(t *testing.T) {
+	restorePassphraseStdioSeams(t)
+
+	dir := t.TempDir()
+	keyfilePath := filepath.Join(dir, "keyfile")
+	want := "from-keyfile-pass"
+	if err := WriteKeyfile(keyfilePath, want); err != nil {
+		t.Fatalf("WriteKeyfile: %v", err)
+	}
+
+	var errBuf bytes.Buffer
+	passphraseStderr = &errBuf
+
+	got, src, err := AcquireNonInteractive(Options{
+		KeyfilePath:     keyfilePath,
+		KeyringProvider: stubNonInteractiveKeyringProvider{err: errors.New("boom")},
+	})
+	if err != nil {
+		t.Fatalf("AcquireNonInteractive: %v", err)
+	}
+	if got != want {
+		t.Fatalf("pass mismatch: got %q want %q", got, want)
+	}
+	if src != SourceKeyfile {
+		t.Fatalf("expected SourceKeyfile, got %v", src)
+	}
+	if errBuf.String() != "warning: keyring read failed: boom\n" {
+		t.Fatalf("unexpected stderr warning: %q", errBuf.String())
+	}
+}
+
 func TestAcquireNonInteractive_KeyringNotFoundDoesNotWarn(t *testing.T) {
 	dir := t.TempDir()
 	keyfilePath := filepath.Join(dir, "keyfile")

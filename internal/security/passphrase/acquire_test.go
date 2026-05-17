@@ -52,6 +52,22 @@ func TestAcquire_StdinPipe(t *testing.T) {
 	assert.Equal(t, SourceStdin, source)
 }
 
+func TestAcquire_PublicWrapperUsesStdinSeam(t *testing.T) {
+	restorePassphraseStdioSeams(t)
+
+	dir := t.TempDir()
+	keyfilePath := filepath.Join(dir, "nonexistent-keyfile")
+
+	passphraseStdin = bytes.NewBufferString("wrapped-stdin-passphrase\n")
+	passphraseStderr = io.Discard
+	passphraseIsTerminal = func() bool { return false }
+
+	got, source, err := Acquire(Options{KeyfilePath: keyfilePath})
+	require.NoError(t, err)
+	assert.Equal(t, "wrapped-stdin-passphrase", got)
+	assert.Equal(t, SourceStdin, source)
+}
+
 func TestAcquire_InteractivePromptUsesInjectedWriter(t *testing.T) {
 	dir := t.TempDir()
 	keyfilePath := filepath.Join(dir, "nonexistent-keyfile")
@@ -151,4 +167,40 @@ func TestAcquire_KeyringErrorWarnsAndFallsThrough(t *testing.T) {
 	assert.Equal(t, "stdin-passphrase", got)
 	assert.Equal(t, SourceStdin, source)
 	assert.Contains(t, errBuf.String(), "warning: keyring read failed: boom")
+}
+
+func TestAcquire_PublicWrapperUsesStderrSeam(t *testing.T) {
+	restorePassphraseStdioSeams(t)
+
+	dir := t.TempDir()
+	keyfilePath := filepath.Join(dir, "keyfile")
+	require.NoError(t, WriteKeyfile(keyfilePath, "keyfile-passphrase"))
+
+	var errBuf bytes.Buffer
+	passphraseStdin = bytes.NewBuffer(nil)
+	passphraseStderr = &errBuf
+	passphraseIsTerminal = func() bool { return false }
+
+	got, source, err := Acquire(Options{
+		KeyfilePath:     keyfilePath,
+		KeyringProvider: stubAcquireKeyringProvider{err: errors.New("boom")},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "keyfile-passphrase", got)
+	assert.Equal(t, SourceKeyfile, source)
+	assert.Equal(t, "warning: keyring read failed: boom\n", errBuf.String())
+}
+
+func restorePassphraseStdioSeams(t *testing.T) {
+	t.Helper()
+
+	oldStdin := passphraseStdin
+	oldStderr := passphraseStderr
+	oldIsTerminal := passphraseIsTerminal
+
+	t.Cleanup(func() {
+		passphraseStdin = oldStdin
+		passphraseStderr = oldStderr
+		passphraseIsTerminal = oldIsTerminal
+	})
 }

@@ -31,8 +31,11 @@ type Options struct {
 }
 
 var (
-	passphrasePrompt        = prompt.PassphraseIO
-	passphraseConfirmPrompt = prompt.PassphraseConfirmIO
+	passphrasePrompt                  = prompt.PassphraseIO
+	passphraseConfirmPrompt           = prompt.PassphraseConfirmIO
+	passphraseStdin         io.Reader = os.Stdin
+	passphraseStderr        io.Writer = os.Stderr
+	passphraseIsTerminal              = func() bool { return term.IsTerminal(int(syscall.Stdin)) }
 )
 
 // defaultKeyfilePath returns the default keyfile path (~/.lango/keyfile).
@@ -86,7 +89,7 @@ func acquireWithIO(opts Options, stdin io.Reader, stderr io.Writer, interactive 
 // Acquire obtains a passphrase from the highest-priority available source.
 // Priority: keyring -> keyfile -> interactive terminal -> stdin pipe -> error
 func Acquire(opts Options) (string, Source, error) {
-	return acquireWithIO(opts, os.Stdin, os.Stderr, term.IsTerminal(int(syscall.Stdin)))
+	return acquireWithIO(opts, passphraseStdin, passphraseStderr, passphraseIsTerminal())
 }
 
 // acquireInteractive prompts the user for a passphrase via the terminal.

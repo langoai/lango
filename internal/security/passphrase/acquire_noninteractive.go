@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 
 	"github.com/langoai/lango/internal/keyring"
 )
@@ -31,7 +30,7 @@ var ErrNoNonInteractiveSource = errors.New("no non-interactive passphrase source
 // from os.Stdin pipe. It SHALL NEVER block on user input beyond whatever the
 // keyring provider itself does (e.g., a Touch ID prompt).
 func AcquireNonInteractive(opts Options) (string, Source, error) {
-	return acquireNonInteractiveWithIO(opts, os.Stderr)
+	return acquireNonInteractiveWithIO(opts, passphraseStderr)
 }
 
 func acquireNonInteractiveWithIO(opts Options, stderr io.Writer) (string, Source, error) {
