@@ -1133,6 +1133,10 @@ Repository-level regressions in gateway-backed CLI default address resolution SH
 - **WHEN** the doctor server port check receives IPv6 gateway bind hosts
 - **THEN** executable tests SHALL fail if the check formats the listen address without required IPv6 brackets
 
+#### Scenario: Doctor server port conflict message remains covered
+- **WHEN** the doctor server port check receives a configured port that is already bound
+- **THEN** executable tests SHALL fail if the diagnostic stops reporting that the port is in use
+
 #### Scenario: Gateway wildcard doctor reachability remains covered
 - **WHEN** the companion connectivity doctor check receives a wildcard gateway bind host
 - **THEN** executable tests SHALL fail if the check dials the wildcard host instead of a loopback host

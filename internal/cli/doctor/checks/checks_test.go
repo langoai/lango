@@ -172,6 +172,31 @@ func TestNetworkCheck_Run_PortAvailable(t *testing.T) {
 	}
 }
 
+func TestNetworkCheck_Run_PortInUseReportsConflict(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer listener.Close()
+
+	_, portText, err := net.SplitHostPort(listener.Addr().String())
+	require.NoError(t, err)
+	port, err := strconv.Atoi(portText)
+	require.NoError(t, err)
+
+	cfg := &config.Config{
+		Server: config.ServerConfig{
+			Host: "127.0.0.1",
+			Port: port,
+		},
+	}
+
+	check := &NetworkCheck{}
+	result := check.Run(context.Background(), cfg)
+
+	assert.Equal(t, StatusFail, result.Status)
+	assert.Equal(t, "Port "+portText+" in use", result.Message)
+	assert.NotEmpty(t, result.Details)
+}
+
 func TestNetworkCheck_Run_IPv6HostAvailable(t *testing.T) {
 	port := freeIPv6Port(t)
 	cfg := &config.Config{

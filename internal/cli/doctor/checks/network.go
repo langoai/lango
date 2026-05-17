@@ -37,7 +37,7 @@ func (c *NetworkCheck) Run(ctx context.Context, cfg *config.Config) Result {
 		return Result{
 			Name:    c.Name(),
 			Status:  StatusFail,
-			Message: fmt.Sprintf("Port %d is not available", port),
+			Message: fmt.Sprintf("Port %d in use", port),
 			Details: err.Error(),
 		}
 	}
