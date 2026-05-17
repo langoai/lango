@@ -602,24 +602,24 @@ func configCmd() *cobra.Command {
 	cmd.AddCommand(cliconfigcmd.NewGetCmd(cliboot.Config))
 	var setBootResult *bootstrap.Result
 	cmd.AddCommand(cliconfigcmd.NewSetCmd(
-		func() (*config.Config, func(), error) {
+		func() (*config.Config, map[string]bool, func(), error) {
 			boot, err := cliboot.BootResult()
 			if err != nil {
-				return nil, nil, err
+				return nil, nil, nil, err
 			}
 			setBootResult = boot
 			cleanup := func() {
 				_ = boot.Close()
 				setBootResult = nil
 			}
-			return boot.Config, cleanup, nil
+			return boot.Config, boot.ExplicitKeys, cleanup, nil
 		},
-		func(cfg *config.Config) error {
+		func(cfg *config.Config, explicitKeys map[string]bool) error {
 			if setBootResult == nil {
 				return fmt.Errorf("internal error: bootstrap result not available")
 			}
 			return setBootResult.Storage.ConfigProfiles().Save(
-				context.Background(), setBootResult.ProfileName, cfg, nil,
+				context.Background(), setBootResult.ProfileName, cfg, explicitKeys,
 			)
 		},
 	))

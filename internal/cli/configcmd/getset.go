@@ -69,11 +69,12 @@ func resolvePlainOrJSONOutput(cmd *cobra.Command) (string, error) {
 
 // NewSetCmd creates the "config set <dot.path> <value>" command.
 // The passphrase is implicitly verified via bootstrap (caller must bootstrap first).
-// cfgLoader returns (config, cleanup, error). cleanup closes bootstrap resources
-// and is called via defer in RunE so resources are released on all code paths.
+// cfgLoader returns (config, explicitKeys, cleanup, error). cleanup closes
+// bootstrap resources and is called via defer in RunE so resources are released
+// on all code paths.
 func NewSetCmd(
-	cfgLoader func() (*config.Config, func(), error),
-	cfgSaver func(*config.Config) error,
+	cfgLoader func() (*config.Config, map[string]bool, func(), error),
+	cfgSaver func(*config.Config, map[string]bool) error,
 ) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "set <dot.path> <value>",
@@ -90,7 +91,7 @@ Examples:
   lango config set economy.budget.defaultMax 20.00`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, cleanup, err := cfgLoader()
+			cfg, explicitKeys, cleanup, err := cfgLoader()
 			if cleanup != nil {
 				defer cleanup()
 			}
@@ -102,7 +103,8 @@ Examples:
 				return err
 			}
 
-			if err := cfgSaver(cfg); err != nil {
+			explicitKeys = explicitKeysForSetPath(explicitKeys, args[0])
+			if err := cfgSaver(cfg, explicitKeys); err != nil {
 				return fmt.Errorf("save config: %w", err)
 			}
 
@@ -112,6 +114,28 @@ Examples:
 	}
 
 	return cmd
+}
+
+func explicitKeysForSetPath(existing map[string]bool, path string) map[string]bool {
+	isContextRelated := false
+	for _, key := range config.ContextRelatedKeys() {
+		if key == path {
+			isContextRelated = true
+			break
+		}
+	}
+	if existing == nil && !isContextRelated {
+		return nil
+	}
+
+	out := make(map[string]bool, len(existing)+1)
+	for key, value := range existing {
+		out[key] = value
+	}
+	if isContextRelated {
+		out[path] = true
+	}
+	return out
 }
 
 // NewKeysCmd creates the "config keys [prefix]" command.

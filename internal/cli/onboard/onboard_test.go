@@ -2,6 +2,7 @@ package onboard
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"strings"
@@ -9,6 +10,8 @@ import (
 
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/configstore"
+	"github.com/langoai/lango/internal/storage"
 )
 
 func TestPrintNextStepsIncludesPrimaryEntryPoints(t *testing.T) {
@@ -87,4 +90,116 @@ func TestRunOnboardUsesBootLoader(t *testing.T) {
 	if !errors.Is(err, bootErr) {
 		t.Fatalf("expected bootstrap error, got %v", err)
 	}
+}
+
+func TestRunOnboardPreservesLoadedExplicitKeysForExistingProfile(t *testing.T) {
+	store := &onboardProfileStore{
+		loadCfg: config.DefaultConfig(),
+		loadExplicitKeys: map[string]bool{
+			"knowledge.enabled": true,
+		},
+	}
+	prevBoot := onboardBootResult
+	prevRunWizard := runOnboardWizard
+	defer func() {
+		onboardBootResult = prevBoot
+		runOnboardWizard = prevRunWizard
+	}()
+
+	onboardBootResult = func() (*bootstrap.Result, error) {
+		return &bootstrap.Result{Storage: storage.NewFacade(store, nil)}, nil
+	}
+	runOnboardWizard = func(cfg *config.Config) (*Wizard, error) {
+		wizard := NewWizard(cfg)
+		wizard.Completed = true
+		return wizard, nil
+	}
+
+	if err := runOnboard(io.Discard, "existing", ""); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if store.saveExplicitKeys == nil {
+		t.Fatal("expected explicit keys to be preserved on save")
+	}
+	if !store.saveExplicitKeys["knowledge.enabled"] {
+		t.Fatalf("expected saved explicit keys to include knowledge.enabled, got %#v", store.saveExplicitKeys)
+	}
+	if store.setActiveCalled {
+		t.Fatal("existing profile should not be activated as new")
+	}
+}
+
+func TestRunOnboardSavesPresetExplicitKeysForNewProfile(t *testing.T) {
+	store := &onboardProfileStore{loadErr: configstore.ErrProfileNotFound}
+	prevBoot := onboardBootResult
+	prevRunWizard := runOnboardWizard
+	defer func() {
+		onboardBootResult = prevBoot
+		runOnboardWizard = prevRunWizard
+	}()
+
+	onboardBootResult = func() (*bootstrap.Result, error) {
+		return &bootstrap.Result{Storage: storage.NewFacade(store, nil)}, nil
+	}
+	runOnboardWizard = func(cfg *config.Config) (*Wizard, error) {
+		wizard := NewWizard(cfg)
+		wizard.Completed = true
+		return wizard, nil
+	}
+
+	if err := runOnboard(io.Discard, "research", "researcher"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want := config.PresetExplicitKeys("researcher")
+	for key := range want {
+		if !store.saveExplicitKeys[key] {
+			t.Fatalf("expected saved preset explicit keys to include %q, got %#v", key, store.saveExplicitKeys)
+		}
+	}
+	if !store.setActiveCalled {
+		t.Fatal("new preset-backed profile should be activated")
+	}
+}
+
+type onboardProfileStore struct {
+	loadCfg          *config.Config
+	loadExplicitKeys map[string]bool
+	loadErr          error
+	saveExplicitKeys map[string]bool
+	setActiveCalled  bool
+}
+
+func (s *onboardProfileStore) Save(ctx context.Context, name string, cfg *config.Config, explicitKeys map[string]bool) error {
+	s.saveExplicitKeys = explicitKeys
+	return nil
+}
+
+func (s *onboardProfileStore) Load(ctx context.Context, name string) (*config.Config, map[string]bool, error) {
+	if s.loadErr != nil {
+		return nil, nil, s.loadErr
+	}
+	return s.loadCfg, s.loadExplicitKeys, nil
+}
+
+func (s *onboardProfileStore) LoadActive(ctx context.Context) (string, *config.Config, map[string]bool, error) {
+	return "", nil, nil, errors.New("not implemented")
+}
+
+func (s *onboardProfileStore) SetActive(ctx context.Context, name string) error {
+	s.setActiveCalled = true
+	return nil
+}
+
+func (s *onboardProfileStore) List(ctx context.Context) ([]configstore.ProfileInfo, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *onboardProfileStore) Delete(ctx context.Context, name string) error {
+	return errors.New("not implemented")
+}
+
+func (s *onboardProfileStore) Exists(ctx context.Context, name string) (bool, error) {
+	return false, errors.New("not implemented")
 }

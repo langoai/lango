@@ -255,9 +255,12 @@ func TestConfigGet_InvalidOutputRejectsBeforeLoad(t *testing.T) {
 func TestConfigSet_WritesToCommandOutput(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cmd := NewSetCmd(
-		func() (*config.Config, func(), error) { return cfg, func() {}, nil },
-		func(updated *config.Config) error {
+		func() (*config.Config, map[string]bool, func(), error) { return cfg, nil, func() {}, nil },
+		func(updated *config.Config, explicitKeys map[string]bool) error {
 			cfg = updated
+			if explicitKeys != nil {
+				t.Fatalf("expected nil explicit keys for unrelated set without loaded explicit keys, got %v", explicitKeys)
+			}
 			return nil
 		},
 	)
@@ -268,6 +271,92 @@ func TestConfigSet_WritesToCommandOutput(t *testing.T) {
 	}
 	if !strings.Contains(out, "Set agent.provider = openai") {
 		t.Fatalf("expected confirmation output, got %q", out)
+	}
+}
+
+func TestConfigSet_PreservesExistingExplicitKeys(t *testing.T) {
+	cfg := config.DefaultConfig()
+	loadedExplicit := map[string]bool{
+		"knowledge.enabled": true,
+	}
+	var savedExplicit map[string]bool
+
+	cmd := NewSetCmd(
+		func() (*config.Config, map[string]bool, func(), error) {
+			return cfg, loadedExplicit, func() {}, nil
+		},
+		func(updated *config.Config, explicitKeys map[string]bool) error {
+			cfg = updated
+			savedExplicit = explicitKeys
+			return nil
+		},
+	)
+
+	_, err := executeConfigCommand(t, cmd, "agent.provider", "openai")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Agent.Provider != "openai" {
+		t.Fatalf("expected agent.provider to be updated, got %q", cfg.Agent.Provider)
+	}
+	if !savedExplicit["knowledge.enabled"] {
+		t.Fatalf("expected saved explicit keys to preserve knowledge.enabled, got %v", savedExplicit)
+	}
+}
+
+func TestConfigSet_MarksContextRelatedPathExplicit(t *testing.T) {
+	cfg := config.DefaultConfig()
+	var savedExplicit map[string]bool
+
+	cmd := NewSetCmd(
+		func() (*config.Config, map[string]bool, func(), error) {
+			return cfg, nil, func() {}, nil
+		},
+		func(updated *config.Config, explicitKeys map[string]bool) error {
+			cfg = updated
+			savedExplicit = explicitKeys
+			return nil
+		},
+	)
+
+	_, err := executeConfigCommand(t, cmd, "knowledge.enabled", "false")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Knowledge.Enabled {
+		t.Fatal("expected knowledge.enabled to be false")
+	}
+	if !savedExplicit["knowledge.enabled"] {
+		t.Fatalf("expected knowledge.enabled to be marked explicit, got %v", savedExplicit)
+	}
+}
+
+func TestConfigSet_InvalidPathDoesNotMutateExplicitKeysOrSave(t *testing.T) {
+	cfg := config.DefaultConfig()
+	loadedExplicit := map[string]bool{
+		"knowledge.enabled": true,
+	}
+	saveCalled := false
+
+	cmd := NewSetCmd(
+		func() (*config.Config, map[string]bool, func(), error) {
+			return cfg, loadedExplicit, func() {}, nil
+		},
+		func(updated *config.Config, explicitKeys map[string]bool) error {
+			saveCalled = true
+			return nil
+		},
+	)
+
+	_, err := executeConfigCommand(t, cmd, "invalid.key", "value")
+	if err == nil {
+		t.Fatal("expected invalid path error")
+	}
+	if saveCalled {
+		t.Fatal("save must not be called after setConfigPath fails")
+	}
+	if _, ok := loadedExplicit["invalid.key"]; ok {
+		t.Fatalf("invalid path must not mutate loaded explicit keys: %v", loadedExplicit)
 	}
 }
 

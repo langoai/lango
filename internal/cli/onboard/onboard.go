@@ -24,6 +24,7 @@ const nonInteractiveOnboardError = "onboard requires an interactive terminal; " 
 var (
 	requireInteractiveTerminal = cliprompt.RequireInteractiveInput
 	runOnboardFn               = runOnboard
+	runOnboardWizard           = runOnboardWizardProgram
 	onboardBootResult          = cliboot.BootResult
 )
 
@@ -86,7 +87,7 @@ func runOnboard(out io.Writer, profileName, preset string) error {
 
 	ctx := context.Background()
 
-	initialCfg, isNew, err := loadOrDefault(ctx, boot.Storage.ConfigProfiles(), profileName, preset)
+	initialCfg, explicitKeys, isNew, err := loadOrDefault(ctx, boot.Storage.ConfigProfiles(), profileName, preset)
 	if err != nil {
 		return fmt.Errorf("load profile %q: %w", profileName, err)
 	}
@@ -97,15 +98,9 @@ func runOnboard(out io.Writer, profileName, preset string) error {
 		fmt.Fprintf(out, "\n  Using preset: %s\n\n", preset)
 	}
 
-	p := tea.NewProgram(NewWizard(initialCfg))
-	model, err := p.Run()
+	wizard, err := runOnboardWizard(initialCfg)
 	if err != nil {
 		return fmt.Errorf("onboard wizard: %w", err)
-	}
-
-	wizard, ok := model.(*Wizard)
-	if !ok {
-		return fmt.Errorf("unexpected model type")
 	}
 
 	if wizard.Cancelled {
@@ -118,8 +113,8 @@ func runOnboard(out io.Writer, profileName, preset string) error {
 	}
 
 	cfg := wizard.Config()
-	// Onboard wizard: all fields set during onboard are considered explicit.
-	if err := boot.Storage.ConfigProfiles().Save(ctx, profileName, cfg, nil); err != nil {
+	// Preserve explicit-key metadata loaded from an existing or preset-backed profile.
+	if err := boot.Storage.ConfigProfiles().Save(ctx, profileName, cfg, explicitKeys); err != nil {
 		return fmt.Errorf("save profile %q: %w", profileName, err)
 	}
 
@@ -134,18 +129,31 @@ func runOnboard(out io.Writer, profileName, preset string) error {
 	return nil
 }
 
-func loadOrDefault(ctx context.Context, store storage.ConfigProfileStore, name, preset string) (*config.Config, bool, error) {
-	cfg, _, err := store.Load(ctx, name)
+func runOnboardWizardProgram(initialCfg *config.Config) (*Wizard, error) {
+	p := tea.NewProgram(NewWizard(initialCfg))
+	model, err := p.Run()
+	if err != nil {
+		return nil, err
+	}
+	wizard, ok := model.(*Wizard)
+	if !ok {
+		return nil, fmt.Errorf("unexpected model type")
+	}
+	return wizard, nil
+}
+
+func loadOrDefault(ctx context.Context, store storage.ConfigProfileStore, name, preset string) (*config.Config, map[string]bool, bool, error) {
+	cfg, explicitKeys, err := store.Load(ctx, name)
 	if err == nil {
-		return cfg, false, nil
+		return cfg, explicitKeys, false, nil
 	}
 	if errors.Is(err, configstore.ErrProfileNotFound) {
 		if preset != "" {
-			return config.PresetConfig(preset), true, nil
+			return config.PresetConfig(preset), config.PresetExplicitKeys(preset), true, nil
 		}
-		return config.DefaultConfig(), true, nil
+		return config.DefaultConfig(), nil, true, nil
 	}
-	return nil, false, err
+	return nil, nil, false, err
 }
 
 func printNextSteps(out io.Writer, profileName string, cfg *config.Config) {
