@@ -77,3 +77,21 @@ func TestExtendableDeadline_StopCancelsContext(t *testing.T) {
 	ed.Stop()
 	assert.Error(t, ctx.Err(), "context should be canceled after Stop")
 }
+
+func TestExtendableDeadline_ParentCancelReportsCancelled(t *testing.T) {
+	t.Parallel()
+
+	parent, cancelParent := context.WithCancel(context.Background())
+	ctx, ed := NewExtendableDeadline(parent, 5*time.Second, 10*time.Second)
+	defer ed.Stop()
+
+	cancelParent()
+
+	select {
+	case <-ctx.Done():
+	case <-time.After(time.Second):
+		t.Fatal("expected parent cancellation to cancel derived context")
+	}
+
+	assert.Equal(t, "cancelled", string(ed.Reason()))
+}

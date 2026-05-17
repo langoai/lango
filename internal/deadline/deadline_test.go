@@ -96,6 +96,53 @@ func TestStop_CancelsContext(t *testing.T) {
 	assert.Equal(t, ReasonCancelled, ed.Reason())
 }
 
+func TestNew_ParentCancelReportsCancelled(t *testing.T) {
+	t.Parallel()
+
+	parent, cancelParent := context.WithCancel(context.Background())
+	ctx, ed := New(parent, 5*time.Second, 10*time.Second)
+	defer ed.Stop()
+
+	cancelParent()
+
+	require.ErrorIs(t, ctx.Err(), context.Canceled)
+	assert.Equal(t, ReasonCancelled, ed.Reason())
+
+	select {
+	case <-ctx.Done():
+	case <-time.After(time.Second):
+		t.Fatal("expected parent cancellation to cancel derived context")
+	}
+
+	assert.Equal(t, ReasonCancelled, ed.Reason())
+}
+
+func TestNew_ParentDeadlineSemanticsArePreserved(t *testing.T) {
+	t.Parallel()
+
+	parent, cancelParent := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancelParent()
+
+	parentDeadline, ok := parent.Deadline()
+	require.True(t, ok, "expected parent deadline")
+
+	ctx, ed := New(parent, 5*time.Second, 10*time.Second)
+	defer ed.Stop()
+
+	ctxDeadline, ok := ctx.Deadline()
+	require.True(t, ok, "expected derived context to preserve parent deadline")
+	assert.Equal(t, parentDeadline, ctxDeadline)
+
+	select {
+	case <-ctx.Done():
+	case <-time.After(time.Second):
+		t.Fatal("expected parent deadline to cancel derived context")
+	}
+
+	assert.ErrorIs(t, ctx.Err(), context.DeadlineExceeded)
+	assert.Equal(t, ReasonCancelled, ed.Reason())
+}
+
 func TestExtend_AfterDone_IsNoop(t *testing.T) {
 	t.Parallel()
 
