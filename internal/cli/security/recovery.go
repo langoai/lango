@@ -19,9 +19,10 @@ import (
 )
 
 var executeRecoverySetup = func(cmd *cobra.Command, bootLoader func() (*bootstrap.Result, error)) error {
-	if err := prompt.RequireInteractiveTerminal("recovery setup requires an interactive terminal"); err != nil {
+	if err := securityRequireInteractiveTerminal("recovery setup requires an interactive terminal"); err != nil {
 		return err
 	}
+	out := cmd.OutOrStdout()
 	boot, err := bootLoader()
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
@@ -40,7 +41,7 @@ var executeRecoverySetup = func(cmd *cobra.Command, bootLoader func() (*bootstra
 		return fmt.Errorf("recovery mnemonic slot already exists; remove it first")
 	}
 
-	currentPass, err := prompt.Passphrase("Enter current passphrase to authorize setup: ")
+	currentPass, err := securityPassphrase(out, "Enter current passphrase to authorize setup: ")
 	if err != nil {
 		return err
 	}
@@ -55,7 +56,6 @@ var executeRecoverySetup = func(cmd *cobra.Command, bootLoader func() (*bootstra
 		return fmt.Errorf("generate mnemonic: %w", err)
 	}
 
-	out := cmd.OutOrStdout()
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "============================================================")
 	fmt.Fprintln(out, "RECOVERY MNEMONIC — write this down and store securely")
@@ -95,9 +95,10 @@ var executeRecoverySetup = func(cmd *cobra.Command, bootLoader func() (*bootstra
 }
 
 var executeRecoveryRestore = func(cmd *cobra.Command, errWriter io.Writer) error {
-	if err := prompt.RequireInteractiveTerminal("recovery restore requires an interactive terminal"); err != nil {
+	if err := securityRequireInteractiveTerminal("recovery restore requires an interactive terminal"); err != nil {
 		return err
 	}
+	out := cmd.OutOrStdout()
 
 	langoDir := defaultLangoDir()
 	if langoDir == "" {
@@ -115,7 +116,7 @@ var executeRecoveryRestore = func(cmd *cobra.Command, errWriter io.Writer) error
 		return fmt.Errorf("no recovery mnemonic slot on this envelope")
 	}
 
-	mnemonic, err := prompt.Passphrase("Enter 24-word recovery mnemonic: ")
+	mnemonic, err := securityPassphrase(out, "Enter 24-word recovery mnemonic: ")
 	if err != nil {
 		return err
 	}
@@ -128,7 +129,11 @@ var executeRecoveryRestore = func(cmd *cobra.Command, errWriter io.Writer) error
 	}
 	defer security.ZeroBytes(mk)
 
-	newPass, err := prompt.PassphraseConfirm("Enter NEW passphrase: ", "Confirm NEW passphrase: ")
+	newPass, err := securityPassphraseConfirm(
+		out,
+		"Enter NEW passphrase: ",
+		"Confirm NEW passphrase: ",
+	)
 	if err != nil {
 		return err
 	}
@@ -147,7 +152,7 @@ var executeRecoveryRestore = func(cmd *cobra.Command, errWriter io.Writer) error
 			fmt.Fprintln(errWriter, "Keyfile updated with new passphrase.")
 		}
 	}
-	if secureProvider, _ := keyring.DetectSecureProvider(); secureProvider != nil {
+	if secureProvider, _ := detectSecureProvider(); secureProvider != nil {
 		if setErr := secureProvider.Set(keyring.Service, keyring.KeyMasterPassphrase, newPass); setErr != nil {
 			fmt.Fprintf(errWriter, "warning: keyring update failed: %v\n", setErr)
 			fmt.Fprintf(errWriter, "  If a stale passphrase is stored, next headless bootstrap may fail.\n")
@@ -157,7 +162,7 @@ var executeRecoveryRestore = func(cmd *cobra.Command, errWriter io.Writer) error
 		}
 	}
 
-	fmt.Fprintln(cmd.OutOrStdout(), "Recovery complete. The new passphrase is now active.")
+	fmt.Fprintln(out, "Recovery complete. The new passphrase is now active.")
 	return nil
 }
 

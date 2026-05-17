@@ -9,19 +9,22 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/langoai/lango/internal/bootstrap"
-	"github.com/langoai/lango/internal/cli/prompt"
 	"github.com/langoai/lango/internal/keyring"
 	"github.com/langoai/lango/internal/security"
 )
 
-var executeChangePassphrase = func(bootLoader func() (*bootstrap.Result, error), errWriter io.Writer) (string, error) {
+var executeChangePassphrase = func(
+	bootLoader func() (*bootstrap.Result, error),
+	outWriter io.Writer,
+	errWriter io.Writer,
+) (string, error) {
 	boot, err := bootLoader()
 	if err != nil {
 		return "", fmt.Errorf("load config: %w", err)
 	}
 	defer boot.Close()
 
-	if err := prompt.RequireInteractiveTerminal("this command requires an interactive terminal"); err != nil {
+	if err := securityRequireInteractiveTerminal("this command requires an interactive terminal"); err != nil {
 		return "", err
 	}
 
@@ -35,7 +38,7 @@ var executeChangePassphrase = func(bootLoader func() (*bootstrap.Result, error),
 			"Run `lango security migrate-passphrase` or upgrade the install first")
 	}
 
-	currentPass, err := prompt.Passphrase("Enter CURRENT passphrase: ")
+	currentPass, err := securityPassphrase(outWriter, "Enter CURRENT passphrase: ")
 	if err != nil {
 		return "", fmt.Errorf("read current passphrase: %w", err)
 	}
@@ -45,7 +48,11 @@ var executeChangePassphrase = func(bootLoader func() (*bootstrap.Result, error),
 	}
 	defer security.ZeroBytes(mk)
 
-	newPass, err := prompt.PassphraseConfirm("Enter NEW passphrase: ", "Confirm NEW passphrase: ")
+	newPass, err := securityPassphraseConfirm(
+		outWriter,
+		"Enter NEW passphrase: ",
+		"Confirm NEW passphrase: ",
+	)
 	if err != nil {
 		return "", err
 	}
@@ -69,7 +76,7 @@ var executeChangePassphrase = func(bootLoader func() (*bootstrap.Result, error),
 			fmt.Fprintln(errWriter, "Keyfile updated with new passphrase.")
 		}
 	}
-	if secureProvider, _ := keyring.DetectSecureProvider(); secureProvider != nil {
+	if secureProvider, _ := detectSecureProvider(); secureProvider != nil {
 		if setErr := secureProvider.Set(keyring.Service, keyring.KeyMasterPassphrase, newPass); setErr != nil {
 			fmt.Fprintf(errWriter, "warning: keyring update failed: %v\n", setErr)
 			fmt.Fprintf(errWriter, "  If a stale passphrase is stored, next headless bootstrap may fail.\n")
@@ -99,7 +106,11 @@ re-encrypted and no PRAGMA rekey is issued.
 
 Recovery mnemonic slots (if present) are unchanged.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			message, err := executeChangePassphrase(bootLoader, cmd.ErrOrStderr())
+			message, err := executeChangePassphrase(
+				bootLoader,
+				cmd.OutOrStdout(),
+				cmd.ErrOrStderr(),
+			)
 			if err != nil {
 				return err
 			}

@@ -109,6 +109,88 @@ func TestPassphraseIO_ReturnsPromptWriteError(t *testing.T) {
 	}
 }
 
+func TestPassphraseConfirmIO_RoutesBothPromptsToExplicitWriter(t *testing.T) {
+	origFD := passphraseInputFD
+	origRead := passphraseReadPassword
+	t.Cleanup(func() {
+		passphraseInputFD = origFD
+		passphraseReadPassword = origRead
+	})
+
+	var out bytes.Buffer
+	var calls int
+	passphraseInputFD = func() int { return 42 }
+	passphraseReadPassword = func(fd int) ([]byte, error) {
+		if fd != 42 {
+			t.Fatalf("unexpected fd: %d", fd)
+		}
+		calls++
+		return []byte("same-passphrase"), nil
+	}
+
+	got, err := PassphraseConfirmIO(&out, "Enter NEW passphrase: ", "Confirm NEW passphrase: ")
+
+	if err != nil {
+		t.Fatalf("PassphraseConfirmIO returned error: %v", err)
+	}
+	if got != "same-passphrase" {
+		t.Fatalf("expected same-passphrase, got %q", got)
+	}
+	if calls != 2 {
+		t.Fatalf("expected 2 password reads, got %d", calls)
+	}
+	if out.String() != "Enter NEW passphrase: \nConfirm NEW passphrase: \n" {
+		t.Fatalf("unexpected prompt output: %q", out.String())
+	}
+}
+
+func TestPassphraseConfirmIO_Mismatch(t *testing.T) {
+	origFD := passphraseInputFD
+	origRead := passphraseReadPassword
+	t.Cleanup(func() {
+		passphraseInputFD = origFD
+		passphraseReadPassword = origRead
+	})
+
+	var calls int
+	var out bytes.Buffer
+	passphraseInputFD = func() int { return 42 }
+	passphraseReadPassword = func(fd int) ([]byte, error) {
+		calls++
+		if calls == 1 {
+			return []byte("first"), nil
+		}
+		return []byte("second"), nil
+	}
+
+	_, err := PassphraseConfirmIO(&out, "Enter: ", "Confirm: ")
+
+	if err == nil {
+		t.Fatal("expected mismatch error")
+	}
+	if out.String() != "Enter: \nConfirm: \n" {
+		t.Fatalf("unexpected prompt output: %q", out.String())
+	}
+}
+
+func TestPassphraseConfirmIO_ReturnsPromptWriteError(t *testing.T) {
+	origRead := passphraseReadPassword
+	t.Cleanup(func() {
+		passphraseReadPassword = origRead
+	})
+
+	passphraseReadPassword = func(fd int) ([]byte, error) {
+		t.Fatal("password reader should not run when prompt write fails")
+		return nil, nil
+	}
+
+	_, err := PassphraseConfirmIO(failingWriter{}, "Enter: ", "Confirm: ")
+
+	if err == nil {
+		t.Fatal("expected prompt write error")
+	}
+}
+
 type failingWriter struct{}
 
 func (failingWriter) Write([]byte) (int, error) {

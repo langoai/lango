@@ -71,6 +71,30 @@ func executeSecurityCmdWithInput(t *testing.T, cmd *cobra.Command, input string,
 	return out.String(), errBuf.String(), err
 }
 
+func installSecurityPromptSeams(
+	t *testing.T,
+	passphraseFn func(io.Writer, string) (string, error),
+	confirmFn func(io.Writer, string, string) (string, error),
+) {
+	t.Helper()
+	origRequire := securityRequireInteractiveTerminal
+	origPassphrase := securityPassphrase
+	origConfirm := securityPassphraseConfirm
+	t.Cleanup(func() {
+		securityRequireInteractiveTerminal = origRequire
+		securityPassphrase = origPassphrase
+		securityPassphraseConfirm = origConfirm
+	})
+
+	securityRequireInteractiveTerminal = func(string) error { return nil }
+	if passphraseFn != nil {
+		securityPassphrase = passphraseFn
+	}
+	if confirmFn != nil {
+		securityPassphraseConfirm = confirmFn
+	}
+}
+
 func persistentSecurityBootLoader(t *testing.T, cfg *config.Config) func() (*bootstrap.Result, error) {
 	t.Helper()
 	return func() (*bootstrap.Result, error) {
@@ -78,11 +102,27 @@ func persistentSecurityBootLoader(t *testing.T, cfg *config.Config) func() (*boo
 		if err != nil {
 			return nil, err
 		}
-		facade := storage.NewFacade(nil, nil, storage.WithEntClient(store.Client()))
 		crypto := internalsecurity.NewLocalCryptoProvider()
-		if err := crypto.Initialize("test-passphrase"); err != nil {
+		salt := bytes.Repeat([]byte{1}, internalsecurity.SaltSize)
+		if err := crypto.InitializeWithSalt("test-passphrase", salt); err != nil {
+			_ = store.Close()
 			return nil, err
 		}
+		if err := store.SetSalt(internalsecurity.SecurityConfigDefault, salt); err != nil {
+			_ = store.Close()
+			return nil, err
+		}
+		checksum := crypto.CalculateChecksum("test-passphrase", salt)
+		if err := store.SetChecksum(internalsecurity.SecurityConfigDefault, checksum); err != nil {
+			_ = store.Close()
+			return nil, err
+		}
+		facade := storage.NewFacade(
+			nil,
+			nil,
+			storage.WithEntClient(store.Client()),
+			storage.WithSessionClient(store.Client()),
+		)
 		return &bootstrap.Result{
 			Config:  cfg,
 			Storage: facade,
@@ -230,7 +270,11 @@ func TestKeyringStatus_WritesJSONToCommandWriter(t *testing.T) {
 
 func TestChangePassphrase_WritesSuccessToCommandWriter(t *testing.T) {
 	original := executeChangePassphrase
-	executeChangePassphrase = func(_ func() (*bootstrap.Result, error), _ io.Writer) (string, error) {
+	executeChangePassphrase = func(
+		_ func() (*bootstrap.Result, error),
+		_ io.Writer,
+		_ io.Writer,
+	) (string, error) {
 		return "Passphrase changed. No data was re-encrypted.", nil
 	}
 	t.Cleanup(func() { executeChangePassphrase = original })
@@ -293,7 +337,11 @@ func TestRecoveryRestore_WritesSuccessToCommandWriter(t *testing.T) {
 
 func TestChangePassphrase_WritesWarningsToCommandErrorWriter(t *testing.T) {
 	original := executeChangePassphrase
-	executeChangePassphrase = func(_ func() (*bootstrap.Result, error), errWriter io.Writer) (string, error) {
+	executeChangePassphrase = func(
+		_ func() (*bootstrap.Result, error),
+		_ io.Writer,
+		errWriter io.Writer,
+	) (string, error) {
 		fmt.Fprintln(errWriter, "warning: keyring update failed: boom")
 		return "Passphrase changed. No data was re-encrypted.", nil
 	}
@@ -318,6 +366,167 @@ func TestRecoveryRestore_WritesWarningsToCommandErrorWriter(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, out, "Recovery complete. The new passphrase is now active.")
 	assert.Contains(t, errOut, "warning: update keyfile: boom")
+}
+
+func TestChangePassphrase_PromptsUseCommandWriter(t *testing.T) {
+	installSecurityPromptSeams(
+		t,
+		func(out io.Writer, promptText string) (string, error) {
+			fmt.Fprint(out, promptText)
+			return "old-passphrase-12345", nil
+		},
+		func(out io.Writer, promptText, confirmPrompt string) (string, error) {
+			fmt.Fprint(out, promptText)
+			fmt.Fprint(out, confirmPrompt)
+			return "new-passphrase-12345", nil
+		},
+	)
+	originalDetect := detectSecureProvider
+	detectSecureProvider = func() (keyring.Provider, keyring.SecurityTier) {
+		return nil, keyring.TierNone
+	}
+	t.Cleanup(func() { detectSecureProvider = originalDetect })
+
+	dir := t.TempDir()
+	provider := internalsecurity.NewLocalCryptoProvider()
+	env, err := provider.InitializeNewEnvelope("old-passphrase-12345")
+	require.NoError(t, err)
+	require.NoError(t, internalsecurity.StoreEnvelopeFile(dir, env))
+
+	cmd := newChangePassphraseCmd(func() (*bootstrap.Result, error) {
+		return &bootstrap.Result{
+			Crypto:   provider,
+			LangoDir: dir,
+		}, nil
+	})
+
+	out, err := executeSecurityCmd(t, cmd)
+
+	require.NoError(t, err)
+	assert.Contains(t, out, "Enter CURRENT passphrase: ")
+	assert.Contains(t, out, "Enter NEW passphrase: ")
+	assert.Contains(t, out, "Confirm NEW passphrase: ")
+	assert.Contains(t, out, "Passphrase changed. No data was re-encrypted.")
+}
+
+func TestMigratePassphrase_PromptsUseCommandWriter(t *testing.T) {
+	installSecurityPromptSeams(
+		t,
+		nil,
+		func(out io.Writer, promptText, confirmPrompt string) (string, error) {
+			fmt.Fprint(out, promptText)
+			fmt.Fprint(out, confirmPrompt)
+			return "new-passphrase-12345", nil
+		},
+	)
+
+	cfg := config.DefaultConfig()
+	cfg.Security.Signer.Provider = "local"
+	cfg.Session.DatabasePath = filepath.Join(t.TempDir(), "migrate-prompts.db")
+	cmd := newMigratePassphraseCmd(persistentSecurityBootLoader(t, cfg))
+
+	out, err := executeSecurityCmd(t, cmd)
+
+	require.NoError(t, err)
+	assert.Contains(t, out, "Enter NEW passphrase: ")
+	assert.Contains(t, out, "Confirm NEW passphrase: ")
+	assert.Contains(t, out, "Migration completed successfully!")
+}
+
+func TestKeyringStore_PassphrasePromptUsesCommandWriter(t *testing.T) {
+	installSecurityPromptSeams(
+		t,
+		func(out io.Writer, promptText string) (string, error) {
+			fmt.Fprint(out, promptText)
+			return "stored-passphrase", nil
+		},
+		nil,
+	)
+	originalDetect := detectSecureProvider
+	detectSecureProvider = func() (keyring.Provider, keyring.SecurityTier) {
+		return stubKeyCheckerProvider{hasKey: false}, keyring.TierBiometric
+	}
+	t.Cleanup(func() { detectSecureProvider = originalDetect })
+
+	cmd := newKeyringStoreCmd(func() (*bootstrap.Result, error) {
+		return &bootstrap.Result{}, nil
+	})
+
+	out, err := executeSecurityCmd(t, cmd)
+
+	require.NoError(t, err)
+	assert.Contains(t, out, "Enter passphrase to store: ")
+	assert.Contains(t, out, "Passphrase stored with biometric protection.")
+}
+
+func TestRecoverySetup_PassphrasePromptUsesCommandWriter(t *testing.T) {
+	installSecurityPromptSeams(
+		t,
+		func(out io.Writer, promptText string) (string, error) {
+			fmt.Fprint(out, promptText)
+			return "old-passphrase-12345", nil
+		},
+		nil,
+	)
+
+	provider := internalsecurity.NewLocalCryptoProvider()
+	_, err := provider.InitializeNewEnvelope("old-passphrase-12345")
+	require.NoError(t, err)
+	cmd := newRecoverySetupCmd(func() (*bootstrap.Result, error) {
+		return &bootstrap.Result{Crypto: provider}, nil
+	})
+
+	out, err := executeSecurityCmd(t, cmd)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "setup aborted")
+	assert.Contains(t, out, "Enter current passphrase to authorize setup: ")
+}
+
+func TestRecoveryRestore_PromptsUseCommandWriter(t *testing.T) {
+	mnemonic, err := internalsecurity.GenerateRecoveryMnemonic()
+	require.NoError(t, err)
+	installSecurityPromptSeams(
+		t,
+		func(out io.Writer, promptText string) (string, error) {
+			fmt.Fprint(out, promptText)
+			return mnemonic, nil
+		},
+		func(out io.Writer, promptText, confirmPrompt string) (string, error) {
+			fmt.Fprint(out, promptText)
+			fmt.Fprint(out, confirmPrompt)
+			return "new-passphrase-12345", nil
+		},
+	)
+	originalDetect := detectSecureProvider
+	detectSecureProvider = func() (keyring.Provider, keyring.SecurityTier) {
+		return nil, keyring.TierNone
+	}
+	t.Cleanup(func() { detectSecureProvider = originalDetect })
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	langoDir := filepath.Join(home, ".lango")
+	require.NoError(t, os.MkdirAll(langoDir, 0o700))
+	env, mk, err := internalsecurity.NewEnvelope("old-passphrase-12345")
+	require.NoError(t, err)
+	defer internalsecurity.ZeroBytes(mk)
+	require.NoError(t, env.AddSlot(
+		internalsecurity.KEKSlotMnemonic,
+		"recovery",
+		mk,
+		mnemonic,
+		internalsecurity.NewDefaultKDFParams(),
+	))
+	require.NoError(t, internalsecurity.StoreEnvelopeFile(langoDir, env))
+
+	out, err := executeSecurityCmd(t, newRecoveryRestoreCmd())
+
+	require.NoError(t, err)
+	assert.Contains(t, out, "Enter 24-word recovery mnemonic: ")
+	assert.Contains(t, out, "Enter NEW passphrase: ")
+	assert.Contains(t, out, "Confirm NEW passphrase: ")
+	assert.Contains(t, out, "Recovery complete. The new passphrase is now active.")
 }
 
 func TestSecurityStatus_NonInteractiveWarningUsesInjectedErrorWriter(t *testing.T) {

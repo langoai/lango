@@ -9,7 +9,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/langoai/lango/internal/bootstrap"
-	"github.com/langoai/lango/internal/cli/prompt"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/session"
 )
@@ -25,7 +24,7 @@ var executeMigratePassphrase = func(cmd *cobra.Command, bootLoader func() (*boot
 		return fmt.Errorf("this command is only available when using 'local' security provider")
 	}
 
-	if err := prompt.RequireInteractiveTerminal("this command requires an interactive terminal"); err != nil {
+	if err := securityRequireInteractiveTerminal("this command requires an interactive terminal"); err != nil {
 		return err
 	}
 
@@ -46,7 +45,11 @@ var executeMigratePassphrase = func(cmd *cobra.Command, bootLoader func() (*boot
 		return fmt.Errorf("bootstrap session store is not Ent-backed")
 	}
 
-	newPass, err := prompt.PassphraseConfirm("Enter NEW passphrase: ", "Confirm NEW passphrase: ")
+	newPass, err := securityPassphraseConfirm(
+		cmd.OutOrStdout(),
+		"Enter NEW passphrase: ",
+		"Confirm NEW passphrase: ",
+	)
 	if err != nil {
 		return err
 	}

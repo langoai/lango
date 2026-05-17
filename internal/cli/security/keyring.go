@@ -65,11 +65,11 @@ the passphrase to avoid exposing it to same-UID attacks via plain OS keyring.`,
 				}
 			}
 
-			if err := prompt.RequireInteractiveTerminal("this command requires an interactive terminal"); err != nil {
+			if err := securityRequireInteractiveTerminal("this command requires an interactive terminal"); err != nil {
 				return err
 			}
 
-			pass, err := prompt.Passphrase("Enter passphrase to store: ")
+			pass, err := securityPassphrase(cmd.OutOrStdout(), "Enter passphrase to store: ")
 			if err != nil {
 				return fmt.Errorf("read passphrase: %w", err)
 			}

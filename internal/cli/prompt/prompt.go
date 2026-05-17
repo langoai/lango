@@ -108,12 +108,18 @@ func ReadLineIO(in io.Reader, out io.Writer, prompt string) (string, error) {
 
 // PassphraseConfirm prompts for a passphrase and its confirmation
 func PassphraseConfirm(prompt, confirmPrompt string) (string, error) {
-	pass1, err := Passphrase(prompt)
+	return PassphraseConfirmIO(passphraseOutput, prompt, confirmPrompt)
+}
+
+// PassphraseConfirmIO prompts for a passphrase and its confirmation, routing
+// visible prompt text through the supplied writer.
+func PassphraseConfirmIO(out io.Writer, prompt, confirmPrompt string) (string, error) {
+	pass1, err := PassphraseIO(out, prompt)
 	if err != nil {
 		return "", err
 	}
 
-	pass2, err := Passphrase(confirmPrompt)
+	pass2, err := PassphraseIO(out, confirmPrompt)
 	if err != nil {
 		return "", err
 	}
