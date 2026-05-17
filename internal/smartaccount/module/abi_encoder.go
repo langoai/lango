@@ -20,11 +20,7 @@ var uninstallModuleSelector = crypto.Keccak256(
 )[:4]
 
 // moduleABIArgs defines the ABI argument types for module install/uninstall.
-var moduleABIArgs = abi.Arguments{
-	{Type: mustType("uint256")},
-	{Type: mustType("address")},
-	{Type: mustType("bytes")},
-}
+var moduleABIArgs, moduleABIArgsErr = newModuleABIArgs()
 
 // EncodeInstallModule encodes the ERC-7579 installModule call.
 //
@@ -32,6 +28,10 @@ var moduleABIArgs = abi.Arguments{
 func EncodeInstallModule(
 	moduleType uint8, moduleAddr common.Address, initData []byte,
 ) ([]byte, error) {
+	if moduleABIArgsErr != nil {
+		return nil, fmt.Errorf("initialize module ABI arguments: %w", moduleABIArgsErr)
+	}
+
 	packed, err := moduleABIArgs.Pack(
 		new(big.Int).SetUint64(uint64(moduleType)),
 		moduleAddr,
@@ -49,6 +49,10 @@ func EncodeInstallModule(
 func EncodeUninstallModule(
 	moduleType uint8, moduleAddr common.Address, deInitData []byte,
 ) ([]byte, error) {
+	if moduleABIArgsErr != nil {
+		return nil, fmt.Errorf("initialize module ABI arguments: %w", moduleABIArgsErr)
+	}
+
 	packed, err := moduleABIArgs.Pack(
 		new(big.Int).SetUint64(uint64(moduleType)),
 		moduleAddr,
@@ -60,11 +64,15 @@ func EncodeUninstallModule(
 	return append(uninstallModuleSelector, packed...), nil
 }
 
-// mustType creates an ABI type or panics (safe for package init).
-func mustType(t string) abi.Type {
-	typ, err := abi.NewType(t, "", nil)
-	if err != nil {
-		panic(fmt.Sprintf("invalid ABI type %q: %v", t, err))
+func newModuleABIArgs() (abi.Arguments, error) {
+	names := []string{"uint256", "address", "bytes"}
+	args := make(abi.Arguments, 0, len(names))
+	for _, name := range names {
+		typ, err := abi.NewType(name, "", nil)
+		if err != nil {
+			return nil, fmt.Errorf("create ABI type %q: %w", name, err)
+		}
+		args = append(args, abi.Argument{Type: typ})
 	}
-	return typ
+	return args, nil
 }
