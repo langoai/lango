@@ -34,6 +34,7 @@ import (
 	"github.com/langoai/lango/internal/cron"
 	"github.com/langoai/lango/internal/librarian"
 	"github.com/langoai/lango/internal/logging"
+	"github.com/langoai/lango/internal/mcp"
 	"github.com/langoai/lango/internal/mission"
 	"github.com/langoai/lango/internal/postadjudicationstatus"
 	"github.com/langoai/lango/internal/proposal"
@@ -217,6 +218,28 @@ func TestRunCockpitBuildDepsCarriesMissionService(t *testing.T) {
 	assert.Same(t, collabRuntime, deps.CollabRuntime)
 	assert.Same(t, learning, deps.LearningBuffer)
 	assert.Same(t, activity, deps.ActivityBuffer)
+}
+
+func TestBuildMissionControlDepsCarriesChatRuntimeFeatures(t *testing.T) {
+	t.Parallel()
+
+	application := &app.App{
+		MCPManager: mcp.NewServerManager(config.MCPConfig{}),
+	}
+	deps := buildMissionControlDeps(
+		application,
+		&config.Config{},
+		"",
+		"sess-1",
+		nil,
+		"",
+		nil,
+		cockpit.NewPendingApprovalRegistry(),
+		cockpit.NewLearningSuggestionBuffer(nil),
+		cockpit.NewMissionActivityBuffer(),
+	)
+
+	assert.True(t, deps.RuntimeFeatures.MCPActive)
 }
 
 func TestRegisterCockpitPages_AlwaysRegistersStatusAndSettings(t *testing.T) {

@@ -166,11 +166,25 @@ func cmdStatus(m *ChatModel, _ string) tea.Cmd {
 		{"Graph", cfg.Graph.Enabled, "active"},
 		{"Obs. Memory", cfg.ObservationalMemory.Enabled, "active"},
 	}
+	if cfg.MCP.Enabled {
+		if m.runtimeFeatures.MCPActive {
+			activeFeatures = append(activeFeatures, feature{
+				name:    "MCP",
+				cfgOn:   true,
+				runtime: formatActiveMCPRuntime(m.runtimeFeatures),
+			})
+		} else {
+			activeFeatures = append(activeFeatures, feature{
+				name:    "MCP",
+				cfgOn:   true,
+				runtime: "configured but no active MCP runtime",
+			})
+		}
+	}
 
 	tuiInactive := []feature{
 		{"Gateway", cfg.Server.HTTPEnabled, "configured but not active in TUI mode"},
 		{"Cron", cfg.Cron.Enabled, "configured but not active in TUI mode"},
-		{"MCP", cfg.MCP.Enabled, "configured but not active in TUI mode"},
 		{"P2P", cfg.P2P.Enabled, "configured but not active in TUI mode"},
 		{"Payment", cfg.Payment.Enabled, "configured but not active in TUI mode"},
 	}
@@ -193,6 +207,17 @@ func cmdStatus(m *ChatModel, _ string) tea.Cmd {
 	return func() tea.Msg {
 		return SystemMsg{Text: b.String()}
 	}
+}
+
+func formatActiveMCPRuntime(runtime RuntimeFeatures) string {
+	parts := []string{"active in TUI mode"}
+	if runtime.MCPServerCount > 0 {
+		parts = append(parts, fmt.Sprintf("%d servers", runtime.MCPServerCount))
+	}
+	if runtime.MCPToolCount > 0 {
+		parts = append(parts, fmt.Sprintf("%d tools", runtime.MCPToolCount))
+	}
+	return strings.Join(parts, ", ")
 }
 
 func cmdExit(_ *ChatModel, _ string) tea.Cmd {

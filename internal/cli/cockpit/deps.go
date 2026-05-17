@@ -9,6 +9,7 @@ import (
 	"github.com/langoai/lango/internal/agentrt"
 	"github.com/langoai/lango/internal/approval"
 	"github.com/langoai/lango/internal/background"
+	"github.com/langoai/lango/internal/cli/chat"
 	"github.com/langoai/lango/internal/collabview"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/cron"
@@ -102,7 +103,8 @@ type Deps struct {
 	MetricsCollector   *observability.MetricsCollector
 	ConfigStore        storage.ConfigProfileStore
 	ProfileName        string
-	BackgroundManager  *background.Manager    // optional, nil when unavailable
+	BackgroundManager  *background.Manager // optional, nil when unavailable
+	RuntimeFeatures    chat.RuntimeFeatures
 	RunLedgerStore     RunLedgerReader        // optional, nil when unavailable
 	AgentRunStore      AgentRunReader         // optional, nil when unavailable
 	EventBus           *eventbus.Bus          // optional, enables channel event subscription

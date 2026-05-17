@@ -9,7 +9,7 @@ Startup notices such as the banner, log path, and initialization line are writte
 $ lango
 ```
 
-TUI mode does not start the full live network and automation runtime by default. Gateway, live channels, cron, and P2P are not brought up as they are under `lango serve`, while other integrations such as configured MCP servers may still initialize through the local interactive bootstrap path.
+TUI mode does not start the full live network and automation runtime by default. Gateway, live channels, cron, and P2P are not brought up as they are under `lango serve`, while other integrations such as configured MCP servers may still initialize through the local interactive bootstrap path. The `/status` slash command reflects that distinction: MCP is shown as active when the local interactive bootstrap initialized MCP, while configured-only MCP is shown separately from active runtime features.
 
 If the active profile is still incomplete, the workbench empty state points you to `lango onboard`, `lango settings`, and `lango doctor` before you start chatting into a nonfunctional setup.
 Once the profile is ready, the empty state switches to starter prompts and binds them to `1`, `2`, and `3`.

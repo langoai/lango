@@ -67,6 +67,15 @@ The TUI SHALL support slash commands: `/help`, `/clear`, `/new`, `/model`, `/sta
 - **WHEN** the user types `/cost` after turns have occurred
 - **THEN** the TUI SHALL print cumulative input tokens, output tokens, and estimated cost
 
+#### Scenario: /status reports active local MCP runtime
+- **WHEN** the chat model is constructed with MCP configured and an active MCP runtime snapshot
+- **THEN** `/status` SHALL report MCP as active in TUI mode
+- **AND** it SHALL NOT report MCP as configured but not active in TUI mode
+
+#### Scenario: /status keeps configured-only MCP distinct
+- **WHEN** the chat model is constructed with MCP configured but no active MCP runtime snapshot
+- **THEN** `/status` SHALL report MCP as configured without an active MCP runtime
+
 ### Requirement: Chat history scrolling
 Chat history SHALL be scrollable via PgUp/PgDn keys.
 
@@ -241,4 +250,3 @@ When the chat model is mounted inside cockpit, pending approval ownership SHALL 
 #### Scenario: Standalone chat keeps direct approval ownership
 - **WHEN** ChatModel runs through `lango chat` outside cockpit
 - **THEN** it SHALL continue to own and resolve approvals through its direct interactive path
-

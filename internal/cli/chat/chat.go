@@ -31,9 +31,18 @@ type Deps struct {
 	SessionStore      session.Store       // optional; used by /mode to persist the session's mode
 	EventBus          *eventbus.Bus       // optional; used by /mode to publish ModeChangedEvent
 	BackgroundManager *background.Manager // optional, nil when background tasks unavailable
+	RuntimeFeatures   RuntimeFeatures
 	SharedPending     PendingApprovalStore
 	OnUserSubmission  func(sessionKey, input string)
 	OnTurnSummary     func(sessionKey string, msg TurnTokenUsageMsg)
+}
+
+// RuntimeFeatures is a UI-facing snapshot of components that local chat may
+// initialize even when their lifecycle components are not started.
+type RuntimeFeatures struct {
+	MCPActive      bool
+	MCPServerCount int
+	MCPToolCount   int
 }
 
 // PendingApprovalStore abstracts shared pending approval ownership for cockpit
@@ -81,9 +90,10 @@ type ChatModel struct {
 
 	program *tea.Program
 
-	bgManager *background.Manager
-	taskStrip taskStripModel
-	pending   pendingIndicator
+	bgManager       *background.Manager
+	runtimeFeatures RuntimeFeatures
+	taskStrip       taskStripModel
+	pending         pendingIndicator
 
 	lastCtrlC time.Time
 
@@ -117,6 +127,7 @@ func New(deps Deps) *ChatModel {
 		sessionStore:     deps.SessionStore,
 		eventBus:         deps.EventBus,
 		bgManager:        deps.BackgroundManager,
+		runtimeFeatures:  deps.RuntimeFeatures,
 		taskStrip:        newTaskStripModel(deps.BackgroundManager),
 		input:            newInputModel(),
 		chatView:         newChatViewModel(80, 20),

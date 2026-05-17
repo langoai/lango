@@ -60,6 +60,7 @@ func New(deps Deps) *Model {
 		SessionStore:      deps.SessionStore,
 		EventBus:          deps.EventBus,
 		BackgroundManager: deps.BackgroundManager,
+		RuntimeFeatures:   deps.RuntimeFeatures,
 		SharedPending:     deps.PendingApprovals,
 		OnUserSubmission: func(sessionKey, input string) {
 			if deps.ActivityBuffer != nil {

@@ -43,6 +43,32 @@ func TestCLIIndexIncludesCoreAndStatusSections(t *testing.T) {
 	}
 }
 
+func TestCoreDocsDescribeTUIRuntimeMCPStatus(t *testing.T) {
+	t.Parallel()
+
+	repoRoot := cliIndexCoreStatusDocsGuardRepoRoot(t)
+	target := filepath.Join(repoRoot, "docs", "cli", "core.md")
+
+	data, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatalf("read %s: %v", target, err)
+	}
+	text := string(data)
+
+	requiredSnippets := []string{
+		"configured MCP servers may still initialize through the local interactive bootstrap path",
+		"The `/status` slash command reflects that distinction",
+		"MCP is shown as active when the local interactive bootstrap initialized MCP",
+		"configured-only MCP is shown separately from active runtime features",
+	}
+
+	for _, snippet := range requiredSnippets {
+		if !strings.Contains(text, snippet) {
+			t.Fatalf("%s is missing required TUI MCP status doc snippet %q", target, snippet)
+		}
+	}
+}
+
 func cliIndexCoreStatusDocsGuardRepoRoot(t *testing.T) string {
 	t.Helper()
 

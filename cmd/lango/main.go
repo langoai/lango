@@ -413,11 +413,12 @@ func runChat(initialMode string) error {
 	}
 
 	model := chat.New(chat.Deps{
-		TurnRunner:   application.TurnRunner,
-		Config:       cfg,
-		SessionKey:   sessionKey,
-		SessionStore: application.Store,
-		EventBus:     application.EventBus,
+		TurnRunner:      application.TurnRunner,
+		Config:          cfg,
+		SessionKey:      sessionKey,
+		SessionStore:    application.Store,
+		EventBus:        application.EventBus,
+		RuntimeFeatures: chatRuntimeFeatures(application),
 	})
 
 	// Hard session end: reads model.SessionKey() so /clear key changes
@@ -737,6 +738,7 @@ func buildMissionControlDeps(
 		ProfileName:        profileName,
 		BackgroundManager:  application.BackgroundManager,
 		EventBus:           application.EventBus,
+		RuntimeFeatures:    chatRuntimeFeatures(application),
 		ApprovalHistory:    application.ApprovalHistory,
 		GrantStore:         application.GrantStore,
 		MissionReader:      application.MissionStore,
@@ -755,6 +757,17 @@ func buildMissionControlDeps(
 		ActivityBuffer:     activityBuffer,
 		RunLedgerStore:     application.RunLedgerStore,
 		AgentRunStore:      application.AgentRunStore,
+	}
+}
+
+func chatRuntimeFeatures(application *app.App) chat.RuntimeFeatures {
+	if application == nil || application.MCPManager == nil {
+		return chat.RuntimeFeatures{}
+	}
+	return chat.RuntimeFeatures{
+		MCPActive:      true,
+		MCPServerCount: application.MCPManager.ServerCount(),
+		MCPToolCount:   len(application.MCPManager.AllTools()),
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -82,6 +83,16 @@ func newTestModelWithSharedPending(shared PendingApprovalStore) *ChatModel {
 	return m
 }
 
+func runStatusCommandText(t *testing.T, m *ChatModel) string {
+	t.Helper()
+	cmd := cmdStatus(m, "")
+	require.NotNil(t, cmd)
+	msg := cmd()
+	sys, ok := msg.(SystemMsg)
+	require.True(t, ok, "expected SystemMsg, got %T", msg)
+	return sys.Text
+}
+
 func TestDoneMsg_StreamSuccess(t *testing.T) {
 	m := newTestModel()
 	m.chatView.appendChunk("streamed ")
@@ -102,6 +113,35 @@ func TestDoneMsg_StreamSuccess(t *testing.T) {
 	if m.state != stateIdle {
 		t.Fatalf("want stateIdle, got %v", m.state)
 	}
+}
+
+func TestStatusCommandReportsActiveMCPRuntime(t *testing.T) {
+	m := newTestModel()
+	m.cfg.MCP.Enabled = true
+	m.runtimeFeatures = RuntimeFeatures{
+		MCPActive:      true,
+		MCPServerCount: 2,
+		MCPToolCount:   5,
+	}
+
+	out := ansi.Strip(runStatusCommandText(t, m))
+
+	assert.Contains(t, out, "MCP")
+	assert.Contains(t, out, "active in TUI mode")
+	assert.Contains(t, out, "2 servers")
+	assert.Contains(t, out, "5 tools")
+	assert.NotContains(t, out, "MCP configured but not active in TUI mode")
+}
+
+func TestStatusCommandKeepsConfiguredOnlyMCPDistinct(t *testing.T) {
+	m := newTestModel()
+	m.cfg.MCP.Enabled = true
+
+	out := ansi.Strip(runStatusCommandText(t, m))
+
+	assert.Contains(t, out, "MCP")
+	assert.Contains(t, out, "configured but no active MCP runtime")
+	assert.NotContains(t, out, "active in TUI mode")
 }
 
 func TestDoneMsg_NonStreamingResponseText(t *testing.T) {
