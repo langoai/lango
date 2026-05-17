@@ -2,6 +2,9 @@ package app
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -19,6 +22,7 @@ import (
 	"github.com/langoai/lango/internal/ctxkeys"
 	entmissionstatehistory "github.com/langoai/lango/internal/ent/missionstatehistory"
 	"github.com/langoai/lango/internal/eventbus"
+	internalextension "github.com/langoai/lango/internal/extension"
 	"github.com/langoai/lango/internal/mission"
 	"github.com/langoai/lango/internal/proposal"
 	"github.com/langoai/lango/internal/runledger"
@@ -221,6 +225,35 @@ func TestIntelligenceModule_AlwaysEnabled(t *testing.T) {
 	assert.True(t, m.Enabled())
 }
 
+func TestIntelligenceModuleInit_ExtSkillCollisionIsFatal(t *testing.T) {
+	t.Parallel()
+
+	tmp := t.TempDir()
+	extensionsDir := filepath.Join(tmp, "extensions")
+	skillsDir := filepath.Join(tmp, "skills")
+	writeInstalledExtensionPack(t, extensionsDir, "pack-a", "foo")
+	writeInstalledExtensionPack(t, extensionsDir, "pack-b", "foo")
+	writeExtensionSkill(t, filepath.Join(skillsDir, "ext-pack-a"), "foo")
+	writeExtensionSkill(t, filepath.Join(skillsDir, "ext-pack-b"), "foo")
+
+	extReg, err := internalextension.LoadRegistry(extensionsDir, false)
+	require.NoError(t, err)
+	require.Len(t, extReg.OKPacks(), 2)
+
+	cfg := config.DefaultConfig()
+	cfg.Skill.SkillsDir = skillsDir
+	mod := &intelligenceModule{cfg: cfg, extReg: extReg}
+
+	_, err = mod.Init(context.Background(), staticResolver{
+		appinit.ProvidesSupervisor: &foundationValues{},
+	})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "foo")
+	assert.Contains(t, err.Error(), "pack-a")
+	assert.Contains(t, err.Error(), "pack-b")
+}
+
 func TestIntelligenceModule_BuildRegistersReceiptsToolWhenKnowledgeEnabled(t *testing.T) {
 	t.Parallel()
 
@@ -246,6 +279,47 @@ func TestIntelligenceModule_BuildRegistersReceiptsToolWhenKnowledgeEnabled(t *te
 	tool := findTool(result.Tools, "create_dispute_ready_receipt")
 	require.NotNil(t, tool)
 	assert.Equal(t, "knowledge", tool.Capability.Category)
+}
+
+func writeInstalledExtensionPack(t *testing.T, extensionsDir, packName, skillName string) {
+	t.Helper()
+
+	packDir := filepath.Join(extensionsDir, packName)
+	skillRel := filepath.ToSlash(filepath.Join("skills", skillName, "SKILL.md"))
+	manifest := "schema: lango.extension/v1\n" +
+		"name: " + packName + "\n" +
+		"version: 0.1.0\n" +
+		"description: Test extension pack\n" +
+		"contents:\n" +
+		"  skills:\n" +
+		"    - name: " + skillName + "\n" +
+		"      path: " + skillRel + "\n"
+	skillMD := []byte("---\nname: " + skillName + "\ndescription: Test skill\nstatus: active\n---\nBody.\n")
+	require.NoError(t, os.MkdirAll(filepath.Join(packDir, "skills", skillName), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(packDir, "extension.yaml"), []byte(manifest), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(packDir, filepath.FromSlash(skillRel)), skillMD, 0o644))
+
+	manifestSum := sha256.Sum256([]byte(manifest))
+	skillSum := sha256.Sum256(skillMD)
+	meta := internalextension.InstalledMeta{
+		Name:           packName,
+		Version:        "0.1.0",
+		ManifestSHA256: hex.EncodeToString(manifestSum[:]),
+		FileHashes: map[string]string{
+			skillRel: hex.EncodeToString(skillSum[:]),
+		},
+	}
+	data, err := json.Marshal(meta)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(packDir, ".installed"), data, 0o644))
+}
+
+func writeExtensionSkill(t *testing.T, root, name string) {
+	t.Helper()
+
+	dir := filepath.Join(root, name)
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("---\nname: "+name+"\ndescription: Test skill\nstatus: active\n---\nBody.\n"), 0o644))
 }
 
 func TestModuleBuild_WithEconomyEscrow_RegistersExecuteEscrowRecommendationTool(t *testing.T) {

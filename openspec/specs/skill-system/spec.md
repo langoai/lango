@@ -320,6 +320,12 @@ When two extension packs have each written a skill with the same name into their
 - **THEN** registry construction SHALL return an error naming both pack prefixes and the skill name `foo`
 - **AND** the caller (startup wiring) SHALL surface this as a fatal error so the user must resolve it before the app proceeds
 
+#### Scenario: App startup fails on extension skill collision
+- **WHEN** the app intelligence module loads an extension registry with two healthy packs that both provide active skill `foo`
+- **THEN** startup SHALL return an error
+- **AND** the error SHALL include the colliding skill name
+- **AND** the error SHALL include both source pack names
+
 ### Requirement: Skill source attribution (additive field)
 `SkillEntry` SHALL gain an optional `SourcePack string` field carrying the pack name for extension-authored skills. For user-authored or built-in skills, `SourcePack` SHALL be empty. The field SHALL marshal with `omitempty` in JSON and SHALL NOT alter the existing SKILL.md on-disk format.
 
@@ -330,4 +336,3 @@ When two extension packs have each written a skill with the same name into their
 #### Scenario: User skill has empty source
 - **WHEN** a skill is loaded from `<skillsDir>/my-skill/SKILL.md`
 - **THEN** the returned `SkillEntry.SourcePack` SHALL be the empty string
-

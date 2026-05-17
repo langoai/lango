@@ -193,10 +193,10 @@ func bulkIndexLearnings(ctx context.Context, db *sql.DB, idx *search.FTS5Index) 
 }
 
 // initSkills creates the file-based skill registry.
-func initSkills(cfg *config.Config, baseTools []*agent.Tool, bus *eventbus.Bus, extReg *extension.Registry) *skill.Registry {
+func initSkills(cfg *config.Config, baseTools []*agent.Tool, bus *eventbus.Bus, extReg *extension.Registry) (*skill.Registry, error) {
 	if !cfg.Skill.Enabled {
 		logger().Info("skill system disabled")
-		return nil
+		return nil, nil
 	}
 
 	dir := cfg.Skill.SkillsDir
@@ -254,11 +254,11 @@ func initSkills(cfg *config.Config, baseTools []*agent.Tool, bus *eventbus.Bus, 
 
 	ctx := context.Background()
 	if err := registry.LoadSkills(ctx); err != nil {
-		sLogger.Warnw("load skills error", "error", err)
+		return nil, fmt.Errorf("load skills: %w", err)
 	}
 
 	sLogger.Infow("skill system initialized", "dir", dir)
-	return registry
+	return registry, nil
 }
 
 // initConversationAnalysis creates the conversation analysis pipeline if both

@@ -338,7 +338,10 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 	if bt := r.Resolve(appinit.ProvidesBaseTools); bt != nil {
 		baseToolSlice, _ = bt.([]*agent.Tool)
 	}
-	skillReg := initSkills(cfg, baseToolSlice, m.bus, m.extReg)
+	skillReg, err := initSkills(cfg, baseToolSlice, m.bus, m.extReg)
+	if err != nil {
+		return nil, err
+	}
 	if skillReg != nil {
 		tools = append(tools, skillReg.LoadedSkills()...)
 	}
