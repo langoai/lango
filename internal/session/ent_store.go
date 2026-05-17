@@ -707,8 +707,12 @@ func (s *EntStore) MigrateSecrets(ctx context.Context, reencryptFn func([]byte) 
 	}
 	defer func() {
 		if r := recover(); r != nil {
-			_ = tx.Rollback()
-			panic(r)
+			if rollbackErr := tx.Rollback(); rollbackErr != nil {
+				err = fmt.Errorf("migrate secrets panic: %v (rollback: %w)", r, rollbackErr)
+				return
+			}
+			err = fmt.Errorf("migrate secrets panic: %v", r)
+			return
 		}
 		if err != nil {
 			_ = tx.Rollback()

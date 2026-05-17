@@ -218,6 +218,16 @@ Session message persistence MUST store original content and sensitive tool-call 
 - **WHEN** a message with tool calls is persisted
 - **THEN** the plaintext `tool_calls` JSON stores only `id`, `name`, and `thought_signature`
 - **AND** `input`, `output`, and `thought` are not stored in plaintext
+
+### Requirement: Secret migration panic recovery
+
+The session store SHALL treat recovered panics during `MigrateSecrets` as migration failures rather than rethrowing them.
+
+#### Scenario: Panic during secret re-encryption returns error
+- **WHEN** a secret re-encryption callback panics while `MigrateSecrets` is running
+- **THEN** `MigrateSecrets` SHALL rollback the transaction
+- **AND** it SHALL return a non-nil error
+- **AND** it SHALL NOT panic
 - **AND** the original tool-call payloads are stored in ciphertext fields
 
 #### Scenario: Session reload decrypts protected payloads
@@ -241,4 +251,3 @@ Compaction-generated summary messages MUST follow the same payload-protection ru
 - **WHEN** session compaction rewrites earlier messages into a summary message
 - **THEN** the original summary text is stored as ciphertext
 - **AND** the plaintext column stores only a redacted projection
-

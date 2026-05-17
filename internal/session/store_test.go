@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/langoai/lango/internal/ent/secret"
 	"github.com/langoai/lango/internal/security"
 	"github.com/stretchr/testify/require"
 )
@@ -103,6 +104,51 @@ func TestNewEntStore_IgnoresDeprecatedPassphraseOptionForPlaintextDB(t *testing.
 	got, err := store.Get("sess-passphrase-ignored")
 	require.NoError(t, err)
 	require.Equal(t, "gpt-4", got.Model)
+}
+
+func TestEntStore_MigrateSecrets_ReturnsErrorOnPanicAndRollsBack(t *testing.T) {
+	store := newTestEntStore(t)
+	ctx := context.Background()
+
+	key, err := store.client.Key.Create().
+		SetName("migration-key").
+		SetRemoteKeyID("local").
+		SetType("encryption").
+		Save(ctx)
+	require.NoError(t, err)
+	_, err = store.client.Secret.Create().
+		SetName("first").
+		SetEncryptedValue([]byte("first-old")).
+		SetKey(key).
+		Save(ctx)
+	require.NoError(t, err)
+	_, err = store.client.Secret.Create().
+		SetName("second").
+		SetEncryptedValue([]byte("second-old")).
+		SetKey(key).
+		Save(ctx)
+	require.NoError(t, err)
+
+	calls := 0
+	var gotErr error
+	require.NotPanics(t, func() {
+		gotErr = store.MigrateSecrets(ctx, func(ciphertext []byte) ([]byte, error) {
+			calls++
+			if calls == 2 {
+				panic("reencrypt exploded")
+			}
+			return append([]byte("new:"), ciphertext...), nil
+		}, []byte("new-salt"), []byte("new-checksum"))
+	})
+	require.Error(t, gotErr)
+	require.Contains(t, gotErr.Error(), "migrate secrets panic")
+
+	first, err := store.client.Secret.Query().Where(secret.Name("first")).Only(ctx)
+	require.NoError(t, err)
+	require.Equal(t, []byte("first-old"), first.EncryptedValue)
+	second, err := store.client.Secret.Query().Where(secret.Name("second")).Only(ctx)
+	require.NoError(t, err)
+	require.Equal(t, []byte("second-old"), second.EncryptedValue)
 }
 
 func TestEntStore_Update(t *testing.T) {

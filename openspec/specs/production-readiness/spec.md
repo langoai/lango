@@ -794,3 +794,13 @@ The `internal/smartaccount/module` package SHALL NOT contain production `panic` 
 - **WHEN** the module ABI encoder initializes deterministic ERC-7579 argument definitions
 - **THEN** initialization failures SHALL be represented as returned encoder errors
 - **AND** successful install/uninstall calldata encoding SHALL preserve existing selectors and layout
+
+### Requirement: Session secret migration reports panics as errors
+
+Session secret migration SHALL preserve rollback behavior and return actionable errors when migration callbacks panic instead of re-panicking into CLI callers.
+
+#### Scenario: Re-encryption callback panic fails closed
+- **WHEN** `session.EntStore.MigrateSecrets` is called and its re-encryption callback panics
+- **THEN** the active transaction SHALL be rolled back
+- **AND** the method SHALL return an error identifying the secret migration panic
+- **AND** callers such as `lango security migrate-passphrase` SHALL receive the error through the normal migration failure path rather than a process panic
