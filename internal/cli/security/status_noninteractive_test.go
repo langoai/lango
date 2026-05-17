@@ -1,6 +1,7 @@
 package security
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -62,7 +63,7 @@ func TestReadDBStatusNonInteractive_NoKeyfileNoKeyring(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "nonexistent.db")
 
-	got := readDBStatusNonInteractive(dir, dbPath, nil, false)
+	got := readDBStatusNonInteractive(dir, dbPath, nil, false, io.Discard)
 	assert.False(t, got.available)
 	assert.Equal(t, 0, got.encryptionKeys)
 	assert.Equal(t, 0, got.storedSecrets)

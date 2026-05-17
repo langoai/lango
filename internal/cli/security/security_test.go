@@ -617,26 +617,185 @@ func TestRecoveryRestore_PromptsUseCommandWriter(t *testing.T) {
 
 func TestSecurityStatus_NonInteractiveWarningUsesInjectedErrorWriter(t *testing.T) {
 	origAcquire := acquireNonInteractivePassphrase
-	origWriter := statusErrWriter
 	t.Cleanup(func() {
 		acquireNonInteractivePassphrase = origAcquire
-		statusErrWriter = origWriter
 	})
 
 	acquireNonInteractivePassphrase = func(opts passphrase.Options) (string, passphrase.Source, error) {
 		return "", 0, assert.AnError
 	}
 	var errBuf bytes.Buffer
-	statusErrWriter = &errBuf
 
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "status.db")
 	require.NoError(t, os.WriteFile(dbPath, []byte{}, 0o600))
 	env, _, err := internalsecurity.NewEnvelope("test-passphrase")
 	require.NoError(t, err)
-	section := readDBStatusNonInteractive(dir, dbPath, env, true)
+	section := readDBStatusNonInteractive(dir, dbPath, env, true, &errBuf)
 	assert.False(t, section.available)
 	assert.Contains(t, errBuf.String(), "warning: status non-interactive passphrase:")
+}
+
+func TestSecurityStatus_NonInteractiveWarningUsesCommandErrorWriter(t *testing.T) {
+	origReadStatus := readStatusDBNonInteractive
+	t.Cleanup(func() {
+		readStatusDBNonInteractive = origReadStatus
+	})
+
+	readStatusDBNonInteractive = func(
+		langoDir, dbPath string,
+		envelope *internalsecurity.MasterKeyEnvelope,
+		needsKey bool,
+		warningWriter io.Writer,
+	) dbStatusResult {
+		fmt.Fprintln(warningWriter, "warning: status non-interactive passphrase: boom")
+		return dbStatusResult{}
+	}
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	langoDir := filepath.Join(home, ".lango")
+	require.NoError(t, os.MkdirAll(langoDir, 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(langoDir, "lango.db"), []byte{}, 0o600))
+	env, _, err := internalsecurity.NewEnvelope("test-passphrase")
+	require.NoError(t, err)
+	require.NoError(t, internalsecurity.StoreEnvelopeFile(langoDir, env))
+
+	cmd := newStatusCmd(dummyBootLoader())
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errOut)
+	err = cmd.Execute()
+	require.NoError(t, err)
+	assert.Contains(t, out.String(), "Security Status")
+	assert.NotContains(t, out.String(), "warning: status non-interactive passphrase:")
+	assert.Contains(t, errOut.String(), "warning: status non-interactive passphrase:")
+}
+
+func TestReadDBStatusNonInteractive_PassesDetectedSecureProvider(t *testing.T) {
+	origAcquire := acquireNonInteractivePassphrase
+	origDetect := detectSecureProvider
+	t.Cleanup(func() {
+		acquireNonInteractivePassphrase = origAcquire
+		detectSecureProvider = origDetect
+	})
+
+	wantProvider := stubKeyCheckerProvider{hasKey: true}
+	detectSecureProvider = func() (keyring.Provider, keyring.SecurityTier) {
+		return wantProvider, keyring.TierBiometric
+	}
+
+	acquireNonInteractivePassphrase = func(opts passphrase.Options) (string, passphrase.Source, error) {
+		assert.Equal(t, wantProvider, opts.KeyringProvider)
+		return "", 0, passphrase.ErrNoNonInteractiveSource
+	}
+
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "status.db")
+	require.NoError(t, os.WriteFile(dbPath, []byte{}, 0o600))
+
+	got := readDBStatusNonInteractive(dir, dbPath, nil, true, io.Discard)
+	assert.False(t, got.available)
+}
+
+func TestReadDBStatusNonInteractive_UsesBrokerStarterWithoutProcess(t *testing.T) {
+	origAcquire := acquireNonInteractivePassphrase
+	origStartBroker := statusStartBroker
+	t.Cleanup(func() {
+		acquireNonInteractivePassphrase = origAcquire
+		statusStartBroker = origStartBroker
+	})
+
+	acquireNonInteractivePassphrase = func(opts passphrase.Options) (string, passphrase.Source, error) {
+		return "legacy-passphrase", passphrase.SourceKeyfile, nil
+	}
+
+	var gotReq storagebroker.DBStatusSummaryRequest
+	statusStartBroker = func(context.Context) (statusBroker, error) {
+		return &stubStatusBroker{
+			summary: storagebroker.DBStatusSummaryResult{
+				Available:      true,
+				EncryptionKeys: 2,
+				StoredSecrets:  3,
+			},
+			onSummary: func(req storagebroker.DBStatusSummaryRequest) {
+				gotReq = req
+			},
+		}, nil
+	}
+
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "status.db")
+	require.NoError(t, os.WriteFile(dbPath, []byte{}, 0o600))
+
+	got := readDBStatusNonInteractive(dir, dbPath, nil, true, io.Discard)
+	assert.True(t, got.available)
+	assert.Equal(t, 2, got.encryptionKeys)
+	assert.Equal(t, 3, got.storedSecrets)
+	assert.Equal(t, dbPath, gotReq.DBPath)
+	assert.Equal(t, "legacy-passphrase", gotReq.EncryptionKey)
+	assert.False(t, gotReq.RawKey)
+}
+
+func TestReadDBStatusNonInteractive_BrokerStartFailureDegrades(t *testing.T) {
+	origAcquire := acquireNonInteractivePassphrase
+	origStartBroker := statusStartBroker
+	t.Cleanup(func() {
+		acquireNonInteractivePassphrase = origAcquire
+		statusStartBroker = origStartBroker
+	})
+
+	acquireNonInteractivePassphrase = func(opts passphrase.Options) (string, passphrase.Source, error) {
+		return "legacy-passphrase", passphrase.SourceKeyfile, nil
+	}
+	statusStartBroker = func(context.Context) (statusBroker, error) {
+		return nil, errors.New("broker unavailable")
+	}
+
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "status.db")
+	require.NoError(t, os.WriteFile(dbPath, []byte{}, 0o600))
+
+	got := readDBStatusNonInteractive(dir, dbPath, nil, true, io.Discard)
+	assert.False(t, got.available)
+	assert.Equal(t, 0, got.encryptionKeys)
+	assert.Equal(t, 0, got.storedSecrets)
+}
+
+func TestReadDBStatusNonInteractive_LoadsActiveConfigFromBroker(t *testing.T) {
+	origAcquire := acquireNonInteractivePassphrase
+	origStartBroker := statusStartBroker
+	t.Cleanup(func() {
+		acquireNonInteractivePassphrase = origAcquire
+		statusStartBroker = origStartBroker
+	})
+
+	acquireNonInteractivePassphrase = func(opts passphrase.Options) (string, passphrase.Source, error) {
+		return "legacy-passphrase", passphrase.SourceKeyfile, nil
+	}
+
+	cfg := config.DefaultConfig()
+	cfg.Security.Exportability.Enabled = true
+	raw, err := json.Marshal(cfg)
+	require.NoError(t, err)
+
+	broker := &stubStatusBroker{
+		summary: storagebroker.DBStatusSummaryResult{Available: true},
+		config:  storagebroker.ConfigLoadActiveResult{Config: raw},
+	}
+	statusStartBroker = func(context.Context) (statusBroker, error) {
+		return broker, nil
+	}
+
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "status.db")
+	require.NoError(t, os.WriteFile(dbPath, []byte{}, 0o600))
+
+	got := readDBStatusNonInteractive(dir, dbPath, nil, true, io.Discard)
+	require.NotNil(t, got.config)
+	assert.True(t, got.config.Security.Exportability.Enabled)
+	assert.True(t, broker.closed)
 }
 
 func TestConfirmWord_UsesCommandStreams(t *testing.T) {
@@ -1271,6 +1430,34 @@ type stubActiveConfigLoader struct {
 
 func (s *stubActiveConfigLoader) ConfigLoadActive(context.Context) (storagebroker.ConfigLoadActiveResult, error) {
 	return s.result, s.err
+}
+
+type stubStatusBroker struct {
+	summary   storagebroker.DBStatusSummaryResult
+	config    storagebroker.ConfigLoadActiveResult
+	err       error
+	configErr error
+	onSummary func(storagebroker.DBStatusSummaryRequest)
+	closed    bool
+}
+
+func (s *stubStatusBroker) DBStatusSummary(
+	_ context.Context,
+	req storagebroker.DBStatusSummaryRequest,
+) (storagebroker.DBStatusSummaryResult, error) {
+	if s.onSummary != nil {
+		s.onSummary(req)
+	}
+	return s.summary, s.err
+}
+
+func (s *stubStatusBroker) ConfigLoadActive(context.Context) (storagebroker.ConfigLoadActiveResult, error) {
+	return s.config, s.configErr
+}
+
+func (s *stubStatusBroker) Close(context.Context) error {
+	s.closed = true
+	return nil
 }
 
 func TestIsKMSProvider(t *testing.T) {

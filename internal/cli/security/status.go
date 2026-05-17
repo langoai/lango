@@ -14,7 +14,6 @@ import (
 
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
-	"github.com/langoai/lango/internal/keyring"
 	"github.com/langoai/lango/internal/p2p/identity"
 	sec "github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/security/passphrase"
@@ -77,9 +76,18 @@ type statusOutput struct {
 }
 
 var (
-	acquireNonInteractivePassphrase           = passphrase.AcquireNonInteractive
-	statusErrWriter                 io.Writer = os.Stderr
+	acquireNonInteractivePassphrase = passphrase.AcquireNonInteractive
+	readStatusDBNonInteractive      = readDBStatusNonInteractive
+	statusStartBroker               = func(ctx context.Context) (statusBroker, error) {
+		return storagebroker.Start(ctx)
+	}
 )
+
+type statusBroker interface {
+	DBStatusSummary(context.Context, storagebroker.DBStatusSummaryRequest) (storagebroker.DBStatusSummaryResult, error)
+	ConfigLoadActive(context.Context) (storagebroker.ConfigLoadActiveResult, error)
+	Close(context.Context) error
+}
 
 // readIdentityBundleStatus reads the identity bundle file from langoDir.
 func readIdentityBundleStatus(langoDir string) identityBundleSection {
@@ -189,6 +197,7 @@ func readDBStatusNonInteractive(
 	langoDir, dbPath string,
 	envelope *sec.MasterKeyEnvelope,
 	needsKey bool,
+	warningWriter io.Writer,
 ) dbStatusResult {
 	result := dbStatusResult{}
 	if _, err := os.Stat(dbPath); err != nil {
@@ -202,14 +211,14 @@ func readDBStatusNonInteractive(
 		usedKeyring bool   // true when passphrase came from keyring (stale fallback possible)
 	)
 	if needsKey {
-		keyringProvider, _ := keyring.DetectSecureProvider()
+		keyringProvider, _ := detectSecureProvider()
 		pass, source, err := acquireNonInteractivePassphrase(passphrase.Options{
 			KeyfilePath:     filepath.Join(langoDir, "keyfile"),
 			KeyringProvider: keyringProvider,
 		})
 		if err != nil {
 			if !errors.Is(err, passphrase.ErrNoNonInteractiveSource) {
-				fmt.Fprintf(statusErrWriter, "warning: status non-interactive passphrase: %v\n", err)
+				fmt.Fprintf(warningWriter, "warning: status non-interactive passphrase: %v\n", err)
 			}
 			return result
 		}
@@ -252,7 +261,7 @@ func readDBStatusNonInteractive(
 		}
 	}
 
-	brokerClient, err := storagebroker.Start(context.Background())
+	brokerClient, err := statusStartBroker(context.Background())
 	if err != nil {
 		return result
 	}
@@ -353,7 +362,7 @@ Use --full to force a full bootstrap (which may prompt for a passphrase in
 			if fullBootstrap {
 				return runStatusFullBootstrap(cmd.OutOrStdout(), bootLoader, output)
 			}
-			return runStatusNonInteractive(cmd.OutOrStdout(), output)
+			return runStatusNonInteractive(cmd.OutOrStdout(), cmd.ErrOrStderr(), output)
 		},
 	}
 
@@ -364,7 +373,7 @@ Use --full to force a full bootstrap (which may prompt for a passphrase in
 
 // runStatusNonInteractive is the default status path.
 // It NEVER triggers an interactive passphrase prompt.
-func runStatusNonInteractive(writer io.Writer, output string) error {
+func runStatusNonInteractive(writer, warningWriter io.Writer, output string) error {
 	langoDir := defaultLangoDir()
 	dbPath := filepath.Join(langoDir, "lango.db")
 
@@ -376,7 +385,7 @@ func runStatusNonInteractive(writer io.Writer, output string) error {
 	}
 
 	needsKey := false
-	dbStatus := readDBStatusNonInteractive(langoDir, dbPath, envPtr, needsKey)
+	dbStatus := readStatusDBNonInteractive(langoDir, dbPath, envPtr, needsKey, warningWriter)
 
 	// Use the active config if DB read succeeded; otherwise fall back to defaults.
 	cfg := dbStatus.config
