@@ -16,6 +16,7 @@ import (
 	entsql "entgo.io/ent/dialect/sql"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -719,6 +720,56 @@ func TestService_Send_OmitsEmptyOptionalFields(t *testing.T) {
 	assert.Empty(t, tx.X402URL)
 	assert.Equal(t, paymenttx.StatusFailed, tx.Status)
 	assert.Equal(t, "transaction builder unavailable", tx.ErrorMessage)
+}
+
+func TestService_Send_ReturnsFailedStatusUpdateError(t *testing.T) {
+	updateErr := errors.New("ledger write failed")
+	store := &failingUpdateTxStore{updateErr: updateErr}
+	svc := &Service{
+		wallet:  &mockWallet{address: validAddr},
+		limiter: &mockLimiter{},
+		store:   store,
+		chainID: 84532,
+	}
+
+	receipt, err := svc.Send(context.Background(), PaymentRequest{
+		To:     "0xabcdef1234567890abcdef1234567890abcdef12",
+		Amount: "1.00",
+	})
+
+	require.Error(t, err)
+	assert.Nil(t, receipt)
+	assert.Contains(t, err.Error(), "build transaction")
+	assert.Contains(t, err.Error(), "transaction builder unavailable")
+	assert.Contains(t, err.Error(), "mark failed")
+	assert.Contains(t, err.Error(), "ledger write failed")
+	assert.ErrorIs(t, err, updateErr)
+	assert.Equal(t, paymenttx.StatusFailed, store.updateStatus)
+}
+
+type failingUpdateTxStore struct {
+	updateErr    error
+	updateStatus paymenttx.Status
+}
+
+func (s *failingUpdateTxStore) Create(_ context.Context, record TxRecord) (TxRecord, error) {
+	if record.ID == uuid.Nil {
+		record.ID = uuid.New()
+	}
+	return record, nil
+}
+
+func (s *failingUpdateTxStore) UpdateStatus(_ context.Context, _ uuid.UUID, status paymenttx.Status, _, _ string) error {
+	s.updateStatus = status
+	return s.updateErr
+}
+
+func (s *failingUpdateTxStore) List(context.Context, int) ([]TxRecord, error) {
+	return nil, nil
+}
+
+func (s *failingUpdateTxStore) DailySpendSince(context.Context, time.Time) ([]string, error) {
+	return nil, nil
 }
 
 // --- failTx with multiple errors ---

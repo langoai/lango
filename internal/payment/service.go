@@ -2,8 +2,8 @@ package payment
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"github.com/langoai/lango/internal/logging"
 	"math/big"
 	"sync"
 	"time"
@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/langoai/lango/internal/ent/paymenttx"
+	"github.com/langoai/lango/internal/logging"
 	"github.com/langoai/lango/internal/wallet"
 )
 
@@ -126,7 +127,9 @@ func (s *Service) Send(ctx context.Context, req PaymentRequest) (*PaymentReceipt
 	tx, err := s.builder.BuildTransferTx(ctx, from, to, amount)
 	if err != nil {
 		s.nonceMu.Unlock()
-		s.failTx(ctx, ptx.ID, err)
+		if failErr := s.failTx(ctx, ptx.ID, err); failErr != nil {
+			return nil, fmt.Errorf("build transaction: %w", failErr)
+		}
 		return nil, fmt.Errorf("build transaction: %w", err)
 	}
 
@@ -135,14 +138,18 @@ func (s *Service) Send(ctx context.Context, req PaymentRequest) (*PaymentReceipt
 	sig, err := s.wallet.SignTransaction(ctx, txSigHash.Bytes())
 	if err != nil {
 		s.nonceMu.Unlock()
-		s.failTx(ctx, ptx.ID, err)
+		if failErr := s.failTx(ctx, ptx.ID, err); failErr != nil {
+			return nil, fmt.Errorf("sign transaction: %w", failErr)
+		}
 		return nil, fmt.Errorf("sign transaction: %w", err)
 	}
 
 	signedTx, err := tx.WithSignature(signer, sig)
 	if err != nil {
 		s.nonceMu.Unlock()
-		s.failTx(ctx, ptx.ID, err)
+		if failErr := s.failTx(ctx, ptx.ID, err); failErr != nil {
+			return nil, fmt.Errorf("apply signature: %w", failErr)
+		}
 		return nil, fmt.Errorf("apply signature: %w", err)
 	}
 
@@ -150,7 +157,9 @@ func (s *Service) Send(ctx context.Context, req PaymentRequest) (*PaymentReceipt
 	txHashHex, err := s.submitWithRetry(ctx, signedTx)
 	s.nonceMu.Unlock()
 	if err != nil {
-		s.failTx(ctx, ptx.ID, err)
+		if failErr := s.failTx(ctx, ptx.ID, err); failErr != nil {
+			return nil, fmt.Errorf("submit transaction: %w", failErr)
+		}
 		return nil, fmt.Errorf("submit transaction: %w", err)
 	}
 
@@ -162,13 +171,17 @@ func (s *Service) Send(ctx context.Context, req PaymentRequest) (*PaymentReceipt
 	// Wait for on-chain confirmation.
 	receipt, err := s.waitForConfirmation(ctx, signedTx.Hash())
 	if err != nil {
-		s.failTx(ctx, ptx.ID, err)
+		if failErr := s.failTx(ctx, ptx.ID, err); failErr != nil {
+			return nil, fmt.Errorf("confirm transaction: %w", failErr)
+		}
 		return nil, fmt.Errorf("confirm transaction: %w", err)
 	}
 
 	if receipt.Status != types.ReceiptStatusSuccessful {
 		txErr := fmt.Errorf("tx %s reverted (status=%d)", txHashHex, receipt.Status)
-		s.failTx(ctx, ptx.ID, txErr)
+		if failErr := s.failTx(ctx, ptx.ID, txErr); failErr != nil {
+			return nil, failErr
+		}
 		return nil, txErr
 	}
 
@@ -356,8 +369,11 @@ func (s *Service) waitForConfirmation(ctx context.Context, txHash common.Hash) (
 }
 
 // failTx marks a transaction as failed with an error message.
-func (s *Service) failTx(ctx context.Context, id uuid.UUID, txErr error) {
-	_ = s.store.UpdateStatus(ctx, id, paymenttx.StatusFailed, "", txErr.Error())
+func (s *Service) failTx(ctx context.Context, id uuid.UUID, txErr error) error {
+	if err := s.store.UpdateStatus(ctx, id, paymenttx.StatusFailed, "", txErr.Error()); err != nil {
+		return errors.Join(txErr, fmt.Errorf("mark failed: %w", err))
+	}
+	return nil
 }
 
 func nilIfEmpty(s string) *string {

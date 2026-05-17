@@ -70,7 +70,7 @@ The EscrowConfig SHALL include an `OnChain` sub-struct (`EscrowOnChainConfig`) w
 - **THEN** the system initializes HubSettler with the configured hub and token addresses
 
 ### Requirement: Transaction submission
-The payment service SHALL serialize transaction building through a nonce mutex to prevent nonce collisions. The service SHALL retry transaction submission up to 3 times with exponential backoff (1s, 2s, 4s). After successful submission, the service SHALL poll for on-chain receipt confirmation before reporting transaction status.
+The payment service SHALL serialize transaction building through a nonce mutex to prevent nonce collisions. The service SHALL retry transaction submission up to 3 times with exponential backoff (1s, 2s, 4s). After successful submission, the service SHALL poll for on-chain receipt confirmation before reporting transaction status. If a post-create payment stage fails, the service SHALL attempt to mark the transaction record `failed`; if that failed-status update also fails, the service SHALL return an error that preserves both the original payment failure and the failed-status persistence failure.
 
 #### Scenario: Successful payment with receipt confirmation
 - **WHEN** a payment is submitted and confirmed on-chain
@@ -87,6 +87,12 @@ The payment service SHALL serialize transaction building through a nonce mutex t
 #### Scenario: Receipt polling timeout
 - **WHEN** no receipt is received within 2 minutes of submission
 - **THEN** the service SHALL return a timeout error and mark the transaction as failed
+
+#### Scenario: Failed status update error is reported
+- **WHEN** a payment stage fails after creating a pending transaction record
+- **AND** marking that record failed also returns an error
+- **THEN** `Send` SHALL return an error containing the original payment failure
+- **AND** it SHALL also contain the failed-status persistence failure
 
 #### Scenario: Concurrent payment requests
 - **WHEN** two payment requests are submitted concurrently
