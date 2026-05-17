@@ -85,6 +85,8 @@ lango agent list [--output table|json] [--check]
 
 **Local agents** are always listed regardless of multi-agent configuration. This includes embedded default agents and any user-defined agents from `agent.agentsDir`. The `SOURCE` column shows where each definition came from (`embedded`, `user`, or `builtin` when present).
 
+Missing `agent.agentsDir` paths are treated as no user-defined agents. If the configured directory contains an `AGENT.md` file that cannot be read or parsed, `lango agent list` and `lango agent status` fail with an error that includes the affected file path instead of silently omitting user agents or reporting partial registry counts.
+
 Representative built-in local agents:
 
 | Agent | Source | Description |

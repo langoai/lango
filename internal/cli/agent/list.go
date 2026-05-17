@@ -52,7 +52,9 @@ func newListCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 			}
 			if cfg.Agent.AgentsDir != "" {
 				userStore := agentregistry.NewFileStore(cfg.Agent.AgentsDir)
-				_ = reg.LoadFromStore(userStore) // non-fatal
+				if loadErr := reg.LoadFromStore(userStore); loadErr != nil {
+					return fmt.Errorf("load user agents: %w", loadErr)
+				}
 			}
 
 			for _, def := range reg.Active() {

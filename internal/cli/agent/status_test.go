@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -42,8 +45,8 @@ func traceBootLoader(t *testing.T, seed func(store turntrace.Store)) func() (*bo
 
 func TestAgentStatus_DynamicRuntimeDoesNotRequireBuiltinSubAgents(t *testing.T) {
 	originalLoader := loadAgentRegistryCounts
-	loadAgentRegistryCounts = func(_ *config.Config) (int, int, int) {
-		return 0, 0, 0
+	loadAgentRegistryCounts = func(_ *config.Config) (int, int, int, error) {
+		return 0, 0, 0, nil
 	}
 	t.Cleanup(func() {
 		loadAgentRegistryCounts = originalLoader
@@ -209,6 +212,97 @@ func TestListCmd_WritesJSONOutputToCommandWriter(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, out, `"type": "local"`)
 	assert.Contains(t, out, `"source": "embedded"`)
+}
+
+func TestListCmd_SurfaceUserAgentRegistryLoadError(t *testing.T) {
+	agentsDir := t.TempDir()
+	badAgentDir := filepath.Join(agentsDir, "broken")
+	badAgentPath := filepath.Join(badAgentDir, "AGENT.md")
+	require.NoError(t, os.MkdirAll(badAgentDir, 0o755))
+	require.NoError(t, os.WriteFile(badAgentPath, []byte("missing frontmatter"), 0o644))
+
+	cmd := newListCmd(func() (*config.Config, error) {
+		cfg := config.DefaultConfig()
+		cfg.Agent.AgentsDir = agentsDir
+		return cfg, nil
+	})
+
+	_, err := executeAgentCmd(t, cmd)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "load user agents")
+	assert.Contains(t, err.Error(), badAgentPath)
+}
+
+func TestListCmd_MissingUserAgentsDirIsOptional(t *testing.T) {
+	missingAgentsDir := filepath.Join(t.TempDir(), "missing")
+
+	cmd := newListCmd(func() (*config.Config, error) {
+		cfg := config.DefaultConfig()
+		cfg.Agent.AgentsDir = missingAgentsDir
+		return cfg, nil
+	})
+
+	out, err := executeAgentCmd(t, cmd)
+
+	require.NoError(t, err)
+	assert.Contains(t, out, "planner")
+}
+
+func TestStatusCmd_SurfaceUserAgentRegistryLoadError(t *testing.T) {
+	agentsDir := t.TempDir()
+	badAgentDir := filepath.Join(agentsDir, "broken")
+	badAgentPath := filepath.Join(badAgentDir, "AGENT.md")
+	require.NoError(t, os.MkdirAll(badAgentDir, 0o755))
+	require.NoError(t, os.WriteFile(badAgentPath, []byte("missing frontmatter"), 0o644))
+
+	cmd := newStatusCmd(func() (*config.Config, error) {
+		cfg := config.DefaultConfig()
+		cfg.Agent.AgentsDir = agentsDir
+		return cfg, nil
+	})
+
+	_, err := executeAgentCmd(t, cmd)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "load user agents")
+	assert.Contains(t, err.Error(), badAgentPath)
+}
+
+func TestStatusCmd_SurfaceEmbeddedRegistryLoadError(t *testing.T) {
+	originalLoader := loadAgentRegistryCounts
+	loadAgentRegistryCounts = func(_ *config.Config) (int, int, int, error) {
+		return 0, 0, 0, errors.New("load embedded agents: embedded registry unavailable")
+	}
+	t.Cleanup(func() {
+		loadAgentRegistryCounts = originalLoader
+	})
+
+	cmd := newStatusCmd(func() (*config.Config, error) {
+		return config.DefaultConfig(), nil
+	})
+
+	_, err := executeAgentCmd(t, cmd)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "load embedded agents")
+	assert.Contains(t, err.Error(), "embedded registry unavailable")
+}
+
+func TestStatusCmd_MissingUserAgentsDirIsOptional(t *testing.T) {
+	missingAgentsDir := filepath.Join(t.TempDir(), "missing")
+
+	cmd := newStatusCmd(func() (*config.Config, error) {
+		cfg := config.DefaultConfig()
+		cfg.Agent.AgentsDir = missingAgentsDir
+		return cfg, nil
+	})
+
+	out, err := executeAgentCmd(t, cmd)
+
+	require.NoError(t, err)
+	assert.Contains(t, out, "Builtin Agents:")
+	assert.Contains(t, out, "User Agents:")
 }
 
 func TestTraceMetricsCmd_WritesEmptyStateToCommandWriter(t *testing.T) {

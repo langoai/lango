@@ -50,7 +50,7 @@ The existing `lango agent status` command contract remains preserved unless expl
 - **THEN** JSON output SHALL include `max_turns`, `error_correction_enabled`, and `max_delegation_rounds` fields
 
 ### Requirement: Agent list displays registry sources
-The `lango agent list` command SHALL load agents from the dynamic agent registry (embedded + user-defined stores) instead of hardcoded lists. Each agent entry SHALL display its source: "builtin", "embedded", "user", or "remote". The command SHALL support `--output table|json` and `--check` flags.
+The `lango agent list` command SHALL load agents from the dynamic agent registry (embedded + user-defined stores) instead of hardcoded lists. Each agent entry SHALL display its source: "builtin", "embedded", "user", or "remote". The command SHALL support `--output table|json` and `--check` flags. If a configured user-defined agent store contains a present `AGENT.md` file that cannot be read or parsed, the command SHALL return an actionable error instead of silently omitting user-defined agents.
 
 #### Scenario: Agent list output uses the command writer
 - **WHEN** `lango agent list` renders text or JSON output
@@ -64,6 +64,12 @@ The `lango agent list` command SHALL load agents from the dynamic agent registry
 #### Scenario: List shows user-defined agents
 - **WHEN** user-defined agents exist in the configured agents directory
 - **THEN** they SHALL appear in the list with source "user"
+
+#### Scenario: Invalid user-defined agent file fails visibly
+- **WHEN** `agent.agentsDir` points to a directory containing an invalid `AGENT.md`
+- **THEN** `lango agent list` SHALL return an error
+- **AND** the error SHALL identify the user agent load failure and file path
+- **AND** the command SHALL NOT silently omit the user-defined agent definitions
 
 #### Scenario: List shows remote A2A agents
 - **WHEN** A2A remote agents are configured
@@ -102,7 +108,7 @@ The `lango agent list` command SHALL load agents from the dynamic agent registry
 - **AND** wrappers or tests that replace `cmd.OutOrStdout()` SHALL capture the command output
 
 ### Requirement: Agent status shows registry info
-The `lango agent status` command SHALL display registry information including builtin agent count, user agent count, active agent count, and agents directory path.
+The `lango agent status` command SHALL display registry information including builtin agent count, user agent count, active agent count, and agents directory path. If embedded or configured user-defined registry loading fails, the command SHALL return an actionable error instead of reporting misleading registry counts.
 
 #### Scenario: Status includes registry counts
 - **WHEN** `lango agent status` is run
@@ -115,6 +121,12 @@ The `lango agent status` command SHALL display registry information including bu
 #### Scenario: JSON status includes registry
 - **WHEN** `lango agent status --output json` is run
 - **THEN** the output SHALL include a "registry" object with builtin, user, active counts
+
+#### Scenario: Invalid user-defined agent file fails status visibly
+- **WHEN** `agent.agentsDir` points to a directory containing an invalid `AGENT.md`
+- **THEN** `lango agent status` SHALL return an error
+- **AND** the error SHALL identify the user agent load failure and file path
+- **AND** the command SHALL NOT report registry counts based on a partial load
 
 ### Requirement: Agent inspection output format stays explicit and validated
 `lango agent status`, `lango agent list`, `lango agent tools`, and `lango agent hooks` SHALL accept `--output table|json` and reject unknown values before config loading.

@@ -1256,7 +1256,7 @@ Core economy tools do the same: `economy_budget_allocate`, `economy_budget_statu
 
 ### Custom Agents (AGENT.md)
 
-Custom agents can be defined via `AGENT.md` files placed in the `agent.agentsDir` directory. Each file specifies the agent's name, description, capabilities, and tool access. The agent registry loads these definitions at startup and makes them available for dynamic routing alongside built-in sub-agents.
+Custom agents can be defined via `AGENT.md` files placed in the `agent.agentsDir` directory. Each file specifies the agent's name, description, capabilities, and tool access. The agent registry loads these definitions at startup and makes them available for dynamic routing alongside built-in sub-agents. Missing `agent.agentsDir` paths are treated as no user-defined agents; invalid present `AGENT.md` files are surfaced by `lango agent status` and `lango agent list` instead of being silently omitted.
 
 ### Dynamic Routing
 

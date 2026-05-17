@@ -8,19 +8,23 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var loadAgentRegistryCounts = func(cfg *config.Config) (builtinCount, userCount, activeCount int) {
+var loadAgentRegistryCounts = func(cfg *config.Config) (builtinCount, userCount, activeCount int, err error) {
 	reg := agentregistry.New()
 	embeddedStore := agentregistry.NewEmbeddedStore()
-	_ = reg.LoadFromStore(embeddedStore)
+	if loadErr := reg.LoadFromStore(embeddedStore); loadErr != nil {
+		return 0, 0, 0, fmt.Errorf("load embedded agents: %w", loadErr)
+	}
 	builtinCount = len(reg.All())
 
 	if cfg.Agent.AgentsDir != "" {
 		userStore := agentregistry.NewFileStore(cfg.Agent.AgentsDir)
-		_ = reg.LoadFromStore(userStore)
+		if loadErr := reg.LoadFromStore(userStore); loadErr != nil {
+			return 0, 0, 0, fmt.Errorf("load user agents: %w", loadErr)
+		}
 		userCount = len(reg.All()) - builtinCount
 	}
 
-	return builtinCount, userCount, len(reg.Active())
+	return builtinCount, userCount, len(reg.Active()), nil
 }
 
 func newStatusCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
@@ -96,7 +100,10 @@ func newStatusCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 				teammateRuntimeHint = "Enable background.enabled to report dynamic-v1 teammate runtime."
 			}
 
-			builtinCount, userCount, activeCount := loadAgentRegistryCounts(cfg)
+			builtinCount, userCount, activeCount, err := loadAgentRegistryCounts(cfg)
+			if err != nil {
+				return err
+			}
 
 			s := statusOutput{
 				Mode:                   mode,

@@ -495,6 +495,8 @@ lango agent status
 
 Shows the current agent mode, provider/model, A2A/P2P/hook status, registry counts, and `Teammate Runtime: dynamic-v1` when the built-in teammate runtime path is configured and `background.enabled` is also enabled. If `agent.multiAgent` is enabled without `background.enabled`, the status output keeps the runtime unavailable and prints a hint telling you to enable `background.enabled`.
 
+If `agent.agentsDir` is configured and a present user `AGENT.md` cannot be read or parsed, status exits with an error instead of reporting partial registry counts.
+
 ### Agent List
 
 ```bash
@@ -502,6 +504,8 @@ lango agent list
 ```
 
 Lists registered agent definitions from the agent registry. It does not show live spawned teammate runs.
+
+Missing `agent.agentsDir` paths are optional. Invalid present user `AGENT.md` files fail visibly with the affected path instead of silently disappearing from the list.
 
 ### Agent Tools
 
