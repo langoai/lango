@@ -439,6 +439,16 @@ func TestChangePassphrase_WritesWarningsToCommandErrorWriter(t *testing.T) {
 	assert.Contains(t, errOut, "warning: keyring update failed: boom")
 }
 
+func TestWriteKeyringUpdateWarningUsesStoreCommand(t *testing.T) {
+	var errOut bytes.Buffer
+	writeKeyringUpdateWarning(&errOut, errors.New("boom"))
+
+	got := errOut.String()
+	assert.Contains(t, got, "warning: keyring update failed: boom")
+	assert.Contains(t, got, "lango security keyring store")
+	assert.NotContains(t, got, "lango security keyring set")
+}
+
 func TestRecoveryRestore_WritesWarningsToCommandErrorWriter(t *testing.T) {
 	original := executeRecoveryRestore
 	executeRecoveryRestore = func(cmd *cobra.Command, errWriter io.Writer) error {

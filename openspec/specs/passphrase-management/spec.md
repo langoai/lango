@@ -95,6 +95,8 @@ Successful passphrase change or recovery restore SHALL update any stored keyring
 - **WHEN** `lango security change-passphrase` succeeds
 - **THEN** the command SHALL attempt to update the secure keyring with the new passphrase
 - **AND** failure SHALL print a warning with manual fix instructions
+- **AND** the manual fix instructions SHALL point to `lango security keyring store`
+- **AND** the manual fix instructions SHALL NOT point to nonexistent keyring subcommands
 
 #### Scenario: Keyfile updated after passphrase change
 - **WHEN** `lango security change-passphrase` succeeds and a keyfile exists
@@ -103,6 +105,7 @@ Successful passphrase change or recovery restore SHALL update any stored keyring
 #### Scenario: Recovery restore updates stored credentials
 - **WHEN** `lango security recovery restore` succeeds
 - **THEN** the same keyring and keyfile update logic SHALL apply as in passphrase change
+- **AND** keyring update failure guidance SHALL point to `lango security keyring store`
 
 ### Requirement: Passphrase no longer directly encrypts data
 

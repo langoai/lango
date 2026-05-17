@@ -79,9 +79,7 @@ var executeChangePassphrase = func(
 	}
 	if secureProvider, _ := detectSecureProvider(); secureProvider != nil {
 		if setErr := secureProvider.Set(keyring.Service, keyring.KeyMasterPassphrase, newPass); setErr != nil {
-			fmt.Fprintf(errWriter, "warning: keyring update failed: %v\n", setErr)
-			fmt.Fprintf(errWriter, "  If a stale passphrase is stored, next headless bootstrap may fail.\n")
-			fmt.Fprintf(errWriter, "  Fix: run `lango security keyring set` or clear the keyring entry manually.\n")
+			writeKeyringUpdateWarning(errWriter, setErr)
 		} else {
 			fmt.Fprintln(errWriter, "Keyring updated with new passphrase.")
 		}
