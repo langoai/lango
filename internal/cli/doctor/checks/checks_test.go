@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/langoai/lango/internal/config"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestConfigCheck_Run_ValidConfig(t *testing.T) {
@@ -80,6 +82,38 @@ func TestProvidersCheck_Run_ProviderInMap(t *testing.T) {
 	if result.Status != StatusPass {
 		t.Errorf("expected StatusPass, got %v: %s", result.Status, result.Message)
 	}
+}
+
+func TestProvidersCheck_Run_AgentProviderMissingFromEmptyProvidersMap(t *testing.T) {
+	cfg := &config.Config{
+		Agent: config.AgentConfig{
+			Provider: "anthropic",
+		},
+		Providers: map[string]config.ProviderConfig{},
+	}
+
+	check := &ProvidersCheck{}
+	result := check.Run(context.Background(), cfg)
+
+	require.Equal(t, StatusFail, result.Status)
+	assert.Contains(t, result.Message, `agent.provider "anthropic" not found in providers map`)
+}
+
+func TestProvidersCheck_Run_AgentProviderMissingDoesNotUseLegacyAPIKeyFallback(t *testing.T) {
+	t.Setenv("GOOGLE_API_KEY", "test-key")
+
+	cfg := &config.Config{
+		Agent: config.AgentConfig{
+			Provider: "anthropic",
+		},
+		Providers: map[string]config.ProviderConfig{},
+	}
+
+	check := &ProvidersCheck{}
+	result := check.Run(context.Background(), cfg)
+
+	require.Equal(t, StatusFail, result.Status)
+	assert.Contains(t, result.Message, `agent.provider "anthropic" not found in providers map`)
 }
 
 func TestProvidersCheck_Run_MissingKey(t *testing.T) {
