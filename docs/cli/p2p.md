@@ -9,6 +9,9 @@ lango p2p <subcommand>
 !!! warning "Experimental Feature"
     The P2P networking system is experimental. Protocol and behavior may change between releases.
 
+!!! note "Command-scoped ephemeral startup"
+    Ephemeral-node commands honor the Cobra command context during startup. Canceling the command context cancels DHT bootstrap, bootstrap peer dials, and mDNS discovered-peer connection attempts for that temporary node.
+
 ---
 
 ## lango p2p status

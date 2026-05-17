@@ -6,18 +6,22 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
+	p2pnet "github.com/langoai/lango/internal/p2p"
 	"github.com/langoai/lango/internal/p2p/discovery"
 	"github.com/langoai/lango/internal/p2p/handshake"
 	p2preputation "github.com/langoai/lango/internal/p2p/reputation"
+	"github.com/langoai/lango/internal/security"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 )
 
 func executeP2PCmd(t *testing.T, cmd *cobra.Command, args ...string) (string, error) {
@@ -82,7 +86,7 @@ func TestStatusCmd_HasOutputFlag(t *testing.T) {
 
 func TestStatusCmd_WritesTextToCommandWriter(t *testing.T) {
 	original := loadStatusCommandData
-	loadStatusCommandData = func(_ *bootstrap.Result) (statusCommandData, func(), error) {
+	loadStatusCommandData = func(_ context.Context, _ *bootstrap.Result) (statusCommandData, func(), error) {
 		return statusCommandData{
 			peerID:         "12D3KooWStatusPeer",
 			listenAddrs:    []string{"/ip4/127.0.0.1/tcp/9000"},
@@ -109,7 +113,7 @@ func TestStatusCmd_WritesTextToCommandWriter(t *testing.T) {
 
 func TestStatusCmd_WritesJSONToCommandWriter(t *testing.T) {
 	original := loadStatusCommandData
-	loadStatusCommandData = func(_ *bootstrap.Result) (statusCommandData, func(), error) {
+	loadStatusCommandData = func(_ context.Context, _ *bootstrap.Result) (statusCommandData, func(), error) {
 		return statusCommandData{
 			peerID:         "12D3KooWJsonStatus",
 			listenAddrs:    []string{"/ip4/127.0.0.1/tcp/9000", "/ip6/::/tcp/9000"},
@@ -139,7 +143,7 @@ func TestStatusCmd_WritesJSONToCommandWriter(t *testing.T) {
 
 func TestPeersCmd_WritesEmptyStateToCommandWriter(t *testing.T) {
 	original := loadPeersCommandData
-	loadPeersCommandData = func(_ *bootstrap.Result) ([]peersCommandInfo, func(), error) {
+	loadPeersCommandData = func(_ context.Context, _ *bootstrap.Result) ([]peersCommandInfo, func(), error) {
 		return []peersCommandInfo{}, func() {}, nil
 	}
 	t.Cleanup(func() { loadPeersCommandData = original })
@@ -155,7 +159,7 @@ func TestPeersCmd_WritesEmptyStateToCommandWriter(t *testing.T) {
 
 func TestPeersCmd_WritesTableToCommandWriter(t *testing.T) {
 	original := loadPeersCommandData
-	loadPeersCommandData = func(_ *bootstrap.Result) ([]peersCommandInfo, func(), error) {
+	loadPeersCommandData = func(_ context.Context, _ *bootstrap.Result) ([]peersCommandInfo, func(), error) {
 		return []peersCommandInfo{
 			{PeerID: "12D3KooWPeerOne", Addrs: []string{"/ip4/192.168.0.10/tcp/9000"}},
 			{PeerID: "12D3KooWPeerTwo", Addrs: []string{}},
@@ -177,7 +181,7 @@ func TestPeersCmd_WritesTableToCommandWriter(t *testing.T) {
 
 func TestPeersCmd_WritesJSONToCommandWriter(t *testing.T) {
 	original := loadPeersCommandData
-	loadPeersCommandData = func(_ *bootstrap.Result) ([]peersCommandInfo, func(), error) {
+	loadPeersCommandData = func(_ context.Context, _ *bootstrap.Result) ([]peersCommandInfo, func(), error) {
 		return []peersCommandInfo{
 			{PeerID: "12D3KooWPeerJson", Addrs: []string{"/ip4/127.0.0.1/tcp/9000"}},
 		}, func() {}, nil
@@ -322,9 +326,262 @@ func TestP2PInspectionCommands_InvalidOutputFailFast(t *testing.T) {
 	}
 }
 
+func TestP2PCommands_PassCommandContextToEphemeralNodeLoaders(t *testing.T) {
+	parent, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	testCases := []struct {
+		name    string
+		command func() *cobra.Command
+		stub    func(t *testing.T)
+		args    []string
+	}{
+		{
+			name: "status",
+			command: func() *cobra.Command {
+				return newStatusCmd(successBootLoader())
+			},
+			stub: func(t *testing.T) {
+				original := loadStatusCommandData
+				loadStatusCommandData = func(ctx context.Context, _ *bootstrap.Result) (statusCommandData, func(), error) {
+					require.ErrorIs(t, ctx.Err(), context.Canceled)
+					return statusCommandData{}, func() {}, context.Canceled
+				}
+				t.Cleanup(func() { loadStatusCommandData = original })
+			},
+		},
+		{
+			name: "peers",
+			command: func() *cobra.Command {
+				return newPeersCmd(successBootLoader())
+			},
+			stub: func(t *testing.T) {
+				original := loadPeersCommandData
+				loadPeersCommandData = func(ctx context.Context, _ *bootstrap.Result) ([]peersCommandInfo, func(), error) {
+					require.ErrorIs(t, ctx.Err(), context.Canceled)
+					return nil, func() {}, context.Canceled
+				}
+				t.Cleanup(func() { loadPeersCommandData = original })
+			},
+		},
+		{
+			name: "discover",
+			command: func() *cobra.Command {
+				return newDiscoverCmd(successBootLoader())
+			},
+			stub: func(t *testing.T) {
+				original := loadDiscoverCommandData
+				loadDiscoverCommandData = func(ctx context.Context, _ *bootstrap.Result, _ string) ([]*discovery.GossipCard, func(), error) {
+					require.ErrorIs(t, ctx.Err(), context.Canceled)
+					return nil, func() {}, context.Canceled
+				}
+				t.Cleanup(func() { loadDiscoverCommandData = original })
+			},
+		},
+		{
+			name: "identity",
+			command: func() *cobra.Command {
+				return newIdentityCmd(successBootLoader())
+			},
+			stub: func(t *testing.T) {
+				original := loadIdentityCommandData
+				loadIdentityCommandData = func(ctx context.Context, _ *bootstrap.Result) (identityCommandData, func(), error) {
+					require.ErrorIs(t, ctx.Err(), context.Canceled)
+					return identityCommandData{}, func() {}, context.Canceled
+				}
+				t.Cleanup(func() { loadIdentityCommandData = original })
+			},
+		},
+		{
+			name: "session-list",
+			command: func() *cobra.Command {
+				return newSessionListCmd(successBootLoader())
+			},
+			stub: func(t *testing.T) {
+				original := loadSessionListData
+				loadSessionListData = func(ctx context.Context, _ *bootstrap.Result) ([]*handshake.Session, func(), error) {
+					require.ErrorIs(t, ctx.Err(), context.Canceled)
+					return nil, func() {}, context.Canceled
+				}
+				t.Cleanup(func() { loadSessionListData = original })
+			},
+		},
+		{
+			name: "session-revoke",
+			command: func() *cobra.Command {
+				return newSessionRevokeCmd(successBootLoader())
+			},
+			stub: func(t *testing.T) {
+				original := revokeSessionForPeer
+				revokeSessionForPeer = func(ctx context.Context, _ *bootstrap.Result, _ string) (func(), error) {
+					require.ErrorIs(t, ctx.Err(), context.Canceled)
+					return func() {}, context.Canceled
+				}
+				t.Cleanup(func() { revokeSessionForPeer = original })
+			},
+			args: []string{"--peer-did", "did:lango:canceled"},
+		},
+		{
+			name: "session-revoke-all",
+			command: func() *cobra.Command {
+				return newSessionRevokeAllCmd(successBootLoader())
+			},
+			stub: func(t *testing.T) {
+				original := revokeAllSessions
+				revokeAllSessions = func(ctx context.Context, _ *bootstrap.Result) (func(), error) {
+					require.ErrorIs(t, ctx.Err(), context.Canceled)
+					return func() {}, context.Canceled
+				}
+				t.Cleanup(func() { revokeAllSessions = original })
+			},
+		},
+		{
+			name: "connect",
+			command: func() *cobra.Command {
+				return newConnectCmd(successBootLoader())
+			},
+			stub: func(t *testing.T) {
+				original := loadConnectDeps
+				loadConnectDeps = func(ctx context.Context, _ *bootstrap.Result) (connectDeps, error) {
+					require.ErrorIs(t, ctx.Err(), context.Canceled)
+					return connectDeps{}, context.Canceled
+				}
+				t.Cleanup(func() { loadConnectDeps = original })
+			},
+			args: []string{validConnectMultiaddr()},
+		},
+		{
+			name: "disconnect",
+			command: func() *cobra.Command {
+				return newDisconnectCmd(successBootLoader())
+			},
+			stub: func(t *testing.T) {
+				original := disconnectFromPeer
+				disconnectFromPeer = func(ctx context.Context, _ *bootstrap.Result, _ string) (string, func(), error) {
+					require.ErrorIs(t, ctx.Err(), context.Canceled)
+					return "", func() {}, context.Canceled
+				}
+				t.Cleanup(func() { disconnectFromPeer = original })
+			},
+			args: []string{validConnectPeerID()},
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			tc.stub(t)
+			cmd := tc.command()
+			cmd.SetContext(parent)
+
+			_, err := executeP2PCmd(t, cmd, tc.args...)
+			require.ErrorIs(t, err, context.Canceled)
+		})
+	}
+}
+
+func TestInitP2PDeps_PassesCallerContextToNodeStart(t *testing.T) {
+	parent, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	originalNewNode := newP2PNode
+	originalStartNode := startP2PNode
+	originalStopNode := stopP2PNode
+	newP2PNode = func(p2pnet.ConfigReader, *zap.SugaredLogger, *security.SecretsStore) (*p2pnet.Node, error) {
+		return &p2pnet.Node{}, nil
+	}
+	startP2PNode = func(ctx context.Context, _ *p2pnet.Node, _ *sync.WaitGroup) error {
+		require.ErrorIs(t, ctx.Err(), context.Canceled)
+		return context.Canceled
+	}
+	stopP2PNode = func(*p2pnet.Node) error {
+		return nil
+	}
+	t.Cleanup(func() {
+		newP2PNode = originalNewNode
+		startP2PNode = originalStartNode
+		stopP2PNode = originalStopNode
+	})
+
+	cfg := config.DefaultConfig()
+	cfg.P2P.Enabled = true
+
+	_, err := initP2PDeps(parent, &bootstrap.Result{Config: cfg})
+	require.ErrorIs(t, err, context.Canceled)
+}
+
+func TestInitP2PDeps_CleanupWaitsForStartupWorkers(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	workerReleased := make(chan struct{})
+	allowDone := make(chan struct{})
+	done := make(chan struct{})
+	cleanupReturned := make(chan struct{})
+
+	originalNewNode := newP2PNode
+	originalStartNode := startP2PNode
+	originalStopNode := stopP2PNode
+	newP2PNode = func(p2pnet.ConfigReader, *zap.SugaredLogger, *security.SecretsStore) (*p2pnet.Node, error) {
+		return &p2pnet.Node{}, nil
+	}
+	startP2PNode = func(_ context.Context, _ *p2pnet.Node, wg *sync.WaitGroup) error {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			close(started)
+			<-release
+			close(workerReleased)
+			<-allowDone
+			close(done)
+		}()
+		return nil
+	}
+	stopP2PNode = func(*p2pnet.Node) error {
+		close(release)
+		return nil
+	}
+	t.Cleanup(func() {
+		newP2PNode = originalNewNode
+		startP2PNode = originalStartNode
+		stopP2PNode = originalStopNode
+	})
+
+	cfg := config.DefaultConfig()
+	cfg.P2P.Enabled = true
+
+	deps, err := initP2PDeps(context.Background(), &bootstrap.Result{Config: cfg})
+	require.NoError(t, err)
+	<-started
+
+	go func() {
+		deps.cleanup()
+		close(cleanupReturned)
+	}()
+
+	<-workerReleased
+	select {
+	case <-cleanupReturned:
+		t.Fatal("cleanup returned before startup worker completed")
+	default:
+	}
+
+	close(allowDone)
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("startup worker did not complete")
+	}
+
+	select {
+	case <-cleanupReturned:
+	case <-time.After(time.Second):
+		t.Fatal("cleanup did not return after startup worker completed")
+	}
+}
+
 func TestDiscoverCmd_WritesEmptyStateToCommandWriter(t *testing.T) {
 	original := loadDiscoverCommandData
-	loadDiscoverCommandData = func(_ *bootstrap.Result, _ string) ([]*discovery.GossipCard, func(), error) {
+	loadDiscoverCommandData = func(_ context.Context, _ *bootstrap.Result, _ string) ([]*discovery.GossipCard, func(), error) {
 		return []*discovery.GossipCard{}, func() {}, nil
 	}
 	t.Cleanup(func() { loadDiscoverCommandData = original })
@@ -338,9 +595,15 @@ func TestDiscoverCmd_WritesEmptyStateToCommandWriter(t *testing.T) {
 	assert.Contains(t, out, "No agents discovered. Try connecting to bootstrap peers first.")
 }
 
+func successBootLoader() func() (*bootstrap.Result, error) {
+	return func() (*bootstrap.Result, error) {
+		return &bootstrap.Result{}, nil
+	}
+}
+
 func TestDiscoverCmd_WritesTableToCommandWriter(t *testing.T) {
 	original := loadDiscoverCommandData
-	loadDiscoverCommandData = func(_ *bootstrap.Result, tag string) ([]*discovery.GossipCard, func(), error) {
+	loadDiscoverCommandData = func(_ context.Context, _ *bootstrap.Result, tag string) ([]*discovery.GossipCard, func(), error) {
 		require.Equal(t, "research", tag)
 		return []*discovery.GossipCard{
 			{Name: "research-bot", DID: "did:lango:02abc", Capabilities: []string{"research", "summarize"}, PeerID: "12D3KooWDiscover"},
@@ -362,7 +625,7 @@ func TestDiscoverCmd_WritesTableToCommandWriter(t *testing.T) {
 
 func TestDiscoverCmd_WritesJSONToCommandWriter(t *testing.T) {
 	original := loadDiscoverCommandData
-	loadDiscoverCommandData = func(_ *bootstrap.Result, _ string) ([]*discovery.GossipCard, func(), error) {
+	loadDiscoverCommandData = func(_ context.Context, _ *bootstrap.Result, _ string) ([]*discovery.GossipCard, func(), error) {
 		return []*discovery.GossipCard{
 			{Name: "json-bot", DID: "did:lango:02json", Capabilities: []string{"analyze"}, PeerID: "12D3KooWJsonDiscover"},
 		}, func() {}, nil
@@ -458,7 +721,7 @@ func TestReputationCmd_WritesJSONToCommandWriter(t *testing.T) {
 
 func TestSessionListCmd_WritesEmptyStateToCommandWriter(t *testing.T) {
 	original := loadSessionListData
-	loadSessionListData = func(_ *bootstrap.Result) ([]*handshake.Session, func(), error) {
+	loadSessionListData = func(_ context.Context, _ *bootstrap.Result) ([]*handshake.Session, func(), error) {
 		return []*handshake.Session{}, func() {}, nil
 	}
 	t.Cleanup(func() { loadSessionListData = original })
@@ -474,7 +737,7 @@ func TestSessionListCmd_WritesEmptyStateToCommandWriter(t *testing.T) {
 
 func TestSessionListCmd_WritesTableToCommandWriter(t *testing.T) {
 	original := loadSessionListData
-	loadSessionListData = func(_ *bootstrap.Result) ([]*handshake.Session, func(), error) {
+	loadSessionListData = func(_ context.Context, _ *bootstrap.Result) ([]*handshake.Session, func(), error) {
 		return []*handshake.Session{
 			{
 				PeerDID:    "did:lango:peer1",
@@ -499,7 +762,7 @@ func TestSessionListCmd_WritesTableToCommandWriter(t *testing.T) {
 
 func TestSessionListCmd_WritesJSONToCommandWriter(t *testing.T) {
 	original := loadSessionListData
-	loadSessionListData = func(_ *bootstrap.Result) ([]*handshake.Session, func(), error) {
+	loadSessionListData = func(_ context.Context, _ *bootstrap.Result) ([]*handshake.Session, func(), error) {
 		return []*handshake.Session{
 			{PeerDID: "did:lango:json-peer", ZKVerified: false},
 		}, func() {}, nil
@@ -521,7 +784,7 @@ func TestSessionListCmd_WritesJSONToCommandWriter(t *testing.T) {
 
 func TestSessionRevokeCmd_WritesToCommandWriter(t *testing.T) {
 	original := revokeSessionForPeer
-	revokeSessionForPeer = func(_ *bootstrap.Result, peerDID string) (func(), error) {
+	revokeSessionForPeer = func(_ context.Context, _ *bootstrap.Result, peerDID string) (func(), error) {
 		require.Equal(t, "did:lango:revoke", peerDID)
 		return func() {}, nil
 	}
@@ -538,7 +801,7 @@ func TestSessionRevokeCmd_WritesToCommandWriter(t *testing.T) {
 
 func TestSessionRevokeAllCmd_WritesToCommandWriter(t *testing.T) {
 	original := revokeAllSessions
-	revokeAllSessions = func(_ *bootstrap.Result) (func(), error) {
+	revokeAllSessions = func(_ context.Context, _ *bootstrap.Result) (func(), error) {
 		return func() {}, nil
 	}
 	t.Cleanup(func() { revokeAllSessions = original })
@@ -737,7 +1000,7 @@ func TestConnectToPeer_CleansUpAfterConnectFailure(t *testing.T) {
 func restoreConnectDeps(t *testing.T, deps connectDeps) {
 	t.Helper()
 	original := loadConnectDeps
-	loadConnectDeps = func(*bootstrap.Result) (connectDeps, error) {
+	loadConnectDeps = func(context.Context, *bootstrap.Result) (connectDeps, error) {
 		return deps, nil
 	}
 	t.Cleanup(func() { loadConnectDeps = original })
@@ -760,7 +1023,7 @@ func validConnectPeerID() string {
 
 func TestDisconnectCmd_WritesToCommandWriter(t *testing.T) {
 	original := disconnectFromPeer
-	disconnectFromPeer = func(_ *bootstrap.Result, target string) (string, func(), error) {
+	disconnectFromPeer = func(_ context.Context, _ *bootstrap.Result, target string) (string, func(), error) {
 		require.Equal(t, "12D3KooWDisconnect", target)
 		return "12D3KooWDisconnect", func() {}, nil
 	}

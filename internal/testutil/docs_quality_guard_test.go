@@ -195,6 +195,29 @@ func TestP2PDocsExplainConnectTimeoutContract(t *testing.T) {
 	}
 }
 
+func TestP2PDocsExplainEphemeralStartupCancellationContract(t *testing.T) {
+	t.Parallel()
+
+	repoRoot := docsQualityRepoRoot(t)
+	target := filepath.Join(repoRoot, "docs", "cli", "p2p.md")
+
+	data, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatalf("read %s: %v", target, err)
+	}
+	text := string(data)
+
+	requiredSnippets := []string{
+		"Ephemeral-node commands honor the Cobra command context during startup",
+		"Canceling the command context cancels DHT bootstrap, bootstrap peer dials, and mDNS discovered-peer connection attempts for that temporary node",
+	}
+	for _, snippet := range requiredSnippets {
+		if !strings.Contains(text, snippet) {
+			t.Fatalf("%s is missing P2P startup cancellation contract snippet %q", target, snippet)
+		}
+	}
+}
+
 func TestArchitectureProjectStructureUsesCurrentGraphAndMetricsCLISurface(t *testing.T) {
 	t.Parallel()
 

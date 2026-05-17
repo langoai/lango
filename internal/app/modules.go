@@ -826,7 +826,7 @@ func (m *networkModule) Init(ctx context.Context, r appinit.Resolver) (*appinit.
 				node := p2pc.node
 				components = append(components, lifecycle.ComponentEntry{
 					Component: lifecycle.NewFuncComponent("p2p-node",
-						func(_ context.Context, wg *sync.WaitGroup) error { return node.Start(wg) },
+						func(ctx context.Context, wg *sync.WaitGroup) error { return node.Start(ctx, wg) },
 						func(_ context.Context) error { return node.Stop() },
 					),
 					Priority: lifecycle.PriorityNetwork,

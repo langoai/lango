@@ -106,8 +106,8 @@ type identityCommandData struct {
 	listenAddrs []string
 }
 
-var loadIdentityCommandData = func(boot *bootstrap.Result) (identityCommandData, func(), error) {
-	deps, err := initP2PDeps(boot)
+var loadIdentityCommandData = func(ctx context.Context, boot *bootstrap.Result) (identityCommandData, func(), error) {
+	deps, err := initP2PDeps(ctx, boot)
 	if err != nil {
 		return identityCommandData{}, nil, err
 	}
@@ -148,7 +148,7 @@ func newIdentityCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command
 			}
 			defer boot.Close()
 
-			data, cleanup, err := loadIdentityCommandData(boot)
+			data, cleanup, err := loadIdentityCommandData(cmd.Context(), boot)
 			if err != nil {
 				return err
 			}

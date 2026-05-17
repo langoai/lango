@@ -23,8 +23,8 @@ type connectDeps struct {
 	cleanup func()
 }
 
-var loadConnectDeps = func(boot *bootstrap.Result) (connectDeps, error) {
-	deps, err := initP2PDeps(boot)
+var loadConnectDeps = func(ctx context.Context, boot *bootstrap.Result) (connectDeps, error) {
+	deps, err := initP2PDeps(ctx, boot)
 	if err != nil {
 		return connectDeps{}, err
 	}
@@ -43,7 +43,7 @@ var connectHost = func(host host.Host) func(context.Context, peer.AddrInfo) erro
 }
 
 var connectToPeer = func(ctx context.Context, boot *bootstrap.Result, target string) (string, func(), error) {
-	deps, err := loadConnectDeps(boot)
+	deps, err := loadConnectDeps(ctx, boot)
 	if err != nil {
 		return "", nil, err
 	}

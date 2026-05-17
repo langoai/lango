@@ -1,6 +1,7 @@
 package p2p
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"text/tabwriter"
@@ -11,8 +12,8 @@ import (
 	"github.com/langoai/lango/internal/p2p/discovery"
 )
 
-var loadDiscoverCommandData = func(boot *bootstrap.Result, tag string) ([]*discovery.GossipCard, func(), error) {
-	deps, err := initP2PDeps(boot)
+var loadDiscoverCommandData = func(ctx context.Context, boot *bootstrap.Result, tag string) ([]*discovery.GossipCard, func(), error) {
+	deps, err := initP2PDeps(ctx, boot)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -63,7 +64,7 @@ func newDiscoverCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command
 			}
 			defer boot.Close()
 
-			cards, cleanup, err := loadDiscoverCommandData(boot, tag)
+			cards, cleanup, err := loadDiscoverCommandData(cmd.Context(), boot, tag)
 			if err != nil {
 				return err
 			}

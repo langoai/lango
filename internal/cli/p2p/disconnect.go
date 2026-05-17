@@ -1,6 +1,7 @@
 package p2p
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -9,8 +10,8 @@ import (
 	"github.com/langoai/lango/internal/bootstrap"
 )
 
-var disconnectFromPeer = func(boot *bootstrap.Result, target string) (string, func(), error) {
-	deps, err := initP2PDeps(boot)
+var disconnectFromPeer = func(ctx context.Context, boot *bootstrap.Result, target string) (string, func(), error) {
+	deps, err := initP2PDeps(ctx, boot)
 	if err != nil {
 		return "", nil, err
 	}
@@ -41,7 +42,7 @@ func newDisconnectCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comma
 			}
 			defer boot.Close()
 
-			peerID, cleanup, err := disconnectFromPeer(boot, args[0])
+			peerID, cleanup, err := disconnectFromPeer(cmd.Context(), boot, args[0])
 			if err != nil {
 				return err
 			}

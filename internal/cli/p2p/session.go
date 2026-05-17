@@ -1,6 +1,7 @@
 package p2p
 
 import (
+	"context"
 	"fmt"
 	"text/tabwriter"
 	"time"
@@ -11,16 +12,16 @@ import (
 	"github.com/langoai/lango/internal/p2p/handshake"
 )
 
-var loadSessionListData = func(boot *bootstrap.Result) ([]*handshake.Session, func(), error) {
-	deps, err := initP2PDeps(boot)
+var loadSessionListData = func(ctx context.Context, boot *bootstrap.Result) ([]*handshake.Session, func(), error) {
+	deps, err := initP2PDeps(ctx, boot)
 	if err != nil {
 		return nil, nil, err
 	}
 	return deps.sessions.ActiveSessions(), deps.cleanup, nil
 }
 
-var revokeSessionForPeer = func(boot *bootstrap.Result, peerDID string) (func(), error) {
-	deps, err := initP2PDeps(boot)
+var revokeSessionForPeer = func(ctx context.Context, boot *bootstrap.Result, peerDID string) (func(), error) {
+	deps, err := initP2PDeps(ctx, boot)
 	if err != nil {
 		return nil, err
 	}
@@ -28,8 +29,8 @@ var revokeSessionForPeer = func(boot *bootstrap.Result, peerDID string) (func(),
 	return deps.cleanup, nil
 }
 
-var revokeAllSessions = func(boot *bootstrap.Result) (func(), error) {
-	deps, err := initP2PDeps(boot)
+var revokeAllSessions = func(ctx context.Context, boot *bootstrap.Result) (func(), error) {
+	deps, err := initP2PDeps(ctx, boot)
 	if err != nil {
 		return nil, err
 	}
@@ -72,7 +73,7 @@ func newSessionListCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comm
 			}
 			defer boot.Close()
 
-			sessions, cleanup, err := loadSessionListData(boot)
+			sessions, cleanup, err := loadSessionListData(cmd.Context(), boot)
 			if err != nil {
 				return err
 			}
@@ -125,7 +126,7 @@ func newSessionRevokeCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Co
 			}
 			defer boot.Close()
 
-			cleanup, err := revokeSessionForPeer(boot, peerDID)
+			cleanup, err := revokeSessionForPeer(cmd.Context(), boot, peerDID)
 			if err != nil {
 				return err
 			}
@@ -153,7 +154,7 @@ func newSessionRevokeAllCmd(bootLoader func() (*bootstrap.Result, error)) *cobra
 			}
 			defer boot.Close()
 
-			cleanup, err := revokeAllSessions(boot)
+			cleanup, err := revokeAllSessions(cmd.Context(), boot)
 			if err != nil {
 				return err
 			}

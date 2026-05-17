@@ -1,6 +1,7 @@
 package p2p
 
 import (
+	"context"
 	"fmt"
 	"text/tabwriter"
 
@@ -14,8 +15,8 @@ type peersCommandInfo struct {
 	Addrs  []string `json:"addrs"`
 }
 
-var loadPeersCommandData = func(boot *bootstrap.Result) ([]peersCommandInfo, func(), error) {
-	deps, err := initP2PDeps(boot)
+var loadPeersCommandData = func(ctx context.Context, boot *bootstrap.Result) ([]peersCommandInfo, func(), error) {
+	deps, err := initP2PDeps(ctx, boot)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -59,7 +60,7 @@ func newPeersCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 			}
 			defer boot.Close()
 
-			infos, cleanup, err := loadPeersCommandData(boot)
+			infos, cleanup, err := loadPeersCommandData(cmd.Context(), boot)
 			if err != nil {
 				return err
 			}

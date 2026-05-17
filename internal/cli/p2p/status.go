@@ -1,6 +1,7 @@
 package p2p
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -18,8 +19,8 @@ type statusCommandData struct {
 	zkHandshake    bool
 }
 
-var loadStatusCommandData = func(boot *bootstrap.Result) (statusCommandData, func(), error) {
-	deps, err := initP2PDeps(boot)
+var loadStatusCommandData = func(ctx context.Context, boot *bootstrap.Result) (statusCommandData, func(), error) {
+	deps, err := initP2PDeps(ctx, boot)
 	if err != nil {
 		return statusCommandData{}, nil, err
 	}
@@ -65,7 +66,7 @@ func newStatusCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 			}
 			defer boot.Close()
 
-			data, cleanup, err := loadStatusCommandData(boot)
+			data, cleanup, err := loadStatusCommandData(cmd.Context(), boot)
 			if err != nil {
 				return err
 			}

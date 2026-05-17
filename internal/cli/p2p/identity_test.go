@@ -174,7 +174,7 @@ func TestResolveIdentityDID_RpcWalletProviderDoesNotFallbackToLegacy(t *testing.
 
 func TestIdentityCmd_WritesTextToCommandWriter(t *testing.T) {
 	original := loadIdentityCommandData
-	loadIdentityCommandData = func(_ *bootstrap.Result) (identityCommandData, func(), error) {
+	loadIdentityCommandData = func(_ context.Context, _ *bootstrap.Result) (identityCommandData, func(), error) {
 		return identityCommandData{
 			did:        "did:lango:v2:test-identity",
 			peerID:     "12D3KooWTestPeer",
@@ -202,7 +202,7 @@ func TestIdentityCmd_WritesTextToCommandWriter(t *testing.T) {
 
 func TestIdentityCmd_WritesJSONToCommandWriter(t *testing.T) {
 	original := loadIdentityCommandData
-	loadIdentityCommandData = func(_ *bootstrap.Result) (identityCommandData, func(), error) {
+	loadIdentityCommandData = func(_ context.Context, _ *bootstrap.Result) (identityCommandData, func(), error) {
 		return identityCommandData{
 			did:         "",
 			peerID:      "12D3KooWJsonPeer",
