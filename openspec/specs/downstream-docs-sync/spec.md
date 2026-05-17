@@ -22,7 +22,19 @@ The README SHALL list all implemented features including Team Health Monitoring,
 
 #### Scenario: CLI commands in README
 - **WHEN** a user reads the CLI commands section of `README.md`
-- **THEN** `lango status`, `lango onboard --preset`, and cron `--timeout` SHALL be documented
+- **THEN** `lango status`, `lango onboard --preset`, cron `--timeout`, cron `--deliver`, and cron management by `id-or-name` SHALL be documented
+
+### Requirement: Public cron automation docs match CLI flags
+Public cron automation documentation SHALL use command examples accepted by the current CLI.
+
+#### Scenario: Cron docs show accepted add flags
+- **WHEN** a user reads `docs/automation/cron.md`
+- **THEN** the add examples SHALL use accepted delivery flags
+- **AND** per-job timeout examples SHALL match `lango cron add --timeout`
+
+#### Scenario: Cron docs show accepted control selectors
+- **WHEN** a user reads `docs/automation/cron.md`
+- **THEN** pause, resume, delete, and job-specific history examples SHALL use accepted cron job selectors
 
 ### Requirement: Config presets documentation exists
 A dedicated documentation page SHALL exist for config presets describing all 4 presets with feature matrices.

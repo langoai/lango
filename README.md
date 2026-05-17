@@ -835,6 +835,7 @@ All settings are managed via `lango onboard` (guided wizard), `lango settings` (
 | `cron.timezone`                                        | string   | `UTC`                       | Default timezone for cron expressions                                                                             |
 | `cron.maxConcurrentJobs`                               | int      | `5`                         | Max concurrent job executions                                                                                     |
 | `cron.defaultSessionMode`                              | string   | `isolated`                  | Default session mode (`isolated` or `main`)                                                                       |
+| `cron.defaultJobTimeout`                               | duration | `30m`                       | Default timeout for job execution                                                                                 |
 | `cron.historyRetention`                                | duration | `720h`                      | How long to retain execution history                                                                              |
 | `cron.defaultDeliverTo`                                | []string | `[]`                        | Default delivery channels for job results (e.g. `["telegram:123"]`)                                               |
 | **Background Execution** (🧪 Experimental Features)    |          |                             |                                                                                                                   |
@@ -1483,6 +1484,9 @@ Lango includes a persistent cron scheduling system powered by `robfig/cron/v3` w
 # Add a daily news summary delivered to Slack
 lango cron add --name "news" --schedule "0 9 * * *" --prompt "Summarize today's news" --deliver slack
 
+# Add a quick check with an explicit per-job timeout
+lango cron add --name "quick-check" --every 30m --prompt "Check API latency" --timeout 5m
+
 # Add hourly server check with timezone
 lango cron add --name "health" --every 1h --prompt "Check server status" --timezone "Asia/Seoul"
 
@@ -1497,7 +1501,9 @@ lango cron delete news
 lango cron history news
 ```
 
-Each job runs in an isolated session (`cron:<name>:<timestamp>`) by default. Use `--isolated=false` for shared session mode.
+`lango cron add` accepts both `--deliver` and `--deliver-to`. Cron management
+commands accept either positional `<id-or-name>` selectors or `--id <id-or-name>`.
+With the default configuration, each job runs in an isolated session (`cron:<name>:<timestamp>`). Set `cron.defaultSessionMode` to `main`, or pass `--isolated=false`, for shared session mode.
 
 ## Background Execution (🧪 Experimental Features)
 

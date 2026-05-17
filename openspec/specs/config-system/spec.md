@@ -323,11 +323,11 @@ The substituteEnvVars function SHALL expand `${VAR}` patterns in `payment.networ
 - **THEN** the environment variable value is substituted
 
 ### Requirement: Cron configuration
-The config system SHALL support a `cron` section with fields: enabled (bool), timezone (string), maxConcurrentJobs (int), defaultSessionMode (string), historyRetention (duration string), defaultDeliverTo ([]string).
+The config system SHALL support a `cron` section with fields: enabled (bool), timezone (string), maxConcurrentJobs (int), defaultSessionMode (string), historyRetention (duration string), defaultJobTimeout (duration string), defaultDeliverTo ([]string).
 
 #### Scenario: Default cron config
 - **WHEN** no cron config is specified
-- **THEN** defaults SHALL be: enabled=false, timezone="UTC", maxConcurrentJobs=5, defaultSessionMode="isolated", historyRetention="720h", defaultDeliverTo=nil
+- **THEN** defaults SHALL be: enabled=false, timezone="UTC", maxConcurrentJobs=5, defaultSessionMode="isolated", historyRetention="720h", defaultJobTimeout="30m", defaultDeliverTo=nil
 
 ### Requirement: Background configuration
 The config system SHALL support a `background` section with fields: enabled (bool), yieldMs (int), maxConcurrentTasks (int), defaultDeliverTo ([]string).
@@ -390,4 +390,3 @@ The Config struct SHALL include a `Provenance ProvenanceConfig` field with sub-s
 #### Scenario: Default config includes provenance
 - **WHEN** DefaultConfig() is called
 - **THEN** the Provenance field is populated with default values
-

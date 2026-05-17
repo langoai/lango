@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/langoai/lango/internal/bootstrap"
+	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/cron"
 	"github.com/langoai/lango/internal/ent"
 	"github.com/langoai/lango/internal/toolchain"
@@ -51,6 +52,7 @@ func newAddCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 		deliverTo []string
 		isolated  bool
 		timezone  string
+		timeout   string
 	)
 
 	cmd := &cobra.Command{
@@ -95,13 +97,16 @@ Examples:
 				return fmt.Errorf("only one of --schedule, --every, or --at may be specified")
 			}
 
-			sessionMode := "main"
-			if isolated {
-				sessionMode = "isolated"
-			}
-
 			if timezone == "" {
 				timezone = "UTC"
+			}
+			var jobTimeout time.Duration
+			if timeout != "" {
+				var err error
+				jobTimeout, err = time.ParseDuration(timeout)
+				if err != nil {
+					return fmt.Errorf("parse --timeout %q: %w", timeout, err)
+				}
 			}
 
 			boot, err := bootLoader()
@@ -111,6 +116,10 @@ Examples:
 			defer boot.Close()
 
 			store := initStore(boot)
+			sessionMode, err := cronSessionMode(cmd, boot.Config, isolated)
+			if err != nil {
+				return err
+			}
 
 			job := cron.Job{
 				ID:           uuid.New().String(),
@@ -122,15 +131,21 @@ Examples:
 				DeliverTo:    deliverTo,
 				Timezone:     timezone,
 				Enabled:      true,
+				Timeout:      jobTimeout,
 				CreatedAt:    time.Now(),
 			}
 
-			if err := store.Create(context.Background(), job); err != nil {
-				return fmt.Errorf("create job: %w", err)
+			stored, updated, err := store.Upsert(context.Background(), job)
+			if err != nil {
+				return fmt.Errorf("upsert job: %w", err)
 			}
 
 			out := cmd.OutOrStdout()
-			fmt.Fprintf(out, "Cron job %q created (id: %s)\n", name, job.ID)
+			action := "created"
+			if updated {
+				action = "updated"
+			}
+			fmt.Fprintf(out, "Cron job %q %s (id: %s)\n", name, action, stored.ID)
 			fmt.Fprintf(out, "  Schedule: %s %s\n", scheduleType, scheduleVal)
 			fmt.Fprintf(out, "  Prompt: %s\n", truncate(prompt, 80))
 			if len(deliverTo) > 0 {
@@ -146,8 +161,15 @@ Examples:
 	cmd.Flags().StringVar(&at, "at", "", "one-time execution (ISO8601: '2026-02-20T15:00:00')")
 	cmd.Flags().StringVar(&prompt, "prompt", "", "prompt to execute (required)")
 	cmd.Flags().StringSliceVar(&deliverTo, "deliver", nil, "channels to deliver results (e.g. slack,telegram)")
-	cmd.Flags().BoolVar(&isolated, "isolated", false, "run in isolated session")
+	cmd.Flags().StringSliceVar(&deliverTo, "deliver-to", nil, "channels to deliver results (alias for --deliver)")
+	cmd.Flags().BoolVar(
+		&isolated,
+		"isolated",
+		false,
+		"override cron.defaultSessionMode for this job (true=isolated, false=main)",
+	)
 	cmd.Flags().StringVar(&timezone, "timezone", "", "timezone (default: config or UTC)")
+	cmd.Flags().StringVar(&timeout, "timeout", "", "per-job timeout (Go duration, e.g. 5m, 1h30m)")
 
 	return cmd
 }
@@ -199,11 +221,17 @@ func newListCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 }
 
 func newDeleteCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
-	return &cobra.Command{
+	var id string
+
+	cmd := &cobra.Command{
 		Use:   "delete <id-or-name>",
 		Short: "Delete a cron job",
-		Args:  cobra.ExactArgs(1),
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			selector, err := requiredCronSelector(args, id)
+			if err != nil {
+				return err
+			}
 			boot, err := bootLoader()
 			if err != nil {
 				return fmt.Errorf("bootstrap: %w", err)
@@ -211,27 +239,35 @@ func newDeleteCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 			defer boot.Close()
 
 			store := initStore(boot)
-			id, err := resolveJobID(context.Background(), store, args[0])
+			resolvedID, err := resolveJobID(context.Background(), store, selector)
 			if err != nil {
 				return err
 			}
 
-			if err := store.Delete(context.Background(), id); err != nil {
+			if err := store.Delete(context.Background(), resolvedID); err != nil {
 				return fmt.Errorf("delete job: %w", err)
 			}
 
-			fmt.Fprintf(cmd.OutOrStdout(), "Cron job %q deleted.\n", args[0])
+			fmt.Fprintf(cmd.OutOrStdout(), "Cron job %q deleted.\n", selector)
 			return nil
 		},
 	}
+	cmd.Flags().StringVar(&id, "id", "", "job ID or name")
+	return cmd
 }
 
 func newPauseCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
-	return &cobra.Command{
+	var id string
+
+	cmd := &cobra.Command{
 		Use:   "pause <id-or-name>",
 		Short: "Pause a cron job",
-		Args:  cobra.ExactArgs(1),
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			selector, err := requiredCronSelector(args, id)
+			if err != nil {
+				return err
+			}
 			boot, err := bootLoader()
 			if err != nil {
 				return fmt.Errorf("bootstrap: %w", err)
@@ -239,12 +275,12 @@ func newPauseCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 			defer boot.Close()
 
 			store := initStore(boot)
-			id, err := resolveJobID(context.Background(), store, args[0])
+			resolvedID, err := resolveJobID(context.Background(), store, selector)
 			if err != nil {
 				return err
 			}
 
-			job, err := store.Get(context.Background(), id)
+			job, err := store.Get(context.Background(), resolvedID)
 			if err != nil {
 				return fmt.Errorf("get job: %w", err)
 			}
@@ -253,18 +289,26 @@ func newPauseCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 				return fmt.Errorf("update job: %w", err)
 			}
 
-			fmt.Fprintf(cmd.OutOrStdout(), "Cron job %q paused.\n", args[0])
+			fmt.Fprintf(cmd.OutOrStdout(), "Cron job %q paused.\n", selector)
 			return nil
 		},
 	}
+	cmd.Flags().StringVar(&id, "id", "", "job ID or name")
+	return cmd
 }
 
 func newResumeCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
-	return &cobra.Command{
+	var id string
+
+	cmd := &cobra.Command{
 		Use:   "resume <id-or-name>",
 		Short: "Resume a paused cron job",
-		Args:  cobra.ExactArgs(1),
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			selector, err := requiredCronSelector(args, id)
+			if err != nil {
+				return err
+			}
 			boot, err := bootLoader()
 			if err != nil {
 				return fmt.Errorf("bootstrap: %w", err)
@@ -272,12 +316,12 @@ func newResumeCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 			defer boot.Close()
 
 			store := initStore(boot)
-			id, err := resolveJobID(context.Background(), store, args[0])
+			resolvedID, err := resolveJobID(context.Background(), store, selector)
 			if err != nil {
 				return err
 			}
 
-			job, err := store.Get(context.Background(), id)
+			job, err := store.Get(context.Background(), resolvedID)
 			if err != nil {
 				return fmt.Errorf("get job: %w", err)
 			}
@@ -286,20 +330,29 @@ func newResumeCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 				return fmt.Errorf("update job: %w", err)
 			}
 
-			fmt.Fprintf(cmd.OutOrStdout(), "Cron job %q resumed.\n", args[0])
+			fmt.Fprintf(cmd.OutOrStdout(), "Cron job %q resumed.\n", selector)
 			return nil
 		},
 	}
+	cmd.Flags().StringVar(&id, "id", "", "job ID or name")
+	return cmd
 }
 
 func newHistoryCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
-	var limit int
+	var (
+		id    string
+		limit int
+	)
 
 	cmd := &cobra.Command{
 		Use:   "history [id-or-name]",
 		Short: "Show cron job execution history",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			selector, hasSelector, err := optionalCronSelector(args, id)
+			if err != nil {
+				return err
+			}
 			boot, err := bootLoader()
 			if err != nil {
 				return fmt.Errorf("bootstrap: %w", err)
@@ -309,12 +362,12 @@ func newHistoryCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command 
 			store := initStore(boot)
 
 			var entries []cron.HistoryEntry
-			if len(args) > 0 {
-				id, err := resolveJobID(context.Background(), store, args[0])
+			if hasSelector {
+				resolvedID, err := resolveJobID(context.Background(), store, selector)
 				if err != nil {
 					return err
 				}
-				entries, err = store.ListHistory(context.Background(), id, limit)
+				entries, err = store.ListHistory(context.Background(), resolvedID, limit)
 				if err != nil {
 					return fmt.Errorf("list history: %w", err)
 				}
@@ -349,8 +402,51 @@ func newHistoryCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command 
 		},
 	}
 
+	cmd.Flags().StringVar(&id, "id", "", "job ID or name")
 	cmd.Flags().IntVarP(&limit, "limit", "n", 20, "maximum entries to show")
 	return cmd
+}
+
+func requiredCronSelector(args []string, id string) (string, error) {
+	selector, ok, err := optionalCronSelector(args, id)
+	if err != nil {
+		return "", err
+	}
+	if !ok {
+		return "", fmt.Errorf("requires <id-or-name> or --id")
+	}
+	return selector, nil
+}
+
+func optionalCronSelector(args []string, id string) (string, bool, error) {
+	if len(args) > 0 && id != "" {
+		return "", false, fmt.Errorf("provide either <id-or-name> or --id, not both")
+	}
+	if id != "" {
+		return id, true, nil
+	}
+	if len(args) > 0 {
+		return args[0], true, nil
+	}
+	return "", false, nil
+}
+
+func cronSessionMode(cmd *cobra.Command, cfg *config.Config, isolated bool) (string, error) {
+	if cmd.Flags().Changed("isolated") {
+		if isolated {
+			return "isolated", nil
+		}
+		return "main", nil
+	}
+
+	sessionMode := "isolated"
+	if cfg != nil && cfg.Cron.DefaultSessionMode != "" {
+		sessionMode = cfg.Cron.DefaultSessionMode
+	}
+	if sessionMode != "isolated" && sessionMode != "main" {
+		return "", fmt.Errorf("invalid cron.defaultSessionMode %q: expected isolated or main", sessionMode)
+	}
+	return sessionMode, nil
 }
 
 // resolveJobID tries to find a job by UUID or by name.
