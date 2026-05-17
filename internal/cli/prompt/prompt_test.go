@@ -61,6 +61,60 @@ func TestPassphrase_PropagatesReadError(t *testing.T) {
 	}
 }
 
+func TestPassphraseIO_RoutesPromptToExplicitWriter(t *testing.T) {
+	origFD := passphraseInputFD
+	origRead := passphraseReadPassword
+	t.Cleanup(func() {
+		passphraseInputFD = origFD
+		passphraseReadPassword = origRead
+	})
+
+	var out bytes.Buffer
+	passphraseInputFD = func() int { return 42 }
+	passphraseReadPassword = func(fd int) ([]byte, error) {
+		if fd != 42 {
+			t.Fatalf("unexpected fd: %d", fd)
+		}
+		return []byte("secret-value"), nil
+	}
+
+	got, err := PassphraseIO(&out, "Enter secret value: ")
+
+	if err != nil {
+		t.Fatalf("PassphraseIO returned error: %v", err)
+	}
+	if got != "secret-value" {
+		t.Fatalf("expected secret-value, got %q", got)
+	}
+	if out.String() != "Enter secret value: \n" {
+		t.Fatalf("unexpected prompt output: %q", out.String())
+	}
+}
+
+func TestPassphraseIO_ReturnsPromptWriteError(t *testing.T) {
+	origRead := passphraseReadPassword
+	t.Cleanup(func() {
+		passphraseReadPassword = origRead
+	})
+
+	passphraseReadPassword = func(fd int) ([]byte, error) {
+		t.Fatal("password reader should not run when prompt write fails")
+		return nil, nil
+	}
+
+	_, err := PassphraseIO(failingWriter{}, "Enter secret value: ")
+
+	if err == nil {
+		t.Fatal("expected prompt write error")
+	}
+}
+
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) {
+	return 0, errors.New("write failed")
+}
+
 func TestPassphraseConfirm_Mismatch(t *testing.T) {
 	origOut := passphraseOutput
 	origFD := passphraseInputFD

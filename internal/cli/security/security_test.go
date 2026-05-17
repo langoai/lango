@@ -680,6 +680,64 @@ func TestSecretsSetAndList_UseCommandWriter(t *testing.T) {
 	assert.Contains(t, jsonOut, `"name": "api-key"`)
 }
 
+func TestSecretsSetValueHexDoesNotPrompt(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Session.DatabasePath = filepath.Join(t.TempDir(), "security-secrets-hex.db")
+	bootLoader := persistentSecurityBootLoader(t, cfg)
+
+	prevRequire := secretsRequireInteractiveTerminal
+	prevPassphrase := secretsPassphrase
+	t.Cleanup(func() {
+		secretsRequireInteractiveTerminal = prevRequire
+		secretsPassphrase = prevPassphrase
+	})
+
+	secretsRequireInteractiveTerminal = func(message string) error {
+		t.Fatal("interactive terminal check should not run with --value-hex")
+		return nil
+	}
+	secretsPassphrase = func(out io.Writer, promptText string) (string, error) {
+		t.Fatal("passphrase prompt should not run with --value-hex")
+		return "", nil
+	}
+
+	setCmd := newSecretsSetCmd(bootLoader)
+	out, err := executeSecurityCmd(t, setCmd, "api-key", "--value-hex", "746f6b656e")
+
+	require.NoError(t, err)
+	assert.NotContains(t, out, "Enter secret value")
+	assert.Contains(t, out, "Secret 'api-key' stored successfully.")
+}
+
+func TestSecretsSetInteractivePromptUsesCommandWriter(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Session.DatabasePath = filepath.Join(t.TempDir(), "security-secrets-interactive.db")
+	bootLoader := persistentSecurityBootLoader(t, cfg)
+
+	prevRequire := secretsRequireInteractiveTerminal
+	prevPassphrase := secretsPassphrase
+	t.Cleanup(func() {
+		secretsRequireInteractiveTerminal = prevRequire
+		secretsPassphrase = prevPassphrase
+	})
+
+	secretsRequireInteractiveTerminal = func(message string) error {
+		return nil
+	}
+	secretsPassphrase = func(out io.Writer, promptText string) (string, error) {
+		fmt.Fprint(out, promptText)
+		fmt.Fprintln(out)
+		return "token", nil
+	}
+
+	setCmd := newSecretsSetCmd(bootLoader)
+	out, err := executeSecurityCmd(t, setCmd, "api-key")
+
+	require.NoError(t, err)
+	assert.Contains(t, out, "Enter secret value: \n")
+	assert.Contains(t, out, "Secret 'api-key' stored successfully.")
+}
+
 func TestSecurityInspectionCommands_InvalidOutputFailFast(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Session.DatabasePath = filepath.Join(t.TempDir(), "security-invalid-output.db")

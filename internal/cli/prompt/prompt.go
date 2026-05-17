@@ -37,9 +37,19 @@ func RequireInteractiveTerminal(message string) error {
 
 // Passphrase prompts the user for a passphrase with hidden input
 func Passphrase(prompt string) (string, error) {
-	fmt.Fprint(passphraseOutput, prompt)
+	return PassphraseIO(passphraseOutput, prompt)
+}
+
+// PassphraseIO prompts the user for a passphrase with hidden input, routing
+// visible prompt text through the supplied writer.
+func PassphraseIO(out io.Writer, prompt string) (string, error) {
+	if _, err := fmt.Fprint(out, prompt); err != nil {
+		return "", err
+	}
 	bytePassword, err := passphraseReadPassword(passphraseInputFD())
-	fmt.Fprintln(passphraseOutput) // Add newline after input
+	if _, writeErr := fmt.Fprintln(out); err == nil && writeErr != nil {
+		return "", writeErr
+	}
 	if err != nil {
 		return "", err
 	}

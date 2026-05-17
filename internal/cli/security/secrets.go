@@ -14,6 +14,11 @@ import (
 	"github.com/langoai/lango/internal/cli/prompt"
 )
 
+var (
+	secretsRequireInteractiveTerminal = prompt.RequireInteractiveTerminal
+	secretsPassphrase                 = prompt.PassphraseIO
+)
+
 func newSecretsCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "secrets",
@@ -133,12 +138,12 @@ func newSecretsSetCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comma
 				}
 				raw = decoded
 			} else {
-				if err := prompt.RequireInteractiveTerminal(
+				if err := secretsRequireInteractiveTerminal(
 					"this command requires an interactive terminal (use --value-hex for non-interactive)",
 				); err != nil {
 					return err
 				}
-				value, err := prompt.Passphrase("Enter secret value: ")
+				value, err := secretsPassphrase(cmd.OutOrStdout(), "Enter secret value: ")
 				if err != nil {
 					return fmt.Errorf("read secret value: %w", err)
 				}
