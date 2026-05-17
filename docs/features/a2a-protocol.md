@@ -79,10 +79,11 @@ Remote A2A agents are discovered by fetching their Agent Card from a configured 
 
 ### Graceful Degradation
 
-If a remote agent is unreachable during startup, Lango logs a warning and skips it. The rest of the agent tree continues to function normally. No remote agent failure blocks the startup process.
+If a configured remote agent cannot be constructed during startup, Lango logs a warning and skips that remote. Successfully loaded remotes are still attached to the orchestrator, and the rest of the local agent tree continues to function normally. Remote loading failures do not block startup, but missing configuration such as an empty `agentCardUrl` is surfaced in the startup warning instead of being silently ignored.
 
 ```
 WARN  load remote agent  name=weather-agent  url=https://weather.example.com/.well-known/agent.json  error=connection refused
+WARN  load remote A2A agents  error="remote agent \"review-agent\" missing agentCardUrl"
 ```
 
 ## Configuration
@@ -124,6 +125,8 @@ Each remote agent entry requires:
 |---|---|
 | `name` | Local name for the remote agent |
 | `agentCardUrl` | URL to fetch the Agent Card (typically `https://host/.well-known/agent.json`) |
+
+`lango agent list` shows configured remote entries. Use `lango agent list --check` or `lango doctor` to validate reachability before relying on a remote as a delegation target.
 
 ## Setup
 
