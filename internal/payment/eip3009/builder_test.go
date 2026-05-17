@@ -1,8 +1,10 @@
 package eip3009
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
+	"errors"
 	"math/big"
 	"testing"
 	"time"
@@ -24,7 +26,8 @@ func TestNewUnsigned(t *testing.T) {
 	value := big.NewInt(1_000_000) // 1 USDC
 	deadline := time.Now().Add(1 * time.Hour)
 
-	auth := NewUnsigned(testFrom, testTo, value, deadline)
+	auth, err := NewUnsigned(testFrom, testTo, value, deadline)
+	require.NoError(t, err)
 
 	assert.Equal(t, testFrom, auth.From)
 	assert.Equal(t, testTo, auth.To)
@@ -35,6 +38,45 @@ func TestNewUnsigned(t *testing.T) {
 	// Value should be a copy, not shared reference.
 	value.SetInt64(999)
 	assert.NotEqual(t, value, auth.Value)
+}
+
+func TestNewUnsignedReturnsErrorWhenNonceReaderFails(t *testing.T) {
+	value := big.NewInt(1_000_000)
+	deadline := time.Now().Add(1 * time.Hour)
+
+	original := nonceReader
+	nonceReader = failingReader{err: errors.New("entropy unavailable")}
+	t.Cleanup(func() { nonceReader = original })
+
+	auth, err := NewUnsigned(testFrom, testTo, value, deadline)
+
+	require.Error(t, err)
+	require.Nil(t, auth)
+	require.ErrorContains(t, err, "generate EIP-3009 nonce")
+	require.ErrorContains(t, err, "entropy unavailable")
+}
+
+func TestNewUnsignedReturnsErrorWhenNonceReaderIsShort(t *testing.T) {
+	value := big.NewInt(1_000_000)
+	deadline := time.Now().Add(1 * time.Hour)
+
+	original := nonceReader
+	nonceReader = bytes.NewReader([]byte{0x01, 0x02, 0x03})
+	t.Cleanup(func() { nonceReader = original })
+
+	auth, err := NewUnsigned(testFrom, testTo, value, deadline)
+
+	require.Error(t, err)
+	require.Nil(t, auth)
+	require.ErrorContains(t, err, "generate EIP-3009 nonce")
+}
+
+type failingReader struct {
+	err error
+}
+
+func (r failingReader) Read([]byte) (int, error) {
+	return 0, r.err
 }
 
 func TestTypedDataHash(t *testing.T) {

@@ -335,8 +335,9 @@ func (f *fakeP2PAuditor) RecordPaymentExecution(_ context.Context, entry toolpay
 }
 
 type p2pTestWallet struct {
-	key     *ecdsa.PrivateKey
-	address string
+	key                  *ecdsa.PrivateKey
+	address              string
+	signTransactionCalls int
 }
 
 func newP2PTestWallet(t *testing.T) *p2pTestWallet {
@@ -359,6 +360,7 @@ func (w *p2pTestWallet) Balance(context.Context) (*big.Int, error) {
 }
 
 func (w *p2pTestWallet) SignTransaction(_ context.Context, rawTx []byte) ([]byte, error) {
+	w.signTransactionCalls++
 	return ethcrypto.Sign(rawTx, w.key)
 }
 

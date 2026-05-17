@@ -107,7 +107,7 @@ The transaction builder SHALL log a WARNING when the block header's baseFee is n
 - **THEN** the builder SHALL log "WARNING: block header missing baseFee, using fallback" and use the default 1 gwei value
 
 ### Requirement: EIP-3009 signing correctness
-The EIP-3009 Sign function SHALL use SignTransaction (raw signing without additional hashing) instead of SignMessage (which applies keccak256) because TypedDataHash already returns a keccak256 digest.
+The EIP-3009 Sign function SHALL use SignTransaction (raw signing without additional hashing) instead of SignMessage (which applies keccak256) because TypedDataHash already returns a keccak256 digest. Unsigned EIP-3009 authorization construction SHALL require a full 32-byte cryptographically random nonce and SHALL return an error if nonce generation fails.
 
 #### Scenario: EIP-3009 signature validity
 - **WHEN** an EIP-3009 authorization is signed
@@ -116,6 +116,11 @@ The EIP-3009 Sign function SHALL use SignTransaction (raw signing without additi
 #### Scenario: WalletSigner interface
 - **WHEN** a wallet is used for EIP-3009 signing
 - **THEN** it SHALL implement both SignTransaction (raw) and SignMessage (hashed) methods
+
+#### Scenario: Nonce entropy failure is reported
+- **WHEN** unsigned EIP-3009 authorization construction cannot read 32 random nonce bytes
+- **THEN** construction SHALL return a non-nil error
+- **AND** it SHALL NOT return an authorization with a zero or partial nonce
 
 ### Requirement: PaymentTx persistence abstraction
 Payment transaction writes MUST flow through an explicit transaction-store interface rather than direct service-owned Ent access.
@@ -155,4 +160,3 @@ Payment transaction writes MUST flow through an explicit transaction-store inter
 - **WHEN** `lango payment send` prompts for confirmation and stdin reaches EOF before approval
 - **THEN** the command SHALL print `Aborted.`
 - **AND** it SHALL NOT submit a payment
-

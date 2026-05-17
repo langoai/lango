@@ -665,6 +665,25 @@ func authToMap(auth *eip3009.Authorization) map[string]interface{} {
 // paidInvokeDefaultDeadline is the EIP-3009 authorization validity window.
 const paidInvokeDefaultDeadline = 10 * time.Minute
 
+type p2pPaidInvokeRemoteAgent interface {
+	QueryPrice(context.Context, string) (*protocol.PriceQuoteResult, error)
+	InvokeTool(context.Context, string, map[string]interface{}) (map[string]interface{}, error)
+	InvokeToolPaid(context.Context, string, map[string]interface{}, map[string]interface{}) (*protocol.Response, error)
+}
+
+var newP2PPaidInvokeRemoteAgent = func(peerDID string, did *identity.DID, sess *handshake.Session, p2pc *p2pComponents) p2pPaidInvokeRemoteAgent {
+	return protocol.NewRemoteAgent(protocol.RemoteAgentConfig{
+		Name:         "peer-" + peerDID[:16],
+		DID:          peerDID,
+		PeerID:       did.PeerID,
+		SessionToken: sess.Token,
+		Host:         p2pc.node.Host(),
+		Logger:       logger(),
+	})
+}
+
+var newEIP3009Unsigned = eip3009.NewUnsigned
+
 // buildP2PPaidInvokeTool creates the p2p_invoke_paid tool that automates
 // buyer-side paid tool invocation: price query → spending check → EIP-3009
 // signing → remote paid invoke.
@@ -729,14 +748,7 @@ func buildP2PPaidInvokeTool(p2pc *p2pComponents, pc *paymentComponents) []*agent
 					toolParams = map[string]interface{}{}
 				}
 
-				remoteAgent := protocol.NewRemoteAgent(protocol.RemoteAgentConfig{
-					Name:         "peer-" + peerDID[:16],
-					DID:          peerDID,
-					PeerID:       did.PeerID,
-					SessionToken: sess.Token,
-					Host:         p2pc.node.Host(),
-					Logger:       logger(),
-				})
+				remoteAgent := newP2PPaidInvokeRemoteAgent(peerDID, did, sess, p2pc)
 
 				// 2. Query price.
 				quote, err := remoteAgent.QueryPrice(ctx, toolName)
@@ -792,12 +804,15 @@ func buildP2PPaidInvokeTool(p2pc *p2pComponents, pc *paymentComponents) []*agent
 				sellerAddr := common.HexToAddress(quote.SellerAddr)
 				deadline := time.Now().Add(paidInvokeDefaultDeadline)
 
-				unsigned := eip3009.NewUnsigned(
+				unsigned, err := newEIP3009Unsigned(
 					common.HexToAddress(buyerAddr),
 					sellerAddr,
 					amount,
 					deadline,
 				)
+				if err != nil {
+					return nil, fmt.Errorf("create EIP-3009 authorization: %w", err)
+				}
 
 				// 4d. Sign the authorization.
 				signed, err := eip3009.Sign(ctx, pc.wallet, unsigned, pc.chainID, usdcAddr)

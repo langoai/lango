@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
+	"io"
 	"math/big"
 	"time"
 
@@ -68,16 +69,19 @@ var (
 	usdcVersion = crypto.Keccak256([]byte("2"))
 )
 
+var nonceReader io.Reader = rand.Reader
+
 // NewUnsigned creates an unsigned EIP-3009 authorization with a random nonce.
 // validAfter is set to now; validBefore is set to the given deadline.
 func NewUnsigned(
 	from, to common.Address,
 	value *big.Int,
 	deadline time.Time,
-) *UnsignedAuth {
+) (*UnsignedAuth, error) {
 	var nonce [32]byte
-	// crypto/rand.Read never returns an error on supported platforms.
-	_, _ = rand.Read(nonce[:])
+	if _, err := io.ReadFull(nonceReader, nonce[:]); err != nil {
+		return nil, fmt.Errorf("generate EIP-3009 nonce: %w", err)
+	}
 
 	return &UnsignedAuth{
 		From:        from,
@@ -86,7 +90,7 @@ func NewUnsigned(
 		ValidAfter:  big.NewInt(time.Now().Unix()),
 		ValidBefore: big.NewInt(deadline.Unix()),
 		Nonce:       nonce,
-	}
+	}, nil
 }
 
 // TypedDataHash computes the EIP-712 hash to be signed for a
