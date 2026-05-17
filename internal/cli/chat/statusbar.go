@@ -50,6 +50,10 @@ const (
 )
 
 func renderHeader(cfg *config.Config, sessionKey string, width int) string {
+	return renderHeaderWithSetup(cfg, sessionKey, width, false)
+}
+
+func renderHeaderWithSetup(cfg *config.Config, sessionKey string, width int, setupRequired bool) string {
 	productBadge := lipgloss.NewStyle().
 		Background(tui.Primary).
 		Foreground(tui.Foreground).
@@ -71,10 +75,16 @@ func renderHeader(cfg *config.Config, sessionKey string, width int) string {
 	}
 	sessionKey = singleLineValue(ansi.Strip(sessionKey))
 
+	display := fmt.Sprintf("%s · %s", provider, model)
+	color := tui.Foreground
+	if setupRequired {
+		display = setupRequiredLabel
+		color = tui.Warning
+	}
 	modelText := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(tui.Foreground).
-		Render(fmt.Sprintf("%s · %s", provider, model))
+		Foreground(color).
+		Render(display)
 
 	left := fmt.Sprintf(" %s  %s", productBadge, modelText)
 	right := lipgloss.NewStyle().
@@ -85,7 +95,11 @@ func renderHeader(cfg *config.Config, sessionKey string, width int) string {
 }
 
 func renderTurnStrip(state chatState, width int) string {
-	label, hint, color := turnStateCopy(state)
+	return renderTurnStripWithSetup(state, width, false)
+}
+
+func renderTurnStripWithSetup(state chatState, width int, setupRequired bool) string {
+	label, hint, color := turnStateCopyWithSetup(state, setupRequired)
 	left := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(color).
@@ -98,16 +112,30 @@ func renderTurnStrip(state chatState, width int) string {
 }
 
 func renderHelpBar(state chatState, width int) string {
+	return renderHelpBarWithSetup(state, width, false)
+}
+
+func renderHelpBarWithSetup(state chatState, width int, setupRequired bool) string {
 	w := max(width, 1)
 	var entries []string
 	switch state {
 	case stateIdle, stateFailed:
-		entries = []string{
-			tui.HelpEntry("Enter", "send"),
-			tui.HelpEntry("Alt+Enter", "newline"),
-			tui.HelpEntry("Ctrl+C", "quit x2"),
-			tui.HelpEntry("Ctrl+D", "quit"),
-			tui.HelpEntry("/help", "commands"),
+		if setupRequired {
+			entries = []string{
+				tui.HelpEntry("lango onboard", "setup"),
+				tui.HelpEntry("lango settings", "config"),
+				tui.HelpEntry("lango doctor", "check"),
+				tui.HelpEntry("/help", "commands"),
+				tui.HelpEntry("Ctrl+D", "quit"),
+			}
+		} else {
+			entries = []string{
+				tui.HelpEntry("Enter", "send"),
+				tui.HelpEntry("Alt+Enter", "newline"),
+				tui.HelpEntry("Ctrl+C", "quit x2"),
+				tui.HelpEntry("Ctrl+D", "quit"),
+				tui.HelpEntry("/help", "commands"),
+			}
 		}
 	case stateStreaming:
 		entries = []string{
@@ -131,6 +159,13 @@ func renderHelpBar(state chatState, width int) string {
 }
 
 func turnStateCopy(state chatState) (label, hint string, color lipgloss.Color) {
+	return turnStateCopyWithSetup(state, false)
+}
+
+func turnStateCopyWithSetup(state chatState, setupRequired bool) (label, hint string, color lipgloss.Color) {
+	if setupRequired && (state == stateIdle || state == stateFailed) {
+		return setupRequiredLabel, setupRequiredGuidance, tui.Warning
+	}
 	switch state {
 	case stateIdle:
 		return "Ready", "Enter sends · /help shows commands", tui.Success

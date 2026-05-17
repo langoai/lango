@@ -57,12 +57,7 @@ func (submitTestSessionStore) SetSalt(string, []byte) error   { return nil }
 
 func newTestModel() *ChatModel {
 	m := &ChatModel{
-		cfg: &config.Config{
-			Agent: config.AgentConfig{
-				Provider: "openai",
-				Model:    "gpt-test",
-			},
-		},
+		cfg:        readyRemoteConfig(),
 		sessionKey: "test-session",
 		input:      newInputModel(),
 		chatView:   newChatViewModel(80, 24),
@@ -75,6 +70,34 @@ func newTestModel() *ChatModel {
 	}
 	m.recalcLayout()
 	return m
+}
+
+func incompleteSetupConfig() *config.Config {
+	return config.DefaultConfig()
+}
+
+func readyRemoteConfig() *config.Config {
+	return &config.Config{
+		Agent: config.AgentConfig{
+			Provider: "openai",
+			Model:    "gpt-test",
+		},
+		Providers: map[string]config.ProviderConfig{
+			"openai": {Type: "openai", APIKey: "sk-test"},
+		},
+	}
+}
+
+func readyOllamaConfig() *config.Config {
+	return &config.Config{
+		Agent: config.AgentConfig{
+			Provider: "local-ollama",
+			Model:    "llama3.1",
+		},
+		Providers: map[string]config.ProviderConfig{
+			"local-ollama": {Type: "ollama"},
+		},
+	}
 }
 
 func newTestModelWithSharedPending(shared PendingApprovalStore) *ChatModel {
@@ -317,6 +340,129 @@ func TestRenderBars_MinimalWidth(t *testing.T) {
 	if renderTurnStrip(stateStreaming, 20) == "" {
 		t.Fatal("turn strip should render at narrow width")
 	}
+}
+
+func TestSetupReadiness_RenderPartsShowsSetupRequiredState(t *testing.T) {
+	m := New(Deps{
+		Config:     incompleteSetupConfig(),
+		SessionKey: "setup-test",
+	})
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
+	m = updated.(*ChatModel)
+
+	parts := m.RenderParts()
+	out := ansi.Strip(strings.Join([]string{
+		parts.Header,
+		parts.TurnStrip,
+		parts.Footer,
+	}, "\n"))
+
+	assert.Contains(t, out, "Setup Required")
+	assert.Contains(t, out, "lango onboard")
+	assert.Contains(t, out, "lango settings")
+	assert.Contains(t, out, "lango doctor")
+	assert.NotContains(t, out, "Ready")
+	assert.NotContains(t, out, "Enter send")
+}
+
+func TestSetupReadiness_BlocksNormalSubmissionAndKeepsDraft(t *testing.T) {
+	executor := &submitCaptureExecutor{}
+	runner := turnrunner.New(turnrunner.Config{}, executor, submitTestSessionStore{}, nil)
+	m := New(Deps{
+		TurnRunner: runner,
+		Config:     incompleteSetupConfig(),
+		SessionKey: "test-session",
+	})
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
+	m = updated.(*ChatModel)
+	m.SetComposerValue("explain this code")
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(*ChatModel)
+	for _, msg := range collectImmediateMsgs(cmd) {
+		updated, _ = m.Update(msg)
+		m = updated.(*ChatModel)
+	}
+
+	assert.Empty(t, executor.input)
+	assert.Equal(t, "explain this code", m.ComposerValue())
+	assert.Equal(t, stateIdle, m.state)
+	require.NotEmpty(t, m.chatView.entries)
+	last := m.chatView.entries[len(m.chatView.entries)-1]
+	assert.Equal(t, itemStatus, last.kind)
+	assert.Contains(t, last.content, "lango onboard")
+	assert.Contains(t, last.content, "lango settings")
+	assert.Contains(t, last.content, "lango doctor")
+}
+
+func TestSetupReadiness_SlashCommandsStillDispatchBeforeSetup(t *testing.T) {
+	executor := &submitCaptureExecutor{}
+	runner := turnrunner.New(turnrunner.Config{}, executor, submitTestSessionStore{}, nil)
+	m := New(Deps{
+		TurnRunner: runner,
+		Config:     incompleteSetupConfig(),
+		SessionKey: "test-session",
+	})
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
+	m = updated.(*ChatModel)
+	m.SetComposerValue("/help")
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(*ChatModel)
+	for _, msg := range collectImmediateMsgs(cmd) {
+		updated, _ = m.Update(msg)
+		m = updated.(*ChatModel)
+	}
+
+	assert.Empty(t, executor.input)
+	require.NotEmpty(t, m.chatView.entries)
+	last := m.chatView.entries[len(m.chatView.entries)-1]
+	assert.Equal(t, itemSystem, last.kind)
+	assert.Contains(t, last.content, "Commands")
+}
+
+func TestSetupReadiness_ReadyRemoteProviderSubmitsNormally(t *testing.T) {
+	executor := &submitCaptureExecutor{}
+	runner := turnrunner.New(turnrunner.Config{}, executor, submitTestSessionStore{}, nil)
+	m := New(Deps{
+		TurnRunner: runner,
+		Config:     readyRemoteConfig(),
+		SessionKey: "test-session",
+	})
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
+	m = updated.(*ChatModel)
+	m.SetComposerValue("ready remote")
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(*ChatModel)
+	for _, msg := range collectImmediateMsgs(cmd) {
+		updated, _ = m.Update(msg)
+		m = updated.(*ChatModel)
+	}
+
+	assert.Equal(t, "ready remote", executor.input)
+}
+
+func TestSetupReadiness_ReadyOllamaProviderSubmitsNormally(t *testing.T) {
+	executor := &submitCaptureExecutor{}
+	runner := turnrunner.New(turnrunner.Config{}, executor, submitTestSessionStore{}, nil)
+	m := New(Deps{
+		TurnRunner: runner,
+		Config:     readyOllamaConfig(),
+		SessionKey: "test-session",
+	})
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
+	m = updated.(*ChatModel)
+	m.SetComposerValue("ready ollama")
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(*ChatModel)
+	for _, msg := range collectImmediateMsgs(cmd) {
+		updated, _ = m.Update(msg)
+		m = updated.(*ChatModel)
+	}
+
+	assert.Equal(t, "ready ollama", executor.input)
 }
 
 func TestHelpCommandMentionsFailedStateDoublePressQuit(t *testing.T) {
@@ -939,9 +1085,7 @@ func TestSubmitComposerWithParentUsesProvidedMissionContext(t *testing.T) {
 	runner := turnrunner.New(turnrunner.Config{}, executor, submitTestSessionStore{}, nil)
 	m := New(Deps{
 		TurnRunner: runner,
-		Config: &config.Config{
-			Agent: config.AgentConfig{Provider: "openai", Model: "gpt-test"},
-		},
+		Config:     readyRemoteConfig(),
 		SessionKey: "test-session",
 	})
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
@@ -967,9 +1111,7 @@ func TestComposerEnterDoesNotImplicitlyBindMission(t *testing.T) {
 	runner := turnrunner.New(turnrunner.Config{}, executor, submitTestSessionStore{}, nil)
 	m := New(Deps{
 		TurnRunner: runner,
-		Config: &config.Config{
-			Agent: config.AgentConfig{Provider: "openai", Model: "gpt-test"},
-		},
+		Config:     readyRemoteConfig(),
 		SessionKey: "test-session",
 	})
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})

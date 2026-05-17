@@ -69,6 +69,32 @@ func TestCoreDocsDescribeTUIRuntimeMCPStatus(t *testing.T) {
 	}
 }
 
+func TestCoreDocsDescribeFocusedChatSetupReadiness(t *testing.T) {
+	t.Parallel()
+
+	repoRoot := cliIndexCoreStatusDocsGuardRepoRoot(t)
+	target := filepath.Join(repoRoot, "docs", "cli", "core.md")
+
+	data, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatalf("read %s: %v", target, err)
+	}
+	text := string(data)
+
+	requiredSnippets := []string{
+		"Focused chat uses the same setup readiness contract as the workbench",
+		"normal turns show setup guidance before running",
+		"`lango onboard`, `lango settings`, and `lango doctor`",
+		"slash commands such as `/help` and `/status` remain available",
+	}
+
+	for _, snippet := range requiredSnippets {
+		if !strings.Contains(text, snippet) {
+			t.Fatalf("%s is missing required focused chat setup readiness doc snippet %q", target, snippet)
+		}
+	}
+}
+
 func cliIndexCoreStatusDocsGuardRepoRoot(t *testing.T) string {
 	t.Helper()
 

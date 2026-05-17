@@ -171,6 +171,15 @@ Repository-level regressions in chat slash-command runtime status rendering SHAL
 - **THEN** executable chat tests SHALL fail if `/status` still labels MCP as configured but inactive in TUI mode
 - **AND** executable chat tests SHALL fail if configured-only MCP is indistinguishable from active MCP
 
+### Requirement: Focused chat setup readiness coverage stays executable
+Repository-level regressions in focused chat first-run readiness behavior SHALL be enforced by executable tests.
+
+#### Scenario: Focused chat setup readiness coverage blocks regressions
+- **WHEN** focused chat is constructed with an incomplete default config
+- **THEN** executable chat tests SHALL fail if the shell renders a ready/send state
+- **AND** executable chat tests SHALL fail if normal input reaches the turn runner before setup is ready
+- **AND** executable chat tests SHALL fail if slash commands are unavailable before setup is ready
+
 ### Requirement: CLI pretty-JSON writer guards stay executable
 Repository-level CLI pretty-JSON writer regressions that are cheap to detect mechanically SHALL be enforced by executable tests instead of relying only on manual review.
 

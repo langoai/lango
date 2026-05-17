@@ -136,6 +136,14 @@ func TestRenderHeader_NilConfig(t *testing.T) {
 	})
 }
 
+func TestRenderHeader_SetupRequiredHidesDefaultReadyProfile(t *testing.T) {
+	output := renderHeaderWithSetup(config.DefaultConfig(), "abc123", 80, true)
+
+	assert.Contains(t, output, "Setup Required")
+	assert.NotContains(t, output, "default")
+	assert.NotContains(t, output, "auto")
+}
+
 func TestRenderHeader_SanitizesDisplayFields(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Agent.Provider = "\x1b[31mopen\nai\x1b[0m"
@@ -181,6 +189,26 @@ func TestRenderTurnStrip_NarrowWidth(t *testing.T) {
 func TestRenderTurnStrip_ContainsLabel(t *testing.T) {
 	output := renderTurnStrip(stateIdle, 80)
 	assert.Contains(t, output, "Ready")
+}
+
+func TestRenderTurnStrip_SetupRequiredReplacesReadyCopy(t *testing.T) {
+	output := renderTurnStripWithSetup(stateIdle, 80, true)
+
+	assert.Contains(t, output, "Setup Required")
+	assert.Contains(t, output, "lango onboard")
+	assert.NotContains(t, output, "Ready")
+	assert.NotContains(t, output, "Enter sends")
+}
+
+func TestRenderHelpBar_SetupRequiredKeepsCommandsDiscoverable(t *testing.T) {
+	output := renderHelpBarWithSetup(stateIdle, 120, true)
+
+	assert.Contains(t, output, "lango onboard")
+	assert.Contains(t, output, "lango settings")
+	assert.Contains(t, output, "lango doctor")
+	assert.Contains(t, output, "/help")
+	assert.NotContains(t, output, "Enter")
+	assert.LessOrEqual(t, lipgloss.Width(output), 120)
 }
 
 func TestRenderTurnStrip_ApprovingNarrowWidth(t *testing.T) {

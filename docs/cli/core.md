@@ -59,6 +59,7 @@ $ lango cockpit
 
 Launch the plain chat TUI. A simpler, transcript-first experience without the multi-panel cockpit layout or Mission Control landing page. Suitable for quick interactions that don't require the full dashboard.
 Startup notices such as the banner, log path, and initialization line are written through a seam-aware stderr path so wrappers and regressions can capture them without intercepting process-global stderr.
+Focused chat uses the same setup readiness contract as the workbench: if the active profile is incomplete, normal turns show setup guidance before running and point to `lango onboard`, `lango settings`, and `lango doctor`; slash commands such as `/help` and `/status` remain available for inspection.
 
 ```bash
 $ lango chat

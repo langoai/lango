@@ -56,6 +56,11 @@ type PendingApprovalStore interface {
 // cursorBlinkInterval is the period between cursor blink toggles.
 const cursorBlinkInterval = 400 * time.Millisecond
 
+const (
+	setupRequiredLabel    = "Setup Required"
+	setupRequiredGuidance = "Run lango onboard, lango settings, or lango doctor to finish setup."
+)
+
 // ChatParts holds the discrete rendered sections of the chat view.
 type ChatParts struct {
 	Header    string
@@ -301,7 +306,7 @@ func (m *ChatModel) HandlePendingApprovalKey(msg tea.KeyMsg) tea.Cmd {
 // SubmitComposerWithParent submits the current composer value through the
 // existing turn path while using the provided parent context for this turn.
 func (m *ChatModel) SubmitComposerWithParent(parent context.Context) tea.Cmd {
-	return m.submitCurrentInput(parent)
+	return m.submitCurrentInput(parent, false)
 }
 
 // Init implements tea.Model.
@@ -603,12 +608,13 @@ func (m *ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // View implements tea.Model.
 // RenderParts returns the discrete rendered sections of the chat view.
 func (m *ChatModel) RenderParts() ChatParts {
+	setupRequired := m.setupRequiredVisible()
 	parts := ChatParts{
-		Header:    renderHeader(m.cfg, truncateSessionKey(m.sessionKey), m.width),
-		TurnStrip: renderTurnStrip(m.state, m.width),
+		Header:    renderHeaderWithSetup(m.cfg, truncateSessionKey(m.sessionKey), m.width, setupRequired),
+		TurnStrip: renderTurnStripWithSetup(m.state, m.width, setupRequired),
 		Main:      m.chatView.View(),
 		TaskStrip: m.taskStrip.View(m.width),
-		Footer:    renderFooter(m.input, m.state, m.width),
+		Footer:    renderFooterWithSetup(m.input, m.state, m.width, setupRequired),
 	}
 
 	if m.pending.IsActive() {
@@ -726,7 +732,7 @@ func (m *ChatModel) handleIdleKey(msg tea.KeyMsg) tea.Cmd {
 		}
 
 	case key.Matches(msg, key.NewBinding(key.WithKeys("enter"))):
-		return m.submitCurrentInput(context.Background())
+		return m.submitCurrentInput(context.Background(), m.focusedSetupGuardEnabled())
 	}
 
 	return nil
@@ -923,17 +929,23 @@ func (m *ChatModel) submitCmd(parent context.Context, input string) tea.Cmd {
 	}
 }
 
-func (m *ChatModel) submitCurrentInput(parent context.Context) tea.Cmd {
+func (m *ChatModel) submitCurrentInput(parent context.Context, guardSetup bool) tea.Cmd {
 	input := strings.TrimSpace(m.input.Value())
 	if input == "" {
 		return nil
 	}
-	m.input.Reset()
 
 	if handled, cmd := dispatchSlash(m, input); handled {
+		m.input.Reset()
 		return cmd
 	}
 
+	if guardSetup && !m.agentSetupReady() {
+		m.chatView.appendStatus(setupRequiredGuidance, "warning")
+		return func() tea.Msg { return nil }
+	}
+
+	m.input.Reset()
 	if m.onUserSubmission != nil {
 		m.onUserSubmission(m.sessionKey, input)
 	}
@@ -948,10 +960,11 @@ func (m *ChatModel) submitCurrentInput(parent context.Context) tea.Cmd {
 
 func (m *ChatModel) recalcLayout() {
 	m.input.SetWidth(m.width)
+	setupRequired := m.setupRequiredVisible()
 
 	fixedParts := []string{
-		renderHeader(m.cfg, truncateSessionKey(m.sessionKey), m.width),
-		renderTurnStrip(m.state, m.width),
+		renderHeaderWithSetup(m.cfg, truncateSessionKey(m.sessionKey), m.width, setupRequired),
+		renderTurnStripWithSetup(m.state, m.width, setupRequired),
 	}
 	if m.pending.IsActive() {
 		fixedParts = append(fixedParts, renderPendingIndicator(m.pending.Elapsed(), m.width))
@@ -964,7 +977,7 @@ func (m *ChatModel) recalcLayout() {
 			fixedParts = append(fixedParts, renderApproval(pending, &m.approval, m.width, m.height))
 		}
 	}
-	fixedParts = append(fixedParts, renderFooter(m.input, m.state, m.width))
+	fixedParts = append(fixedParts, renderFooterWithSetup(m.input, m.state, m.width, setupRequired))
 
 	fixedHeight := 0
 	for _, part := range fixedParts {
@@ -977,6 +990,33 @@ func (m *ChatModel) recalcLayout() {
 		chatHeight = 3
 	}
 	m.chatView.setSize(m.width, chatHeight)
+}
+
+func (m *ChatModel) agentSetupReady() bool {
+	if m == nil {
+		return false
+	}
+	return config.EvaluateAgentSetup(m.cfg).Ready()
+}
+
+func (m *ChatModel) setupRequiredVisible() bool {
+	if m == nil || !m.focusedSetupGuardEnabled() || m.agentSetupReady() {
+		return false
+	}
+	return m.state == stateIdle || m.state == stateFailed
+}
+
+func (m *ChatModel) focusedSetupGuardEnabled() bool {
+	return m != nil && m.onUserSubmission == nil && m.sharedPending == nil
+}
+
+func renderFooterWithSetup(input inputModel, state chatState, width int, setupRequired bool) string {
+	parts := make([]string, 0, 3)
+	if state != stateApproving {
+		parts = append(parts, input.View())
+	}
+	parts = append(parts, renderHelpBarWithSetup(state, width, setupRequired))
+	return strings.Join(parts, "\n")
 }
 
 func generateSessionKey() string {
