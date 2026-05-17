@@ -3,6 +3,7 @@ package observability
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 
 	"go.opentelemetry.io/otel"
@@ -15,6 +16,8 @@ import (
 
 // TracerName is the instrumentation name used for Lango spans.
 const TracerName = "lango"
+
+var tracingStdoutWriter io.Writer = os.Stderr
 
 // InitTracer initializes an OpenTelemetry TracerProvider based on config.
 // Returns the provider and a shutdown function. Caller must call shutdown
@@ -29,7 +32,7 @@ func InitTracer(cfg config.TracingConfig) (*sdktrace.TracerProvider, func(contex
 	var exporter sdktrace.SpanExporter
 	switch cfg.Exporter {
 	case "stdout", "":
-		exp, err := stdouttrace.New(stdouttrace.WithWriter(os.Stderr))
+		exp, err := stdouttrace.New(stdouttrace.WithWriter(tracingStdoutWriter))
 		if err != nil {
 			return nil, nil, fmt.Errorf("create stdout exporter: %w", err)
 		}
