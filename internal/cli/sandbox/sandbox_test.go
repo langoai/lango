@@ -3,6 +3,7 @@ package sandbox
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/storage"
 )
 
 // errSimulatedBootFailure is returned by test BootLoaders that need to
@@ -105,7 +107,14 @@ func TestFormatDecisionLine_BackendColumnForNonAppliedRows(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
 			t.Parallel()
-			line := formatDecisionLine(now, "abcdef12", tt.decision, tt.backend, "git status", "")
+			decision := statusDecisionFromRecord(storage.SandboxDecisionRecord{
+				Timestamp:  now,
+				SessionKey: "abcdef12",
+				Decision:   tt.decision,
+				Backend:    tt.backend,
+				Target:     "git status",
+			})
+			line := formatDecisionLineFromStatus(decision)
 
 			// Pull the backend column out by index. Format is:
 			//   "  <ts>  [<sess>] <decision-9> <backend-9> <target>"
@@ -185,6 +194,100 @@ func TestNewStatusCmd_BootLoaderErrorFallsBackToCfgLoader(t *testing.T) {
 	assert.Contains(t, out, "Sandbox Configuration:")
 	assert.NotContains(t, out, "Recent Sandbox Decisions",
 		"Recent Decisions silently skipped when boot fails")
+}
+
+func TestNewStatusCmd_JSONOutputScriptable(t *testing.T) {
+	t.Parallel()
+
+	cfgLoader := func() (*config.Config, error) {
+		cfg := defaultTestConfig()
+		cfg.Sandbox.Enabled = true
+		cfg.Sandbox.Backend = "none"
+		cfg.Sandbox.WorkspacePath = "/tmp/lango-json-status"
+		return cfg, nil
+	}
+
+	cmd := newStatusCmd(cfgLoader, nil)
+	cmd.SetContext(context.Background())
+	cmd.SetArgs([]string{"--output", "json"})
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+
+	require.NoError(t, cmd.Execute())
+
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &payload))
+	assert.Contains(t, payload, "configuration")
+	assert.Contains(t, payload, "active_isolation")
+	assert.Contains(t, payload, "platform_capabilities")
+	assert.Contains(t, payload, "backend_availability")
+	assert.Contains(t, payload, "recent_decisions")
+	recentDecisions, ok := payload["recent_decisions"].([]any)
+	require.True(t, ok, "recent_decisions must be an array, not null")
+	assert.Empty(t, recentDecisions)
+
+	configuration, ok := payload["configuration"].(map[string]any)
+	require.True(t, ok, "configuration must be an object")
+	assert.Equal(t, true, configuration["enabled"])
+	assert.Equal(t, "none (explicit opt-out - fail-closed not applied)", configuration["backend_label"])
+}
+
+func TestNewStatusCmd_PlainOutputConcise(t *testing.T) {
+	t.Parallel()
+
+	cfgLoader := func() (*config.Config, error) {
+		cfg := defaultTestConfig()
+		cfg.Sandbox.WorkspacePath = "/tmp/lango-plain-status"
+		return cfg, nil
+	}
+
+	cmd := newStatusCmd(cfgLoader, nil)
+	cmd.SetContext(context.Background())
+	cmd.SetArgs([]string{"--output", "plain"})
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+
+	require.NoError(t, cmd.Execute())
+
+	out := buf.String()
+	assert.Contains(t, out, "enabled=")
+	assert.Contains(t, out, "backend=")
+	assert.Contains(t, out, "isolator=")
+	assert.Contains(t, out, "platform=")
+	assert.Contains(t, out, "workspace=/tmp/lango-plain-status")
+	assert.Contains(t, out, "backend_availability=")
+	assert.NotContains(t, out, "Sandbox Configuration:")
+	assert.NotContains(t, out, "Active Isolation:")
+}
+
+func TestNewStatusCmd_InvalidOutputFailsBeforeLoad(t *testing.T) {
+	t.Parallel()
+
+	var cfgLoads int
+	var bootLoads int
+	cfgLoader := func() (*config.Config, error) {
+		cfgLoads++
+		return defaultTestConfig(), nil
+	}
+	bootLoader := func() (*bootstrap.Result, error) {
+		bootLoads++
+		return nil, errSimulatedBootFailure
+	}
+
+	cmd := newStatusCmd(cfgLoader, bootLoader)
+	cmd.SetContext(context.Background())
+	cmd.SetArgs([]string{"--output", "yaml"})
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unsupported output format")
+	assert.Equal(t, 0, cfgLoads, "invalid output must fail before config load")
+	assert.Equal(t, 0, bootLoads, "invalid output must fail before bootstrap load")
 }
 
 func TestFindTouch(t *testing.T) {

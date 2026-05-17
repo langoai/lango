@@ -338,10 +338,10 @@ lango provenance attribution show <session-key>  Show attribution data for a ses
 lango provenance attribution report <session-key>  Generate attribution report
 lango provenance bundle export <session-key>  Export a signed provenance bundle
 lango provenance bundle import <file>  Import a signed provenance bundle
-lango sandbox status                 Show sandbox configuration and platform capabilities
+lango sandbox status --output table|json|plain  Show sandbox configuration and platform capabilities
 lango sandbox test                   Run OS sandbox smoke tests
 
-The `status` family accepts only `table` or `json` for `--output` and rejects unknown formats before contacting the gateway or loading dead-letter status tooling.
+Most `status` commands accept `table` or `json` for `--output` and reject unknown formats before contacting services or loading status tooling. `lango sandbox status` also accepts `plain` for concise shell-friendly diagnostics.
 ```
 
 ### Diagnostics

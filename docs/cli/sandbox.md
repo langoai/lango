@@ -30,7 +30,32 @@ lango sandbox status [flags]
 
 | Flag | Type | Description |
 |------|------|-------------|
+| `--output` | `string` | Output format: `table` (default), `json`, or `plain` |
 | `--session` | `string` | Filter Recent Sandbox Decisions by session key prefix (default: show global last 10) |
+
+### Output formats
+
+The default `table` format preserves the multi-section operator report. Use
+`json` for automation and health checks, or `plain` for shell-friendly key-value
+lines without table section headers.
+
+```bash
+lango sandbox status --output json
+```
+
+JSON output fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `configuration` | object | Sandbox enabled state, fail mode, selected backend label, network mode, workspace, and explicit opt-out state |
+| `active_isolation` | object | Active isolator name, availability, unavailable reason, and partial network-isolation degradation when detected |
+| `platform_capabilities` | object | Platform, kernel, Seatbelt, Landlock, and seccomp probe status |
+| `backend_availability` | array | One row per platform backend candidate with name, mode, availability, and reason |
+| `recent_decisions` | array | Recent sandbox decision audit rows when audit storage is available; empty when unavailable |
+| `warnings` | object | Platform-specific warning booleans such as Linux `allowedNetworkIPs` non-enforcement |
+
+Invalid output formats fail before config or bootstrap loading, so wrappers can
+validate command usage without triggering passphrase prompts.
 
 ### Recent Sandbox Decisions
 
