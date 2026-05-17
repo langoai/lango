@@ -158,8 +158,10 @@ See the full [CLI Reference](docs/cli/index.md) for the complete command set.
 
 Top-level utility commands follow the same capture-friendly stream contracts as the rest of the CLI: `lango version`, `lango health`, and `lango serve` write their success output through command-oriented stdout paths, while interactive TUI entrypoints (`lango`, `lango cockpit`, `lango chat`) emit startup notices through seam-aware stderr paths.
 
+Interactive bare `lango` starts the mission workbench TUI. Non-interactive bare `lango` prints help to command stdout and exits successfully without starting the TUI. Unlike `lango cockpit` and `lango chat`, this bare-root fallback is not an actionable non-interactive error.
+
 ```
-lango                            Launch mission workbench TUI
+lango                            Launch mission workbench TUI in an interactive terminal
 lango cockpit                    Launch multi-panel operator dashboard
 lango serve                      Start the gateway server
 lango version                    Print version and build info

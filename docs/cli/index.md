@@ -6,7 +6,7 @@ Lango provides a comprehensive command-line interface built with [Cobra](https:/
 
 | Command | Description |
 |---------|-------------|
-| `lango` | Launch standalone mission workbench TUI (default entry point) |
+| `lango` | Launch standalone mission workbench TUI in an interactive terminal |
 | `lango cockpit` | Launch explicit multi-panel operator dashboard with Mission Control, chat transcript visibility, and operator detail pages |
 | `lango chat` | Launch focused chat TUI with tool lifecycle visibility and inline approval controls |
 | `lango serve` | Start the gateway server |
@@ -20,6 +20,8 @@ Lango provides a comprehensive command-line interface built with [Cobra](https:/
 | `lango onboard` | Guided 5-step setup wizard |
 | `lango settings` | Full interactive configuration editor |
 | `lango doctor` | Diagnostics and health checks |
+
+Interactive bare `lango` starts the mission workbench TUI. Non-interactive bare `lango` prints help to command stdout and exits successfully without starting the TUI. Unlike `lango cockpit` and `lango chat`, this bare-root fallback is not an actionable non-interactive error.
 
 Bare `lango` is the default interactive entry point. When the active profile is incomplete, the workbench immediately points the operator to `lango onboard`, `lango settings`, and `lango doctor`. When the profile is ready, the same first screen switches to context-aware starter prompts and exposes the `Enter` / `1-3` quick-start path.
 
@@ -58,7 +60,7 @@ Use the dedicated page for command families that have deeper semantics, examples
 
 | Command | Description |
 |---------|-------------|
-| `lango` | Launch standalone mission workbench TUI (default entry point) |
+| `lango` | Launch standalone mission workbench TUI in an interactive terminal |
 | `lango cockpit` | Launch explicit multi-panel operator dashboard with Mission Control, chat transcript visibility, and operator detail pages |
 | `lango chat` | Launch focused chat TUI with tool lifecycle visibility and inline approval controls |
 | `lango serve` | Start the gateway server |

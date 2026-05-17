@@ -180,6 +180,15 @@ Repository-level regressions in focused chat first-run readiness behavior SHALL 
 - **AND** executable chat tests SHALL fail if normal input reaches the turn runner before setup is ready
 - **AND** executable chat tests SHALL fail if slash commands are unavailable before setup is ready
 
+### Requirement: Docs guard covers bare root non-interactive contract
+Executable docs quality coverage SHALL fail when public CLI docs omit the bare-root non-interactive help fallback contract.
+
+#### Scenario: Public docs guard checks bare root fallback
+- **WHEN** docs quality tests run
+- **THEN** README, `docs/cli/index.md`, and `docs/cli/core.md` SHALL be checked for the interactive bare-root launch contract
+- **AND** they SHALL be checked for the non-interactive help fallback contract
+- **AND** they SHALL be checked for the distinction from `lango cockpit` and `lango chat` non-interactive behavior
+
 ### Requirement: Background CLI boundary guards stay executable
 Repository-level regressions in background CLI boundary messaging SHALL be enforced by executable tests.
 

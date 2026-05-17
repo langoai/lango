@@ -142,6 +142,35 @@ func TestPublicDocsExplainBackgroundCLIServerBoundary(t *testing.T) {
 	}
 }
 
+func TestPublicDocsExplainBareRootNonInteractiveFallback(t *testing.T) {
+	t.Parallel()
+
+	repoRoot := docsQualityRepoRoot(t)
+	targets := []string{
+		filepath.Join(repoRoot, "README.md"),
+		filepath.Join(repoRoot, "docs", "cli", "index.md"),
+		filepath.Join(repoRoot, "docs", "cli", "core.md"),
+	}
+	requiredSnippets := []string{
+		"Interactive bare `lango` starts the mission workbench TUI",
+		"Non-interactive bare `lango` prints help to command stdout and exits successfully without starting the TUI",
+		"Unlike `lango cockpit` and `lango chat`, this bare-root fallback is not an actionable non-interactive error",
+	}
+
+	for _, target := range targets {
+		data, err := os.ReadFile(target)
+		if err != nil {
+			t.Fatalf("read %s: %v", target, err)
+		}
+		text := string(data)
+		for _, snippet := range requiredSnippets {
+			if !strings.Contains(text, snippet) {
+				t.Fatalf("%s is missing bare-root non-interactive fallback snippet %q", target, snippet)
+			}
+		}
+	}
+}
+
 func TestArchitectureProjectStructureUsesCurrentGraphAndMetricsCLISurface(t *testing.T) {
 	t.Parallel()
 

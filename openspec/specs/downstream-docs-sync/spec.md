@@ -136,6 +136,15 @@ Public CLI documentation SHALL explain that focused chat uses the same setup rea
 - **THEN** the focused chat documentation SHALL state that incomplete profiles show setup guidance before normal turns
 - **AND** the documentation SHALL mention `lango onboard`, `lango settings`, and `lango doctor`
 
+### Requirement: Bare root docs describe non-interactive fallback
+Public CLI documentation that describes bare `lango` SHALL state that the workbench launch requires an interactive terminal and that non-interactive bare-root execution prints help instead of starting the TUI.
+
+#### Scenario: Public bare root docs distinguish interactive and non-interactive behavior
+- **WHEN** a user reads README, `docs/cli/index.md`, or `docs/cli/core.md`
+- **THEN** the document SHALL state that bare `lango` launches the mission workbench in an interactive terminal
+- **AND** the document SHALL state that non-interactive bare `lango` prints help and exits successfully without starting the TUI
+- **AND** the document SHALL distinguish this fallback from `lango cockpit` and `lango chat` non-interactive errors
+
 ### Requirement: Background CLI docs describe server-boundary caveat
 Public documentation that lists `lango bg` commands SHALL explain that the current root CLI is not a remote client for the server process's in-memory background manager.
 

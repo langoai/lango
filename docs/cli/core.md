@@ -2,8 +2,10 @@
 
 ## lango
 
-Run `lango` without arguments to launch the standalone mission workbench. This is the default interactive entry point. It mounts Mission Control content directly without the full cockpit sidebar shell, while `lango chat` remains the direct focused-chat fallback and `lango cockpit` remains the explicit multi-page dashboard.
+Run `lango` without arguments in an interactive terminal to launch the standalone mission workbench. This is the default interactive entry point. It mounts Mission Control content directly without the full cockpit sidebar shell, while `lango chat` remains the direct focused-chat fallback and `lango cockpit` remains the explicit multi-page dashboard.
 Startup notices such as the banner, log path, and initialization line are written through a seam-aware stderr path so wrappers and regressions can capture them without intercepting process-global stderr.
+
+Interactive bare `lango` starts the mission workbench TUI. Non-interactive bare `lango` prints help to command stdout and exits successfully without starting the TUI. Unlike `lango cockpit` and `lango chat`, this bare-root fallback is not an actionable non-interactive error.
 
 ```bash
 $ lango
