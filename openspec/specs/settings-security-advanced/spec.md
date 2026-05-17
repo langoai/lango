@@ -30,3 +30,8 @@ The settings TUI SHALL provide a "Security KMS" menu category with fields for re
 #### Scenario: PKCS#11 PIN is password field
 - **WHEN** the KMS form is displayed
 - **THEN** the PKCS#11 PIN field SHALL use InputPassword type to mask the value
+
+#### Scenario: KMS fallback field explains bootstrap override
+- **WHEN** the KMS form is displayed
+- **THEN** the fallback-to-local field SHALL explain that profile-backed fallback covers KMS signing, encryption, and decryption after profile config is loaded
+- **AND** it SHALL mention `LANGO_KMS_FALLBACK_TO_LOCAL=false` for fail-closed encrypted profile bootstrap KMS unwrap before profile config is loaded

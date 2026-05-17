@@ -234,7 +234,7 @@ func NewKMSForm(cfg *config.Config) *tuicore.FormModel {
 	form.AddField(&tuicore.Field{
 		Key: "kms_fallback_to_local", Label: "Fallback to Local", Type: tuicore.InputBool,
 		Checked:     cfg.Security.KMS.FallbackToLocal,
-		Description: "Fall back to local key signing if cloud KMS is unavailable",
+		Description: "After profile config is loaded, fall back to local signing, encryption, and decryption if KMS is unavailable. For fail-closed encrypted profile bootstrap KMS unwrap before profile config is loaded, set LANGO_KMS_FALLBACK_TO_LOCAL=false with LANGO_KMS_PROVIDER.",
 		VisibleWhen: isAnyKMS,
 	})
 

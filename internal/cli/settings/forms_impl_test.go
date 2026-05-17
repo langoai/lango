@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -921,6 +922,22 @@ func TestNewKMSForm_AllFields(t *testing.T) {
 
 	if f := fieldByKey(form, "kms_pkcs11_pin"); f.Type != tuicore.InputPassword {
 		t.Errorf("kms_pkcs11_pin: want InputPassword, got %d", f.Type)
+	}
+
+	fallback := fieldByKey(form, "kms_fallback_to_local")
+	description := strings.ToLower(fallback.Description)
+	for _, want := range []string{
+		"signing",
+		"encryption",
+		"decryption",
+		"after profile config is loaded",
+		"bootstrap kms unwrap",
+		"lango_kms_fallback_to_local=false",
+		"before profile config is loaded",
+	} {
+		if !strings.Contains(description, want) {
+			t.Errorf("kms_fallback_to_local description missing %q in %q", want, fallback.Description)
+		}
 	}
 }
 
