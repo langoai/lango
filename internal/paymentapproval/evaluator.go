@@ -1,16 +1,15 @@
 package paymentapproval
 
 import (
-	"fmt"
 	"math/big"
 
 	"github.com/langoai/lango/internal/finance"
 )
 
 var (
-	lowAmountThreshold    = mustParseUSDC("5.00")
-	mediumAmountThreshold = mustParseUSDC("50.00")
-	highAmountThreshold   = mustParseUSDC("100.00")
+	lowAmountThreshold    = big.NewInt(5_000_000)
+	mediumAmountThreshold = big.NewInt(50_000_000)
+	highAmountThreshold   = big.NewInt(100_000_000)
 )
 
 func EvaluateUpfrontPayment(in Input) Outcome {
@@ -78,14 +77,6 @@ func classifyAmount(amount *big.Int) AmountClass {
 	default:
 		return AmountCritical
 	}
-}
-
-func mustParseUSDC(amount string) *big.Int {
-	parsed, err := finance.ParseUSDC(amount)
-	if err != nil {
-		panic(fmt.Sprintf("invalid USDC threshold %q: %v", amount, err))
-	}
-	return parsed
 }
 
 func invalidAmountOutcome(code, reason string) Outcome {
