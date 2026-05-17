@@ -93,6 +93,55 @@ func TestResolveConfigPath_NotFound(t *testing.T) {
 	}
 }
 
+func TestConfigGet_InvalidPathSuggestsNearbyKeyAndDiscoveryCommand(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cmd := NewGetCmd(func() (*config.Config, error) { return cfg, nil })
+
+	_, err := executeConfigCommand(t, cmd, "agent.providr")
+	if err == nil {
+		t.Fatal("expected invalid path error")
+	}
+
+	errText := err.Error()
+	if !strings.Contains(errText, "agent.provider") {
+		t.Fatalf("expected error to suggest agent.provider, got %q", errText)
+	}
+	if !strings.Contains(errText, "lango config keys agent") {
+		t.Fatalf("expected error to include agent key discovery command, got %q", errText)
+	}
+}
+
+func TestConfigGet_UnknownTopLevelPathIncludesDiscoveryCommand(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cmd := NewGetCmd(func() (*config.Config, error) { return cfg, nil })
+
+	_, err := executeConfigCommand(t, cmd, "made.up.path")
+	if err == nil {
+		t.Fatal("expected invalid path error")
+	}
+	if !strings.Contains(err.Error(), "lango config keys") {
+		t.Fatalf("expected error to include generic key discovery command, got %q", err.Error())
+	}
+}
+
+func TestConfigGet_LeafExtensionPathIncludesDiscoveryCommand(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cmd := NewGetCmd(func() (*config.Config, error) { return cfg, nil })
+
+	_, err := executeConfigCommand(t, cmd, "agent.provider.extra")
+	if err == nil {
+		t.Fatal("expected invalid path error")
+	}
+
+	errText := err.Error()
+	if !strings.Contains(errText, "agent.provider") {
+		t.Fatalf("expected error to reference agent.provider, got %q", errText)
+	}
+	if !strings.Contains(errText, "lango config keys agent") {
+		t.Fatalf("expected error to include agent key discovery command, got %q", errText)
+	}
+}
+
 func TestResolveConfigPath_DeepNested(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Economy.Budget.DefaultMax = "50.00"
@@ -357,6 +406,68 @@ func TestConfigSet_InvalidPathDoesNotMutateExplicitKeysOrSave(t *testing.T) {
 	}
 	if _, ok := loadedExplicit["invalid.key"]; ok {
 		t.Fatalf("invalid path must not mutate loaded explicit keys: %v", loadedExplicit)
+	}
+}
+
+func TestConfigSet_InvalidPathSuggestsNearbyKeyAndDoesNotSave(t *testing.T) {
+	cfg := config.DefaultConfig()
+	saveCalled := false
+
+	cmd := NewSetCmd(
+		func() (*config.Config, map[string]bool, func(), error) {
+			return cfg, nil, func() {}, nil
+		},
+		func(updated *config.Config, explicitKeys map[string]bool) error {
+			saveCalled = true
+			return nil
+		},
+	)
+
+	_, err := executeConfigCommand(t, cmd, "knowledge.enable", "false")
+	if err == nil {
+		t.Fatal("expected invalid path error")
+	}
+
+	errText := err.Error()
+	if !strings.Contains(errText, "knowledge.enabled") {
+		t.Fatalf("expected error to suggest knowledge.enabled, got %q", errText)
+	}
+	if !strings.Contains(errText, "lango config keys knowledge") {
+		t.Fatalf("expected error to include knowledge key discovery command, got %q", errText)
+	}
+	if saveCalled {
+		t.Fatal("save must not be called after invalid path")
+	}
+}
+
+func TestConfigSet_LeafExtensionPathIncludesDiscoveryCommandAndDoesNotSave(t *testing.T) {
+	cfg := config.DefaultConfig()
+	saveCalled := false
+
+	cmd := NewSetCmd(
+		func() (*config.Config, map[string]bool, func(), error) {
+			return cfg, nil, func() {}, nil
+		},
+		func(updated *config.Config, explicitKeys map[string]bool) error {
+			saveCalled = true
+			return nil
+		},
+	)
+
+	_, err := executeConfigCommand(t, cmd, "agent.provider.extra", "openai")
+	if err == nil {
+		t.Fatal("expected invalid path error")
+	}
+
+	errText := err.Error()
+	if !strings.Contains(errText, "agent.provider") {
+		t.Fatalf("expected error to reference agent.provider, got %q", errText)
+	}
+	if !strings.Contains(errText, "lango config keys agent") {
+		t.Fatalf("expected error to include agent key discovery command, got %q", errText)
+	}
+	if saveCalled {
+		t.Fatal("save must not be called after invalid path")
 	}
 }
 

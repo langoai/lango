@@ -176,6 +176,7 @@ Examples:
 func resolveConfigPath(cfg *config.Config, path string) (interface{}, error) {
 	parts := strings.Split(path, ".")
 	v := reflect.ValueOf(cfg).Elem()
+	prefixParts := make([]string, 0, len(parts))
 
 	for _, part := range parts {
 		if v.Kind() == reflect.Ptr {
@@ -196,14 +197,20 @@ func resolveConfigPath(cfg *config.Config, path string) (interface{}, error) {
 		}
 
 		if v.Kind() != reflect.Struct {
-			return nil, fmt.Errorf("config path %q: %q is not a struct (kind: %s)", path, part, v.Kind())
+			return nil, nonStructConfigPathError(
+				path,
+				part,
+				v.Kind().String(),
+				strings.Join(prefixParts, "."),
+			)
 		}
 
 		idx := findFieldByTag(v.Type(), part)
 		if idx < 0 {
-			return nil, fmt.Errorf("config path %q: field %q not found", path, part)
+			return nil, unknownConfigFieldError(path, part, strings.Join(prefixParts, "."))
 		}
 		v = v.Field(idx)
+		prefixParts = append(prefixParts, part)
 	}
 
 	return v.Interface(), nil
@@ -213,6 +220,7 @@ func resolveConfigPath(cfg *config.Config, path string) (interface{}, error) {
 func setConfigPath(cfg *config.Config, path, rawVal string) error {
 	parts := strings.Split(path, ".")
 	v := reflect.ValueOf(cfg).Elem()
+	prefixParts := make([]string, 0, len(parts))
 
 	for i, part := range parts {
 		if v.Kind() == reflect.Ptr {
@@ -223,16 +231,22 @@ func setConfigPath(cfg *config.Config, path, rawVal string) error {
 		}
 
 		if v.Kind() != reflect.Struct {
-			return fmt.Errorf("config path %q: %q is not a struct", path, part)
+			return nonStructConfigPathError(
+				path,
+				part,
+				"",
+				strings.Join(prefixParts, "."),
+			)
 		}
 
 		idx := findFieldByTag(v.Type(), part)
 		if idx < 0 {
-			return fmt.Errorf("config path %q: field %q not found", path, part)
+			return unknownConfigFieldError(path, part, strings.Join(prefixParts, "."))
 		}
 
 		if i < len(parts)-1 {
 			v = v.Field(idx)
+			prefixParts = append(prefixParts, part)
 			continue
 		}
 
@@ -242,6 +256,154 @@ func setConfigPath(cfg *config.Config, path, rawVal string) error {
 	}
 
 	return fmt.Errorf("config path %q: empty path", path)
+}
+
+func unknownConfigFieldError(path, field, validPrefix string) error {
+	return configPathDiscoveryError(
+		fmt.Sprintf("config path %q: field %q not found", path, field),
+		validPrefix,
+		suggestConfigKeys(path, validPrefix),
+	)
+}
+
+func nonStructConfigPathError(path, field, kind, leafPath string) error {
+	message := fmt.Sprintf("config path %q: %q is not a struct", path, field)
+	if kind != "" {
+		message += fmt.Sprintf(" (kind: %s)", kind)
+	}
+	return configPathDiscoveryError(
+		message,
+		parentConfigPrefix(leafPath),
+		[]string{leafPath},
+	)
+}
+
+func configPathDiscoveryError(message, validPrefix string, suggestions []string) error {
+	parts := []string{message}
+	if suggestions = uniqueNonEmptyStrings(suggestions); len(suggestions) > 0 {
+		parts = append(parts, "did you mean: "+strings.Join(suggestions, ", "))
+	}
+
+	hint := "lango config keys"
+	if validPrefix != "" {
+		hint += " " + validPrefix
+	}
+	parts = append(parts, "list keys: "+hint)
+
+	return fmt.Errorf("%s", strings.Join(parts, "; "))
+}
+
+func parentConfigPrefix(path string) string {
+	if idx := strings.LastIndex(path, "."); idx > 0 {
+		return path[:idx]
+	}
+	return ""
+}
+
+func uniqueNonEmptyStrings(values []string) []string {
+	seen := make(map[string]bool, len(values))
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		if value == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		out = append(out, value)
+	}
+	return out
+}
+
+func suggestConfigKeys(path, validPrefix string) []string {
+	keys := collectKeys(reflect.TypeOf(config.Config{}), "")
+	samePrefix := make([]string, 0, len(keys))
+	if validPrefix != "" {
+		prefix := validPrefix + "."
+		for _, key := range keys {
+			if strings.HasPrefix(key, prefix) {
+				samePrefix = append(samePrefix, key)
+			}
+		}
+	}
+	if len(samePrefix) > 0 {
+		return nearestConfigKeys(path, samePrefix)
+	}
+	return nearestConfigKeys(path, keys)
+}
+
+func nearestConfigKeys(path string, keys []string) []string {
+	type candidate struct {
+		key      string
+		distance int
+	}
+
+	candidates := make([]candidate, 0, len(keys))
+	for _, key := range keys {
+		distance := editDistance(path, key)
+		if distance <= 3 {
+			candidates = append(candidates, candidate{key: key, distance: distance})
+		}
+	}
+	sort.Slice(candidates, func(i, j int) bool {
+		if candidates[i].distance != candidates[j].distance {
+			return candidates[i].distance < candidates[j].distance
+		}
+		return candidates[i].key < candidates[j].key
+	})
+
+	limit := len(candidates)
+	if limit > 3 {
+		limit = 3
+	}
+	out := make([]string, 0, limit)
+	for i := 0; i < limit; i++ {
+		out = append(out, candidates[i].key)
+	}
+	return out
+}
+
+func editDistance(a, b string) int {
+	if a == b {
+		return 0
+	}
+	if a == "" {
+		return len(b)
+	}
+	if b == "" {
+		return len(a)
+	}
+
+	prev := make([]int, len(b)+1)
+	curr := make([]int, len(b)+1)
+	for j := range prev {
+		prev[j] = j
+	}
+
+	for i := 1; i <= len(a); i++ {
+		curr[0] = i
+		for j := 1; j <= len(b); j++ {
+			cost := 0
+			if a[i-1] != b[j-1] {
+				cost = 1
+			}
+			curr[j] = minInt(
+				prev[j]+1,
+				curr[j-1]+1,
+				prev[j-1]+cost,
+			)
+		}
+		prev, curr = curr, prev
+	}
+	return prev[len(b)]
+}
+
+func minInt(first int, rest ...int) int {
+	minimum := first
+	for _, value := range rest {
+		if value < minimum {
+			minimum = value
+		}
+	}
+	return minimum
 }
 
 // setField sets a reflect.Value from a raw string based on its type.
