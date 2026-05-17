@@ -150,6 +150,19 @@ The master-key envelope MUST remain the root source of key material for broker-m
 - **THEN** it derives the required key material from the envelope-managed master key
 - **AND** it does not derive or apply a SQLCipher page key
 
+### Requirement: Payload projection text remains UTF-8 safe
+Payload-protection redacted projections SHALL preserve valid UTF-8 when truncating text for plaintext search/display columns. Projection byte limits SHALL remain upper bounds, and truncation SHALL return the largest valid UTF-8 prefix that does not exceed the configured limit.
+
+#### Scenario: Multibyte projection truncation remains valid
+- **WHEN** a redacted projection containing multibyte UTF-8 text is truncated with a byte limit inside a multibyte rune
+- **THEN** the returned projection SHALL remain valid UTF-8
+- **AND** it SHALL NOT include replacement runes caused by splitting a character
+- **AND** its byte length SHALL NOT exceed the configured limit
+
+#### Scenario: Redaction still occurs before truncation
+- **WHEN** a projection contains email addresses, long numbers, or long secret-like tokens
+- **THEN** those sensitive values SHALL be replaced before any truncation limit is applied
+
 ### Requirement: Crash recovery flags
 
 The envelope SHALL track migration state with `PendingMigration` and `PendingRekey` boolean flags. These flags SHALL be set to `true` before data re-encryption or `PRAGMA rekey`, and cleared to `false` only after successful completion.
@@ -188,4 +201,3 @@ The corrective leakage-follow-up change MUST continue using payload key version 
 - **WHEN** payload-protected rows are written by the corrective leakage-followup change
 - **THEN** their `*_key_version` fields are set to `1`
 - **AND** no new payload key version is introduced
-

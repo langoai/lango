@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 )
 
 var (
@@ -24,9 +25,19 @@ func RedactedProjection(text string, limit int) string {
 	projection = projectionLongSecret.ReplaceAllString(projection, "[secret]")
 	projection = strings.Join(strings.Fields(projection), " ")
 	if limit > 0 && len(projection) > limit {
-		projection = projection[:limit]
+		projection = truncateValidUTF8(projection, limit)
 	}
 	return projection
+}
+
+func truncateValidUTF8(s string, limit int) string {
+	if limit <= 0 || len(s) <= limit {
+		return s
+	}
+	for limit > 0 && !utf8.RuneStart(s[limit]) {
+		limit--
+	}
+	return s[:limit]
 }
 
 // ProtectText returns the plaintext projection and, when a protector is
