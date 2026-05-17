@@ -255,6 +255,8 @@ MCP server configurations are stored in JSON files and merged in priority order:
 
 When the same server name exists in multiple scopes, the higher-priority scope wins. Use `--scope` flags to target a specific scope when adding, removing, enabling, or disabling servers.
 
+Missing user or project scope files are optional and ignored. If a scoped config file exists but cannot be read, parsed, or validated, MCP commands fail with an error that includes the scope and path instead of silently falling back to lower-priority configuration. Write commands such as `add`, `remove`, `enable`, and `disable` do not overwrite invalid existing config files.
+
 ### TUI Settings
 
 MCP servers can also be managed through the interactive TUI settings editor (`lango settings`), which provides forms for adding and configuring servers with transport-specific fields.

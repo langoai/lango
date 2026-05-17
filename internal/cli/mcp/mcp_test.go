@@ -147,3 +147,87 @@ func TestMCPTest_WritesToCommandOutput(t *testing.T) {
 	assert.Contains(t, out, "Transport:  http")
 	assert.Contains(t, out, "Handshake:  FAILED")
 }
+
+func TestMCPReadCommands_SurfaceInvalidProjectConfig(t *testing.T) {
+	tmp := t.TempDir()
+	origWD, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(tmp))
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+	t.Setenv("HOME", filepath.Join(tmp, "home"))
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, ".lango-mcp.json"), []byte(`{bad json`), 0644))
+
+	cfg := config.DefaultConfig()
+	cfg.MCP.Enabled = true
+	cfg.MCP.Servers = map[string]config.MCPServerConfig{
+		"filesystem": {
+			Enabled: boolPtr(false),
+			Command: "npx",
+		},
+	}
+
+	for _, tc := range []struct {
+		name string
+		args []string
+	}{
+		{name: "list", args: []string{"list"}},
+		{name: "get", args: []string{"get", "filesystem"}},
+		{name: "test", args: []string{"test", "filesystem"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := NewMCPCmd(testutil.FakeCfgLoader(cfg), testutil.FailBootLoader(assert.AnError))
+
+			_, err := executeMCPCmd(t, cmd, tc.args...)
+
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "project")
+			assert.Contains(t, err.Error(), ".lango-mcp.json")
+		})
+	}
+}
+
+func TestMCPWriteCommands_PreserveInvalidProjectConfig(t *testing.T) {
+	tmp := t.TempDir()
+	origWD, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(tmp))
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+	t.Setenv("HOME", filepath.Join(tmp, "home"))
+	projectPath := filepath.Join(tmp, ".lango-mcp.json")
+	invalidContent := []byte(`{bad json`)
+	require.NoError(t, os.WriteFile(projectPath, invalidContent, 0644))
+
+	cfg := config.DefaultConfig()
+
+	for _, tc := range []struct {
+		name string
+		args []string
+	}{
+		{
+			name: "add",
+			args: []string{
+				"add", "filesystem",
+				"--scope", "project",
+				"--type", "stdio",
+				"--command", "npx",
+			},
+		},
+		{name: "remove", args: []string{"remove", "filesystem", "--scope", "project"}},
+		{name: "enable", args: []string{"enable", "filesystem", "--scope", "project"}},
+		{name: "disable", args: []string{"disable", "filesystem", "--scope", "project"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.NoError(t, os.WriteFile(projectPath, invalidContent, 0644))
+			cmd := NewMCPCmd(testutil.FakeCfgLoader(cfg), testutil.FailBootLoader(assert.AnError))
+
+			_, err := executeMCPCmd(t, cmd, tc.args...)
+
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "project")
+			assert.Contains(t, err.Error(), ".lango-mcp.json")
+			got, readErr := os.ReadFile(projectPath)
+			require.NoError(t, readErr)
+			assert.Equal(t, string(invalidContent), string(got))
+		})
+	}
+}

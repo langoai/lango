@@ -21,7 +21,10 @@ func newListCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 				return fmt.Errorf("load config: %w", err)
 			}
 
-			merged := mcplib.MergedServers(&cfg.MCP)
+			merged, err := mcplib.MergedServersStrict(&cfg.MCP)
+			if err != nil {
+				return err
+			}
 			if len(merged) == 0 {
 				fmt.Fprintln(cmd.OutOrStdout(), "No MCP servers configured.")
 				fmt.Fprintln(cmd.OutOrStdout(), "\nAdd one with: lango mcp add <name> --type stdio --command <cmd>")

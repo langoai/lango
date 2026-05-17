@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -51,6 +52,26 @@ func TestModuleTopoSort_AllDisabled(t *testing.T) {
 
 	// Foundation should come first (no dependencies).
 	assert.Equal(t, "foundation", sorted[0].Name())
+}
+
+func TestExtensionModuleInit_SurfaceInvalidMCPProjectConfig(t *testing.T) {
+	tmp := t.TempDir()
+	origWD, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(tmp))
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+	t.Setenv("HOME", filepath.Join(tmp, "home"))
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, ".lango-mcp.json"), []byte(`{bad json`), 0644))
+
+	cfg := config.DefaultConfig()
+	cfg.MCP.Enabled = true
+
+	mod := &extensionModule{cfg: cfg}
+	_, err = mod.Init(context.Background(), nil)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "project")
+	assert.Contains(t, err.Error(), ".lango-mcp.json")
 }
 
 // TestModuleTopoSort_DependencyOrder verifies that the intelligence module

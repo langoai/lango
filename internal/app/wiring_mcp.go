@@ -19,17 +19,20 @@ type mcpComponents struct {
 }
 
 // initMCP creates the MCP server manager and connects to configured servers.
-func initMCP(cfg *config.Config, bus *eventbus.Bus) *mcpComponents {
+func initMCP(cfg *config.Config, bus *eventbus.Bus) (*mcpComponents, error) {
 	if !cfg.MCP.Enabled {
 		logger().Info("MCP integration disabled")
-		return nil
+		return nil, nil
 	}
 
 	// Merge configs from multiple scopes
-	merged := mcp.MergedServers(&cfg.MCP)
+	merged, err := mcp.MergedServersStrict(&cfg.MCP)
+	if err != nil {
+		return nil, fmt.Errorf("load MCP config: %w", err)
+	}
 	if len(merged) == 0 {
 		logger().Info("MCP enabled but no servers configured")
-		return nil
+		return nil, nil
 	}
 
 	// Override profile servers with merged result
@@ -80,7 +83,7 @@ func initMCP(cfg *config.Config, bus *eventbus.Bus) *mcpComponents {
 	return &mcpComponents{
 		manager: mgr,
 		tools:   tools,
-	}
+	}, nil
 }
 
 // buildMCPManagementTools creates meta-tools for managing MCP servers at runtime.

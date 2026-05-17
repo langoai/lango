@@ -122,6 +122,8 @@ The JSON file format for user and project scopes:
 
 This allows teams to share project-level servers via `.lango-mcp.json` while individual developers add personal servers in `~/.lango/mcp.json`.
 
+Missing user or project files are treated as optional. Present scoped config files must be valid JSON MCP config; if a scoped file cannot be read, parsed, or validated, Lango reports the scope and path instead of falling back silently. MCP write commands preserve invalid existing files and return an error rather than replacing them.
+
 ## Tool Naming Convention
 
 Tools discovered from MCP servers are registered with the naming pattern:

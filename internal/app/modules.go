@@ -1070,7 +1070,10 @@ func (m *extensionModule) Init(ctx context.Context, r appinit.Resolver) (*appini
 	var components []lifecycle.ComponentEntry
 
 	// MCP.
-	mcpc := initMCP(cfg, m.bus)
+	mcpc, err := initMCP(cfg, m.bus)
+	if err != nil {
+		return nil, err
+	}
 	if mcpc != nil {
 		tools = append(tools, mcpc.tools...)
 		entries = append(entries, appinit.CatalogEntry{Category: "mcp", Description: "MCP plugin tools (external servers)", ConfigKey: "mcp.enabled", Enabled: true, Tools: mcpc.tools})

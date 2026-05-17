@@ -87,8 +87,11 @@ Examples:
 				return err
 			}
 
-			// Load existing, add, save
-			servers, _ := mcplib.LoadMCPFile(path)
+			// Load existing, add, save. Missing target files are treated as empty.
+			servers, err := mcplib.LoadScopedMCPFile(scope, path)
+			if err != nil {
+				return err
+			}
 			if servers == nil {
 				servers = make(map[string]config.MCPServerConfig)
 			}

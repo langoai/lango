@@ -23,7 +23,10 @@ func newGetCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 				return fmt.Errorf("load config: %w", err)
 			}
 
-			merged := mcplib.MergedServers(&cfg.MCP)
+			merged, err := mcplib.MergedServersStrict(&cfg.MCP)
+			if err != nil {
+				return err
+			}
 			srv, ok := merged[name]
 			if !ok {
 				return fmt.Errorf("server %q not found", name)

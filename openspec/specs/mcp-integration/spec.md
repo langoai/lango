@@ -18,11 +18,29 @@ Enable Lango to connect to external MCP (Model Context Protocol) servers and exp
 - MUST support per-server `safetyLevel`: safe, moderate, dangerous (default: dangerous)
 - MUST support global `defaultTimeout` (30s), `maxOutputTokens` (25000), `healthCheckInterval` (30s)
 - MUST merge configs from three scopes: profile < user (`~/.lango/mcp.json`) < project (`.lango-mcp.json`)
+- MUST treat missing user/project scoped config files as absent optional configuration
+- MUST return an actionable error for present user/project scoped config files that cannot be read, parsed, or validated
 
 #### Scenario: Configuration merges all supported scopes
 - **WHEN** MCP configuration is loaded from profile, user, and project scopes
 - **THEN** the system MUST merge those scopes in the documented order
 - **AND** preserve per-server transport, timeout, safety, and auth settings
+
+#### Scenario: Missing scoped MCP config files are optional
+- **WHEN** the user or project MCP config file does not exist
+- **THEN** the system SHALL continue loading configuration from the remaining scopes
+- **AND** it SHALL NOT return an error for the missing optional file
+
+#### Scenario: Invalid scoped MCP config fails visibly
+- **WHEN** a user or project MCP config file exists but cannot be read, parsed, or validated
+- **THEN** the system SHALL return an error
+- **AND** the error SHALL identify the scope and file path
+- **AND** the system SHALL NOT silently fall back to lower-priority MCP configuration
+
+#### Scenario: MCP CLI write commands preserve invalid existing files
+- **WHEN** an MCP CLI write command targets a scope whose config file exists but is invalid
+- **THEN** the command SHALL return an actionable config load error
+- **AND** it SHALL NOT overwrite that existing file with replacement content
 
 #### Scenario: MCP configuration merges documented scopes
 - **WHEN** MCP configuration is loaded from profile, user, and project scopes

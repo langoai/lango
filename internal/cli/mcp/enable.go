@@ -44,8 +44,11 @@ func newDisableCmd() *cobra.Command {
 func toggleServer(w io.Writer, name, scope string, enabled bool) error {
 	paths := scopePaths(scope)
 	for _, sp := range paths {
-		servers, err := mcplib.LoadMCPFile(sp.path)
+		servers, err := mcplib.LoadScopedMCPFile(sp.scope, sp.path)
 		if err != nil {
+			return err
+		}
+		if servers == nil {
 			continue
 		}
 		srv, exists := servers[name]
