@@ -118,14 +118,24 @@ func run(ctx context.Context, out io.Writer, opts *Options) error {
 		Version:            cliboot.Version,
 		StartStorageBroker: true,
 	})
-	if err == nil {
-		cfg = boot.Config
+	if boot != nil {
+		if err == nil {
+			cfg = boot.Config
+		}
 		defer boot.Close()
 	}
 
 	// Get all checks
 	allChecks := doctorAllChecks()
-	results := make([]checks.Result, 0, len(allChecks))
+	results := make([]checks.Result, 0, len(allChecks)+1)
+	if err != nil {
+		results = append(results, checks.Result{
+			Name:    "Bootstrap",
+			Status:  checks.StatusFail,
+			Message: "Bootstrap failed",
+			Details: err.Error(),
+		})
+	}
 
 	// Run checks
 	for _, check := range allChecks {

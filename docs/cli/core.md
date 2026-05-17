@@ -219,6 +219,7 @@ Changes are saved to the active encrypted profile.
 Run diagnostics to check your Lango configuration and environment for common issues. Optionally attempt to fix problems automatically.
 Both table and JSON modes write through the Cobra command output stream so wrappers and test harnesses can capture doctor output directly.
 Doctor output also normalizes check names, messages, details, fix actions, and structured trace metadata to plain single-line text before rendering or serialization.
+If bootstrap fails while loading the encrypted profile, `lango doctor` reports a dedicated failing `Bootstrap` diagnostic with the original error details, then continues running remaining checks in best-effort mode.
 
 ```
 lango doctor [--fix] [--output table|json]

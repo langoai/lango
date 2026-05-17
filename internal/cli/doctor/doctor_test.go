@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -118,6 +119,86 @@ func TestDoctorCommand_InvalidOutputFailsBeforeBootstrap(t *testing.T) {
 	require.Error(t, err)
 	assert.Empty(t, out)
 	assert.Contains(t, err.Error(), `unknown output format "yaml"`)
+}
+
+func TestDoctorCommand_TableSurfacesBootstrapFailure(t *testing.T) {
+	origBootstrapRun := doctorBootstrapRun
+	origAllChecks := doctorAllChecks
+	t.Cleanup(func() {
+		doctorBootstrapRun = origBootstrapRun
+		doctorAllChecks = origAllChecks
+	})
+
+	doctorBootstrapRun = func(opts bootstrap.Options) (*bootstrap.Result, error) {
+		return nil, errors.New("corrupt envelope")
+	}
+	doctorAllChecks = func() []checks.Check {
+		return []checks.Check{
+			stubDoctorCheck{result: checks.Result{
+				Name:    "Best Effort Check",
+				Status:  checks.StatusPass,
+				Message: "continued after bootstrap failure",
+			}},
+		}
+	}
+
+	cmd := NewCommand()
+	out, err := executeDoctorCommand(t, cmd)
+
+	require.Error(t, err)
+	assert.Contains(t, out, "Bootstrap")
+	assert.Contains(t, out, "Bootstrap failed")
+	assert.Contains(t, out, "corrupt envelope")
+	assert.Contains(t, out, "Best Effort Check")
+	assert.Contains(t, out, "continued after bootstrap failure")
+}
+
+func TestDoctorCommand_JSONSurfacesBootstrapFailure(t *testing.T) {
+	origBootstrapRun := doctorBootstrapRun
+	origAllChecks := doctorAllChecks
+	t.Cleanup(func() {
+		doctorBootstrapRun = origBootstrapRun
+		doctorAllChecks = origAllChecks
+	})
+
+	doctorBootstrapRun = func(opts bootstrap.Options) (*bootstrap.Result, error) {
+		return nil, errors.New("corrupt envelope")
+	}
+	doctorAllChecks = func() []checks.Check {
+		return []checks.Check{
+			stubDoctorCheck{result: checks.Result{
+				Name:    "Best Effort Check",
+				Status:  checks.StatusPass,
+				Message: "continued after bootstrap failure",
+			}},
+		}
+	}
+
+	cmd := NewCommand()
+	out, err := executeDoctorCommand(t, cmd, "--output", "json")
+
+	require.Error(t, err)
+	var decoded struct {
+		Results []struct {
+			Name    string `json:"name"`
+			Status  string `json:"status"`
+			Message string `json:"message"`
+			Details string `json:"details"`
+		} `json:"results"`
+		Summary struct {
+			Failed int `json:"failed"`
+			Passed int `json:"passed"`
+		} `json:"summary"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(out), &decoded))
+	require.Len(t, decoded.Results, 2)
+	assert.Equal(t, "Bootstrap", decoded.Results[0].Name)
+	assert.Equal(t, "fail", decoded.Results[0].Status)
+	assert.Equal(t, "Bootstrap failed", decoded.Results[0].Message)
+	assert.Contains(t, decoded.Results[0].Details, "corrupt envelope")
+	assert.Equal(t, "Best Effort Check", decoded.Results[1].Name)
+	assert.Equal(t, 1, decoded.Summary.Failed)
+	assert.Equal(t, 1, decoded.Summary.Passed)
 }
 
 func TestDoctorHelpReflectsCurrentCheckFamilies(t *testing.T) {
