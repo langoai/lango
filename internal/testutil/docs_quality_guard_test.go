@@ -109,6 +109,39 @@ func TestArchitectureProjectStructureUsesCurrentSecurityCLISurface(t *testing.T)
 	}
 }
 
+func TestPublicDocsExplainBackgroundCLIServerBoundary(t *testing.T) {
+	t.Parallel()
+
+	repoRoot := docsQualityRepoRoot(t)
+	targets := []string{
+		filepath.Join(repoRoot, "README.md"),
+		filepath.Join(repoRoot, "docs", "cli", "index.md"),
+		filepath.Join(repoRoot, "docs", "automation", "background.md"),
+	}
+	requiredSnippets := []string{
+		"Background task state is in-memory and owned by the running app/server process",
+		"The current root CLI `lango bg` surface is not yet a remote gateway client",
+		"in-app/cockpit task surfaces or agent `bg_*` tools",
+		"until a remote management API exists",
+	}
+
+	for _, target := range targets {
+		data, err := os.ReadFile(target)
+		if err != nil {
+			t.Fatalf("read %s: %v", target, err)
+		}
+		text := string(data)
+		if !strings.Contains(text, "lango bg list") {
+			t.Fatalf("%s no longer lists lango bg commands; update this guard if the public surface changes", target)
+		}
+		for _, snippet := range requiredSnippets {
+			if !strings.Contains(text, snippet) {
+				t.Fatalf("%s is missing background CLI server-boundary caveat snippet %q", target, snippet)
+			}
+		}
+	}
+}
+
 func TestArchitectureProjectStructureUsesCurrentGraphAndMetricsCLISurface(t *testing.T) {
 	t.Parallel()
 

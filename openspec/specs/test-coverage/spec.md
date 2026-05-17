@@ -180,6 +180,14 @@ Repository-level regressions in focused chat first-run readiness behavior SHALL 
 - **AND** executable chat tests SHALL fail if normal input reaches the turn runner before setup is ready
 - **AND** executable chat tests SHALL fail if slash commands are unavailable before setup is ready
 
+### Requirement: Background CLI boundary guards stay executable
+Repository-level regressions in background CLI boundary messaging SHALL be enforced by executable tests.
+
+#### Scenario: Root bg boundary and docs guards reject misleading references
+- **WHEN** root CLI bg commands are wired without an in-process manager
+- **THEN** executable tests SHALL fail if the error implies `lango serve` alone makes standalone `lango bg` work
+- **AND** executable docs guards SHALL fail if public docs list `lango bg` commands without the in-memory/root-CLI boundary caveat
+
 ### Requirement: CLI pretty-JSON writer guards stay executable
 Repository-level CLI pretty-JSON writer regressions that are cheap to detect mechanically SHALL be enforced by executable tests instead of relying only on manual review.
 

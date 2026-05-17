@@ -318,6 +318,8 @@ Librarian command output is routed through the Cobra command writer, so wrappers
 | `lango bg cancel <id>` | Cancel a running background task |
 | `lango bg result <id>` | Show completed task result |
 
+Background task state is in-memory and owned by the running app/server process. The current root CLI `lango bg` surface is not yet a remote gateway client for that process, so use in-app/cockpit task surfaces or agent `bg_*` tools for live task management until a remote management API exists.
+
 ### MCP Servers
 
 | Command | Description |

@@ -40,6 +40,19 @@ func executeBgCommand(t *testing.T, cmd *cobra.Command, args ...string) (string,
 	return out.String(), err
 }
 
+func TestBgHelpExplainsInProcessManagerScope(t *testing.T) {
+	cmd := NewBgCmd(func() (*background.Manager, error) {
+		t.Fatal("help should not resolve the manager")
+		return nil, nil
+	})
+
+	out, err := executeBgCommand(t, cmd, "--help")
+
+	require.NoError(t, err)
+	assert.Contains(t, out, "supplied in-process manager")
+	assert.Contains(t, out, "Embedded callers")
+}
+
 func TestBgList_WritesToCommandOutput(t *testing.T) {
 	mgr := background.NewManager(stubRunner{result: "done"}, nil, 5, time.Minute, zap.NewNop().Sugar())
 	_, err := mgr.Submit(context.Background(), "test prompt", background.Origin{Channel: "cli"})

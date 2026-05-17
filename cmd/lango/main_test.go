@@ -421,6 +421,24 @@ func TestNewRootCmd_NonInteractiveBareRootWritesHelpToCommandOutput(t *testing.T
 	assert.Contains(t, out.String(), "Usage:")
 }
 
+func TestNewRootCmdBgListReportsStandaloneBoundary(t *testing.T) {
+	cmd := newRootCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"bg", "list"})
+
+	err := cmd.Execute()
+	require.Error(t, err)
+
+	msg := err.Error()
+	assert.Contains(t, msg, "background task state is in-memory")
+	assert.Contains(t, msg, "owned by the running app/server process")
+	assert.Contains(t, msg, "standalone root CLI is not yet connected")
+	assert.Contains(t, msg, "gateway API")
+	assert.NotContains(t, msg, "lango serve")
+}
+
 func TestNewRootCmd_InvalidModeReturnsActionableError(t *testing.T) {
 	prevInteractive := isInteractiveFn
 	prevRunWorkbench := runWorkbenchFn

@@ -341,6 +341,8 @@ lango provenance bundle import <file>  Import a signed provenance bundle
 lango sandbox status --output table|json|plain  Show sandbox configuration and platform capabilities
 lango sandbox test                   Run OS sandbox smoke tests
 
+Background task state is in-memory and owned by the running app/server process. The current root CLI `lango bg` surface is not yet a remote gateway client for that process, so use in-app/cockpit task surfaces or agent `bg_*` tools for live task management until a remote management API exists.
+
 Most `status` commands accept `table` or `json` for `--output` and reject unknown formats before contacting services or loading status tooling. `lango sandbox status` also accepts `plain` for concise shell-friendly diagnostics.
 ```
 

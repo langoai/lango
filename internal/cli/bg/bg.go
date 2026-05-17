@@ -17,7 +17,11 @@ func NewBgCmd(managerProvider func() (*background.Manager, error)) *cobra.Comman
 	cmd := &cobra.Command{
 		Use:   "bg",
 		Short: "Manage background tasks",
-		Long:  "View, cancel, and retrieve results of background tasks.",
+		Long: `View, cancel, and retrieve results of background tasks.
+
+These subcommands operate on the supplied in-process manager. Embedded callers
+can provide that manager directly; standalone root CLI wiring may need a gateway
+client before it can inspect another running process.`,
 	}
 
 	cmd.AddCommand(newBgListCmd(managerProvider))

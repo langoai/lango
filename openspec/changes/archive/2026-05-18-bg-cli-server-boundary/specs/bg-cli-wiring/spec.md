@@ -1,15 +1,7 @@
-## Purpose
+## MODIFIED Requirements
 
-Capability spec for bg-cli-wiring. See requirements below for scope and behavior contracts.
-
-## Requirements
-
-### Requirement: bg command is registered in main.go
-The `lango bg` command SHALL be registered in `cmd/lango/main.go` with GroupID "auto", using a stub manager provider that reports the standalone root CLI boundary when no in-process background manager is available.
-
-#### Scenario: bg command appears in help
-- **WHEN** user runs `lango --help`
-- **THEN** the `bg` command SHALL appear under the "Automation" group
+### Requirement: Background task CLI reports runtime boundary truthfully
+The `lango bg` command family SHALL make the current runtime boundary explicit when no in-process background manager is available.
 
 #### Scenario: Root CLI background command explains in-memory server boundary
 - **WHEN** the root CLI is wired without an in-process background manager
