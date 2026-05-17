@@ -3,7 +3,7 @@
 Telegram channel adapter for the Lango agent. Connects to Telegram via Bot API, handles message reception (DMs and groups), media attachments, allowlist filtering, approval workflows, Markdown formatting, and typing indicators.
 ## Requirements
 ### Requirement: Telegram bot connection
-The system SHALL connect to Telegram using the Bot API with a provided bot token.
+The system SHALL connect to Telegram using the Bot API with a provided bot token. When no custom HTTP client is provided, Bot API requests SHALL use a default HTTP client with a finite timeout greater than the channel's long-poll update timeout.
 
 #### Scenario: Successful bot connection
 - **WHEN** the application starts with a valid TELEGRAM_BOT_TOKEN
@@ -12,6 +12,15 @@ The system SHALL connect to Telegram using the Bot API with a provided bot token
 #### Scenario: Invalid bot token
 - **WHEN** the bot token is invalid or revoked
 - **THEN** the system SHALL log an error and retry with exponential backoff
+
+#### Scenario: Default HTTP client has bounded timeout
+- **WHEN** the Telegram channel is created without `Config.HTTPClient`
+- **THEN** the Bot API client SHALL use an HTTP client with a finite timeout
+- **AND** the timeout SHALL be greater than the 60 second long-poll update timeout
+
+#### Scenario: Custom HTTP client is preserved
+- **WHEN** the Telegram channel is created with `Config.HTTPClient`
+- **THEN** the provided HTTP client SHALL be used unchanged
 
 ### Requirement: Message reception
 The system SHALL receive and process incoming messages from Telegram chats. Message handling SHALL be dispatched to a separate goroutine so that the event loop remains non-blocking and can continue processing CallbackQuery updates concurrently.

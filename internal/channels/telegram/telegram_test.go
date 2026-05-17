@@ -2,6 +2,7 @@ package telegram
 
 import (
 	"context"
+	"net/http"
 	"sync"
 	"testing"
 	"time"
@@ -148,6 +149,25 @@ func TestTelegramChannel(t *testing.T) {
 	case <-time.After(1 * time.Second):
 		t.Fatal("timeout waiting for message processing")
 	}
+}
+
+func TestTelegramHTTPClient_DefaultHasBoundedTimeout(t *testing.T) {
+	t.Parallel()
+
+	client := telegramHTTPClient(Config{})
+	require.NotNil(t, client)
+	assert.Equal(t, defaultTelegramHTTPClientTimeout, client.Timeout)
+	assert.Greater(t, client.Timeout, 60*time.Second)
+}
+
+func TestTelegramHTTPClient_PreservesInjectedClient(t *testing.T) {
+	t.Parallel()
+
+	injected := &http.Client{Timeout: 5 * time.Second}
+
+	client := telegramHTTPClient(Config{HTTPClient: injected})
+
+	assert.Same(t, injected, client)
 }
 
 func TestTelegramTypingIndicator(t *testing.T) {

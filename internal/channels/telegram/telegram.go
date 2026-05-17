@@ -18,6 +18,8 @@ import (
 
 func logger() *zap.SugaredLogger { return logging.Channel().Named("telegram") }
 
+const defaultTelegramHTTPClientTimeout = 90 * time.Second
+
 // Config holds Telegram channel configuration
 type Config struct {
 	BotToken           string
@@ -74,10 +76,7 @@ func New(cfg Config) (*Channel, error) {
 		endpoint = tgbotapi.APIEndpoint
 	}
 
-	client := cfg.HTTPClient
-	if client == nil {
-		client = &http.Client{}
-	}
+	client := telegramHTTPClient(cfg)
 
 	var botAPI BotAPI
 	if cfg.Bot != nil {
@@ -100,6 +99,13 @@ func New(cfg Config) (*Channel, error) {
 	ch.approval = NewApprovalProvider(botAPI, time.Duration(cfg.ApprovalTimeoutSec)*time.Second)
 
 	return ch, nil
+}
+
+func telegramHTTPClient(cfg Config) *http.Client {
+	if cfg.HTTPClient != nil {
+		return cfg.HTTPClient
+	}
+	return &http.Client{Timeout: defaultTelegramHTTPClientTimeout}
 }
 
 // SetHandler sets the message handler
