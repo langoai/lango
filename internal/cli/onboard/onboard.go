@@ -12,10 +12,19 @@ import (
 
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/cli/cliboot"
+	cliprompt "github.com/langoai/lango/internal/cli/prompt"
 	"github.com/langoai/lango/internal/cli/tui"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/configstore"
 	"github.com/langoai/lango/internal/storage"
+)
+
+const nonInteractiveOnboardError = "onboard requires an interactive terminal; " +
+	"use 'lango config create --preset <name>' or 'lango config import' for scripted setup"
+
+var (
+	requireInteractiveTerminal = cliprompt.RequireInteractiveTerminal
+	runOnboardFn               = runOnboard
 )
 
 // NewCommand creates the onboard command.
@@ -51,7 +60,10 @@ See Also:
   lango config   - View/manage configuration profiles
   lango doctor   - Diagnose configuration issues`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runOnboard(cmd.OutOrStdout(), profileName, preset)
+			if err := requireInteractiveTerminal(nonInteractiveOnboardError); err != nil {
+				return err
+			}
+			return runOnboardFn(cmd.OutOrStdout(), profileName, preset)
 		},
 	}
 

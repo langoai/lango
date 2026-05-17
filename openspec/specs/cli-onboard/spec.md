@@ -200,6 +200,15 @@ After saving, the onboard command SHALL display next-step guidance that mentions
 - **WHEN** onboard completes successfully
 - **THEN** the post-save guidance writes to the Cobra command output stream
 
+### Requirement: Onboard command requires an interactive terminal
+The `lango onboard` command SHALL fail before bootstrap or TUI startup when the current stdin is not an interactive terminal.
+
+#### Scenario: Non-interactive onboard fails with scripted guidance
+- **WHEN** `lango onboard` is invoked while stdin is not an interactive terminal
+- **THEN** the command SHALL return an error that says onboard requires an interactive terminal
+- **AND** the error SHALL guide scripted setup toward `lango config create --preset <name>` or `lango config import`
+- **AND** the command SHALL NOT start the onboard wizard or save a profile
+
 ### Requirement: Advanced feature guidance stays outside the five-step wizard
 Product guidance for advanced systems SHALL describe them as settings-editor or config-import/export tasks instead of as dedicated onboarding submenu paths.
 

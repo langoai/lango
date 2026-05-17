@@ -178,6 +178,9 @@ $ lango onboard --profile staging
 !!! tip
     For full control over every configuration option, use `lango settings` instead.
 
+!!! note
+    This command requires an interactive terminal. For scripted setup, use `lango config create --preset <name>` or `lango config import`.
+
 ---
 
 ## lango settings
@@ -207,7 +210,7 @@ Press `/` to search across all categories by keyword.
 Changes are saved to the active encrypted profile.
 
 !!! note
-    This command requires an interactive terminal. For scripted configuration, use `lango config import` with a JSON file.
+    This command requires an interactive terminal. For scripted configuration, use `lango config import` with a JSON file or `lango config set` for simple scalar values.
 
 ---
 

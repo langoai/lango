@@ -12,10 +12,19 @@ import (
 
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/cli/cliboot"
+	cliprompt "github.com/langoai/lango/internal/cli/prompt"
 	"github.com/langoai/lango/internal/cli/tui"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/configstore"
 	"github.com/langoai/lango/internal/storage"
+)
+
+const nonInteractiveSettingsError = "settings requires an interactive terminal; " +
+	"use 'lango config import' or 'lango config set' for scripted configuration"
+
+var (
+	requireInteractiveTerminal = cliprompt.RequireInteractiveTerminal
+	runSettingsFn              = runSettings
 )
 
 // NewCommand creates the settings command.
@@ -54,7 +63,10 @@ See Also:
   lango onboard     - Guided setup wizard
   lango doctor      - Diagnose configuration issues`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runSettings(cmd.OutOrStdout(), profileName)
+			if err := requireInteractiveTerminal(nonInteractiveSettingsError); err != nil {
+				return err
+			}
+			return runSettingsFn(cmd.OutOrStdout(), profileName)
 		},
 	}
 
