@@ -2,6 +2,8 @@
 package configcmd
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -19,6 +21,7 @@ import (
 
 // NewGetCmd creates the "config get <dot.path>" command.
 func NewGetCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
+	showSecrets := false
 	cmd := &cobra.Command{
 		Use:           "get <dot.path>",
 		Short:         "Read a configuration value by dot-notation path",
@@ -32,7 +35,8 @@ Examples:
   lango config get agent.provider
   lango config get p2p.enabled
   lango config get economy.budget.defaultMax
-  lango config get agent --output json`,
+  lango config get agent --output json
+  lango config get providers.openai.apiKey --show-secrets`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			outputFmt, err := resolvePlainOrJSONOutput(cmd)
@@ -48,12 +52,16 @@ Examples:
 			if err != nil {
 				return err
 			}
+			if !showSecrets {
+				val = redactConfigGetValue(args[0], val, outputFmt)
+			}
 
 			return printValue(cmd.OutOrStdout(), val, outputFmt)
 		},
 	}
 
 	cmd.Flags().StringP("output", "o", "plain", "Output format (plain, json)")
+	cmd.Flags().BoolVar(&showSecrets, "show-secrets", false, "Show raw sensitive values")
 	return cmd
 }
 
@@ -161,8 +169,200 @@ func configSetDisplayValue(path, value string) string {
 	return value
 }
 
+func redactConfigGetValue(path string, value interface{}, outputFmt string) interface{} {
+	pathSegments := splitConfigPath(path)
+	if configPathSegmentsAreSensitive(pathSegments) {
+		return "<redacted>"
+	}
+	if outputFmt == "json" {
+		if normalized, ok := configGetJSONCompatibleValue(value); ok {
+			return redactConfigGetGenericValue(pathSegments, normalized)
+		}
+	}
+	if reflect.ValueOf(value).Kind() == reflect.Invalid {
+		return value
+	}
+	if isConfigGetScalarValue(reflect.ValueOf(value)) {
+		return value
+	}
+	return redactConfigGetReflectValue(pathSegments, reflect.ValueOf(value))
+}
+
+func isConfigGetScalarValue(value reflect.Value) bool {
+	for value.Kind() == reflect.Interface || value.Kind() == reflect.Ptr {
+		if value.IsNil() {
+			return true
+		}
+		value = value.Elem()
+	}
+	switch value.Kind() {
+	case reflect.Struct, reflect.Map, reflect.Slice, reflect.Array:
+		return false
+	default:
+		return true
+	}
+}
+
+func configGetJSONCompatibleValue(value interface{}) (interface{}, bool) {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return nil, false
+	}
+
+	var decoded interface{}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	if err := decoder.Decode(&decoded); err != nil {
+		return nil, false
+	}
+	return decoded, true
+}
+
+func redactConfigGetGenericValue(path []string, value interface{}) interface{} {
+	if configPathSegmentsAreSensitive(path) {
+		return "<redacted>"
+	}
+
+	switch typed := value.(type) {
+	case map[string]interface{}:
+		out := make(map[string]interface{}, len(typed))
+		for key, nested := range typed {
+			fieldPath := appendConfigPathSegment(path, key)
+			out[key] = redactConfigGetGenericValue(fieldPath, nested)
+		}
+		return out
+	case []interface{}:
+		out := make([]interface{}, len(typed))
+		for i, nested := range typed {
+			out[i] = redactConfigGetGenericValue(path, nested)
+		}
+		return out
+	default:
+		return value
+	}
+}
+
+func redactConfigGetReflectValue(path []string, value reflect.Value) interface{} {
+	if !value.IsValid() {
+		return nil
+	}
+	if value.Kind() == reflect.Interface {
+		if value.IsNil() {
+			return nil
+		}
+		return redactConfigGetReflectValue(path, value.Elem())
+	}
+	if configPathSegmentsAreSensitive(path) {
+		return "<redacted>"
+	}
+
+	switch value.Kind() {
+	case reflect.Ptr:
+		if value.IsNil() {
+			return nil
+		}
+		if value.CanInterface() {
+			if _, ok := value.Interface().(json.Marshaler); ok {
+				return value.Interface()
+			}
+		}
+		return redactConfigGetReflectValue(path, value.Elem())
+	case reflect.Struct:
+		if value.CanInterface() {
+			if _, ok := value.Interface().(json.Marshaler); ok {
+				return value.Interface()
+			}
+		}
+		return redactConfigGetStruct(path, value)
+	case reflect.Map:
+		return redactConfigGetMap(path, value)
+	case reflect.Slice, reflect.Array:
+		return redactConfigGetSlice(path, value)
+	default:
+		return value.Interface()
+	}
+}
+
+func redactConfigGetStruct(path []string, value reflect.Value) map[string]interface{} {
+	typ := value.Type()
+	out := make(map[string]interface{})
+	for i := 0; i < value.NumField(); i++ {
+		field := typ.Field(i)
+		if field.PkgPath != "" {
+			continue
+		}
+		name := configFieldPathName(field)
+		if name == "" {
+			continue
+		}
+		fieldPath := appendConfigPathSegment(path, name)
+		out[name] = redactConfigGetReflectValue(fieldPath, value.Field(i))
+	}
+	return out
+}
+
+func redactConfigGetMap(path []string, value reflect.Value) map[string]interface{} {
+	out := make(map[string]interface{}, value.Len())
+	for _, key := range value.MapKeys() {
+		keyText := fmt.Sprintf("%v", key.Interface())
+		fieldPath := appendConfigPathSegment(path, keyText)
+		out[keyText] = redactConfigGetReflectValue(fieldPath, value.MapIndex(key))
+	}
+	return out
+}
+
+func redactConfigGetSlice(path []string, value reflect.Value) []interface{} {
+	out := make([]interface{}, value.Len())
+	for i := 0; i < value.Len(); i++ {
+		out[i] = redactConfigGetReflectValue(path, value.Index(i))
+	}
+	return out
+}
+
+func splitConfigPath(path string) []string {
+	if path == "" {
+		return nil
+	}
+	return strings.Split(path, ".")
+}
+
+func appendConfigPathSegment(path []string, segment string) []string {
+	out := make([]string, 0, len(path)+1)
+	out = append(out, path...)
+	out = append(out, segment)
+	return out
+}
+
+func configFieldPathName(field reflect.StructField) string {
+	tag := field.Tag.Get("mapstructure")
+	if tag == "-" {
+		return ""
+	}
+	if tag != "" {
+		name := strings.Split(tag, ",")[0]
+		if name != "" {
+			return name
+		}
+	}
+	jsonTag := field.Tag.Get("json")
+	if jsonTag == "-" {
+		return ""
+	}
+	if jsonTag != "" {
+		name := strings.Split(jsonTag, ",")[0]
+		if name != "" {
+			return name
+		}
+	}
+	return field.Name
+}
+
 func configSetPathIsSensitive(path string) bool {
-	for _, segment := range strings.Split(path, ".") {
+	return configPathSegmentsAreSensitive(splitConfigPath(path))
+}
+
+func configPathSegmentsAreSensitive(path []string) bool {
+	for _, segment := range path {
 		if configSetSegmentIsSensitive(normalizeConfigPathSegment(segment)) {
 			return true
 		}
@@ -179,6 +379,8 @@ func configSetSegmentIsSensitive(segment string) bool {
 	case strings.Contains(segment, "secret"):
 		return true
 	case strings.Contains(segment, "password"):
+		return true
+	case strings.Contains(segment, "webhookurl"):
 		return true
 	case segment == "pin":
 		return true

@@ -357,6 +357,317 @@ func TestConfigGet_JSONOutputIsValid(t *testing.T) {
 	}
 }
 
+func TestConfigGet_RedactsSensitivePlainOutputByDefault(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Providers = map[string]config.ProviderConfig{
+		"openai": {
+			Type:   "openai",
+			APIKey: "sk-secret",
+		},
+	}
+	cmd := NewGetCmd(func() (*config.Config, error) { return cfg, nil })
+
+	out, err := executeConfigCommand(t, cmd, "providers.openai.apiKey")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.TrimSpace(out) != "<redacted>" {
+		t.Fatalf("expected redacted output, got %q", out)
+	}
+	if strings.Contains(out, "sk-secret") {
+		t.Fatalf("output must not contain raw secret, got %q", out)
+	}
+}
+
+func TestConfigGet_RedactsSensitiveJSONOutputByDefault(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Providers = map[string]config.ProviderConfig{
+		"openai": {
+			Type:   "openai",
+			APIKey: "sk-secret",
+		},
+	}
+	cmd := NewGetCmd(func() (*config.Config, error) { return cfg, nil })
+
+	out, err := executeConfigCommand(t, cmd, "providers.openai.apiKey", "--output", "json")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var decoded string
+	if err := json.Unmarshal([]byte(out), &decoded); err != nil {
+		t.Fatalf("expected valid JSON string, got error: %v", err)
+	}
+	if decoded != "<redacted>" {
+		t.Fatalf("expected redacted JSON value, got %q", decoded)
+	}
+	if strings.Contains(out, "sk-secret") {
+		t.Fatalf("output must not contain raw secret, got %q", out)
+	}
+}
+
+func TestConfigGet_ShowSecretsReturnsRawSensitivePlainOutput(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Providers = map[string]config.ProviderConfig{
+		"openai": {
+			Type:   "openai",
+			APIKey: "sk-secret",
+		},
+	}
+	cmd := NewGetCmd(func() (*config.Config, error) { return cfg, nil })
+
+	out, err := executeConfigCommand(t, cmd, "providers.openai.apiKey", "--show-secrets")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.TrimSpace(out) != "sk-secret" {
+		t.Fatalf("expected raw secret output, got %q", out)
+	}
+	if strings.Contains(out, "<redacted>") {
+		t.Fatalf("show-secrets output must not be redacted, got %q", out)
+	}
+}
+
+func TestConfigGet_PreservesNonSensitivePlainScalarOutput(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cmd := NewGetCmd(func() (*config.Config, error) { return cfg, nil })
+
+	out, err := executeConfigCommand(t, cmd, "mcp.defaultTimeout")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.TrimSpace(out) != "30s" {
+		t.Fatalf("expected non-sensitive plain scalar output to be preserved, got %q", out)
+	}
+}
+
+func TestConfigGet_RedactsNestedProviderJSONOutputWithoutMutatingConfig(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Providers = map[string]config.ProviderConfig{
+		"openai": {
+			Type:    "openai",
+			APIKey:  "sk-secret",
+			BaseURL: "https://api.openai.example/v1",
+		},
+	}
+	cmd := NewGetCmd(func() (*config.Config, error) { return cfg, nil })
+
+	out, err := executeConfigCommand(t, cmd, "providers", "--output", "json")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var decoded map[string]map[string]any
+	if err := json.Unmarshal([]byte(out), &decoded); err != nil {
+		t.Fatalf("expected valid JSON object, got error: %v", err)
+	}
+	openai := decoded["openai"]
+	if openai["type"] != "openai" {
+		t.Fatalf("expected provider type to remain visible, got %v", openai["type"])
+	}
+	if openai["apiKey"] != "<redacted>" {
+		t.Fatalf("expected provider apiKey to be redacted, got %v", openai["apiKey"])
+	}
+	if strings.Contains(out, "sk-secret") {
+		t.Fatalf("output must not contain raw secret, got %q", out)
+	}
+	if got := cfg.Providers["openai"].APIKey; got != "sk-secret" {
+		t.Fatalf("redaction must not mutate config, got apiKey %q", got)
+	}
+}
+
+func TestConfigGet_RedactsNestedDynamicMapJSONOutput(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.MCP.Servers = map[string]config.MCPServerConfig{
+		"docs": {
+			Transport: "http",
+			Env: map[string]string{
+				"OPENAI_API_KEY": "sk-secret",
+				"LOG_LEVEL":      "debug",
+			},
+			Headers: map[string]string{
+				"Proxy-Authorization": "Bearer secret",
+				"X-Trace-ID":          "trace-1",
+			},
+		},
+	}
+	cmd := NewGetCmd(func() (*config.Config, error) { return cfg, nil })
+
+	out, err := executeConfigCommand(t, cmd, "mcp.servers.docs", "--output", "json")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var decoded map[string]any
+	if err := json.Unmarshal([]byte(out), &decoded); err != nil {
+		t.Fatalf("expected valid JSON object, got error: %v", err)
+	}
+	env, ok := decoded["env"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected env object, got %T", decoded["env"])
+	}
+	headers, ok := decoded["headers"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected headers object, got %T", decoded["headers"])
+	}
+	if env["OPENAI_API_KEY"] != "<redacted>" {
+		t.Fatalf("expected OPENAI_API_KEY to be redacted, got %v", env["OPENAI_API_KEY"])
+	}
+	if env["LOG_LEVEL"] != "debug" {
+		t.Fatalf("expected LOG_LEVEL to remain visible, got %v", env["LOG_LEVEL"])
+	}
+	if headers["Proxy-Authorization"] != "<redacted>" {
+		t.Fatalf("expected Proxy-Authorization to be redacted, got %v", headers["Proxy-Authorization"])
+	}
+	if headers["X-Trace-ID"] != "trace-1" {
+		t.Fatalf("expected X-Trace-ID to remain visible, got %v", headers["X-Trace-ID"])
+	}
+	if strings.Contains(out, "sk-secret") || strings.Contains(out, "Bearer secret") {
+		t.Fatalf("output must not contain raw secrets, got %q", out)
+	}
+}
+
+func TestConfigGet_RedactsDottedDynamicMapKeyJSONOutput(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.MCP.Servers = map[string]config.MCPServerConfig{
+		"docs": {
+			Env: map[string]string{
+				"API.KEY":   "sk-secret",
+				"LOG.LEVEL": "debug",
+			},
+			Headers: map[string]string{
+				"X.API.Key":  "header-secret",
+				"X.Trace.ID": "trace-1",
+			},
+		},
+	}
+	cmd := NewGetCmd(func() (*config.Config, error) { return cfg, nil })
+
+	out, err := executeConfigCommand(t, cmd, "mcp.servers.docs", "--output", "json")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var decoded map[string]any
+	if err := json.Unmarshal([]byte(out), &decoded); err != nil {
+		t.Fatalf("expected valid JSON object, got error: %v", err)
+	}
+	env := decoded["env"].(map[string]any)
+	headers := decoded["headers"].(map[string]any)
+	if env["API.KEY"] != "<redacted>" {
+		t.Fatalf("expected dotted API.KEY to be redacted, got %v", env["API.KEY"])
+	}
+	if env["LOG.LEVEL"] != "debug" {
+		t.Fatalf("expected dotted LOG.LEVEL to remain visible, got %v", env["LOG.LEVEL"])
+	}
+	if headers["X.API.Key"] != "<redacted>" {
+		t.Fatalf("expected dotted X.API.Key to be redacted, got %v", headers["X.API.Key"])
+	}
+	if headers["X.Trace.ID"] != "trace-1" {
+		t.Fatalf("expected dotted X.Trace.ID to remain visible, got %v", headers["X.Trace.ID"])
+	}
+	if strings.Contains(out, "sk-secret") || strings.Contains(out, "header-secret") {
+		t.Fatalf("output must not contain raw secrets, got %q", out)
+	}
+}
+
+func TestConfigGet_RedactsWebhookURLJSONOutput(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Alerting.Delivery = []config.AlertDeliveryConfig{
+		{
+			Type:        "webhook",
+			WebhookURL:  "https://token@example.test/hook",
+			MinSeverity: "critical",
+		},
+	}
+	cmd := NewGetCmd(func() (*config.Config, error) { return cfg, nil })
+
+	out, err := executeConfigCommand(t, cmd, "alerting.delivery", "--output", "json")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var decoded []map[string]any
+	if err := json.Unmarshal([]byte(out), &decoded); err != nil {
+		t.Fatalf("expected valid JSON array, got error: %v", err)
+	}
+	if decoded[0]["webhookURL"] != "<redacted>" {
+		t.Fatalf("expected webhookURL to be redacted, got %v", decoded[0]["webhookURL"])
+	}
+	if decoded[0]["type"] != "webhook" {
+		t.Fatalf("expected webhook type to remain visible, got %v", decoded[0]["type"])
+	}
+	if strings.Contains(out, "token@example.test") {
+		t.Fatalf("output must not contain raw webhook URL, got %q", out)
+	}
+}
+
+func TestConfigGet_PreservesCustomJSONMarshalerOutputShape(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Ontology.Governance = config.OntologyGovernanceConfig{}
+	cmd := NewGetCmd(func() (*config.Config, error) { return cfg, nil })
+
+	out, err := executeConfigCommand(t, cmd, "ontology.governance", "--output", "json")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var decoded map[string]any
+	if err := json.Unmarshal([]byte(out), &decoded); err != nil {
+		t.Fatalf("expected valid JSON object, got error: %v", err)
+	}
+	if len(decoded) != 0 {
+		t.Fatalf("expected custom JSON marshaler omitempty shape to be preserved, got %v", decoded)
+	}
+}
+
+func TestConfigGet_PreservesOmitEmptyObjectJSONOutputShape(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Ontology = config.OntologyConfig{}
+	cmd := NewGetCmd(func() (*config.Config, error) { return cfg, nil })
+
+	out, err := executeConfigCommand(t, cmd, "ontology", "--output", "json")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var decoded map[string]any
+	if err := json.Unmarshal([]byte(out), &decoded); err != nil {
+		t.Fatalf("expected valid JSON object, got error: %v", err)
+	}
+
+	expectedJSON, err := json.Marshal(cfg.Ontology)
+	if err != nil {
+		t.Fatalf("marshal expected ontology JSON: %v", err)
+	}
+	var expected map[string]any
+	if err := json.Unmarshal(expectedJSON, &expected); err != nil {
+		t.Fatalf("decode expected ontology JSON: %v", err)
+	}
+	if !reflect.DeepEqual(decoded, expected) {
+		t.Fatalf("expected omitempty object shape to be preserved, got %v want %v", decoded, expected)
+	}
+}
+
+func TestConfigGet_PreservesNilMapJSONOutputShape(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Providers = nil
+	cmd := NewGetCmd(func() (*config.Config, error) { return cfg, nil })
+
+	out, err := executeConfigCommand(t, cmd, "providers", "--output", "json")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var decoded any
+	if err := json.Unmarshal([]byte(out), &decoded); err != nil {
+		t.Fatalf("expected valid JSON null, got error: %v", err)
+	}
+	if decoded != nil {
+		t.Fatalf("expected nil map JSON shape to be preserved as null, got %v", decoded)
+	}
+}
+
 func TestConfigGet_InvalidOutputRejectsBeforeLoad(t *testing.T) {
 	called := false
 	cmd := NewGetCmd(func() (*config.Config, error) {

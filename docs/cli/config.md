@@ -178,7 +178,7 @@ WARNING: exported configuration contains sensitive values in plaintext.
 ```
 
 !!! danger "Security Notice"
-The exported JSON contains sensitive values (API keys, tokens) in plaintext. Handle with care and do not commit to version control. Both `lango config export` and `lango config get --output json` emit valid pretty-printed JSON directly on the Cobra command output stream, so wrappers and test harnesses can capture and decode them safely. `lango config get` accepts only `plain` or `json` for `--output` and rejects unknown values before loading the active config.
+The exported JSON contains sensitive values (API keys, tokens) in plaintext. Handle with care and do not commit to version control. `lango config export` emits a plaintext backup by design. `lango config get --output json` emits valid pretty-printed JSON on the Cobra command output stream, but redacts sensitive values by default unless `--show-secrets` is passed.
 
 You can redirect the output to a file:
 
@@ -193,7 +193,7 @@ $ lango config export default > backup.json
 Read a configuration value by dot-notation path. This is a read-only command and does not require editing the profile.
 
 ```
-lango config get <dot.path> [--output plain|json]
+lango config get <dot.path> [--output plain|json] [--show-secrets]
 ```
 
 | Argument | Required | Description |
@@ -203,8 +203,9 @@ lango config get <dot.path> [--output plain|json]
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--output`, `-o` | string | `plain` | Output format (`plain` or `json`) |
+| `--show-secrets` | bool | `false` | Print raw sensitive values instead of `<redacted>` |
 
-The command writes through the Cobra command output stream, and `--output` accepts only `plain` or `json`. Unknown values fail before the active config is loaded.
+The command writes through the Cobra command output stream, and `--output` accepts only `plain` or `json`. Unknown values fail before the active config is loaded. Sensitive scalar paths and nested sensitive fields inside object or map reads are redacted by default. Use `--show-secrets` only when you intentionally need to inspect raw stored credentials.
 
 **Examples:**
 
@@ -214,6 +215,12 @@ anthropic
 
 $ lango config get p2p.enabled
 false
+
+$ lango config get providers.openai.apiKey
+<redacted>
+
+$ lango config get providers.openai.apiKey --show-secrets
+sk-...
 
 $ lango config get agent --output json
 {

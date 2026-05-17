@@ -97,7 +97,7 @@ Use the dedicated page for command families that have deeper semantics, examples
 | `lango config delete <name>` | Delete a configuration profile |
 | `lango config import <file>` | Import and encrypt a JSON config |
 | `lango config export <name>` | Export a profile as plaintext JSON |
-| `lango config get <dot.path>` | Read a configuration value by dot-notation path |
+| `lango config get <dot.path> [--show-secrets]` | Read a configuration value by dot-notation path |
 | `lango config set <dot.path> [value] [--from-env ENV]` | Set a configuration value by dot-notation path |
 | `lango config keys [prefix]` | List available configuration keys |
 | `lango config validate` | Validate the active profile |

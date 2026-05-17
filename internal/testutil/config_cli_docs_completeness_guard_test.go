@@ -19,6 +19,7 @@ func TestPublicConfigCLIDocsIncludeImplementedReadWriteCommands(t *testing.T) {
 	}
 	requiredSnippets := []string{
 		"lango config get <dot.path>",
+		"--show-secrets",
 		"lango config set <dot.path> [value]",
 		"--from-env ENV",
 		"lango config keys [prefix]",
@@ -34,6 +35,22 @@ func TestPublicConfigCLIDocsIncludeImplementedReadWriteCommands(t *testing.T) {
 			if !strings.Contains(text, snippet) {
 				t.Fatalf("%s is missing required config CLI doc snippet %q", target, snippet)
 			}
+		}
+	}
+
+	configDoc := filepath.Join(repoRoot, "docs", "cli", "config.md")
+	data, err := os.ReadFile(configDoc)
+	if err != nil {
+		t.Fatalf("read %s: %v", configDoc, err)
+	}
+	text := string(data)
+	configSnippets := []string{
+		"lango config get <dot.path> [--output plain|json] [--show-secrets]",
+		"Sensitive scalar paths and nested sensitive fields inside object or map reads are redacted by default.",
+	}
+	for _, snippet := range configSnippets {
+		if !strings.Contains(text, snippet) {
+			t.Fatalf("%s is missing required config get security doc snippet %q", configDoc, snippet)
 		}
 	}
 }
