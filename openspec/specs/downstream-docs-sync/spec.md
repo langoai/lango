@@ -36,6 +36,17 @@ The README SHALL list all implemented features including Team Health Monitoring,
 - **THEN** it SHALL include `lango p2p reputation --peer-did <did>`
 - **AND** workspace quick-reference summaries SHALL describe direct local workspace actions for create, list, status, join, and leave
 
+#### Scenario: README quick references include required memory and P2P operands
+- **WHEN** a user reads the CLI commands section of `README.md`
+- **THEN** it SHALL include `lango memory clear <session-key>`
+- **AND** it SHALL include `lango p2p firewall add --peer-did <did>`
+- **AND** it SHALL include `lango p2p firewall remove <peer-did>`
+- **AND** it SHALL include `lango p2p session revoke --peer-did <did>`
+
+#### Scenario: README config get quick reference includes output and secret flags
+- **WHEN** a user reads the config quick reference in `README.md`
+- **THEN** it SHALL include `lango config get <dot.path> [--output plain|json] [--show-secrets]`
+
 ### Requirement: CLI index quick references include required operands
 The CLI index SHALL list quick-reference commands with required positional
 arguments and required flags for provenance and P2P reputation commands.
@@ -51,6 +62,33 @@ arguments and required flags for provenance and P2P reputation commands.
 - **WHEN** a user reads `docs/cli/index.md`
 - **THEN** it SHALL include `lango p2p reputation --peer-did <did>`
 - **AND** workspace quick-reference summaries SHALL describe direct local workspace actions for create, list, status, join, and leave
+
+#### Scenario: CLI index quick references include required memory and P2P operands
+- **WHEN** a user reads `docs/cli/index.md`
+- **THEN** it SHALL include `lango memory clear <session-key>`
+- **AND** it SHALL include `lango p2p firewall add --peer-did <did>`
+- **AND** it SHALL include `lango p2p firewall remove <peer-did>`
+- **AND** it SHALL include `lango p2p session revoke --peer-did <did>`
+
+#### Scenario: CLI index config get quick reference includes output and secret flags
+- **WHEN** a user reads `docs/cli/index.md`
+- **THEN** it SHALL include `lango config get <dot.path> [--output plain|json] [--show-secrets]`
+
+### Requirement: Feature docs include required command operands
+Public feature docs SHALL include required operands when showing runnable command examples.
+
+#### Scenario: Observational memory docs include clear session key
+- **WHEN** a user reads `docs/features/observational-memory.md`
+- **THEN** it SHALL include `lango memory clear <session-key>`
+
+#### Scenario: P2P feature docs include firewall and session peer operands
+- **WHEN** a user reads `docs/features/p2p-network.md`
+- **THEN** it SHALL include `lango p2p firewall add --peer-did <did>`
+- **AND** it SHALL include `lango p2p session revoke --peer-did <did>`
+
+#### Scenario: ZKP feature docs include session revoke peer operand
+- **WHEN** a user reads `docs/features/zkp.md`
+- **THEN** it SHALL include `lango p2p session revoke --peer-did <did>`
 
 ### Requirement: Public cron automation docs match CLI flags
 Public cron automation documentation SHALL use command examples accepted by the current CLI.

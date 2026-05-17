@@ -13,22 +13,18 @@ func TestREADMEIncludesImplementedP2POperatorCommands(t *testing.T) {
 	t.Parallel()
 
 	repoRoot := readmeP2PDocsGuardRepoRoot(t)
-	target := filepath.Join(repoRoot, "README.md")
-
-	data, err := os.ReadFile(target)
-	if err != nil {
-		t.Fatalf("read %s: %v", target, err)
+	targets := []string{
+		filepath.Join(repoRoot, "README.md"),
+		filepath.Join(repoRoot, "docs", "cli", "index.md"),
 	}
-	text := string(data)
-
 	requiredSnippets := []string{
 		"lango p2p status",
 		"lango p2p peers",
 		"lango p2p connect <multiaddr>",
 		"lango p2p disconnect <peer-id>",
 		"lango p2p firewall list",
-		"lango p2p firewall add",
-		"lango p2p firewall remove",
+		"lango p2p firewall add --peer-did <did>",
+		"lango p2p firewall remove <peer-did>",
 		"lango p2p discover",
 		"lango p2p identity",
 		"lango p2p reputation --peer-did <did>",
@@ -36,7 +32,7 @@ func TestREADMEIncludesImplementedP2POperatorCommands(t *testing.T) {
 		"lango p2p provenance push <peer-did> <session-key>",
 		"lango p2p provenance fetch <peer-did> <session-key>",
 		"lango p2p session list",
-		"lango p2p session revoke",
+		"lango p2p session revoke --peer-did <did>",
 		"lango p2p session revoke-all",
 		"lango p2p sandbox status",
 		"lango p2p sandbox test",
@@ -52,10 +48,59 @@ func TestREADMEIncludesImplementedP2POperatorCommands(t *testing.T) {
 		"lango p2p zkp status",
 		"lango p2p zkp circuits",
 	}
+	staleSnippets := []string{
+		"lango p2p firewall add           Add a firewall ACL rule",
+		"lango p2p firewall remove        Remove firewall rules for a peer",
+		"lango p2p session revoke         Revoke a peer session",
+		"`lango p2p firewall add` | Add a firewall ACL rule",
+		"`lango p2p firewall remove` | Remove firewall rules for a peer",
+		"`lango p2p session revoke` | Revoke a peer session",
+		"lango p2p firewall add         # Add a firewall rule",
+		"lango p2p session revoke     # Revoke a specific session",
+	}
 
-	for _, snippet := range requiredSnippets {
-		if !strings.Contains(text, snippet) {
-			t.Fatalf("%s is missing required README P2P snippet %q", target, snippet)
+	for _, target := range targets {
+		data, err := os.ReadFile(target)
+		if err != nil {
+			t.Fatalf("read %s: %v", target, err)
+		}
+		text := string(data)
+		for _, snippet := range requiredSnippets {
+			if !strings.Contains(text, snippet) {
+				t.Fatalf("%s is missing required P2P snippet %q", target, snippet)
+			}
+		}
+		for _, snippet := range staleSnippets {
+			if strings.Contains(text, snippet) {
+				t.Fatalf("%s contains stale P2P quick-reference snippet %q", target, snippet)
+			}
+		}
+	}
+
+	featureTargets := map[string][]string{
+		filepath.Join(repoRoot, "docs", "features", "p2p-network.md"): {
+			"lango p2p firewall add --peer-did <did>",
+			"lango p2p session revoke --peer-did <did>",
+		},
+		filepath.Join(repoRoot, "docs", "features", "zkp.md"): {
+			"lango p2p session revoke --peer-did <did>",
+		},
+	}
+	for target, snippets := range featureTargets {
+		data, err := os.ReadFile(target)
+		if err != nil {
+			t.Fatalf("read %s: %v", target, err)
+		}
+		text := string(data)
+		for _, snippet := range snippets {
+			if !strings.Contains(text, snippet) {
+				t.Fatalf("%s is missing required P2P snippet %q", target, snippet)
+			}
+		}
+		for _, snippet := range staleSnippets {
+			if strings.Contains(text, snippet) {
+				t.Fatalf("%s contains stale P2P quick-reference snippet %q", target, snippet)
+			}
 		}
 	}
 }

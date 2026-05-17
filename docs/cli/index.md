@@ -97,7 +97,7 @@ Use the dedicated page for command families that have deeper semantics, examples
 | `lango config delete <name>` | Delete a configuration profile |
 | `lango config import <file>` | Import and encrypt a JSON config |
 | `lango config export <name>` | Export a profile as plaintext JSON |
-| `lango config get <dot.path> [--show-secrets]` | Read a configuration value by dot-notation path |
+| `lango config get <dot.path> [--output plain|json] [--show-secrets]` | Read a configuration value by dot-notation path |
 | `lango config set <dot.path> [value] [--from-env ENV]` | Set a configuration value by dot-notation path |
 | `lango config keys [prefix]` | List available configuration keys |
 | `lango config validate` | Validate the active profile |
@@ -121,7 +121,7 @@ Use the dedicated page for command families that have deeper semantics, examples
 | `lango agent hooks` | Show registered tool hooks |
 | `lango memory list` | List observational memory entries |
 | `lango memory status` | Show memory system status |
-| `lango memory clear` | Clear all memory entries for a session |
+| `lango memory clear <session-key>` | Clear all memory entries for a session |
 | `lango memory agents` | List agents with persistent memory |
 | `lango memory agent <name>` | Show memory entries for a specific agent |
 
@@ -219,8 +219,8 @@ Librarian command output is routed through the Cobra command writer, so wrappers
 | `lango p2p connect <multiaddr>` | Connect to a peer by multiaddr |
 | `lango p2p disconnect <peer-id>` | Disconnect from a peer |
 | `lango p2p firewall list` | List firewall ACL rules |
-| `lango p2p firewall add` | Add a firewall ACL rule |
-| `lango p2p firewall remove` | Remove firewall rules for a peer |
+| `lango p2p firewall add --peer-did <did>` | Add a firewall ACL rule |
+| `lango p2p firewall remove <peer-did>` | Remove firewall rules for a peer |
 | `lango p2p discover` | Discover agents by capability |
 | `lango p2p identity` | Show local DID and peer identity |
 | `lango p2p reputation --peer-did <did>` | Query peer trust score |
@@ -238,7 +238,7 @@ Librarian command output is routed through the Cobra command writer, so wrappers
 | `lango p2p provenance push <peer-did> <session-key>` | Push a signed provenance bundle to a peer |
 | `lango p2p provenance fetch <peer-did> <session-key>` | Fetch and import a signed provenance bundle from a peer |
 | `lango p2p session list` | List active peer sessions |
-| `lango p2p session revoke` | Revoke a peer session |
+| `lango p2p session revoke --peer-did <did>` | Revoke a peer session |
 | `lango p2p session revoke-all` | Revoke all active peer sessions |
 | `lango p2p sandbox status` | Show sandbox runtime status |
 | `lango p2p sandbox test` | Run sandbox smoke test |

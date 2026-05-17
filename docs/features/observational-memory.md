@@ -133,7 +133,7 @@ lango memory list
 lango memory status
 
 # Clear all observations and reflections
-lango memory clear
+lango memory clear <session-key>
 ```
 
 ## How It Works

@@ -12,25 +12,55 @@ func TestREADMEIncludesImplementedMemoryCommands(t *testing.T) {
 	t.Parallel()
 
 	repoRoot := readmeMemoryDocsGuardRepoRoot(t)
-	target := filepath.Join(repoRoot, "README.md")
-
-	data, err := os.ReadFile(target)
-	if err != nil {
-		t.Fatalf("read %s: %v", target, err)
+	targets := []string{
+		filepath.Join(repoRoot, "README.md"),
+		filepath.Join(repoRoot, "docs", "cli", "index.md"),
 	}
-	text := string(data)
-
 	requiredSnippets := []string{
 		"lango memory list",
 		"lango memory status",
-		"lango memory clear",
+		"lango memory clear <session-key>",
 		"lango memory agents",
 		"lango memory agent <name>",
 	}
+	staleSnippets := []string{
+		"lango memory clear              Clear all memory entries for a session",
+		"`lango memory clear` | Clear all memory entries for a session",
+		"`lango memory clear` to manage observation entries",
+		"lango memory clear\n",
+	}
 
-	for _, snippet := range requiredSnippets {
-		if !strings.Contains(text, snippet) {
-			t.Fatalf("%s is missing required README memory snippet %q", target, snippet)
+	for _, target := range targets {
+		data, err := os.ReadFile(target)
+		if err != nil {
+			t.Fatalf("read %s: %v", target, err)
+		}
+		text := string(data)
+
+		for _, snippet := range requiredSnippets {
+			if !strings.Contains(text, snippet) {
+				t.Fatalf("%s is missing required memory snippet %q", target, snippet)
+			}
+		}
+		for _, snippet := range staleSnippets {
+			if strings.Contains(text, snippet) {
+				t.Fatalf("%s contains stale memory quick-reference snippet %q", target, snippet)
+			}
+		}
+	}
+
+	featureDoc := filepath.Join(repoRoot, "docs", "features", "observational-memory.md")
+	data, err := os.ReadFile(featureDoc)
+	if err != nil {
+		t.Fatalf("read %s: %v", featureDoc, err)
+	}
+	text := string(data)
+	if !strings.Contains(text, "lango memory clear <session-key>") {
+		t.Fatalf("%s is missing required memory clear session key snippet", featureDoc)
+	}
+	for _, snippet := range staleSnippets {
+		if strings.Contains(text, snippet) {
+			t.Fatalf("%s contains stale memory quick-reference snippet %q", featureDoc, snippet)
 		}
 	}
 }

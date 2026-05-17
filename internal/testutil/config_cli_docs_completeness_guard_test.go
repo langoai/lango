@@ -18,11 +18,13 @@ func TestPublicConfigCLIDocsIncludeImplementedReadWriteCommands(t *testing.T) {
 		filepath.Join(repoRoot, "docs", "cli", "config.md"),
 	}
 	requiredSnippets := []string{
-		"lango config get <dot.path>",
-		"--show-secrets",
+		"lango config get <dot.path> [--output plain|json] [--show-secrets]",
 		"lango config set <dot.path> [value]",
 		"--from-env ENV",
 		"lango config keys [prefix]",
+	}
+	staleSnippets := []string{
+		"lango config get <dot.path> [--show-secrets]",
 	}
 
 	for _, target := range targets {
@@ -34,6 +36,11 @@ func TestPublicConfigCLIDocsIncludeImplementedReadWriteCommands(t *testing.T) {
 		for _, snippet := range requiredSnippets {
 			if !strings.Contains(text, snippet) {
 				t.Fatalf("%s is missing required config CLI doc snippet %q", target, snippet)
+			}
+		}
+		for _, snippet := range staleSnippets {
+			if strings.Contains(text, snippet) {
+				t.Fatalf("%s contains stale config CLI doc snippet %q", target, snippet)
 			}
 		}
 	}

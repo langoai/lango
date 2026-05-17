@@ -445,7 +445,7 @@ lango p2p peers                # List connected peers
 lango p2p connect <multiaddr>  # Connect to a peer
 lango p2p disconnect <peer-id> # Disconnect from a peer
 lango p2p firewall list        # List firewall rules
-lango p2p firewall add         # Add a firewall rule
+lango p2p firewall add --peer-did <did> # Add a firewall rule
 lango p2p discover             # Discover agents
 lango p2p identity             # Show local DID, peer identity, and listen addresses
 lango p2p reputation --peer-did <did>  # Query trust score

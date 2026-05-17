@@ -193,7 +193,7 @@ lango librarian status          Show librarian configuration and inquiry stats
 lango librarian inquiries       List pending knowledge inquiries
 lango memory list               List observational memory entries
 lango memory status             Show memory system status
-lango memory clear              Clear all memory entries for a session
+lango memory clear <session-key> Clear all memory entries for a session
 lango memory agents             List agents with persistent memory
 lango memory agent <name>       Show memory entries for a specific agent
 lango security status           Show security configuration status
@@ -226,7 +226,7 @@ lango config use <name>          Switch to a different profile
 lango config delete <name>       Delete a configuration profile
 lango config import <file>       Import and encrypt a JSON config
 lango config export <name>       Export a profile as plaintext JSON
-lango config get <dot.path> [--show-secrets]  Read a configuration value by dot-notation path
+lango config get <dot.path> [--output plain|json] [--show-secrets]  Read a configuration value by dot-notation path
 lango config set <dot.path> [value] [--from-env ENV]  Set a configuration value by dot-notation path
 lango config keys [prefix]       List available configuration keys
 lango config validate            Validate the active profile
@@ -239,8 +239,8 @@ lango p2p peers                  List connected peers
 lango p2p connect <multiaddr>    Connect to a peer by multiaddr
 lango p2p disconnect <peer-id>   Disconnect from a peer
 lango p2p firewall list          List firewall ACL rules
-lango p2p firewall add           Add a firewall ACL rule
-lango p2p firewall remove        Remove firewall rules for a peer
+lango p2p firewall add --peer-did <did> Add a firewall ACL rule
+lango p2p firewall remove <peer-did> Remove firewall rules for a peer
 lango p2p discover               Discover agents by capability
 lango p2p identity               Show local DID and peer identity
 lango p2p reputation --peer-did <did>  Query peer trust score
@@ -253,7 +253,7 @@ lango p2p git fetch <workspace-id>   Describe how to fetch a workspace git bundl
 lango p2p provenance push <peer-did> <session-key>  Push a signed provenance bundle to a peer
 lango p2p provenance fetch <peer-did> <session-key> Fetch and import a signed provenance bundle from a peer
 lango p2p session list           List active peer sessions
-lango p2p session revoke         Revoke a peer session
+lango p2p session revoke --peer-did <did> Revoke a peer session
 lango p2p session revoke-all     Revoke all active peer sessions
 lango p2p sandbox status         Show sandbox runtime status
 lango p2p sandbox test           Run sandbox smoke test
@@ -1617,7 +1617,7 @@ Observational Memory is an async subsystem that compresses long conversations in
 - **Token Counter** — tracks token usage to determine when compression should trigger
 - **Context Limits** — only the most recent reflections (default: 5) and observations (default: 20) are injected into LLM context, keeping prompts lean as sessions grow
 
-Configure knowledge and observational memory settings via `lango settings` or `lango config` CLI. Use `lango memory list`, `lango memory status`, and `lango memory clear` to manage observation entries.
+Configure knowledge and observational memory settings via `lango settings` or `lango config` CLI. Use `lango memory list`, `lango memory status`, and `lango memory clear <session-key>` to manage observation entries.
 
 ## Security
 
