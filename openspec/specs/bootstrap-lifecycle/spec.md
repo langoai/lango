@@ -10,6 +10,10 @@ The system SHALL execute a complete bootstrap sequence with broker-owned databas
 - **THEN** the parent process SHALL spawn the storage broker before loading config profiles
 - **AND** the broker SHALL own the SQLite open/migration step
 
+#### Scenario: Shared CLI bootstrap enables broker startup
+- **WHEN** a command uses the shared `cliboot.BootResult` or `cliboot.Config` helper
+- **THEN** the helper SHALL call bootstrap with `StartStorageBroker` enabled
+
 #### Scenario: Broker bootstrap on first run
 - **WHEN** bootstrap runs on a fresh install
 - **THEN** credential acquisition and master-key setup SHALL complete before the broker `open_db` handshake is attempted
@@ -229,4 +233,3 @@ The system SHALL provide a `KMSConfigFromEnv()` function that reads KMS KEK conf
 #### Scenario: Missing provider env var
 - **WHEN** `LANGO_KMS_PROVIDER` is not set
 - **THEN** the function returns nil config and empty provider name
-
