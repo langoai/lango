@@ -244,7 +244,7 @@ Analysis complete. Key findings: ...
 Report generated and sent to #reports channel.
 ```
 
-If the workflow includes a schedule or you override with `--schedule`, the CLI currently stops after validation and explains that schedule registration from the CLI is not implemented yet:
+If the workflow includes a schedule or you override with `--schedule`, the CLI validates the workflow and registers an enabled cron job. The cron job prompt asks runtime automation to invoke the `workflow_run` tool with the selected workflow file path; execution still happens later through the cron runtime.
 
 ```bash
 $ lango workflow run ./report.flow.yaml --schedule "0 8 * * MON"
@@ -253,8 +253,9 @@ Steps:    3
 Schedule: 0 8 * * MON
 
 Workflow has a schedule.
-CLI schedule registration is not implemented yet.
-Use `lango cron add` or the runtime automation tools to schedule this workflow.
+Scheduled workflow registered as cron job (id: 2b7c4f5e-...)
+  Name: workflow:Weekly Report
+  Schedule: cron 0 8 * * MON
 ```
 
 If direct execution is requested but the live runtime is unavailable or the workflow engine is disabled, the validated workflow summary is still emitted and the CLI explains why inline instead of failing with a silent stdout bypass.

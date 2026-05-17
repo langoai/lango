@@ -20,7 +20,7 @@ type Scheduler struct {
 	entries        map[string]robfigcron.EntryID // jobID -> cron entry
 	inFlight       map[string]context.CancelFunc // jobID -> cancel for running executions
 	inFlightMu     sync.Mutex
-	semaphore      chan struct{}                 // limits concurrent job execution
+	semaphore      chan struct{} // limits concurrent job execution
 	maxJobs        int
 	defaultTimeout time.Duration
 	timezone       string
@@ -393,6 +393,20 @@ func buildCronSpec(job Job) (string, error) {
 	default:
 		return "", fmt.Errorf("unknown schedule type %q", job.ScheduleType)
 	}
+}
+
+// ValidateJobSchedule verifies that a job schedule can be registered by the
+// runtime scheduler without persisting or executing the job.
+func ValidateJobSchedule(job Job) error {
+	spec, err := buildCronSpec(job)
+	if err != nil {
+		return err
+	}
+	c := robfigcron.New()
+	if _, err := c.AddFunc(spec, func() {}); err != nil {
+		return fmt.Errorf("parse schedule %q: %w", job.Schedule, err)
+	}
+	return nil
 }
 
 // zapPrintfAdapter adapts zap.SugaredLogger to the Printf interface expected

@@ -4,13 +4,16 @@ package workflow
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"text/tabwriter"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 
 	"github.com/langoai/lango/internal/bootstrap"
+	"github.com/langoai/lango/internal/cron"
 	"github.com/langoai/lango/internal/runledger"
 	"github.com/langoai/lango/internal/storage"
 	"github.com/langoai/lango/internal/toolchain"
@@ -99,8 +102,13 @@ func newRunCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 			// The CLI can only validate and display — actual execution happens via the server.
 			if w.Schedule != "" {
 				fmt.Fprintln(out, "\nWorkflow has a schedule.")
-				fmt.Fprintln(out, "CLI schedule registration is not implemented yet.")
-				fmt.Fprintln(out, "Use `lango cron add` or the runtime automation tools to schedule this workflow.")
+				job, err := registerScheduledWorkflow(cmd.Context(), bootLoader, filePath, w)
+				if err != nil {
+					return err
+				}
+				fmt.Fprintf(out, "Scheduled workflow registered as cron job (id: %s)\n", job.ID)
+				fmt.Fprintf(out, "  Name: %s\n", job.Name)
+				fmt.Fprintf(out, "  Schedule: %s %s\n", job.ScheduleType, job.Schedule)
 				return nil
 			}
 
@@ -138,6 +146,52 @@ func newRunCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 
 	cmd.Flags().StringVar(&schedule, "schedule", "", "cron schedule to register (overrides YAML)")
 	return cmd
+}
+
+func registerScheduledWorkflow(ctx context.Context, bootLoader func() (*bootstrap.Result, error), filePath string, w *workflow.Workflow) (*cron.Job, error) {
+	boot, err := bootLoader()
+	if err != nil {
+		return nil, fmt.Errorf("bootstrap: %w", err)
+	}
+	defer boot.Close()
+
+	store := boot.Storage.Cron()
+	if store == nil {
+		return nil, fmt.Errorf("workflow schedule registration unavailable: cron storage is not configured")
+	}
+
+	absPath, err := filepath.Abs(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("resolve workflow path: %w", err)
+	}
+
+	job := cron.Job{
+		ID:           uuid.New().String(),
+		Name:         scheduledWorkflowJobName(w.Name),
+		ScheduleType: "cron",
+		Schedule:     w.Schedule,
+		Prompt:       scheduledWorkflowPrompt(absPath),
+		SessionMode:  "isolated",
+		DeliverTo:    append([]string(nil), w.DeliverTo...),
+		Timezone:     "UTC",
+		Enabled:      true,
+		CreatedAt:    time.Now(),
+	}
+	if err := cron.ValidateJobSchedule(job); err != nil {
+		return nil, fmt.Errorf("invalid workflow schedule: %w", err)
+	}
+	if err := store.Create(ctx, job); err != nil {
+		return nil, fmt.Errorf("register scheduled workflow: %w", err)
+	}
+	return &job, nil
+}
+
+func scheduledWorkflowJobName(workflowName string) string {
+	return "workflow:" + workflowName
+}
+
+func scheduledWorkflowPrompt(absPath string) string {
+	return fmt.Sprintf("Run the saved workflow by calling the workflow_run tool with file_path %q. Report the workflow run id and final status.", absPath)
 }
 
 func newWorkflowListCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {

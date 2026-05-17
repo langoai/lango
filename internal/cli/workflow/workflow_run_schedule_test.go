@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -12,10 +13,54 @@ import (
 
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/cron"
+	"github.com/langoai/lango/internal/storage"
+	"github.com/langoai/lango/internal/testutil"
 	workflowpkg "github.com/langoai/lango/internal/workflow"
 )
 
-func TestWorkflowRun_WithScheduleReportsNotImplementedRegistration(t *testing.T) {
+func TestWorkflowRun_WithScheduleRegistersCronBackedWorkflow(t *testing.T) {
+	workflowPath := writeWorkflowFixture(t, `name: Weekly Report
+deliver_to:
+  - slack
+steps:
+  - id: first
+    agent: operator
+    prompt: hello
+`)
+
+	client := testutil.TestEntClient(t)
+	cmd := newRunCmd(func() (*bootstrap.Result, error) {
+		return &bootstrap.Result{
+			Config: config.DefaultConfig(),
+			Storage: storage.NewFacade(nil, nil, storage.WithCronFactory(func() cron.Store {
+				return cron.NewEntStore(client)
+			})),
+		}, nil
+	})
+	output, err := executeWorkflowRunCmd(t, cmd, workflowPath, "--schedule", "0 8 * * MON")
+
+	require.NoError(t, err)
+	require.Contains(t, output, "Workflow: Weekly Report")
+	require.Contains(t, output, "Schedule: 0 8 * * MON")
+	require.Contains(t, output, "Scheduled workflow registered as cron job")
+	require.NotContains(t, output, "/api/workflow/register")
+	require.NotContains(t, output, "not implemented")
+
+	store := cron.NewEntStore(client)
+	jobs, err := store.List(context.Background())
+	require.NoError(t, err)
+	require.Len(t, jobs, 1)
+	require.Equal(t, "workflow:Weekly Report", jobs[0].Name)
+	require.Equal(t, "cron", jobs[0].ScheduleType)
+	require.Equal(t, "0 8 * * MON", jobs[0].Schedule)
+	require.Equal(t, []string{"slack"}, jobs[0].DeliverTo)
+	require.True(t, jobs[0].Enabled)
+	require.Contains(t, jobs[0].Prompt, "workflow_run")
+	require.Contains(t, jobs[0].Prompt, workflowPath)
+}
+
+func TestWorkflowRun_WithScheduleReturnsBootstrapError(t *testing.T) {
 	workflowPath := writeWorkflowFixture(t, `name: Weekly Report
 steps:
   - id: first
@@ -24,16 +69,62 @@ steps:
 `)
 
 	cmd := newRunCmd(func() (*bootstrap.Result, error) {
-		t.Fatal("boot loader should not be called when schedule registration is not implemented")
-		return nil, nil
+		return nil, assert.AnError
 	})
 	output, err := executeWorkflowRunCmd(t, cmd, workflowPath, "--schedule", "0 8 * * MON")
 
-	require.NoError(t, err)
-	require.Contains(t, output, "Workflow has a schedule.")
-	require.Contains(t, output, "CLI schedule registration is not implemented yet.")
-	require.Contains(t, output, "Use `lango cron add` or the runtime automation tools to schedule this workflow.")
-	require.NotContains(t, output, "/api/workflow/register")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "bootstrap")
+	require.Contains(t, output, "Workflow: Weekly Report")
+	require.NotContains(t, output, "Scheduled workflow registered")
+}
+
+func TestWorkflowRun_WithScheduleReturnsCronStorageUnavailable(t *testing.T) {
+	workflowPath := writeWorkflowFixture(t, `name: Weekly Report
+steps:
+  - id: first
+    agent: operator
+    prompt: hello
+`)
+
+	cmd := newRunCmd(func() (*bootstrap.Result, error) {
+		return &bootstrap.Result{Config: config.DefaultConfig()}, nil
+	})
+	output, err := executeWorkflowRunCmd(t, cmd, workflowPath, "--schedule", "0 8 * * MON")
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "cron storage is not configured")
+	require.Contains(t, output, "Workflow: Weekly Report")
+	require.NotContains(t, output, "Scheduled workflow registered")
+}
+
+func TestWorkflowRun_WithScheduleRejectsInvalidCronSchedule(t *testing.T) {
+	workflowPath := writeWorkflowFixture(t, `name: Weekly Report
+steps:
+  - id: first
+    agent: operator
+    prompt: hello
+`)
+
+	client := testutil.TestEntClient(t)
+	cmd := newRunCmd(func() (*bootstrap.Result, error) {
+		return &bootstrap.Result{
+			Config: config.DefaultConfig(),
+			Storage: storage.NewFacade(nil, nil, storage.WithCronFactory(func() cron.Store {
+				return cron.NewEntStore(client)
+			})),
+		}, nil
+	})
+	output, err := executeWorkflowRunCmd(t, cmd, workflowPath, "--schedule", "not-cron")
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "invalid workflow schedule")
+	require.Contains(t, output, "Workflow: Weekly Report")
+	require.NotContains(t, output, "Scheduled workflow registered")
+
+	jobs, listErr := cron.NewEntStore(client).List(context.Background())
+	require.NoError(t, listErr)
+	require.Empty(t, jobs)
 }
 
 func TestWorkflowRun_WithoutScheduleReportsServerUnavailableOnCommandWriter(t *testing.T) {
