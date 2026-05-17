@@ -227,7 +227,7 @@ lango config delete <name>       Delete a configuration profile
 lango config import <file>       Import and encrypt a JSON config
 lango config export <name>       Export a profile as plaintext JSON
 lango config get <dot.path>      Read a configuration value by dot-notation path
-lango config set <dot.path> <value>  Set a configuration value by dot-notation path
+lango config set <dot.path> [value] [--from-env ENV]  Set a configuration value by dot-notation path
 lango config keys [prefix]       List available configuration keys
 lango config validate            Validate the active profile
 lango extension inspect <source> Print a side-effect-free report about a pack
@@ -676,6 +676,7 @@ Map-backed scalar fields can be updated directly with `lango config set`, for ex
 
 ```bash
 lango config set providers.openai.type openai
+lango config set providers.openai.apiKey --from-env OPENAI_API_KEY
 ```
 
 | **Logging**                                            |          |                             |                                                                                                                   |

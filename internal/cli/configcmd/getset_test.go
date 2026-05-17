@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -397,6 +398,183 @@ func TestConfigSet_WritesToCommandOutput(t *testing.T) {
 	}
 	if !strings.Contains(out, "Set agent.provider = openai") {
 		t.Fatalf("expected confirmation output, got %q", out)
+	}
+}
+
+func TestConfigSet_FromEnvRedactsProviderAPIKeyOutputAndSavesRawValue(t *testing.T) {
+	cfg := config.DefaultConfig()
+	rawSecret := "sk-env-secret"
+	t.Setenv("LANGO_TEST_OPENAI_API_KEY", rawSecret)
+	cmd := NewSetCmd(
+		func() (*config.Config, map[string]bool, func(), error) {
+			return cfg, nil, func() {}, nil
+		},
+		func(updated *config.Config, explicitKeys map[string]bool) error {
+			cfg = updated
+			return nil
+		},
+	)
+
+	out, err := executeConfigCommand(
+		t,
+		cmd,
+		"providers.openai.apiKey",
+		"--from-env",
+		"LANGO_TEST_OPENAI_API_KEY",
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out, "Set providers.openai.apiKey = <redacted>") {
+		t.Fatalf("expected redacted confirmation output, got %q", out)
+	}
+	if strings.Contains(out, rawSecret) {
+		t.Fatalf("confirmation output must not contain raw secret, got %q", out)
+	}
+	if got := cfg.Providers["openai"].APIKey; got != rawSecret {
+		t.Fatalf("expected raw provider API key to be saved, got %q", got)
+	}
+}
+
+func TestConfigSet_FromEnvShowsNonSensitiveOutputAndSavesRawValue(t *testing.T) {
+	cfg := config.DefaultConfig()
+	t.Setenv("LANGO_TEST_AGENT_PROVIDER", "openai")
+	cmd := NewSetCmd(
+		func() (*config.Config, map[string]bool, func(), error) {
+			return cfg, nil, func() {}, nil
+		},
+		func(updated *config.Config, explicitKeys map[string]bool) error {
+			cfg = updated
+			return nil
+		},
+	)
+
+	out, err := executeConfigCommand(
+		t,
+		cmd,
+		"agent.provider",
+		"--from-env",
+		"LANGO_TEST_AGENT_PROVIDER",
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out, "Set agent.provider = openai") {
+		t.Fatalf("expected non-sensitive confirmation output, got %q", out)
+	}
+	if cfg.Agent.Provider != "openai" {
+		t.Fatalf("expected agent.provider to be saved, got %q", cfg.Agent.Provider)
+	}
+}
+
+func TestConfigSet_FromEnvAllowsEmptyEnvValue(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Providers = make(map[string]config.ProviderConfig)
+	cfg.Providers["openai"] = config.ProviderConfig{
+		Type:   "openai",
+		APIKey: "old-secret",
+	}
+	t.Setenv("LANGO_TEST_EMPTY_SECRET", "")
+	cmd := NewSetCmd(
+		func() (*config.Config, map[string]bool, func(), error) {
+			return cfg, nil, func() {}, nil
+		},
+		func(updated *config.Config, explicitKeys map[string]bool) error {
+			cfg = updated
+			return nil
+		},
+	)
+
+	out, err := executeConfigCommand(
+		t,
+		cmd,
+		"providers.openai.apiKey",
+		"--from-env",
+		"LANGO_TEST_EMPTY_SECRET",
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out, "Set providers.openai.apiKey = <redacted>") {
+		t.Fatalf("expected redacted confirmation output, got %q", out)
+	}
+	if got := cfg.Providers["openai"].APIKey; got != "" {
+		t.Fatalf("expected empty provider API key to be saved, got %q", got)
+	}
+}
+
+func TestConfigSet_FromEnvMissingVariableRejectsBeforeLoadOrSave(t *testing.T) {
+	envName := "LANGO_TEST_MISSING_OPENAI_API_KEY"
+	if err := os.Unsetenv(envName); err != nil {
+		t.Fatalf("unset env: %v", err)
+	}
+	loadCalled := false
+	saveCalled := false
+	cmd := NewSetCmd(
+		func() (*config.Config, map[string]bool, func(), error) {
+			loadCalled = true
+			return config.DefaultConfig(), nil, func() {}, nil
+		},
+		func(updated *config.Config, explicitKeys map[string]bool) error {
+			saveCalled = true
+			return nil
+		},
+	)
+
+	out, err := executeConfigCommand(t, cmd, "providers.openai.apiKey", "--from-env", envName)
+	if err == nil {
+		t.Fatal("expected missing env error")
+	}
+	if !strings.Contains(err.Error(), `environment variable "LANGO_TEST_MISSING_OPENAI_API_KEY" is not set`) {
+		t.Fatalf("expected missing env error, got %v", err)
+	}
+	if out != "" {
+		t.Fatalf("expected empty command output, got %q", out)
+	}
+	if loadCalled {
+		t.Fatal("cfgLoader must not run when --from-env variable is missing")
+	}
+	if saveCalled {
+		t.Fatal("cfgSaver must not run when --from-env variable is missing")
+	}
+}
+
+func TestConfigSet_FromEnvRejectsPositionalValueBeforeLoadOrSave(t *testing.T) {
+	loadCalled := false
+	saveCalled := false
+	cmd := NewSetCmd(
+		func() (*config.Config, map[string]bool, func(), error) {
+			loadCalled = true
+			return config.DefaultConfig(), nil, func() {}, nil
+		},
+		func(updated *config.Config, explicitKeys map[string]bool) error {
+			saveCalled = true
+			return nil
+		},
+	)
+
+	out, err := executeConfigCommand(
+		t,
+		cmd,
+		"providers.openai.apiKey",
+		"raw-secret",
+		"--from-env",
+		"LANGO_TEST_OPENAI_API_KEY",
+	)
+	if err == nil {
+		t.Fatal("expected --from-env and positional value conflict")
+	}
+	if !strings.Contains(err.Error(), "--from-env cannot be combined with a value argument") {
+		t.Fatalf("expected --from-env conflict error, got %v", err)
+	}
+	if out != "" {
+		t.Fatalf("expected empty command output, got %q", out)
+	}
+	if loadCalled {
+		t.Fatal("cfgLoader must not run when --from-env is combined with a value argument")
+	}
+	if saveCalled {
+		t.Fatal("cfgSaver must not run when --from-env is combined with a value argument")
 	}
 }
 

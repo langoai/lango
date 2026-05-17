@@ -19,7 +19,8 @@ func TestPublicConfigCLIDocsIncludeImplementedReadWriteCommands(t *testing.T) {
 	}
 	requiredSnippets := []string{
 		"lango config get <dot.path>",
-		"lango config set <dot.path> <value>",
+		"lango config set <dot.path> [value]",
+		"--from-env ENV",
 		"lango config keys [prefix]",
 	}
 

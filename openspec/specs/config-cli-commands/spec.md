@@ -99,6 +99,8 @@ Invalid dot-path errors from `config set` SHALL include actionable key discovery
 
 `config set` SHALL redact sensitive values from success output. Sensitive paths include credential-like path segments such as API keys, singular token fields, secrets, passwords, credential fields, authorization headers, PIN fields, private keys, and access keys. Redaction SHALL affect only the command output; the saved config value SHALL remain the provided value. Non-secret token-count, key-directory, key-identifier, and credential-age paths such as `agent.maxTokens`, `p2p.keyDir`, `security.signer.keyId`, and `p2p.zkp.maxCredentialAge` SHALL remain visible in success output.
 
+`config set` SHALL support `--from-env <ENV>` as an alternative value source. When `--from-env` is present, the command SHALL require exactly one positional argument, read the config value from the named environment variable, and then follow the same set/save/output behavior as a positional value. The command SHALL treat an existing empty environment variable as a valid empty value. If the named environment variable is not set, the command SHALL fail before loading or saving config. If `--from-env` is combined with a positional value, the command SHALL fail before loading or saving config.
+
 #### Scenario: Successful set closes DB client
 - **WHEN** `config set agent.provider openai` succeeds
 - **THEN** the DB client is closed after the command completes
@@ -203,6 +205,32 @@ Invalid dot-path errors from `config set` SHALL include actionable key discovery
 - **WHEN** `lango config set p2p.zkp.maxCredentialAge 48h` succeeds
 - **THEN** the command output SHALL include `Set p2p.zkp.maxCredentialAge = 48h`
 - **AND** the command output SHALL NOT include `<redacted>`
+
+#### Scenario: Config set from env saves provider API key and redacts output
+- **WHEN** `OPENAI_API_KEY=sk-secret lango config set providers.openai.apiKey --from-env OPENAI_API_KEY` succeeds
+- **THEN** the command output SHALL include `Set providers.openai.apiKey = <redacted>`
+- **AND** the command output SHALL NOT include `sk-secret`
+- **AND** the saved provider API key SHALL be `sk-secret`
+
+#### Scenario: Config set from env saves non-sensitive value and shows output
+- **WHEN** `LANGO_AGENT_PROVIDER=openai lango config set agent.provider --from-env LANGO_AGENT_PROVIDER` succeeds
+- **THEN** the command output SHALL include `Set agent.provider = openai`
+- **AND** the saved agent provider SHALL be `openai`
+
+#### Scenario: Config set from env accepts empty variable
+- **WHEN** `EMPTY_VALUE=` is set and `lango config set providers.openai.apiKey --from-env EMPTY_VALUE` succeeds
+- **THEN** the saved provider API key SHALL be an empty string
+- **AND** the command output SHALL include `Set providers.openai.apiKey = <redacted>`
+
+#### Scenario: Config set from env rejects missing variable before load
+- **WHEN** `MISSING_SECRET` is unset and `lango config set providers.openai.apiKey --from-env MISSING_SECRET` is run
+- **THEN** the command SHALL fail before loading config
+- **AND** the error SHALL mention that environment variable `MISSING_SECRET` is not set
+
+#### Scenario: Config set from env rejects positional value
+- **WHEN** `lango config set providers.openai.apiKey raw-secret --from-env OPENAI_API_KEY` is run
+- **THEN** the command SHALL fail before loading config
+- **AND** the error SHALL state that `--from-env` cannot be combined with a value argument
 
 ### Requirement: Config get actionable key errors
 The `config get <dot.path>` command SHALL return actionable key discovery help when the dot path cannot be resolved. When nearby valid keys exist, the error SHALL include up to three deterministic suggestions. When no nearby keys exist, the error SHALL still include a `lango config keys` discovery hint.

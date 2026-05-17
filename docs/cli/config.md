@@ -229,13 +229,17 @@ $ lango config get agent --output json
 Set a configuration value by dot-notation path. This is a profile-modifying command and therefore requires bootstrap/passphrase verification.
 
 ```
-lango config set <dot.path> <value>
+lango config set <dot.path> [value] [--from-env ENV]
 ```
 
 | Argument | Required | Description |
 |----------|----------|-------------|
 | `dot.path` | Yes | Configuration path such as `agent.provider` or `p2p.enabled` |
-| `value` | Yes | New value encoded as text |
+| `value` | No when `--from-env` is used | New value encoded as text |
+
+| Option | Description |
+|--------|-------------|
+| `--from-env ENV` | Read the value from an environment variable instead of a positional argument |
 
 **Examples:**
 
@@ -248,13 +252,16 @@ Set p2p.enabled = true
 
 $ lango config set providers.openai.type openai
 Set providers.openai.type = openai
+
+$ OPENAI_API_KEY=sk-... lango config set providers.openai.apiKey --from-env OPENAI_API_KEY
+Set providers.openai.apiKey = <redacted>
 ```
 
 !!! info
     Simple scalar values can be changed here, including scalar fields inside map-backed paths such as `providers.<id>.*` and `mcp.servers.<name>.env.<KEY>`. For complex nested structures and duration-heavy settings, prefer `lango settings`.
 
 !!! warning
-    Avoid using `lango config set` examples or shell history for raw secrets. Credential fields may be environment-expanded during profile save. When a sensitive path is set, the success confirmation prints `<redacted>` instead of echoing the provided value.
+    Prefer `--from-env` for raw secrets so the value is not passed as a command argument. Credential fields may be environment-expanded during profile save. When a sensitive path is set, the success confirmation prints `<redacted>` instead of echoing the provided value.
 
 ---
 

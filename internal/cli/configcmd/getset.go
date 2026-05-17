@@ -4,6 +4,7 @@ package configcmd
 import (
 	"fmt"
 	"io"
+	"os"
 	"reflect"
 	"sort"
 	"strconv"
@@ -77,9 +78,12 @@ func NewSetCmd(
 	cfgLoader func() (*config.Config, map[string]bool, func(), error),
 	cfgSaver func(*config.Config, map[string]bool) error,
 ) *cobra.Command {
+	var fromEnv string
 	cmd := &cobra.Command{
-		Use:   "set <dot.path> <value>",
-		Short: "Set a configuration value (requires passphrase verification)",
+		Use:           "set <dot.path> [value]",
+		Short:         "Set a configuration value (requires passphrase verification)",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		Long: `Set a configuration value using dot-notation.
 
 This command requires passphrase verification because it modifies the encrypted
@@ -89,9 +93,22 @@ passphrase interactively, preventing unauthorized config changes.
 Examples:
   lango config set agent.provider openai
   lango config set p2p.enabled true
-  lango config set economy.budget.defaultMax 20.00`,
-		Args: cobra.ExactArgs(2),
+  lango config set economy.budget.defaultMax 20.00
+  lango config set providers.openai.apiKey --from-env OPENAI_API_KEY`,
+		Args: configSetArgs(&fromEnv),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			value := ""
+			if cmd.Flags().Changed("from-env") {
+				envName := strings.TrimSpace(fromEnv)
+				envValue, ok := os.LookupEnv(envName)
+				if !ok {
+					return fmt.Errorf("environment variable %q is not set", envName)
+				}
+				value = envValue
+			} else {
+				value = args[1]
+			}
+
 			cfg, explicitKeys, cleanup, err := cfgLoader()
 			if cleanup != nil {
 				defer cleanup()
@@ -100,7 +117,7 @@ Examples:
 				return fmt.Errorf("load config: %w", err)
 			}
 
-			if err := setConfigPath(cfg, args[0], args[1]); err != nil {
+			if err := setConfigPath(cfg, args[0], value); err != nil {
 				return err
 			}
 
@@ -109,13 +126,32 @@ Examples:
 				return fmt.Errorf("save config: %w", err)
 			}
 
-			displayValue := configSetDisplayValue(args[0], args[1])
+			displayValue := configSetDisplayValue(args[0], value)
 			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Set %s = %s\n", args[0], displayValue)
 			return err
 		},
 	}
 
+	cmd.Flags().StringVar(&fromEnv, "from-env", "", "Read value from environment variable")
 	return cmd
+}
+
+func configSetArgs(fromEnv *string) cobra.PositionalArgs {
+	return func(cmd *cobra.Command, args []string) error {
+		if !cmd.Flags().Changed("from-env") {
+			return cobra.ExactArgs(2)(cmd, args)
+		}
+		if strings.TrimSpace(*fromEnv) == "" {
+			return fmt.Errorf("--from-env requires an environment variable name")
+		}
+		if len(args) == 2 {
+			return fmt.Errorf("--from-env cannot be combined with a value argument")
+		}
+		if len(args) != 1 {
+			return fmt.Errorf("accepts 1 arg with --from-env: <dot.path>")
+		}
+		return nil
+	}
 }
 
 func configSetDisplayValue(path, value string) string {
