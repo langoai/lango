@@ -762,22 +762,25 @@ Each remote agent entry:
 {
   "p2p": {
     "enabled": false,
-    "listenAddrs": ["/ip4/0.0.0.0/tcp/9000"],
+    "listenAddrs": [
+      "/ip4/0.0.0.0/tcp/9000",
+      "/ip4/0.0.0.0/udp/9000/quic-v1"
+    ],
     "bootstrapPeers": [],
     "keyDir": "~/.lango/p2p",
-    "enableRelay": false,
+    "enableRelay": true,
     "enableMdns": true,
     "maxPeers": 50,
     "handshakeTimeout": "30s",
-    "sessionTokenTtl": "1h",
+    "sessionTokenTtl": "24h0m0s",
     "autoApproveKnownPeers": false,
     "requireSignedChallenge": false,
     "firewallRules": [],
     "gossipInterval": "30s",
-    "zkHandshake": false,
-    "zkAttestation": false,
+    "zkHandshake": true,
+    "zkAttestation": true,
     "zkp": {
-      "proofCacheDir": "~/.lango/zkp",
+      "proofCacheDir": "~/.lango/p2p/zkp-cache",
       "provingScheme": "plonk",
       "srsMode": "unsafe",
       "srsPath": "",
@@ -786,7 +789,7 @@ Each remote agent entry:
     "toolIsolation": {
       "enabled": false,
       "timeoutPerTool": "30s",
-      "maxMemoryMB": 512,
+      "maxMemoryMB": 256,
       "container": {
         "enabled": false,
         "runtime": "auto",
@@ -804,21 +807,21 @@ Each remote agent entry:
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `p2p.enabled` | `bool` | `false` | Enable P2P networking |
-| `p2p.listenAddrs` | `[]string` | `["/ip4/0.0.0.0/tcp/9000"]` | Multiaddrs to listen on |
+| `p2p.listenAddrs` | `[]string` | `["/ip4/0.0.0.0/tcp/9000","/ip4/0.0.0.0/udp/9000/quic-v1"]` | Multiaddrs to listen on |
 | `p2p.bootstrapPeers` | `[]string` | `[]` | Initial peers for DHT bootstrapping |
 | `p2p.keyDir` | `string` | `~/.lango/p2p` | Directory for node key persistence |
 | `p2p.enableRelay` | `bool` | `true` | Act as relay for NAT traversal |
 | `p2p.enableMdns` | `bool` | `true` | Enable mDNS for LAN discovery |
 | `p2p.maxPeers` | `int` | `50` | Maximum connected peers |
 | `p2p.handshakeTimeout` | `duration` | `30s` | Maximum handshake duration |
-| `p2p.sessionTokenTtl` | `duration` | `1h` | Session token lifetime |
+| `p2p.sessionTokenTtl` | `duration` | `24h0m0s` | Session token lifetime |
 | `p2p.autoApproveKnownPeers` | `bool` | `false` | Skip approval for known peers |
 | `p2p.firewallRules` | `[]object` | `[]` | Static firewall ACL rules |
 | `p2p.gossipInterval` | `duration` | `30s` | Agent card gossip interval |
-| `p2p.zkHandshake` | `bool` | `false` | Enable ZK-enhanced handshake |
-| `p2p.zkAttestation` | `bool` | `false` | Enable ZK attestation on responses |
+| `p2p.zkHandshake` | `bool` | `true` | Enable ZK-enhanced handshake |
+| `p2p.zkAttestation` | `bool` | `true` | Enable ZK attestation on responses |
 | `p2p.requireSignedChallenge` | `bool` | `false` | Reject unsigned (v1.0) challenges; require v1.1 signed challenges |
-| `p2p.zkp.proofCacheDir` | `string` | `~/.lango/zkp` | ZKP circuit cache directory |
+| `p2p.zkp.proofCacheDir` | `string` | `~/.lango/p2p/zkp-cache` | ZKP circuit cache directory |
 | `p2p.zkp.provingScheme` | `string` | `plonk` | ZKP proving scheme: `plonk` or `groth16` |
 | `p2p.zkp.srsMode` | `string` | `unsafe` | SRS generation mode: `unsafe` (deterministic) or `file` (trusted ceremony) |
 | `p2p.zkp.srsPath` | `string` | | Path to SRS file (when `srsMode = "file"`) |
