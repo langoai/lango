@@ -52,6 +52,49 @@ func TestAcquire_StdinPipe(t *testing.T) {
 	assert.Equal(t, SourceStdin, source)
 }
 
+func TestAcquire_InteractivePromptUsesInjectedWriter(t *testing.T) {
+	dir := t.TempDir()
+	keyfilePath := filepath.Join(dir, "nonexistent-keyfile")
+	var errBuf bytes.Buffer
+
+	oldPrompt := passphrasePrompt
+	passphrasePrompt = func(out io.Writer, promptText string) (string, error) {
+		_, err := out.Write([]byte(promptText))
+		return "interactive-passphrase", err
+	}
+	t.Cleanup(func() { passphrasePrompt = oldPrompt })
+
+	got, source, err := acquireWithIO(Options{KeyfilePath: keyfilePath}, bytes.NewBuffer(nil), &errBuf, true)
+	require.NoError(t, err)
+	assert.Equal(t, "interactive-passphrase", got)
+	assert.Equal(t, SourceInteractive, source)
+	assert.Equal(t, "Enter passphrase: ", errBuf.String())
+}
+
+func TestAcquire_InteractiveCreationPromptsUseInjectedWriter(t *testing.T) {
+	dir := t.TempDir()
+	keyfilePath := filepath.Join(dir, "nonexistent-keyfile")
+	var errBuf bytes.Buffer
+
+	oldConfirm := passphraseConfirmPrompt
+	passphraseConfirmPrompt = func(out io.Writer, promptText, confirmPromptText string) (string, error) {
+		if _, err := out.Write([]byte(promptText)); err != nil {
+			return "", err
+		}
+		if _, err := out.Write([]byte(confirmPromptText)); err != nil {
+			return "", err
+		}
+		return "created-passphrase", nil
+	}
+	t.Cleanup(func() { passphraseConfirmPrompt = oldConfirm })
+
+	got, source, err := acquireWithIO(Options{KeyfilePath: keyfilePath, AllowCreation: true}, bytes.NewBuffer(nil), &errBuf, true)
+	require.NoError(t, err)
+	assert.Equal(t, "created-passphrase", got)
+	assert.Equal(t, SourceInteractive, source)
+	assert.Equal(t, "Enter new passphrase: Confirm passphrase: ", errBuf.String())
+}
+
 func TestAcquire_InvalidKeyfilePermissions(t *testing.T) {
 	// Keyfile exists but has wrong permissions — should fall through
 	dir := t.TempDir()

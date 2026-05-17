@@ -30,6 +30,11 @@ type Options struct {
 	KeyringProvider keyring.Provider // if non-nil, try secure keyring first (biometric/TPM)
 }
 
+var (
+	passphrasePrompt        = prompt.PassphraseIO
+	passphraseConfirmPrompt = prompt.PassphraseConfirmIO
+)
+
 // defaultKeyfilePath returns the default keyfile path (~/.lango/keyfile).
 func defaultKeyfilePath() (string, error) {
 	home, err := os.UserHomeDir()
@@ -64,7 +69,7 @@ func acquireWithIO(opts Options, stdin io.Reader, stderr io.Writer, interactive 
 	}
 
 	if interactive {
-		pass, err := acquireInteractive(opts.AllowCreation)
+		pass, err := acquireInteractive(opts.AllowCreation, stderr)
 		if err != nil {
 			return "", 0, fmt.Errorf("interactive passphrase: %w", err)
 		}
@@ -85,12 +90,13 @@ func Acquire(opts Options) (string, Source, error) {
 }
 
 // acquireInteractive prompts the user for a passphrase via the terminal.
-func acquireInteractive(allowCreation bool) (string, error) {
+func acquireInteractive(allowCreation bool, out io.Writer) (string, error) {
 	if allowCreation {
-		return prompt.PassphraseConfirm(
+		return passphraseConfirmPrompt(
+			out,
 			"Enter new passphrase: ",
 			"Confirm passphrase: ",
 		)
 	}
-	return prompt.Passphrase("Enter passphrase: ")
+	return passphrasePrompt(out, "Enter passphrase: ")
 }
