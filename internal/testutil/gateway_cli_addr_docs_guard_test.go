@@ -63,6 +63,28 @@ func TestGatewayBackedCLIDocsRejectHardcodedOnlyDefaultWording(t *testing.T) {
 	}
 }
 
+func TestStatusDocsDescribeExplicitAddrProbeAndDisplayTarget(t *testing.T) {
+	t.Parallel()
+
+	repoRoot := gatewayCLIDocsGuardRepoRoot(t)
+	target := filepath.Join(repoRoot, "docs", "cli", "status.md")
+	data, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatalf("read %s: %v", target, err)
+	}
+	text := string(data)
+	requiredSnippets := []string{
+		"normalized explicit address",
+		"`gateway` field reports that same normalized address",
+	}
+
+	for _, snippet := range requiredSnippets {
+		if !strings.Contains(text, snippet) {
+			t.Fatalf("%s must document explicit --addr behavior with %q", target, snippet)
+		}
+	}
+}
+
 func gatewayCLIDocsGuardRepoRoot(t *testing.T) string {
 	t.Helper()
 

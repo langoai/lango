@@ -1154,3 +1154,8 @@ Repository-level docs guards SHALL prevent gateway-backed CLI docs from presenti
 #### Scenario: Gateway CLI docs configured-default wording remains covered
 - **WHEN** public CLI docs for metrics, alerts, or status are checked
 - **THEN** executable tests SHALL fail if the docs omit configured-gateway default wording for `--addr`
+
+#### Scenario: Status explicit address docs guard remains covered
+- **WHEN** public status CLI docs are checked
+- **THEN** executable tests SHALL fail if they omit that explicit `--addr` probes the normalized address
+- **AND** executable tests SHALL fail if they omit that status output reports the same normalized gateway target

@@ -46,7 +46,7 @@ The `status` command also exposes dead-letter operator views:
 | `--output` | `table` | Output format: `table` or `json` |
 | `--addr` | configured server address | Gateway address override for live status probing |
 
-When `--addr` is omitted, `lango status` probes the configured `server.host` and `server.port`, falling back to `http://localhost:18789` only when those values are unavailable. Unknown `--output` values such as `yaml` fail fast with an actionable error before the command contacts the gateway or loads dead-letter status tooling.
+When `--addr` is omitted, `lango status` probes the configured `server.host` and `server.port`, falling back to `http://localhost:18789` only when those values are unavailable. When `--addr` is supplied, `lango status` probes the normalized explicit address and the `gateway` field reports that same normalized address. Unknown `--output` values such as `yaml` fail fast with an actionable error before the command contacts the gateway or loads dead-letter status tooling.
 
 ## Dead-Letter Subcommands
 
@@ -246,7 +246,7 @@ lango status dead-letter retry tx-123 --yes --wait --wait-interval 1s --wait-tim
 | Field | Description |
 |-------|-------------|
 | Server | `running` or `not running` (based on health probe) |
-| Gateway | Configured host and port (e.g., `http://localhost:18789`) |
+| Gateway | Resolved probe target, either the configured server address or the normalized explicit `--addr` value |
 | Provider | AI provider and model (e.g., `openai (gpt-4o)`) |
 
 ### Channels
@@ -291,8 +291,11 @@ lango status --output json
 Probe a custom gateway address:
 
 ```bash
-lango status --addr http://192.168.1.10:18789
+lango status --addr http://192.168.1.10:18789/
 ```
+
+The command probes `http://192.168.1.10:18789/health` and reports
+`"gateway": "http://192.168.1.10:18789"` after normalizing the explicit address.
 
 ## JSON Schema
 
@@ -303,7 +306,7 @@ When using `--output json`, the response follows this structure:
   "version": "1.2.3",
   "profile": "default",
   "serverUp": true,
-  "gateway": "http://localhost:18789",
+  "gateway": "http://192.168.1.10:18789",
   "provider": "openai",
   "model": "gpt-4o",
   "features": [
