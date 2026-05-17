@@ -804,3 +804,12 @@ Session secret migration SHALL preserve rollback behavior and return actionable 
 - **THEN** the active transaction SHALL be rolled back
 - **AND** the method SHALL return an error identifying the secret migration panic
 - **AND** callers such as `lango security migrate-passphrase` SHALL receive the error through the normal migration failure path rather than a process panic
+
+### Requirement: Ontology schema digest avoids production panic paths
+
+Ontology schema digest computation SHALL avoid production `panic` calls and route digest computation failures through ordinary errors.
+
+#### Scenario: Schema export digest failure fails closed
+- **WHEN** ontology schema export computes the bundle digest
+- **AND** digest marshaling fails
+- **THEN** export SHALL return an error instead of panicking

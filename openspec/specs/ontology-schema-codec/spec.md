@@ -19,7 +19,7 @@ The system SHALL define `SchemaBundle` with fields: Version (int), SchemaVersion
 - **THEN** the Types and Predicates fields SHALL contain slim wire types, not full ObjectType/PredicateDefinition
 
 ### Requirement: ExportSchema method
-`OntologyService.ExportSchema(ctx)` SHALL return a SchemaBundle containing only types and predicates with status `active` or `shadow`. It SHALL require `PermRead`. The Digest field SHALL be computed from the canonical JSON of the slim types.
+`OntologyService.ExportSchema(ctx)` SHALL return a SchemaBundle containing only types and predicates with status `active` or `shadow`. It SHALL require `PermRead`. The Digest field SHALL be computed from the canonical JSON of the slim types and slim predicates. Digest computation failures SHALL be returned as export errors rather than panics.
 
 #### Scenario: Export includes active and shadow
 - **WHEN** the ontology has types with status active, shadow, proposed, deprecated
@@ -28,6 +28,11 @@ The system SHALL define `SchemaBundle` with fields: Version (int), SchemaVersion
 #### Scenario: Export digest is stable
 - **WHEN** ExportSchema is called twice on the same ontology (no changes between calls)
 - **THEN** both SchemaBundle.Digest values SHALL be identical
+
+#### Scenario: Export digest computation failure returns error
+- **WHEN** schema export cannot compute the canonical digest
+- **THEN** `ExportSchema` SHALL return an error identifying digest computation
+- **AND** it SHALL NOT panic
 
 ### Requirement: ImportSchema method
 `OntologyService.ImportSchema(ctx, bundle, opts)` SHALL import slim types into the local ontology. It SHALL require `PermWrite`. Import SHALL convert slim types to full ObjectType/PredicateDefinition with generated UUID, current timestamps, and status determined by ImportMode. After successful import, it SHALL call `refreshPredicateCache()` if predicates were added and `version.Add(n)` where n is the total number of added types and predicates.
@@ -53,11 +58,16 @@ The system SHALL define `SchemaBundle` with fields: Version (int), SchemaVersion
 - **THEN** ImportResult.TypesSkipped SHALL be incremented
 
 ### Requirement: ComputeDigest determinism
-`ComputeDigest` SHALL produce a SHA256 hash from canonical JSON (sorted keys, no whitespace) of the Types and Predicates arrays. The same logical schema SHALL always produce the same digest regardless of array ordering.
+`ComputeDigest` SHALL produce a SHA256 hash from canonical JSON (sorted keys, no whitespace) of the Types and Predicates arrays. The same logical schema SHALL always produce the same digest regardless of array ordering. The compatibility API SHALL NOT panic during digest computation.
 
 #### Scenario: Digest is order-independent
 - **WHEN** two bundles have the same types in different order
 - **THEN** ComputeDigest SHALL return the same digest for both
+
+#### Scenario: Digest computation avoids panic
+- **WHEN** digest computation encounters an internal marshal failure
+- **THEN** production export code SHALL surface the failure as an error
+- **AND** `ComputeDigest` SHALL NOT panic
 
 ### Requirement: Full-to-slim conversion
 The system SHALL provide `TypeToSlim(ObjectType) SchemaTypeSlim` and `PredicateToSlim(PredicateDefinition) SchemaPredicateSlim` conversion functions. Reverse conversion `SlimToType(SchemaTypeSlim) ObjectType` SHALL generate a new UUID and set CreatedAt/UpdatedAt to current time.

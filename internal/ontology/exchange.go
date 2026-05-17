@@ -93,9 +93,20 @@ type digestPayload struct {
 	Predicates []SchemaPredicateSlim `json:"predicates"`
 }
 
+var marshalDigestPayload = json.Marshal
+
 // ComputeDigest produces a SHA256 hex string from the canonical JSON of types and predicates.
 // Types and predicates are sorted by name for order independence.
+// It is a compatibility wrapper; production export paths use computeDigest to propagate errors.
 func ComputeDigest(types []SchemaTypeSlim, predicates []SchemaPredicateSlim) string {
+	digest, err := computeDigest(types, predicates)
+	if err != nil {
+		return ""
+	}
+	return digest
+}
+
+func computeDigest(types []SchemaTypeSlim, predicates []SchemaPredicateSlim) (string, error) {
 	sorted := digestPayload{
 		Types:      make([]SchemaTypeSlim, len(types)),
 		Predicates: make([]SchemaPredicateSlim, len(predicates)),
@@ -122,9 +133,12 @@ func ComputeDigest(types []SchemaTypeSlim, predicates []SchemaPredicateSlim) str
 		return 0
 	})
 
-	data := mustMarshal(sorted)
+	data, err := marshalDigestPayload(sorted)
+	if err != nil {
+		return "", fmt.Errorf("marshal digest payload: %w", err)
+	}
 	h := sha256.Sum256(data)
-	return fmt.Sprintf("%x", h)
+	return fmt.Sprintf("%x", h), nil
 }
 
 // --- Export/Import Implementation ---
@@ -153,7 +167,10 @@ func exportSchema(ctx context.Context, registry Registry, schemaVersion int, exp
 		}
 	}
 
-	digest := ComputeDigest(slimTypes, slimPreds)
+	digest, err := computeDigest(slimTypes, slimPreds)
+	if err != nil {
+		return nil, fmt.Errorf("compute schema digest: %w", err)
+	}
 
 	return &SchemaBundle{
 		Version:       1,
@@ -252,14 +269,4 @@ func slimPredsEqual(a, b SchemaPredicateSlim) bool {
 		return false
 	}
 	return true
-}
-
-// mustMarshal marshals v to JSON and panics on failure.
-// Used for in-memory structs where marshal failure is a programming error.
-func mustMarshal(v any) []byte {
-	data, err := json.Marshal(v)
-	if err != nil {
-		panic(fmt.Sprintf("ontology: marshal invariant violation: %v", err))
-	}
-	return data
 }
