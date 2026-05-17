@@ -25,9 +25,10 @@ var startStorageBroker = func(ctx context.Context) (storagebroker.API, error) {
 }
 
 var (
-	acquirePassphrase            = passphrase.Acquire
-	confirmStorePass             = prompt.Confirm
-	bootstrapErrWriter io.Writer = os.Stderr
+	acquirePassphrase                 = passphrase.Acquire
+	confirmStorePass                  = prompt.Confirm
+	newBootstrapKMSProvider           = security.NewKMSProvider
+	bootstrapErrWriter      io.Writer = os.Stderr
 )
 
 func loadSecurityStateForState(ctx context.Context, s *State) ([]byte, []byte, bool, error) {
@@ -174,11 +175,11 @@ func phaseAcquireCredential() Phase {
 			if s.Envelope != nil && s.Envelope.HasSlotType(security.KEKSlotHardware) &&
 				s.Options.KMSConfig != nil && s.Options.KMSProviderName != "" {
 
-				kmsProvider, kmsErr := security.NewKMSProvider(
+				kmsProvider, kmsErr := newBootstrapKMSProvider(
 					security.KMSProviderName(s.Options.KMSProviderName),
 					*s.Options.KMSConfig,
 				)
-				if kmsErr == nil { //nolint:staticcheck // stubs always error; real impls use kms_* build tags
+				if kmsErr == nil {
 					mk, _, unwrapErr := s.Envelope.UnwrapFromKMS(
 						ctx, kmsProvider, s.Options.KMSProviderName, s.Options.KMSConfig.KeyID,
 					)
@@ -189,8 +190,14 @@ func phaseAcquireCredential() Phase {
 						s.Result.KMSUnwrap = true
 						return nil // Skip passphrase entirely.
 					}
+					if !s.Options.KMSConfig.FallbackToLocal {
+						return fmt.Errorf("KMS unwrap failed and fallbackToLocal is disabled: %w", unwrapErr)
+					}
 					fmt.Fprintf(bootstrapErrWriter, "warning: KMS unwrap failed: %v (falling back to passphrase)\n", unwrapErr)
 				} else {
+					if !s.Options.KMSConfig.FallbackToLocal {
+						return fmt.Errorf("KMS provider init failed and fallbackToLocal is disabled: %w", kmsErr)
+					}
 					fmt.Fprintf(bootstrapErrWriter, "warning: KMS provider init failed: %v (falling back to passphrase)\n", kmsErr)
 				}
 			}

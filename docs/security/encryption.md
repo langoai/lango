@@ -141,6 +141,8 @@ Without a build tag, the provider returns a stub error at runtime. Even with the
 
 The **CompositeCryptoProvider** wraps any KMS backend with automatic local fallback when `kms.fallbackToLocal` is enabled. KMS calls include exponential backoff retry logic for transient errors (throttling, network timeouts) and a health checker with a 30-second probe cache.
 
+During encrypted profile bootstrap, Lango must acquire credentials before it can load profile configuration. If KMS is selected through `LANGO_KMS_PROVIDER`, set `LANGO_KMS_FALLBACK_TO_LOCAL=false` to fail closed on KMS provider initialization or unwrap failures instead of falling back to the local passphrase prompt. Leaving the variable unset, setting it to `true`, or providing an invalid boolean value preserves the default fallback-enabled behavior.
+
 Configure Cloud KMS:
 
 > **Settings:** `lango settings` → Security

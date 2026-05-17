@@ -18,6 +18,7 @@ const (
 	envKMSPKCS11Module    = "LANGO_KMS_PKCS11_MODULE"
 	envKMSPKCS11SlotID    = "LANGO_KMS_PKCS11_SLOT_ID"
 	envKMSPKCS11KeyLabel  = "LANGO_KMS_PKCS11_KEY_LABEL"
+	envKMSFallbackToLocal = "LANGO_KMS_FALLBACK_TO_LOCAL"
 	envPKCS11PIN          = "LANGO_PKCS11_PIN" // existing env var, reused
 )
 
@@ -30,6 +31,7 @@ const (
 //	azure-kv:        + LANGO_KMS_AZURE_VAULT_URL, LANGO_KMS_AZURE_KEY_VERSION
 //	pkcs11:          LANGO_KMS_PKCS11_MODULE, LANGO_KMS_PKCS11_SLOT_ID,
 //	                 LANGO_KMS_PKCS11_KEY_LABEL, LANGO_PKCS11_PIN
+//	all providers:   LANGO_KMS_FALLBACK_TO_LOCAL=false disables passphrase fallback
 func KMSConfigFromEnv() (*config.KMSConfig, string) {
 	provider := os.Getenv(envKMSProvider)
 	if provider == "" {
@@ -37,9 +39,15 @@ func KMSConfigFromEnv() (*config.KMSConfig, string) {
 	}
 
 	cfg := &config.KMSConfig{
-		KeyID:    os.Getenv(envKMSKeyID),
-		Region:   os.Getenv(envKMSRegion),
-		Endpoint: os.Getenv(envKMSEndpoint),
+		KeyID:           os.Getenv(envKMSKeyID),
+		Region:          os.Getenv(envKMSRegion),
+		Endpoint:        os.Getenv(envKMSEndpoint),
+		FallbackToLocal: true,
+	}
+	if rawFallback := os.Getenv(envKMSFallbackToLocal); rawFallback != "" {
+		if fallback, err := strconv.ParseBool(rawFallback); err == nil {
+			cfg.FallbackToLocal = fallback
+		}
 	}
 
 	switch provider {

@@ -163,9 +163,20 @@ The system SHALL support using any CryptoProvider (AWS KMS, GCP KMS, Azure KV, P
 - **AND** the provider SHALL NOT be wrapped in `CompositeCryptoProvider`
 
 #### Scenario: CompositeCryptoProvider not used for MK unwrap
-- **WHEN** KMS is unavailable during MK unwrap
+- **WHEN** KMS is unavailable during MK unwrap and the active bootstrap KMS config allows local fallback
 - **THEN** the system SHALL NOT fall back to `LocalCryptoProvider.Decrypt` on the same slot
 - **AND** SHALL instead fall through to the next credential path (mnemonic or passphrase)
+
+#### Scenario: KMS bootstrap fails closed when local fallback is disabled
+- **WHEN** the envelope has a hardware slot, KMS bootstrap config is present, and active `KMSConfig.FallbackToLocal` is false
+- **AND** KMS provider initialization or MK unwrap fails
+- **THEN** bootstrap SHALL return an error before passphrase acquisition
+- **AND** the error SHALL preserve the original KMS failure context
+
+#### Scenario: KMS bootstrap may fall back when local fallback is enabled
+- **WHEN** the envelope has a hardware slot, KMS bootstrap config is present, and active `KMSConfig.FallbackToLocal` is true
+- **AND** KMS provider initialization or MK unwrap fails
+- **THEN** bootstrap MAY warn and continue to the next credential path
 
 ### Requirement: KMS CLI wrap and detach commands
 
