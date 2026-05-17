@@ -91,6 +91,7 @@ All application code lives under `internal/` to enforce Go's visibility boundary
 | `cli/alerts/` | `lango alerts list`, `summary` -- operational alert inspection |
 | `cli/bg/` | `lango bg list`, `status`, `cancel`, `result` -- background task management |
 | `cli/cliboot/` | Shared bootstrap loaders that run application bootstrap once and expose reusable `BootResult` / `Config` callbacks for gateway-backed CLI commands |
+| `cli/cliexit/` | Structured CLI exit-code errors returned from command packages to `cmd/lango` so process termination stays in the binary entrypoint |
 | `cli/clihttp/` | Shared HTTP/JSON helpers for gateway-backed CLI commands, including bounded JSON fetches, `table|json` output validation, and common pretty-JSON rendering |
 | `cli/chat/` | `lango chat` -- focused chat TUI |
 | `cli/clitypes/` | Shared CLI type definitions (`ProviderMetadata` for provider display) |

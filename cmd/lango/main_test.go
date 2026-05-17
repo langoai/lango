@@ -9,7 +9,9 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -22,8 +24,10 @@ import (
 
 	"github.com/langoai/lango/internal/app"
 	"github.com/langoai/lango/internal/bootstrap"
+	"github.com/langoai/lango/internal/cli/cliexit"
 	"github.com/langoai/lango/internal/cli/cockpit"
 	"github.com/langoai/lango/internal/cli/cockpit/pages"
+	cliextension "github.com/langoai/lango/internal/cli/extension"
 	"github.com/langoai/lango/internal/cli/tui"
 	"github.com/langoai/lango/internal/collabview"
 	"github.com/langoai/lango/internal/config"
@@ -590,6 +594,119 @@ func TestRunMain_RootCommandErrorWritesToInjectedStderr(t *testing.T) {
 
 	assert.Equal(t, 1, code)
 	assert.Contains(t, errBuf.String(), "root execute failed")
+}
+
+func TestRunMain_RootCommandStructuredExitCodeWritesToInjectedStderr(t *testing.T) {
+	origSandbox := isSandboxWorkerModeFn
+	origBroker := isStorageBrokerModeFn
+	origNewRoot := newRootCmdFn
+	origStderr := mainStderr
+	t.Cleanup(func() {
+		isSandboxWorkerModeFn = origSandbox
+		isStorageBrokerModeFn = origBroker
+		newRootCmdFn = origNewRoot
+		mainStderr = origStderr
+	})
+
+	isSandboxWorkerModeFn = func() bool { return false }
+	isStorageBrokerModeFn = func() bool { return false }
+	newRootCmdFn = func() *cobra.Command {
+		return &cobra.Command{
+			Use:           "lango",
+			SilenceUsage:  true,
+			SilenceErrors: true,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				return cliexit.New(3, errors.New("stdin is not a TTY; pass --yes for scripted runs"))
+			},
+		}
+	}
+	var errBuf bytes.Buffer
+	mainStderr = &errBuf
+
+	code := runMain()
+
+	assert.Equal(t, 3, code)
+	assert.Equal(t, "stdin is not a TTY; pass --yes for scripted runs\n", errBuf.String())
+}
+
+func TestRunMain_RootCommandSilentStructuredExitCodeDoesNotWriteStderr(t *testing.T) {
+	origSandbox := isSandboxWorkerModeFn
+	origBroker := isStorageBrokerModeFn
+	origNewRoot := newRootCmdFn
+	origStderr := mainStderr
+	t.Cleanup(func() {
+		isSandboxWorkerModeFn = origSandbox
+		isStorageBrokerModeFn = origBroker
+		newRootCmdFn = origNewRoot
+		mainStderr = origStderr
+	})
+
+	isSandboxWorkerModeFn = func() bool { return false }
+	isStorageBrokerModeFn = func() bool { return false }
+	newRootCmdFn = func() *cobra.Command {
+		return &cobra.Command{
+			Use:           "lango",
+			SilenceUsage:  true,
+			SilenceErrors: true,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				return cliexit.NewSilent(3)
+			},
+		}
+	}
+	var errBuf bytes.Buffer
+	mainStderr = &errBuf
+
+	code := runMain()
+
+	assert.Equal(t, 3, code)
+	assert.Empty(t, errBuf.String())
+}
+
+func TestRunMain_ExtensionStructuredExitCodeFromRootCommand(t *testing.T) {
+	origSandbox := isSandboxWorkerModeFn
+	origBroker := isStorageBrokerModeFn
+	origNewRoot := newRootCmdFn
+	origStderr := mainStderr
+	t.Cleanup(func() {
+		isSandboxWorkerModeFn = origSandbox
+		isStorageBrokerModeFn = origBroker
+		newRootCmdFn = origNewRoot
+		mainStderr = origStderr
+	})
+
+	enabled := true
+	cfg := &config.Config{
+		Extensions: config.ExtensionsConfig{
+			Enabled: &enabled,
+			Dir:     filepath.Join(t.TempDir(), "extensions"),
+		},
+		Skill: config.SkillConfig{SkillsDir: filepath.Join(t.TempDir(), "skills")},
+	}
+	packDir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(packDir, "extension.yaml"), []byte("schema: lango.extension/v1\n"), 0o644))
+
+	var cobraErr bytes.Buffer
+	isSandboxWorkerModeFn = func() bool { return false }
+	isStorageBrokerModeFn = func() bool { return false }
+	newRootCmdFn = func() *cobra.Command {
+		root := &cobra.Command{Use: "lango"}
+		root.SetErr(&cobraErr)
+		extensionCmd := cliextension.NewExtensionCmd(func() (*config.Config, error) {
+			return cfg, nil
+		})
+		root.AddCommand(extensionCmd)
+		root.SetArgs([]string{"extension", "inspect", packDir})
+		return root
+	}
+	var errBuf bytes.Buffer
+	mainStderr = &errBuf
+
+	code := runMain()
+
+	assert.Equal(t, 1, code)
+	assert.Empty(t, cobraErr.String(), "cobra should not duplicate structured CLI errors")
+	assert.Contains(t, errBuf.String(), "invalid pack name")
+	assert.Equal(t, 1, strings.Count(errBuf.String(), "invalid pack name"))
 }
 
 func TestVersionCmd_WritesToCommandOutput(t *testing.T) {

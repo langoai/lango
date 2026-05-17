@@ -18,6 +18,7 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
+	"github.com/langoai/lango/internal/cli/cliexit"
 	"github.com/langoai/lango/internal/cli/prompt"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/extension"
@@ -29,8 +30,6 @@ const (
 	exitInternal     = 2
 	exitUserDeclined = 3
 )
-
-var extensionExit = os.Exit
 
 // configLoader returns the effective config (matches the existing CLI
 // convention used by memory/learning/agent subcommands).
@@ -442,19 +441,18 @@ func truncate(s string, n int) string {
 	return s[:n-1] + "…"
 }
 
-// cliExit writes any error to the command error stream, then exits with the
-// requested status code via the package-level exit seam.
+// cliExit returns a structured exit-code error for the root entrypoint to
+// handle. Internal CLI packages must not terminate the process directly.
 func cliExit(cmd *cobra.Command, code int, err error) error {
 	if code == exitOK {
 		return nil
 	}
-	if err != nil {
-		fmt.Fprintf(cmd.ErrOrStderr(), "error: %v\n", err)
-	}
 	cmd.SilenceUsage = true
 	cmd.SilenceErrors = true
-	extensionExit(code)
-	return nil
+	if err == nil {
+		return cliexit.NewSilent(code)
+	}
+	return cliexit.New(code, err)
 }
 
 // Compile-time checks keep us honest about unused context surface areas.

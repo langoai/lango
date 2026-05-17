@@ -60,6 +60,33 @@ func TestCmdEntrypointsAvoidDirectOsExitOutsideSeams(t *testing.T) {
 	}
 }
 
+func TestInternalCLIPackagesAvoidDirectOsExit(t *testing.T) {
+	t.Parallel()
+
+	cliDir := filepath.Join(cmdEntrypointExitGuardRepoRoot(t), "internal", "cli")
+	err := filepath.WalkDir(cliDir, func(path string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		for lineNo, line := range strings.Split(string(data), "\n") {
+			if strings.Contains(line, "os.Exit") {
+				t.Fatalf("%s:%d contains forbidden direct os.Exit reference: %s", path, lineNo+1, strings.TrimSpace(line))
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("scan internal CLI packages for os.Exit regressions: %v", err)
+	}
+}
+
 func cmdEntrypointExitGuardRepoRoot(t *testing.T) string {
 	t.Helper()
 

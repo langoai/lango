@@ -18,8 +18,13 @@ The CLI SHALL provide `lango extension inspect <source>` that accepts a local di
 - **WHEN** the source contains an `extension.yaml` that fails validation
 - **THEN** the command SHALL exit 1 with an error naming the validation failure
 
+#### Scenario: Invalid manifest exits 1 through root-owned process exit
+- **WHEN** the source contains an `extension.yaml` that fails validation
+- **THEN** the command SHALL return a structured CLI error carrying exit code 1 to the root entrypoint
+- **AND** the root entrypoint SHALL terminate with exit code 1
+
 ### Requirement: `lango extension install` subcommand
-The CLI SHALL provide `lango extension install <source> [--yes] [--output <format>]`. The command SHALL (a) print the inspect report, (b) unless `--yes` is set, prompt interactively for confirmation through the shared confirmation helper using Cobra command input/output streams, and (c) on confirm, install the pack as specified by the `extension-pack-core` install contract. `--yes` SHALL NOT suppress the inspect output. Exit codes match `inspect` plus: exit 3 on user-denied confirmation.
+The CLI SHALL provide `lango extension install <source> [--yes] [--output <format>]`. The command SHALL (a) print the inspect report, (b) unless `--yes` is set, prompt interactively for confirmation through the shared confirmation helper using Cobra command input/output streams, and (c) on confirm, install the pack as specified by the `extension-pack-core` install contract. `--yes` SHALL NOT suppress the inspect output. Exit codes match `inspect` plus: exit 3 on user-denied confirmation. Extension command packages SHALL return structured CLI errors for non-zero exit outcomes rather than calling `os.Exit` directly.
 
 #### Scenario: Interactive install confirmed
 - **WHEN** the user runs `lango extension install ./python-dev` and answers `y` at the prompt
@@ -27,7 +32,7 @@ The CLI SHALL provide `lango extension install <source> [--yes] [--output <forma
 
 #### Scenario: Interactive install denied
 - **WHEN** the user answers `n` or sends EOF at the prompt
-- **THEN** the command SHALL exit 3 without writing any files
+- **THEN** the command SHALL return a structured CLI error carrying exit code 3 without writing any files
 - **AND** a message stating "install cancelled by user" SHALL be printed
 
 #### Scenario: --yes skips prompt but prints inspect
@@ -60,7 +65,7 @@ The CLI SHALL provide `lango extension list [--output <format>]` that prints all
 - **AND** its json record SHALL carry `status: "tampered"`
 
 ### Requirement: `lango extension remove` subcommand
-The CLI SHALL provide `lango extension remove <name> [--yes]` that removes a pack per the `extension-pack-core` removal contract. Without `--yes`, it SHALL print the list of files/directories that will be deleted, then prompt for confirmation through the shared confirmation helper using Cobra command input/output streams. Exit 0 on success; 1 if the pack is not installed; 3 on user-denied confirmation.
+The CLI SHALL provide `lango extension remove <name> [--yes]` that removes a pack per the `extension-pack-core` removal contract. Without `--yes`, it SHALL print the list of files/directories that will be deleted, then prompt for confirmation through the shared confirmation helper using Cobra command input/output streams. Exit 0 on success; 1 if the pack is not installed; 3 on user-denied confirmation. Extension command packages SHALL return structured CLI errors for non-zero exit outcomes rather than calling `os.Exit` directly.
 
 #### Scenario: Remove with confirmation
 - **WHEN** the user runs `lango extension remove python-dev` and answers `y`
@@ -73,7 +78,7 @@ The CLI SHALL provide `lango extension remove <name> [--yes]` that removes a pac
 
 #### Scenario: Remove unknown pack
 - **WHEN** the user runs `lango extension remove missing`
-- **THEN** the command SHALL exit 1 with an error naming the pack
+- **THEN** the command SHALL return a structured CLI error carrying exit code 1 with an error naming the pack
 
 ### Requirement: Consistent `--output` flag across subcommands
 `inspect`, `list`, and `remove --dry-run` (if introduced later) SHALL accept `--output <table|json|plain>`. Default resolution: `table` when stdout is a TTY, `plain` otherwise. Unknown format values SHALL exit 2 with a usage error.
@@ -109,4 +114,3 @@ The CLI SHALL provide `lango extension remove <name> [--yes]` that removes a pac
 - **WHEN** `lango extension install <pack>` or `lango extension remove <name>` runs without `--yes` and stdin is a non-terminal `*os.File`
 - **THEN** the command SHALL fail with the existing scripted-run guidance
 - **AND** the prompt SHALL be mediated by the shared guarded confirmation helper
-

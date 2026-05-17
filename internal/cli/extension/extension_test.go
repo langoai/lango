@@ -7,21 +7,15 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/langoai/lango/internal/cli/cliexit"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/extension"
 )
-
-type exitPanic struct {
-	code int
-}
-
-var extensionExitMu sync.Mutex
 
 func executeExtensionCmd(
 	t *testing.T,
@@ -30,17 +24,6 @@ func executeExtensionCmd(
 	input io.Reader,
 ) (string, error, int) {
 	t.Helper()
-
-	extensionExitMu.Lock()
-	defer extensionExitMu.Unlock()
-
-	origExit := extensionExit
-	extensionExit = func(code int) {
-		panic(exitPanic{code: code})
-	}
-	defer func() {
-		extensionExit = origExit
-	}()
 
 	cmd := NewExtensionCmd(func() (*config.Config, error) { return cfg, nil })
 	cmd.SetContext(context.Background())
@@ -54,19 +37,10 @@ func executeExtensionCmd(
 	cmd.SetArgs(cmdArgs)
 
 	exitCode := exitOK
-	var err error
-	func() {
-		defer func() {
-			if r := recover(); r != nil {
-				if got, ok := r.(exitPanic); ok {
-					exitCode = got.code
-					return
-				}
-				panic(r)
-			}
-		}()
-		err = cmd.Execute()
-	}()
+	err := cmd.Execute()
+	if code, ok := cliexit.Code(err); ok {
+		exitCode = code
+	}
 
 	return out.String(), err, exitCode
 }
@@ -217,8 +191,9 @@ func TestInstallCmd_DenyCancelsWithoutWritingFiles(t *testing.T) {
 		cfg,
 		bytes.NewBufferString("n\n"),
 	)
-	require.NoError(t, err)
+	require.Error(t, err)
 	assert.Equal(t, exitUserDeclined, exitCode)
+	assert.True(t, cliexit.Silent(err))
 	assert.Contains(t, out, "Install this pack? [y/N]: ")
 	assert.Contains(t, out, "install cancelled by user")
 	_, statErr := os.Stat(filepath.Join(cfg.Extensions.Dir, "smoke-pack"))
@@ -236,9 +211,40 @@ func TestInstallCmd_NonTTYWithoutYesReturnsGuidance(t *testing.T) {
 	t.Cleanup(func() { _ = writer.Close() })
 
 	out, cmdErr, exitCode := executeExtensionCmd(t, []string{"install", packDir}, cfg, reader)
-	require.NoError(t, cmdErr)
+	require.Error(t, cmdErr)
 	assert.Equal(t, exitUserDeclined, exitCode)
-	assert.Contains(t, out, "stdin is not a TTY; pass --yes for scripted runs")
+	assert.False(t, cliexit.Silent(cmdErr))
+	assert.NotContains(t, out, "stdin is not a TTY; pass --yes for scripted runs")
+	assert.Contains(t, cmdErr.Error(), "stdin is not a TTY; pass --yes for scripted runs")
+}
+
+func TestInspectCmd_InvalidManifestReturnsStructuredUserError(t *testing.T) {
+	t.Parallel()
+
+	cfg := newTestConfig(t)
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "extension.yaml"), []byte("schema: lango.extension/v1\n"), 0o644))
+
+	out, err, exitCode := executeExtensionCmd(t, []string{"inspect", dir}, cfg, nil)
+
+	require.Error(t, err)
+	assert.Equal(t, exitUserError, exitCode)
+	assert.NotContains(t, out, "error:")
+	assert.Contains(t, err.Error(), "invalid pack name")
+}
+
+func TestInspectCmd_UnknownOutputFormatReturnsStructuredInternalError(t *testing.T) {
+	t.Parallel()
+
+	cfg := newTestConfig(t)
+	packDir := writeSmokePack(t)
+
+	out, err, exitCode := executeExtensionCmd(t, []string{"inspect", packDir, "--output", "yaml"}, cfg, nil)
+
+	require.Error(t, err)
+	assert.Equal(t, exitInternal, exitCode)
+	assert.NotContains(t, out, "error:")
+	assert.Contains(t, err.Error(), "unknown output format")
 }
 
 func TestRemoveCmd_ConfirmUsesCommandStreams(t *testing.T) {
@@ -268,4 +274,22 @@ func TestRemoveCmd_ConfirmUsesCommandStreams(t *testing.T) {
 	assert.Contains(t, out, "removed smoke-pack")
 	_, statErr := os.Stat(filepath.Join(cfg.Extensions.Dir, "smoke-pack"))
 	require.ErrorIs(t, statErr, os.ErrNotExist)
+}
+
+func TestRemoveCmd_MissingPackReturnsStructuredUserError(t *testing.T) {
+	t.Parallel()
+
+	cfg := newTestConfig(t)
+
+	out, err, exitCode := executeExtensionCmd(
+		t,
+		[]string{"remove", "missing", "--yes"},
+		cfg,
+		nil,
+	)
+
+	require.Error(t, err)
+	assert.Equal(t, exitUserError, exitCode)
+	assert.Contains(t, out, "Will delete:")
+	assert.Contains(t, err.Error(), "pack not found")
 }

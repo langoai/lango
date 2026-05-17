@@ -30,6 +30,7 @@ import (
 	clibg "github.com/langoai/lango/internal/cli/bg"
 	"github.com/langoai/lango/internal/cli/chat"
 	"github.com/langoai/lango/internal/cli/cliboot"
+	"github.com/langoai/lango/internal/cli/cliexit"
 	"github.com/langoai/lango/internal/cli/cockpit"
 	"github.com/langoai/lango/internal/cli/cockpit/pages"
 	cliconfigcmd "github.com/langoai/lango/internal/cli/configcmd"
@@ -149,6 +150,12 @@ func runMain() int {
 
 	rootCmd := newRootCmdFn()
 	if err := rootCmd.Execute(); err != nil {
+		if code, ok := cliexit.Code(err); ok {
+			if !cliexit.Silent(err) {
+				fmt.Fprintln(mainStderr, err)
+			}
+			return code
+		}
 		fmt.Fprintln(mainStderr, err)
 		return 1
 	}

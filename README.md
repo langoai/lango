@@ -469,6 +469,7 @@ lango/
 │   │   ├── approval/       #   lango approval status
 │   │   ├── bg/             #   lango bg list/status/cancel/result
 │   │   ├── cliboot/        #   Shared CLI bootstrap / lazy config loading
+│   │   ├── cliexit/        #   Structured CLI exit-code errors returned to cmd/lango
 │   │   ├── clihttp/        #   Shared HTTP/JSON helpers for gateway-backed CLI commands
 │   │   ├── chat/           #   lango chat (focused chat TUI)
 │   │   ├── cockpit/        #   lango cockpit (multi-panel operator dashboard)
