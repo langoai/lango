@@ -166,13 +166,21 @@
 - [x] 22.4 Run subagent-driven review checkpoints for the wave
 - [x] 22.5 Commit the wave separately
 
-## 23. Verification And Enforcement
+## 23. Coverage Wave: Escrow Tools, Economy Wiring, And Chat Approval Branches
 
-- [ ] 23.1 Run `go build ./...`
-- [ ] 23.2 Run `go test ./...`
-- [ ] 23.3 Run the non-generated coverage report and confirm coverage is at least 90%
-- [ ] 23.4 Run the executable 90% coverage gate and confirm it passes
-- [ ] 23.5 Run `git diff --check`
-- [ ] 23.6 Run subagent-driven spec and code-quality review checkpoints
-- [ ] 23.7 Run `openspec validate --all --strict`
-- [ ] 23.8 Archive the completed OpenSpec change
+- [ ] 23.1 Add focused tests for deterministic `internal/app/tools_escrow.go` escrow tool handler success, validation, and error branches without live chain calls
+- [ ] 23.2 Add focused tests for deterministic `internal/app/wiring_economy.go`, `internal/app/wiring.go`, and related app wiring helper branches without live providers or network services
+- [ ] 23.3 Add focused tests for deterministic `internal/cli/chat/chat.go` approval/key handling, pending state, and submission guard branches without launching the TUI program
+- [ ] 23.4 Run subagent-driven review checkpoints for the wave
+- [ ] 23.5 Commit the wave separately
+
+## 24. Verification And Enforcement
+
+- [ ] 24.1 Run `go build ./...`
+- [ ] 24.2 Run `go test ./...`
+- [ ] 24.3 Run the non-generated coverage report and confirm coverage is at least 90%
+- [ ] 24.4 Run the executable 90% coverage gate and confirm it passes
+- [ ] 24.5 Run `git diff --check`
+- [ ] 24.6 Run subagent-driven spec and code-quality review checkpoints
+- [ ] 24.7 Run `openspec validate --all --strict`
+- [ ] 24.8 Archive the completed OpenSpec change
