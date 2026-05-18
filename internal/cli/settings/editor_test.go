@@ -495,3 +495,83 @@ func TestEditor_ViewRendersStepSpecificContent(t *testing.T) {
 	e.mcpServersList = NewMCPServersListModel(e.state.Current)
 	assert.Contains(t, e.View(), "MCP Servers")
 }
+
+func TestEditor_DependencyNavigationPushesAndPopsForms(t *testing.T) {
+	e := NewEditorWithConfig(&config.Config{})
+
+	e.handleMenuSelection("p2p")
+	require.Equal(t, StepForm, e.step)
+	require.NotNil(t, e.activeForm)
+	require.NotNil(t, e.depPanel)
+	require.True(t, e.panelFocus)
+	assert.Equal(t, "p2p", e.depPanel.CategoryID)
+
+	e.jumpToDependency("security")
+	require.Len(t, e.navStack, 1)
+	assert.Equal(t, "p2p", e.navStack[0])
+	require.NotNil(t, e.activeForm)
+	assert.True(t, e.activeForm.Focus)
+
+	e.popNavStack()
+	assert.Empty(t, e.navStack)
+	require.NotNil(t, e.activeForm)
+	require.NotNil(t, e.depPanel)
+	assert.Equal(t, "p2p", e.depPanel.CategoryID)
+	assert.True(t, e.activeForm.Focus)
+}
+
+func TestEditor_DependencyPanelKeyHandlingAndSetupFlow(t *testing.T) {
+	e := NewEditorWithConfig(&config.Config{})
+	e.handleMenuSelection("smartaccount")
+	require.Equal(t, StepForm, e.step)
+	require.NotNil(t, e.depPanel)
+	require.True(t, e.panelFocus)
+
+	model, cmd := e.Update(tea.KeyMsg{Type: tea.KeyDown})
+	e = model.(*Editor)
+	require.Nil(t, cmd)
+	assert.True(t, e.panelFocus)
+	assert.Equal(t, "security", e.depPanel.SelectedCategoryID())
+
+	model, cmd = e.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	e = model.(*Editor)
+	require.Nil(t, cmd)
+	assert.Equal(t, StepForm, e.step)
+	assert.Equal(t, []string{"smartaccount"}, e.navStack)
+	require.NotNil(t, e.activeForm)
+
+	model, cmd = e.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	e = model.(*Editor)
+	require.Nil(t, cmd)
+	assert.Equal(t, StepForm, e.step)
+	assert.Empty(t, e.navStack)
+	require.NotNil(t, e.depPanel)
+	assert.Equal(t, "smartaccount", e.depPanel.CategoryID)
+
+	model, cmd = e.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	e = model.(*Editor)
+	require.Nil(t, cmd)
+	assert.Equal(t, StepSetupFlow, e.step)
+	require.NotNil(t, e.setupFlow)
+	assert.Equal(t, "smartaccount", e.setupFlow.TargetID())
+	assert.Nil(t, e.depPanel)
+	assert.False(t, e.panelFocus)
+}
+
+func TestEditor_CompleteSetupFlowRestoresTargetForm(t *testing.T) {
+	e := NewEditorWithConfig(&config.Config{})
+	e.handleMenuSelection("smartaccount")
+	require.NotNil(t, e.depPanel)
+
+	e.startSetupFlow()
+	require.Equal(t, StepSetupFlow, e.step)
+	require.NotNil(t, e.setupFlow)
+
+	e.completeSetupFlow()
+	assert.Equal(t, StepForm, e.step)
+	assert.Nil(t, e.setupFlow)
+	require.NotNil(t, e.activeForm)
+	assert.True(t, e.activeForm.Focus)
+	require.NotNil(t, e.depPanel)
+	assert.Equal(t, "smartaccount", e.depPanel.CategoryID)
+}

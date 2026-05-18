@@ -199,6 +199,57 @@ func TestSetConfigPath_FloatField(t *testing.T) {
 	}
 }
 
+func TestSetConfigPath_Uint64Field(t *testing.T) {
+	cfg := config.DefaultConfig()
+	err := setConfigPath(cfg, "economy.escrow.onChain.confirmationDepth", "12")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Economy.Escrow.OnChain.ConfirmationDepth != 12 {
+		t.Errorf("want 12, got %d", cfg.Economy.Escrow.OnChain.ConfirmationDepth)
+	}
+}
+
+func TestSetConfigPath_StringSliceFieldTrimsAndDropsEmptyValues(t *testing.T) {
+	cfg := config.DefaultConfig()
+	err := setConfigPath(cfg, "server.allowedOrigins", " https://app.example , ,https://admin.example ")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := []string{"https://app.example", "https://admin.example"}
+	if !reflect.DeepEqual(cfg.Server.AllowedOrigins, want) {
+		t.Fatalf("expected allowed origins %v, got %v", want, cfg.Server.AllowedOrigins)
+	}
+}
+
+func TestSetConfigPath_PointerBoolFieldAllocatesValue(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.MCP.Servers = nil
+
+	err := setConfigPath(cfg, "mcp.servers.docs.enabled", "false")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	enabled := cfg.MCP.Servers["docs"].Enabled
+	if enabled == nil {
+		t.Fatal("expected pointer bool field to be allocated")
+	}
+	if *enabled {
+		t.Fatal("expected mcp.servers.docs.enabled to be false")
+	}
+}
+
+func TestSetConfigPath_DurationFieldRejectsConfigSet(t *testing.T) {
+	cfg := config.DefaultConfig()
+	err := setConfigPath(cfg, "mcp.defaultTimeout", "45s")
+	if err == nil {
+		t.Fatal("expected duration set error")
+	}
+	if !strings.Contains(err.Error(), "duration fields should use 'lango settings' TUI") {
+		t.Fatalf("expected duration guidance error, got %v", err)
+	}
+}
+
 func TestSetConfigPath_CreatesProviderMapEntry(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Providers = nil
@@ -321,6 +372,7 @@ func TestCollectKeys_ContainsExpectedKeys(t *testing.T) {
 }
 
 func TestFormatPlain(t *testing.T) {
+	nonNilString := "value"
 	tests := []struct {
 		give interface{}
 		want string
@@ -330,6 +382,9 @@ func TestFormatPlain(t *testing.T) {
 		{give: 42, want: "42"},
 		{give: nil, want: "<nil>"},
 		{give: []string{"a", "b"}, want: "a,b"},
+		{give: map[string]string{"b": "2", "a": "1"}, want: "a=1,b=2"},
+		{give: &nonNilString, want: "value"},
+		{give: (*string)(nil), want: "<nil>"},
 	}
 
 	for _, tt := range tests {
@@ -487,6 +542,35 @@ func TestConfigGet_RedactsNestedProviderJSONOutputWithoutMutatingConfig(t *testi
 	}
 	if got := cfg.Providers["openai"].APIKey; got != "sk-secret" {
 		t.Fatalf("redaction must not mutate config, got apiKey %q", got)
+	}
+}
+
+func TestConfigGet_RedactsNestedProviderPlainOutput(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Providers = map[string]config.ProviderConfig{
+		"openai": {
+			Type:    "openai",
+			APIKey:  "sk-secret",
+			BaseURL: "https://api.openai.example/v1",
+		},
+	}
+	cmd := NewGetCmd(func() (*config.Config, error) { return cfg, nil })
+
+	out, err := executeConfigCommand(t, cmd, "providers.openai")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out, "apiKey=<redacted>") {
+		t.Fatalf("expected plain provider output to redact apiKey, got %q", out)
+	}
+	if !strings.Contains(out, "baseUrl=https://api.openai.example/v1") {
+		t.Fatalf("expected plain provider output to include baseUrl, got %q", out)
+	}
+	if !strings.Contains(out, "type=openai") {
+		t.Fatalf("expected plain provider output to include type, got %q", out)
+	}
+	if strings.Contains(out, "sk-secret") {
+		t.Fatalf("output must not contain raw secret, got %q", out)
 	}
 }
 
@@ -679,6 +763,38 @@ func TestConfigGet_PreservesNilMapJSONOutputShape(t *testing.T) {
 	}
 	if decoded != nil {
 		t.Fatalf("expected nil map JSON shape to be preserved as null, got %v", decoded)
+	}
+}
+
+func TestRedactConfigGetReflectValue_UsesJSONTagFallbackAndSkipsPrivateFields(t *testing.T) {
+	type taggedConfig struct {
+		VisibleSecret string `json:"clientSecret"`
+		VisibleName   string `json:"name"`
+		Ignored       string `json:"-"`
+		privateSecret string `json:"privateSecret"`
+	}
+	value := taggedConfig{
+		VisibleSecret: "raw-secret",
+		VisibleName:   "display-name",
+		Ignored:       "ignored",
+		privateSecret: "private-secret",
+	}
+
+	got, ok := redactConfigGetReflectValue(nil, reflect.ValueOf(value)).(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected reflected struct to become map, got %T", got)
+	}
+	if got["clientSecret"] != "<redacted>" {
+		t.Fatalf("expected json-tagged secret to be redacted, got %v", got["clientSecret"])
+	}
+	if got["name"] != "display-name" {
+		t.Fatalf("expected non-sensitive json-tagged field to remain visible, got %v", got["name"])
+	}
+	if _, ok := got["Ignored"]; ok {
+		t.Fatalf("expected json:\"-\" field to be skipped, got %v", got)
+	}
+	if _, ok := got["privateSecret"]; ok {
+		t.Fatalf("expected private field to be skipped, got %v", got)
 	}
 }
 

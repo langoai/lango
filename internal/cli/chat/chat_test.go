@@ -17,6 +17,7 @@ import (
 	"github.com/langoai/lango/internal/approval"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/ctxkeys"
+	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/turnrunner"
 )
@@ -54,6 +55,43 @@ func (submitTestSessionStore) ListSessions(context.Context) ([]session.SessionSu
 }
 func (submitTestSessionStore) GetSalt(string) ([]byte, error) { return nil, nil }
 func (submitTestSessionStore) SetSalt(string, []byte) error   { return nil }
+
+type modeTestSessionStore struct {
+	sessions map[string]*session.Session
+}
+
+func newModeTestSessionStore() *modeTestSessionStore {
+	return &modeTestSessionStore{sessions: make(map[string]*session.Session)}
+}
+
+func (s *modeTestSessionStore) Create(sess *session.Session) error {
+	s.sessions[sess.Key] = sess
+	return nil
+}
+
+func (s *modeTestSessionStore) Get(key string) (*session.Session, error) {
+	return s.sessions[key], nil
+}
+
+func (s *modeTestSessionStore) Update(sess *session.Session) error {
+	s.sessions[sess.Key] = sess
+	return nil
+}
+
+func (s *modeTestSessionStore) Delete(key string) error {
+	delete(s.sessions, key)
+	return nil
+}
+
+func (s *modeTestSessionStore) AppendMessage(string, session.Message) error { return nil }
+func (s *modeTestSessionStore) AnnotateTimeout(string, string) error        { return nil }
+func (s *modeTestSessionStore) End(string) error                            { return nil }
+func (s *modeTestSessionStore) Close() error                                { return nil }
+func (s *modeTestSessionStore) ListSessions(context.Context) ([]session.SessionSummary, error) {
+	return nil, nil
+}
+func (s *modeTestSessionStore) GetSalt(string) ([]byte, error) { return nil, nil }
+func (s *modeTestSessionStore) SetSalt(string, []byte) error   { return nil }
 
 func newTestModel() *ChatModel {
 	m := &ChatModel{
@@ -114,6 +152,177 @@ func runStatusCommandText(t *testing.T, m *ChatModel) string {
 	sys, ok := msg.(SystemMsg)
 	require.True(t, ok, "expected SystemMsg, got %T", msg)
 	return sys.Text
+}
+
+func TestChatModelNilAccessorsReturnSafeDefaults(t *testing.T) {
+	var m *ChatModel
+
+	assert.Empty(t, m.ComposerValue())
+	assert.Empty(t, m.ComposerPlaceholder())
+	assert.False(t, m.CanStartTurnFromComposer())
+	assert.False(t, m.HasPendingApproval())
+	assert.False(t, m.IsStreamingTurn())
+	assert.False(t, m.CanHandlePendingApprovalKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}}))
+	assert.Nil(t, m.HandleComposerEditingKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}}))
+	assert.Nil(t, m.HandlePendingApprovalKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}}))
+}
+
+func TestComposerAccessorsAndStartEligibilityFollowState(t *testing.T) {
+	m := newTestModel()
+
+	assert.Equal(t, defaultComposerPlaceholder, m.ComposerPlaceholder())
+	m.SetComposerValue("  inspect this  ")
+	assert.Equal(t, "  inspect this  ", m.ComposerValue())
+	assert.True(t, m.CanStartTurnFromComposer())
+
+	m.state = stateFailed
+	assert.True(t, m.CanStartTurnFromComposer())
+
+	m.state = stateStreaming
+	assert.False(t, m.CanStartTurnFromComposer())
+	assert.True(t, m.IsStreamingTurn())
+
+	m.state = stateApproving
+	assert.False(t, m.CanStartTurnFromComposer())
+	assert.False(t, m.IsStreamingTurn())
+
+	m.state = stateIdle
+	m.SetComposerValue(" \n\t ")
+	assert.False(t, m.CanStartTurnFromComposer())
+}
+
+func TestHandleComposerEditingKeyBypassesChatStateGating(t *testing.T) {
+	m := newTestModel()
+	m.state = stateApproving
+	m.SetComposerValue("")
+
+	cmd := m.HandleComposerEditingKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+
+	assert.NotNil(t, cmd)
+	assert.Equal(t, "x", m.ComposerValue())
+}
+
+func TestSetSessionModeCreatesMissingSessionAndPublishesEvent(t *testing.T) {
+	store := newModeTestSessionStore()
+	bus := eventbus.New()
+	var events []eventbus.ModeChangedEvent
+	eventbus.SubscribeTyped(bus, func(e eventbus.ModeChangedEvent) {
+		events = append(events, e)
+	})
+	m := newTestModel()
+	m.sessionStore = store
+	m.eventBus = bus
+
+	require.NoError(t, m.setSessionMode("debug"))
+
+	require.NotNil(t, store.sessions["test-session"])
+	assert.Equal(t, "debug", store.sessions["test-session"].Mode())
+	assert.Equal(t, "debug", m.currentModeName())
+	require.Len(t, events, 1)
+	assert.Equal(t, eventbus.ModeChangedEvent{
+		SessionKey: "test-session",
+		OldMode:    "",
+		NewMode:    "debug",
+	}, events[0])
+}
+
+func TestSetSessionModeUpdatesExistingSessionAndCanClearMode(t *testing.T) {
+	store := newModeTestSessionStore()
+	sess := &session.Session{Key: "test-session"}
+	sess.SetMode("research")
+	store.sessions["test-session"] = sess
+	bus := eventbus.New()
+	var events []eventbus.ModeChangedEvent
+	eventbus.SubscribeTyped(bus, func(e eventbus.ModeChangedEvent) {
+		events = append(events, e)
+	})
+	m := newTestModel()
+	m.sessionStore = store
+	m.eventBus = bus
+
+	require.NoError(t, m.setSessionMode(""))
+
+	assert.Empty(t, store.sessions["test-session"].Mode())
+	assert.Empty(t, m.currentModeName())
+	require.Len(t, events, 1)
+	assert.Equal(t, "research", events[0].OldMode)
+	assert.Empty(t, events[0].NewMode)
+}
+
+func TestModeCommandReportsUnavailableSessionStore(t *testing.T) {
+	m := newTestModel()
+
+	cmd := cmdMode(m, "debug")
+	require.NotNil(t, cmd)
+	msg, ok := cmd().(SystemMsg)
+	require.True(t, ok)
+
+	assert.Contains(t, msg.Text, "Failed to set mode")
+	assert.Contains(t, msg.Text, "session store not available")
+}
+
+func TestCanHandlePendingApprovalKeyDistinguishesInlineAndFullscreenKeys(t *testing.T) {
+	tests := []struct {
+		name      string
+		viewTier  approval.DisplayTier
+		key       tea.KeyMsg
+		wantAllow bool
+	}{
+		{name: "inline approve", key: tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}}, wantAllow: true},
+		{name: "inline always allow", key: tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}}, wantAllow: true},
+		{name: "inline deny", key: tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}}, wantAllow: true},
+		{name: "inline escape", key: tea.KeyMsg{Type: tea.KeyEsc}, wantAllow: true},
+		{name: "inline ignores scroll", key: tea.KeyMsg{Type: tea.KeyUp}, wantAllow: false},
+		{name: "fullscreen up", viewTier: approval.TierFullscreen, key: tea.KeyMsg{Type: tea.KeyUp}, wantAllow: true},
+		{name: "fullscreen vim up", viewTier: approval.TierFullscreen, key: tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}}, wantAllow: true},
+		{name: "fullscreen down", viewTier: approval.TierFullscreen, key: tea.KeyMsg{Type: tea.KeyDown}, wantAllow: true},
+		{name: "fullscreen vim down", viewTier: approval.TierFullscreen, key: tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}}, wantAllow: true},
+		{name: "fullscreen toggle diff", viewTier: approval.TierFullscreen, key: tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'t'}}, wantAllow: true},
+		{name: "fullscreen ignores other text", viewTier: approval.TierFullscreen, key: tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}}, wantAllow: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := newTestModel()
+			m.approval.pending = &ApprovalRequestMsg{
+				Request: approval.ApprovalRequest{ID: "apr-1", ToolName: "exec"},
+				ViewModel: approval.ApprovalViewModel{
+					Tier: tt.viewTier,
+				},
+				Response: make(chan approval.ApprovalResponse, 1),
+			}
+
+			assert.Equal(t, tt.wantAllow, m.CanHandlePendingApprovalKey(tt.key))
+		})
+	}
+}
+
+func TestHandlePendingApprovalKeyTransitionsIntoApprovalFlow(t *testing.T) {
+	respCh := make(chan approval.ApprovalResponse, 1)
+	m := newTestModel()
+	m.state = stateStreaming
+	m.approval.pending = &ApprovalRequestMsg{
+		Request:  approval.ApprovalRequest{ID: "apr-1", ToolName: "browser_search"},
+		Response: respCh,
+	}
+
+	cmd := m.HandlePendingApprovalKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	for _, msg := range collectImmediateMsgs(cmd) {
+		updated, _ := m.Update(msg)
+		m = updated.(*ChatModel)
+	}
+
+	assert.Equal(t, stateStreaming, m.state)
+	assert.False(t, m.HasPendingApproval())
+	var resp approval.ApprovalResponse
+	select {
+	case resp = <-respCh:
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("expected pending approval response")
+	}
+	assert.True(t, resp.Approved)
+	assert.False(t, resp.AlwaysAllow)
+	assert.Equal(t, "tui", resp.Provider)
 }
 
 func TestDoneMsg_StreamSuccess(t *testing.T) {

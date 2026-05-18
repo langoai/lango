@@ -25,6 +25,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/langoai/lango/internal/app"
+	"github.com/langoai/lango/internal/background"
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/cli/cliexit"
 	"github.com/langoai/lango/internal/cli/cockpit"
@@ -1199,6 +1200,166 @@ func TestCockpitCommandHelpTextNoLongerClaimsBareEquivalence(t *testing.T) {
 	cmd := cockpitCmd()
 	assert.NotContains(t, cmd.Short, "same as bare lango")
 	assert.Contains(t, cmd.Short, "operator dashboard")
+}
+
+func TestCurrentWorkDirPrefersConfiguredExecWorkDir(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.DefaultConfig()
+	cfg.Tools.Exec.WorkDir = "  /workspace/project  "
+
+	assert.Equal(t, "/workspace/project", currentWorkDir(cfg))
+}
+
+func TestCurrentWorkDirFallsBackToProcessWorkDir(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+
+	assert.Equal(t, dir, currentWorkDir(nil))
+}
+
+func TestTaskElapsedUsesTerminalRuntimeAndPendingZero(t *testing.T) {
+	t.Parallel()
+
+	started := time.Date(2026, 5, 18, 10, 0, 0, 0, time.UTC)
+	completed := started.Add(42 * time.Second)
+
+	assert.Equal(t, time.Duration(0), taskElapsed(background.TaskSnapshot{}))
+	assert.Equal(t, 42*time.Second, taskElapsed(background.TaskSnapshot{
+		StartedAt:   started,
+		CompletedAt: completed,
+	}))
+}
+
+func TestBgTaskListerMapsSnapshotsAndSortsNewestFirst(t *testing.T) {
+	t.Parallel()
+
+	runner := &recordingBackgroundRunner{result: "done"}
+	mgr := background.NewManager(runner, nil, 2, time.Second, zap.NewNop().Sugar())
+	firstID := submitAndWaitDone(t, mgr, "first task", background.Origin{Channel: "slack", Session: "s-1"})
+	time.Sleep(10 * time.Millisecond)
+	secondID := submitAndWaitDone(t, mgr, "second task", background.Origin{Channel: "telegram", Session: "s-2"})
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, mgr.Shutdown(ctx))
+	})
+
+	tasks := (&bgTaskLister{mgr: mgr}).ListTasks()
+	secondSnap, err := mgr.Status(secondID)
+	require.NoError(t, err)
+	firstSnap, err := mgr.Status(firstID)
+	require.NoError(t, err)
+
+	require.Len(t, tasks, 2)
+	assert.Equal(t, secondID, tasks[0].ID)
+	assert.Equal(t, "second task", tasks[0].Prompt)
+	assert.Equal(t, "done", tasks[0].Status)
+	assert.Equal(t, "done", tasks[0].Result)
+	assert.Equal(t, "telegram", tasks[0].OriginChannel)
+	assert.Equal(t, firstID, tasks[1].ID)
+	assert.Equal(t, "first task", tasks[1].Prompt)
+	assert.Equal(t, "slack", tasks[1].OriginChannel)
+	assert.Equal(t, taskElapsed(*secondSnap), tasks[0].Elapsed)
+	assert.Equal(t, taskElapsed(*firstSnap), tasks[1].Elapsed)
+}
+
+func TestBgTaskActionerCancelTaskDelegatesToManager(t *testing.T) {
+	t.Parallel()
+
+	started := make(chan struct{})
+	runner := &blockingBackgroundRunner{started: started}
+	mgr := background.NewManager(runner, nil, 1, time.Minute, zap.NewNop().Sugar())
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, mgr.Shutdown(ctx))
+	})
+
+	id, err := mgr.Submit(context.Background(), "cancel me", background.Origin{Channel: "slack"})
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		select {
+		case <-started:
+			return true
+		default:
+			return false
+		}
+	}, time.Second, time.Millisecond)
+
+	err = (&bgTaskActioner{mgr: mgr}).CancelTask(id)
+
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		snap, statusErr := mgr.Status(id)
+		return statusErr == nil && snap.Status == background.Cancelled
+	}, time.Second, time.Millisecond)
+}
+
+func TestBgTaskActionerRetryTaskSubmitsOriginalPromptAndOrigin(t *testing.T) {
+	t.Parallel()
+
+	runner := &recordingBackgroundRunner{result: "done"}
+	mgr := background.NewManager(runner, nil, 2, time.Second, zap.NewNop().Sugar())
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		require.NoError(t, mgr.Shutdown(ctx))
+	})
+	origin := background.Origin{Channel: "telegram", Session: "chat-123"}
+	id := submitAndWaitDone(t, mgr, "retry me", origin)
+
+	err := (&bgTaskActioner{mgr: mgr}).RetryTask(context.Background(), id)
+
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		return len(mgr.List()) == 2
+	}, time.Second, time.Millisecond)
+	require.Eventually(t, func() bool {
+		for _, snap := range mgr.List() {
+			if snap.Status != background.Done {
+				return false
+			}
+		}
+		return true
+	}, time.Second, time.Millisecond)
+
+	for _, snap := range mgr.List() {
+		assert.Equal(t, "retry me", snap.Prompt)
+		assert.Equal(t, origin.Channel, snap.OriginChannel)
+		assert.Equal(t, origin.Session, snap.OriginSession)
+	}
+}
+
+type recordingBackgroundRunner struct {
+	result string
+}
+
+func (r *recordingBackgroundRunner) Run(context.Context, string, string) (string, error) {
+	return r.result, nil
+}
+
+type blockingBackgroundRunner struct {
+	started chan struct{}
+	once    sync.Once
+}
+
+func (r *blockingBackgroundRunner) Run(ctx context.Context, _ string, _ string) (string, error) {
+	r.once.Do(func() { close(r.started) })
+	<-ctx.Done()
+	return "", ctx.Err()
+}
+
+func submitAndWaitDone(t *testing.T, mgr *background.Manager, prompt string, origin background.Origin) string {
+	t.Helper()
+
+	id, err := mgr.Submit(context.Background(), prompt, origin)
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		snap, statusErr := mgr.Status(id)
+		return statusErr == nil && snap.Status == background.Done
+	}, time.Second, time.Millisecond)
+	return id
 }
 
 type stubMainMissionStore struct{}

@@ -101,13 +101,22 @@
 - [x] 14.4 Run subagent-driven review checkpoints for the wave
 - [x] 14.5 Commit the wave separately
 
-## 15. Verification And Enforcement
+## 15. Coverage Wave: CLI Entrypoints, Chat State, Settings Navigation, And Config Redaction
 
-- [ ] 15.1 Run `go build ./...`
-- [ ] 15.2 Run `go test ./...`
-- [ ] 15.3 Run the non-generated coverage report and confirm coverage is at least 90%
-- [ ] 15.4 Run the executable 90% coverage gate and confirm it passes
-- [ ] 15.5 Run `git diff --check`
-- [ ] 15.6 Run subagent-driven spec and code-quality review checkpoints
-- [ ] 15.7 Run `openspec validate --all --strict`
-- [ ] 15.8 Archive the completed OpenSpec change
+- [x] 15.1 Add focused tests for deterministic `cmd/lango/main.go` helper and adapter branches
+- [x] 15.2 Add focused tests for deterministic `internal/cli/chat/chat.go` state, accessor, session-mode, and key-helper branches
+- [x] 15.3 Add focused tests for deterministic `internal/cli/configcmd/getset.go` redaction, scalar, reflection, formatting, and set-field branches
+- [x] 15.4 Add focused tests for deterministic `internal/cli/settings/editor.go` dependency navigation and setup-flow branches
+- [x] 15.5 Run subagent-driven review checkpoints for the wave
+- [ ] 15.6 Commit the wave separately
+
+## 16. Verification And Enforcement
+
+- [ ] 16.1 Run `go build ./...`
+- [ ] 16.2 Run `go test ./...`
+- [ ] 16.3 Run the non-generated coverage report and confirm coverage is at least 90%
+- [ ] 16.4 Run the executable 90% coverage gate and confirm it passes
+- [ ] 16.5 Run `git diff --check`
+- [ ] 16.6 Run subagent-driven spec and code-quality review checkpoints
+- [ ] 16.7 Run `openspec validate --all --strict`
+- [ ] 16.8 Archive the completed OpenSpec change
