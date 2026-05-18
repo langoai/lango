@@ -60,6 +60,34 @@ func TestCreateSubmissionReceipt_RejectsEmptyInput(t *testing.T) {
 	require.ErrorIs(t, err, ErrInvalidSubmissionInput)
 }
 
+func TestCreateSubmissionReceipt_RejectsEachRequiredField(t *testing.T) {
+	t.Parallel()
+
+	valid := CreateSubmissionInput{
+		TransactionID:       "tx-required",
+		ArtifactLabel:       "artifact",
+		PayloadHash:         "hash",
+		SourceLineageDigest: "lineage",
+	}
+	tests := []struct {
+		name string
+		edit func(*CreateSubmissionInput)
+	}{
+		{name: "transaction_id", edit: func(in *CreateSubmissionInput) { in.TransactionID = "" }},
+		{name: "artifact_label", edit: func(in *CreateSubmissionInput) { in.ArtifactLabel = "" }},
+		{name: "payload_hash", edit: func(in *CreateSubmissionInput) { in.PayloadHash = "" }},
+		{name: "source_lineage_digest", edit: func(in *CreateSubmissionInput) { in.SourceLineageDigest = "" }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			in := valid
+			tt.edit(&in)
+			require.ErrorIs(t, validateCreateSubmissionInput(in), ErrInvalidSubmissionInput)
+		})
+	}
+}
+
 func TestOpenKnowledgeExchangeTransaction_BindsCanonicalInputs(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
@@ -108,6 +136,31 @@ func TestApplyKnowledgeExchangeRuntimeProgression_RejectsIllegalBranchRewinds(t 
 	_, err = store.ApplyKnowledgeExchangeRuntimeProgression(ctx, tx.TransactionReceiptID, RuntimeStatusOpened, "")
 	require.Error(t, err)
 	require.ErrorIs(t, err, ErrInvalidKnowledgeExchangeRuntimeState)
+}
+
+func TestKnowledgeExchangeRuntimeTransition_AllowsForwardBranches(t *testing.T) {
+	t.Parallel()
+
+	allowed := [][2]KnowledgeExchangeRuntimeStatus{
+		{"", RuntimeStatusOpened},
+		{RuntimeStatusOpened, RuntimeStatusExportabilityAdvisory},
+		{RuntimeStatusOpened, RuntimeStatusPaymentApproved},
+		{RuntimeStatusExportabilityAdvisory, RuntimeStatusPaymentApproved},
+		{RuntimeStatusPaymentApproved, RuntimeStatusPaymentAuthorized},
+		{RuntimeStatusPaymentApproved, RuntimeStatusEscrowFunded},
+		{RuntimeStatusPaymentAuthorized, RuntimeStatusWorkStarted},
+		{RuntimeStatusEscrowFunded, RuntimeStatusWorkStarted},
+		{RuntimeStatusWorkStarted, RuntimeStatusSubmissionReceived},
+		{RuntimeStatusSubmissionReceived, RuntimeStatusReleaseApproved},
+		{RuntimeStatusSubmissionReceived, RuntimeStatusRevisionRequested},
+		{RuntimeStatusSubmissionReceived, RuntimeStatusEscalated},
+		{RuntimeStatusSubmissionReceived, RuntimeStatusDisputeReady},
+		{RuntimeStatusRevisionRequested, RuntimeStatusSubmissionReceived},
+	}
+	for _, transition := range allowed {
+		require.NoError(t, validateKnowledgeExchangeRuntimeTransition(transition[0], transition[1]))
+	}
+	require.ErrorIs(t, validateKnowledgeExchangeRuntimeTransition(RuntimeStatusReleaseApproved, RuntimeStatusOpened), ErrInvalidKnowledgeExchangeRuntimeState)
 }
 
 func TestOpenKnowledgeExchangeTransaction_RebindsRuntimeStateToOpened(t *testing.T) {
@@ -172,6 +225,41 @@ func TestOpenKnowledgeExchangeTransaction_RejectsConflictingCanonicalInputs(t *t
 	require.NoError(t, err)
 	require.Equal(t, "did:lango:peer-4", stored.Counterparty)
 	require.Equal(t, RuntimeStatusPaymentApproved, stored.KnowledgeExchangeRuntimeStatus)
+}
+
+func TestOpenKnowledgeExchangeTransaction_RejectsAllCanonicalConflicts(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		edit func(*OpenTransactionInput)
+	}{
+		{name: "counterparty", edit: func(in *OpenTransactionInput) { in.Counterparty = "did:lango:other" }},
+		{name: "requested_scope", edit: func(in *OpenTransactionInput) { in.RequestedScope = "artifact/other" }},
+		{name: "price_context", edit: func(in *OpenTransactionInput) { in.PriceContext = "quote:9.00-usdc" }},
+		{name: "trust_context", edit: func(in *OpenTransactionInput) { in.TrustContext = "trust:0.01" }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			store := newTestStore(t)
+			ctx := context.Background()
+			base := OpenTransactionInput{
+				TransactionID:  "deal-conflict-" + tt.name,
+				Counterparty:   "did:lango:peer",
+				RequestedScope: "artifact/baseline",
+				PriceContext:   "quote:1.00-usdc",
+				TrustContext:   "trust:0.80",
+			}
+			_, err := store.OpenKnowledgeExchangeTransaction(ctx, base)
+			require.NoError(t, err)
+
+			conflict := base
+			tt.edit(&conflict)
+			_, err = store.OpenKnowledgeExchangeTransaction(ctx, conflict)
+			require.ErrorIs(t, err, ErrInvalidSubmissionInput)
+		})
+	}
 }
 
 func TestApplySettlementProgression_MapsReleaseOutcomeToCanonicalState(t *testing.T) {
@@ -311,6 +399,30 @@ func TestApplySettlementProgression_PreservesStableReasonCodeAndHumanReason(t *t
 	require.NoError(t, err)
 	require.Equal(t, SettlementProgressionReasonCodeEscalate, stored.SettlementProgressionReasonCode)
 	require.Equal(t, "manual approval required", stored.SettlementProgressionReason)
+}
+
+func TestSettlementProgressionHelpers_CoverBoundaryBranches(t *testing.T) {
+	t.Parallel()
+
+	require.NoError(t, validateSettlementProgressionTransition("", SettlementProgressionPending))
+	require.NoError(t, validateSettlementProgressionTransition(SettlementProgressionReviewNeeded, SettlementProgressionReviewNeeded))
+	require.NoError(t, validateSettlementProgressionTransition(SettlementProgressionInProgress, SettlementProgressionReviewNeeded))
+	require.NoError(t, validateSettlementProgressionTransition(SettlementProgressionPartiallySettled, SettlementProgressionSettled))
+	require.ErrorIs(t, validateSettlementProgressionTransition(SettlementProgressionSettled, SettlementProgressionPending), ErrInvalidSettlementProgressionState)
+
+	require.NoError(t, validateSettlementProgressionReasonCode(SettlementProgressionDisputeReady, SettlementProgressionReasonCodeReject))
+	require.NoError(t, validateSettlementProgressionReasonCode(SettlementProgressionReviewNeeded, SettlementProgressionReasonCodeRequestRevision))
+	require.NoError(t, validateSettlementProgressionReasonCode(SettlementProgressionInProgress, SettlementProgressionReasonCodeApprove))
+	require.NoError(t, validateSettlementProgressionReasonCode(SettlementProgressionPending, ""))
+	require.ErrorIs(t, validateSettlementProgressionReasonCode(SettlementProgressionDisputeReady, SettlementProgressionReasonCodeApprove), ErrInvalidSettlementProgressionState)
+
+	require.Equal(t, DisputeLifecycleReEscalated, activeDisputeLifecycleStatus(DisputeLifecycleReEscalated))
+	require.Equal(t, DisputeLifecycleHoldActive, activeDisputeLifecycleStatus(""))
+	require.Equal(t, DisputeLifecycleStatus(""), nextDisputeLifecycleStatusForProgression(DisputeLifecycleHoldActive, SettlementProgressionDisputeReady, SettlementProgressionSettled))
+	require.Equal(t, DisputeLifecycleReEscalated, nextDisputeLifecycleStatusForProgression(DisputeLifecycleHoldActive, SettlementProgressionDisputeReady, SettlementProgressionDisputeReady))
+	require.Equal(t, DisputeLifecycleReEscalated, nextDisputeLifecycleStatusForProgression("", SettlementProgressionApprovedForSettlement, SettlementProgressionDisputeReady))
+	require.Equal(t, "existing", nextPartialSettlementHint("existing", "   ", SettlementProgressionReviewNeeded))
+	require.Empty(t, nextPartialSettlementHint("existing", "", SettlementProgressionSettled))
 }
 
 func TestApplySettlementProgression_RequiresCurrentSubmissionReceipt(t *testing.T) {
@@ -715,6 +827,24 @@ func TestRecordEscrowRefundFailure_RejectsWrongState(t *testing.T) {
 		Reason:               "refund failed",
 	})
 	require.ErrorIs(t, err, ErrInvalidSettlementProgressionState)
+}
+
+func TestEscrowExecutionHelpers_CoverValidationAndTransitionBranches(t *testing.T) {
+	t.Parallel()
+
+	require.NoError(t, validateEscrowExecutionTransition("", EscrowExecutionStatusPending))
+	require.NoError(t, validateEscrowExecutionTransition(EscrowExecutionStatusPending, EscrowExecutionStatusPending))
+	require.NoError(t, validateEscrowExecutionTransition(EscrowExecutionStatusCreated, EscrowExecutionStatusFailed))
+	require.NoError(t, validateEscrowExecutionTransition(EscrowExecutionStatusFunded, EscrowExecutionStatusFailed))
+	require.ErrorIs(t, validateEscrowExecutionTransition(EscrowExecutionStatusFailed, EscrowExecutionStatusCreated), ErrInvalidEscrowExecutionState)
+
+	_, err := escrowExecutionEventTypeForStatus(EscrowExecutionStatus("bogus"))
+	require.ErrorIs(t, err, ErrInvalidEscrowExecutionStatus)
+
+	_, err = canonicalizePartialSettlementHint("0")
+	require.ErrorIs(t, err, ErrInvalidSettlementProgressionState)
+	_, err = canonicalizePartialSettlementHint("not-usdc")
+	require.Error(t, err)
 }
 
 func TestRecordEscrowDisputeHoldSuccess_DoesNotMutateState(t *testing.T) {
