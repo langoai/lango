@@ -20,10 +20,10 @@
 
 ## 4. Coverage Wave: CLI/TUI State And Command Surfaces
 
-- [ ] 4.1 Add targeted tests for `internal/cli/tuicore/state_update.go`
-- [ ] 4.2 Add targeted tests for `internal/cli/settings/editor.go` and `internal/cli/settings/menu.go`
-- [ ] 4.3 Cover command construction, output seams, error paths, and state transitions
-- [ ] 4.4 Commit the wave separately
+- [x] 4.1 Add targeted tests for `internal/cli/tuicore/state_update.go`
+- [x] 4.2 Add targeted tests for `internal/cli/settings/editor.go` and `internal/cli/settings/menu.go`
+- [x] 4.3 Cover command construction, output seams, error paths, and state transitions
+- [x] 4.4 Commit the wave separately
 
 ## 5. Coverage Wave: Storage And Knowledge
 
