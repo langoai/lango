@@ -27,11 +27,11 @@
 
 ## 5. Coverage Wave: Storage And Knowledge
 
-- [ ] 5.1 Add focused tests for `internal/storage/facade.go`
-- [ ] 5.2 Add focused tests for `internal/storagebroker/server.go` and `internal/storagebroker/client.go`
-- [ ] 5.3 Add focused tests for `internal/knowledge/store.go`
-- [ ] 5.4 Cover CRUD, error handling, unavailable backends, and boundary conditions
-- [ ] 5.5 Commit the wave separately
+- [x] 5.1 Add focused tests for `internal/storage/facade.go`
+- [x] 5.2 Add focused tests for `internal/storagebroker/server.go` and `internal/storagebroker/client.go`
+- [x] 5.3 Add focused tests for `internal/knowledge/store.go`
+- [x] 5.4 Cover CRUD, error handling, unavailable backends, and boundary conditions
+- [x] 5.5 Commit the wave separately
 
 ## 6. Coverage Wave: Runtime And Workflow
 
