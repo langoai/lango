@@ -126,13 +126,21 @@
 - [x] 17.4 Run subagent-driven review checkpoints for the wave
 - [x] 17.5 Commit the wave separately
 
-## 18. Verification And Enforcement
+## 18. Coverage Wave: Integrations, Ledgers, And Receipts
 
-- [ ] 18.1 Run `go build ./...`
-- [ ] 18.2 Run `go test ./...`
-- [ ] 18.3 Run the non-generated coverage report and confirm coverage is at least 90%
-- [ ] 18.4 Run the executable 90% coverage gate and confirm it passes
-- [ ] 18.5 Run `git diff --check`
-- [ ] 18.6 Run subagent-driven spec and code-quality review checkpoints
-- [ ] 18.7 Run `openspec validate --all --strict`
-- [ ] 18.8 Archive the completed OpenSpec change
+- [x] 18.1 Add focused tests for deterministic `internal/channels/discord/discord.go` channel identity, send, split, guild allow-list, and error formatting branches
+- [x] 18.2 Add focused tests for deterministic `internal/p2p/gitbundle/bundle.go` diff, apply, hook, and safe-apply branches
+- [x] 18.3 Add focused tests for deterministic `internal/runledger/writethrough.go`, `internal/mcp/connection.go`, and `internal/receipts/store.go` branch-heavy helpers
+- [x] 18.4 Run subagent-driven review checkpoints for the wave
+- [x] 18.5 Commit the wave separately
+
+## 19. Verification And Enforcement
+
+- [ ] 19.1 Run `go build ./...`
+- [ ] 19.2 Run `go test ./...`
+- [ ] 19.3 Run the non-generated coverage report and confirm coverage is at least 90%
+- [ ] 19.4 Run the executable 90% coverage gate and confirm it passes
+- [ ] 19.5 Run `git diff --check`
+- [ ] 19.6 Run subagent-driven spec and code-quality review checkpoints
+- [ ] 19.7 Run `openspec validate --all --strict`
+- [ ] 19.8 Archive the completed OpenSpec change
