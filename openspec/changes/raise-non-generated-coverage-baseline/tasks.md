@@ -134,13 +134,21 @@
 - [x] 18.4 Run subagent-driven review checkpoints for the wave
 - [x] 18.5 Commit the wave separately
 
-## 19. Verification And Enforcement
+## 19. Coverage Wave: App, Knowledge, And User-Facing Entrypoints
 
-- [ ] 19.1 Run `go build ./...`
-- [ ] 19.2 Run `go test ./...`
-- [ ] 19.3 Run the non-generated coverage report and confirm coverage is at least 90%
-- [ ] 19.4 Run the executable 90% coverage gate and confirm it passes
-- [ ] 19.5 Run `git diff --check`
-- [ ] 19.6 Run subagent-driven spec and code-quality review checkpoints
-- [ ] 19.7 Run `openspec validate --all --strict`
-- [ ] 19.8 Archive the completed OpenSpec change
+- [x] 19.1 Add focused tests for deterministic `internal/app` metadata, module, wiring, and app helper branches that do not require live network services
+- [x] 19.2 Add focused tests for deterministic `internal/knowledge/store.go` persistence, validation, and branch-heavy query helpers
+- [x] 19.3 Add focused tests for deterministic `cmd/lango/main.go` and high-uncovered user-facing CLI helper branches without launching interactive UI loops
+- [x] 19.4 Run subagent-driven review checkpoints for the wave
+- [x] 19.5 Commit the wave separately
+
+## 20. Verification And Enforcement
+
+- [ ] 20.1 Run `go build ./...`
+- [ ] 20.2 Run `go test ./...`
+- [ ] 20.3 Run the non-generated coverage report and confirm coverage is at least 90%
+- [ ] 20.4 Run the executable 90% coverage gate and confirm it passes
+- [ ] 20.5 Run `git diff --check`
+- [ ] 20.6 Run subagent-driven spec and code-quality review checkpoints
+- [ ] 20.7 Run `openspec validate --all --strict`
+- [ ] 20.8 Archive the completed OpenSpec change
