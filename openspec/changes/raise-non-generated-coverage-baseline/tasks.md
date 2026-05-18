@@ -50,13 +50,34 @@
 - [x] 7.4 Add focused tests for `internal/p2p/handshake/handshake.go`
 - [x] 7.5 Commit the wave separately
 
-## 8. Verification And Enforcement
+## 8. Coverage Wave: High-Impact Service Boundaries
 
-- [ ] 8.1 Run `go build ./...`
-- [ ] 8.2 Run `go test ./...`
-- [ ] 8.3 Run the non-generated coverage report and confirm coverage is at least 90%
-- [ ] 8.4 Run the executable 90% coverage gate and confirm it passes
-- [ ] 8.5 Run `git diff --check`
-- [ ] 8.6 Run subagent-driven spec and code-quality review checkpoints
-- [ ] 8.7 Run `openspec validate --all --strict`
-- [ ] 8.8 Archive the completed OpenSpec change
+- [ ] 8.1 Add focused tests for remaining `internal/storagebroker/server.go` dispatch, payload protection, and error paths
+- [ ] 8.2 Add focused tests for remaining `internal/skill/importer.go` import validation, filesystem, and failure paths
+- [ ] 8.3 Add focused tests for remaining `internal/receipts/store.go` receipt lifecycle and query boundaries
+- [ ] 8.4 Commit the wave separately
+
+## 9. Coverage Wave: App And CLI Execution Surfaces
+
+- [ ] 9.1 Add focused tests for remaining `internal/app/app.go`, `internal/app/modules.go`, and app wiring branches
+- [ ] 9.2 Add focused tests for `cmd/lango/main.go` command routing and error exits through seams
+- [ ] 9.3 Add focused tests for `internal/cli/chat/chat.go`, `internal/cli/settings/editor.go`, `internal/cli/sandbox/sandbox.go`, and `internal/cli/onboard/wizard.go`
+- [ ] 9.4 Commit the wave separately
+
+## 10. Coverage Wave: Remaining P2P And Payment Surfaces
+
+- [ ] 10.1 Add focused tests for remaining `internal/p2p/handshake/handshake.go` stream and approval branches
+- [ ] 10.2 Add focused tests for high-uncovered P2P protocol, settlement, discovery, and payment paths that do not require external services
+- [ ] 10.3 Add focused tests for remaining `internal/app/tools_escrow.go` and payment tool wrappers
+- [ ] 10.4 Commit the wave separately
+
+## 11. Verification And Enforcement
+
+- [ ] 11.1 Run `go build ./...`
+- [ ] 11.2 Run `go test ./...`
+- [ ] 11.3 Run the non-generated coverage report and confirm coverage is at least 90%
+- [ ] 11.4 Run the executable 90% coverage gate and confirm it passes
+- [ ] 11.5 Run `git diff --check`
+- [ ] 11.6 Run subagent-driven spec and code-quality review checkpoints
+- [ ] 11.7 Run `openspec validate --all --strict`
+- [ ] 11.8 Archive the completed OpenSpec change
