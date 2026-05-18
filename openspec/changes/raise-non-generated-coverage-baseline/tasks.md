@@ -78,13 +78,21 @@
 - [x] 11.3 Add focused tests for app P2P helper surfaces that do not require external services
 - [x] 11.4 Commit the wave separately
 
-## 12. Verification And Enforcement
+## 12. Coverage Wave: Smart Account, Wallet, And Git Bundle
 
-- [ ] 12.1 Run `go build ./...`
-- [ ] 12.2 Run `go test ./...`
-- [ ] 12.3 Run the non-generated coverage report and confirm coverage is at least 90%
-- [ ] 12.4 Run the executable 90% coverage gate and confirm it passes
-- [ ] 12.5 Run `git diff --check`
-- [ ] 12.6 Run subagent-driven spec and code-quality review checkpoints
-- [ ] 12.7 Run `openspec validate --all --strict`
-- [ ] 12.8 Archive the completed OpenSpec change
+- [x] 12.1 Add focused tests for `internal/wallet/spending.go` limiter behavior and store error paths
+- [x] 12.2 Add focused tests for `internal/smartaccount/manager.go` manager helpers and encoding branches
+- [x] 12.3 Add focused tests for `internal/p2p/gitbundle/protocol.go` protocol handler dispatch and error branches
+- [x] 12.4 Add focused tests for app Smart Account tools and wiring helper branches
+- [x] 12.5 Commit the wave separately
+
+## 13. Verification And Enforcement
+
+- [ ] 13.1 Run `go build ./...`
+- [ ] 13.2 Run `go test ./...`
+- [ ] 13.3 Run the non-generated coverage report and confirm coverage is at least 90%
+- [ ] 13.4 Run the executable 90% coverage gate and confirm it passes
+- [ ] 13.5 Run `git diff --check`
+- [ ] 13.6 Run subagent-driven spec and code-quality review checkpoints
+- [ ] 13.7 Run `openspec validate --all --strict`
+- [ ] 13.8 Archive the completed OpenSpec change
