@@ -71,13 +71,20 @@
 - [x] 10.3 Add focused tests for remaining `internal/app/tools_escrow.go` and payment tool wrappers
 - [x] 10.4 Commit the wave separately
 
-## 11. Verification And Enforcement
+## 11. Coverage Wave: Cron, Broker, And App Helpers
 
-- [ ] 11.1 Run `go build ./...`
-- [ ] 11.2 Run `go test ./...`
-- [ ] 11.3 Run the non-generated coverage report and confirm coverage is at least 90%
-- [ ] 11.4 Run the executable 90% coverage gate and confirm it passes
-- [ ] 11.5 Run `git diff --check`
-- [ ] 11.6 Run subagent-driven spec and code-quality review checkpoints
-- [ ] 11.7 Run `openspec validate --all --strict`
-- [ ] 11.8 Archive the completed OpenSpec change
+- [x] 11.1 Add focused tests for `internal/cron/store.go` Ent-backed store and conversion helpers
+- [x] 11.2 Add focused tests for remaining `internal/storagebroker/server.go` and `internal/storagebroker/client.go` RPC wrapper branches
+- [x] 11.3 Add focused tests for app P2P helper surfaces that do not require external services
+- [x] 11.4 Commit the wave separately
+
+## 12. Verification And Enforcement
+
+- [ ] 12.1 Run `go build ./...`
+- [ ] 12.2 Run `go test ./...`
+- [ ] 12.3 Run the non-generated coverage report and confirm coverage is at least 90%
+- [ ] 12.4 Run the executable 90% coverage gate and confirm it passes
+- [ ] 12.5 Run `git diff --check`
+- [ ] 12.6 Run subagent-driven spec and code-quality review checkpoints
+- [ ] 12.7 Run `openspec validate --all --strict`
+- [ ] 12.8 Archive the completed OpenSpec change
