@@ -100,6 +100,13 @@ The system SHALL provide agent-facing tools for creating and listing skills.
 - **WHEN** the agent invokes `list_skills`
 - **THEN** the system SHALL return all active skills with their metadata
 
+#### Scenario: view_skill resource path confinement
+- **WHEN** the agent invokes `view_skill` with a supporting resource path
+- **THEN** the system SHALL resolve the path relative to the selected skill directory
+- **AND** SHALL reject lexical path escapes such as `..`
+- **AND** SHALL reject symlink targets that resolve outside the selected skill directory
+- **AND** SHALL only read files that remain inside the selected skill directory
+
 ### Requirement: Tool Learning Wrapper
 The system SHALL wrap existing tool handlers to feed execution results into the learning engine.
 
@@ -378,4 +385,3 @@ Knowledge history/search tools SHALL reject missing required inputs at the wrapp
 - **OR** `search_knowledge` is invoked without `query`
 - **THEN** the tool SHALL return an actionable missing-parameter error
 - **AND** SHALL not invoke the underlying service
-

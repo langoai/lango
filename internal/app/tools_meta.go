@@ -809,24 +809,35 @@ func buildMetaToolsWithRuntimes(
 				} else {
 					skillRoot = filepath.Join(skillsDir, name)
 				}
+				displayPath := path
 				var target string
 				if path == "" {
 					target = filepath.Join(skillRoot, "SKILL.md")
+					displayPath = "SKILL.md"
 				} else {
 					// Resolve and verify the path stays inside the skill directory.
-					cleaned := filepath.Clean(filepath.Join(skillRoot, path))
-					absRoot, err := filepath.Abs(skillRoot)
-					if err != nil {
-						return nil, fmt.Errorf("resolve skill root: %w", err)
+					target = filepath.Clean(filepath.Join(skillRoot, path))
+				}
+				absRoot, err := filepath.Abs(skillRoot)
+				if err != nil {
+					return nil, fmt.Errorf("resolve skill root: %w", err)
+				}
+				absTarget, err := filepath.Abs(target)
+				if err != nil {
+					return nil, fmt.Errorf("resolve target: %w", err)
+				}
+				if !pathInsideDir(absTarget, absRoot) {
+					return nil, fmt.Errorf("path %q is outside the skill directory", displayPath)
+				}
+				evalRoot := absRoot
+				if resolvedRoot, err := filepath.EvalSymlinks(absRoot); err == nil {
+					evalRoot = resolvedRoot
+				}
+				if resolvedTarget, err := filepath.EvalSymlinks(absTarget); err == nil {
+					if !pathInsideDir(resolvedTarget, evalRoot) {
+						return nil, fmt.Errorf("path %q escapes the skill directory", displayPath)
 					}
-					absTarget, err := filepath.Abs(cleaned)
-					if err != nil {
-						return nil, fmt.Errorf("resolve target: %w", err)
-					}
-					if !strings.HasPrefix(absTarget, absRoot+string(filepath.Separator)) && absTarget != absRoot {
-						return nil, fmt.Errorf("path %q is outside the skill directory", path)
-					}
-					target = cleaned
+					target = resolvedTarget
 				}
 
 				content, err := os.ReadFile(target)
@@ -1135,6 +1146,14 @@ func exportabilityPolicyEnabled(cfg *config.Config) bool {
 		cfg = config.DefaultConfig()
 	}
 	return cfg.Security.Exportability.Enabled
+}
+
+func pathInsideDir(path, dir string) bool {
+	rel, err := filepath.Rel(dir, path)
+	if err != nil {
+		return false
+	}
+	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel))
 }
 
 func evaluateExportabilityArtifact(ctx context.Context, store *knowledge.Store, artifactLabel string, sourceKeys []string, stage exportability.DecisionStage, enabled bool) (map[string]interface{}, error) {

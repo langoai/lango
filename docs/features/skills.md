@@ -228,6 +228,7 @@ Skills are stored as Markdown files in the skills directory (default: `~/.lango/
 ```
 
 Resource directories (`scripts/`, `references/`, `assets/`) are automatically imported alongside the skill definition.
+Agent-facing skill resource reads are confined to the selected skill directory; lexical escapes and symlinks that resolve outside that directory are rejected.
 
 ## Configuration
 
