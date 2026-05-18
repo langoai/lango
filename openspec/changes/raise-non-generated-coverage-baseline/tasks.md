@@ -116,7 +116,7 @@
 - [x] 16.2 Add focused tests for deterministic `internal/channels/telegram/telegram.go` channel identity, send, split, error formatting, and allow-list branches
 - [x] 16.3 Add focused tests for deterministic `internal/app/app.go` publish, post-agent wiring, and lifecycle registration branches
 - [x] 16.4 Run subagent-driven review checkpoints for the wave
-- [ ] 16.5 Commit the wave separately
+- [x] 16.5 Commit the wave separately
 
 ## 17. Verification And Enforcement
 
