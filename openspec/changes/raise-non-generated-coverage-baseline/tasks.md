@@ -208,13 +208,22 @@
 - [x] 27.5 Run subagent-driven review checkpoints for the wave
 - [x] 27.6 Commit the wave separately
 
-## 28. Verification And Enforcement
+## 28. Coverage Wave: Gateway, P2P Protocol, Gemini Provider, And Remaining App Entrypoints
 
-- [x] 28.1 Run `go build ./...`
-- [x] 28.2 Run `go test ./...`
-- [ ] 28.3 Run the non-generated coverage report and confirm coverage is at least 90%
-- [ ] 28.4 Run the executable 90% coverage gate and confirm it passes
-- [x] 28.5 Run `git diff --check`
-- [x] 28.6 Run subagent-driven spec and code-quality review checkpoints
-- [x] 28.7 Run `openspec validate --all --strict`
-- [ ] 28.8 Archive the completed OpenSpec change
+- [ ] 28.1 Add focused tests for deterministic `internal/gateway/server.go` response handlers, callbacks, router setup, and connection lifecycle branches without binding real listeners
+- [ ] 28.2 Add focused tests for deterministic `internal/p2p/protocol/remote_agent.go` request/response, timeout, encoding, and error branches with fake streams/hosts only
+- [ ] 28.3 Add focused tests for deterministic `internal/provider/gemini/gemini.go` provider identity, schema conversion, request assembly, model listing, and error branches without live Gemini calls
+- [ ] 28.4 Add focused tests for deterministic `internal/app/tools_p2p.go`, `internal/app/wiring.go`, `internal/app/wiring_p2p.go`, and `cmd/lango/main.go` helper branches without starting P2P services or interactive loops
+- [ ] 28.5 Run subagent-driven review checkpoints for the wave
+- [ ] 28.6 Commit the wave separately
+
+## 29. Verification And Enforcement
+
+- [x] 29.1 Run `go build ./...`
+- [x] 29.2 Run `go test ./...`
+- [ ] 29.3 Run the non-generated coverage report and confirm coverage is at least 90%
+- [ ] 29.4 Run the executable 90% coverage gate and confirm it passes
+- [x] 29.5 Run `git diff --check`
+- [x] 29.6 Run subagent-driven spec and code-quality review checkpoints
+- [x] 29.7 Run `openspec validate --all --strict`
+- [ ] 29.8 Archive the completed OpenSpec change
