@@ -158,13 +158,21 @@
 - [x] 21.4 Run subagent-driven review checkpoints for the wave
 - [x] 21.5 Commit the wave separately
 
-## 22. Verification And Enforcement
+## 22. Coverage Wave: CLI Entrypoint, Sandbox Probe, And Skill Importer Branches
 
-- [ ] 22.1 Run `go build ./...`
-- [ ] 22.2 Run `go test ./...`
-- [ ] 22.3 Run the non-generated coverage report and confirm coverage is at least 90%
-- [ ] 22.4 Run the executable 90% coverage gate and confirm it passes
-- [ ] 22.5 Run `git diff --check`
-- [ ] 22.6 Run subagent-driven spec and code-quality review checkpoints
-- [ ] 22.7 Run `openspec validate --all --strict`
-- [ ] 22.8 Archive the completed OpenSpec change
+- [x] 22.1 Add focused tests for deterministic `cmd/lango/main.go` chat/cockpit/workbench/config command branch helpers without launching interactive UI loops
+- [x] 22.2 Add focused tests for deterministic `internal/cli/sandbox/sandbox.go` status collection, test/probe command helpers, and sandbox capability branches without requiring privileged sandbox execution
+- [x] 22.3 Add focused tests for deterministic `internal/skill/importer.go` git/http import planning, URL/resource handling, and failure branches without live network access
+- [x] 22.4 Run subagent-driven review checkpoints for the wave
+- [x] 22.5 Commit the wave separately
+
+## 23. Verification And Enforcement
+
+- [ ] 23.1 Run `go build ./...`
+- [ ] 23.2 Run `go test ./...`
+- [ ] 23.3 Run the non-generated coverage report and confirm coverage is at least 90%
+- [ ] 23.4 Run the executable 90% coverage gate and confirm it passes
+- [ ] 23.5 Run `git diff --check`
+- [ ] 23.6 Run subagent-driven spec and code-quality review checkpoints
+- [ ] 23.7 Run `openspec validate --all --strict`
+- [ ] 23.8 Archive the completed OpenSpec change
