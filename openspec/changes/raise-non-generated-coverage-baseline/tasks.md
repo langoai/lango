@@ -174,13 +174,21 @@
 - [x] 23.4 Run subagent-driven review checkpoints for the wave
 - [x] 23.5 Commit the wave separately
 
-## 24. Verification And Enforcement
+## 24. Coverage Wave: App Meta, Module Initialization, P2P Wiring, And CLI Entrypoints
 
-- [ ] 24.1 Run `go build ./...`
-- [ ] 24.2 Run `go test ./...`
-- [ ] 24.3 Run the non-generated coverage report and confirm coverage is at least 90%
-- [ ] 24.4 Run the executable 90% coverage gate and confirm it passes
-- [ ] 24.5 Run `git diff --check`
-- [ ] 24.6 Run subagent-driven spec and code-quality review checkpoints
-- [ ] 24.7 Run `openspec validate --all --strict`
-- [ ] 24.8 Archive the completed OpenSpec change
+- [ ] 24.1 Add focused tests for deterministic `internal/app/tools_meta.go` meta-tool composition, dependency-disabled, and handler edge branches without live network services
+- [ ] 24.2 Add focused tests for deterministic `internal/app/modules.go` module initialization, catalog, status, and disabled-dependency branches without live providers
+- [ ] 24.3 Add focused tests for deterministic `internal/app/wiring_p2p.go`, `internal/app/wiring.go`, and `cmd/lango/main.go` startup and wiring helper branches without binding external services
+- [ ] 24.4 Run subagent-driven review checkpoints for the wave
+- [ ] 24.5 Commit the wave separately
+
+## 25. Verification And Enforcement
+
+- [ ] 25.1 Run `go build ./...`
+- [ ] 25.2 Run `go test ./...`
+- [ ] 25.3 Run the non-generated coverage report and confirm coverage is at least 90%
+- [ ] 25.4 Run the executable 90% coverage gate and confirm it passes
+- [ ] 25.5 Run `git diff --check`
+- [ ] 25.6 Run subagent-driven spec and code-quality review checkpoints
+- [ ] 25.7 Run `openspec validate --all --strict`
+- [ ] 25.8 Archive the completed OpenSpec change
