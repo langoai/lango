@@ -150,13 +150,21 @@
 - [x] 20.4 Run subagent-driven review checkpoints for the wave
 - [x] 20.5 Commit the wave separately
 
-## 21. Verification And Enforcement
+## 21. Coverage Wave: Knowledge Atomic Branches And App Wiring Hotspots
 
-- [ ] 21.1 Run `go build ./...`
-- [ ] 21.2 Run `go test ./...`
-- [ ] 21.3 Run the non-generated coverage report and confirm coverage is at least 90%
-- [ ] 21.4 Run the executable 90% coverage gate and confirm it passes
-- [ ] 21.5 Run `git diff --check`
-- [ ] 21.6 Run subagent-driven spec and code-quality review checkpoints
-- [ ] 21.7 Run `openspec validate --all --strict`
-- [ ] 21.8 Archive the completed OpenSpec change
+- [x] 21.1 Add focused tests for deterministic `internal/knowledge/store.go` atomic payload, FTS5 sync, and error helper branches without relying on generated code coverage
+- [x] 21.2 Add focused tests for deterministic `internal/app/tools_meta.go` meta-tool handler, dispatcher, and receipt/error branches without live network services
+- [x] 21.3 Add focused tests for deterministic `internal/app/modules.go`, `internal/app/app.go`, `internal/app/wiring.go`, and `internal/app/wiring_p2p.go` module/wiring helper branches
+- [x] 21.4 Run subagent-driven review checkpoints for the wave
+- [x] 21.5 Commit the wave separately
+
+## 22. Verification And Enforcement
+
+- [ ] 22.1 Run `go build ./...`
+- [ ] 22.2 Run `go test ./...`
+- [ ] 22.3 Run the non-generated coverage report and confirm coverage is at least 90%
+- [ ] 22.4 Run the executable 90% coverage gate and confirm it passes
+- [ ] 22.5 Run `git diff --check`
+- [ ] 22.6 Run subagent-driven spec and code-quality review checkpoints
+- [ ] 22.7 Run `openspec validate --all --strict`
+- [ ] 22.8 Archive the completed OpenSpec change
