@@ -201,12 +201,12 @@
 
 ## 27. Coverage Wave: Meta Tools, Receipts Store, Ontology Tools, And App Wiring Hotspots
 
-- [ ] 27.1 Add focused tests for deterministic `internal/app/tools_meta.go` and `internal/app/tools_escrow.go` validation, dispatcher, receipt, and helper branches without live network or chain calls
-- [ ] 27.2 Add focused tests for deterministic `internal/receipts/store.go` lifecycle, query, filtering, and error branches using in-memory or temp-file state only
-- [ ] 27.3 Add focused tests for deterministic `internal/ontology/tools.go` tool builder, parameter validation, action/query, and error branches without external services
-- [ ] 27.4 Add focused tests for deterministic `internal/app/wiring.go`, `internal/app/wiring_p2p.go`, and `internal/app/app.go` helper branches without binding listeners or starting P2P services
-- [ ] 27.5 Run subagent-driven review checkpoints for the wave
-- [ ] 27.6 Commit the wave separately
+- [x] 27.1 Add focused tests for deterministic `internal/app/tools_meta.go` and `internal/app/tools_escrow.go` validation, dispatcher, receipt, and helper branches without live network or chain calls
+- [x] 27.2 Add focused tests for deterministic `internal/receipts/store.go` lifecycle, query, filtering, and error branches using in-memory or temp-file state only
+- [x] 27.3 Add focused tests for deterministic `internal/ontology/tools.go` tool builder, parameter validation, action/query, and error branches without external services
+- [x] 27.4 Add focused tests for deterministic `internal/app/wiring.go`, `internal/app/wiring_p2p.go`, and `internal/app/app.go` helper branches without binding listeners or starting P2P services
+- [x] 27.5 Run subagent-driven review checkpoints for the wave
+- [x] 27.6 Commit the wave separately
 
 ## 28. Verification And Enforcement
 
