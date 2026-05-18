@@ -224,7 +224,7 @@ func (s *Store) saveKnowledgeOnce(ctx context.Context, _ string, entry Knowledge
 	}
 
 	// Mark old version as not latest.
-	if err := tx.Knowledge.UpdateOne(existing).SetIsLatest(false).Exec(ctx); err != nil {
+	if err := tx.Knowledge.UpdateOneID(existing.ID).SetIsLatest(false).Exec(ctx); err != nil {
 		_ = tx.Rollback()
 		return fmt.Errorf("unset latest: %w", err)
 	}
@@ -322,7 +322,7 @@ func (s *Store) saveKnowledgeAtomic(ctx context.Context, entry KnowledgeEntry) e
 
 	version := 1
 	if !isNew {
-		if err := txClient.Knowledge.UpdateOne(existing).SetIsLatest(false).Exec(ctx); err != nil {
+		if err := txClient.Knowledge.UpdateOneID(existing.ID).SetIsLatest(false).Exec(ctx); err != nil {
 			return fmt.Errorf("unset latest: %w", err)
 		}
 		version = existing.Version + 1
