@@ -217,13 +217,21 @@
 - [x] 28.5 Run subagent-driven review checkpoints for the wave
 - [x] 28.6 Commit the wave separately
 
-## 29. Verification And Enforcement
+## 29. Coverage Wave: App Metadata, Entrypoints, Test Utilities, And Economy Hotspots
 
-- [x] 29.1 Run `go build ./...`
-- [x] 29.2 Run `go test ./...`
-- [ ] 29.3 Run the non-generated coverage report and confirm coverage is at least 90%
-- [ ] 29.4 Run the executable 90% coverage gate and confirm it passes
-- [x] 29.5 Run `git diff --check`
-- [x] 29.6 Run subagent-driven spec and code-quality review checkpoints
-- [x] 29.7 Run `openspec validate --all --strict`
-- [ ] 29.8 Archive the completed OpenSpec change
+- [ ] 29.1 Add focused tests for deterministic `internal/app/tools_meta.go`, `internal/app/modules.go`, `internal/app/wiring.go`, and `internal/app/wiring_p2p.go` branches that remain high-uncovered without live providers or listeners
+- [ ] 29.2 Add focused tests for deterministic `cmd/lango/main.go`, `internal/cli/settings/forms_economy.go`, and `internal/testutil/mock_cron.go` helper branches without launching interactive UI loops or relying on wall-clock scheduling
+- [ ] 29.3 Add focused tests for deterministic `internal/adk/agent.go`, `internal/bootstrap/phases.go`, and `internal/economy/tools.go` branch-heavy helpers without live model providers, chain RPC, or external services
+- [ ] 29.4 Run subagent-driven review checkpoints for the wave
+- [ ] 29.5 Commit the wave separately
+
+## 30. Verification And Enforcement
+
+- [x] 30.1 Run `go build ./...`
+- [x] 30.2 Run `go test ./...`
+- [ ] 30.3 Run the non-generated coverage report and confirm coverage is at least 90%
+- [ ] 30.4 Run the executable 90% coverage gate and confirm it passes
+- [x] 30.5 Run `git diff --check`
+- [x] 30.6 Run subagent-driven spec and code-quality review checkpoints
+- [x] 30.7 Run `openspec validate --all --strict`
+- [ ] 30.8 Archive the completed OpenSpec change
