@@ -70,15 +70,15 @@ type TeamHandler func(ctx context.Context, peerDID string, reqType RequestType, 
 
 // Handler processes A2A-over-P2P messages on libp2p streams.
 type Handler struct {
-	sessions       *handshake.SessionStore
-	firewall       *firewall.Firewall
-	executor       ToolExecutor
-	sandboxExec    ToolExecutor
-	cardFn         CardProvider
-	payGate        PayGateChecker
-	approvalFn     ToolApprovalFunc
-	securityEvents SecurityEventTracker
-	eventBus       *eventbus.Bus
+	sessions        *handshake.SessionStore
+	firewall        *firewall.Firewall
+	executor        ToolExecutor
+	sandboxExec     ToolExecutor
+	cardFn          CardProvider
+	payGate         PayGateChecker
+	approvalFn      ToolApprovalFunc
+	securityEvents  SecurityEventTracker
+	eventBus        *eventbus.Bus
 	negotiator      NegotiateHandler
 	teamHandler     TeamHandler
 	ontologyHandler OntologyHandler
@@ -750,6 +750,9 @@ func SendRequest(ctx context.Context, s network.Stream, reqType RequestType, tok
 
 	if err := json.NewEncoder(s).Encode(req); err != nil {
 		return nil, fmt.Errorf("send request: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("request context: %w", err)
 	}
 
 	var resp Response

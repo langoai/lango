@@ -37,6 +37,75 @@ func (p *GeminiProvider) ID() string {
 }
 
 func (p *GeminiProvider) Generate(ctx context.Context, params provider.GenerateParams) (iter.Seq2[provider.StreamEvent, error], error) {
+	model, contents, conf, err := p.buildGenerateContentRequest(params)
+	if err != nil {
+		return nil, err
+	}
+
+	// Streaming
+	streamIter := p.client.Models.GenerateContentStream(ctx, model, contents, conf)
+
+	return func(yield func(provider.StreamEvent, error) bool) {
+		var lastUsage *provider.Usage
+		for resp, err := range streamIter {
+			if err != nil {
+				yield(provider.StreamEvent{Type: provider.StreamEventError, Error: err}, err)
+				return
+			}
+
+			// Handle response parts
+			for _, cand := range resp.Candidates {
+				if cand.Content != nil {
+					for _, part := range cand.Content.Parts {
+						if part.Text != "" {
+							if part.Thought {
+								if !yield(provider.StreamEvent{
+									Type:       provider.StreamEventThought,
+									ThoughtLen: len(part.Text),
+								}, nil) {
+									return
+								}
+							} else {
+								if !yield(provider.StreamEvent{
+									Type: provider.StreamEventPlainText,
+									Text: part.Text,
+								}, nil) {
+									return
+								}
+							}
+						}
+						if part.FunctionCall != nil {
+							argsJSON, _ := json.Marshal(part.FunctionCall.Args)
+							if !yield(provider.StreamEvent{
+								Type: provider.StreamEventToolCall,
+								ToolCall: &provider.ToolCall{
+									ID:               resolveFunctionCallID(part.FunctionCall),
+									Name:             part.FunctionCall.Name,
+									Arguments:        string(argsJSON),
+									Thought:          part.Thought,
+									ThoughtSignature: part.ThoughtSignature,
+								},
+							}, nil) {
+								return
+							}
+						}
+					}
+				}
+			}
+
+			if resp.UsageMetadata != nil {
+				lastUsage = &provider.Usage{
+					InputTokens:  int64(resp.UsageMetadata.PromptTokenCount),
+					OutputTokens: int64(resp.UsageMetadata.CandidatesTokenCount),
+					TotalTokens:  int64(resp.UsageMetadata.TotalTokenCount),
+				}
+			}
+		}
+		yield(provider.StreamEvent{Type: provider.StreamEventDone, Usage: lastUsage}, nil)
+	}, nil
+}
+
+func (p *GeminiProvider) buildGenerateContentRequest(params provider.GenerateParams) (string, []*genai.Content, *genai.GenerateContentConfig, error) {
 	// Convert messages to genai.Content
 	var contents []*genai.Content
 	var systemParts []*genai.Part
@@ -135,7 +204,7 @@ func (p *GeminiProvider) Generate(ctx context.Context, params provider.GenerateP
 		for _, t := range params.Tools {
 			schema, err := convertSchema(t.Parameters)
 			if err != nil {
-				return nil, fmt.Errorf("convert tool schema: %w", err)
+				return "", nil, nil, fmt.Errorf("convert tool schema: %w", err)
 			}
 			funcDecls = append(funcDecls, &genai.FunctionDeclaration{
 				Name:        t.Name,
@@ -158,7 +227,7 @@ func (p *GeminiProvider) Generate(ctx context.Context, params provider.GenerateP
 
 	// Safety net: catch obviously wrong models (e.g., "gpt-5.3-codex" routed here).
 	if err := provider.ValidateModelProvider("gemini", model); err != nil {
-		return nil, fmt.Errorf("gemini provider: %w", err)
+		return "", nil, nil, fmt.Errorf("gemini provider: %w", err)
 	}
 
 	temp := float32(params.Temperature)
@@ -185,67 +254,7 @@ func (p *GeminiProvider) Generate(ctx context.Context, params provider.GenerateP
 	// FunctionCall IDs/Names, then strip any FunctionResponse that has no match.
 	contents = dropOrphanedFunctionResponses(contents)
 
-	// Streaming
-	streamIter := p.client.Models.GenerateContentStream(ctx, model, contents, conf)
-
-	return func(yield func(provider.StreamEvent, error) bool) {
-		var lastUsage *provider.Usage
-		for resp, err := range streamIter {
-			if err != nil {
-				yield(provider.StreamEvent{Type: provider.StreamEventError, Error: err}, err)
-				return
-			}
-
-			// Handle response parts
-			for _, cand := range resp.Candidates {
-				if cand.Content != nil {
-					for _, part := range cand.Content.Parts {
-						if part.Text != "" {
-							if part.Thought {
-								if !yield(provider.StreamEvent{
-									Type:       provider.StreamEventThought,
-									ThoughtLen: len(part.Text),
-								}, nil) {
-									return
-								}
-							} else {
-								if !yield(provider.StreamEvent{
-									Type: provider.StreamEventPlainText,
-									Text: part.Text,
-								}, nil) {
-									return
-								}
-							}
-						}
-						if part.FunctionCall != nil {
-							argsJSON, _ := json.Marshal(part.FunctionCall.Args)
-							if !yield(provider.StreamEvent{
-								Type: provider.StreamEventToolCall,
-								ToolCall: &provider.ToolCall{
-									ID:               resolveFunctionCallID(part.FunctionCall),
-									Name:             part.FunctionCall.Name,
-									Arguments:        string(argsJSON),
-									Thought:          part.Thought,
-									ThoughtSignature: part.ThoughtSignature,
-								},
-							}, nil) {
-								return
-							}
-						}
-					}
-				}
-			}
-
-			if resp.UsageMetadata != nil {
-				lastUsage = &provider.Usage{
-					InputTokens:  int64(resp.UsageMetadata.PromptTokenCount),
-					OutputTokens: int64(resp.UsageMetadata.CandidatesTokenCount),
-					TotalTokens:  int64(resp.UsageMetadata.TotalTokenCount),
-				}
-			}
-		}
-		yield(provider.StreamEvent{Type: provider.StreamEventDone, Usage: lastUsage}, nil)
-	}, nil
+	return model, contents, conf, nil
 }
 
 func (p *GeminiProvider) ListModels(ctx context.Context) ([]provider.ModelInfo, error) {
