@@ -2262,3 +2262,212 @@ func TestAppendReceiptEvent_RejectsMissingSubmission(t *testing.T) {
 	err := store.AppendReceiptEvent(ctx, "missing-submission", EventApprovalRequested)
 	require.ErrorIs(t, err, ErrSubmissionReceiptNotFound)
 }
+
+func TestAppendPaymentExecutionEvents_RecordAuthorizedAndDeniedTrail(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+	sub, _ := createSubmittedTransaction(t, store, ctx, "tx-payment-events")
+
+	require.NoError(t, store.AppendPaymentExecutionAuthorized(ctx, sub.SubmissionReceiptID))
+	require.NoError(t, store.AppendPaymentExecutionDenied(ctx, sub.SubmissionReceiptID, "policy denied"))
+
+	_, events, err := store.GetSubmissionReceipt(ctx, sub.SubmissionReceiptID)
+	require.NoError(t, err)
+	require.Len(t, events, 2)
+	assert.Equal(t, ReceiptEvent{
+		SubmissionReceiptID: sub.SubmissionReceiptID,
+		Source:              "payment_execution",
+		Subtype:             "authorized",
+		Type:                EventPaymentExecutionAuthorized,
+	}, events[0])
+	assert.Equal(t, ReceiptEvent{
+		SubmissionReceiptID: sub.SubmissionReceiptID,
+		Source:              "payment_execution",
+		Subtype:             "denied",
+		Reason:              "policy denied",
+		Type:                EventPaymentExecutionDenied,
+	}, events[1])
+}
+
+func TestAppendPaymentExecutionEvents_RejectMissingSubmission(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	err := store.AppendPaymentExecutionAuthorized(ctx, "missing")
+	require.ErrorIs(t, err, ErrSubmissionReceiptNotFound)
+
+	err = store.AppendPaymentExecutionDenied(ctx, "missing", "no receipt")
+	require.ErrorIs(t, err, ErrSubmissionReceiptNotFound)
+}
+
+func TestListTransactionReceipts_ReturnsClonedEscrowExecutionInputs(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+	sub, tx := createSubmittedTransaction(t, store, ctx, "tx-list-clone")
+	input := EscrowExecutionInput{
+		BuyerDID:  "did:lango:buyer",
+		SellerDID: "did:lango:seller",
+		Amount:    "3.00",
+		Reason:    "escrow",
+		Milestones: []EscrowMilestoneInput{
+			{Description: "draft", Amount: "1.00"},
+			{Description: "final", Amount: "2.00"},
+		},
+	}
+	_, err := store.BindEscrowExecutionInput(ctx, tx.TransactionReceiptID, sub.SubmissionReceiptID, input)
+	require.NoError(t, err)
+
+	listed, err := store.ListTransactionReceipts(ctx)
+	require.NoError(t, err)
+	require.Len(t, listed, 1)
+	require.NotNil(t, listed[0].EscrowExecutionInput)
+	listed[0].EscrowExecutionInput.Milestones[0].Description = "mutated"
+
+	stored, err := store.GetTransactionReceipt(ctx, tx.TransactionReceiptID)
+	require.NoError(t, err)
+	require.NotNil(t, stored.EscrowExecutionInput)
+	assert.Equal(t, "draft", stored.EscrowExecutionInput.Milestones[0].Description)
+}
+
+func TestMarkSettlementPartiallySettled_AliasAndSuccessTrail(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+	sub, tx := createSubmittedTransaction(t, store, ctx, "tx-partial-alias")
+	approved, err := store.ApplySettlementProgression(
+		ctx,
+		tx.TransactionReceiptID,
+		SettlementProgressionApprovedForSettlement,
+		SettlementProgressionReasonCodeApprove,
+		"approved",
+		"",
+	)
+	require.NoError(t, err)
+
+	partial, err := store.MarkSettlementPartiallySettled(ctx, SettlementPartialCloseoutRequest{
+		TransactionReceiptID: approved.TransactionReceiptID,
+		SubmissionReceiptID:  sub.SubmissionReceiptID,
+		ExecutedAmount:       "1.00",
+		RemainingAmount:      "2.50",
+		RuntimeReference:     "partial-runtime",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, SettlementProgressionPartiallySettled, partial.SettlementProgressionStatus)
+	assert.Equal(t, SettlementPartiallySettled, partial.CanonicalSettlementStatus)
+	assert.Equal(t, "settle:2.50-usdc", partial.PartialSettlementHint)
+
+	err = store.RecordSettlementPartialSuccess(ctx, SettlementPartialExecutionEvidenceRequest{
+		TransactionReceiptID: partial.TransactionReceiptID,
+		SubmissionReceiptID:  sub.SubmissionReceiptID,
+		RuntimeReference:     "partial-runtime",
+	})
+	require.NoError(t, err)
+
+	_, events, err := store.GetSubmissionReceipt(ctx, sub.SubmissionReceiptID)
+	require.NoError(t, err)
+	require.NotEmpty(t, events)
+	last := events[len(events)-1]
+	assert.Equal(t, "partial_settlement_execution", last.Source)
+	assert.Equal(t, "partially-settled", last.Subtype)
+	assert.Equal(t, "partial-runtime", last.Reason)
+	assert.Equal(t, EventSettlementUpdated, last.Type)
+}
+
+func TestCreateSubmissionReceipt_RejectsEachMissingRequiredField(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+	base := CreateSubmissionInput{
+		TransactionID:       "tx-validation",
+		ArtifactLabel:       "artifact",
+		PayloadHash:         "hash",
+		SourceLineageDigest: "lineage",
+	}
+	tests := []struct {
+		name   string
+		mutate func(*CreateSubmissionInput)
+		want   string
+	}{
+		{
+			name: "missing transaction id",
+			mutate: func(in *CreateSubmissionInput) {
+				in.TransactionID = ""
+			},
+			want: "transaction_id is required",
+		},
+		{
+			name: "missing artifact label",
+			mutate: func(in *CreateSubmissionInput) {
+				in.ArtifactLabel = ""
+			},
+			want: "artifact_label is required",
+		},
+		{
+			name: "missing payload hash",
+			mutate: func(in *CreateSubmissionInput) {
+				in.PayloadHash = ""
+			},
+			want: "payload_hash is required",
+		},
+		{
+			name: "missing source lineage digest",
+			mutate: func(in *CreateSubmissionInput) {
+				in.SourceLineageDigest = ""
+			},
+			want: "source_lineage_digest is required",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			input := base
+			tt.mutate(&input)
+			_, _, err := store.CreateSubmissionReceipt(ctx, input)
+			require.ErrorIs(t, err, ErrInvalidSubmissionInput)
+			assert.Contains(t, err.Error(), tt.want)
+		})
+	}
+}
+
+func TestApplyKnowledgeExchangeRuntimeProgression_CoversLegalTerminalBranches(t *testing.T) {
+	tests := []struct {
+		name     string
+		terminal KnowledgeExchangeRuntimeStatus
+	}{
+		{name: "release approved", terminal: RuntimeStatusReleaseApproved},
+		{name: "escalated", terminal: RuntimeStatusEscalated},
+		{name: "dispute ready", terminal: RuntimeStatusDisputeReady},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store := newTestStore(t)
+			ctx := context.Background()
+			transactionID := "tx-runtime-" + string(tt.terminal)
+			tx, err := store.OpenKnowledgeExchangeTransaction(ctx, OpenTransactionInput{
+				TransactionID:  transactionID,
+				Counterparty:   "did:lango:peer",
+				RequestedScope: "artifact/runtime",
+			})
+			require.NoError(t, err)
+			sub, _ := createSubmittedTransaction(t, store, ctx, transactionID)
+
+			for _, next := range []KnowledgeExchangeRuntimeStatus{
+				RuntimeStatusExportabilityAdvisory,
+				RuntimeStatusPaymentApproved,
+				RuntimeStatusPaymentAuthorized,
+				RuntimeStatusWorkStarted,
+				RuntimeStatusSubmissionReceived,
+				tt.terminal,
+			} {
+				submissionID := ""
+				if next == RuntimeStatusSubmissionReceived {
+					submissionID = sub.SubmissionReceiptID
+				}
+				tx, err = store.ApplyKnowledgeExchangeRuntimeProgression(ctx, tx.TransactionReceiptID, next, submissionID)
+				require.NoError(t, err)
+			}
+
+			assert.Equal(t, tt.terminal, tx.KnowledgeExchangeRuntimeStatus)
+			assert.Equal(t, sub.SubmissionReceiptID, tx.CurrentSubmissionReceiptID)
+		})
+	}
+}

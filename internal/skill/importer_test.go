@@ -4,12 +4,19 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -78,6 +85,18 @@ func TestParseGitHubURL(t *testing.T) {
 			assert.Equal(t, tt.wantPath, ref.Path)
 		})
 	}
+}
+
+func TestParseGitHubURL_BlobPathAndTrailingSlash(t *testing.T) {
+	t.Parallel()
+
+	ref, err := ParseGitHubURL("http://github.com/acme/tools/blob/release/skills/importer/")
+	require.NoError(t, err)
+
+	assert.Equal(t, "acme", ref.Owner)
+	assert.Equal(t, "tools", ref.Repo)
+	assert.Equal(t, "release", ref.Branch)
+	assert.Equal(t, "skills/importer", ref.Path)
 }
 
 func TestIsGitHubURL(t *testing.T) {
@@ -194,6 +213,91 @@ Use Obsidian-flavored markdown for notes.`
 	assert.Equal(t, "base64", file.Encoding)
 }
 
+func TestFetchSkillMD_DecodesGitHubContentsResponse(t *testing.T) {
+	t.Parallel()
+
+	const skillContent = `---
+name: decoded-skill
+description: Decoded from GitHub contents
+type: instruction
+---
+
+Use decoded content.`
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/repos/owner/repo/contents/catalog/decoded/SKILL.md", r.URL.Path)
+		assert.Equal(t, "feature", r.URL.Query().Get("ref"))
+		assert.Equal(t, "application/vnd.github.v3+json", r.Header.Get("Accept"))
+		assert.Equal(t, "lango-skill-importer", r.Header.Get("User-Agent"))
+
+		encoded := base64.StdEncoding.EncodeToString([]byte(skillContent))
+		withLineBreaks := encoded[:12] + "\n" + encoded[12:]
+		require.NoError(t, json.NewEncoder(w).Encode(gitHubFileResponse{
+			Content:  withLineBreaks,
+			Encoding: "base64",
+		}))
+	}))
+	defer server.Close()
+
+	im := NewImporterWithClient(gitHubAPIClient(t, server.URL), zap.NewNop().Sugar())
+	ref := &GitHubRef{Owner: "owner", Repo: "repo", Branch: "feature", Path: "catalog"}
+
+	got, err := im.FetchSkillMD(context.Background(), ref, "decoded")
+	require.NoError(t, err)
+	assert.Equal(t, skillContent, string(got))
+}
+
+func TestFetchSkillMD_RejectsUnexpectedEncodingAndInvalidBase64(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		response   gitHubFileResponse
+		wantErr    string
+		wantStatus int
+	}{
+		{
+			name:       "unexpected encoding",
+			response:   gitHubFileResponse{Content: "plain", Encoding: "utf-8"},
+			wantErr:    `unexpected encoding "utf-8"`,
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "invalid base64",
+			response:   gitHubFileResponse{Content: "not base64 !", Encoding: "base64"},
+			wantErr:    "decode base64 content",
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "http error",
+			wantErr:    "HTTP 503",
+			wantStatus: http.StatusServiceUnavailable,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if tt.wantStatus != http.StatusOK {
+					http.Error(w, "unavailable", tt.wantStatus)
+					return
+				}
+				require.NoError(t, json.NewEncoder(w).Encode(tt.response))
+			}))
+			defer server.Close()
+
+			im := NewImporterWithClient(gitHubAPIClient(t, server.URL), zap.NewNop().Sugar())
+			ref := &GitHubRef{Owner: "owner", Repo: "repo", Branch: "main"}
+
+			_, err := im.FetchSkillMD(context.Background(), ref, "broken")
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.wantErr)
+		})
+	}
+}
+
 func TestFetchFromURL(t *testing.T) {
 	t.Parallel()
 
@@ -224,6 +328,56 @@ Some reference content here.`
 	assert.Equal(t, SkillTypeInstruction, entry.Type)
 	content, _ := entry.Definition["content"].(string)
 	assert.Equal(t, "Some reference content here.", content)
+}
+
+func TestFetchFromURL_HTTPErrorAndBodyReadFailure(t *testing.T) {
+	t.Parallel()
+
+	t.Run("non-success status", func(t *testing.T) {
+		t.Parallel()
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.Error(w, "nope", http.StatusTeapot)
+		}))
+		defer server.Close()
+
+		im := NewImporterWithClient(server.Client(), zap.NewNop().Sugar())
+		_, err := im.FetchFromURL(context.Background(), server.URL+"/SKILL.md")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "HTTP 418")
+	})
+
+	t.Run("body read failure", func(t *testing.T) {
+		t.Parallel()
+
+		im := NewImporterWithClient(&http.Client{
+			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       errReadCloser{err: errors.New("read boom")},
+					Header:     make(http.Header),
+					Request:    req,
+				}, nil
+			}),
+		}, zap.NewNop().Sugar())
+
+		_, err := im.FetchFromURL(context.Background(), "https://example.test/SKILL.md")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "read response body")
+	})
+}
+
+func TestImportSingle_ValidatesSkillBeforeSaving(t *testing.T) {
+	t.Parallel()
+
+	store := newRecordingSkillStore()
+	im := NewImporterWithClient(http.DefaultClient, zap.NewNop().Sugar())
+
+	entry, err := im.ImportSingle(context.Background(), []byte("not front matter"), "https://example.test", store)
+	require.Error(t, err)
+	assert.Nil(t, entry)
+	assert.Contains(t, err.Error(), "parse SKILL.md")
+	assert.Empty(t, store.savedNames())
 }
 
 func TestHasGit(t *testing.T) {
@@ -291,6 +445,213 @@ func TestCopyResourceDirs_NoResources(t *testing.T) {
 		_, err := os.Stat(path)
 		assert.True(t, os.IsNotExist(err), "unexpected resource dir %s exists", d)
 	}
+}
+
+func TestCopyResourceDirs_CopiesOnlyTopLevelFilesFromConventionalDirs(t *testing.T) {
+	t.Parallel()
+
+	store := newRecordingSkillStore()
+	srcDir := t.TempDir()
+
+	for _, dir := range resourceDirs {
+		require.NoError(t, os.MkdirAll(filepath.Join(srcDir, dir, "nested"), 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(srcDir, dir, "keep.txt"), []byte(dir+" data"), 0o644))
+		require.NoError(t, os.WriteFile(filepath.Join(srcDir, dir, "nested", "skip.txt"), []byte("skip"), 0o644))
+	}
+
+	copyResourceDirs(context.Background(), srcDir, "resource-skill", store)
+
+	got := store.savedResources()
+	assert.Equal(t, map[string]string{
+		"resource-skill/assets/keep.txt":     "assets data",
+		"resource-skill/references/keep.txt": "references data",
+		"resource-skill/scripts/keep.txt":    "scripts data",
+	}, got)
+}
+
+func TestImportViaHTTP_MaxSkillsValidationAndResources(t *testing.T) {
+	t.Parallel()
+
+	const firstSkill = `---
+name: first-skill
+description: First imported skill
+type: instruction
+---
+
+First body.`
+
+	const invalidSkill = `---
+description: Missing required name
+type: instruction
+---
+
+Invalid body.`
+
+	requestedPaths := make(chan string, 16)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestedPaths <- r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+
+		switch r.URL.Path {
+		case "/repos/owner/repo/contents/catalog":
+			require.NoError(t, json.NewEncoder(w).Encode([]gitHubContentsEntry{
+				{Name: "first", Type: "dir", Path: "catalog/first"},
+				{Name: "invalid", Type: "dir", Path: "catalog/invalid"},
+				{Name: "over-limit", Type: "dir", Path: "catalog/over-limit"},
+				{Name: "README.md", Type: "file", Path: "catalog/README.md"},
+			}))
+		case "/repos/owner/repo/contents/catalog/first/SKILL.md":
+			writeGitHubFile(t, w, firstSkill)
+		case "/repos/owner/repo/contents/catalog/invalid/SKILL.md":
+			writeGitHubFile(t, w, invalidSkill)
+		case "/repos/owner/repo/contents/catalog/first/scripts":
+			require.NoError(t, json.NewEncoder(w).Encode([]gitHubContentsEntry{
+				{Name: "install.sh", Type: "file", Path: "catalog/first/scripts/install.sh"},
+				{Name: "nested", Type: "dir", Path: "catalog/first/scripts/nested"},
+			}))
+		case "/repos/owner/repo/contents/catalog/first/references":
+			http.NotFound(w, r)
+		case "/repos/owner/repo/contents/catalog/first/assets":
+			require.NoError(t, json.NewEncoder(w).Encode([]gitHubContentsEntry{
+				{Name: "logo.txt", Type: "file", Path: "catalog/first/assets/logo.txt"},
+			}))
+		case "/repos/owner/repo/contents/catalog/first/scripts/install.sh":
+			writeGitHubFile(t, w, "echo install")
+		case "/repos/owner/repo/contents/catalog/first/assets/logo.txt":
+			writeGitHubFile(t, w, "logo")
+		case "/repos/owner/repo/contents/catalog/invalid/scripts",
+			"/repos/owner/repo/contents/catalog/invalid/references",
+			"/repos/owner/repo/contents/catalog/invalid/assets":
+			t.Fatalf("resources should not be fetched for invalid skills: %s", r.URL.Path)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	im := NewImporterWithClient(gitHubAPIClient(t, server.URL), zap.NewNop().Sugar())
+	store := newRecordingSkillStore()
+	ref := &GitHubRef{Owner: "owner", Repo: "repo", Branch: "main", Path: "catalog"}
+
+	result, err := im.importViaHTTP(context.Background(), ref, store, ImportConfig{
+		MaxSkills:   2,
+		Concurrency: 1,
+	})
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"first-skill"}, result.Imported)
+	assert.Empty(t, result.Skipped)
+	require.Len(t, result.Errors, 1)
+	assert.Contains(t, result.Errors[0], "invalid: parse:")
+	assert.Equal(t, []string{"first-skill"}, store.savedNames())
+	assert.Equal(t, map[string]string{
+		"first-skill/assets/logo.txt":    "logo",
+		"first-skill/scripts/install.sh": "echo install",
+	}, store.savedResources())
+
+	close(requestedPaths)
+	var paths []string
+	for path := range requestedPaths {
+		paths = append(paths, path)
+	}
+	assert.NotContains(t, paths, "/repos/owner/repo/contents/catalog/over-limit/SKILL.md")
+}
+
+func TestImportViaHTTP_RespectsConcurrencyLimitAndSkipsExisting(t *testing.T) {
+	t.Parallel()
+
+	const skillBodyTemplate = `---
+name: %s
+description: Imported skill
+type: instruction
+---
+
+Body.`
+
+	var active int32
+	var maxActive int32
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		switch r.URL.Path {
+		case "/repos/owner/repo/contents/":
+			require.NoError(t, json.NewEncoder(w).Encode([]gitHubContentsEntry{
+				{Name: "one", Type: "dir"},
+				{Name: "two", Type: "dir"},
+				{Name: "existing-dir", Type: "dir"},
+				{Name: "three", Type: "dir"},
+			}))
+		case "/repos/owner/repo/contents/one/SKILL.md",
+			"/repos/owner/repo/contents/two/SKILL.md",
+			"/repos/owner/repo/contents/existing-dir/SKILL.md",
+			"/repos/owner/repo/contents/three/SKILL.md":
+			now := atomic.AddInt32(&active, 1)
+			updateMaxActive(&maxActive, now)
+			<-release
+			defer atomic.AddInt32(&active, -1)
+
+			name := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/repos/owner/repo/contents/"), "/SKILL.md")
+			if name == "existing-dir" {
+				name = "already-installed"
+			}
+			writeGitHubFile(t, w, fmt.Sprintf(skillBodyTemplate, name))
+		case "/repos/owner/repo/contents/one/scripts",
+			"/repos/owner/repo/contents/one/references",
+			"/repos/owner/repo/contents/one/assets",
+			"/repos/owner/repo/contents/two/scripts",
+			"/repos/owner/repo/contents/two/references",
+			"/repos/owner/repo/contents/two/assets",
+			"/repos/owner/repo/contents/three/scripts",
+			"/repos/owner/repo/contents/three/references",
+			"/repos/owner/repo/contents/three/assets":
+			http.NotFound(w, r)
+		case "/repos/owner/repo/contents/existing-dir/scripts",
+			"/repos/owner/repo/contents/existing-dir/references",
+			"/repos/owner/repo/contents/existing-dir/assets":
+			t.Fatalf("resources should not be fetched for existing skills: %s", r.URL.Path)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	done := make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(5 * time.Millisecond)
+		timeout := time.NewTimer(2 * time.Second)
+		defer ticker.Stop()
+		defer timeout.Stop()
+		defer close(done)
+
+		for {
+			select {
+			case <-ticker.C:
+				if atomic.LoadInt32(&active) > 0 {
+					close(release)
+					return
+				}
+			case <-timeout.C:
+				close(release)
+				return
+			}
+		}
+	}()
+
+	im := NewImporterWithClient(gitHubAPIClient(t, server.URL), zap.NewNop().Sugar())
+	store := newRecordingSkillStore()
+	store.existing["already-installed"] = &SkillEntry{Name: "already-installed"}
+	ref := &GitHubRef{Owner: "owner", Repo: "repo", Branch: "main"}
+
+	result, err := im.importViaHTTP(context.Background(), ref, store, ImportConfig{Concurrency: 2})
+	require.NoError(t, err)
+	<-done
+
+	assert.LessOrEqual(t, atomic.LoadInt32(&maxActive), int32(2))
+	assert.ElementsMatch(t, []string{"one", "two", "three"}, result.Imported)
+	assert.Equal(t, []string{"already-installed"}, result.Skipped)
+	assert.Empty(t, result.Errors)
+	assert.ElementsMatch(t, []string{"one", "two", "three"}, store.savedNames())
 }
 
 func TestImportViaGit_LocalCloneSimulation(t *testing.T) {
@@ -416,4 +777,171 @@ Content for skill two.`
 	active, err := store.ListActive(ctx)
 	require.NoError(t, err)
 	assert.Len(t, active, 2)
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (fn roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return fn(req)
+}
+
+type errReadCloser struct {
+	err error
+}
+
+func (r errReadCloser) Read([]byte) (int, error) {
+	return 0, r.err
+}
+
+func (r errReadCloser) Close() error {
+	return nil
+}
+
+func gitHubAPIClient(t *testing.T, serverURL string) *http.Client {
+	t.Helper()
+
+	baseURL, err := url.Parse(serverURL)
+	require.NoError(t, err)
+
+	return &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			cloned := req.Clone(req.Context())
+			rewritten := *req.URL
+			rewritten.Scheme = baseURL.Scheme
+			rewritten.Host = baseURL.Host
+			cloned.URL = &rewritten
+			cloned.Host = baseURL.Host
+			return http.DefaultTransport.RoundTrip(cloned)
+		}),
+	}
+}
+
+func writeGitHubFile(t *testing.T, w http.ResponseWriter, content string) {
+	t.Helper()
+
+	encoded := base64.StdEncoding.EncodeToString([]byte(content))
+	require.NoError(t, json.NewEncoder(w).Encode(gitHubFileResponse{
+		Content:  encoded,
+		Encoding: "base64",
+	}))
+}
+
+type recordingSkillStore struct {
+	mu        sync.Mutex
+	existing  map[string]*SkillEntry
+	saved     map[string]SkillEntry
+	resources map[string][]byte
+}
+
+func newRecordingSkillStore() *recordingSkillStore {
+	return &recordingSkillStore{
+		existing:  make(map[string]*SkillEntry),
+		saved:     make(map[string]SkillEntry),
+		resources: make(map[string][]byte),
+	}
+}
+
+func (s *recordingSkillStore) Save(ctx context.Context, entry SkillEntry) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.saved[entry.Name] = entry
+	return nil
+}
+
+func (s *recordingSkillStore) Get(ctx context.Context, name string) (*SkillEntry, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if entry, ok := s.existing[name]; ok {
+		copied := *entry
+		return &copied, nil
+	}
+	if entry, ok := s.saved[name]; ok {
+		copied := entry
+		return &copied, nil
+	}
+	return nil, nil
+}
+
+func (s *recordingSkillStore) ListActive(ctx context.Context) ([]SkillEntry, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	entries := make([]SkillEntry, 0, len(s.saved)+len(s.existing))
+	for _, entry := range s.existing {
+		entries = append(entries, *entry)
+	}
+	for _, entry := range s.saved {
+		entries = append(entries, entry)
+	}
+	return entries, nil
+}
+
+func (s *recordingSkillStore) Activate(ctx context.Context, name string) error {
+	return ctx.Err()
+}
+
+func (s *recordingSkillStore) Delete(ctx context.Context, name string) error {
+	return ctx.Err()
+}
+
+func (s *recordingSkillStore) SaveResource(ctx context.Context, skillName, relPath string, data []byte) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	key := filepath.Join(skillName, relPath)
+	s.resources[key] = append([]byte(nil), data...)
+	return nil
+}
+
+func (s *recordingSkillStore) savedNames() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	names := make([]string, 0, len(s.saved))
+	for name := range s.saved {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+func (s *recordingSkillStore) savedResources() map[string]string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	resources := make(map[string]string, len(s.resources))
+	for path, data := range s.resources {
+		resources[filepath.ToSlash(path)] = string(data)
+	}
+	return resources
+}
+
+func updateMaxActive(maxActive *int32, value int32) {
+	for {
+		current := atomic.LoadInt32(maxActive)
+		if value <= current {
+			return
+		}
+		if atomic.CompareAndSwapInt32(maxActive, current, value) {
+			return
+		}
+	}
 }

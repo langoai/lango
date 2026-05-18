@@ -52,10 +52,10 @@
 
 ## 8. Coverage Wave: High-Impact Service Boundaries
 
-- [ ] 8.1 Add focused tests for remaining `internal/storagebroker/server.go` dispatch, payload protection, and error paths
-- [ ] 8.2 Add focused tests for remaining `internal/skill/importer.go` import validation, filesystem, and failure paths
-- [ ] 8.3 Add focused tests for remaining `internal/receipts/store.go` receipt lifecycle and query boundaries
-- [ ] 8.4 Commit the wave separately
+- [x] 8.1 Add focused tests for remaining `internal/storagebroker/server.go` dispatch, payload protection, and error paths
+- [x] 8.2 Add focused tests for remaining `internal/skill/importer.go` import validation, filesystem, and failure paths
+- [x] 8.3 Add focused tests for remaining `internal/receipts/store.go` receipt lifecycle and query boundaries
+- [x] 8.4 Commit the wave separately
 
 ## 9. Coverage Wave: App And CLI Execution Surfaces
 
