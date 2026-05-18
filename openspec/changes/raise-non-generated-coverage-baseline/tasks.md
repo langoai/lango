@@ -124,7 +124,7 @@
 - [x] 17.2 Add focused tests for deterministic `internal/knowledge/store.go` search, FTS5, payload-protection, deletion, and learning branches
 - [x] 17.3 Add focused tests for deterministic `cmd/lango/main.go`, `internal/cli/chat/chat.go`, and `internal/adk` option/helper branches
 - [x] 17.4 Run subagent-driven review checkpoints for the wave
-- [ ] 17.5 Commit the wave separately
+- [x] 17.5 Commit the wave separately
 
 ## 18. Verification And Enforcement
 
