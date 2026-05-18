@@ -176,11 +176,11 @@
 
 ## 24. Coverage Wave: App Meta, Module Initialization, P2P Wiring, And CLI Entrypoints
 
-- [ ] 24.1 Add focused tests for deterministic `internal/app/tools_meta.go` meta-tool composition, dependency-disabled, and handler edge branches without live network services
-- [ ] 24.2 Add focused tests for deterministic `internal/app/modules.go` module initialization, catalog, status, and disabled-dependency branches without live providers
-- [ ] 24.3 Add focused tests for deterministic `internal/app/wiring_p2p.go`, `internal/app/wiring.go`, and `cmd/lango/main.go` startup and wiring helper branches without binding external services
-- [ ] 24.4 Run subagent-driven review checkpoints for the wave
-- [ ] 24.5 Commit the wave separately
+- [x] 24.1 Add focused tests for deterministic `internal/app/tools_meta.go` meta-tool composition, dependency-disabled, and handler edge branches without live network services
+- [x] 24.2 Add focused tests for deterministic `internal/app/modules.go` module initialization, catalog, status, and disabled-dependency branches without live providers
+- [x] 24.3 Add focused tests for deterministic `internal/app/wiring_p2p.go`, `internal/app/wiring.go`, and `cmd/lango/main.go` startup and wiring helper branches without binding external services
+- [x] 24.4 Run subagent-driven review checkpoints for the wave
+- [x] 24.5 Commit the wave separately
 
 ## 25. Verification And Enforcement
 
