@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/langoai/lango/internal/agent"
+	"github.com/langoai/lango/internal/ctxkeys"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -316,6 +317,163 @@ func TestReadWithMeta(t *testing.T) {
 			assert.Equal(t, tt.wantLimit, result.Limit)
 			assert.Greater(t, result.Size, int64(0))
 		})
+	}
+}
+
+func TestExistsReturnsTrueFalseAndValidationErrors(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	allowedDir := filepath.Join(tmpDir, "allowed")
+	blockedDir := filepath.Join(allowedDir, "blocked")
+	require.NoError(t, os.MkdirAll(blockedDir, 0755))
+	existingFile := filepath.Join(allowedDir, "exists.txt")
+	require.NoError(t, os.WriteFile(existingFile, []byte("present"), 0644))
+	blockedFile := filepath.Join(blockedDir, "secret.txt")
+	require.NoError(t, os.WriteFile(blockedFile, []byte("secret"), 0644))
+
+	tool := New(Config{
+		AllowedPaths: []string{allowedDir},
+		BlockedPaths: []string{blockedDir},
+	})
+
+	exists, err := tool.Exists(existingFile)
+	require.NoError(t, err)
+	assert.True(t, exists)
+
+	exists, err = tool.Exists(filepath.Join(allowedDir, "missing.txt"))
+	require.NoError(t, err)
+	assert.False(t, exists)
+
+	exists, err = tool.Exists(blockedFile)
+	require.Error(t, err)
+	assert.False(t, exists)
+	assert.ErrorContains(t, err, "access denied: protected path")
+}
+
+func TestMkdirCreatesAllowedPathAndRejectsBlockedPath(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	allowedDir := filepath.Join(tmpDir, "allowed")
+	blockedDir := filepath.Join(allowedDir, "blocked")
+	require.NoError(t, os.MkdirAll(allowedDir, 0755))
+
+	tool := New(Config{
+		AllowedPaths: []string{allowedDir},
+		BlockedPaths: []string{blockedDir},
+	})
+
+	createdDir := filepath.Join(allowedDir, "nested", "leaf")
+	require.NoError(t, tool.Mkdir(createdDir))
+	info, err := os.Stat(createdDir)
+	require.NoError(t, err)
+	assert.True(t, info.IsDir())
+
+	err = tool.Mkdir(filepath.Join(blockedDir, "secret"))
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "access denied: protected path")
+	assert.NoDirExists(t, blockedDir)
+}
+
+func TestCopyCopiesAllowedFileAndRejectsMissingOrBlockedPaths(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	allowedDir := filepath.Join(tmpDir, "allowed")
+	blockedDir := filepath.Join(allowedDir, "blocked")
+	require.NoError(t, os.MkdirAll(allowedDir, 0755))
+	require.NoError(t, os.MkdirAll(blockedDir, 0755))
+	srcFile := filepath.Join(allowedDir, "src.txt")
+	require.NoError(t, os.WriteFile(srcFile, []byte("copy me"), 0644))
+
+	tool := New(Config{
+		AllowedPaths: []string{allowedDir},
+		BlockedPaths: []string{blockedDir},
+	})
+
+	dstFile := filepath.Join(allowedDir, "nested", "dst.txt")
+	require.NoError(t, tool.Copy(srcFile, dstFile))
+	got, err := os.ReadFile(dstFile)
+	require.NoError(t, err)
+	assert.Equal(t, "copy me", string(got))
+
+	err = tool.Copy(filepath.Join(allowedDir, "missing.txt"), filepath.Join(allowedDir, "missing-dst.txt"))
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "open source")
+
+	err = tool.Copy(srcFile, filepath.Join(blockedDir, "dst.txt"))
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "access denied: protected path")
+}
+
+func TestDeleteHandlesLocalRecursiveP2PRestrictedAndSymlinkRemoval(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	allowedDir := filepath.Join(tmpDir, "allowed")
+	require.NoError(t, os.MkdirAll(allowedDir, 0755))
+	tool := New(Config{AllowedPaths: []string{allowedDir}})
+
+	localDir := filepath.Join(allowedDir, "local-dir")
+	require.NoError(t, os.MkdirAll(localDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(localDir, "child.txt"), []byte("child"), 0644))
+	require.NoError(t, tool.Delete(context.Background(), localDir))
+	assert.NoDirExists(t, localDir)
+
+	p2pDir := filepath.Join(allowedDir, "p2p-dir")
+	p2pChild := filepath.Join(p2pDir, "child.txt")
+	require.NoError(t, os.MkdirAll(p2pDir, 0755))
+	require.NoError(t, os.WriteFile(p2pChild, []byte("child"), 0644))
+	err := tool.Delete(ctxkeys.WithP2PRequest(context.Background()), p2pDir)
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "delete (p2p restricted)")
+	assert.FileExists(t, p2pChild)
+
+	targetFile := filepath.Join(allowedDir, "target.txt")
+	linkPath := filepath.Join(allowedDir, "target-link.txt")
+	require.NoError(t, os.WriteFile(targetFile, []byte("target"), 0644))
+	requireSymlink(t, targetFile, linkPath)
+	require.NoError(t, tool.Delete(context.Background(), linkPath))
+	assert.NoFileExists(t, linkPath)
+	assert.FileExists(t, targetFile)
+}
+
+func TestPathAccessAllowsSymlinkInsideAllowedAndBlocksSymlinkEscape(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	allowedDir := filepath.Join(tmpDir, "allowed")
+	outsideDir := filepath.Join(tmpDir, "outside")
+	require.NoError(t, os.MkdirAll(allowedDir, 0755))
+	require.NoError(t, os.MkdirAll(outsideDir, 0755))
+
+	insideTarget := filepath.Join(allowedDir, "inside.txt")
+	insideLink := filepath.Join(allowedDir, "inside-link.txt")
+	require.NoError(t, os.WriteFile(insideTarget, []byte("inside"), 0644))
+	requireSymlink(t, insideTarget, insideLink)
+
+	outsideTarget := filepath.Join(outsideDir, "outside.txt")
+	escapeLink := filepath.Join(allowedDir, "escape-link.txt")
+	require.NoError(t, os.WriteFile(outsideTarget, []byte("outside"), 0644))
+	requireSymlink(t, outsideTarget, escapeLink)
+
+	tool := New(Config{AllowedPaths: []string{allowedDir}})
+
+	got, err := tool.Read(insideLink)
+	require.NoError(t, err)
+	assert.Equal(t, "inside", got)
+
+	_, err = tool.Read(escapeLink)
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "path not allowed")
+}
+
+func requireSymlink(t *testing.T, target, link string) {
+	t.Helper()
+
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlink not supported or permitted in this environment: %v", err)
 	}
 }
 

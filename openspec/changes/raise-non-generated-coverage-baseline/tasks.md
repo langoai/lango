@@ -86,13 +86,20 @@
 - [x] 12.4 Add focused tests for app Smart Account tools and wiring helper branches
 - [x] 12.5 Commit the wave separately
 
-## 13. Verification And Enforcement
+## 13. Coverage Wave: Filesystem, Test Utilities, And Knowledge Branches
 
-- [ ] 13.1 Run `go build ./...`
-- [ ] 13.2 Run `go test ./...`
-- [ ] 13.3 Run the non-generated coverage report and confirm coverage is at least 90%
-- [ ] 13.4 Run the executable 90% coverage gate and confirm it passes
-- [ ] 13.5 Run `git diff --check`
-- [ ] 13.6 Run subagent-driven spec and code-quality review checkpoints
-- [ ] 13.7 Run `openspec validate --all --strict`
-- [ ] 13.8 Archive the completed OpenSpec change
+- [x] 13.1 Add focused tests for `internal/tools/filesystem/filesystem.go` delete, exists, mkdir, copy, and path access branches
+- [x] 13.2 Add focused tests for `internal/testutil/mock_session_store.go` CRUD, salt, end, counters, copy semantics, and error injection
+- [x] 13.3 Add focused tests for `internal/knowledge/store.go` FTS5 result resolution, learning lookup branches, and low-risk search paths
+- [x] 13.4 Commit the wave separately
+
+## 14. Verification And Enforcement
+
+- [ ] 14.1 Run `go build ./...`
+- [ ] 14.2 Run `go test ./...`
+- [ ] 14.3 Run the non-generated coverage report and confirm coverage is at least 90%
+- [ ] 14.4 Run the executable 90% coverage gate and confirm it passes
+- [ ] 14.5 Run `git diff --check`
+- [ ] 14.6 Run subagent-driven spec and code-quality review checkpoints
+- [ ] 14.7 Run `openspec validate --all --strict`
+- [ ] 14.8 Archive the completed OpenSpec change
