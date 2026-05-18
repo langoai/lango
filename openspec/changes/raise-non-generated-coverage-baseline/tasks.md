@@ -168,11 +168,11 @@
 
 ## 23. Coverage Wave: Escrow Tools, Economy Wiring, And Chat Approval Branches
 
-- [ ] 23.1 Add focused tests for deterministic `internal/app/tools_escrow.go` escrow tool handler success, validation, and error branches without live chain calls
-- [ ] 23.2 Add focused tests for deterministic `internal/app/wiring_economy.go`, `internal/app/wiring.go`, and related app wiring helper branches without live providers or network services
-- [ ] 23.3 Add focused tests for deterministic `internal/cli/chat/chat.go` approval/key handling, pending state, and submission guard branches without launching the TUI program
-- [ ] 23.4 Run subagent-driven review checkpoints for the wave
-- [ ] 23.5 Commit the wave separately
+- [x] 23.1 Add focused tests for deterministic `internal/app/tools_escrow.go` escrow tool handler success, validation, and error branches without live chain calls
+- [x] 23.2 Add focused tests for deterministic `internal/app/wiring_economy.go`, `internal/app/wiring.go`, and related app wiring helper branches without live providers or network services
+- [x] 23.3 Add focused tests for deterministic `internal/cli/chat/chat.go` approval/key handling, pending state, and submission guard branches without launching the TUI program
+- [x] 23.4 Run subagent-driven review checkpoints for the wave
+- [x] 23.5 Commit the wave separately
 
 ## 24. Verification And Enforcement
 
