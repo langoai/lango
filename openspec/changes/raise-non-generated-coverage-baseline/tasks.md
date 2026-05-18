@@ -210,12 +210,12 @@
 
 ## 28. Coverage Wave: Gateway, P2P Protocol, Gemini Provider, And Remaining App Entrypoints
 
-- [ ] 28.1 Add focused tests for deterministic `internal/gateway/server.go` response handlers, callbacks, router setup, and connection lifecycle branches without binding real listeners
-- [ ] 28.2 Add focused tests for deterministic `internal/p2p/protocol/remote_agent.go` request/response, timeout, encoding, and error branches with fake streams/hosts only
-- [ ] 28.3 Add focused tests for deterministic `internal/provider/gemini/gemini.go` provider identity, schema conversion, request assembly, model listing, and error branches without live Gemini calls
-- [ ] 28.4 Add focused tests for deterministic `internal/app/tools_p2p.go`, `internal/app/wiring.go`, `internal/app/wiring_p2p.go`, and `cmd/lango/main.go` helper branches without starting P2P services or interactive loops
-- [ ] 28.5 Run subagent-driven review checkpoints for the wave
-- [ ] 28.6 Commit the wave separately
+- [x] 28.1 Add focused tests for deterministic `internal/gateway/server.go` response handlers, callbacks, router setup, and connection lifecycle branches without binding real listeners
+- [x] 28.2 Add focused tests for deterministic `internal/p2p/protocol/remote_agent.go` request/response, timeout, encoding, and error branches with fake streams/hosts only
+- [x] 28.3 Add focused tests for deterministic `internal/provider/gemini/gemini.go` provider identity, schema conversion, request assembly, model listing, and error branches without live Gemini calls
+- [x] 28.4 Add focused tests for deterministic `internal/app/tools_p2p.go`, `internal/app/wiring.go`, `internal/app/wiring_p2p.go`, and `cmd/lango/main.go` helper branches without starting P2P services or interactive loops
+- [x] 28.5 Run subagent-driven review checkpoints for the wave
+- [x] 28.6 Commit the wave separately
 
 ## 29. Verification And Enforcement
 
