@@ -59,10 +59,10 @@
 
 ## 9. Coverage Wave: App And CLI Execution Surfaces
 
-- [ ] 9.1 Add focused tests for remaining `internal/app/app.go`, `internal/app/modules.go`, and app wiring branches
-- [ ] 9.2 Add focused tests for `cmd/lango/main.go` command routing and error exits through seams
-- [ ] 9.3 Add focused tests for `internal/cli/chat/chat.go`, `internal/cli/settings/editor.go`, `internal/cli/sandbox/sandbox.go`, and `internal/cli/onboard/wizard.go`
-- [ ] 9.4 Commit the wave separately
+- [x] 9.1 Add focused tests for remaining `internal/app/app.go`, `internal/app/modules.go`, and app wiring branches
+- [x] 9.2 Add focused tests for `cmd/lango/main.go` command routing and error exits through seams
+- [x] 9.3 Add focused tests for `internal/cli/chat/chat.go`, `internal/cli/settings/editor.go`, `internal/cli/sandbox/sandbox.go`, and `internal/cli/onboard/wizard.go`
+- [x] 9.4 Commit the wave separately
 
 ## 10. Coverage Wave: Remaining P2P And Payment Surfaces
 
