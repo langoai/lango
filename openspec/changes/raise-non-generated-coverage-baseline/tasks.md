@@ -193,11 +193,11 @@
 
 ## 26. Coverage Wave: Mission Projector, Ontology Service, And App/Main Helper Branches
 
-- [ ] 26.1 Add focused tests for deterministic `internal/cli/cockpit/missioncontrol_projector.go` projection helper, status mapping, summary, and enrichment branches without launching the TUI
-- [ ] 26.2 Add focused tests for deterministic `internal/ontology/service.go` action executor, schema health, type usage, permission, and delegation error branches without external services
-- [ ] 26.3 Add focused tests for deterministic `internal/app` and `cmd/lango/main.go` helper branches that remain high-uncovered without binding listeners or launching interactive loops
-- [ ] 26.4 Run subagent-driven review checkpoints for the wave
-- [ ] 26.5 Commit the wave separately
+- [x] 26.1 Add focused tests for deterministic `internal/cli/cockpit/missioncontrol_projector.go` projection helper, status mapping, summary, and enrichment branches without launching the TUI
+- [x] 26.2 Add focused tests for deterministic `internal/ontology/service.go` action executor, schema health, type usage, permission, and delegation error branches without external services
+- [x] 26.3 Add focused tests for deterministic `internal/app` and `cmd/lango/main.go` helper branches that remain high-uncovered without binding listeners or launching interactive loops
+- [x] 26.4 Run subagent-driven review checkpoints for the wave
+- [x] 26.5 Commit the wave separately
 
 ## 27. Verification And Enforcement
 
