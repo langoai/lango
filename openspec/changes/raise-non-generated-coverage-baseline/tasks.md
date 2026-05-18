@@ -191,13 +191,21 @@
 - [x] 25.5 Run subagent-driven review checkpoints for the wave
 - [x] 25.6 Commit the wave separately
 
-## 26. Verification And Enforcement
+## 26. Coverage Wave: Mission Projector, Ontology Service, And App/Main Helper Branches
 
-- [x] 26.1 Run `go build ./...`
-- [x] 26.2 Run `go test ./...`
-- [ ] 26.3 Run the non-generated coverage report and confirm coverage is at least 90%
-- [ ] 26.4 Run the executable 90% coverage gate and confirm it passes
-- [x] 26.5 Run `git diff --check`
-- [x] 26.6 Run subagent-driven spec and code-quality review checkpoints
-- [x] 26.7 Run `openspec validate --all --strict`
-- [ ] 26.8 Archive the completed OpenSpec change
+- [ ] 26.1 Add focused tests for deterministic `internal/cli/cockpit/missioncontrol_projector.go` projection helper, status mapping, summary, and enrichment branches without launching the TUI
+- [ ] 26.2 Add focused tests for deterministic `internal/ontology/service.go` action executor, schema health, type usage, permission, and delegation error branches without external services
+- [ ] 26.3 Add focused tests for deterministic `internal/app` and `cmd/lango/main.go` helper branches that remain high-uncovered without binding listeners or launching interactive loops
+- [ ] 26.4 Run subagent-driven review checkpoints for the wave
+- [ ] 26.5 Commit the wave separately
+
+## 27. Verification And Enforcement
+
+- [x] 27.1 Run `go build ./...`
+- [x] 27.2 Run `go test ./...`
+- [ ] 27.3 Run the non-generated coverage report and confirm coverage is at least 90%
+- [ ] 27.4 Run the executable 90% coverage gate and confirm it passes
+- [x] 27.5 Run `git diff --check`
+- [x] 27.6 Run subagent-driven spec and code-quality review checkpoints
+- [x] 27.7 Run `openspec validate --all --strict`
+- [ ] 27.8 Archive the completed OpenSpec change
