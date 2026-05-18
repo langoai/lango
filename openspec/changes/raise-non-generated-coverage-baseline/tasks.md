@@ -142,13 +142,21 @@
 - [x] 19.4 Run subagent-driven review checkpoints for the wave
 - [x] 19.5 Commit the wave separately
 
-## 20. Verification And Enforcement
+## 20. Coverage Wave: CLI TUI Pages, Settings, And ADK Branches
 
-- [ ] 20.1 Run `go build ./...`
-- [ ] 20.2 Run `go test ./...`
-- [ ] 20.3 Run the non-generated coverage report and confirm coverage is at least 90%
-- [ ] 20.4 Run the executable 90% coverage gate and confirm it passes
-- [ ] 20.5 Run `git diff --check`
-- [ ] 20.6 Run subagent-driven spec and code-quality review checkpoints
-- [ ] 20.7 Run `openspec validate --all --strict`
-- [ ] 20.8 Archive the completed OpenSpec change
+- [x] 20.1 Add focused tests for deterministic `internal/cli/cockpit/pages/missioncontrol.go` rendering, navigation, filter, and command-creation branches
+- [x] 20.2 Add focused tests for deterministic `internal/cli/settings/editor.go` editor state, section navigation, validation, and save/cancel helper branches
+- [x] 20.3 Add focused tests for deterministic `internal/adk/agent.go` run helper, collection, diagnostics, and error branch helpers without live provider calls
+- [x] 20.4 Run subagent-driven review checkpoints for the wave
+- [x] 20.5 Commit the wave separately
+
+## 21. Verification And Enforcement
+
+- [ ] 21.1 Run `go build ./...`
+- [ ] 21.2 Run `go test ./...`
+- [ ] 21.3 Run the non-generated coverage report and confirm coverage is at least 90%
+- [ ] 21.4 Run the executable 90% coverage gate and confirm it passes
+- [ ] 21.5 Run `git diff --check`
+- [ ] 21.6 Run subagent-driven spec and code-quality review checkpoints
+- [ ] 21.7 Run `openspec validate --all --strict`
+- [ ] 21.8 Archive the completed OpenSpec change
