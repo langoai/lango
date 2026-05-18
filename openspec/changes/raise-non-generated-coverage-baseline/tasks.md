@@ -199,13 +199,22 @@
 - [x] 26.4 Run subagent-driven review checkpoints for the wave
 - [x] 26.5 Commit the wave separately
 
-## 27. Verification And Enforcement
+## 27. Coverage Wave: Meta Tools, Receipts Store, Ontology Tools, And App Wiring Hotspots
 
-- [x] 27.1 Run `go build ./...`
-- [x] 27.2 Run `go test ./...`
-- [ ] 27.3 Run the non-generated coverage report and confirm coverage is at least 90%
-- [ ] 27.4 Run the executable 90% coverage gate and confirm it passes
-- [x] 27.5 Run `git diff --check`
-- [x] 27.6 Run subagent-driven spec and code-quality review checkpoints
-- [x] 27.7 Run `openspec validate --all --strict`
-- [ ] 27.8 Archive the completed OpenSpec change
+- [ ] 27.1 Add focused tests for deterministic `internal/app/tools_meta.go` and `internal/app/tools_escrow.go` validation, dispatcher, receipt, and helper branches without live network or chain calls
+- [ ] 27.2 Add focused tests for deterministic `internal/receipts/store.go` lifecycle, query, filtering, and error branches using in-memory or temp-file state only
+- [ ] 27.3 Add focused tests for deterministic `internal/ontology/tools.go` tool builder, parameter validation, action/query, and error branches without external services
+- [ ] 27.4 Add focused tests for deterministic `internal/app/wiring.go`, `internal/app/wiring_p2p.go`, and `internal/app/app.go` helper branches without binding listeners or starting P2P services
+- [ ] 27.5 Run subagent-driven review checkpoints for the wave
+- [ ] 27.6 Commit the wave separately
+
+## 28. Verification And Enforcement
+
+- [x] 28.1 Run `go build ./...`
+- [x] 28.2 Run `go test ./...`
+- [ ] 28.3 Run the non-generated coverage report and confirm coverage is at least 90%
+- [ ] 28.4 Run the executable 90% coverage gate and confirm it passes
+- [x] 28.5 Run `git diff --check`
+- [x] 28.6 Run subagent-driven spec and code-quality review checkpoints
+- [x] 28.7 Run `openspec validate --all --strict`
+- [ ] 28.8 Archive the completed OpenSpec change
