@@ -68,6 +68,34 @@ func (e *fixtureExecutor) RunStreamingDetailed(
 	return e.report, e.err
 }
 
+type contextErrExecutor struct {
+	ctxErr error
+}
+
+func (e *contextErrExecutor) RunStreamingDetailed(
+	ctx context.Context,
+	_, _ string,
+	_ adk.ChunkCallback,
+	opts ...adk.RunOption,
+) (adk.RunReport, error) {
+	hooks := adk.ResolveRunHooks(opts...)
+	defer func() {
+		if hooks.OnFinish != nil {
+			hooks.OnFinish()
+		}
+	}()
+	e.ctxErr = ctx.Err()
+	return adk.RunReport{}, ctx.Err()
+}
+
+type replacingSanitizer struct{}
+
+func (replacingSanitizer) Enabled() bool { return true }
+
+func (replacingSanitizer) Sanitize(text string) string {
+	return strings.ReplaceAll(text, "secret", "[redacted]")
+}
+
 type memoryTraceStore struct {
 	traces map[string]turntrace.Trace
 	events map[string][]turntrace.Event
@@ -154,8 +182,10 @@ func (s *stubSessionStore) Delete(string) error                              { r
 func (s *stubSessionStore) AppendMessage(string, langosession.Message) error { return nil }
 func (s *stubSessionStore) Close() error                                     { return nil }
 func (s *stubSessionStore) GetSalt(string) ([]byte, error)                   { return nil, nil }
-func (s *stubSessionStore) SetSalt(string, []byte) error                                    { return nil }
-func (s *stubSessionStore) ListSessions(context.Context) ([]langosession.SessionSummary, error) { return nil, nil }
+func (s *stubSessionStore) SetSalt(string, []byte) error                     { return nil }
+func (s *stubSessionStore) ListSessions(context.Context) ([]langosession.SessionSummary, error) {
+	return nil, nil
+}
 func (s *stubSessionStore) AnnotateTimeout(key, _ string) error {
 	s.annotated = append(s.annotated, key)
 	return nil
@@ -278,6 +308,85 @@ func TestRunner_LoopDetectedFromFixture(t *testing.T) {
 		}
 	}
 	assert.True(t, foundTerminal, "expected terminal_error event")
+}
+
+func TestRunner_RunValidatesRequiredDependencies(t *testing.T) {
+	t.Parallel()
+
+	nilExecutorRunner := New(Config{HardCeiling: time.Second}, nil, nil, nil)
+	_, err := nilExecutorRunner.Run(context.Background(), Request{
+		SessionKey: "session",
+		Input:      "hello",
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "executor is nil")
+
+	runner := New(
+		Config{HardCeiling: time.Second},
+		&fixtureExecutor{report: adk.RunReport{Response: "unused"}},
+		nil,
+		nil,
+	)
+	_, err = runner.Run(context.Background(), Request{Input: "hello"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "session key is required")
+}
+
+func TestRunner_SuccessSanitizesChunksAndFinalResultAndFiresCallback(t *testing.T) {
+	t.Parallel()
+
+	traceStore := newMemoryTraceStore()
+	executor := &fixtureExecutor{
+		chunks: []string{"secret chunk", ""},
+		report: adk.RunReport{Response: "secret final"},
+	}
+	runner := New(
+		Config{HardCeiling: time.Second, TraceStore: traceStore},
+		executor,
+		nil,
+		replacingSanitizer{},
+	)
+	var chunks []string
+	var callbacks []string
+	runner.OnTurnComplete(func(sessionKey string) {
+		callbacks = append(callbacks, sessionKey)
+	})
+	runner.OnTurnComplete(nil)
+
+	result, err := runner.Run(context.Background(), Request{
+		SessionKey: "telegram:sanitized",
+		Input:      "hello",
+		OnChunk: func(chunk string) {
+			chunks = append(chunks, chunk)
+		},
+	})
+	require.NoError(t, err)
+
+	assert.Equal(t, turntrace.OutcomeSuccess, result.Outcome)
+	assert.Equal(t, "[redacted] final", result.ResponseText)
+	assert.Equal(t, []string{"[redacted] chunk"}, chunks)
+	assert.Equal(t, []string{"telegram:sanitized"}, callbacks)
+	require.NotEmpty(t, result.TraceID)
+	assert.Equal(t, turntrace.OutcomeSuccess, traceStore.traces[result.TraceID].Outcome)
+	assert.Equal(t, "secret final", traceStore.traces[result.TraceID].Summary)
+}
+
+func TestRunner_ParentCancellationOverridesProviderResult(t *testing.T) {
+	t.Parallel()
+
+	executor := &contextErrExecutor{}
+	runner := New(Config{HardCeiling: time.Second}, executor, nil, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	result, err := runner.Run(ctx, Request{
+		SessionKey: "telegram:cancelled",
+		Input:      "hello",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, context.Canceled, executor.ctxErr)
+	assert.Equal(t, TurnOutcome("cancelled"), result.Outcome)
+	assert.Equal(t, "context_cancelled", result.ErrorCode)
 }
 
 func TestRunner_EmptyAfterToolUse(t *testing.T) {
@@ -655,17 +764,17 @@ func (s *stubModeStore) Get(key string) (*langosession.Session, error) {
 	}
 	return nil, fmt.Errorf("not found")
 }
-func (s *stubModeStore) Update(*langosession.Session) error            { return nil }
-func (s *stubModeStore) Delete(string) error                           { return nil }
+func (s *stubModeStore) Update(*langosession.Session) error               { return nil }
+func (s *stubModeStore) Delete(string) error                              { return nil }
 func (s *stubModeStore) AppendMessage(string, langosession.Message) error { return nil }
-func (s *stubModeStore) AnnotateTimeout(string, string) error          { return nil }
-func (s *stubModeStore) End(string) error                              { return nil }
+func (s *stubModeStore) AnnotateTimeout(string, string) error             { return nil }
+func (s *stubModeStore) End(string) error                                 { return nil }
 func (s *stubModeStore) ListSessions(context.Context) ([]langosession.SessionSummary, error) {
 	return nil, nil
 }
-func (s *stubModeStore) GetSalt(string) ([]byte, error)  { return nil, nil }
-func (s *stubModeStore) SetSalt(string, []byte) error    { return nil }
-func (s *stubModeStore) Close() error                    { return nil }
+func (s *stubModeStore) GetSalt(string) ([]byte, error) { return nil, nil }
+func (s *stubModeStore) SetSalt(string, []byte) error   { return nil }
+func (s *stubModeStore) Close() error                   { return nil }
 
 func TestRunner_PropagatesSessionModeToExecutor(t *testing.T) {
 	exec := &modeCapturingExecutor{}

@@ -35,12 +35,12 @@
 
 ## 6. Coverage Wave: Runtime And Workflow
 
-- [ ] 6.1 Add deterministic tests or seams for `internal/adk/agent.go`
-- [ ] 6.2 Add deterministic tests for `internal/workflow/engine.go`
-- [ ] 6.3 Add deterministic tests for `internal/turnrunner/runner.go`
-- [ ] 6.4 Add persistence boundary tests for `internal/turntrace/store.go`
-- [ ] 6.5 Cover workflow execution/status paths, turn-runner outcomes, and trace persistence boundaries
-- [ ] 6.6 Commit the wave separately
+- [x] 6.1 Add deterministic tests or seams for `internal/adk/agent.go`
+- [x] 6.2 Add deterministic tests for `internal/workflow/engine.go`
+- [x] 6.3 Add deterministic tests for `internal/turnrunner/runner.go`
+- [x] 6.4 Add persistence boundary tests for `internal/turntrace/store.go`
+- [x] 6.5 Cover workflow execution/status paths, turn-runner outcomes, and trace persistence boundaries
+- [x] 6.6 Commit the wave separately
 
 ## 7. Coverage Wave: App Wiring And P2P
 
