@@ -14,9 +14,9 @@
 
 ## 3. Coverage Wave: Small Deterministic Packages
 
-- [ ] 3.1 Add focused tests for low-risk pure/helper packages with low coverage
-- [ ] 3.2 Add meaningful assertions for enum, parser, embed, and simple wrapper behavior
-- [ ] 3.3 Commit the wave separately
+- [x] 3.1 Add focused tests for low-risk pure/helper packages with low coverage
+- [x] 3.2 Add meaningful assertions for enum, parser, embed, and simple wrapper behavior
+- [x] 3.3 Commit the wave separately
 
 ## 4. Coverage Wave: CLI/TUI State And Command Surfaces
 
