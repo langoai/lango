@@ -2,9 +2,11 @@ package app
 
 import (
 	"context"
+	"crypto/ed25519"
 	"crypto/rand"
 	"errors"
 	"math/big"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -17,6 +19,8 @@ import (
 	"github.com/langoai/lango/internal/p2p/paygate"
 	p2pproto "github.com/langoai/lango/internal/p2p/protocol"
 	"github.com/langoai/lango/internal/p2p/reputation"
+	"github.com/langoai/lango/internal/payment/contracts"
+	"github.com/langoai/lango/internal/payment/eip3009"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/testutil"
 	"github.com/stretchr/testify/assert"
@@ -287,6 +291,114 @@ func TestWalletHandshakeSigner_DIDReturnsWalletPublicKeyError(t *testing.T) {
 	assert.Empty(t, did)
 }
 
+func TestWalletHandshakeSigner_DIDReturnsInvalidPublicKeyError(t *testing.T) {
+	t.Parallel()
+
+	signer := &walletHandshakeSigner{wp: &wiringP2PWallet{publicKey: []byte{1, 2, 3}}}
+
+	did, err := signer.DID(context.Background())
+	require.Error(t, err)
+	assert.Empty(t, did)
+	assert.ErrorContains(t, err, "derive peer ID")
+}
+
+func TestLegacyLocalIdentity_DelegatesWalletAndProvider(t *testing.T) {
+	t.Parallel()
+
+	key, err := ethcrypto.GenerateKey()
+	require.NoError(t, err)
+	pub := ethcrypto.CompressPubkey(&key.PublicKey)
+	wallet := &wiringP2PWallet{
+		signature: []byte("legacy-signature"),
+		publicKey: pub,
+	}
+	provider := identity.NewProvider(wallet, testLog())
+	local := &legacyLocalIdentity{prov: provider, wp: wallet}
+
+	did, err := local.DID(context.Background())
+	require.NoError(t, err)
+	expectedDID, err := identity.DIDFromPublicKey(pub)
+	require.NoError(t, err)
+	assert.Equal(t, expectedDID.ID, did.ID)
+
+	legacyDID, err := local.LegacyDID(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, expectedDID.ID, legacyDID.ID)
+
+	didString, err := local.DIDString(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, expectedDID.ID, didString)
+
+	signature, err := local.SignMessage(context.Background(), []byte("challenge"))
+	require.NoError(t, err)
+	assert.Equal(t, []byte("legacy-signature"), signature)
+
+	gotPub, err := local.PublicKey(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, pub, gotPub)
+	assert.Equal(t, security.AlgorithmSecp256k1Keccak256, local.Algorithm())
+	assert.Nil(t, local.Bundle())
+}
+
+func TestLegacyLocalIdentity_DIDStringReturnsProviderError(t *testing.T) {
+	t.Parallel()
+
+	wantErr := errors.New("wallet public key")
+	wallet := &wiringP2PWallet{pubErr: wantErr}
+	local := &legacyLocalIdentity{
+		prov: identity.NewProvider(wallet, testLog()),
+		wp:   wallet,
+	}
+
+	did, err := local.DIDString(context.Background())
+	require.Error(t, err)
+	assert.Empty(t, did)
+	assert.ErrorContains(t, err, "wallet public key")
+}
+
+func TestBundleSigners_DelegateToBundleProvider(t *testing.T) {
+	t.Parallel()
+
+	_, signingKey, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	walletKey, err := ethcrypto.GenerateKey()
+	require.NoError(t, err)
+	settlementPub := ethcrypto.CompressPubkey(&walletKey.PublicKey)
+	bp, err := identity.NewBundleProvider(identity.BundleProviderConfig{
+		SigningKey:    signingKey,
+		SettlementPub: settlementPub,
+		LangoDir:      t.TempDir(),
+		Legacy:        identity.NewProvider(&wiringP2PWallet{publicKey: settlementPub}, testLog()),
+		Logger:        testLog(),
+	})
+	require.NoError(t, err)
+
+	handshakeSigner := &bundleHandshakeSigner{bp: bp}
+	cardSigner := &bundleCardSigner{bp: bp}
+	message := []byte("bundle challenge")
+
+	signature, err := handshakeSigner.SignMessage(context.Background(), message)
+	require.NoError(t, err)
+	assert.True(t, ed25519.Verify(signingKey.Public().(ed25519.PublicKey), message, signature))
+
+	gotPub, err := handshakeSigner.PublicKey(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, []byte(signingKey.Public().(ed25519.PublicKey)), gotPub)
+	assert.Equal(t, "ed25519", handshakeSigner.Algorithm())
+
+	did, err := handshakeSigner.DID(context.Background())
+	require.NoError(t, err)
+	expectedDID, err := bp.DIDString(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, expectedDID, did)
+	assert.Same(t, bp.Bundle(), handshakeSigner.Bundle())
+
+	cardSignature, err := cardSigner.Sign(context.Background(), message)
+	require.NoError(t, err)
+	assert.True(t, ed25519.Verify(signingKey.Public().(ed25519.PublicKey), message, cardSignature))
+	assert.Equal(t, "ed25519", cardSigner.Algorithm())
+}
+
 func TestInitP2P_SkipsDisabledOrMissingWalletWithoutNetwork(t *testing.T) {
 	t.Parallel()
 
@@ -300,6 +412,23 @@ func TestInitP2P_SkipsDisabledOrMissingWalletWithoutNetwork(t *testing.T) {
 	cfg.P2P.Enabled = true
 	assert.Nil(t, initP2P(cfg, nil, nil, nil, nil, nil, nil, nil, ""))
 	assert.NoDirExists(t, cfg.P2P.KeyDir)
+}
+
+func TestInitP2P_ReturnsNilWhenNodeCreationFailsBeforeNetwork(t *testing.T) {
+	t.Parallel()
+
+	key, err := ethcrypto.GenerateKey()
+	require.NoError(t, err)
+	keyDirFile := filepath.Join(t.TempDir(), "p2p-keydir-file")
+	require.NoError(t, os.WriteFile(keyDirFile, []byte("not a directory"), 0o600))
+
+	cfg := config.DefaultConfig()
+	cfg.P2P.Enabled = true
+	cfg.P2P.KeyDir = keyDirFile
+	cfg.P2P.ListenAddrs = []string{"/ip4/127.0.0.1/tcp/0"}
+	wallet := &wiringP2PWallet{publicKey: ethcrypto.CompressPubkey(&key.PublicKey)}
+
+	assert.Nil(t, initP2P(cfg, wallet, nil, nil, nil, nil, nil, nil, ""))
 }
 
 func TestPayGateAdapter_CheckMapsPaymentRequiredQuote(t *testing.T) {
@@ -333,6 +462,51 @@ func TestPayGateAdapter_CheckMapsPaymentRequiredQuote(t *testing.T) {
 	assert.Equal(t, false, paid.PriceQuote["isFree"])
 }
 
+func TestPayGateAdapter_CheckMapsVerifiedAuthAndErrors(t *testing.T) {
+	t.Parallel()
+
+	const chainID int64 = 84532
+	localAddr := "0x1234567890abcdef1234567890abcdef12345678"
+	usdcAddr, err := contracts.LookupUSDC(chainID)
+	require.NoError(t, err)
+	gate := paygate.New(paygate.Config{
+		PricingFn: func(string) (string, bool) {
+			return "0.50", false
+		},
+		LocalAddr: localAddr,
+		ChainID:   chainID,
+		USDCAddr:  usdcAddr,
+		Logger:    testLog(),
+	})
+	adapter := &payGateAdapter{gate: gate}
+
+	got, err := adapter.Check("did:lango:peer", "paid_tool", map[string]interface{}{
+		"paymentAuth": makeAppP2PPaymentAuth(localAddr, big.NewInt(500000)),
+	})
+	require.NoError(t, err)
+	assert.Equal(t, string(paygate.StatusVerified), got.Status)
+	require.NotNil(t, got.Auth)
+	auth, ok := got.Auth.(*eip3009.Authorization)
+	require.True(t, ok)
+	assert.Equal(t, ethcommon.HexToAddress(localAddr), auth.To)
+
+	errorGate := paygate.New(paygate.Config{
+		PricingFn: func(string) (string, bool) {
+			return "not-usdc", false
+		},
+		LocalAddr: localAddr,
+		ChainID:   chainID,
+		USDCAddr:  usdcAddr,
+		Logger:    testLog(),
+	})
+	errorAdapter := &payGateAdapter{gate: errorGate}
+	_, err = errorAdapter.Check("did:lango:peer", "paid_tool", map[string]interface{}{
+		"paymentAuth": makeAppP2PPaymentAuth(localAddr, big.NewInt(500000)),
+	})
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "parse tool price")
+}
+
 func TestInitZKP_ReturnsNilWhenHandshakeAndAttestationDisabled(t *testing.T) {
 	t.Parallel()
 
@@ -341,4 +515,30 @@ func TestInitZKP_ReturnsNilWhenHandshakeAndAttestationDisabled(t *testing.T) {
 	cfg.P2P.ZKAttestation = false
 
 	assert.Nil(t, initZKP(cfg))
+}
+
+func TestInitZKP_ReturnsNilWhenProverInitFails(t *testing.T) {
+	t.Parallel()
+
+	cacheFile := filepath.Join(t.TempDir(), "proof-cache-file")
+	require.NoError(t, os.WriteFile(cacheFile, []byte("not a directory"), 0o600))
+	cfg := config.DefaultConfig()
+	cfg.P2P.ZKHandshake = true
+	cfg.P2P.ZKP.ProofCacheDir = filepath.Join(cacheFile, "nested")
+
+	assert.Nil(t, initZKP(cfg))
+}
+
+func makeAppP2PPaymentAuth(to string, amount *big.Int) map[string]interface{} {
+	return map[string]interface{}{
+		"from":        "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		"to":          to,
+		"value":       amount.String(),
+		"validAfter":  "0",
+		"validBefore": big.NewInt(time.Now().Add(10 * time.Minute).Unix()).String(),
+		"nonce":       "0x0000000000000000000000000000000000000000000000000000000000000001",
+		"v":           float64(27),
+		"r":           "0x0000000000000000000000000000000000000000000000000000000000000002",
+		"s":           "0x0000000000000000000000000000000000000000000000000000000000000003",
+	}
 }

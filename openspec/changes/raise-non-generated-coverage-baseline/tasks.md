@@ -93,13 +93,21 @@
 - [x] 13.3 Add focused tests for `internal/knowledge/store.go` FTS5 result resolution, learning lookup branches, and low-risk search paths
 - [x] 13.4 Commit the wave separately
 
-## 14. Verification And Enforcement
+## 14. Coverage Wave: App P2P, Meta Tools, And Knowledge Store
 
-- [ ] 14.1 Run `go build ./...`
-- [ ] 14.2 Run `go test ./...`
-- [ ] 14.3 Run the non-generated coverage report and confirm coverage is at least 90%
-- [ ] 14.4 Run the executable 90% coverage gate and confirm it passes
-- [ ] 14.5 Run `git diff --check`
-- [ ] 14.6 Run subagent-driven spec and code-quality review checkpoints
-- [ ] 14.7 Run `openspec validate --all --strict`
-- [ ] 14.8 Archive the completed OpenSpec change
+- [x] 14.1 Add focused tests for deterministic `internal/app/wiring_p2p.go` helper and wiring branches
+- [x] 14.2 Add focused tests for deterministic `internal/app/tools_meta.go` tool handlers and helper branches
+- [x] 14.3 Add focused tests for remaining low-risk `internal/knowledge/store.go` scoring, stats, external ref, and deletion branches
+- [x] 14.4 Run subagent-driven review checkpoints for the wave
+- [x] 14.5 Commit the wave separately
+
+## 15. Verification And Enforcement
+
+- [ ] 15.1 Run `go build ./...`
+- [ ] 15.2 Run `go test ./...`
+- [ ] 15.3 Run the non-generated coverage report and confirm coverage is at least 90%
+- [ ] 15.4 Run the executable 90% coverage gate and confirm it passes
+- [ ] 15.5 Run `git diff --check`
+- [ ] 15.6 Run subagent-driven spec and code-quality review checkpoints
+- [ ] 15.7 Run `openspec validate --all --strict`
+- [ ] 15.8 Archive the completed OpenSpec change

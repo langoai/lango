@@ -5,10 +5,13 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
 	entknowledge "github.com/langoai/lango/internal/ent/knowledge"
+	entlearning "github.com/langoai/lango/internal/ent/learning"
 )
 
 func TestSaveToolResult_TruncatesAndPersistsObservableKnowledge(t *testing.T) {
@@ -116,6 +119,39 @@ func TestSearchRecentKnowledge_ReturnsLatestFilteredResults(t *testing.T) {
 	require.Equal(t, 2, latest[0].Version)
 }
 
+func TestGetKnowledgeByKeys_EdgeCases(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	got, err := store.GetKnowledgeByKeys(ctx, nil)
+	require.NoError(t, err)
+	require.Nil(t, got)
+
+	require.NoError(t, store.SaveKnowledge(ctx, "session-1", KnowledgeEntry{
+		Key:      "lookup-one",
+		Category: entknowledge.CategoryFact,
+		Content:  "first lookup",
+	}))
+	require.NoError(t, store.SaveKnowledge(ctx, "session-1", KnowledgeEntry{
+		Key:      "lookup-two",
+		Category: entknowledge.CategoryRule,
+		Content:  "second lookup",
+	}))
+
+	got, err = store.GetKnowledgeByKeys(ctx, []string{"lookup-two", "lookup-one", "lookup-two"})
+	require.NoError(t, err)
+	require.Len(t, got, 3)
+	require.Equal(t, "lookup-two", got[0].Key)
+	require.Equal(t, "lookup-one", got[1].Key)
+	require.Equal(t, "lookup-two", got[2].Key)
+
+	got, err = store.GetKnowledgeByKeys(ctx, []string{"lookup-one", "missing-key"})
+	require.Error(t, err)
+	require.Nil(t, got)
+	require.True(t, errors.Is(err, ErrKnowledgeNotFound))
+	require.Contains(t, err.Error(), "missing-key")
+}
+
 func TestResetAllRelevanceScores_OnlyTouchesLatestVersions(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
@@ -164,6 +200,168 @@ func TestResetAllRelevanceScores_OnlyTouchesLatestVersions(t *testing.T) {
 		Only(ctx)
 	require.NoError(t, err)
 	require.Equal(t, 9.0, old.RelevanceScore)
+}
+
+func TestLearningReadAndScoredSearch_EdgeCases(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	_, err := store.GetLearning(ctx, uuid.New())
+	require.Error(t, err)
+	require.True(t, errors.Is(err, ErrLearningNotFound))
+
+	require.NoError(t, store.SaveLearning(ctx, "session-1", LearningEntry{
+		Trigger:      "timeout low",
+		ErrorPattern: "deadline exceeded",
+		Fix:          "retry with backoff",
+		Category:     entlearning.CategoryTimeout,
+	}))
+	require.NoError(t, store.SaveLearning(ctx, "session-1", LearningEntry{
+		Trigger:      "timeout high",
+		ErrorPattern: "request timeout",
+		Fix:          "increase timeout",
+		Category:     entlearning.CategoryTimeout,
+	}))
+	require.NoError(t, store.SaveLearning(ctx, "session-1", LearningEntry{
+		Trigger:      "permission denied",
+		ErrorPattern: "permission failure",
+		Fix:          "change permissions",
+		Category:     entlearning.CategoryPermission,
+	}))
+
+	ids := learningIDsByTrigger(t, store, ctx)
+	_, err = store.client.Learning.UpdateOneID(ids["timeout low"]).SetConfidence(0.2).Save(ctx)
+	require.NoError(t, err)
+	_, err = store.client.Learning.UpdateOneID(ids["timeout high"]).SetConfidence(0.9).Save(ctx)
+	require.NoError(t, err)
+
+	got, err := store.SearchLearningsScored(ctx, "", string(entlearning.CategoryTimeout), 0)
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	require.Equal(t, "timeout high", got[0].Entry.Trigger)
+	require.Equal(t, 0.9, got[0].Score)
+	require.Equal(t, "like", got[0].SearchSource)
+	require.Equal(t, "timeout low", got[1].Entry.Trigger)
+	require.Equal(t, 0.2, got[1].Score)
+	require.Equal(t, "like", got[1].SearchSource)
+}
+
+func TestBoostLearningConfidence_BoostAndClamp(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	require.NoError(t, store.SaveLearning(ctx, "session-1", LearningEntry{
+		Trigger:      "boost learning",
+		ErrorPattern: "flaky tool",
+		Fix:          "retry once",
+		Category:     entlearning.CategoryToolError,
+	}))
+	require.NoError(t, store.SaveLearning(ctx, "session-1", LearningEntry{
+		Trigger:      "clamp learning",
+		ErrorPattern: "almost perfect",
+		Fix:          "keep fix",
+		Category:     entlearning.CategoryToolError,
+	}))
+	ids := learningIDsByTrigger(t, store, ctx)
+
+	_, err := store.client.Learning.UpdateOneID(ids["boost learning"]).
+		SetConfidence(0.4).
+		SetSuccessCount(1).
+		SetOccurrenceCount(2).
+		Save(ctx)
+	require.NoError(t, err)
+	require.NoError(t, store.BoostLearningConfidence(ctx, ids["boost learning"], 2, 0.25))
+	boosted, err := store.client.Learning.Get(ctx, ids["boost learning"])
+	require.NoError(t, err)
+	require.Equal(t, 3, boosted.SuccessCount)
+	require.Equal(t, 3, boosted.OccurrenceCount)
+	require.Equal(t, 0.65, boosted.Confidence)
+
+	_, err = store.client.Learning.UpdateOneID(ids["clamp learning"]).
+		SetConfidence(0.95).
+		Save(ctx)
+	require.NoError(t, err)
+	require.NoError(t, store.BoostLearningConfidence(ctx, ids["clamp learning"], 1, 0.2))
+	clamped, err := store.client.Learning.Get(ctx, ids["clamp learning"])
+	require.NoError(t, err)
+	require.Equal(t, 1.0, clamped.Confidence)
+
+	err = store.BoostLearningConfidence(ctx, uuid.New(), 1, 0.1)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "get learning")
+}
+
+func TestListAndBulkDeleteLearnings_FilterEdges(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	_, err := store.client.Learning.Create().
+		SetTrigger("old high timeout").
+		SetErrorPattern("timeout old").
+		SetFix("increase timeout").
+		SetCategory(entlearning.CategoryTimeout).
+		SetConfidence(0.9).
+		SetCreatedAt(now.Add(-48 * time.Hour)).
+		Save(ctx)
+	require.NoError(t, err)
+	_, err = store.client.Learning.Create().
+		SetTrigger("new low timeout").
+		SetErrorPattern("timeout new").
+		SetFix("retry later").
+		SetCategory(entlearning.CategoryTimeout).
+		SetConfidence(0.2).
+		SetCreatedAt(now).
+		Save(ctx)
+	require.NoError(t, err)
+	_, err = store.client.Learning.Create().
+		SetTrigger("old permission").
+		SetErrorPattern("permission old").
+		SetFix("chmod").
+		SetCategory(entlearning.CategoryPermission).
+		SetConfidence(0.1).
+		SetCreatedAt(now.Add(-72 * time.Hour)).
+		Save(ctx)
+	require.NoError(t, err)
+
+	listed, total, err := store.ListLearnings(ctx, string(entlearning.CategoryTimeout), 0.5, now.Add(-24*time.Hour), 0, 0)
+	require.NoError(t, err)
+	require.Equal(t, 1, total)
+	require.Len(t, listed, 1)
+	require.Equal(t, "old high timeout", listed[0].Trigger)
+
+	_, err = store.DeleteLearningsWhere(ctx, "", 0, time.Time{})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "at least one filter criterion")
+
+	deleted, err := store.DeleteLearningsWhere(ctx, "", 0.15, time.Time{})
+	require.NoError(t, err)
+	require.Equal(t, 1, deleted)
+
+	deleted, err = store.DeleteLearningsWhere(ctx, "", 0, now.Add(-24*time.Hour))
+	require.NoError(t, err)
+	require.Equal(t, 1, deleted)
+}
+
+func TestExternalRefs_EmptySummaryAndEmptySearch(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	require.NoError(t, store.SaveExternalRef(ctx, "go-docs", "url", "https://go.dev/doc", ""))
+	require.NoError(t, store.SaveExternalRef(ctx, "ent-docs", "url", "https://entgo.io", "graph orm"))
+	require.NoError(t, store.SaveExternalRef(ctx, "ent-docs", "url", "https://entgo.io/docs", ""))
+
+	got, err := store.SearchExternalRefs(ctx, "")
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	byName := map[string]ExternalRefEntry{}
+	for _, ref := range got {
+		byName[ref.Name] = ref
+	}
+	require.Equal(t, "https://go.dev/doc", byName["go-docs"].Location)
+	require.Empty(t, byName["go-docs"].Summary)
+	require.Equal(t, "https://entgo.io/docs", byName["ent-docs"].Location)
+	require.Equal(t, "graph orm", byName["ent-docs"].Summary)
 }
 
 func TestKnowledgeStore_ClosedBackendReturnsErrors(t *testing.T) {

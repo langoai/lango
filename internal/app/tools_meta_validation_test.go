@@ -84,6 +84,15 @@ func TestSaveKnowledge_RequiresCanonicalInputs(t *testing.T) {
 			},
 			wantError: "missing content parameter",
 		},
+		{
+			name: "invalid category",
+			params: map[string]interface{}{
+				"key":      "app-invalid-category",
+				"category": "bogus",
+				"content":  "knowledge content",
+			},
+			wantError: `invalid category "bogus"`,
+		},
 	}
 
 	for _, tt := range cases {

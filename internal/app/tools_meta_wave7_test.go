@@ -2,12 +2,18 @@ package app
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/disputehold"
+	"github.com/langoai/lango/internal/economy/escrow"
 	"github.com/langoai/lango/internal/exportability"
 	"github.com/langoai/lango/internal/knowledge"
+	"github.com/langoai/lango/internal/partialsettlementexecution"
+	"github.com/langoai/lango/internal/payment"
 	"github.com/langoai/lango/internal/receipts"
+	"github.com/langoai/lango/internal/settlementexecution"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -173,4 +179,80 @@ func TestPostAdjudicationStatusBackgroundTaskReader_NilDispatcherIsEmpty(t *test
 	got, err := (postAdjudicationStatusBackgroundTaskReader{}).ListTaskSnapshots(context.Background())
 	require.NoError(t, err)
 	assert.Nil(t, got)
+}
+
+func TestPaymentRuntimeAdapters_ReturnPaymentServiceValidationErrors(t *testing.T) {
+	t.Parallel()
+
+	service := payment.NewService(nil, nil, nil, nil, nil, 0)
+
+	_, err := (paymentSettlementRuntime{service: service}).ExecuteSettlement(context.Background(), settlementexecution.DirectPaymentRequest{
+		Counterparty: "not-an-address",
+		Amount:       "1.00",
+	})
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "invalid recipient")
+
+	_, err = (paymentPartialSettlementRuntime{service: service}).ExecuteSettlement(context.Background(), partialsettlementexecution.DirectPaymentRequest{
+		Counterparty: "not-an-address",
+		Amount:       "0.25",
+	})
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "invalid recipient")
+}
+
+func TestSettlementPartialSettlementRuntime_MapsRequestsAndErrors(t *testing.T) {
+	t.Parallel()
+
+	_, err := (settlementPartialSettlementRuntime{}).ExecuteSettlement(context.Background(), partialsettlementexecution.DirectPaymentRequest{})
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "direct payment runtime is required")
+
+	runtimeErr := errors.New("settlement unavailable")
+	_, err = (settlementPartialSettlementRuntime{runtime: &fakeSettlementExecutionRuntime{err: runtimeErr}}).ExecuteSettlement(context.Background(), partialsettlementexecution.DirectPaymentRequest{
+		TransactionReceiptID: "tx-err",
+		SubmissionReceiptID:  "sub-err",
+		Counterparty:         "0x0000000000000000000000000000000000000001",
+		Amount:               "0.10",
+	})
+	require.ErrorIs(t, err, runtimeErr)
+
+	fake := &fakeSettlementExecutionRuntime{}
+	got, err := (settlementPartialSettlementRuntime{runtime: fake}).ExecuteSettlement(context.Background(), partialsettlementexecution.DirectPaymentRequest{
+		TransactionReceiptID: "tx-1",
+		SubmissionReceiptID:  "sub-1",
+		Counterparty:         "0x0000000000000000000000000000000000000002",
+		Amount:               "0.25",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "settlement-tx-123", got.Reference)
+	assert.Equal(t, settlementexecution.DirectPaymentRequest{
+		TransactionReceiptID: "tx-1",
+		SubmissionReceiptID:  "sub-1",
+		Counterparty:         "0x0000000000000000000000000000000000000002",
+		Amount:               "0.25",
+	}, fake.last)
+}
+
+func TestEngineEscrowDisputeHoldRuntime_ValidatesAndReturnsReference(t *testing.T) {
+	t.Parallel()
+
+	_, err := (engineEscrowDisputeHoldRuntime{}).Hold(context.Background(), disputehold.EscrowHoldRequest{
+		EscrowReference: "escrow-1",
+	})
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "escrow engine is required")
+
+	runtime := engineEscrowDisputeHoldRuntime{
+		engine: escrow.NewEngine(escrow.NewMemoryStore(), escrow.NoopSettler{}, escrow.DefaultEngineConfig()),
+	}
+	_, err = runtime.Hold(context.Background(), disputehold.EscrowHoldRequest{})
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "escrow reference is required")
+
+	got, err := runtime.Hold(context.Background(), disputehold.EscrowHoldRequest{
+		EscrowReference: "escrow-2",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "escrow-2", got.Reference)
 }
