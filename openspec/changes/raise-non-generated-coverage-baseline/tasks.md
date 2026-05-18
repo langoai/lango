@@ -219,11 +219,11 @@
 
 ## 29. Coverage Wave: App Metadata, Entrypoints, Test Utilities, And Economy Hotspots
 
-- [ ] 29.1 Add focused tests for deterministic `internal/app/tools_meta.go`, `internal/app/modules.go`, `internal/app/wiring.go`, and `internal/app/wiring_p2p.go` branches that remain high-uncovered without live providers or listeners
-- [ ] 29.2 Add focused tests for deterministic `cmd/lango/main.go`, `internal/cli/settings/forms_economy.go`, and `internal/testutil/mock_cron.go` helper branches without launching interactive UI loops or relying on wall-clock scheduling
-- [ ] 29.3 Add focused tests for deterministic `internal/adk/agent.go`, `internal/bootstrap/phases.go`, and `internal/economy/tools.go` branch-heavy helpers without live model providers, chain RPC, or external services
-- [ ] 29.4 Run subagent-driven review checkpoints for the wave
-- [ ] 29.5 Commit the wave separately
+- [x] 29.1 Add focused tests for deterministic `internal/app/tools_meta.go`, `internal/app/modules.go`, `internal/app/wiring.go`, and `internal/app/wiring_p2p.go` branches that remain high-uncovered without live providers or listeners
+- [x] 29.2 Add focused tests for deterministic `cmd/lango/main.go`, `internal/cli/settings/forms_economy.go`, and `internal/testutil/mock_cron.go` helper branches without launching interactive UI loops or relying on wall-clock scheduling
+- [x] 29.3 Add focused tests for deterministic `internal/adk/agent.go`, `internal/bootstrap/phases.go`, and `internal/economy/tools.go` branch-heavy helpers without live model providers, chain RPC, or external services
+- [x] 29.4 Run subagent-driven review checkpoints for the wave
+- [x] 29.5 Commit the wave separately
 
 ## 30. Verification And Enforcement
 
