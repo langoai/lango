@@ -195,6 +195,7 @@ All application code lives under `internal/` to enforce Go's visibility boundary
 |---------|-------------|
 | `config/` | YAML configuration loading with environment variable substitution (`${ENV_VAR}` syntax), validation, and defaults. Defines all config structs (`Config`, `AgentConfig`, `SecurityConfig`, `MCPConfig`, `DynamicPricingConfig`, `RiskConfig`, `BudgetConfig`, etc.) |
 | `configstore/` | Encrypted configuration profile storage backed by Ent ORM. Allows multiple named profiles with passphrase-derived encryption |
+| `coverreport/` | Non-generated Go coverage profile parser and reporter. Excludes generated paths and generated-file markers, aggregates statement totals, ranks files by uncovered statements, and enforces threshold gates |
 | `security/` | Crypto providers (`LocalProvider` with passphrase-derived keys, `RPCProvider` for remote signing). `KeyRegistry` manages encryption keys. `SecretsStore` provides encrypted secret storage. `RefStore` holds opaque references so plaintext never reaches agent context. Companion discovery for distributed setups. KMS providers (AWS KMS, GCP KMS, Azure Key Vault, PKCS#11) with retry and health checking |
 | `session/` | Session persistence via Ent ORM with SQLite backend. `EntStore` implements the `Store` interface with configurable TTL and max history turns. `CompactMessages()` supports memory compaction |
 | `ent/` | Ent ORM schema definitions and generated code for all database entities |

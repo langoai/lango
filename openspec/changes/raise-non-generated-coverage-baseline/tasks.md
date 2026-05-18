@@ -6,11 +6,11 @@
 
 ## 2. Coverage Measurement Contract
 
-- [ ] 2.1 Add a repeatable coverage report command or script for non-generated Go code
-- [ ] 2.2 Exclude generated code by known generated paths and generated-file markers
-- [ ] 2.3 Add tests for the coverage filtering logic
-- [ ] 2.4 Report total coverage, covered statements, total statements, uncovered statements, and top uncovered files
-- [ ] 2.5 Add an executable threshold gate that fails when non-generated coverage is below 90%
+- [x] 2.1 Add a repeatable coverage report command or script for non-generated Go code
+- [x] 2.2 Exclude generated code by known generated paths and generated-file markers
+- [x] 2.3 Add tests for the coverage filtering logic
+- [x] 2.4 Report total coverage, covered statements, total statements, uncovered statements, and top uncovered files
+- [x] 2.5 Add an executable threshold gate that fails when non-generated coverage is below 90%
 
 ## 3. Coverage Wave: Small Deterministic Packages
 

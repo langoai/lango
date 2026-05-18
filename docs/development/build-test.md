@@ -72,6 +72,8 @@ Zensical is the canonical docs toolchain. The local docs build path is:
 | `test-economy` | Run economy layer tests (budget, escrow, pricing) |
 | `bench` | Run benchmarks |
 | `coverage` | Generate HTML coverage report |
+| `coverage-non-generated` | Report Go coverage excluding generated code |
+| `coverage-gate` | Fail when non-generated Go coverage is below 90% |
 | **Code Quality** | |
 | `fmt` | Format code |
 | `fmt-check` | Check code formatting (CI) |
@@ -177,6 +179,18 @@ Generate an HTML coverage report:
 
 ```bash
 make coverage
+```
+
+Report non-generated Go statement coverage and the largest files by uncovered statements:
+
+```bash
+make coverage-non-generated
+```
+
+Run the 90% non-generated coverage gate:
+
+```bash
+make coverage-gate
 ```
 
 Run benchmarks:

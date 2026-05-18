@@ -25,6 +25,10 @@ func TestCmdEntrypointsAvoidRawPrintsAndDirectStdStreams(t *testing.T) {
 			"zkexportStdout io.Writer = os.Stdout",
 			"zkexportStderr io.Writer = os.Stderr",
 		},
+		filepath.Join("cmd", "lango-cover", "main.go"): {
+			"langoCoverStdout io.Writer = os.Stdout",
+			"langoCoverStderr io.Writer = os.Stderr",
+		},
 	}
 	forbiddenPrints := []string{
 		"fmt.Print(",

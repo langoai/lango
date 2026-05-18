@@ -510,6 +510,7 @@ lango/
 │   │   └── workflow/       #   lango workflow run/list/status/cancel/history/validate <file>
 │   ├── config/             # Config loading, env var substitution, validation
 │   ├── configstore/        # Encrypted config profile storage (Ent-backed)
+│   ├── coverreport/        # Non-generated Go coverage profile parsing, reporting, and threshold gating
 │   ├── ctxkeys/            # Context key helpers for agent identity, durable mission binding, dynamic tool allowlists, and spawn lineage propagation
 │   ├── mission/            # Durable mission persistence and lifecycle service (latest row, state history, mission-execution links)
 │   ├── proposal/           # Transient proactive proposal registry, preparation, dismiss/accept flow

@@ -19,6 +19,9 @@ func TestCmdEntrypointsAvoidDirectOsExitOutsideSeams(t *testing.T) {
 		filepath.Join("cmd", "zkexport", "main.go"): {
 			"zkexportExitFn           = os.Exit",
 		},
+		filepath.Join("cmd", "lango-cover", "main.go"): {
+			"langoCoverExitFn           = os.Exit",
+		},
 	}
 
 	err := filepath.WalkDir(cmdDir, func(path string, d os.DirEntry, walkErr error) error {

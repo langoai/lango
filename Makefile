@@ -17,6 +17,7 @@ GOMOD    := $(GOCMD) mod
 # Docker
 REGISTRY     ?=
 COVERAGE_DIR := .coverage
+NON_GENERATED_PKGS := $(shell $(GOCMD) list ./... | grep -v '/internal/ent')
 
 # ─── Build & Install ─────────────────────────────────────────────────────────
 
@@ -89,6 +90,18 @@ coverage:
 	$(GOTEST) -race -coverprofile=$(COVERAGE_DIR)/coverage.out ./...
 	$(GOCMD) tool cover -html=$(COVERAGE_DIR)/coverage.out -o $(COVERAGE_DIR)/coverage.html
 	@echo "Coverage report: $(COVERAGE_DIR)/coverage.html"
+
+## coverage-non-generated: Report Go coverage excluding generated code
+coverage-non-generated:
+	@mkdir -p $(COVERAGE_DIR)
+	$(GOTEST) -covermode=atomic -coverprofile=$(COVERAGE_DIR)/non-generated.out $(NON_GENERATED_PKGS)
+	$(GOCMD) run ./cmd/lango-cover -profile $(COVERAGE_DIR)/non-generated.out -root . -top 10
+
+## coverage-gate: Fail when non-generated Go coverage is below 90%
+coverage-gate:
+	@mkdir -p $(COVERAGE_DIR)
+	$(GOTEST) -covermode=atomic -coverprofile=$(COVERAGE_DIR)/non-generated.out $(NON_GENERATED_PKGS)
+	$(GOCMD) run ./cmd/lango-cover -profile $(COVERAGE_DIR)/non-generated.out -root . -top 10 -threshold 90
 
 # ─── Code Quality ────────────────────────────────────────────────────────────
 
@@ -196,7 +209,8 @@ help:
 
 .PHONY: build build-linux build-darwin build-all install \
         dev run \
-        test test-short test-p2p test-security test-graph test-mcp test-economy bench coverage \
+        test test-short test-p2p test-security test-graph test-mcp test-economy bench \
+        coverage coverage-non-generated coverage-gate \
         fmt fmt-check vet lint generate check-abi ci \
         deps \
         codesign \
