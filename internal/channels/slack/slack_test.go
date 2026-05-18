@@ -2,9 +2,12 @@ package slack
 
 import (
 	"context"
+	"net/http"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
@@ -113,6 +116,73 @@ func (m *MockSocket) Ack(req socketmode.Request, payload ...interface{}) {
 
 func (m *MockSocket) Events() <-chan socketmode.Event {
 	return m.EventsCh
+}
+
+func TestSlackHTTPClient_DefaultHasBoundedTimeout(t *testing.T) {
+	t.Parallel()
+
+	client := slackHTTPClient(Config{})
+
+	require.NotNil(t, client)
+	assert.NotZero(t, client.Timeout)
+	assert.GreaterOrEqual(t, client.Timeout, 10*time.Second)
+	assert.Equal(t, defaultSlackHTTPClientTimeout, client.Timeout)
+}
+
+func TestSlackHTTPClient_PreservesInjectedClient(t *testing.T) {
+	t.Parallel()
+
+	injected := &http.Client{Timeout: 5 * time.Second}
+
+	client := slackHTTPClient(Config{HTTPClient: injected})
+
+	assert.Same(t, injected, client)
+}
+
+func TestNewSlackChannel_DefaultSDKHTTPClientHasBoundedTimeout(t *testing.T) {
+	t.Parallel()
+
+	channel, err := New(Config{
+		BotToken: "TEST_TOKEN",
+		AppToken: "APP_TOKEN",
+	})
+	require.NoError(t, err)
+
+	apiClient, ok := channel.api.(*SlackClient)
+	require.True(t, ok)
+
+	client := slackSDKHTTPClient(t, apiClient.Client)
+	require.NotNil(t, client)
+	assert.Equal(t, defaultSlackHTTPClientTimeout, client.Timeout)
+}
+
+func TestNewSlackChannel_PreservesInjectedSDKHTTPClient(t *testing.T) {
+	t.Parallel()
+
+	injected := &http.Client{Timeout: 5 * time.Second}
+	channel, err := New(Config{
+		BotToken:   "TEST_TOKEN",
+		AppToken:   "APP_TOKEN",
+		HTTPClient: injected,
+	})
+	require.NoError(t, err)
+
+	apiClient, ok := channel.api.(*SlackClient)
+	require.True(t, ok)
+
+	assert.Same(t, injected, slackSDKHTTPClient(t, apiClient.Client))
+}
+
+func slackSDKHTTPClient(t *testing.T, client *slack.Client) *http.Client {
+	t.Helper()
+
+	field := reflect.ValueOf(client).Elem().FieldByName("httpclient")
+	require.True(t, field.IsValid())
+
+	value := reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem().Interface()
+	httpClient, ok := value.(*http.Client)
+	require.True(t, ok)
+	return httpClient
 }
 
 func TestSlackChannel(t *testing.T) {
