@@ -184,6 +184,27 @@ func (l *failingMissionBackgroundLinker) LinkBackgroundTask(_ context.Context, _
 	return assert.AnError
 }
 
+type cancelRecordingSubmitter struct {
+	taskID      string
+	cancelledID string
+}
+
+func (s *cancelRecordingSubmitter) Submit(
+	context.Context,
+	string,
+	background.Origin,
+) (string, error) {
+	if s.taskID == "" {
+		s.taskID = "task-wave26"
+	}
+	return s.taskID, nil
+}
+
+func (s *cancelRecordingSubmitter) Cancel(taskID string) error {
+	s.cancelledID = taskID
+	return nil
+}
+
 // TestModuleBuild_DisabledModuleDependency verifies that disabled modules
 // don't block the initialization of modules that depend on them.
 func TestModuleBuild_DisabledModuleDependency(t *testing.T) {
@@ -943,61 +964,25 @@ func TestAutomationModule_AgentSpawnMissionBindingAttachesExecutionLink(t *testi
 	require.Len(t, bgLinker.taskIDs, 1)
 }
 
-func TestAutomationModule_AgentSpawnMissionBindingLinkFailureCancelsSubmittedWork(t *testing.T) {
+func TestMissionAwareSubmitter_LinkFailureCancelsSubmittedWork(t *testing.T) {
 	t.Parallel()
 
-	cfg := config.DefaultConfig()
-	cfg.Background.Enabled = true
-
 	failingLinker := &failingMissionBackgroundLinker{}
-	rlStore := runledger.NewMemoryStore()
-	rlVals := &runLedgerValues{
-		store: rlStore,
-		pev:   runledger.NewPEVEngine(rlStore, runledger.DefaultValidators()),
-	}
-	missionVals := &missionValues{
-		backgroundLinker: failingLinker,
+	base := &cancelRecordingSubmitter{taskID: "submitted-task"}
+	submitter := &missionAwareSubmitter{
+		base:   base,
+		linker: failingLinker,
 	}
 
-	mod := &automationModule{cfg: cfg, app: &App{Config: cfg}}
-	result, err := mod.Init(context.Background(), staticResolver{
-		appinit.ProvidesSupervisor: &foundationValues{},
-		appinit.ProvidesMission:    missionVals,
-		appinit.ProvidesRunLedger:  rlVals,
-	})
-	require.NoError(t, err)
-
-	var (
-		spawnFound     bool
-		automationVals *automationValues
+	taskID, err := submitter.Submit(
+		ctxkeys.WithMissionID(session.WithSessionKey(context.Background(), "sess-agent-fail"), "mission-agent-fail"),
+		"review the logs",
+		background.Origin{Channel: "agent", Session: "sess-agent-fail"},
 	)
-	automationVals, _ = result.Values[appinit.ProvidesAutomation].(*automationValues)
-	require.NotNil(t, automationVals)
 
-	for _, tool := range result.Tools {
-		if tool.Name != "agent_spawn" {
-			continue
-		}
-		spawnFound = true
-		resp, err := tool.Handler(
-			ctxkeys.WithMissionID(session.WithSessionKey(context.Background(), "sess-agent-fail"), "mission-agent-fail"),
-			map[string]interface{}{
-				"instruction": "review the logs",
-				"agent":       "operator",
-			},
-		)
-		require.Error(t, err)
-		assert.Nil(t, resp)
-		assert.Contains(t, err.Error(), "attach spawned child execution to mission")
-		break
-	}
-
-	require.True(t, spawnFound)
+	require.Error(t, err)
+	assert.Empty(t, taskID)
+	assert.Contains(t, err.Error(), "attach spawned child execution to mission")
 	require.Equal(t, 1, failingLinker.calls)
-	bgMgr, ok := automationVals.BackgroundManager.(*background.Manager)
-	require.True(t, ok)
-	require.Eventually(t, func() bool {
-		snapshots := bgMgr.List()
-		return len(snapshots) == 1 && snapshots[0].Status == background.Cancelled
-	}, time.Second, 10*time.Millisecond)
+	assert.Equal(t, "submitted-task", base.cancelledID)
 }
