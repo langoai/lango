@@ -542,6 +542,84 @@ func TestEngineRefund_InvalidTransition(t *testing.T) {
 	assert.ErrorIs(t, err, ErrInvalidTransition)
 }
 
+func TestEngineResolveDispute(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name             string
+		sellerFavor      bool
+		wantStatus       EscrowStatus
+		wantReleaseCount int
+		wantRefundCount  int
+	}{
+		{
+			name:             "seller favor releases funds",
+			sellerFavor:      true,
+			wantStatus:       StatusReleased,
+			wantReleaseCount: 1,
+		},
+		{
+			name:            "buyer favor refunds funds",
+			sellerFavor:     false,
+			wantStatus:      StatusRefunded,
+			wantRefundCount: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			settler := &mockSettler{}
+			e := newTestEngine(settler)
+			ctx := context.Background()
+			funded := createFundedEscrow(t, e, settler)
+			active, _ := e.Activate(ctx, funded.ID)
+			disputed, _ := e.Dispute(ctx, active.ID, "issue")
+
+			entry, err := e.ResolveDispute(ctx, disputed.ID, tt.sellerFavor)
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantStatus, entry.Status)
+			assert.Len(t, settler.released, tt.wantReleaseCount)
+			assert.Len(t, settler.refunded, tt.wantRefundCount)
+		})
+	}
+}
+
+func TestEngineResolveDisputeRejectsNonDisputedEscrow(t *testing.T) {
+	t.Parallel()
+
+	settler := &mockSettler{}
+	e := newTestEngine(settler)
+	ctx := context.Background()
+	funded := createFundedEscrow(t, e, settler)
+
+	entry, err := e.ResolveDispute(ctx, funded.ID, true)
+	require.Error(t, err)
+	assert.Nil(t, entry)
+	assert.ErrorIs(t, err, ErrInvalidTransition)
+	assert.Empty(t, settler.released)
+	assert.Empty(t, settler.refunded)
+}
+
+func TestEngineRecordDisputeResolutionUpdatesStateWithoutSettlement(t *testing.T) {
+	t.Parallel()
+
+	settler := &mockSettler{}
+	e := newTestEngine(settler)
+	ctx := context.Background()
+	funded := createFundedEscrow(t, e, settler)
+	active, _ := e.Activate(ctx, funded.ID)
+	disputed, _ := e.Dispute(ctx, active.ID, "already settled")
+
+	entry, err := e.RecordDisputeResolution(disputed.ID, true)
+	require.NoError(t, err)
+	assert.Equal(t, StatusReleased, entry.Status)
+	assert.Empty(t, settler.released)
+	assert.Empty(t, settler.refunded)
+}
+
 func TestEngineExpire(t *testing.T) {
 	t.Parallel()
 

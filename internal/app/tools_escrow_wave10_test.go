@@ -109,22 +109,24 @@ func TestOnChainEscrowTools_DisputeRefundAndResolve(t *testing.T) {
 	result, err = rig.tool("escrow_resolve").Handler(ctx, map[string]interface{}{
 		"escrowId":      escrowID,
 		"favor":         "seller",
-		"sellerPercent": float64(40),
+		"sellerPercent": float64(100),
 	})
 	require.NoError(t, err)
 	resolve := wave10EscrowPayload(t, result)
 	assert.Equal(t, escrowID, resolve["escrowId"])
 	assert.Equal(t, "seller", resolve["favor"])
-	assert.Equal(t, "4.00", resolve["sellerAmount"])
-	assert.Equal(t, "6.00", resolve["buyerAmount"])
+	assert.Equal(t, "released", resolve["status"])
+	assert.Equal(t, "10.00", resolve["sellerAmount"])
+	assert.Equal(t, "0.00", resolve["buyerAmount"])
 
 	result, err = rig.tool("escrow_list").Handler(ctx, map[string]interface{}{"filter": "disputed"})
 	require.NoError(t, err)
-	assert.Equal(t, 1, wave10EscrowPayload(t, result)["count"])
+	assert.Equal(t, 0, wave10EscrowPayload(t, result)["count"])
 
 	result, err = rig.tool("escrow_refund").Handler(ctx, map[string]interface{}{"escrowId": escrowID})
-	require.NoError(t, err)
-	assert.Equal(t, "refunded", wave10EscrowPayload(t, result)["status"])
+	require.Error(t, err)
+	assert.Nil(t, result)
+	assert.ErrorContains(t, err, "invalid status transition")
 }
 
 func TestEscrowResolveTool_RejectsSellerPercentOutsideRange(t *testing.T) {

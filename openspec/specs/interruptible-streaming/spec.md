@@ -18,13 +18,13 @@ The `ChatModel` SHALL maintain a `pendingRedirectInput` string field. When the u
 - **THEN** no redirect SHALL be queued and no cancellation SHALL occur
 
 ### Requirement: Redirect consumption in DoneMsg handler
-The `DoneMsg` handler SHALL check `pendingRedirectInput` before any other processing (including the `stateFailed` + error status path). If the field is non-empty, the handler SHALL skip error/cancelled message display, transition to `stateIdle`, submit the pending input via `submitCmd()`, and clear the field.
+The `DoneMsg` handler SHALL check `pendingRedirectInput` before any other processing (including the `stateFailed` + error status path). If the field is non-empty, the handler SHALL skip error/cancelled message display, submit the pending input via `submitCmd()`, enter `stateStreaming` for the redirected turn, and clear the field.
 
 #### Scenario: DoneMsg with pending redirect
 - **WHEN** a `DoneMsg` arrives and `pendingRedirectInput != ""`
 - **THEN** the handler SHALL NOT display any error or "Generation cancelled" message
-- **AND** SHALL transition to `stateIdle`
 - **AND** SHALL call `submitCmd(pendingRedirectInput)`
+- **AND** SHALL enter `stateStreaming` while the redirected turn runs
 - **AND** SHALL clear `pendingRedirectInput` to `""`
 
 #### Scenario: DoneMsg without pending redirect

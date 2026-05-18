@@ -305,6 +305,71 @@ func (e *Engine) Refund(ctx context.Context, escrowID string) (*EscrowEntry, err
 	return entry, nil
 }
 
+// ResolveDispute resolves a disputed escrow in favor of either seller or buyer.
+func (e *Engine) ResolveDispute(ctx context.Context, escrowID string, sellerFavor bool) (*EscrowEntry, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	entry, err := e.store.Get(escrowID)
+	if err != nil {
+		return nil, err
+	}
+	if sellerFavor {
+		return e.resolveDisputeLocked(ctx, entry, StatusReleased)
+	}
+	return e.resolveDisputeLocked(ctx, entry, StatusRefunded)
+}
+
+// RecordDisputeResolution records an already-settled dispute result locally.
+func (e *Engine) RecordDisputeResolution(escrowID string, sellerFavor bool) (*EscrowEntry, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	entry, err := e.store.Get(escrowID)
+	if err != nil {
+		return nil, err
+	}
+
+	target := StatusRefunded
+	if sellerFavor {
+		target = StatusReleased
+	}
+	if err := validateTransition(entry.Status, target); err != nil {
+		return nil, err
+	}
+
+	entry.Status = target
+	if err := e.store.Update(entry); err != nil {
+		return nil, err
+	}
+	return entry, nil
+}
+
+func (e *Engine) resolveDisputeLocked(ctx context.Context, entry *EscrowEntry, target EscrowStatus) (*EscrowEntry, error) {
+	if err := validateTransition(entry.Status, target); err != nil {
+		return nil, err
+	}
+
+	switch target {
+	case StatusReleased:
+		if err := e.settler.Release(ctx, entry.SellerDID, entry.TotalAmount); err != nil {
+			return nil, fmt.Errorf("resolve dispute release: %w", err)
+		}
+	case StatusRefunded:
+		if err := e.settler.Refund(ctx, entry.BuyerDID, entry.TotalAmount); err != nil {
+			return nil, fmt.Errorf("resolve dispute refund: %w", err)
+		}
+	default:
+		return nil, ErrInvalidTransition
+	}
+
+	entry.Status = target
+	if err := e.store.Update(entry); err != nil {
+		return nil, err
+	}
+	return entry, nil
+}
+
 // Expire marks a timed-out escrow as expired and refunds if funded.
 func (e *Engine) Expire(ctx context.Context, escrowID string) (*EscrowEntry, error) {
 	e.mu.Lock()

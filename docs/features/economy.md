@@ -186,7 +186,8 @@ stateDiagram-v2
     WorkSubmitted --> Released: escrow_release
     Active --> Disputed: escrow_dispute
     Funded --> Disputed: escrow_dispute
-    Disputed --> Resolved: escrow_resolve
+    Disputed --> Released: escrow_resolve seller
+    Disputed --> Refunded: escrow_resolve buyer
     Active --> Refunded: escrow_refund
     Funded --> Refunded: escrow_refund
 ```
@@ -214,7 +215,7 @@ stateDiagram-v2
 | `escrow_release` | Release escrow funds to the seller |
 | `escrow_refund` | Refund escrow funds to the buyer |
 | `escrow_dispute` | Raise a dispute on an escrow |
-| `escrow_resolve` | Resolve a disputed escrow as arbitrator |
+| `escrow_resolve` | Resolve a disputed escrow as arbitrator; `favor=seller` requires `sellerPercent=100` and releases funds, while `favor=buyer` requires `sellerPercent=0` and refunds funds |
 | `escrow_status` | Get detailed escrow status including on-chain state |
 | `escrow_list` | List all escrows with optional filter |
 
