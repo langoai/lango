@@ -110,13 +110,21 @@
 - [x] 15.5 Run subagent-driven review checkpoints for the wave
 - [x] 15.6 Commit the wave separately
 
-## 16. Verification And Enforcement
+## 16. Coverage Wave: Gateway, Telegram, And App Adapters
 
-- [ ] 16.1 Run `go build ./...`
-- [ ] 16.2 Run `go test ./...`
-- [ ] 16.3 Run the non-generated coverage report and confirm coverage is at least 90%
-- [ ] 16.4 Run the executable 90% coverage gate and confirm it passes
-- [ ] 16.5 Run `git diff --check`
-- [ ] 16.6 Run subagent-driven spec and code-quality review checkpoints
-- [ ] 16.7 Run `openspec validate --all --strict`
-- [ ] 16.8 Archive the completed OpenSpec change
+- [x] 16.1 Add focused tests for deterministic `internal/gateway/server.go` setter, status, RPC, and companion branches
+- [x] 16.2 Add focused tests for deterministic `internal/channels/telegram/telegram.go` channel identity, send, split, error formatting, and allow-list branches
+- [x] 16.3 Add focused tests for deterministic `internal/app/app.go` publish, post-agent wiring, and lifecycle registration branches
+- [x] 16.4 Run subagent-driven review checkpoints for the wave
+- [ ] 16.5 Commit the wave separately
+
+## 17. Verification And Enforcement
+
+- [ ] 17.1 Run `go build ./...`
+- [ ] 17.2 Run `go test ./...`
+- [ ] 17.3 Run the non-generated coverage report and confirm coverage is at least 90%
+- [ ] 17.4 Run the executable 90% coverage gate and confirm it passes
+- [ ] 17.5 Run `git diff --check`
+- [ ] 17.6 Run subagent-driven spec and code-quality review checkpoints
+- [ ] 17.7 Run `openspec validate --all --strict`
+- [ ] 17.8 Archive the completed OpenSpec change
