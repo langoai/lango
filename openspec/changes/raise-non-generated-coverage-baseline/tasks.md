@@ -182,13 +182,22 @@
 - [x] 24.4 Run subagent-driven review checkpoints for the wave
 - [x] 24.5 Commit the wave separately
 
-## 25. Verification And Enforcement
+## 25. Coverage Wave: Contract Caller, A2A Card, Cover CLI, And ADK Context Helpers
 
-- [ ] 25.1 Run `go build ./...`
-- [ ] 25.2 Run `go test ./...`
-- [ ] 25.3 Run the non-generated coverage report and confirm coverage is at least 90%
-- [ ] 25.4 Run the executable 90% coverage gate and confirm it passes
-- [ ] 25.5 Run `git diff --check`
-- [ ] 25.6 Run subagent-driven spec and code-quality review checkpoints
-- [ ] 25.7 Run `openspec validate --all --strict`
-- [ ] 25.8 Archive the completed OpenSpec change
+- [ ] 25.1 Add focused tests for deterministic `cmd/lango-cover/main.go` argument, module discovery, threshold, and error branches without external commands
+- [ ] 25.2 Add focused tests for deterministic `internal/a2a/server.go` agent-card construction, P2P/pricing mutation, route output, and skill extraction branches without network listeners
+- [ ] 25.3 Add focused tests for deterministic `internal/contract/caller.go` ABI, revert-reason, receipt timeout/context, and local error branches without live RPC services
+- [ ] 25.4 Add focused tests for deterministic `internal/adk/context_model.go` context item, token estimation, and retrieval merge helper branches without live providers
+- [ ] 25.5 Run subagent-driven review checkpoints for the wave
+- [ ] 25.6 Commit the wave separately
+
+## 26. Verification And Enforcement
+
+- [ ] 26.1 Run `go build ./...`
+- [ ] 26.2 Run `go test ./...`
+- [ ] 26.3 Run the non-generated coverage report and confirm coverage is at least 90%
+- [ ] 26.4 Run the executable 90% coverage gate and confirm it passes
+- [ ] 26.5 Run `git diff --check`
+- [ ] 26.6 Run subagent-driven spec and code-quality review checkpoints
+- [ ] 26.7 Run `openspec validate --all --strict`
+- [ ] 26.8 Archive the completed OpenSpec change
