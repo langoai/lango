@@ -108,7 +108,7 @@
 - [x] 15.3 Add focused tests for deterministic `internal/cli/configcmd/getset.go` redaction, scalar, reflection, formatting, and set-field branches
 - [x] 15.4 Add focused tests for deterministic `internal/cli/settings/editor.go` dependency navigation and setup-flow branches
 - [x] 15.5 Run subagent-driven review checkpoints for the wave
-- [ ] 15.6 Commit the wave separately
+- [x] 15.6 Commit the wave separately
 
 ## 16. Verification And Enforcement
 
