@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
+	"github.com/langoai/lango/internal/p2p/identity"
 	"github.com/langoai/lango/internal/security"
 )
 
@@ -364,6 +366,203 @@ func TestVerifyResponse_Ed25519(t *testing.T) {
 	// production capability. Phase 3 DID v2 is required for Ed25519 DIDs.
 	err = h.verifyResponse(context.Background(), resp, nonce)
 	assert.NoError(t, err)
+}
+
+func TestNewHandshaker_DefaultsVerifiersAndConfig(t *testing.T) {
+	t.Parallel()
+
+	privKey, err := ethcrypto.GenerateKey()
+	require.NoError(t, err)
+	signer := &mockSigner{privKeyBytes: ethcrypto.FromECDSA(privKey)}
+	sessions, err := NewSessionStore(24 * time.Hour)
+	require.NoError(t, err)
+
+	h := NewHandshaker(Config{
+		Signer:                 signer,
+		LegacySigner:           signer,
+		Sessions:               sessions,
+		Timeout:                15 * time.Second,
+		AutoApproveKnown:       true,
+		RequireSignedChallenge: true,
+		EnablePQKEM:            true,
+		Logger:                 zap.NewNop().Sugar(),
+	})
+
+	require.NotNil(t, h.verifiers[security.AlgorithmSecp256k1Keccak256])
+	require.NotNil(t, h.verifiers[security.AlgorithmEd25519])
+	assert.Same(t, signer, h.signer)
+	assert.Same(t, signer, h.legacySigner)
+	assert.Same(t, sessions, h.sessions)
+	assert.Equal(t, 15*time.Second, h.timeout)
+	assert.True(t, h.autoApproveKnown)
+	assert.True(t, h.requireSignedChallenge)
+	assert.True(t, h.kemEnabled)
+}
+
+func TestHandshaker_SelectSignerUsesLegacyForV1Peers(t *testing.T) {
+	t.Parallel()
+
+	legacyKey, err := ethcrypto.GenerateKey()
+	require.NoError(t, err)
+	legacySigner := &mockSigner{privKeyBytes: ethcrypto.FromECDSA(legacyKey)}
+	pub, priv, err := ed25519GenerateKey()
+	require.NoError(t, err)
+	primarySigner := &mockEd25519Signer{pub: pub, priv: priv}
+
+	h := NewHandshaker(Config{
+		Signer:       primarySigner,
+		LegacySigner: legacySigner,
+		Logger:       zap.NewNop().Sugar(),
+	})
+
+	assert.Same(t, legacySigner, h.selectSigner(""))
+	assert.Same(t, legacySigner, h.selectSigner(security.AlgorithmSecp256k1Keccak256))
+	assert.Same(t, primarySigner, h.selectSigner(security.AlgorithmEd25519))
+}
+
+func TestHandshaker_SelectSignerFallsBackToPrimaryWithoutLegacy(t *testing.T) {
+	t.Parallel()
+
+	pub, priv, err := ed25519GenerateKey()
+	require.NoError(t, err)
+	primarySigner := &mockEd25519Signer{pub: pub, priv: priv}
+
+	h := NewHandshaker(Config{
+		Signer: primarySigner,
+		Logger: zap.NewNop().Sugar(),
+	})
+
+	assert.Same(t, primarySigner, h.selectSigner(""))
+	assert.Same(t, primarySigner, h.selectSigner(security.AlgorithmSecp256k1Keccak256))
+}
+
+func TestHandshaker_CanonicalDIDUsesAliasRegistry(t *testing.T) {
+	t.Parallel()
+
+	alias := identity.NewDIDAlias()
+	alias.RegisterFromBundle(&identity.IdentityBundle{LegacyDID: "did:lango:v1-peer"}, "did:lango:v2-peer")
+	h := NewHandshaker(Config{
+		DIDAlias: alias,
+		Logger:   zap.NewNop().Sugar(),
+	})
+
+	assert.Equal(t, "did:lango:v1-peer", h.canonicalDID("did:lango:v2-peer"))
+	assert.Equal(t, "did:lango:v1-peer", h.canonicalDID("did:lango:v1-peer"))
+	assert.Equal(t, "did:lango:unknown", h.canonicalDID("did:lango:unknown"))
+	assert.Equal(t, "did:lango:v2-peer", NewHandshaker(Config{}).canonicalDID("did:lango:v2-peer"))
+}
+
+func TestValidateChallengeTimestampBoundaries(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+	tests := []struct {
+		name    string
+		ts      int64
+		wantErr string
+	}{
+		{name: "current timestamp", ts: now.Unix()},
+		{name: "within future grace", ts: now.Add(challengeFutureGrace / 2).Unix()},
+		{name: "zero timestamp", ts: 0, wantErr: "invalid timestamp value"},
+		{name: "too old", ts: now.Add(-challengeTimestampWindow - time.Minute).Unix(), wantErr: "timestamp too old"},
+		{name: "too far future", ts: now.Add(challengeFutureGrace + time.Minute).Unix(), wantErr: "timestamp too far in future"},
+		{name: "overflow guard", ts: int64(^uint64(0) >> 1), wantErr: "invalid timestamp value"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateChallengeTimestamp(tt.ts)
+			if tt.wantErr == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.wantErr)
+		})
+	}
+}
+
+func TestVerifyResponse_ZKProofVerifierPaths(t *testing.T) {
+	t.Parallel()
+
+	nonce := []byte("test-zk-response-nonce-32bytes!!")
+	resp := &ChallengeResponse{
+		Nonce:     nonce,
+		ZKProof:   []byte("proof"),
+		PublicKey: []byte("public"),
+		DID:       "did:lango:zk",
+	}
+
+	h := NewHandshaker(Config{
+		ZKVerifier: func(_ context.Context, proof, challenge, publicKey []byte) (bool, error) {
+			assert.Equal(t, []byte("proof"), proof)
+			assert.Equal(t, nonce, challenge)
+			assert.Equal(t, []byte("public"), publicKey)
+			return true, nil
+		},
+		Logger: zap.NewNop().Sugar(),
+	})
+	require.NoError(t, h.verifyResponse(context.Background(), resp, nonce))
+
+	h.zkVerifier = func(context.Context, []byte, []byte, []byte) (bool, error) {
+		return false, nil
+	}
+	err := h.verifyResponse(context.Background(), resp, nonce)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "ZK proof invalid")
+
+	h.zkVerifier = func(context.Context, []byte, []byte, []byte) (bool, error) {
+		return false, errors.New("verifier down")
+	}
+	err = h.verifyResponse(context.Background(), resp, nonce)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "ZK proof verification")
+	assert.Contains(t, err.Error(), "verifier down")
+}
+
+func TestVerifyResponse_UnsupportedSignatureAlgorithm(t *testing.T) {
+	t.Parallel()
+
+	privKey, err := ethcrypto.GenerateKey()
+	require.NoError(t, err)
+	signer := &mockSigner{privKeyBytes: ethcrypto.FromECDSA(privKey)}
+	nonce := []byte("test-unsupported-algorithm-nonce")
+	sig, err := signer.SignMessage(context.Background(), nonce)
+	require.NoError(t, err)
+	pubkey, err := signer.PublicKey(context.Background())
+	require.NoError(t, err)
+
+	resp := &ChallengeResponse{
+		Nonce:              nonce,
+		Signature:          sig,
+		PublicKey:          pubkey,
+		DID:                "did:lango:unsupported",
+		SignatureAlgorithm: "unsupported-algorithm",
+	}
+
+	err = newTestHandshaker(t, signer).verifyResponse(context.Background(), resp, nonce)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `unsupported signature algorithm "unsupported-algorithm"`)
+}
+
+func TestVerifyChallengeSignature_UnsupportedAlgorithm(t *testing.T) {
+	t.Parallel()
+
+	privKey, err := ethcrypto.GenerateKey()
+	require.NoError(t, err)
+	signer := &mockSigner{privKeyBytes: ethcrypto.FromECDSA(privKey)}
+	challenge := &Challenge{
+		Nonce:              []byte("test-challenge-nonce-32bytes!!!!!"),
+		Timestamp:          time.Now().Unix(),
+		SenderDID:          "did:lango:sender",
+		PublicKey:          []byte("public"),
+		Signature:          []byte("signature"),
+		SignatureAlgorithm: "unsupported-challenge-algorithm",
+	}
+
+	err = newTestHandshaker(t, signer).verifyChallengeSignature(challenge)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `unsupported challenge signature algorithm "unsupported-challenge-algorithm"`)
 }
 
 // --- Phase 4: KEM-specific tests ---

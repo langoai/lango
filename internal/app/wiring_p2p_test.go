@@ -3,11 +3,21 @@ package app
 import (
 	"context"
 	"crypto/rand"
+	"errors"
+	"math/big"
+	"path/filepath"
 	"testing"
 	"time"
 
+	ethcommon "github.com/ethereum/go-ethereum/common"
+	ethcrypto "github.com/ethereum/go-ethereum/crypto"
+	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/p2p/handshake"
+	"github.com/langoai/lango/internal/p2p/identity"
+	"github.com/langoai/lango/internal/p2p/paygate"
+	p2pproto "github.com/langoai/lango/internal/p2p/protocol"
 	"github.com/langoai/lango/internal/p2p/reputation"
+	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -209,4 +219,126 @@ func TestAutoApproveKnownPeer_UsesTrustEntrySemantics(t *testing.T) {
 	approved, err = autoApproveKnownPeer(ctx, store, "did:example:unsafe", 0.3)
 	require.NoError(t, err)
 	assert.False(t, approved, "temporarily unsafe peers should not be auto-approved")
+}
+
+type wiringP2PWallet struct {
+	signature []byte
+	publicKey []byte
+	signErr   error
+	pubErr    error
+}
+
+func (w *wiringP2PWallet) Address(context.Context) (string, error) {
+	return "0x0000000000000000000000000000000000000001", nil
+}
+
+func (w *wiringP2PWallet) Balance(context.Context) (*big.Int, error) {
+	return big.NewInt(0), nil
+}
+
+func (w *wiringP2PWallet) SignTransaction(context.Context, []byte) ([]byte, error) {
+	return nil, nil
+}
+
+func (w *wiringP2PWallet) SignMessage(context.Context, []byte) ([]byte, error) {
+	return w.signature, w.signErr
+}
+
+func (w *wiringP2PWallet) PublicKey(context.Context) ([]byte, error) {
+	return w.publicKey, w.pubErr
+}
+
+func TestWalletHandshakeSigner_DelegatesWalletAndDerivesDID(t *testing.T) {
+	t.Parallel()
+
+	key, err := ethcrypto.GenerateKey()
+	require.NoError(t, err)
+	pub := ethcrypto.CompressPubkey(&key.PublicKey)
+	wallet := &wiringP2PWallet{
+		signature: []byte("signed-message"),
+		publicKey: pub,
+	}
+	signer := &walletHandshakeSigner{wp: wallet}
+
+	signature, err := signer.SignMessage(context.Background(), []byte("challenge"))
+	require.NoError(t, err)
+	assert.Equal(t, []byte("signed-message"), signature)
+
+	gotPub, err := signer.PublicKey(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, pub, gotPub)
+	assert.Equal(t, security.AlgorithmSecp256k1Keccak256, signer.Algorithm())
+
+	did, err := signer.DID(context.Background())
+	require.NoError(t, err)
+	expectedDID, err := identity.DIDFromPublicKey(pub)
+	require.NoError(t, err)
+	assert.Equal(t, expectedDID.ID, did)
+}
+
+func TestWalletHandshakeSigner_DIDReturnsWalletPublicKeyError(t *testing.T) {
+	t.Parallel()
+
+	wantErr := errors.New("public key unavailable")
+	signer := &walletHandshakeSigner{wp: &wiringP2PWallet{pubErr: wantErr}}
+
+	did, err := signer.DID(context.Background())
+	require.ErrorIs(t, err, wantErr)
+	assert.Empty(t, did)
+}
+
+func TestInitP2P_SkipsDisabledOrMissingWalletWithoutNetwork(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.DefaultConfig()
+	cfg.P2P.KeyDir = filepath.Join(t.TempDir(), "p2p-keys")
+	cfg.P2P.ListenAddrs = []string{"/ip4/127.0.0.1/tcp/0"}
+	cfg.P2P.Enabled = false
+	assert.Nil(t, initP2P(cfg, nil, nil, nil, nil, nil, nil, nil, ""))
+	assert.NoDirExists(t, cfg.P2P.KeyDir)
+
+	cfg.P2P.Enabled = true
+	assert.Nil(t, initP2P(cfg, nil, nil, nil, nil, nil, nil, nil, ""))
+	assert.NoDirExists(t, cfg.P2P.KeyDir)
+}
+
+func TestPayGateAdapter_CheckMapsPaymentRequiredQuote(t *testing.T) {
+	t.Parallel()
+
+	gate := paygate.New(paygate.Config{
+		PricingFn: func(toolName string) (string, bool) {
+			if toolName == "free_tool" {
+				return "", true
+			}
+			return "1.25", false
+		},
+		LocalAddr: "0x00000000000000000000000000000000000000aa",
+		ChainID:   8453,
+		USDCAddr:  ethcommon.HexToAddress("0x00000000000000000000000000000000000000bb"),
+		Logger:    testLog(),
+	})
+	adapter := &payGateAdapter{gate: gate}
+
+	free, err := adapter.Check("did:lango:peer", "free_tool", nil)
+	require.NoError(t, err)
+	assert.Equal(t, p2pproto.PayGateResult{Status: string(paygate.StatusFree)}, free)
+
+	paid, err := adapter.Check("did:lango:peer", "paid_tool", map[string]interface{}{})
+	require.NoError(t, err)
+	assert.Equal(t, string(paygate.StatusPaymentRequired), paid.Status)
+	require.NotNil(t, paid.PriceQuote)
+	assert.Equal(t, "paid_tool", paid.PriceQuote["toolName"])
+	assert.Equal(t, "1.25", paid.PriceQuote["price"])
+	assert.Equal(t, int64(8453), paid.PriceQuote["chainId"])
+	assert.Equal(t, false, paid.PriceQuote["isFree"])
+}
+
+func TestInitZKP_ReturnsNilWhenHandshakeAndAttestationDisabled(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.DefaultConfig()
+	cfg.P2P.ZKHandshake = false
+	cfg.P2P.ZKAttestation = false
+
+	assert.Nil(t, initZKP(cfg))
 }

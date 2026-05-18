@@ -44,11 +44,11 @@
 
 ## 7. Coverage Wave: App Wiring And P2P
 
-- [ ] 7.1 Add focused tests for `internal/app/wiring_p2p.go`
-- [ ] 7.2 Add focused tests for `internal/app/wiring.go`
-- [ ] 7.3 Add focused tests for `internal/app/tools_meta.go`
-- [ ] 7.4 Add focused tests for `internal/p2p/handshake/handshake.go`
-- [ ] 7.5 Commit the wave separately
+- [x] 7.1 Add focused tests for `internal/app/wiring_p2p.go`
+- [x] 7.2 Add focused tests for `internal/app/wiring.go`
+- [x] 7.3 Add focused tests for `internal/app/tools_meta.go`
+- [x] 7.4 Add focused tests for `internal/p2p/handshake/handshake.go`
+- [x] 7.5 Commit the wave separately
 
 ## 8. Verification And Enforcement
 
