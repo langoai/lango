@@ -996,7 +996,8 @@ func TestAutomationModule_AgentSpawnMissionBindingLinkFailureCancelsSubmittedWor
 	require.Equal(t, 1, failingLinker.calls)
 	bgMgr, ok := automationVals.BackgroundManager.(*background.Manager)
 	require.True(t, ok)
-	snapshots := bgMgr.List()
-	require.Len(t, snapshots, 1)
-	assert.Equal(t, background.Cancelled, snapshots[0].Status)
+	require.Eventually(t, func() bool {
+		snapshots := bgMgr.List()
+		return len(snapshots) == 1 && snapshots[0].Status == background.Cancelled
+	}, time.Second, 10*time.Millisecond)
 }

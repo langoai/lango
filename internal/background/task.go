@@ -87,9 +87,14 @@ type TaskSnapshot struct {
 }
 
 // SetRunning transitions the task to the Running state and records the start time.
-func (t *Task) SetRunning() {
+// If the task is already Cancelled, the transition is skipped to preserve
+// cancellations that race with asynchronous execution startup.
+func (t *Task) SetRunning() bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	if t.Status == Cancelled {
+		return false
+	}
 	t.Status = Running
 	t.AttemptCount++
 	t.StartedAt = time.Now()
@@ -97,6 +102,7 @@ func (t *Task) SetRunning() {
 	t.NextRetryAt = time.Time{}
 	t.Result = ""
 	t.Error = ""
+	return true
 }
 
 // Complete transitions the task to the Done state with the given result.

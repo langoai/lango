@@ -33,7 +33,7 @@ Pending --> Running --> Done
 
 | Method | Transition | Side effects |
 |--------|-----------|-------------|
-| `SetRunning()` | pending -> running | Records `StartedAt` timestamp |
+| `SetRunning()` | pending -> running | Records `StartedAt` timestamp and returns whether the transition happened |
 | `Complete(result)` | running -> done | Records result and `CompletedAt` timestamp |
 | `Fail(errMsg)` | running -> failed | Records error message and `CompletedAt` timestamp |
 | `Cancel()` | pending/running -> cancelled | Records `CompletedAt` timestamp and invokes cancel function |

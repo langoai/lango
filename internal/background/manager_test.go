@@ -16,9 +16,11 @@ type mockRunner struct {
 	result string
 	err    error
 	delay  time.Duration
+	calls  int
 }
 
 func (m *mockRunner) Run(_ context.Context, _ string, _ string) (string, error) {
+	m.calls++
 	if m.delay > 0 {
 		time.Sleep(m.delay)
 	}
@@ -544,6 +546,40 @@ func TestTask_Complete_PreservesCancelledStatus(t *testing.T) {
 	task.Complete("result")
 	assert.Equal(t, Cancelled, task.Status)
 	assert.Empty(t, task.Result)
+}
+
+func TestTask_SetRunning_PreservesCancelledStatus(t *testing.T) {
+	task := &Task{
+		ID:     "t3",
+		Status: Pending,
+	}
+
+	task.Cancel()
+	assert.Equal(t, Cancelled, task.Status)
+
+	changed := task.SetRunning()
+	assert.False(t, changed)
+	assert.Equal(t, Cancelled, task.Status)
+	assert.Zero(t, task.AttemptCount)
+	assert.True(t, task.StartedAt.IsZero())
+	assert.False(t, task.CompletedAt.IsZero())
+}
+
+func TestManager_CancelBeforeExecuteSkipsRunner(t *testing.T) {
+	runner := &mockRunner{result: "should not run"}
+	mgr := NewManager(runner, nil, 1, time.Minute, testLogger())
+	mgr.sem <- struct{}{}
+
+	id, err := mgr.Submit(context.Background(), "cancel before execution", Origin{})
+	require.NoError(t, err)
+	require.NoError(t, mgr.Cancel(id))
+	<-mgr.sem
+
+	require.Eventually(t, func() bool {
+		snap, err := mgr.Status(id)
+		return err == nil && snap.Status == Cancelled
+	}, time.Second, 10*time.Millisecond)
+	assert.Equal(t, 0, runner.calls)
 }
 
 func TestManager_Cancel_PreservesStatus(t *testing.T) {

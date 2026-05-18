@@ -249,7 +249,12 @@ func (m *Manager) execute(ctx context.Context, task *Task) {
 	}
 	defer func() { <-m.sem }()
 
-	task.SetRunning()
+	if !task.SetRunning() {
+		m.mu.Lock()
+		m.evictTerminalTasksLocked()
+		m.mu.Unlock()
+		return
+	}
 	m.syncProjection(ctx, task)
 	m.logger.Infow("task running", "taskID", task.ID)
 

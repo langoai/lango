@@ -66,10 +66,10 @@
 
 ## 10. Coverage Wave: Remaining P2P And Payment Surfaces
 
-- [ ] 10.1 Add focused tests for remaining `internal/p2p/handshake/handshake.go` stream and approval branches
-- [ ] 10.2 Add focused tests for high-uncovered P2P protocol, settlement, discovery, and payment paths that do not require external services
-- [ ] 10.3 Add focused tests for remaining `internal/app/tools_escrow.go` and payment tool wrappers
-- [ ] 10.4 Commit the wave separately
+- [x] 10.1 Add focused tests for remaining `internal/p2p/handshake/handshake.go` stream and approval branches
+- [x] 10.2 Add focused tests for high-uncovered P2P protocol, settlement, discovery, and payment paths that do not require external services
+- [x] 10.3 Add focused tests for remaining `internal/app/tools_escrow.go` and payment tool wrappers
+- [x] 10.4 Commit the wave separately
 
 ## 11. Verification And Enforcement
 
