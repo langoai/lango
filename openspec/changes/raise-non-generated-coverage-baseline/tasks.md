@@ -118,13 +118,21 @@
 - [x] 16.4 Run subagent-driven review checkpoints for the wave
 - [x] 16.5 Commit the wave separately
 
-## 17. Verification And Enforcement
+## 17. Coverage Wave: App Wiring, Knowledge Store, And CLI/ADK Surfaces
 
-- [ ] 17.1 Run `go build ./...`
-- [ ] 17.2 Run `go test ./...`
-- [ ] 17.3 Run the non-generated coverage report and confirm coverage is at least 90%
-- [ ] 17.4 Run the executable 90% coverage gate and confirm it passes
-- [ ] 17.5 Run `git diff --check`
-- [ ] 17.6 Run subagent-driven spec and code-quality review checkpoints
-- [ ] 17.7 Run `openspec validate --all --strict`
-- [ ] 17.8 Archive the completed OpenSpec change
+- [x] 17.1 Add focused tests for deterministic `internal/app/wiring_p2p.go`, `internal/app/tools_meta.go`, `internal/app/modules.go`, and related app wiring branches
+- [x] 17.2 Add focused tests for deterministic `internal/knowledge/store.go` search, FTS5, payload-protection, deletion, and learning branches
+- [x] 17.3 Add focused tests for deterministic `cmd/lango/main.go`, `internal/cli/chat/chat.go`, and `internal/adk` option/helper branches
+- [x] 17.4 Run subagent-driven review checkpoints for the wave
+- [ ] 17.5 Commit the wave separately
+
+## 18. Verification And Enforcement
+
+- [ ] 18.1 Run `go build ./...`
+- [ ] 18.2 Run `go test ./...`
+- [ ] 18.3 Run the non-generated coverage report and confirm coverage is at least 90%
+- [ ] 18.4 Run the executable 90% coverage gate and confirm it passes
+- [ ] 18.5 Run `git diff --check`
+- [ ] 18.6 Run subagent-driven spec and code-quality review checkpoints
+- [ ] 18.7 Run `openspec validate --all --strict`
+- [ ] 18.8 Archive the completed OpenSpec change
