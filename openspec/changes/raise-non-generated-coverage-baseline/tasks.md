@@ -425,13 +425,21 @@
 - [x] 52.5 Run subagent-driven review checkpoints for the wave
 - [x] 52.6 Commit the wave separately
 
-## 53. Verification And Enforcement
+## 53. Coverage Wave: App Residuals, Post-Adjudication Status, Browser, Smart Account, And Graph Store
 
-- [ ] 53.1 Run `go build ./...`
-- [ ] 53.2 Run `go test ./...`
-- [ ] 53.3 Run the non-generated coverage report and confirm coverage is at least 90%
-- [ ] 53.4 Run the executable 90% coverage gate and confirm it passes
-- [ ] 53.5 Run `git diff --check`
-- [ ] 53.6 Run subagent-driven spec and code-quality review checkpoints
-- [ ] 53.7 Run `openspec validate --all --strict`
-- [ ] 53.8 Archive the completed OpenSpec change
+- [ ] 53.1 Add focused tests for remaining deterministic `internal/app/wiring_p2p.go`, `internal/app/modules.go`, `internal/app/wiring.go`, `internal/app/app.go`, and `internal/app/wiring_economy.go` branches that can be exercised without live providers, listeners, peers, chain RPC, or long-running workers
+- [ ] 53.2 Add focused tests for deterministic `internal/postadjudicationstatus/service.go` and `internal/graph/bolt_store.go` status aggregation, receipt, filtering, snapshot, stats, scan, and clear branches using local stores only
+- [ ] 53.3 Add focused tests for deterministic `internal/tools/browser/browser.go` and `internal/cli/smartaccount/policy.go` session/error/helper branches without launching a real browser or live chain RPC
+- [ ] 53.4 Run subagent-driven review checkpoints for the wave
+- [ ] 53.5 Commit the wave separately
+
+## 54. Verification And Enforcement
+
+- [ ] 54.1 Run `go build ./...`
+- [ ] 54.2 Run `go test ./...`
+- [ ] 54.3 Run the non-generated coverage report and confirm coverage is at least 90%
+- [ ] 54.4 Run the executable 90% coverage gate and confirm it passes
+- [ ] 54.5 Run `git diff --check`
+- [ ] 54.6 Run subagent-driven spec and code-quality review checkpoints
+- [ ] 54.7 Run `openspec validate --all --strict`
+- [ ] 54.8 Archive the completed OpenSpec change
