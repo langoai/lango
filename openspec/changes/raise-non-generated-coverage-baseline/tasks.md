@@ -255,7 +255,7 @@
 - [x] 33.2 Add focused tests for deterministic `internal/storagebroker/server.go` dispatch, payload encode/decode, crypto wrapper, and unavailable dependency branches without binding real listeners
 - [x] 33.3 Add focused tests for remaining deterministic `internal/app` and `cmd/lango/main.go` runtime helper branches without live providers, external listeners, P2P services, or interactive UI loops
 - [x] 33.4 Run subagent-driven review checkpoints for the wave
-- [ ] 33.5 Commit the wave separately
+- [x] 33.5 Commit the wave separately
 
 ## 34. Verification And Enforcement
 
