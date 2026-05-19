@@ -273,13 +273,21 @@
 - [x] 35.4 Run subagent-driven review checkpoints for the wave
 - [x] 35.5 Commit the wave separately
 
-## 36. Verification And Enforcement
+## 36. Coverage Wave: Security Status, P2P Handshake, And CLI Helpers
 
-- [ ] 36.1 Run `go build ./...`
-- [ ] 36.2 Run `go test ./...`
-- [ ] 36.3 Run the non-generated coverage report and confirm coverage is at least 90%
-- [ ] 36.4 Run the executable 90% coverage gate and confirm it passes
-- [ ] 36.5 Run `git diff --check`
-- [ ] 36.6 Run subagent-driven spec and code-quality review checkpoints
-- [ ] 36.7 Run `openspec validate --all --strict`
-- [ ] 36.8 Archive the completed OpenSpec change
+- [ ] 36.1 Add focused tests for deterministic `internal/cli/security/status.go` status helpers, envelope/identity rendering, config fallback, and non-interactive DB-status branches without interactive passphrase prompts
+- [ ] 36.2 Add focused tests for deterministic `internal/p2p/handshake/handshake.go` stream handler, protocol selection, timestamp, signer, and early failure branches without external peers
+- [ ] 36.3 Add focused tests for deterministic `cmd/lango/main.go` command startup/config helper branches without launching interactive TUI loops or binding external services
+- [ ] 36.4 Run subagent-driven review checkpoints for the wave
+- [ ] 36.5 Commit the wave separately
+
+## 37. Verification And Enforcement
+
+- [ ] 37.1 Run `go build ./...`
+- [ ] 37.2 Run `go test ./...`
+- [ ] 37.3 Run the non-generated coverage report and confirm coverage is at least 90%
+- [ ] 37.4 Run the executable 90% coverage gate and confirm it passes
+- [ ] 37.5 Run `git diff --check`
+- [ ] 37.6 Run subagent-driven spec and code-quality review checkpoints
+- [ ] 37.7 Run `openspec validate --all --strict`
+- [ ] 37.8 Archive the completed OpenSpec change
