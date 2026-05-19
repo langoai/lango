@@ -394,7 +394,7 @@
 - [x] 49.3 Add focused tests for deterministic `internal/mcp/manager.go` lifecycle, registration, and error branches without external MCP servers
 - [x] 49.4 Add focused tests for deterministic `internal/p2p/workspace/gossip.go` publish/subscribe/error branches using local fakes
 - [x] 49.5 Run subagent-driven review checkpoints for the wave
-- [ ] 49.6 Commit the wave separately
+- [x] 49.6 Commit the wave separately
 
 ## 50. Verification And Enforcement
 
