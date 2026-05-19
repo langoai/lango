@@ -281,13 +281,21 @@
 - [x] 36.4 Run subagent-driven review checkpoints for the wave
 - [x] 36.5 Commit the wave separately
 
-## 37. Verification And Enforcement
+## 37. Coverage Wave: FTS5, Bootstrap Phases, And App Post-Agent Wiring
 
-- [ ] 37.1 Run `go build ./...`
-- [ ] 37.2 Run `go test ./...`
-- [ ] 37.3 Run the non-generated coverage report and confirm coverage is at least 90%
-- [ ] 37.4 Run the executable 90% coverage gate and confirm it passes
-- [ ] 37.5 Run `git diff --check`
-- [ ] 37.6 Run subagent-driven spec and code-quality review checkpoints
-- [ ] 37.7 Run `openspec validate --all --strict`
-- [ ] 37.8 Archive the completed OpenSpec change
+- [ ] 37.1 Add focused tests for deterministic `internal/search/fts5.go` table lifecycle, insert/update/delete, bulk insert, search, DB accessor, and query sanitization branches using temp SQLite only
+- [ ] 37.2 Add focused tests for deterministic `internal/bootstrap/phases.go` data-dir, encryption detection, credential acquisition, database-open, security-state, crypto-init, and profile-load branches without interactive prompts
+- [ ] 37.3 Add focused tests for deterministic `internal/app/app.go`, `internal/app/wiring.go`, and `internal/app/wiring_p2p.go` post-agent wiring, memory/turn callbacks, provenance options, security init, and P2P wiring branches without live providers or external peers
+- [ ] 37.4 Run subagent-driven review checkpoints for the wave
+- [ ] 37.5 Commit the wave separately
+
+## 38. Verification And Enforcement
+
+- [ ] 38.1 Run `go build ./...`
+- [ ] 38.2 Run `go test ./...`
+- [ ] 38.3 Run the non-generated coverage report and confirm coverage is at least 90%
+- [ ] 38.4 Run the executable 90% coverage gate and confirm it passes
+- [ ] 38.5 Run `git diff --check`
+- [ ] 38.6 Run subagent-driven spec and code-quality review checkpoints
+- [ ] 38.7 Run `openspec validate --all --strict`
+- [ ] 38.8 Archive the completed OpenSpec change
