@@ -367,7 +367,7 @@
 - [x] 46.3 Add focused tests for deterministic `internal/storagebroker/server.go` request dispatch, config, payment, recall, workflow, and error branches without external brokers
 - [x] 46.4 Add focused tests for deterministic `internal/app/modules.go`, `internal/app/wiring.go`, `internal/app/wiring_p2p.go`, and `internal/app/tools_meta.go` branches that can be covered without live providers, listeners, peers, or long-running workers
 - [x] 46.5 Run subagent-driven review checkpoints for the wave
-- [ ] 46.6 Commit the wave separately
+- [x] 46.6 Commit the wave separately
 
 ## 47. Verification And Enforcement
 
