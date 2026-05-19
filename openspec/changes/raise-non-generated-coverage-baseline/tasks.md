@@ -330,15 +330,13 @@
 - [x] 42.4 Run subagent-driven review checkpoints for the wave
 - [x] 42.5 Commit the wave separately
 
-## 43. Verification And Enforcement
-
 ## 43. Coverage Wave: App Entrypoints, Channels, Smart Account Wiring, And Turn Runner
 
-- [ ] 43.1 Add focused tests for deterministic `internal/app/channels.go` and `internal/app/wiring_smartaccount.go` helper branches without launching external channel services, chain RPC, or background workers
-- [ ] 43.2 Add focused tests for deterministic `internal/turnrunner/runner.go` lifecycle, event emission, error, cancellation, receipt, and callback branches using fake agents and stores only
-- [ ] 43.3 Add focused tests for deterministic `cmd/lango/main.go` command startup/config helper branches without launching interactive TUI loops or binding listeners
-- [ ] 43.4 Add focused tests for deterministic `internal/app/tools_meta.go`, `internal/app/modules.go`, and `internal/app/wiring_p2p.go` branches that remain high-uncovered without live providers, listeners, or external peers
-- [ ] 43.5 Run subagent-driven review checkpoints for the wave
+- [x] 43.1 Add focused tests for deterministic `internal/app/channels.go` and `internal/app/wiring_smartaccount.go` helper branches without launching external channel services, chain RPC, or background workers
+- [x] 43.2 Add focused tests for deterministic `internal/turnrunner/runner.go` lifecycle, event emission, error, cancellation, receipt, and callback branches using fake agents and stores only
+- [x] 43.3 Add focused tests for deterministic `cmd/lango/main.go` command startup/config helper branches without launching interactive TUI loops or binding listeners
+- [x] 43.4 Add focused tests for deterministic `internal/app/tools_meta.go`, `internal/app/modules.go`, and `internal/app/wiring_p2p.go` branches that remain high-uncovered without live providers, listeners, or external peers
+- [x] 43.5 Run subagent-driven review checkpoints for the wave
 - [ ] 43.6 Commit the wave separately
 
 ## 44. Verification And Enforcement
