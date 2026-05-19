@@ -348,13 +348,22 @@
 - [x] 44.5 Run subagent-driven review checkpoints for the wave
 - [x] 44.6 Commit the wave separately
 
-## 45. Verification And Enforcement
+## 45. Coverage Wave: ZKP, Storage Facade, Escrow Monitor, And App Helpers
 
-- [ ] 45.1 Run `go build ./...`
-- [ ] 45.2 Run `go test ./...`
-- [ ] 45.3 Run the non-generated coverage report and confirm coverage is at least 90%
-- [ ] 45.4 Run the executable 90% coverage gate and confirm it passes
-- [ ] 45.5 Run `git diff --check`
-- [ ] 45.6 Run subagent-driven spec and code-quality review checkpoints
-- [ ] 45.7 Run `openspec validate --all --strict`
-- [ ] 45.8 Archive the completed OpenSpec change
+- [ ] 45.1 Add focused tests for deterministic `internal/p2p/zkp/zkp.go` branches without external provers, peers, or network services
+- [ ] 45.2 Add focused tests for deterministic `internal/storage/facade.go` resolution, fallback, and error branches without external storage services
+- [ ] 45.3 Add focused tests for deterministic `internal/economy/escrow/hub/monitor.go` event handling, replay, state, and error branches without live chain RPC
+- [ ] 45.4 Add focused tests for remaining deterministic `internal/app/tools_meta.go`, `internal/app/wiring_p2p.go`, `internal/app/modules.go`, and `internal/app/wiring.go` branches that do not require live providers, listeners, peers, or background workers
+- [ ] 45.5 Run subagent-driven review checkpoints for the wave
+- [ ] 45.6 Commit the wave separately
+
+## 46. Verification And Enforcement
+
+- [ ] 46.1 Run `go build ./...`
+- [ ] 46.2 Run `go test ./...`
+- [ ] 46.3 Run the non-generated coverage report and confirm coverage is at least 90%
+- [ ] 46.4 Run the executable 90% coverage gate and confirm it passes
+- [ ] 46.5 Run `git diff --check`
+- [ ] 46.6 Run subagent-driven spec and code-quality review checkpoints
+- [ ] 46.7 Run `openspec validate --all --strict`
+- [ ] 46.8 Archive the completed OpenSpec change
