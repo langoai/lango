@@ -19,6 +19,7 @@ import (
 	entsession "github.com/langoai/lango/internal/ent/session"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/sqlitedriver"
+	"github.com/langoai/lango/internal/storeutil/schemaexec"
 	"github.com/langoai/lango/internal/types"
 )
 
@@ -77,11 +78,6 @@ type EntStore struct {
 	hardEndTimeout  time.Duration
 }
 
-// ent's Atlas-backed schema planner is not safe for concurrent mutation during
-// Schema.Create. NewEntStore is a runtime-owned constructor path, so serialize
-// migration at this boundary to avoid concurrent map write crashes.
-var schemaCreateMu sync.Mutex
-
 // NewEntStore creates a new ent-backed session store
 func NewEntStore(dbPath string, opts ...StoreOption) (*EntStore, error) {
 	store := &EntStore{}
@@ -119,13 +115,12 @@ func NewEntStore(dbPath string, opts ...StoreOption) (*EntStore, error) {
 	client := ent.NewClient(ent.Driver(drv))
 
 	// Auto-migrate schema - skip FK check since we've enabled it manually
-	schemaCreateMu.Lock()
-	if err := client.Schema.Create(context.Background(), schema.WithForeignKeys(false)); err != nil {
-		schemaCreateMu.Unlock()
+	if err := schemaexec.RunExclusive(func() error {
+		return client.Schema.Create(context.Background(), schema.WithForeignKeys(false))
+	}); err != nil {
 		client.Close()
 		return nil, fmt.Errorf("create schema: %w", err)
 	}
-	schemaCreateMu.Unlock()
 
 	store.client = client
 	store.db = db

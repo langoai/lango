@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sync"
 
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
@@ -14,15 +13,10 @@ import (
 
 	"github.com/langoai/lango/internal/ent"
 	"github.com/langoai/lango/internal/sqlitedriver"
+	"github.com/langoai/lango/internal/storeutil/schemaexec"
 )
 
 const dataDirPerm = 0o700
-
-// ent's Atlas-backed schema planner mutates shared table metadata during
-// Schema.Create, so concurrent managed opens can crash with concurrent map writes.
-// Serialize schema migration at this boundary because dbopen is the single
-// runtime-owned entry point for managed application opens.
-var schemaCreateMu sync.Mutex
 
 // OpenManaged opens the application database in read-write mode and applies
 // schema migration.
@@ -69,16 +63,15 @@ func OpenManaged(dbPath, encryptionKey string, rawKey bool, cipherPageSize int) 
 	drv := entsql.OpenDB(dialect.SQLite, db)
 	client := ent.NewClient(ent.Driver(drv))
 
-	schemaCreateMu.Lock()
-	if err := client.Schema.Create(
-		context.Background(),
-		schema.WithForeignKeys(false),
-	); err != nil {
-		schemaCreateMu.Unlock()
+	if err := schemaexec.RunExclusive(func() error {
+		return client.Schema.Create(
+			context.Background(),
+			schema.WithForeignKeys(false),
+		)
+	}); err != nil {
 		client.Close()
 		return nil, nil, fmt.Errorf("schema migration: %w", err)
 	}
-	schemaCreateMu.Unlock()
 
 	return client, db, nil
 }

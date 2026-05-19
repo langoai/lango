@@ -88,8 +88,8 @@ func TestProductionSchemaCreateCallsStaySerializedAndScoped(t *testing.T) {
 			if !allowed[path] {
 				t.Fatalf("%s contains forbidden %q outside approved constructors", path, needle)
 			}
-			if !strings.Contains(string(data), "schemaCreateMu.Lock()") || !strings.Contains(string(data), "schemaCreateMu.Unlock()") {
-				t.Fatalf("%s contains %q without schemaCreateMu serialization", path, needle)
+			if !strings.Contains(string(data), "schemaexec.RunExclusive(") {
+				t.Fatalf("%s contains %q without shared schemaexec serialization", path, needle)
 			}
 			return nil
 		})
