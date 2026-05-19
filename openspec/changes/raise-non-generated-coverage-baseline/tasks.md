@@ -242,13 +242,20 @@
 - [x] 31.5 Run subagent-driven review checkpoints for the wave
 - [x] 31.6 Commit the wave separately
 
-## 32. Verification And Enforcement
+## 32. Coverage Wave: Automation Settings Forms And Smart Account CLI Branches
 
-- [x] 32.1 Run `go build ./...`
-- [x] 32.2 Run `go test ./...`
-- [ ] 32.3 Run the non-generated coverage report and confirm coverage is at least 90%
-- [ ] 32.4 Run the executable 90% coverage gate and confirm it passes
-- [x] 32.5 Run `git diff --check`
-- [x] 32.6 Run subagent-driven spec and code-quality review checkpoints
-- [x] 32.7 Run `openspec validate --all --strict`
-- [ ] 32.8 Archive the completed OpenSpec change
+- [ ] 32.1 Add focused tests for deterministic `internal/cli/settings/forms_automation.go` form builders, field wiring, defaults, and validation branches without launching interactive UI loops
+- [ ] 32.2 Add focused tests for deterministic `internal/cli/smartaccount/policy.go` and remaining `internal/cli/smartaccount/session.go` command output, cleanup, validation, and error branches without live chain RPC
+- [ ] 32.3 Run subagent-driven review checkpoints for the wave
+- [ ] 32.4 Commit the wave separately
+
+## 33. Verification And Enforcement
+
+- [x] 33.1 Run `go build ./...`
+- [x] 33.2 Run `go test ./...`
+- [ ] 33.3 Run the non-generated coverage report and confirm coverage is at least 90%
+- [ ] 33.4 Run the executable 90% coverage gate and confirm it passes
+- [x] 33.5 Run `git diff --check`
+- [x] 33.6 Run subagent-driven spec and code-quality review checkpoints
+- [x] 33.7 Run `openspec validate --all --strict`
+- [ ] 33.8 Archive the completed OpenSpec change
