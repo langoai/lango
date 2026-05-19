@@ -308,10 +308,10 @@
 
 ## 40. Coverage Wave: USDC Settlement, App Modules, And Chat State
 
-- [ ] 40.1 Add focused tests for deterministic `internal/economy/escrow/usdc_settler.go` address resolution, lock, release/refund, signing, submission retry, and receipt confirmation branches using in-process RPC seams only
-- [ ] 40.2 Add focused tests for deterministic `internal/app/modules.go` foundation/intelligence/automation/network/extension module branches that do not start live external services
-- [ ] 40.3 Add focused tests for deterministic `internal/cli/chat/chat.go` state/update/render helper branches without launching Bubble Tea programs
-- [ ] 40.4 Run subagent-driven review checkpoints for the wave
+- [x] 40.1 Add focused tests for deterministic `internal/economy/escrow/usdc_settler.go` address resolution, lock, release/refund, signing, submission retry, and receipt confirmation branches using in-process RPC seams only
+- [x] 40.2 Add focused tests for deterministic `internal/app/modules.go` foundation/intelligence/automation/network/extension module branches that do not start live external services
+- [x] 40.3 Add focused tests for deterministic `internal/cli/chat/chat.go` state/update/render helper branches without launching Bubble Tea programs
+- [x] 40.4 Run subagent-driven review checkpoints for the wave
 - [ ] 40.5 Commit the wave separately
 
 ## 41. Verification And Enforcement
