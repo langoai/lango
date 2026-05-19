@@ -247,7 +247,7 @@
 - [x] 32.1 Add focused tests for deterministic `internal/cli/settings/forms_automation.go` form builders, field wiring, defaults, and validation branches without launching interactive UI loops
 - [x] 32.2 Add focused tests for deterministic `internal/cli/smartaccount/policy.go` and remaining `internal/cli/smartaccount/session.go` command output, cleanup, validation, and error branches without live chain RPC
 - [x] 32.3 Run subagent-driven review checkpoints for the wave
-- [ ] 32.4 Commit the wave separately
+- [x] 32.4 Commit the wave separately
 
 ## 33. Verification And Enforcement
 
