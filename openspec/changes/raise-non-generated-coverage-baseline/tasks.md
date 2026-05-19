@@ -389,11 +389,11 @@
 
 ## 49. Coverage Wave: App Wiring, MCP Manager, And P2P Workspace
 
-- [ ] 49.1 Add focused tests for deterministic `internal/app/wiring_p2p.go`, `internal/app/wiring.go`, and `internal/app/modules.go` branches without live network peers
-- [ ] 49.2 Add focused tests for deterministic `internal/app/tools_meta.go`, `internal/app/tools_p2p.go`, and safe tool wrapper branches without external RPC calls
-- [ ] 49.3 Add focused tests for deterministic `internal/mcp/manager.go` lifecycle, registration, and error branches without external MCP servers
-- [ ] 49.4 Add focused tests for deterministic `internal/p2p/workspace/gossip.go` publish/subscribe/error branches using local fakes
-- [ ] 49.5 Run subagent-driven review checkpoints for the wave
+- [x] 49.1 Add focused tests for deterministic `internal/app/wiring_p2p.go`, `internal/app/wiring.go`, and `internal/app/modules.go` branches without live network peers
+- [x] 49.2 Add focused tests for deterministic `internal/app/tools_meta.go`, `internal/app/tools_p2p.go`, and safe tool wrapper branches without external RPC calls
+- [x] 49.3 Add focused tests for deterministic `internal/mcp/manager.go` lifecycle, registration, and error branches without external MCP servers
+- [x] 49.4 Add focused tests for deterministic `internal/p2p/workspace/gossip.go` publish/subscribe/error branches using local fakes
+- [x] 49.5 Run subagent-driven review checkpoints for the wave
 - [ ] 49.6 Commit the wave separately
 
 ## 50. Verification And Enforcement
