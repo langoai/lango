@@ -227,11 +227,11 @@
 
 ## 30. Coverage Wave: Remaining App Hotspots, TUI Form, Smart Account, And Workflow CLI
 
-- [ ] 30.1 Add focused tests for remaining deterministic `internal/app/tools_meta.go`, `internal/app/modules.go`, `internal/app/wiring.go`, `internal/app/wiring_p2p.go`, and `internal/app/app.go` branches that still dominate uncovered statement count without live providers, listeners, or chain RPC
-- [ ] 30.2 Add focused tests for deterministic `internal/cli/tuicore/form.go`, `internal/cli/smartaccount/session.go`, and `internal/cli/workflow/workflow.go` helper branches without launching interactive UI loops
-- [ ] 30.3 Add focused tests for remaining deterministic `cmd/lango/main.go` and `internal/adk/agent.go` helper branches that are safe to exercise with fake stores, fake agents, and no external services
-- [ ] 30.4 Run subagent-driven review checkpoints for the wave
-- [ ] 30.5 Commit the wave separately
+- [x] 30.1 Add focused tests for remaining deterministic `internal/app/tools_meta.go`, `internal/app/modules.go`, `internal/app/wiring.go`, `internal/app/wiring_p2p.go`, and `internal/app/app.go` branches that still dominate uncovered statement count without live providers, listeners, or chain RPC
+- [x] 30.2 Add focused tests for deterministic `internal/cli/tuicore/form.go`, `internal/cli/smartaccount/session.go`, and `internal/cli/workflow/workflow.go` helper branches without launching interactive UI loops
+- [x] 30.3 Add focused tests for remaining deterministic `cmd/lango/main.go` and `internal/adk/agent.go` helper branches that are safe to exercise with fake stores, fake agents, and no external services
+- [x] 30.4 Run subagent-driven review checkpoints for the wave
+- [x] 30.5 Commit the wave separately
 
 ## 31. Verification And Enforcement
 
