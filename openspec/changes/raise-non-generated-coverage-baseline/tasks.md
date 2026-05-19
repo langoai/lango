@@ -435,11 +435,11 @@
 
 ## 54. Coverage Wave: App Remaining Hotspots, Run Ledger Validators, P2P Team, Ontology, And Node Helpers
 
-- [ ] 54.1 Add focused tests for remaining deterministic `internal/app/wiring_p2p.go`, `internal/app/modules.go`, `internal/app/tools_meta.go`, `internal/app/wiring.go`, and `internal/app/wiring_knowledge.go` helper/error branches that can be exercised without live providers, listeners, peers, chain RPC, or long-running workers
-- [ ] 54.2 Add focused tests for deterministic `internal/runledger/validators.go` and `internal/p2p/team/tools_escrow.go` validation/tool branches without live chain RPC, P2P peers, or external services
-- [ ] 54.3 Add focused tests for deterministic `internal/ontology/service.go` and `internal/p2p/node.go` schema, delegation, helper, key-path, peer, and accessor branches without live peers or external services
-- [ ] 54.4 Run subagent-driven review checkpoints for the wave
-- [ ] 54.5 Commit the wave separately
+- [x] 54.1 Add focused tests for remaining deterministic `internal/app/wiring_p2p.go`, `internal/app/modules.go`, `internal/app/tools_meta.go`, `internal/app/wiring.go`, and `internal/app/wiring_knowledge.go` helper/error branches that can be exercised without live providers, listeners, peers, chain RPC, or long-running workers
+- [x] 54.2 Add focused tests for deterministic `internal/runledger/validators.go` and `internal/p2p/team/tools_escrow.go` validation/tool branches without live chain RPC, P2P peers, or external services
+- [x] 54.3 Add focused tests for deterministic `internal/ontology/service.go` and `internal/p2p/node.go` schema, delegation, helper, key-path, peer, and accessor branches without live peers or external services
+- [x] 54.4 Run subagent-driven review checkpoints for the wave
+- [x] 54.5 Commit the wave separately
 
 ## 55. Verification And Enforcement
 
