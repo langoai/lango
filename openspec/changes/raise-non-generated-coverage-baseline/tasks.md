@@ -320,7 +320,7 @@
 - [x] 41.2 Add focused tests for deterministic `internal/cli/smartaccount/policy.go` show/set command formatting, output mode validation, seam errors, cleanup, value formatting, and limit parsing branches without live chain RPC
 - [x] 41.3 Add focused tests for deterministic `internal/p2p/firewall/firewall.go` ACL validation, rule mutation, rate limiting, reputation outcomes, sanitization, attestation, matching, and copy semantics without live network services
 - [x] 41.4 Run subagent-driven review checkpoints for the wave
-- [ ] 41.5 Commit the wave separately
+- [x] 41.5 Commit the wave separately
 
 ## 42. Verification And Enforcement
 
