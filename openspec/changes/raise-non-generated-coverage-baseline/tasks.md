@@ -346,7 +346,7 @@
 - [x] 44.3 Add focused tests for deterministic `internal/adk/agent.go` and `internal/knowledge/store.go` remaining helper/error branches without live model providers or external services
 - [x] 44.4 Add focused tests for deterministic `internal/cli/cockpit/pages/deadletters.go` and `internal/channels/slack/slack.go` branches without launching TUI loops or live Slack clients
 - [x] 44.5 Run subagent-driven review checkpoints for the wave
-- [ ] 44.6 Commit the wave separately
+- [x] 44.6 Commit the wave separately
 
 ## 45. Verification And Enforcement
 
