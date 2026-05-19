@@ -369,13 +369,22 @@
 - [x] 46.5 Run subagent-driven review checkpoints for the wave
 - [x] 46.6 Commit the wave separately
 
-## 47. Verification And Enforcement
+## 47. Coverage Wave: Gateway Auth, App P2P Tools, ADK Agent, And CLI Workflow
 
-- [ ] 47.1 Run `go build ./...`
-- [ ] 47.2 Run `go test ./...`
-- [ ] 47.3 Run the non-generated coverage report and confirm coverage is at least 90%
-- [ ] 47.4 Run the executable 90% coverage gate and confirm it passes
-- [ ] 47.5 Run `git diff --check`
-- [ ] 47.6 Run subagent-driven spec and code-quality review checkpoints
-- [ ] 47.7 Run `openspec validate --all --strict`
-- [ ] 47.8 Archive the completed OpenSpec change
+- [ ] 47.1 Add focused tests for deterministic `internal/gateway/auth.go` authentication middleware branches without real gateway servers
+- [ ] 47.2 Add focused tests for deterministic `internal/app/tools_p2p.go` and remaining safe `internal/app/wiring_p2p.go` branches without live peers or listeners
+- [ ] 47.3 Add focused tests for deterministic `internal/adk/agent.go` execution, callback, and error branches without live providers
+- [ ] 47.4 Add focused tests for deterministic `internal/cli/workflow/workflow.go` command, validation, and output branches without external services
+- [ ] 47.5 Run subagent-driven review checkpoints for the wave
+- [ ] 47.6 Commit the wave separately
+
+## 48. Verification And Enforcement
+
+- [ ] 48.1 Run `go build ./...`
+- [ ] 48.2 Run `go test ./...`
+- [ ] 48.3 Run the non-generated coverage report and confirm coverage is at least 90%
+- [ ] 48.4 Run the executable 90% coverage gate and confirm it passes
+- [ ] 48.5 Run `git diff --check`
+- [ ] 48.6 Run subagent-driven spec and code-quality review checkpoints
+- [ ] 48.7 Run `openspec validate --all --strict`
+- [ ] 48.8 Archive the completed OpenSpec change
