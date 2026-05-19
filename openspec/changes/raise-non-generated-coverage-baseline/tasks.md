@@ -441,13 +441,21 @@
 - [x] 54.4 Run subagent-driven review checkpoints for the wave
 - [x] 54.5 Commit the wave separately
 
-## 55. Verification And Enforcement
+## 55. Coverage Wave: App, P2P Settlement, MCP, Discovery, CLI, And Channel Hotspots
 
-- [ ] 55.1 Run `go build ./...`
-- [ ] 55.2 Run `go test ./...`
-- [ ] 55.3 Run the non-generated coverage report and confirm coverage is at least 90%
-- [ ] 55.4 Run the executable 90% coverage gate and confirm it passes
-- [ ] 55.5 Run `git diff --check`
-- [ ] 55.6 Run subagent-driven spec and code-quality review checkpoints
-- [ ] 55.7 Run `openspec validate --all --strict`
-- [ ] 55.8 Archive the completed OpenSpec change
+- [ ] 55.1 Add focused tests for remaining deterministic `internal/app/wiring_p2p.go`, `internal/app/modules.go`, `internal/app/tools_meta.go`, `internal/app/wiring.go`, and `internal/app/tools_p2p.go` helper/error branches that can be exercised without live providers, listeners, peers, chain RPC, or long-running workers
+- [ ] 55.2 Add focused tests for deterministic `internal/p2p/settlement/service.go`, `internal/mcp/connection.go`, and `internal/p2p/discovery/gossip.go` parsing, validation, nil-dependency, local-store, and fake-host branches without live peers or external network services
+- [ ] 55.3 Add focused tests for deterministic `internal/cli/chat/chat.go`, `internal/channels/telegram/telegram.go`, and adjacent tool/channel helper branches without launching interactive UI loops or calling live channel APIs
+- [ ] 55.4 Run subagent-driven review checkpoints for the wave
+- [ ] 55.5 Commit the wave separately
+
+## 56. Verification And Enforcement
+
+- [ ] 56.1 Run `go build ./...`
+- [ ] 56.2 Run `go test ./...`
+- [ ] 56.3 Run the non-generated coverage report and confirm coverage is at least 90%
+- [ ] 56.4 Run the executable 90% coverage gate and confirm it passes
+- [ ] 56.5 Run `git diff --check`
+- [ ] 56.6 Run subagent-driven spec and code-quality review checkpoints
+- [ ] 56.7 Run `openspec validate --all --strict`
+- [ ] 56.8 Archive the completed OpenSpec change
