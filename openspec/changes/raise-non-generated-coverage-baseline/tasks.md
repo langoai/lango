@@ -304,7 +304,7 @@
 - [x] 39.2 Add focused tests for deterministic `internal/runledger/ent_store.go` journal, snapshot, cache, and error branches using isolated test storage
 - [x] 39.3 Add focused tests for deterministic `cmd/lango/main.go` chat/cockpit/workbench/config helper branches through existing seams without launching interactive UI loops
 - [x] 39.4 Run subagent-driven review checkpoints for the wave
-- [ ] 39.5 Commit the wave separately
+- [x] 39.5 Commit the wave separately
 
 ## 40. Verification And Enforcement
 
