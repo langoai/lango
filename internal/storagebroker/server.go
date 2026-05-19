@@ -417,7 +417,10 @@ func (s *Server) decryptPayload(_ context.Context, req DecryptPayloadRequest) (D
 	if len(key) == 0 {
 		return DecryptPayloadResult{}, fmt.Errorf("payload protection key not initialized")
 	}
-	if req.KeyVersion != 0 && version != 0 && req.KeyVersion != version {
+	if version == 0 {
+		version = sec.PayloadKeyVersionV1
+	}
+	if req.KeyVersion != 0 && req.KeyVersion != version {
 		return DecryptPayloadResult{}, fmt.Errorf("unsupported payload key version %d", req.KeyVersion)
 	}
 	plaintext, err := sec.DecryptPayloadWithKey(key, req.Ciphertext, req.Nonce)
@@ -981,7 +984,11 @@ func (p *serverPayloadProtector) EncryptPayload(plaintext []byte) ([]byte, []byt
 }
 
 func (p *serverPayloadProtector) DecryptPayload(ciphertext, nonce []byte, keyVersion int) ([]byte, error) {
-	if keyVersion != 0 && p.version != 0 && keyVersion != p.version {
+	version := p.version
+	if version == 0 {
+		version = sec.PayloadKeyVersionV1
+	}
+	if keyVersion != 0 && keyVersion != version {
 		return nil, fmt.Errorf("unsupported payload key version %d", keyVersion)
 	}
 	return sec.DecryptPayloadWithKey(p.key, ciphertext, nonce)

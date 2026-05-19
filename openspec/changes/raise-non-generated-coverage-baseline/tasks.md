@@ -251,10 +251,10 @@
 
 ## 33. Coverage Wave: Session Store, Storage Broker, App Runtime Helpers
 
-- [ ] 33.1 Add focused tests for deterministic `internal/session/ent_store.go` constructor, client/DB accessor, list, timeout annotation, checksum, and migration branches using temp SQLite state only
-- [ ] 33.2 Add focused tests for deterministic `internal/storagebroker/server.go` dispatch, payload encode/decode, crypto wrapper, and unavailable dependency branches without binding real listeners
-- [ ] 33.3 Add focused tests for remaining deterministic `internal/app` and `cmd/lango/main.go` runtime helper branches without live providers, external listeners, P2P services, or interactive UI loops
-- [ ] 33.4 Run subagent-driven review checkpoints for the wave
+- [x] 33.1 Add focused tests for deterministic `internal/session/ent_store.go` constructor, client/DB accessor, list, timeout annotation, checksum, and migration branches using temp SQLite state only
+- [x] 33.2 Add focused tests for deterministic `internal/storagebroker/server.go` dispatch, payload encode/decode, crypto wrapper, and unavailable dependency branches without binding real listeners
+- [x] 33.3 Add focused tests for remaining deterministic `internal/app` and `cmd/lango/main.go` runtime helper branches without live providers, external listeners, P2P services, or interactive UI loops
+- [x] 33.4 Run subagent-driven review checkpoints for the wave
 - [ ] 33.5 Commit the wave separately
 
 ## 34. Verification And Enforcement
