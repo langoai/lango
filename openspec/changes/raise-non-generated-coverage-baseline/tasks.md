@@ -404,7 +404,7 @@
 - [x] 50.4 Add focused tests for deterministic `internal/tools/payment/payment.go`, `internal/tools/filesystem/tools.go`, `internal/tools/websearch/tools.go`, `internal/tools/webfetch/readability.go`, and `internal/x402` helper branches without external network calls
 - [x] 50.5 Add focused tests for deterministic `cmd/lango/main.go`, `cmd/lango/dead_letter_status.go`, and `internal/turntrace/retention.go` helper branches without launching interactive TUI loops or long-running workers
 - [x] 50.6 Run subagent-driven review checkpoints for the wave
-- [ ] 50.7 Commit the wave separately
+- [x] 50.7 Commit the wave separately
 
 ## 51. Verification And Enforcement
 
