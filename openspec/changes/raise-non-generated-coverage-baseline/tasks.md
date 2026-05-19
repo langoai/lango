@@ -322,13 +322,21 @@
 - [x] 41.4 Run subagent-driven review checkpoints for the wave
 - [x] 41.5 Commit the wave separately
 
-## 42. Verification And Enforcement
+## 42. Coverage Wave: Receipts, Proactive Librarian, And MCP Connection
 
-- [ ] 42.1 Run `go build ./...`
-- [ ] 42.2 Run `go test ./...`
-- [ ] 42.3 Run the non-generated coverage report and confirm coverage is at least 90%
-- [ ] 42.4 Run the executable 90% coverage gate and confirm it passes
-- [ ] 42.5 Run `git diff --check`
-- [ ] 42.6 Run subagent-driven spec and code-quality review checkpoints
-- [ ] 42.7 Run `openspec validate --all --strict`
-- [ ] 42.8 Archive the completed OpenSpec change
+- [ ] 42.1 Add focused tests for deterministic `internal/receipts/store.go` remaining transaction lifecycle, clone/copy, event trail, validation, and error branches without external services
+- [ ] 42.2 Add focused tests for deterministic `internal/librarian/proactive_buffer.go` default config, trigger processing, message/observation errors, threshold/cooldown/max-pending behavior, auto-save, dual-save, event publishing, and inquiry creation branches without background sleeps
+- [ ] 42.3 Add focused tests for deterministic `internal/mcp/connection.go` state/accessor/copy semantics, sandbox decision publishing, disconnect, health-check, timeout, and transport error branches without launching real MCP servers
+- [ ] 42.4 Run subagent-driven review checkpoints for the wave
+- [ ] 42.5 Commit the wave separately
+
+## 43. Verification And Enforcement
+
+- [ ] 43.1 Run `go build ./...`
+- [ ] 43.2 Run `go test ./...`
+- [ ] 43.3 Run the non-generated coverage report and confirm coverage is at least 90%
+- [ ] 43.4 Run the executable 90% coverage gate and confirm it passes
+- [ ] 43.5 Run `git diff --check`
+- [ ] 43.6 Run subagent-driven spec and code-quality review checkpoints
+- [ ] 43.7 Run `openspec validate --all --strict`
+- [ ] 43.8 Archive the completed OpenSpec change
