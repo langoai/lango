@@ -298,13 +298,21 @@
 - [x] 38.5 Run subagent-driven review checkpoints for the wave
 - [x] 38.6 Commit the wave separately
 
-## 39. Verification And Enforcement
+## 39. Coverage Wave: Workspace Tools, Run Ledger, And Entrypoint Helpers
 
-- [ ] 39.1 Run `go build ./...`
-- [ ] 39.2 Run `go test ./...`
-- [ ] 39.3 Run the non-generated coverage report and confirm coverage is at least 90%
-- [ ] 39.4 Run the executable 90% coverage gate and confirm it passes
-- [ ] 39.5 Run `git diff --check`
-- [ ] 39.6 Run subagent-driven spec and code-quality review checkpoints
-- [ ] 39.7 Run `openspec validate --all --strict`
-- [ ] 39.8 Archive the completed OpenSpec change
+- [ ] 39.1 Add focused tests for deterministic `internal/app/tools_workspace.go` create/join/leave/list/status helper branches without live P2P peers or external services
+- [ ] 39.2 Add focused tests for deterministic `internal/runledger/ent_store.go` journal, snapshot, cache, and error branches using isolated test storage
+- [ ] 39.3 Add focused tests for deterministic `cmd/lango/main.go` chat/cockpit/workbench/config helper branches through existing seams without launching interactive UI loops
+- [ ] 39.4 Run subagent-driven review checkpoints for the wave
+- [ ] 39.5 Commit the wave separately
+
+## 40. Verification And Enforcement
+
+- [ ] 40.1 Run `go build ./...`
+- [ ] 40.2 Run `go test ./...`
+- [ ] 40.3 Run the non-generated coverage report and confirm coverage is at least 90%
+- [ ] 40.4 Run the executable 90% coverage gate and confirm it passes
+- [ ] 40.5 Run `git diff --check`
+- [ ] 40.6 Run subagent-driven spec and code-quality review checkpoints
+- [ ] 40.7 Run `openspec validate --all --strict`
+- [ ] 40.8 Archive the completed OpenSpec change
