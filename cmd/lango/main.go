@@ -340,7 +340,9 @@ func prepareTUIStartup(
 	// Redirect Go stdlib logger to the same file so third-party libraries
 	// (e.g., ADK runner) that use log.Printf don't leak into the TUI.
 	var logFile *os.File
-	if logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+	previousLogWriter := log.Writer()
+	if file, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+		logFile = file
 		log.SetOutput(logFile)
 	}
 
@@ -349,6 +351,7 @@ func prepareTUIStartup(
 	writeTUIStartupNotice(startupWriter, logPath, line)
 
 	return func() {
+		log.SetOutput(previousLogWriter)
 		if logFile != nil {
 			_ = logFile.Close()
 		}
