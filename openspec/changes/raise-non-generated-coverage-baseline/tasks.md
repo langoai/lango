@@ -265,13 +265,21 @@
 - [x] 34.4 Run subagent-driven review checkpoints for the wave
 - [x] 34.5 Commit the wave separately
 
-## 35. Verification And Enforcement
+## 35. Coverage Wave: Knowledge Wiring, Smart Account Sessions, And ADK Helpers
 
-- [ ] 35.1 Run `go build ./...`
-- [ ] 35.2 Run `go test ./...`
-- [ ] 35.3 Run the non-generated coverage report and confirm coverage is at least 90%
-- [ ] 35.4 Run the executable 90% coverage gate and confirm it passes
-- [ ] 35.5 Run `git diff --check`
-- [ ] 35.6 Run subagent-driven spec and code-quality review checkpoints
-- [ ] 35.7 Run `openspec validate --all --strict`
-- [ ] 35.8 Archive the completed OpenSpec change
+- [ ] 35.1 Add focused tests for deterministic `internal/app/wiring_knowledge.go` knowledge, FTS5 bulk-indexing, skill registry, and adapter helper branches without live providers or external services
+- [ ] 35.2 Add focused tests for deterministic `internal/cli/smartaccount/session.go` execution helper error paths, cleanup behavior, list status mapping, revoke branches, command validation, and table formatting without live chain RPC
+- [ ] 35.3 Add focused tests for deterministic `internal/adk` low-risk helper branches that remain high-uncovered without live providers, including context retrieval/formatting and session-service discard/cleanup helpers
+- [ ] 35.4 Run subagent-driven review checkpoints for the wave
+- [ ] 35.5 Commit the wave separately
+
+## 36. Verification And Enforcement
+
+- [ ] 36.1 Run `go build ./...`
+- [ ] 36.2 Run `go test ./...`
+- [ ] 36.3 Run the non-generated coverage report and confirm coverage is at least 90%
+- [ ] 36.4 Run the executable 90% coverage gate and confirm it passes
+- [ ] 36.5 Run `git diff --check`
+- [ ] 36.6 Run subagent-driven spec and code-quality review checkpoints
+- [ ] 36.7 Run `openspec validate --all --strict`
+- [ ] 36.8 Archive the completed OpenSpec change
