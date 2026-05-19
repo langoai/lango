@@ -225,13 +225,21 @@
 - [x] 29.4 Run subagent-driven review checkpoints for the wave
 - [x] 29.5 Commit the wave separately
 
-## 30. Verification And Enforcement
+## 30. Coverage Wave: Remaining App Hotspots, TUI Form, Smart Account, And Workflow CLI
 
-- [x] 30.1 Run `go build ./...`
-- [x] 30.2 Run `go test ./...`
-- [ ] 30.3 Run the non-generated coverage report and confirm coverage is at least 90%
-- [ ] 30.4 Run the executable 90% coverage gate and confirm it passes
-- [x] 30.5 Run `git diff --check`
-- [x] 30.6 Run subagent-driven spec and code-quality review checkpoints
-- [x] 30.7 Run `openspec validate --all --strict`
-- [ ] 30.8 Archive the completed OpenSpec change
+- [ ] 30.1 Add focused tests for remaining deterministic `internal/app/tools_meta.go`, `internal/app/modules.go`, `internal/app/wiring.go`, `internal/app/wiring_p2p.go`, and `internal/app/app.go` branches that still dominate uncovered statement count without live providers, listeners, or chain RPC
+- [ ] 30.2 Add focused tests for deterministic `internal/cli/tuicore/form.go`, `internal/cli/smartaccount/session.go`, and `internal/cli/workflow/workflow.go` helper branches without launching interactive UI loops
+- [ ] 30.3 Add focused tests for remaining deterministic `cmd/lango/main.go` and `internal/adk/agent.go` helper branches that are safe to exercise with fake stores, fake agents, and no external services
+- [ ] 30.4 Run subagent-driven review checkpoints for the wave
+- [ ] 30.5 Commit the wave separately
+
+## 31. Verification And Enforcement
+
+- [x] 31.1 Run `go build ./...`
+- [x] 31.2 Run `go test ./...`
+- [ ] 31.3 Run the non-generated coverage report and confirm coverage is at least 90%
+- [ ] 31.4 Run the executable 90% coverage gate and confirm it passes
+- [x] 31.5 Run `git diff --check`
+- [x] 31.6 Run subagent-driven spec and code-quality review checkpoints
+- [x] 31.7 Run `openspec validate --all --strict`
+- [ ] 31.8 Archive the completed OpenSpec change
