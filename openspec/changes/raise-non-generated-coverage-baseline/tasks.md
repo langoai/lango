@@ -271,7 +271,7 @@
 - [x] 35.2 Add focused tests for deterministic `internal/cli/smartaccount/session.go` execution helper error paths, cleanup behavior, list status mapping, revoke branches, command validation, and table formatting without live chain RPC
 - [x] 35.3 Add focused tests for deterministic `internal/adk` low-risk helper branches that remain high-uncovered without live providers, including context retrieval/formatting and session-service discard/cleanup helpers
 - [x] 35.4 Run subagent-driven review checkpoints for the wave
-- [ ] 35.5 Commit the wave separately
+- [x] 35.5 Commit the wave separately
 
 ## 36. Verification And Enforcement
 
