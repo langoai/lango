@@ -387,13 +387,22 @@
 - [x] 48.5 Run subagent-driven review checkpoints for the wave
 - [x] 48.6 Commit the wave separately
 
-## 49. Verification And Enforcement
+## 49. Coverage Wave: App Wiring, MCP Manager, And P2P Workspace
 
-- [ ] 49.1 Run `go build ./...`
-- [ ] 49.2 Run `go test ./...`
-- [ ] 49.3 Run the non-generated coverage report and confirm coverage is at least 90%
-- [ ] 49.4 Run the executable 90% coverage gate and confirm it passes
-- [ ] 49.5 Run `git diff --check`
-- [ ] 49.6 Run subagent-driven spec and code-quality review checkpoints
-- [ ] 49.7 Run `openspec validate --all --strict`
-- [ ] 49.8 Archive the completed OpenSpec change
+- [ ] 49.1 Add focused tests for deterministic `internal/app/wiring_p2p.go`, `internal/app/wiring.go`, and `internal/app/modules.go` branches without live network peers
+- [ ] 49.2 Add focused tests for deterministic `internal/app/tools_meta.go`, `internal/app/tools_p2p.go`, and safe tool wrapper branches without external RPC calls
+- [ ] 49.3 Add focused tests for deterministic `internal/mcp/manager.go` lifecycle, registration, and error branches without external MCP servers
+- [ ] 49.4 Add focused tests for deterministic `internal/p2p/workspace/gossip.go` publish/subscribe/error branches using local fakes
+- [ ] 49.5 Run subagent-driven review checkpoints for the wave
+- [ ] 49.6 Commit the wave separately
+
+## 50. Verification And Enforcement
+
+- [ ] 50.1 Run `go build ./...`
+- [ ] 50.2 Run `go test ./...`
+- [ ] 50.3 Run the non-generated coverage report and confirm coverage is at least 90%
+- [ ] 50.4 Run the executable 90% coverage gate and confirm it passes
+- [ ] 50.5 Run `git diff --check`
+- [ ] 50.6 Run subagent-driven spec and code-quality review checkpoints
+- [ ] 50.7 Run `openspec validate --all --strict`
+- [ ] 50.8 Archive the completed OpenSpec change
