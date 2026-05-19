@@ -495,7 +495,7 @@ func buildX402FetchTool(interceptor *x402.Interceptor, svc ServiceAPI) *agent.To
 					_ = svc.RecordX402Payment(ctx, payment.X402PaymentRecord{
 						URL:     url,
 						From:    addr,
-						ChainID: 0, // Set from config at wiring level if needed.
+						ChainID: interceptor.ChainID(),
 					})
 				}
 			}

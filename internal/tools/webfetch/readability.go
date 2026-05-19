@@ -278,9 +278,13 @@ func renderMarkdown(n *html.Node, buf *strings.Builder) {
 			buf.WriteString("*" + text + "*")
 			return
 		case atom.Code:
-			buf.WriteString("`")
-			renderMarkdownChildren(n, buf)
-			buf.WriteString("`")
+			if buf.Len() > 0 {
+				last := buf.String()[buf.Len()-1]
+				if last != '\n' && last != '#' && last != ' ' {
+					buf.WriteByte(' ')
+				}
+			}
+			buf.WriteString("`" + strings.TrimSpace(textContent(n)) + "`")
 			return
 		case atom.Pre:
 			if buf.Len() > 0 {

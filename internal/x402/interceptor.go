@@ -133,6 +133,11 @@ func (i *Interceptor) IsEnabled() bool {
 	return i.config.Enabled
 }
 
+// ChainID returns the configured payment network chain ID.
+func (i *Interceptor) ChainID() int64 {
+	return i.config.ChainID
+}
+
 // SignerAddress returns the wallet address of the configured signer.
 func (i *Interceptor) SignerAddress(ctx context.Context) (string, error) {
 	signer, err := i.signerProvider.EvmSigner(ctx)

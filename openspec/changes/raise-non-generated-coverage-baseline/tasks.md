@@ -398,12 +398,12 @@
 
 ## 50. Coverage Wave: ADK, Workflow, Contract, Payment, And Tool Surfaces
 
-- [ ] 50.1 Add focused tests for deterministic `internal/adk/context_model.go` and `internal/adk/tools.go` helper branches without live model providers
-- [ ] 50.2 Add focused tests for deterministic `internal/workflow/state.go` and `internal/workflow/tools.go` persistence/query/tool branches using local Ent test stores or fakes only
-- [ ] 50.3 Add focused tests for deterministic `internal/contract/caller.go` read/write helper branches and revert/receipt handling without live RPC services
-- [ ] 50.4 Add focused tests for deterministic `internal/tools/payment/payment.go`, `internal/tools/filesystem/tools.go`, `internal/tools/websearch/tools.go`, `internal/tools/webfetch/readability.go`, and `internal/x402` helper branches without external network calls
-- [ ] 50.5 Add focused tests for deterministic `cmd/lango/main.go`, `cmd/lango/dead_letter_status.go`, and `internal/turntrace/retention.go` helper branches without launching interactive TUI loops or long-running workers
-- [ ] 50.6 Run subagent-driven review checkpoints for the wave
+- [x] 50.1 Add focused tests for deterministic `internal/adk/context_model.go` and `internal/adk/tools.go` helper branches without live model providers
+- [x] 50.2 Add focused tests for deterministic `internal/workflow/state.go` and `internal/workflow/tools.go` persistence/query/tool branches using local Ent test stores or fakes only
+- [x] 50.3 Add focused tests for deterministic `internal/contract/caller.go` read/write helper branches and revert/receipt handling without live RPC services
+- [x] 50.4 Add focused tests for deterministic `internal/tools/payment/payment.go`, `internal/tools/filesystem/tools.go`, `internal/tools/websearch/tools.go`, `internal/tools/webfetch/readability.go`, and `internal/x402` helper branches without external network calls
+- [x] 50.5 Add focused tests for deterministic `cmd/lango/main.go`, `cmd/lango/dead_letter_status.go`, and `internal/turntrace/retention.go` helper branches without launching interactive TUI loops or long-running workers
+- [x] 50.6 Run subagent-driven review checkpoints for the wave
 - [ ] 50.7 Commit the wave separately
 
 ## 51. Verification And Enforcement
