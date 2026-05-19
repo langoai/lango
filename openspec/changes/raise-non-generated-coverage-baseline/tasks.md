@@ -341,11 +341,11 @@
 
 ## 44. Coverage Wave: App Wiring, ADK/Knowledge, Deadletters, And Slack
 
-- [ ] 44.1 Add focused tests for deterministic `internal/app/wiring_p2p.go` and related `internal/app/app.go` helper branches without live listeners, peers, or P2P services
-- [ ] 44.2 Add focused tests for deterministic `internal/app/modules.go` and `internal/app/wiring.go` helper branches without live providers, background workers, or external services
-- [ ] 44.3 Add focused tests for deterministic `internal/adk/agent.go` and `internal/knowledge/store.go` remaining helper/error branches without live model providers or external services
-- [ ] 44.4 Add focused tests for deterministic `internal/cli/cockpit/pages/deadletters.go` and `internal/channels/slack/slack.go` branches without launching TUI loops or live Slack clients
-- [ ] 44.5 Run subagent-driven review checkpoints for the wave
+- [x] 44.1 Add focused tests for deterministic `internal/app/wiring_p2p.go` and related `internal/app/app.go` helper branches without live listeners, peers, or P2P services
+- [x] 44.2 Add focused tests for deterministic `internal/app/modules.go` and `internal/app/wiring.go` helper branches without live providers, background workers, or external services
+- [x] 44.3 Add focused tests for deterministic `internal/adk/agent.go` and `internal/knowledge/store.go` remaining helper/error branches without live model providers or external services
+- [x] 44.4 Add focused tests for deterministic `internal/cli/cockpit/pages/deadletters.go` and `internal/channels/slack/slack.go` branches without launching TUI loops or live Slack clients
+- [x] 44.5 Run subagent-driven review checkpoints for the wave
 - [ ] 44.6 Commit the wave separately
 
 ## 45. Verification And Enforcement
