@@ -324,10 +324,10 @@
 
 ## 42. Coverage Wave: Receipts, Proactive Librarian, And MCP Connection
 
-- [ ] 42.1 Add focused tests for deterministic `internal/receipts/store.go` remaining transaction lifecycle, clone/copy, event trail, validation, and error branches without external services
-- [ ] 42.2 Add focused tests for deterministic `internal/librarian/proactive_buffer.go` default config, trigger processing, message/observation errors, threshold/cooldown/max-pending behavior, auto-save, dual-save, event publishing, and inquiry creation branches without background sleeps
-- [ ] 42.3 Add focused tests for deterministic `internal/mcp/connection.go` state/accessor/copy semantics, sandbox decision publishing, disconnect, health-check, timeout, and transport error branches without launching real MCP servers
-- [ ] 42.4 Run subagent-driven review checkpoints for the wave
+- [x] 42.1 Add focused tests for deterministic `internal/receipts/store.go` remaining transaction lifecycle, clone/copy, event trail, validation, and error branches without external services
+- [x] 42.2 Add focused tests for deterministic `internal/librarian/proactive_buffer.go` default config, trigger processing, message/observation errors, threshold/cooldown/max-pending behavior, auto-save, dual-save, event publishing, and inquiry creation branches without background sleeps
+- [x] 42.3 Add focused tests for deterministic `internal/mcp/connection.go` state/accessor/copy semantics, sandbox decision publishing, disconnect, health-check, timeout, and transport error branches without launching real MCP servers
+- [x] 42.4 Run subagent-driven review checkpoints for the wave
 - [ ] 42.5 Commit the wave separately
 
 ## 43. Verification And Enforcement
