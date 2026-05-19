@@ -360,11 +360,22 @@
 
 ## 46. Verification And Enforcement
 
-- [ ] 46.1 Run `go build ./...`
-- [ ] 46.2 Run `go test ./...`
-- [ ] 46.3 Run the non-generated coverage report and confirm coverage is at least 90%
-- [ ] 46.4 Run the executable 90% coverage gate and confirm it passes
-- [ ] 46.5 Run `git diff --check`
-- [ ] 46.6 Run subagent-driven spec and code-quality review checkpoints
-- [ ] 46.7 Run `openspec validate --all --strict`
-- [ ] 46.8 Archive the completed OpenSpec change
+## 46. Coverage Wave: Entrypoints, Payment, Storage Broker, And App Wiring
+
+- [ ] 46.1 Add focused tests for deterministic `cmd/lango/main.go` command entrypoint branches that avoid launching interactive TUI loops or real servers
+- [ ] 46.2 Add focused tests for deterministic `internal/payment/service.go` send, balance, retry, confirmation, and failure-recording branches without live RPC
+- [ ] 46.3 Add focused tests for deterministic `internal/storagebroker/server.go` request dispatch, config, payment, recall, workflow, and error branches without external brokers
+- [ ] 46.4 Add focused tests for deterministic `internal/app/modules.go`, `internal/app/wiring.go`, `internal/app/wiring_p2p.go`, and `internal/app/tools_meta.go` branches that can be covered without live providers, listeners, peers, or long-running workers
+- [ ] 46.5 Run subagent-driven review checkpoints for the wave
+- [ ] 46.6 Commit the wave separately
+
+## 47. Verification And Enforcement
+
+- [ ] 47.1 Run `go build ./...`
+- [ ] 47.2 Run `go test ./...`
+- [ ] 47.3 Run the non-generated coverage report and confirm coverage is at least 90%
+- [ ] 47.4 Run the executable 90% coverage gate and confirm it passes
+- [ ] 47.5 Run `git diff --check`
+- [ ] 47.6 Run subagent-driven spec and code-quality review checkpoints
+- [ ] 47.7 Run `openspec validate --all --strict`
+- [ ] 47.8 Archive the completed OpenSpec change
