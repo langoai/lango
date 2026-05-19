@@ -457,7 +457,7 @@
 - [x] 56.4 Add focused tests for deterministic `internal/cli/onboard/wizard.go` state, navigation, validation, rendering, and config update branches without launching interactive TUI loops
 - [x] 56.5 Add focused tests for remaining deterministic `internal/app/*`, `internal/p2p/settlement/service.go`, and `internal/mcp/connection.go` helper branches only where they can be covered without live providers, listeners, peers, chain RPC, or external MCP servers
 - [x] 56.6 Run subagent-driven review checkpoints for the wave
-- [ ] 56.7 Commit the wave separately
+- [x] 56.7 Commit the wave separately
 
 ## 57. Verification And Enforcement
 
