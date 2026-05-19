@@ -241,8 +241,11 @@ func policySetCmd(bootLoader BootLoader) *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "set",
-		Short: "Set harness policy limits",
+		Use:           "set",
+		Short:         "Set harness policy limits",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		Args:          cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			result, cleanup, err := updatePolicyLimits(bootLoader, maxTx, daily, monthly)
 			if err != nil {

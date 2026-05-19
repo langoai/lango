@@ -302,10 +302,10 @@ func sessionListCmd(bootLoader BootLoader) *cobra.Command {
 			for _, e := range entries {
 				parent := "-"
 				if e.ParentID != "" {
-					parent = e.ParentID[:8] + "..."
+					parent = tablePreview(e.ParentID, 8)
 				}
 				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
-					e.ID[:8]+"...", e.Address[:10]+"...", parent,
+					tablePreview(e.ID, 8), tablePreview(e.Address, 10), parent,
 					e.ExpiresAt, e.Limit, e.Status)
 			}
 			return w.Flush()
@@ -326,6 +326,9 @@ func sessionRevokeCmd(bootLoader BootLoader) *cobra.Command {
 		SilenceErrors: true,
 		Args:          cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if all && len(args) > 0 {
+				return fmt.Errorf("use either --all or a session ID, not both")
+			}
 			if !all && len(args) == 0 {
 				return fmt.Errorf("provide a session ID or use --all to revoke all sessions")
 			}
@@ -349,4 +352,11 @@ func sessionRevokeCmd(bootLoader BootLoader) *cobra.Command {
 
 	cmd.Flags().BoolVar(&all, "all", false, "revoke all active session keys")
 	return cmd
+}
+
+func tablePreview(value string, prefixLen int) string {
+	if len(value) <= prefixLen {
+		return value
+	}
+	return value[:prefixLen] + "..."
 }
