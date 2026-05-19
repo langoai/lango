@@ -287,7 +287,7 @@
 - [x] 37.2 Add focused tests for deterministic `internal/bootstrap/phases.go` data-dir, encryption detection, credential acquisition, database-open, security-state, crypto-init, and profile-load branches without interactive prompts
 - [x] 37.3 Add focused tests for deterministic `internal/app/app.go` and post-agent P2P wiring branches covering memory/turn callbacks, provenance options, security init, and inbound approval wiring without live providers or external peers
 - [x] 37.4 Run subagent-driven review checkpoints for the wave
-- [ ] 37.5 Commit the wave separately
+- [x] 37.5 Commit the wave separately
 
 ## 38. Verification And Enforcement
 
