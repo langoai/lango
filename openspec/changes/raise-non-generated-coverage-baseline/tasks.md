@@ -235,12 +235,12 @@
 
 ## 31. Coverage Wave: Status, Settings Knowledge, P2P Node, And ADK Support Helpers
 
-- [ ] 31.1 Add focused tests for deterministic `internal/cli/settings/forms_knowledge.go` form builders and field wiring without launching interactive UI loops
-- [ ] 31.2 Add focused tests for deterministic `internal/cli/status/status.go` dead-letter bridge, retry/detail, sanitization, and status helper branches using fake stores and command writers
-- [ ] 31.3 Add focused tests for deterministic `internal/p2p/node.go` constructor/accessor, key path, handler, and peer-found helper branches without external peers
-- [ ] 31.4 Add focused tests for deterministic `internal/adk` support helpers such as child session service, context helpers, PII adapter, plugin constructors, and tool adapters without live providers
-- [ ] 31.5 Run subagent-driven review checkpoints for the wave
-- [ ] 31.6 Commit the wave separately
+- [x] 31.1 Add focused tests for deterministic `internal/cli/settings/forms_knowledge.go` form builders and field wiring without launching interactive UI loops
+- [x] 31.2 Add focused tests for deterministic `internal/cli/status/status.go` dead-letter bridge, retry/detail, sanitization, and status helper branches using fake stores and command writers
+- [x] 31.3 Add focused tests for deterministic `internal/p2p/node.go` constructor/accessor, key path, handler, and peer-found helper branches without external peers
+- [x] 31.4 Add focused tests for deterministic `internal/adk` support helpers such as child session service, context helpers, PII adapter, plugin constructors, and tool adapters without live providers
+- [x] 31.5 Run subagent-driven review checkpoints for the wave
+- [x] 31.6 Commit the wave separately
 
 ## 32. Verification And Enforcement
 
