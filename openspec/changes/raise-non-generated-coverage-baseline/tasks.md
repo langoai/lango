@@ -406,13 +406,23 @@
 - [x] 50.6 Run subagent-driven review checkpoints for the wave
 - [x] 50.7 Commit the wave separately
 
-## 51. Verification And Enforcement
+## 51. Coverage Wave: App Hotspots, Gateway, CLI Workflow, And Bundler
 
-- [ ] 51.1 Run `go build ./...`
-- [ ] 51.2 Run `go test ./...`
-- [ ] 51.3 Run the non-generated coverage report and confirm coverage is at least 90%
-- [ ] 51.4 Run the executable 90% coverage gate and confirm it passes
-- [ ] 51.5 Run `git diff --check`
-- [ ] 51.6 Run subagent-driven spec and code-quality review checkpoints
-- [ ] 51.7 Run `openspec validate --all --strict`
-- [ ] 51.8 Archive the completed OpenSpec change
+- [ ] 51.1 Add focused tests for deterministic `internal/app/wiring_p2p.go`, `internal/app/modules.go`, `internal/app/tools_meta.go`, `internal/app/wiring.go`, and `internal/app/app.go` branches that remain high-uncovered without live providers, listeners, peers, or long-running workers
+- [ ] 51.2 Add focused tests for deterministic `internal/gateway/server.go` chat/RPC/startup branches using local fakes and no externally bound services
+- [ ] 51.3 Add focused tests for deterministic `internal/smartaccount/bundler/client.go` nonce, gas fee, encoding, response, and error branches using local HTTP/RPC fakes only
+- [ ] 51.4 Add focused tests for deterministic `cmd/lango/main.go` and `internal/cli/workflow/workflow.go` command/helper branches without launching interactive TUI loops
+- [ ] 51.5 Add focused tests for remaining deterministic `internal/knowledge/store.go` write, atomic, relevance, and FTS cleanup branches using local SQLite/FTS fixtures only
+- [ ] 51.6 Run subagent-driven review checkpoints for the wave
+- [ ] 51.7 Commit the wave separately
+
+## 52. Verification And Enforcement
+
+- [ ] 52.1 Run `go build ./...`
+- [ ] 52.2 Run `go test ./...`
+- [ ] 52.3 Run the non-generated coverage report and confirm coverage is at least 90%
+- [ ] 52.4 Run the executable 90% coverage gate and confirm it passes
+- [ ] 52.5 Run `git diff --check`
+- [ ] 52.6 Run subagent-driven spec and code-quality review checkpoints
+- [ ] 52.7 Run `openspec validate --all --strict`
+- [ ] 52.8 Archive the completed OpenSpec change
