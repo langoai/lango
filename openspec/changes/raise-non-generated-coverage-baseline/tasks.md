@@ -249,13 +249,21 @@
 - [x] 32.3 Run subagent-driven review checkpoints for the wave
 - [x] 32.4 Commit the wave separately
 
-## 33. Verification And Enforcement
+## 33. Coverage Wave: Session Store, Storage Broker, App Runtime Helpers
 
-- [x] 33.1 Run `go build ./...`
-- [x] 33.2 Run `go test ./...`
-- [ ] 33.3 Run the non-generated coverage report and confirm coverage is at least 90%
-- [ ] 33.4 Run the executable 90% coverage gate and confirm it passes
-- [x] 33.5 Run `git diff --check`
-- [x] 33.6 Run subagent-driven spec and code-quality review checkpoints
-- [x] 33.7 Run `openspec validate --all --strict`
-- [ ] 33.8 Archive the completed OpenSpec change
+- [ ] 33.1 Add focused tests for deterministic `internal/session/ent_store.go` constructor, client/DB accessor, list, timeout annotation, checksum, and migration branches using temp SQLite state only
+- [ ] 33.2 Add focused tests for deterministic `internal/storagebroker/server.go` dispatch, payload encode/decode, crypto wrapper, and unavailable dependency branches without binding real listeners
+- [ ] 33.3 Add focused tests for remaining deterministic `internal/app` and `cmd/lango/main.go` runtime helper branches without live providers, external listeners, P2P services, or interactive UI loops
+- [ ] 33.4 Run subagent-driven review checkpoints for the wave
+- [ ] 33.5 Commit the wave separately
+
+## 34. Verification And Enforcement
+
+- [ ] 34.1 Run `go build ./...`
+- [ ] 34.2 Run `go test ./...`
+- [ ] 34.3 Run the non-generated coverage report and confirm coverage is at least 90%
+- [ ] 34.4 Run the executable 90% coverage gate and confirm it passes
+- [ ] 34.5 Run `git diff --check`
+- [ ] 34.6 Run subagent-driven spec and code-quality review checkpoints
+- [ ] 34.7 Run `openspec validate --all --strict`
+- [ ] 34.8 Archive the completed OpenSpec change
