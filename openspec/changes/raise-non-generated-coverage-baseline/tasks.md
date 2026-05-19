@@ -376,7 +376,7 @@
 - [x] 47.3 Add focused tests for deterministic `internal/adk/agent.go` execution, callback, and error branches without live providers
 - [x] 47.4 Add focused tests for deterministic `internal/cli/workflow/workflow.go` command, validation, and output branches without external services
 - [x] 47.5 Run subagent-driven review checkpoints for the wave
-- [ ] 47.6 Commit the wave separately
+- [x] 47.6 Commit the wave separately
 
 ## 48. Verification And Enforcement
 
