@@ -279,7 +279,7 @@
 - [x] 36.2 Add focused tests for deterministic `internal/p2p/handshake/handshake.go` stream handler, protocol selection, timestamp, signer, and early failure branches without external peers
 - [x] 36.3 Add focused tests for deterministic `cmd/lango/main.go` command startup/config helper branches without launching interactive TUI loops or binding external services
 - [x] 36.4 Run subagent-driven review checkpoints for the wave
-- [ ] 36.5 Commit the wave separately
+- [x] 36.5 Commit the wave separately
 
 ## 37. Verification And Enforcement
 
