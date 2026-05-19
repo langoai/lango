@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	bolt "go.etcd.io/bbolt"
 )
 
 func newTestStore(t *testing.T) *BoltStore {
@@ -484,4 +485,136 @@ func TestBoltStore_TypedTripleOSPQuery(t *testing.T) {
 	require.Len(t, triples, 1)
 	assert.Equal(t, "Observation", triples[0].SubjectType)
 	assert.Equal(t, "Session", triples[0].ObjectType)
+}
+
+func TestWave53BoltStore_CountStatsAllTriplesAndClearAll(t *testing.T) {
+	ctx := context.Background()
+	store := newTestStore(t)
+
+	triples := []Triple{
+		{
+			Subject:     "session:1",
+			SubjectType: "Session",
+			Predicate:   Contains,
+			Object:      "obs:1",
+			ObjectType:  "Observation",
+			Metadata:    map[string]string{"source": "wave53"},
+		},
+		{Subject: "session:1", Predicate: Contains, Object: "obs:2"},
+		{Subject: "obs:2", Predicate: CausedBy, Object: "error:timeout"},
+	}
+	require.NoError(t, store.AddTriples(ctx, triples))
+
+	count, err := store.Count(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, 3, count)
+
+	stats, err := store.PredicateStats(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]int{Contains: 2, CausedBy: 1}, stats)
+
+	all, err := store.AllTriples(ctx)
+	require.NoError(t, err)
+	require.Len(t, all, 3)
+	assert.Contains(t, all, Triple{
+		Subject:     "session:1",
+		SubjectType: "Session",
+		Predicate:   Contains,
+		Object:      "obs:1",
+		ObjectType:  "Observation",
+		Metadata: map[string]string{
+			"source":        "wave53",
+			"_subject_type": "Session",
+			"_object_type":  "Observation",
+		},
+	})
+
+	require.NoError(t, store.ClearAll(ctx))
+
+	count, err = store.Count(ctx)
+	require.NoError(t, err)
+	assert.Zero(t, count)
+
+	stats, err = store.PredicateStats(ctx)
+	require.NoError(t, err)
+	assert.Empty(t, stats)
+
+	all, err = store.AllTriples(ctx)
+	require.NoError(t, err)
+	assert.Empty(t, all)
+
+	byObject, err := store.QueryByObject(ctx, "obs:1")
+	require.NoError(t, err)
+	assert.Empty(t, byObject)
+}
+
+func TestWave53BoltStore_NewBoltStoreExpandsTildeIntoLocalHome(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	store, err := NewBoltStore("~/wave53.db")
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, store.Close()) })
+
+	require.FileExists(t, filepath.Join(home, "wave53.db"))
+
+	count, err := store.Count(context.Background())
+	require.NoError(t, err)
+	assert.Zero(t, count)
+}
+
+func TestWave53BoltStore_RemoveTripleKeepsOtherIndexesConsistent(t *testing.T) {
+	ctx := context.Background()
+	store := newTestStore(t)
+
+	remove := Triple{
+		Subject:     "subject:remove",
+		SubjectType: "SubjectType",
+		Predicate:   RelatedTo,
+		Object:      "object:remove",
+		ObjectType:  "ObjectType",
+	}
+	keep := Triple{Subject: "subject:keep", Predicate: RelatedTo, Object: "object:remove"}
+	require.NoError(t, store.AddTriples(ctx, []Triple{remove, keep}))
+
+	require.NoError(t, store.RemoveTriple(ctx, remove))
+
+	count, err := store.Count(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, 1, count)
+
+	bySubject, err := store.QueryBySubject(ctx, "subject:remove")
+	require.NoError(t, err)
+	assert.Empty(t, bySubject)
+
+	byObject, err := store.QueryByObject(ctx, "object:remove")
+	require.NoError(t, err)
+	require.Len(t, byObject, 1)
+	assert.Equal(t, keep, byObject[0])
+}
+
+func TestWave53BoltStore_ScanAndAggregationReturnDecodeErrors(t *testing.T) {
+	ctx := context.Background()
+	store := newTestStore(t)
+
+	require.NoError(t, store.db.Update(func(tx *bolt.Tx) error {
+		return tx.Bucket(bucketSPO).Put([]byte("bad-key-without-separators"), []byte("{}"))
+	}))
+
+	_, err := store.PredicateStats(ctx)
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "malformed key")
+
+	_, err = store.AllTriples(ctx)
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "malformed key")
+
+	require.NoError(t, store.ClearAll(ctx))
+	require.NoError(t, store.db.Update(func(tx *bolt.Tx) error {
+		return tx.Bucket(bucketSPO).Put(makeKey("subject:bad", RelatedTo, "object:bad"), []byte("{"))
+	}))
+
+	_, err = store.QueryBySubject(ctx, "subject:bad")
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "decode metadata")
 }

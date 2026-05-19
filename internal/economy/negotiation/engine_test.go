@@ -320,6 +320,114 @@ func TestEngine_EventCallback(t *testing.T) {
 	assert.Equal(t, PhaseAccepted, events[1])
 }
 
+func TestEngine_EventCallbackCanReadSessionWithoutDeadlock(t *testing.T) {
+	t.Parallel()
+
+	e := testEngine()
+	ctx := context.Background()
+
+	events := make(chan struct {
+		phase Phase
+		err   error
+	}, 2)
+	e.SetEventCallback(func(sessionID string, phase Phase) {
+		_, err := e.Get(sessionID)
+		events <- struct {
+			phase Phase
+			err   error
+		}{phase: phase, err: err}
+	})
+
+	done := make(chan *NegotiationSession, 1)
+	go func() {
+		done <- propose(e, "did:buyer", "did:seller", testTerms(5000))
+	}()
+
+	var s *NegotiationSession
+	select {
+	case s = <-done:
+	case <-time.After(time.Second):
+		require.FailNow(t, "propose deadlocked while event callback read the session")
+	}
+
+	require.Equal(t, PhaseProposed, receiveCallbackEvent(t, events).phase)
+
+	_, err := e.Accept(ctx, s.ID, "did:seller")
+	require.NoError(t, err)
+	require.Equal(t, PhaseAccepted, receiveCallbackEvent(t, events).phase)
+}
+
+func TestEngine_EventCallbackSerializesSubsequentTransitions(t *testing.T) {
+	t.Parallel()
+
+	e := testEngine()
+	ctx := context.Background()
+	s := propose(e, "did:buyer", "did:seller", testTerms(5000))
+
+	events := make(chan struct {
+		phase Phase
+		err   error
+	}, 2)
+	releaseCounterCallback := make(chan struct{})
+	e.SetEventCallback(func(_ string, phase Phase) {
+		events <- struct {
+			phase Phase
+			err   error
+		}{phase: phase}
+		if phase == PhaseCountered {
+			<-releaseCounterCallback
+		}
+	})
+
+	counterDone := make(chan error, 1)
+	go func() {
+		_, err := e.Counter(ctx, s.ID, "did:seller", testTerms(4000), "counter")
+		counterDone <- err
+	}()
+
+	require.Equal(t, PhaseCountered, receiveCallbackEvent(t, events).phase)
+
+	acceptDone := make(chan error, 1)
+	go func() {
+		_, err := e.Accept(ctx, s.ID, "did:buyer")
+		acceptDone <- err
+	}()
+
+	select {
+	case err := <-acceptDone:
+		require.Failf(t, "accept completed before earlier callback returned", "err=%v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	close(releaseCounterCallback)
+	require.NoError(t, <-counterDone)
+	require.NoError(t, <-acceptDone)
+	require.Equal(t, PhaseAccepted, receiveCallbackEvent(t, events).phase)
+}
+
+func receiveCallbackEvent(t *testing.T, events <-chan struct {
+	phase Phase
+	err   error
+}) struct {
+	phase Phase
+	err   error
+} {
+	t.Helper()
+
+	select {
+	case event := <-events:
+		require.NoError(t, event.err)
+		return event
+	case <-time.After(time.Second):
+		require.FailNow(t, "timed out waiting for phase")
+		var zero struct {
+			phase Phase
+			err   error
+		}
+		return zero
+	}
+}
+
 func TestEngine_SetPricing(t *testing.T) {
 	t.Parallel()
 

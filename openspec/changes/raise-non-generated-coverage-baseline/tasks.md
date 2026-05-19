@@ -427,10 +427,10 @@
 
 ## 53. Coverage Wave: App Residuals, Post-Adjudication Status, Browser, Smart Account, And Graph Store
 
-- [ ] 53.1 Add focused tests for remaining deterministic `internal/app/wiring_p2p.go`, `internal/app/modules.go`, `internal/app/wiring.go`, `internal/app/app.go`, and `internal/app/wiring_economy.go` branches that can be exercised without live providers, listeners, peers, chain RPC, or long-running workers
-- [ ] 53.2 Add focused tests for deterministic `internal/postadjudicationstatus/service.go` and `internal/graph/bolt_store.go` status aggregation, receipt, filtering, snapshot, stats, scan, and clear branches using local stores only
-- [ ] 53.3 Add focused tests for deterministic `internal/tools/browser/browser.go` and `internal/cli/smartaccount/policy.go` session/error/helper branches without launching a real browser or live chain RPC
-- [ ] 53.4 Run subagent-driven review checkpoints for the wave
+- [x] 53.1 Add focused tests for remaining deterministic `internal/app/wiring_p2p.go`, `internal/app/modules.go`, `internal/app/wiring.go`, `internal/app/app.go`, and `internal/app/wiring_economy.go` branches plus the related `internal/economy/negotiation` callback lock-safety branch that can be exercised without live providers, listeners, peers, chain RPC, or long-running workers
+- [x] 53.2 Add focused tests for deterministic `internal/postadjudicationstatus/service.go` and `internal/graph/bolt_store.go` status aggregation, receipt, filtering, snapshot, stats, scan, and clear branches using local stores only
+- [x] 53.3 Add focused tests for deterministic `internal/tools/browser/browser.go` and `internal/cli/smartaccount/policy.go` session/error/helper branches without launching a real browser or live chain RPC
+- [x] 53.4 Run subagent-driven review checkpoints for the wave
 - [ ] 53.5 Commit the wave separately
 
 ## 54. Verification And Enforcement
