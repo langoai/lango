@@ -257,13 +257,21 @@
 - [x] 33.4 Run subagent-driven review checkpoints for the wave
 - [x] 33.5 Commit the wave separately
 
-## 34. Verification And Enforcement
+## 34. Coverage Wave: App Meta, Network, And Wiring Branches
 
-- [ ] 34.1 Run `go build ./...`
-- [ ] 34.2 Run `go test ./...`
-- [ ] 34.3 Run the non-generated coverage report and confirm coverage is at least 90%
-- [ ] 34.4 Run the executable 90% coverage gate and confirm it passes
-- [ ] 34.5 Run `git diff --check`
-- [ ] 34.6 Run subagent-driven spec and code-quality review checkpoints
-- [ ] 34.7 Run `openspec validate --all --strict`
-- [ ] 34.8 Archive the completed OpenSpec change
+- [ ] 34.1 Add focused tests for deterministic `internal/app/tools_meta.go` meta-tool construction and exportability/payment helper branches without live payments, chain RPC, or background workers
+- [ ] 34.2 Add focused tests for deterministic `internal/app/modules.go` network/intelligence module disabled and lightweight catalog branches without starting P2P, payment, or external services
+- [ ] 34.3 Add focused tests for deterministic `internal/app/wiring.go` and `internal/app/wiring_p2p.go` helper branches such as security/provenance/agent options and invalid or disabled P2P configuration paths
+- [ ] 34.4 Run subagent-driven review checkpoints for the wave
+- [ ] 34.5 Commit the wave separately
+
+## 35. Verification And Enforcement
+
+- [ ] 35.1 Run `go build ./...`
+- [ ] 35.2 Run `go test ./...`
+- [ ] 35.3 Run the non-generated coverage report and confirm coverage is at least 90%
+- [ ] 35.4 Run the executable 90% coverage gate and confirm it passes
+- [ ] 35.5 Run `git diff --check`
+- [ ] 35.6 Run subagent-driven spec and code-quality review checkpoints
+- [ ] 35.7 Run `openspec validate --all --strict`
+- [ ] 35.8 Archive the completed OpenSpec change
