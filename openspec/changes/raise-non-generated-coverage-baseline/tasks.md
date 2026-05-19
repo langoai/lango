@@ -433,13 +433,21 @@
 - [x] 53.4 Run subagent-driven review checkpoints for the wave
 - [x] 53.5 Commit the wave separately
 
-## 54. Verification And Enforcement
+## 54. Coverage Wave: App Remaining Hotspots, Run Ledger Validators, P2P Team, Ontology, And Node Helpers
 
-- [ ] 54.1 Run `go build ./...`
-- [ ] 54.2 Run `go test ./...`
-- [ ] 54.3 Run the non-generated coverage report and confirm coverage is at least 90%
-- [ ] 54.4 Run the executable 90% coverage gate and confirm it passes
-- [ ] 54.5 Run `git diff --check`
-- [ ] 54.6 Run subagent-driven spec and code-quality review checkpoints
-- [ ] 54.7 Run `openspec validate --all --strict`
-- [ ] 54.8 Archive the completed OpenSpec change
+- [ ] 54.1 Add focused tests for remaining deterministic `internal/app/wiring_p2p.go`, `internal/app/modules.go`, `internal/app/tools_meta.go`, `internal/app/wiring.go`, and `internal/app/wiring_knowledge.go` helper/error branches that can be exercised without live providers, listeners, peers, chain RPC, or long-running workers
+- [ ] 54.2 Add focused tests for deterministic `internal/runledger/validators.go` and `internal/p2p/team/tools_escrow.go` validation/tool branches without live chain RPC, P2P peers, or external services
+- [ ] 54.3 Add focused tests for deterministic `internal/ontology/service.go` and `internal/p2p/node.go` schema, delegation, helper, key-path, peer, and accessor branches without live peers or external services
+- [ ] 54.4 Run subagent-driven review checkpoints for the wave
+- [ ] 54.5 Commit the wave separately
+
+## 55. Verification And Enforcement
+
+- [ ] 55.1 Run `go build ./...`
+- [ ] 55.2 Run `go test ./...`
+- [ ] 55.3 Run the non-generated coverage report and confirm coverage is at least 90%
+- [ ] 55.4 Run the executable 90% coverage gate and confirm it passes
+- [ ] 55.5 Run `git diff --check`
+- [ ] 55.6 Run subagent-driven spec and code-quality review checkpoints
+- [ ] 55.7 Run `openspec validate --all --strict`
+- [ ] 55.8 Archive the completed OpenSpec change
