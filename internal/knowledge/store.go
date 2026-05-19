@@ -322,7 +322,13 @@ func (s *Store) saveKnowledgeAtomic(ctx context.Context, entry KnowledgeEntry) e
 
 	version := 1
 	if !isNew {
-		if err := txClient.Knowledge.UpdateOneID(existing.ID).SetIsLatest(false).Exec(ctx); err != nil {
+		if _, err := tx.ExecContext(
+			ctx,
+			fmt.Sprintf("UPDATE %s SET is_latest = ?, updated_at = ? WHERE id = ?", entknowledge.Table),
+			false,
+			time.Now(),
+			existing.ID,
+		); err != nil {
 			return fmt.Errorf("unset latest: %w", err)
 		}
 		version = existing.Version + 1

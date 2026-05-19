@@ -408,12 +408,12 @@
 
 ## 51. Coverage Wave: App Hotspots, Gateway, CLI Workflow, And Bundler
 
-- [ ] 51.1 Add focused tests for deterministic `internal/app/wiring_p2p.go`, `internal/app/modules.go`, `internal/app/tools_meta.go`, `internal/app/wiring.go`, and `internal/app/app.go` branches that remain high-uncovered without live providers, listeners, peers, or long-running workers
-- [ ] 51.2 Add focused tests for deterministic `internal/gateway/server.go` chat/RPC/startup branches using local fakes and no externally bound services
-- [ ] 51.3 Add focused tests for deterministic `internal/smartaccount/bundler/client.go` nonce, gas fee, encoding, response, and error branches using local HTTP/RPC fakes only
-- [ ] 51.4 Add focused tests for deterministic `cmd/lango/main.go` and `internal/cli/workflow/workflow.go` command/helper branches without launching interactive TUI loops
-- [ ] 51.5 Add focused tests for remaining deterministic `internal/knowledge/store.go` write, atomic, relevance, and FTS cleanup branches using local SQLite/FTS fixtures only
-- [ ] 51.6 Run subagent-driven review checkpoints for the wave
+- [x] 51.1 Add focused tests for deterministic `internal/app/wiring_p2p.go`, `internal/app/modules.go`, `internal/app/tools_meta.go`, `internal/app/wiring.go`, and `internal/app/app.go` branches that remain high-uncovered without live providers, listeners, peers, or long-running workers
+- [x] 51.2 Add focused tests for deterministic `internal/gateway/server.go` chat/RPC/startup branches using local fakes and no externally bound services
+- [x] 51.3 Add focused tests for deterministic `internal/smartaccount/bundler/client.go` nonce, gas fee, encoding, response, and error branches using local HTTP/RPC fakes only
+- [x] 51.4 Add focused tests for deterministic `cmd/lango/main.go` and `internal/cli/workflow/workflow.go` command/helper branches without launching interactive TUI loops
+- [x] 51.5 Add focused tests for remaining deterministic `internal/knowledge/store.go` write, atomic, relevance, and FTS cleanup branches using local SQLite/FTS fixtures only
+- [x] 51.6 Run subagent-driven review checkpoints for the wave
 - [ ] 51.7 Commit the wave separately
 
 ## 52. Verification And Enforcement

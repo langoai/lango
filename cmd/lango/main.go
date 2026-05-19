@@ -121,6 +121,9 @@ var (
 	chatAppBuilderFn                    = func(boot *bootstrap.Result) (*app.App, error) { return app.New(boot, app.WithLocalChat()) }
 	startAppFn                          = func(application *app.App, ctx context.Context) error { return application.Start(ctx) }
 	stopAppFn                           = func(application *app.App, ctx context.Context) error { return application.Stop(ctx) }
+	runTeaProgramFn                     = func(p *tea.Program) (tea.Model, error) { return p.Run() }
+	configBootResultFn                  = cliboot.BootResult
+	configConfigFn                      = cliboot.Config
 )
 
 type stoppableApplication interface {
@@ -443,7 +446,7 @@ func runChat(initialMode string) error {
 		}))
 	}
 
-	if _, err := p.Run(); err != nil {
+	if _, err := runTeaProgramFn(p); err != nil {
 		return fmt.Errorf("TUI: %w", err)
 	}
 
@@ -600,15 +603,15 @@ func validateInitialMode(cfg *config.Config, initialMode string) error {
 
 func configCmd() *cobra.Command {
 	// Profile management subcommands (list, create, use, delete, import, export, validate).
-	cmd := cliconfigcmd.NewConfigCmd(cliboot.BootResult)
+	cmd := cliconfigcmd.NewConfigCmd(configBootResultFn)
 	cmd.GroupID = "sys"
 
 	// get/set/keys — config value inspection & modification.
-	cmd.AddCommand(cliconfigcmd.NewGetCmd(cliboot.Config))
+	cmd.AddCommand(cliconfigcmd.NewGetCmd(configConfigFn))
 	var setBootResult *bootstrap.Result
 	cmd.AddCommand(cliconfigcmd.NewSetCmd(
 		func() (*config.Config, map[string]bool, func(), error) {
-			boot, err := cliboot.BootResult()
+			boot, err := configBootResultFn()
 			if err != nil {
 				return nil, nil, nil, err
 			}
@@ -933,7 +936,7 @@ func runCockpit(initialMode string) error {
 		}))
 	}
 
-	if _, err := p.Run(); err != nil {
+	if _, err := runTeaProgramFn(p); err != nil {
 		return fmt.Errorf("TUI: %w", err)
 	}
 
@@ -1076,7 +1079,7 @@ func runWorkbench(initialMode string) error {
 		}))
 	}
 
-	if _, err := p.Run(); err != nil {
+	if _, err := runTeaProgramFn(p); err != nil {
 		return fmt.Errorf("TUI: %w", err)
 	}
 
