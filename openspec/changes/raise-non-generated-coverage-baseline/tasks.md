@@ -378,13 +378,22 @@
 - [x] 47.5 Run subagent-driven review checkpoints for the wave
 - [x] 47.6 Commit the wave separately
 
-## 48. Verification And Enforcement
+## 48. Coverage Wave: Knowledge, App Lifecycle, Provider, And RunLedger
 
-- [ ] 48.1 Run `go build ./...`
-- [ ] 48.2 Run `go test ./...`
-- [ ] 48.3 Run the non-generated coverage report and confirm coverage is at least 90%
-- [ ] 48.4 Run the executable 90% coverage gate and confirm it passes
-- [ ] 48.5 Run `git diff --check`
-- [ ] 48.6 Run subagent-driven spec and code-quality review checkpoints
-- [ ] 48.7 Run `openspec validate --all --strict`
-- [ ] 48.8 Archive the completed OpenSpec change
+- [ ] 48.1 Add focused tests for deterministic `internal/knowledge/store.go` branches using in-memory SQLite/FTS fixtures without external services
+- [ ] 48.2 Add focused tests for deterministic `internal/app/app.go`, `internal/app/wiring.go`, and remaining safe app lifecycle branches without live listeners, peers, or providers
+- [ ] 48.3 Add focused tests for deterministic `internal/provider/anthropic/anthropic.go` request building, response mapping, and error handling without live Anthropic API calls
+- [ ] 48.4 Add focused tests for deterministic `internal/runledger/ent_store.go` and related run ledger storage branches using local Ent test stores
+- [ ] 48.5 Run subagent-driven review checkpoints for the wave
+- [ ] 48.6 Commit the wave separately
+
+## 49. Verification And Enforcement
+
+- [ ] 49.1 Run `go build ./...`
+- [ ] 49.2 Run `go test ./...`
+- [ ] 49.3 Run the non-generated coverage report and confirm coverage is at least 90%
+- [ ] 49.4 Run the executable 90% coverage gate and confirm it passes
+- [ ] 49.5 Run `git diff --check`
+- [ ] 49.6 Run subagent-driven spec and code-quality review checkpoints
+- [ ] 49.7 Run `openspec validate --all --strict`
+- [ ] 49.8 Archive the completed OpenSpec change
