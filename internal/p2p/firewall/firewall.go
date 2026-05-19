@@ -4,6 +4,7 @@ package firewall
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"regexp"
@@ -116,7 +117,7 @@ func New(rules []ACLRule, logger *zap.SugaredLogger) *Firewall {
 				"warning", err.Error(),
 			)
 		}
-		f.rules = append(f.rules, r)
+		f.rules = append(f.rules, cloneACLRule(r))
 		if r.RateLimit > 0 && r.PeerDID != "" {
 			f.limiters[r.PeerDID] = rate.NewLimiter(rate.Every(time.Minute/time.Duration(r.RateLimit)), r.RateLimit)
 		}
@@ -242,7 +243,7 @@ func (f *Firewall) SanitizeResponse(response map[string]interface{}) map[string]
 }
 
 // AttestResponse generates a ZK attestation proof for a response.
-func (f *Firewall) AttestResponse(responseHash, agentDIDHash []byte) (*AttestationResult, error) {
+func (f *Firewall) AttestResponse(response, agentDID []byte) (*AttestationResult, error) {
 	f.mu.RLock()
 	fn := f.attestFunc
 	f.mu.RUnlock()
@@ -251,7 +252,9 @@ func (f *Firewall) AttestResponse(responseHash, agentDIDHash []byte) (*Attestati
 		return nil, nil // Attestation not configured.
 	}
 
-	return fn(responseHash, agentDIDHash)
+	responseHash := sha256.Sum256(response)
+	agentDIDHash := sha256.Sum256(agentDID)
+	return fn(responseHash[:], agentDIDHash[:])
 }
 
 // ValidateRule checks whether an ACL rule is safe to add. It rejects
@@ -287,7 +290,7 @@ func (f *Firewall) AddRule(rule ACLRule) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	f.rules = append(f.rules, rule)
+	f.rules = append(f.rules, cloneACLRule(rule))
 
 	if rule.RateLimit > 0 && rule.PeerDID != "" {
 		f.limiters[rule.PeerDID] = rate.NewLimiter(rate.Every(time.Minute/time.Duration(rule.RateLimit)), rule.RateLimit)
@@ -328,8 +331,17 @@ func (f *Firewall) Rules() []ACLRule {
 	defer f.mu.RUnlock()
 
 	rules := make([]ACLRule, len(f.rules))
-	copy(rules, f.rules)
+	for i, rule := range f.rules {
+		rules[i] = cloneACLRule(rule)
+	}
 	return rules
+}
+
+func cloneACLRule(rule ACLRule) ACLRule {
+	if rule.Tools != nil {
+		rule.Tools = append([]string(nil), rule.Tools...)
+	}
+	return rule
 }
 
 // matchesPeer checks if a rule peer pattern matches the given peer DID.

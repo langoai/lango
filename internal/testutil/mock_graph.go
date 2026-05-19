@@ -32,7 +32,7 @@ func (m *MockGraphStore) AddTriple(_ context.Context, t graph.Triple) error {
 	if m.AddErr != nil {
 		return m.AddErr
 	}
-	m.triples = append(m.triples, t)
+	m.triples = append(m.triples, cloneGraphTriple(t))
 	return nil
 }
 
@@ -43,7 +43,9 @@ func (m *MockGraphStore) AddTriples(_ context.Context, triples []graph.Triple) e
 	if m.AddErr != nil {
 		return m.AddErr
 	}
-	m.triples = append(m.triples, triples...)
+	for _, t := range triples {
+		m.triples = append(m.triples, cloneGraphTriple(t))
+	}
 	return nil
 }
 
@@ -68,7 +70,7 @@ func (m *MockGraphStore) QueryBySubject(_ context.Context, subject string) ([]gr
 	var result []graph.Triple
 	for _, t := range m.triples {
 		if t.Subject == subject {
-			result = append(result, t)
+			result = append(result, cloneGraphTriple(t))
 		}
 	}
 	return result, nil
@@ -83,7 +85,7 @@ func (m *MockGraphStore) QueryByObject(_ context.Context, object string) ([]grap
 	var result []graph.Triple
 	for _, t := range m.triples {
 		if t.Object == object {
-			result = append(result, t)
+			result = append(result, cloneGraphTriple(t))
 		}
 	}
 	return result, nil
@@ -98,7 +100,7 @@ func (m *MockGraphStore) QueryBySubjectPredicate(_ context.Context, subject, pre
 	var result []graph.Triple
 	for _, t := range m.triples {
 		if t.Subject == subject && t.Predicate == predicate {
-			result = append(result, t)
+			result = append(result, cloneGraphTriple(t))
 		}
 	}
 	return result, nil
@@ -115,7 +117,7 @@ func (m *MockGraphStore) Traverse(_ context.Context, startNode string, maxDepth 
 	var result []graph.Triple
 	for _, t := range m.triples {
 		if t.Subject == startNode || t.Object == startNode {
-			result = append(result, t)
+			result = append(result, cloneGraphTriple(t))
 		}
 	}
 	return result, nil
@@ -140,8 +142,7 @@ func (m *MockGraphStore) PredicateStats(_ context.Context) (map[string]int, erro
 func (m *MockGraphStore) AllTriples(_ context.Context) ([]graph.Triple, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	result := make([]graph.Triple, len(m.triples))
-	copy(result, m.triples)
+	result := cloneGraphTriples(m.triples)
 	return result, nil
 }
 
@@ -166,4 +167,23 @@ func (m *MockGraphStore) TripleCount() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return len(m.triples)
+}
+
+func cloneGraphTriples(triples []graph.Triple) []graph.Triple {
+	result := make([]graph.Triple, len(triples))
+	for i, t := range triples {
+		result[i] = cloneGraphTriple(t)
+	}
+	return result
+}
+
+func cloneGraphTriple(t graph.Triple) graph.Triple {
+	if t.Metadata != nil {
+		metadata := make(map[string]string, len(t.Metadata))
+		for k, v := range t.Metadata {
+			metadata[k] = v
+		}
+		t.Metadata = metadata
+	}
+	return t
 }

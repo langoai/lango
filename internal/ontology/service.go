@@ -731,14 +731,28 @@ func (s *ServiceImpl) VerifyP2PFact(ctx context.Context, subject, predicate, obj
 	if err != nil {
 		return fmt.Errorf("query triples: %w", err)
 	}
+	var unverified *graph.Triple
 	for _, t := range triples {
 		if t.Predicate == predicate && t.Object == object {
 			if t.Metadata != nil && t.Metadata["_p2p_verified"] == "false" {
-				t.Metadata["_p2p_verified"] = "true"
-				return s.graphStore.AddTriple(ctx, t)
+				candidate := t
+				unverified = &candidate
+				continue
 			}
 			return nil // already verified or not a P2P fact
 		}
+	}
+	if unverified != nil {
+		if unverified.Metadata == nil {
+			unverified.Metadata = make(map[string]string)
+		}
+		unverified.Metadata["_p2p_verified"] = "true"
+		if err := s.graphStore.RemoveTriple(ctx, graph.Triple{
+			Subject: unverified.Subject, Predicate: unverified.Predicate, Object: unverified.Object,
+		}); err != nil {
+			return fmt.Errorf("remove unverified triple: %w", err)
+		}
+		return s.graphStore.AddTriple(ctx, *unverified)
 	}
 	return fmt.Errorf("triple not found: %s %s %s", subject, predicate, object)
 }

@@ -83,6 +83,11 @@ var loadPolicyShowInfo = func(bootLoader BootLoader) (policyShowInfo, func(), er
 }
 
 var updatePolicyLimits = func(bootLoader BootLoader, maxTx, daily, monthly string) (policySetResult, func(), error) {
+	parsedMaxTx, parsedDaily, parsedMonthly, err := parsePolicyLimitInputs(maxTx, daily, monthly)
+	if err != nil {
+		return policySetResult{}, nil, err
+	}
+
 	boot, err := bootLoader()
 	if err != nil {
 		return policySetResult{}, nil, fmt.Errorf("bootstrap: %w", err)
@@ -92,12 +97,6 @@ var updatePolicyLimits = func(bootLoader BootLoader, maxTx, daily, monthly strin
 	if err != nil {
 		boot.Close()
 		return policySetResult{}, nil, err
-	}
-
-	if maxTx == "" && daily == "" && monthly == "" {
-		deps.cleanup()
-		boot.Close()
-		return policySetResult{}, nil, fmt.Errorf("provide at least one policy limit (--max-tx, --daily, or --monthly)")
 	}
 
 	ctx := context.Background()
@@ -113,32 +112,14 @@ var updatePolicyLimits = func(bootLoader BootLoader, maxTx, daily, monthly strin
 		p = &policy.HarnessPolicy{}
 	}
 
-	if maxTx != "" {
-		v, ok := new(big.Int).SetString(maxTx, 10)
-		if !ok {
-			deps.cleanup()
-			boot.Close()
-			return policySetResult{}, nil, fmt.Errorf("parse max-tx %q: provide a wei amount (integer)", maxTx)
-		}
-		p.MaxTxAmount = v
+	if parsedMaxTx != nil {
+		p.MaxTxAmount = parsedMaxTx
 	}
-	if daily != "" {
-		v, ok := new(big.Int).SetString(daily, 10)
-		if !ok {
-			deps.cleanup()
-			boot.Close()
-			return policySetResult{}, nil, fmt.Errorf("parse daily %q: provide a wei amount (integer)", daily)
-		}
-		p.DailyLimit = v
+	if parsedDaily != nil {
+		p.DailyLimit = parsedDaily
 	}
-	if monthly != "" {
-		v, ok := new(big.Int).SetString(monthly, 10)
-		if !ok {
-			deps.cleanup()
-			boot.Close()
-			return policySetResult{}, nil, fmt.Errorf("parse monthly %q: provide a wei amount (integer)", monthly)
-		}
-		p.MonthlyLimit = v
+	if parsedMonthly != nil {
+		p.MonthlyLimit = parsedMonthly
 	}
 
 	deps.policyEngine.SetPolicy(info.Address, p)
@@ -285,4 +266,44 @@ func valueOrNA(s string) string {
 		return "n/a"
 	}
 	return s
+}
+
+func parsePolicyLimit(name, raw string) (*big.Int, error) {
+	v, ok := new(big.Int).SetString(raw, 10)
+	if !ok {
+		return nil, fmt.Errorf("parse %s %q: provide a wei amount (integer)", name, raw)
+	}
+	return v, nil
+}
+
+func parsePolicyLimitInputs(maxTx, daily, monthly string) (*big.Int, *big.Int, *big.Int, error) {
+	if maxTx == "" && daily == "" && monthly == "" {
+		return nil, nil, nil, fmt.Errorf("provide at least one policy limit (--max-tx, --daily, or --monthly)")
+	}
+
+	var parsedMaxTx *big.Int
+	var parsedDaily *big.Int
+	var parsedMonthly *big.Int
+	var err error
+
+	if maxTx != "" {
+		parsedMaxTx, err = parsePolicyLimit("max-tx", maxTx)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+	}
+	if daily != "" {
+		parsedDaily, err = parsePolicyLimit("daily", daily)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+	}
+	if monthly != "" {
+		parsedMonthly, err = parsePolicyLimit("monthly", monthly)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+	}
+
+	return parsedMaxTx, parsedDaily, parsedMonthly, nil
 }

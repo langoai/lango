@@ -2,7 +2,6 @@ package protocol
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -381,9 +380,7 @@ func (h *Handler) handleToolInvoke(ctx context.Context, req *Request, peerDID st
 	}
 	if h.firewall != nil {
 		resultBytes, _ := json.Marshal(result)
-		hash := sha256.Sum256(resultBytes)
-		didHash := sha256.Sum256([]byte(h.localDID))
-		ar, _ := h.firewall.AttestResponse(hash[:], didHash[:])
+		ar, _ := h.firewall.AttestResponse(resultBytes, []byte(h.localDID))
 		if ar != nil {
 			resp.Attestation = &AttestationData{
 				Proof:        ar.Proof,
@@ -614,9 +611,7 @@ func (h *Handler) handleToolInvokePaid(ctx context.Context, req *Request, peerDI
 	}
 	if h.firewall != nil {
 		resultBytes, _ := json.Marshal(result)
-		hash := sha256.Sum256(resultBytes)
-		didHash := sha256.Sum256([]byte(h.localDID))
-		ar, _ := h.firewall.AttestResponse(hash[:], didHash[:])
+		ar, _ := h.firewall.AttestResponse(resultBytes, []byte(h.localDID))
 		if ar != nil {
 			paidResp.Attestation = &AttestationData{
 				Proof:        ar.Proof,
