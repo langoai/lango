@@ -385,7 +385,7 @@
 - [x] 48.3 Add focused tests for deterministic `internal/provider/anthropic/anthropic.go` request building, response mapping, and error handling without live Anthropic API calls
 - [x] 48.4 Add focused tests for deterministic `internal/runledger/ent_store.go` and related run ledger storage branches using local Ent test stores
 - [x] 48.5 Run subagent-driven review checkpoints for the wave
-- [ ] 48.6 Commit the wave separately
+- [x] 48.6 Commit the wave separately
 
 ## 49. Verification And Enforcement
 
