@@ -291,11 +291,11 @@
 
 ## 38. Coverage Wave: CLI Settings, Workflow, Config, And App Wiring Hotspots
 
-- [ ] 38.1 Add focused tests for deterministic `internal/cli/settings/forms_agent.go` form construction, defaults, validation, dependency wiring, and provider/model field branches without launching interactive UI loops
-- [ ] 38.2 Add focused tests for deterministic `internal/cli/workflow/workflow.go` command construction, output formatting, validation, and error branches using fake writers and no external services
-- [ ] 38.3 Add focused tests for deterministic `internal/cli/configcmd/getset.go` scalar/reflection formatting, redaction, invalid path, and set-field branches without interactive prompts
-- [ ] 38.4 Add focused tests for deterministic `internal/app/tools_meta.go`, `internal/app/modules.go`, `internal/app/wiring.go`, and `internal/app/wiring_p2p.go` helper branches that still dominate uncovered statement count without live providers, listeners, or external peers
-- [ ] 38.5 Run subagent-driven review checkpoints for the wave
+- [x] 38.1 Add focused tests for deterministic `internal/cli/settings/forms_agent.go` form construction, defaults, validation, dependency wiring, and provider/model field branches without launching interactive UI loops
+- [x] 38.2 Add focused tests for deterministic `internal/cli/workflow/workflow.go` command construction, output formatting, validation, and error branches using fake writers and no external services
+- [x] 38.3 Add focused tests for deterministic `internal/cli/configcmd/getset.go` scalar/reflection formatting, redaction, invalid path, and set-field branches without interactive prompts
+- [x] 38.4 Add focused tests for deterministic `internal/app/tools_meta.go`, `internal/app/modules.go`, `internal/app/wiring.go`, and `internal/app/wiring_p2p.go` helper branches that still dominate uncovered statement count without live providers, listeners, or external peers
+- [x] 38.5 Run subagent-driven review checkpoints for the wave
 - [ ] 38.6 Commit the wave separately
 
 ## 39. Verification And Enforcement
