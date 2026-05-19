@@ -314,13 +314,21 @@
 - [x] 40.4 Run subagent-driven review checkpoints for the wave
 - [x] 40.5 Commit the wave separately
 
-## 41. Verification And Enforcement
+## 41. Coverage Wave: Test Utilities, Smart Account Policy, And P2P Firewall
 
-- [ ] 41.1 Run `go build ./...`
-- [ ] 41.2 Run `go test ./...`
-- [ ] 41.3 Run the non-generated coverage report and confirm coverage is at least 90%
-- [ ] 41.4 Run the executable 90% coverage gate and confirm it passes
-- [ ] 41.5 Run `git diff --check`
-- [ ] 41.6 Run subagent-driven spec and code-quality review checkpoints
-- [ ] 41.7 Run `openspec validate --all --strict`
-- [ ] 41.8 Archive the completed OpenSpec change
+- [ ] 41.1 Add focused tests for deterministic `internal/testutil/mock_graph.go` CRUD, query, traversal, copy semantics, error injection, counters, clear, and close branches
+- [ ] 41.2 Add focused tests for deterministic `internal/cli/smartaccount/policy.go` show/set command formatting, output mode validation, seam errors, cleanup, value formatting, and limit parsing branches without live chain RPC
+- [ ] 41.3 Add focused tests for deterministic `internal/p2p/firewall/firewall.go` ACL validation, rule mutation, rate limiting, reputation outcomes, sanitization, attestation, matching, and copy semantics without live network services
+- [ ] 41.4 Run subagent-driven review checkpoints for the wave
+- [ ] 41.5 Commit the wave separately
+
+## 42. Verification And Enforcement
+
+- [ ] 42.1 Run `go build ./...`
+- [ ] 42.2 Run `go test ./...`
+- [ ] 42.3 Run the non-generated coverage report and confirm coverage is at least 90%
+- [ ] 42.4 Run the executable 90% coverage gate and confirm it passes
+- [ ] 42.5 Run `git diff --check`
+- [ ] 42.6 Run subagent-driven spec and code-quality review checkpoints
+- [ ] 42.7 Run `openspec validate --all --strict`
+- [ ] 42.8 Archive the completed OpenSpec change
