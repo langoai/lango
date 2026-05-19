@@ -296,7 +296,7 @@
 - [x] 38.3 Add focused tests for deterministic `internal/cli/configcmd/getset.go` scalar/reflection formatting, redaction, invalid path, and set-field branches without interactive prompts
 - [x] 38.4 Add focused tests for deterministic `internal/app/tools_meta.go`, `internal/app/modules.go`, `internal/app/wiring.go`, and `internal/app/wiring_p2p.go` helper branches that still dominate uncovered statement count without live providers, listeners, or external peers
 - [x] 38.5 Run subagent-driven review checkpoints for the wave
-- [ ] 38.6 Commit the wave separately
+- [x] 38.6 Commit the wave separately
 
 ## 39. Verification And Enforcement
 
