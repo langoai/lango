@@ -337,7 +337,7 @@
 - [x] 43.3 Add focused tests for deterministic `cmd/lango/main.go` command startup/config helper branches without launching interactive TUI loops or binding listeners
 - [x] 43.4 Add focused tests for deterministic `internal/app/tools_meta.go`, `internal/app/modules.go`, and `internal/app/wiring_p2p.go` branches that remain high-uncovered without live providers, listeners, or external peers
 - [x] 43.5 Run subagent-driven review checkpoints for the wave
-- [ ] 43.6 Commit the wave separately
+- [x] 43.6 Commit the wave separately
 
 ## 44. Verification And Enforcement
 
