@@ -130,6 +130,13 @@ var loadSessionList = func(bootLoader BootLoader) ([]sessionListEntry, func(), e
 		return nil, nil, fmt.Errorf("list sessions: %w", err)
 	}
 
+	return buildSessionListEntries(sessions), func() {
+		deps.cleanup()
+		boot.Close()
+	}, nil
+}
+
+func buildSessionListEntries(sessions []*sa.SessionKey) []sessionListEntry {
 	entries := make([]sessionListEntry, 0, len(sessions))
 	for _, sk := range sessions {
 		status := "active"
@@ -151,11 +158,7 @@ var loadSessionList = func(bootLoader BootLoader) ([]sessionListEntry, func(), e
 			Status:    status,
 		})
 	}
-
-	return entries, func() {
-		deps.cleanup()
-		boot.Close()
-	}, nil
+	return entries
 }
 
 var executeSessionRevoke = func(bootLoader BootLoader, all bool, sessionID string) (string, func(), error) {
