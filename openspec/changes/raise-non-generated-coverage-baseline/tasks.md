@@ -289,13 +289,22 @@
 - [x] 37.4 Run subagent-driven review checkpoints for the wave
 - [x] 37.5 Commit the wave separately
 
-## 38. Verification And Enforcement
+## 38. Coverage Wave: CLI Settings, Workflow, Config, And App Wiring Hotspots
 
-- [ ] 38.1 Run `go build ./...`
-- [ ] 38.2 Run `go test ./...`
-- [ ] 38.3 Run the non-generated coverage report and confirm coverage is at least 90%
-- [ ] 38.4 Run the executable 90% coverage gate and confirm it passes
-- [ ] 38.5 Run `git diff --check`
-- [ ] 38.6 Run subagent-driven spec and code-quality review checkpoints
-- [ ] 38.7 Run `openspec validate --all --strict`
-- [ ] 38.8 Archive the completed OpenSpec change
+- [ ] 38.1 Add focused tests for deterministic `internal/cli/settings/forms_agent.go` form construction, defaults, validation, dependency wiring, and provider/model field branches without launching interactive UI loops
+- [ ] 38.2 Add focused tests for deterministic `internal/cli/workflow/workflow.go` command construction, output formatting, validation, and error branches using fake writers and no external services
+- [ ] 38.3 Add focused tests for deterministic `internal/cli/configcmd/getset.go` scalar/reflection formatting, redaction, invalid path, and set-field branches without interactive prompts
+- [ ] 38.4 Add focused tests for deterministic `internal/app/tools_meta.go`, `internal/app/modules.go`, `internal/app/wiring.go`, and `internal/app/wiring_p2p.go` helper branches that still dominate uncovered statement count without live providers, listeners, or external peers
+- [ ] 38.5 Run subagent-driven review checkpoints for the wave
+- [ ] 38.6 Commit the wave separately
+
+## 39. Verification And Enforcement
+
+- [ ] 39.1 Run `go build ./...`
+- [ ] 39.2 Run `go test ./...`
+- [ ] 39.3 Run the non-generated coverage report and confirm coverage is at least 90%
+- [ ] 39.4 Run the executable 90% coverage gate and confirm it passes
+- [ ] 39.5 Run `git diff --check`
+- [ ] 39.6 Run subagent-driven spec and code-quality review checkpoints
+- [ ] 39.7 Run `openspec validate --all --strict`
+- [ ] 39.8 Archive the completed OpenSpec change
