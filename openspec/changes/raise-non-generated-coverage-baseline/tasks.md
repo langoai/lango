@@ -380,11 +380,11 @@
 
 ## 48. Coverage Wave: Knowledge, App Lifecycle, Provider, And RunLedger
 
-- [ ] 48.1 Add focused tests for deterministic `internal/knowledge/store.go` branches using in-memory SQLite/FTS fixtures without external services
-- [ ] 48.2 Add focused tests for deterministic `internal/app/app.go`, `internal/app/wiring.go`, and remaining safe app lifecycle branches without live listeners, peers, or providers
-- [ ] 48.3 Add focused tests for deterministic `internal/provider/anthropic/anthropic.go` request building, response mapping, and error handling without live Anthropic API calls
-- [ ] 48.4 Add focused tests for deterministic `internal/runledger/ent_store.go` and related run ledger storage branches using local Ent test stores
-- [ ] 48.5 Run subagent-driven review checkpoints for the wave
+- [x] 48.1 Add focused tests for deterministic `internal/knowledge/store.go` branches using in-memory SQLite/FTS fixtures without external services
+- [x] 48.2 Add focused tests for deterministic `internal/app/app.go`, `internal/app/wiring.go`, and remaining safe app lifecycle branches without live listeners, peers, or providers
+- [x] 48.3 Add focused tests for deterministic `internal/provider/anthropic/anthropic.go` request building, response mapping, and error handling without live Anthropic API calls
+- [x] 48.4 Add focused tests for deterministic `internal/runledger/ent_store.go` and related run ledger storage branches using local Ent test stores
+- [x] 48.5 Run subagent-driven review checkpoints for the wave
 - [ ] 48.6 Commit the wave separately
 
 ## 49. Verification And Enforcement
