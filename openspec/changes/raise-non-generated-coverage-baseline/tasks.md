@@ -371,11 +371,11 @@
 
 ## 47. Coverage Wave: Gateway Auth, App P2P Tools, ADK Agent, And CLI Workflow
 
-- [ ] 47.1 Add focused tests for deterministic `internal/gateway/auth.go` authentication middleware branches without real gateway servers
-- [ ] 47.2 Add focused tests for deterministic `internal/app/tools_p2p.go` and remaining safe `internal/app/wiring_p2p.go` branches without live peers or listeners
-- [ ] 47.3 Add focused tests for deterministic `internal/adk/agent.go` execution, callback, and error branches without live providers
-- [ ] 47.4 Add focused tests for deterministic `internal/cli/workflow/workflow.go` command, validation, and output branches without external services
-- [ ] 47.5 Run subagent-driven review checkpoints for the wave
+- [x] 47.1 Add focused tests for deterministic `internal/gateway/auth.go` authentication middleware branches without real gateway servers
+- [x] 47.2 Add focused tests for deterministic `internal/app/tools_p2p.go` and remaining safe `internal/app/wiring_p2p.go` branches without live peers or listeners
+- [x] 47.3 Add focused tests for deterministic `internal/adk/agent.go` execution, callback, and error branches without live providers
+- [x] 47.4 Add focused tests for deterministic `internal/cli/workflow/workflow.go` command, validation, and output branches without external services
+- [x] 47.5 Run subagent-driven review checkpoints for the wave
 - [ ] 47.6 Commit the wave separately
 
 ## 48. Verification And Enforcement
