@@ -103,13 +103,14 @@ func TestWave29NetworkModuleInitMarksP2PDisabledWithoutPaymentRequirement(t *tes
 	)
 	require.NoError(t, err)
 
-	assert.Empty(t, result.Tools)
+	assert.NotEmpty(t, result.Tools)
 	assert.Nil(t, result.Values[appinit.ProvidesPayment])
 	assert.Nil(t, result.Values[appinit.ProvidesP2P])
-	assert.Nil(t, result.Values[appinit.ProvidesEconomy])
+	assert.NotNil(t, result.Values[appinit.ProvidesEconomy])
 	p2pEntry := requireCatalogEntry(t, result.CatalogEntries, "p2p")
 	assert.False(t, p2pEntry.Enabled)
 	assert.Equal(t, "P2P networking (disabled)", p2pEntry.Description)
+	assert.True(t, requireCatalogEntry(t, result.CatalogEntries, "economy").Enabled)
 	assert.False(t, requireCatalogEntry(t, result.CatalogEntries, "workspace").Enabled)
 }
 

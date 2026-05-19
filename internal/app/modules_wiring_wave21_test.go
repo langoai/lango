@@ -209,14 +209,15 @@ func TestWave21NetworkModuleInitRegistersDisabledEntriesWhenPaymentUnavailable(t
 	)
 	require.NoError(t, err)
 
-	assert.Empty(t, result.Tools)
+	assert.NotEmpty(t, result.Tools)
 	assert.Empty(t, result.Components)
 	assert.Nil(t, result.Values[appinit.ProvidesPayment])
 	assert.Nil(t, result.Values[appinit.ProvidesP2P])
-	assert.Nil(t, result.Values[appinit.ProvidesEconomy])
+	assert.NotNil(t, result.Values[appinit.ProvidesEconomy])
 	assert.Nil(t, result.Values[appinit.ProvidesSmartAccount])
 	assert.False(t, requireCatalogEntry(t, result.CatalogEntries, "payment").Enabled)
 	assert.Contains(t, requireCatalogEntry(t, result.CatalogEntries, "p2p").Description, "payment required")
+	assert.True(t, requireCatalogEntry(t, result.CatalogEntries, "economy").Enabled)
 	assert.False(t, requireCatalogEntry(t, result.CatalogEntries, "workspace").Enabled)
 	assert.False(t, requireCatalogEntry(t, result.CatalogEntries, "smartaccount").Enabled)
 }

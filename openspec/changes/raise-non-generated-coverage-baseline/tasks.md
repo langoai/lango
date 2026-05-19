@@ -259,10 +259,10 @@
 
 ## 34. Coverage Wave: App Meta, Network, And Wiring Branches
 
-- [ ] 34.1 Add focused tests for deterministic `internal/app/tools_meta.go` meta-tool construction and exportability/payment helper branches without live payments, chain RPC, or background workers
-- [ ] 34.2 Add focused tests for deterministic `internal/app/modules.go` network/intelligence module disabled and lightweight catalog branches without starting P2P, payment, or external services
-- [ ] 34.3 Add focused tests for deterministic `internal/app/wiring.go` and `internal/app/wiring_p2p.go` helper branches such as security/provenance/agent options and invalid or disabled P2P configuration paths
-- [ ] 34.4 Run subagent-driven review checkpoints for the wave
+- [x] 34.1 Add focused tests for deterministic `internal/app/tools_meta.go` meta-tool construction and exportability/payment helper branches without live payments, chain RPC, or background workers
+- [x] 34.2 Add focused tests for deterministic `internal/app/modules.go` network/intelligence module disabled and lightweight catalog branches without starting P2P, payment, or external services
+- [x] 34.3 Add focused tests for deterministic `internal/app/wiring.go` and `internal/app/wiring_p2p.go` helper branches such as security/provenance/agent options and invalid or disabled P2P configuration paths
+- [x] 34.4 Run subagent-driven review checkpoints for the wave
 - [ ] 34.5 Commit the wave separately
 
 ## 35. Verification And Enforcement

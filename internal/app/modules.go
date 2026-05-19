@@ -1032,6 +1032,31 @@ func (m *networkModule) Init(ctx context.Context, r appinit.Resolver) (*appinit.
 		if cfg.P2P.Workspace.Enabled {
 			entries = append(entries, appinit.CatalogEntry{Category: "workspace", Description: "P2P workspaces (disabled)", ConfigKey: "p2p.workspace.enabled", Enabled: false})
 		}
+		econc = initEconomy(cfg, nil, nil, m.bus)
+		if econc != nil {
+			econTools := economy.BuildTools(
+				econc.budgetEngine,
+				econc.riskEngine,
+				econc.negotiationEngine,
+				econc.escrowEngine,
+				econc.pricingEngine,
+			)
+			tools = append(tools, econTools...)
+			entries = append(entries, appinit.CatalogEntry{Category: "economy", Description: "P2P economy (budget, risk, pricing, negotiation, escrow)", ConfigKey: "economy.enabled", Enabled: true, Tools: econTools})
+
+			if econc.escrowEngine != nil && econc.escrowSettler != nil {
+				escrowTools := buildOnChainEscrowTools(econc.escrowEngine, econc.escrowSettler)
+				tools = append(tools, escrowTools...)
+				entries = append(entries, appinit.CatalogEntry{Category: "escrow", Description: "On-chain escrow management", ConfigKey: "economy.escrow.enabled", Enabled: true, Tools: escrowTools})
+			}
+			if econc.sentinelEngine != nil {
+				sentTools := sentinel.BuildTools(econc.sentinelEngine)
+				tools = append(tools, sentTools...)
+				entries = append(entries, appinit.CatalogEntry{Category: "sentinel", Description: "Security Sentinel anomaly detection", ConfigKey: "economy.escrow.enabled", Enabled: true, Tools: sentTools})
+			}
+		} else {
+			entries = append(entries, appinit.CatalogEntry{Category: "economy", Description: "P2P economy (disabled)", ConfigKey: "economy.enabled", Enabled: false})
+		}
 		entries = append(entries, appinit.CatalogEntry{Category: "smartaccount", Description: "ERC-7579 smart account management (disabled)", ConfigKey: "smartAccount.enabled", Enabled: false})
 	}
 
