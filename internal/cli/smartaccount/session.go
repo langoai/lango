@@ -320,9 +320,11 @@ func sessionRevokeCmd(bootLoader BootLoader) *cobra.Command {
 	var all bool
 
 	cmd := &cobra.Command{
-		Use:   "revoke [session-id]",
-		Short: "Revoke a session key or all session keys",
-		Args:  cobra.MaximumNArgs(1),
+		Use:           "revoke [session-id]",
+		Short:         "Revoke a session key or all session keys",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		Args:          cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if !all && len(args) == 0 {
 				return fmt.Errorf("provide a session ID or use --all to revoke all sessions")
