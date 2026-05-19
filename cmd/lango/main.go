@@ -119,6 +119,8 @@ var (
 	chatLoggingSyncFn                   = logging.Sync
 	chatStartupErrWriter      io.Writer = os.Stderr
 	chatAppBuilderFn                    = func(boot *bootstrap.Result) (*app.App, error) { return app.New(boot, app.WithLocalChat()) }
+	startAppFn                          = func(application *app.App, ctx context.Context) error { return application.Start(ctx) }
+	stopAppFn                           = func(application *app.App, ctx context.Context) error { return application.Stop(ctx) }
 )
 
 type stoppableApplication interface {
@@ -393,13 +395,13 @@ func runChat(initialMode string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if err := application.Start(ctx); err != nil {
+	if err := startAppFn(application, ctx); err != nil {
 		return fmt.Errorf("start application: %w", err)
 	}
 	defer func() {
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer shutdownCancel()
-		_ = application.Stop(shutdownCtx)
+		_ = stopAppFn(application, shutdownCtx)
 	}()
 
 	sessionKey := fmt.Sprintf("tui-%d", time.Now().UnixMilli())
@@ -812,7 +814,7 @@ func runCockpit(initialMode string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if err := application.Start(ctx); err != nil {
+	if err := startAppFn(application, ctx); err != nil {
 		return fmt.Errorf("start application: %w", err)
 	}
 	defer func() {
@@ -820,7 +822,7 @@ func runCockpit(initialMode string) error {
 			context.Background(), 10*time.Second,
 		)
 		defer shutdownCancel()
-		_ = application.Stop(shutdownCtx)
+		_ = stopAppFn(application, shutdownCtx)
 	}()
 
 	// Create channel tracker for cockpit status display.
@@ -1022,13 +1024,13 @@ func runWorkbench(initialMode string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if err := application.Start(ctx); err != nil {
+	if err := startAppFn(application, ctx); err != nil {
 		return fmt.Errorf("start application: %w", err)
 	}
 	defer func() {
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer shutdownCancel()
-		_ = application.Stop(shutdownCtx)
+		_ = stopAppFn(application, shutdownCtx)
 	}()
 
 	sessionKey := fmt.Sprintf("workbench-%d", time.Now().UnixMilli())

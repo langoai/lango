@@ -362,11 +362,11 @@
 
 ## 46. Coverage Wave: Entrypoints, Payment, Storage Broker, And App Wiring
 
-- [ ] 46.1 Add focused tests for deterministic `cmd/lango/main.go` command entrypoint branches that avoid launching interactive TUI loops or real servers
-- [ ] 46.2 Add focused tests for deterministic `internal/payment/service.go` send, balance, retry, confirmation, and failure-recording branches without live RPC
-- [ ] 46.3 Add focused tests for deterministic `internal/storagebroker/server.go` request dispatch, config, payment, recall, workflow, and error branches without external brokers
-- [ ] 46.4 Add focused tests for deterministic `internal/app/modules.go`, `internal/app/wiring.go`, `internal/app/wiring_p2p.go`, and `internal/app/tools_meta.go` branches that can be covered without live providers, listeners, peers, or long-running workers
-- [ ] 46.5 Run subagent-driven review checkpoints for the wave
+- [x] 46.1 Add focused tests for deterministic `cmd/lango/main.go` command entrypoint branches that avoid launching interactive TUI loops or real servers
+- [x] 46.2 Add focused tests for deterministic `internal/payment/service.go` send, balance, retry, confirmation, and failure-recording branches without live RPC
+- [x] 46.3 Add focused tests for deterministic `internal/storagebroker/server.go` request dispatch, config, payment, recall, workflow, and error branches without external brokers
+- [x] 46.4 Add focused tests for deterministic `internal/app/modules.go`, `internal/app/wiring.go`, `internal/app/wiring_p2p.go`, and `internal/app/tools_meta.go` branches that can be covered without live providers, listeners, peers, or long-running workers
+- [x] 46.5 Run subagent-driven review checkpoints for the wave
 - [ ] 46.6 Commit the wave separately
 
 ## 47. Verification And Enforcement
