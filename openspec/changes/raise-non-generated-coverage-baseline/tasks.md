@@ -356,7 +356,7 @@
 - [x] 45.4 Add focused tests for remaining deterministic `internal/app/tools_meta.go`, `internal/app/wiring_p2p.go`, `internal/app/modules.go`, and `internal/app/wiring.go` branches that do not require live providers, listeners, peers, or background workers
 - [x] 45.5 Run subagent-driven review checkpoints for the wave
 - [x] 45.6 Keep Ent-backed Wave 45 test bootstraps race-safe with the shared schema serialization seam and generated enttest template
-- [ ] 45.7 Commit the wave separately
+- [x] 45.7 Commit the wave separately
 
 ## 46. Verification And Enforcement
 
