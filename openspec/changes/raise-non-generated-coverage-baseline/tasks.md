@@ -414,7 +414,7 @@
 - [x] 51.4 Add focused tests for deterministic `cmd/lango/main.go` and `internal/cli/workflow/workflow.go` command/helper branches without launching interactive TUI loops
 - [x] 51.5 Add focused tests for remaining deterministic `internal/knowledge/store.go` write, atomic, relevance, and FTS cleanup branches using local SQLite/FTS fixtures only
 - [x] 51.6 Run subagent-driven review checkpoints for the wave
-- [ ] 51.7 Commit the wave separately
+- [x] 51.7 Commit the wave separately
 
 ## 52. Verification And Enforcement
 
