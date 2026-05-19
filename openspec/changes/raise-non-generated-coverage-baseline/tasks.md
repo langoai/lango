@@ -306,13 +306,21 @@
 - [x] 39.4 Run subagent-driven review checkpoints for the wave
 - [x] 39.5 Commit the wave separately
 
-## 40. Verification And Enforcement
+## 40. Coverage Wave: USDC Settlement, App Modules, And Chat State
 
-- [ ] 40.1 Run `go build ./...`
-- [ ] 40.2 Run `go test ./...`
-- [ ] 40.3 Run the non-generated coverage report and confirm coverage is at least 90%
-- [ ] 40.4 Run the executable 90% coverage gate and confirm it passes
-- [ ] 40.5 Run `git diff --check`
-- [ ] 40.6 Run subagent-driven spec and code-quality review checkpoints
-- [ ] 40.7 Run `openspec validate --all --strict`
-- [ ] 40.8 Archive the completed OpenSpec change
+- [ ] 40.1 Add focused tests for deterministic `internal/economy/escrow/usdc_settler.go` address resolution, lock, release/refund, signing, submission retry, and receipt confirmation branches using in-process RPC seams only
+- [ ] 40.2 Add focused tests for deterministic `internal/app/modules.go` foundation/intelligence/automation/network/extension module branches that do not start live external services
+- [ ] 40.3 Add focused tests for deterministic `internal/cli/chat/chat.go` state/update/render helper branches without launching Bubble Tea programs
+- [ ] 40.4 Run subagent-driven review checkpoints for the wave
+- [ ] 40.5 Commit the wave separately
+
+## 41. Verification And Enforcement
+
+- [ ] 41.1 Run `go build ./...`
+- [ ] 41.2 Run `go test ./...`
+- [ ] 41.3 Run the non-generated coverage report and confirm coverage is at least 90%
+- [ ] 41.4 Run the executable 90% coverage gate and confirm it passes
+- [ ] 41.5 Run `git diff --check`
+- [ ] 41.6 Run subagent-driven spec and code-quality review checkpoints
+- [ ] 41.7 Run `openspec validate --all --strict`
+- [ ] 41.8 Archive the completed OpenSpec change
