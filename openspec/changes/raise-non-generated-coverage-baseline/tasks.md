@@ -300,10 +300,10 @@
 
 ## 39. Coverage Wave: Workspace Tools, Run Ledger, And Entrypoint Helpers
 
-- [ ] 39.1 Add focused tests for deterministic `internal/app/tools_workspace.go` create/join/leave/list/status helper branches without live P2P peers or external services
-- [ ] 39.2 Add focused tests for deterministic `internal/runledger/ent_store.go` journal, snapshot, cache, and error branches using isolated test storage
-- [ ] 39.3 Add focused tests for deterministic `cmd/lango/main.go` chat/cockpit/workbench/config helper branches through existing seams without launching interactive UI loops
-- [ ] 39.4 Run subagent-driven review checkpoints for the wave
+- [x] 39.1 Add focused tests for deterministic `internal/app/tools_workspace.go` create/join/leave/list/status helper branches without live P2P peers or external services
+- [x] 39.2 Add focused tests for deterministic `internal/runledger/ent_store.go` journal, snapshot, cache, and error branches using isolated test storage
+- [x] 39.3 Add focused tests for deterministic `cmd/lango/main.go` chat/cockpit/workbench/config helper branches through existing seams without launching interactive UI loops
+- [x] 39.4 Run subagent-driven review checkpoints for the wave
 - [ ] 39.5 Commit the wave separately
 
 ## 40. Verification And Enforcement
