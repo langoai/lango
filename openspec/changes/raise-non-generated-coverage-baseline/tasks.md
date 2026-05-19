@@ -431,7 +431,7 @@
 - [x] 53.2 Add focused tests for deterministic `internal/postadjudicationstatus/service.go` and `internal/graph/bolt_store.go` status aggregation, receipt, filtering, snapshot, stats, scan, and clear branches using local stores only
 - [x] 53.3 Add focused tests for deterministic `internal/tools/browser/browser.go` and `internal/cli/smartaccount/policy.go` session/error/helper branches without launching a real browser or live chain RPC
 - [x] 53.4 Run subagent-driven review checkpoints for the wave
-- [ ] 53.5 Commit the wave separately
+- [x] 53.5 Commit the wave separately
 
 ## 54. Verification And Enforcement
 
