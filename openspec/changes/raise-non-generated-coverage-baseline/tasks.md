@@ -451,12 +451,12 @@
 
 ## 56. Coverage Wave: RAG, Git Bundle, Sandbox, Onboarding, And Residual Hotspots
 
-- [ ] 56.1 Add focused tests for deterministic `internal/embedding/rag.go` retrieval, resolver, empty-result, filtering, and error branches using local fakes only
-- [ ] 56.2 Add focused tests for deterministic `internal/p2p/gitbundle/protocol.go` request parsing, validation, session, size-limit, service-error, and response branches using fake streams/services only
-- [ ] 56.3 Add focused tests for deterministic `internal/sandbox/docker_runtime.go` request/response assembly and error branches without requiring a live Docker daemon
-- [ ] 56.4 Add focused tests for deterministic `internal/cli/onboard/wizard.go` state, navigation, validation, rendering, and config update branches without launching interactive TUI loops
-- [ ] 56.5 Add focused tests for remaining deterministic `internal/app/*`, `internal/p2p/settlement/service.go`, and `internal/mcp/connection.go` helper branches only where they can be covered without live providers, listeners, peers, chain RPC, or external MCP servers
-- [ ] 56.6 Run subagent-driven review checkpoints for the wave
+- [x] 56.1 Add focused tests for deterministic `internal/embedding/rag.go` retrieval, resolver, empty-result, filtering, and error branches using local fakes only
+- [x] 56.2 Add focused tests for deterministic `internal/p2p/gitbundle/protocol.go` request parsing, validation, session, size-limit, service-error, and response branches using fake streams/services only
+- [x] 56.3 Add focused tests for deterministic `internal/sandbox/docker_runtime.go` request/response assembly and error branches without requiring a live Docker daemon
+- [x] 56.4 Add focused tests for deterministic `internal/cli/onboard/wizard.go` state, navigation, validation, rendering, and config update branches without launching interactive TUI loops
+- [x] 56.5 Add focused tests for remaining deterministic `internal/app/*`, `internal/p2p/settlement/service.go`, and `internal/mcp/connection.go` helper branches only where they can be covered without live providers, listeners, peers, chain RPC, or external MCP servers
+- [x] 56.6 Run subagent-driven review checkpoints for the wave
 - [ ] 56.7 Commit the wave separately
 
 ## 57. Verification And Enforcement

@@ -14,9 +14,21 @@ import (
 // SessionValidator validates a session token and returns the peer DID.
 type SessionValidator func(token string) (string, bool)
 
+type protocolService interface {
+	ApplyBundle(ctx context.Context, workspaceID string, bundle []byte) error
+	CreateBundle(ctx context.Context, workspaceID string) ([]byte, string, error)
+	Log(ctx context.Context, workspaceID string, limit int) ([]CommitInfo, error)
+	Leaves(ctx context.Context, workspaceID string) ([]string, error)
+	Diff(ctx context.Context, workspaceID, from, to string) (string, error)
+	SafeApplyBundle(ctx context.Context, workspaceID string, bundleData []byte) error
+	CreateIncrementalBundle(ctx context.Context, workspaceID, baseCommit string) ([]byte, string, error)
+	VerifyBundle(ctx context.Context, workspaceID string, bundleData []byte) error
+	HasCommit(ctx context.Context, workspaceID, commitHash string) (bool, error)
+}
+
 // Handler handles git protocol streams.
 type Handler struct {
-	service   *Service
+	service   protocolService
 	validator SessionValidator
 	maxBundle int64
 	logger    *zap.Logger
