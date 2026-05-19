@@ -449,13 +449,23 @@
 - [x] 55.4 Run subagent-driven review checkpoints for the wave
 - [x] 55.5 Commit the wave separately
 
-## 56. Verification And Enforcement
+## 56. Coverage Wave: RAG, Git Bundle, Sandbox, Onboarding, And Residual Hotspots
 
-- [ ] 56.1 Run `go build ./...`
-- [ ] 56.2 Run `go test ./...`
-- [ ] 56.3 Run the non-generated coverage report and confirm coverage is at least 90%
-- [ ] 56.4 Run the executable 90% coverage gate and confirm it passes
-- [ ] 56.5 Run `git diff --check`
-- [ ] 56.6 Run subagent-driven spec and code-quality review checkpoints
-- [ ] 56.7 Run `openspec validate --all --strict`
-- [ ] 56.8 Archive the completed OpenSpec change
+- [ ] 56.1 Add focused tests for deterministic `internal/embedding/rag.go` retrieval, resolver, empty-result, filtering, and error branches using local fakes only
+- [ ] 56.2 Add focused tests for deterministic `internal/p2p/gitbundle/protocol.go` request parsing, validation, session, size-limit, service-error, and response branches using fake streams/services only
+- [ ] 56.3 Add focused tests for deterministic `internal/sandbox/docker_runtime.go` request/response assembly and error branches without requiring a live Docker daemon
+- [ ] 56.4 Add focused tests for deterministic `internal/cli/onboard/wizard.go` state, navigation, validation, rendering, and config update branches without launching interactive TUI loops
+- [ ] 56.5 Add focused tests for remaining deterministic `internal/app/*`, `internal/p2p/settlement/service.go`, and `internal/mcp/connection.go` helper branches only where they can be covered without live providers, listeners, peers, chain RPC, or external MCP servers
+- [ ] 56.6 Run subagent-driven review checkpoints for the wave
+- [ ] 56.7 Commit the wave separately
+
+## 57. Verification And Enforcement
+
+- [ ] 57.1 Run `go build ./...`
+- [ ] 57.2 Run `go test ./...`
+- [ ] 57.3 Run the non-generated coverage report and confirm coverage is at least 90%
+- [ ] 57.4 Run the executable 90% coverage gate and confirm it passes
+- [ ] 57.5 Run `git diff --check`
+- [ ] 57.6 Run subagent-driven spec and code-quality review checkpoints
+- [ ] 57.7 Run `openspec validate --all --strict`
+- [ ] 57.8 Archive the completed OpenSpec change
