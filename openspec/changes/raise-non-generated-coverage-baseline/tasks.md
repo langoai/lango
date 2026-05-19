@@ -339,13 +339,22 @@
 - [x] 43.5 Run subagent-driven review checkpoints for the wave
 - [x] 43.6 Commit the wave separately
 
-## 44. Verification And Enforcement
+## 44. Coverage Wave: App Wiring, ADK/Knowledge, Deadletters, And Slack
 
-- [ ] 44.1 Run `go build ./...`
-- [ ] 44.2 Run `go test ./...`
-- [ ] 44.3 Run the non-generated coverage report and confirm coverage is at least 90%
-- [ ] 44.4 Run the executable 90% coverage gate and confirm it passes
-- [ ] 44.5 Run `git diff --check`
-- [ ] 44.6 Run subagent-driven spec and code-quality review checkpoints
-- [ ] 44.7 Run `openspec validate --all --strict`
-- [ ] 44.8 Archive the completed OpenSpec change
+- [ ] 44.1 Add focused tests for deterministic `internal/app/wiring_p2p.go` and related `internal/app/app.go` helper branches without live listeners, peers, or P2P services
+- [ ] 44.2 Add focused tests for deterministic `internal/app/modules.go` and `internal/app/wiring.go` helper branches without live providers, background workers, or external services
+- [ ] 44.3 Add focused tests for deterministic `internal/adk/agent.go` and `internal/knowledge/store.go` remaining helper/error branches without live model providers or external services
+- [ ] 44.4 Add focused tests for deterministic `internal/cli/cockpit/pages/deadletters.go` and `internal/channels/slack/slack.go` branches without launching TUI loops or live Slack clients
+- [ ] 44.5 Run subagent-driven review checkpoints for the wave
+- [ ] 44.6 Commit the wave separately
+
+## 45. Verification And Enforcement
+
+- [ ] 45.1 Run `go build ./...`
+- [ ] 45.2 Run `go test ./...`
+- [ ] 45.3 Run the non-generated coverage report and confirm coverage is at least 90%
+- [ ] 45.4 Run the executable 90% coverage gate and confirm it passes
+- [ ] 45.5 Run `git diff --check`
+- [ ] 45.6 Run subagent-driven spec and code-quality review checkpoints
+- [ ] 45.7 Run `openspec validate --all --strict`
+- [ ] 45.8 Archive the completed OpenSpec change
