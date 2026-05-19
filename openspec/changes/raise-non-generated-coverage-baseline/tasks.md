@@ -233,13 +233,22 @@
 - [x] 30.4 Run subagent-driven review checkpoints for the wave
 - [x] 30.5 Commit the wave separately
 
-## 31. Verification And Enforcement
+## 31. Coverage Wave: Status, Settings Knowledge, P2P Node, And ADK Support Helpers
 
-- [x] 31.1 Run `go build ./...`
-- [x] 31.2 Run `go test ./...`
-- [ ] 31.3 Run the non-generated coverage report and confirm coverage is at least 90%
-- [ ] 31.4 Run the executable 90% coverage gate and confirm it passes
-- [x] 31.5 Run `git diff --check`
-- [x] 31.6 Run subagent-driven spec and code-quality review checkpoints
-- [x] 31.7 Run `openspec validate --all --strict`
-- [ ] 31.8 Archive the completed OpenSpec change
+- [ ] 31.1 Add focused tests for deterministic `internal/cli/settings/forms_knowledge.go` form builders and field wiring without launching interactive UI loops
+- [ ] 31.2 Add focused tests for deterministic `internal/cli/status/status.go` dead-letter bridge, retry/detail, sanitization, and status helper branches using fake stores and command writers
+- [ ] 31.3 Add focused tests for deterministic `internal/p2p/node.go` constructor/accessor, key path, handler, and peer-found helper branches without external peers
+- [ ] 31.4 Add focused tests for deterministic `internal/adk` support helpers such as child session service, context helpers, PII adapter, plugin constructors, and tool adapters without live providers
+- [ ] 31.5 Run subagent-driven review checkpoints for the wave
+- [ ] 31.6 Commit the wave separately
+
+## 32. Verification And Enforcement
+
+- [x] 32.1 Run `go build ./...`
+- [x] 32.2 Run `go test ./...`
+- [ ] 32.3 Run the non-generated coverage report and confirm coverage is at least 90%
+- [ ] 32.4 Run the executable 90% coverage gate and confirm it passes
+- [x] 32.5 Run `git diff --check`
+- [x] 32.6 Run subagent-driven spec and code-quality review checkpoints
+- [x] 32.7 Run `openspec validate --all --strict`
+- [ ] 32.8 Archive the completed OpenSpec change
