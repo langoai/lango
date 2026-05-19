@@ -312,7 +312,7 @@
 - [x] 40.2 Add focused tests for deterministic `internal/app/modules.go` foundation/intelligence/automation/network/extension module branches that do not start live external services
 - [x] 40.3 Add focused tests for deterministic `internal/cli/chat/chat.go` state/update/render helper branches without launching Bubble Tea programs
 - [x] 40.4 Run subagent-driven review checkpoints for the wave
-- [ ] 40.5 Commit the wave separately
+- [x] 40.5 Commit the wave separately
 
 ## 41. Verification And Enforcement
 
