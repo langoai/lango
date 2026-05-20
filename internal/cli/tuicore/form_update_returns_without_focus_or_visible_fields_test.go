@@ -4,10 +4,57 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestFormInitReturnsBlinkCommand(t *testing.T) {
+	form := NewFormModel("Fixture Form")
+
+	cmd := form.Init()
+
+	require.NotNil(t, cmd)
+}
+
+func TestAddFieldInitializesPasswordAndSearchSelectState(t *testing.T) {
+	form := NewFormModel("Fixture Form")
+	form.AddField(&Field{
+		Key:         "password",
+		Label:       "Password",
+		Type:        InputPassword,
+		Value:       "secret",
+		Placeholder: "enter password",
+		Width:       12,
+	})
+
+	password := form.Fields[0]
+	assert.Equal(t, "secret", password.InitialValue)
+	assert.Equal(t, "secret", password.TextInput.Value())
+	assert.Equal(t, "enter password", password.TextInput.Placeholder)
+	assert.Equal(t, 12, password.TextInput.Width)
+	assert.Equal(t, textinput.EchoPassword, password.TextInput.EchoMode)
+	assert.Equal(t, '*', password.TextInput.EchoCharacter)
+
+	options := []string{"alpha", "beta"}
+	form.AddField(&Field{
+		Key:     "model",
+		Label:   "Model",
+		Type:    InputSearchSelect,
+		Value:   "alpha",
+		Options: options,
+		Width:   22,
+	})
+
+	options[0] = "mutated"
+	search := form.Fields[1]
+	assert.Equal(t, "alpha", search.InitialValue)
+	assert.Equal(t, "alpha", search.TextInput.Value())
+	assert.Equal(t, "Type to search...", search.TextInput.Placeholder)
+	assert.Equal(t, 22, search.TextInput.Width)
+	assert.Equal(t, []string{"alpha", "beta"}, search.FilteredOptions)
+}
 
 func TestFormUpdateReturnsWithoutFocusOrVisibleFields(t *testing.T) {
 	form := NewFormModel("Fixture Form")
@@ -115,6 +162,66 @@ func TestFormCursorClampsAfterVisibilityChanges(t *testing.T) {
 	assert.Equal(t, "visible", updated.Fields[1].Value)
 }
 
+func TestFormUpdateHandlesNavigationTextToggleAndCancelBranches(t *testing.T) {
+	cancelled := false
+	form := NewFormModel("Fixture Form")
+	form.Focus = true
+	form.OnCancel = func() { cancelled = true }
+	form.AddField(&Field{
+		Key:     "enabled",
+		Label:   "Enabled",
+		Type:    InputBool,
+		Checked: false,
+	})
+	form.AddField(&Field{
+		Key:   "name",
+		Label: "Name",
+		Type:  InputText,
+		Value: "bot",
+	})
+
+	updated, cmd := form.Update(tea.KeyMsg{Type: tea.KeyTab})
+	require.Nil(t, cmd)
+	assert.Equal(t, 1, updated.Cursor)
+
+	updated, cmd = updated.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+	require.Nil(t, cmd)
+	assert.Equal(t, 0, updated.Cursor)
+
+	updated, cmd = updated.Update(tea.KeyMsg{Type: tea.KeySpace})
+	require.Nil(t, cmd)
+	assert.True(t, updated.Fields[0].Checked)
+	assert.True(t, updated.Fields[0].Edited)
+
+	updated.Cursor = 1
+	updated.Fields[1].TextInput.Focus()
+	updated, cmd = updated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+	assert.Equal(t, "botx", updated.Fields[1].Value)
+	assert.True(t, updated.Fields[1].Edited)
+
+	updated, cmd = updated.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	require.Nil(t, cmd)
+	assert.True(t, cancelled)
+}
+
+func TestFormUpdateReturnsWhenToggleHidesAllFields(t *testing.T) {
+	form := NewFormModel("Fixture Form")
+	form.Focus = true
+	toggle := &Field{
+		Key:   "toggle",
+		Label: "Toggle",
+		Type:  InputBool,
+	}
+	toggle.VisibleWhen = func() bool { return !toggle.Checked }
+	form.AddField(toggle)
+
+	updated, cmd := form.Update(tea.KeyMsg{Type: tea.KeySpace})
+
+	require.Nil(t, cmd)
+	assert.True(t, updated.Fields[0].Checked)
+	assert.Empty(t, updated.VisibleFields())
+}
+
 func TestInputSelectUnknownValueCyclesAndRunsReturnedCommand(t *testing.T) {
 	form := NewFormModel("Fixture Form")
 	form.Focus = true
@@ -191,4 +298,66 @@ func TestFormViewRendersLoadingReadOnlyAndDropdownHelpBranches(t *testing.T) {
 	assert.Contains(t, dropdownView, "model-10")
 	assert.Contains(t, dropdownView, "Filter")
 	assert.False(t, strings.Contains(dropdownView, "Read-only"))
+}
+
+func TestFormViewRendersEditableControlsAndDefaultHelpBranches(t *testing.T) {
+	form := NewFormModel("Fixture Form")
+	form.Focus = true
+	form.AddField(&Field{
+		Key:   "name",
+		Label: "Name",
+		Type:  InputText,
+		Value: "bot",
+	})
+	form.AddField(&Field{
+		Key:     "enabled",
+		Label:   "Enabled",
+		Type:    InputBool,
+		Checked: true,
+	})
+	form.AddField(&Field{
+		Key:     "provider",
+		Label:   "Provider",
+		Type:    InputSelect,
+		Options: []string{"openai", "anthropic"},
+	})
+	form.AddField(&Field{
+		Key:   "model",
+		Label: "Model",
+		Type:  InputSearchSelect,
+	})
+
+	textView := form.View()
+	assert.Contains(t, textView, "bot")
+	assert.Contains(t, textView, "[x]")
+	assert.Contains(t, textView, "openai")
+	assert.Contains(t, textView, "(none)")
+	assert.Contains(t, textView, "Toggle")
+	assert.Contains(t, textView, "Search")
+
+	form.Cursor = 2
+	selectView := form.View()
+	assert.Contains(t, selectView, "< openai >")
+
+	form.Cursor = 3
+	searchView := form.View()
+	assert.Contains(t, searchView, "(none)  [Enter: search]")
+}
+
+func TestFormViewRendersDropdownOverflowIndicator(t *testing.T) {
+	form := NewFormModel("Fixture Form")
+	form.Focus = true
+	form.AddField(&Field{
+		Key:             "models",
+		Label:           "Models",
+		Type:            InputSearchSelect,
+		Options:         []string{"model-01", "model-02", "model-03", "model-04", "model-05", "model-06", "model-07", "model-08", "model-09", "model-10"},
+		FilteredOptions: []string{"model-01", "model-02", "model-03", "model-04", "model-05", "model-06", "model-07", "model-08", "model-09", "model-10"},
+		SelectOpen:      true,
+	})
+
+	view := form.View()
+
+	assert.Contains(t, view, "10/10 matches")
+	assert.Contains(t, view, "... 2 more")
 }
