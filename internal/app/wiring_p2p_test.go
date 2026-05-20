@@ -431,6 +431,92 @@ func TestInitP2P_ReturnsNilWhenNodeCreationFailsBeforeNetwork(t *testing.T) {
 	assert.Nil(t, initP2P(cfg, wallet, nil, nil, nil, nil, nil, nil, ""))
 }
 
+func TestInitP2P_InitializesDeterministicComponentsWithEphemeralHost(t *testing.T) {
+	key, err := ethcrypto.GenerateKey()
+	require.NoError(t, err)
+
+	workspaceFile := filepath.Join(t.TempDir(), "workspace-file")
+	require.NoError(t, os.WriteFile(workspaceFile, []byte("not a directory"), 0o600))
+	blockConversations := false
+
+	cfg := config.DefaultConfig()
+	cfg.A2A.AgentName = "deterministic-agent"
+	cfg.P2P.Enabled = true
+	cfg.P2P.ListenAddrs = []string{"/ip4/127.0.0.1/tcp/0"}
+	cfg.P2P.BootstrapPeers = nil
+	cfg.P2P.KeyDir = filepath.Join(t.TempDir(), "p2p-keys")
+	cfg.P2P.EnableRelay = false
+	cfg.P2P.EnableMDNS = false
+	cfg.P2P.ZKHandshake = false
+	cfg.P2P.ZKAttestation = false
+	cfg.P2P.SessionTokenTTL = 0
+	cfg.P2P.HandshakeTimeout = 0
+	cfg.P2P.GossipInterval = 0
+	cfg.P2P.MinTrustScore = 0
+	cfg.P2P.FirewallRules = []config.FirewallRule{{
+		PeerDID:   "did:lango:allowed",
+		Action:    "allow",
+		Tools:     []string{"search_knowledge"},
+		RateLimit: 7,
+	}}
+	cfg.P2P.OwnerProtection.OwnerName = "Local Owner"
+	cfg.P2P.OwnerProtection.BlockConversations = &blockConversations
+	cfg.P2P.Pricing.Enabled = true
+	cfg.P2P.Pricing.PerQuery = "0.25"
+	cfg.P2P.Pricing.ToolPrices = map[string]string{"premium_tool": "1.50"}
+	cfg.P2P.Workspace.DataDir = workspaceFile
+
+	wallet := &wiringP2PWallet{
+		signature: []byte("signed"),
+		publicKey: ethcrypto.CompressPubkey(&key.PublicKey),
+	}
+
+	components := initP2P(cfg, wallet, nil, nil, nil, nil, nil, nil, "")
+	require.NotNil(t, components)
+	t.Cleanup(func() {
+		if components.gossip != nil {
+			components.gossip.Stop()
+		}
+		if components.nonceCache != nil {
+			components.nonceCache.Stop()
+		}
+		if components.node != nil {
+			require.NoError(t, components.node.Stop())
+		}
+	})
+
+	assert.NotNil(t, components.node)
+	assert.NotEmpty(t, components.node.Multiaddrs())
+	assert.NotNil(t, components.sessions)
+	assert.NotNil(t, components.handshaker)
+	assert.NotNil(t, components.nonceCache)
+	assert.NotNil(t, components.fw)
+	assert.NotNil(t, components.gossip)
+	assert.NotNil(t, components.identity)
+	assert.NotNil(t, components.handler)
+	assert.Nil(t, components.payGate)
+	assert.NotNil(t, components.agentPool)
+	assert.NotNil(t, components.selector)
+	assert.NotNil(t, components.provider)
+	assert.NotNil(t, components.coordinator)
+	assert.NotNil(t, components.healthMonitor)
+	assert.False(t, components.kemEnabled)
+
+	price, free := components.pricingFn("premium_tool")
+	assert.Equal(t, "1.50", price)
+	assert.False(t, free)
+
+	price, free = components.pricingFn("default_tool")
+	assert.Equal(t, "0.25", price)
+	assert.False(t, free)
+	assert.Equal(t, cfg.P2P.Pricing, components.pricingCfg)
+
+	localDID, err := components.identity.DID(context.Background())
+	require.NoError(t, err)
+	require.NotNil(t, localDID)
+	assert.NotEmpty(t, localDID.ID)
+}
+
 func TestPayGateAdapter_CheckMapsPaymentRequiredQuote(t *testing.T) {
 	t.Parallel()
 
