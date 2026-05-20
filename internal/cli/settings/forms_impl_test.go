@@ -1433,6 +1433,86 @@ func TestCreateFormForCategory_OntologyAndAlerting(t *testing.T) {
 	})
 }
 
+func TestCreateFormForCategory_MapsAllSetupFlowCategories(t *testing.T) {
+	cfg := defaultTestConfig()
+	tests := []struct {
+		category string
+		title    string
+	}{
+		{category: "agent", title: "Agent Configuration"},
+		{category: "channels", title: "Channels Configuration"},
+		{category: "tools", title: "Tools Configuration"},
+		{category: "server", title: "Server Configuration"},
+		{category: "session", title: "Session Configuration"},
+		{category: "logging", title: "Logging Configuration"},
+		{category: "gatekeeper", title: "Gatekeeper Configuration"},
+		{category: "output_manager", title: "Output Manager Configuration"},
+		{category: "security", title: "Security Configuration"},
+		{category: "knowledge", title: "Knowledge Configuration"},
+		{category: "skill", title: "Skill Configuration"},
+		{category: "observational_memory", title: "Observational Memory"},
+		{category: "embedding", title: "Embedding & RAG Configuration"},
+		{category: "graph", title: "Graph Store Configuration"},
+		{category: "multi_agent", title: "Multi-Agent Configuration"},
+		{category: "a2a", title: "A2A Protocol Configuration"},
+		{category: "payment", title: "Payment Configuration"},
+		{category: "cron", title: "Cron Scheduler Configuration"},
+		{category: "background", title: "Background Tasks Configuration"},
+		{category: "workflow", title: "Workflow Engine Configuration"},
+		{category: "runledger", title: "RunLedger Configuration"},
+		{category: "provenance", title: "Provenance Configuration"},
+		{category: "smartaccount", title: "Smart Account Configuration"},
+		{category: "smartaccount_session", title: "SA Session Keys Configuration"},
+		{category: "smartaccount_paymaster", title: "SA Paymaster Configuration"},
+		{category: "smartaccount_modules", title: "SA Modules Configuration"},
+		{category: "mcp", title: "MCP Servers Configuration"},
+		{category: "hooks", title: "Hooks Configuration"},
+		{category: "agent_memory", title: "Agent Memory Configuration"},
+		{category: "librarian", title: "Librarian Configuration"},
+		{category: "context_profile", title: "Context Profile"},
+		{category: "retrieval", title: "Retrieval Configuration"},
+		{category: "auto_adjust", title: "Auto-Adjust Configuration"},
+		{category: "context_budget", title: "Context Budget Configuration"},
+		{category: "economy", title: "Economy Configuration"},
+		{category: "economy_risk", title: "Economy Risk Configuration"},
+		{category: "economy_negotiation", title: "Economy Negotiation Configuration"},
+		{category: "economy_escrow", title: "Economy Escrow Configuration"},
+		{category: "economy_escrow_onchain", title: "On-Chain Escrow Configuration"},
+		{category: "economy_pricing", title: "Economy Pricing Configuration"},
+		{category: "observability", title: "Observability Configuration"},
+		{category: "p2p", title: "P2P Network Configuration"},
+		{category: "p2p_zkp", title: "P2P ZKP Configuration"},
+		{category: "p2p_pricing", title: "P2P Pricing Configuration"},
+		{category: "p2p_owner", title: "P2P Owner Protection"},
+		{category: "p2p_sandbox", title: "P2P Sandbox Configuration"},
+		{category: "p2p_workspace", title: "P2P Workspace Configuration"},
+		{category: "security_db", title: "Legacy DB Encryption (Deprecated)"},
+		{category: "security_kms", title: "Security KMS Configuration"},
+		{category: "os_sandbox", title: "OS Sandbox Configuration"},
+		{category: "ontology", title: "Ontology Configuration"},
+		{category: "alerting", title: "Alerting Configuration"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.category, func(t *testing.T) {
+			form := createFormForCategory(tt.category, cfg)
+			if form == nil {
+				t.Fatalf("createFormForCategory(%q) returned nil", tt.category)
+			}
+			if form.Title != tt.title {
+				t.Fatalf("title: want %q, got %q", tt.title, form.Title)
+			}
+			if len(form.Fields) == 0 {
+				t.Fatalf("expected %q form to expose editable fields", tt.category)
+			}
+		})
+	}
+
+	if form := createFormForCategory("does_not_exist", cfg); form != nil {
+		t.Fatalf("unknown category returned %q form", form.Title)
+	}
+}
+
 func TestUpdateConfigFromForm_OntologyFields(t *testing.T) {
 	state := tuicore.NewConfigState()
 	form := tuicore.NewFormModel("test")
