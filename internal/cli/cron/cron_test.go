@@ -24,7 +24,11 @@ type recordingCronStore struct {
 	created          []croncore.Job
 	updated          []croncore.Job
 	deleted          []string
+	getIDs           []string
+	getByNames       []string
 	listHistoryJobID string
+	listHistoryLimit int
+	listAllLimit     int
 	jobsByName       map[string]croncore.Job
 	history          []croncore.HistoryEntry
 }
@@ -42,6 +46,7 @@ func (s *recordingCronStore) Create(_ context.Context, job croncore.Job) error {
 }
 
 func (s *recordingCronStore) Get(_ context.Context, id string) (*croncore.Job, error) {
+	s.getIDs = append(s.getIDs, id)
 	for _, job := range s.jobsByName {
 		if job.ID == id {
 			copy := job
@@ -52,6 +57,7 @@ func (s *recordingCronStore) Get(_ context.Context, id string) (*croncore.Job, e
 }
 
 func (s *recordingCronStore) GetByName(_ context.Context, name string) (*croncore.Job, error) {
+	s.getByNames = append(s.getByNames, name)
 	job, ok := s.jobsByName[name]
 	if !ok {
 		return nil, fmt.Errorf("job %q not found", name)
@@ -117,16 +123,18 @@ func (s *recordingCronStore) SaveHistory(context.Context, croncore.HistoryEntry)
 func (s *recordingCronStore) ListHistory(
 	_ context.Context,
 	jobID string,
-	_ int,
+	limit int,
 ) ([]croncore.HistoryEntry, error) {
 	s.listHistoryJobID = jobID
+	s.listHistoryLimit = limit
 	return s.history, nil
 }
 
 func (s *recordingCronStore) ListAllHistory(
-	context.Context,
-	int,
+	_ context.Context,
+	limit int,
 ) ([]croncore.HistoryEntry, error) {
+	s.listAllLimit = limit
 	return s.history, nil
 }
 
@@ -203,6 +211,51 @@ func TestListCmd_BootError(t *testing.T) {
 	assert.Contains(t, err.Error(), "bootstrap")
 }
 
+func TestListCmd_RendersJobsWithRunState(t *testing.T) {
+	lastRun := time.Date(2026, 5, 20, 9, 30, 0, 0, time.UTC)
+	nextRun := time.Date(2026, 5, 21, 9, 30, 0, 0, time.UTC)
+	enabledJob := croncore.Job{
+		ID:           "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+		Name:         "daily-summary",
+		ScheduleType: "cron",
+		Schedule:     "0 9 * * *",
+		Enabled:      true,
+		LastRunAt:    &lastRun,
+		NextRunAt:    &nextRun,
+	}
+	disabledJob := croncore.Job{
+		ID:           "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+		Name:         "manual-check",
+		ScheduleType: "every",
+		Schedule:     "30m",
+		Enabled:      false,
+	}
+	store := &recordingCronStore{
+		jobsByName: map[string]croncore.Job{
+			enabledJob.Name:  enabledJob,
+			disabledJob.Name: disabledJob,
+		},
+	}
+	cmd := NewCronCmd(bootLoaderWithCronStore(store))
+
+	out, err := executeCronCommand(t, cmd, "list")
+
+	require.NoError(t, err)
+	assert.Contains(t, out, "ID")
+	assert.Contains(t, out, "NAME")
+	assert.Contains(t, out, "SCHEDULE")
+	assert.Contains(t, out, "aaaaaaaa")
+	assert.Contains(t, out, "daily-summary")
+	assert.Contains(t, out, "cron 0 9 * * *")
+	assert.Contains(t, out, "yes")
+	assert.Contains(t, out, "2026-05-20 09:30:00")
+	assert.Contains(t, out, "2026-05-21 09:30:00")
+	assert.Contains(t, out, "bbbbbbbb")
+	assert.Contains(t, out, "manual-check")
+	assert.Contains(t, out, "every 30m")
+	assert.Contains(t, out, "no")
+}
+
 func TestHistoryCmd_EmptyDB(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cmd := NewCronCmd(testutil.FakeBootLoader(t, cfg))
@@ -218,6 +271,84 @@ func TestHistoryCmd_BootError(t *testing.T) {
 	_, err := executeCronCommand(t, cmd, "history")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "bootstrap")
+}
+
+func TestHistoryCmd_RendersAllHistoryWithDurationAndFailureResult(t *testing.T) {
+	started := time.Date(2026, 5, 20, 9, 0, 0, 0, time.UTC)
+	completed := started.Add(1500 * time.Millisecond)
+	store := &recordingCronStore{
+		history: []croncore.HistoryEntry{
+			{
+				JobName:     "daily-summary",
+				Status:      "completed",
+				StartedAt:   started,
+				CompletedAt: &completed,
+				Result:      "delivered report",
+			},
+			{
+				JobName:      "health-check",
+				Status:       "failed",
+				StartedAt:    started.Add(time.Hour),
+				ErrorMessage: "network unavailable",
+			},
+		},
+	}
+	cmd := NewCronCmd(bootLoaderWithCronStore(store))
+
+	out, err := executeCronCommand(t, cmd, "history", "--limit", "7")
+
+	require.NoError(t, err)
+	assert.Equal(t, 7, store.listAllLimit)
+	assert.Empty(t, store.listHistoryJobID)
+	assert.Contains(t, out, "JOB")
+	assert.Contains(t, out, "STATUS")
+	assert.Contains(t, out, "daily-summary")
+	assert.Contains(t, out, "completed")
+	assert.Contains(t, out, "2026-05-20 09:00:00")
+	assert.Contains(t, out, "1.5s")
+	assert.Contains(t, out, "delivered report")
+	assert.Contains(t, out, "health-check")
+	assert.Contains(t, out, "failed")
+	assert.Contains(t, out, "ERR: network unavailable")
+}
+
+func TestHistoryCmd_WithSelectorResolvesJobAndListsOnlyThatHistory(t *testing.T) {
+	job := croncore.Job{
+		ID:           testCronJobID,
+		Name:         "daily-summary",
+		ScheduleType: "cron",
+		Schedule:     "0 9 * * *",
+		Prompt:       "summarize",
+		SessionMode:  "isolated",
+		Enabled:      true,
+	}
+	started := time.Date(2026, 5, 20, 10, 0, 0, 0, time.UTC)
+	store := &recordingCronStore{
+		jobsByName: map[string]croncore.Job{job.Name: job},
+		history: []croncore.HistoryEntry{
+			{
+				JobID:     testCronJobID,
+				JobName:   job.Name,
+				Status:    "running",
+				StartedAt: started,
+				Result:    "still working",
+			},
+		},
+	}
+	cmd := NewCronCmd(bootLoaderWithCronStore(store))
+
+	out, err := executeCronCommand(t, cmd, "history", "daily-summary", "-n", "3")
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"daily-summary"}, store.getByNames)
+	assert.Empty(t, store.getIDs)
+	assert.Equal(t, testCronJobID, store.listHistoryJobID)
+	assert.Equal(t, 3, store.listHistoryLimit)
+	assert.Contains(t, out, "daily-summary")
+	assert.Contains(t, out, "running")
+	assert.Contains(t, out, "2026-05-20 10:00:00")
+	assert.Contains(t, out, "still working")
+	assert.Contains(t, out, "running  2026-05-20 10:00:00  -")
 }
 
 func TestAddCmd_MissingPrompt(t *testing.T) {
@@ -515,6 +646,50 @@ func TestHistoryCmd_AcceptsIDFlag(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, testCronJobID, store.listHistoryJobID)
+}
+
+func TestResolveJobID_PrefersExistingUUIDMatch(t *testing.T) {
+	uuidJob := croncore.Job{
+		ID:      testCronJobID,
+		Name:    "actual-uuid-job",
+		Enabled: true,
+	}
+	nameJob := croncore.Job{
+		ID:      "22222222-2222-2222-2222-222222222222",
+		Name:    testCronJobID,
+		Enabled: true,
+	}
+	store := &recordingCronStore{
+		jobsByName: map[string]croncore.Job{
+			uuidJob.Name: uuidJob,
+			nameJob.Name: nameJob,
+		},
+	}
+
+	resolvedID, err := resolveJobID(context.Background(), store, testCronJobID)
+
+	require.NoError(t, err)
+	assert.Equal(t, testCronJobID, resolvedID)
+	assert.Equal(t, []string{testCronJobID}, store.getIDs)
+	assert.Empty(t, store.getByNames)
+}
+
+func TestResolveJobID_FallsBackToNameWhenUUIDLookupMisses(t *testing.T) {
+	job := croncore.Job{
+		ID:      "22222222-2222-2222-2222-222222222222",
+		Name:    testCronJobID,
+		Enabled: true,
+	}
+	store := &recordingCronStore{
+		jobsByName: map[string]croncore.Job{job.Name: job},
+	}
+
+	resolvedID, err := resolveJobID(context.Background(), store, testCronJobID)
+
+	require.NoError(t, err)
+	assert.Equal(t, job.ID, resolvedID)
+	assert.Equal(t, []string{testCronJobID}, store.getIDs)
+	assert.Equal(t, []string{testCronJobID}, store.getByNames)
 }
 
 func TestControlCmd_RejectsAmbiguousSelector(t *testing.T) {
