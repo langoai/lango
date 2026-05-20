@@ -505,3 +505,10 @@
 - [x] 62.1 Add focused tests for deterministic `internal/app/tools_meta.go` knowledge, learning, skill, exportability, and dry-run cleanup count branches without live network services
 - [x] 62.2 Run subagent-driven review checkpoints for the batch
 - [x] 62.3 Commit the batch separately
+
+## 63. Coverage Batch: App Wiring And P2P Residuals
+
+- [x] 63.1 Add focused tests for deterministic `internal/app/wiring.go` session-store fallback error branches without live providers
+- [x] 63.2 Add focused tests for deterministic `internal/app/wiring_p2p.go` branches using only local ephemeral P2P resources and cleanup
+- [x] 63.3 Run subagent-driven review checkpoints for the batch
+- [x] 63.4 Commit the batch separately

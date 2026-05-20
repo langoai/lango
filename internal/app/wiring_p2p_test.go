@@ -23,6 +23,8 @@ import (
 	"github.com/langoai/lango/internal/payment/eip3009"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/testutil"
+	"github.com/libp2p/go-libp2p"
+	"github.com/libp2p/go-libp2p/core/peer"
 	libp2pproto "github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -587,6 +589,118 @@ func TestInitP2P_EnablesPQHandshakeWithFreePricingFallback(t *testing.T) {
 	result, err := components.payGate.Check("did:lango:peer", "unpriced_tool", nil)
 	require.NoError(t, err)
 	assert.Equal(t, paygate.StatusFree, result.Status)
+}
+
+func TestInitP2P_WiresReputationPaymentAndFirewallAdmission(t *testing.T) {
+	key, err := ethcrypto.GenerateKey()
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	repStore := reputation.NewStore(testutil.TestEntClient(t), testLog())
+	establishedPeer := "did:lango:p2p-wiring-established"
+	unsafePeer := "did:lango:p2p-wiring-unsafe"
+	require.NoError(t, repStore.RecordSuccess(ctx, establishedPeer))
+	require.NoError(t, repStore.RecordSuccess(ctx, unsafePeer))
+	require.NoError(t, repStore.RecordOperationalIncident(ctx, unsafePeer))
+
+	cfg := initP2PInitializesLocalComponentsWithDefaultDurationsP2PConfig(t)
+	cfg.P2P.MinTrustScore = 0.2
+	cfg.P2P.FirewallRules = []config.FirewallRule{{
+		PeerDID: "*",
+		Action:  "allow",
+		Tools:   []string{"premium_tool", "default_tool"},
+	}}
+	cfg.P2P.Pricing.Enabled = true
+	cfg.P2P.Pricing.PerQuery = "0.25"
+	cfg.P2P.Pricing.ToolPrices = map[string]string{"premium_tool": "1.50"}
+	cfg.P2P.Pricing.TrustThresholds.PostPayMinScore = 0.45
+
+	components := initP2P(
+		cfg,
+		&wiringP2PWallet{publicKey: ethcrypto.CompressPubkey(&key.PublicKey)},
+		&paymentComponents{chainID: 84532},
+		repStore,
+		nil,
+		nil,
+		nil,
+		nil,
+		"",
+	)
+	require.NotNil(t, components)
+	t.Cleanup(func() { initP2PInitializesLocalComponentsWithDefaultDurationsStopP2PComponents(t, components) })
+
+	require.NotNil(t, components.payGate)
+	assert.Same(t, repStore, components.reputation)
+
+	quote, err := components.payGate.Check("did:lango:p2p-wiring-new", "premium_tool", nil)
+	require.NoError(t, err)
+	require.NotNil(t, quote.PriceQuote)
+	assert.Equal(t, paygate.StatusPaymentRequired, quote.Status)
+	assert.Equal(t, "premium_tool", quote.PriceQuote.ToolName)
+	assert.Equal(t, "1.50", quote.PriceQuote.Price)
+	assert.Equal(t, int64(84532), quote.PriceQuote.ChainID)
+
+	postPay, err := components.payGate.Check(establishedPeer, "default_tool", nil)
+	require.NoError(t, err)
+	assert.Equal(t, paygate.StatusPostPayApproved, postPay.Status)
+	assert.NotEmpty(t, postPay.SettlementID)
+	pending := components.payGate.Ledger().Pending()
+	require.Len(t, pending, 1)
+	assert.Equal(t, establishedPeer, pending[0].PeerDID)
+	assert.Equal(t, "default_tool", pending[0].ToolName)
+	assert.Equal(t, "0.25", pending[0].Price)
+
+	require.NoError(t, components.fw.FilterQuery(ctx, establishedPeer, "default_tool"))
+	err = components.fw.FilterQuery(ctx, unsafePeer, "default_tool")
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "temporarily unsafe")
+}
+
+func TestInitP2P_DefaultAgentNameAppearsInAgentCard(t *testing.T) {
+	key, err := ethcrypto.GenerateKey()
+	require.NoError(t, err)
+
+	cfg := initP2PInitializesLocalComponentsWithDefaultDurationsP2PConfig(t)
+	cfg.A2A.AgentName = ""
+
+	components := initP2P(
+		cfg,
+		&wiringP2PWallet{publicKey: ethcrypto.CompressPubkey(&key.PublicKey)},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		"",
+	)
+	require.NotNil(t, components)
+	t.Cleanup(func() { initP2PInitializesLocalComponentsWithDefaultDurationsStopP2PComponents(t, components) })
+
+	session, err := components.sessions.Create("did:lango:p2p-wiring-card-client", false)
+	require.NoError(t, err)
+
+	client, err := libp2p.New(libp2p.ListenAddrStrings("/ip4/127.0.0.1/tcp/0"))
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, client.Close()) })
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	require.NoError(t, client.Connect(ctx, peer.AddrInfo{
+		ID:    components.node.PeerID(),
+		Addrs: components.node.Multiaddrs(),
+	}))
+	stream, err := client.NewStream(ctx, components.node.PeerID(), libp2pproto.ID(p2pproto.ProtocolID))
+	require.NoError(t, err)
+	defer stream.Close()
+
+	resp, err := p2pproto.SendRequest(ctx, stream, p2pproto.RequestAgentCard, session.Token, nil)
+	require.NoError(t, err)
+	require.Equal(t, p2pproto.ResponseStatusOK, resp.Status)
+	require.NotNil(t, resp.Result)
+	assert.Equal(t, "lango", resp.Result["name"])
+	assert.NotEmpty(t, resp.Result["did"])
+	assert.Equal(t, components.node.PeerID().String(), resp.Result["peerID"])
 }
 
 func TestInitP2P_WiresOwnerShieldFromEmailAndPhone(t *testing.T) {

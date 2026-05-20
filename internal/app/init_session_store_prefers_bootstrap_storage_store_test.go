@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -58,4 +59,21 @@ func TestInitSessionStoreFallsBackWhenBootstrapStorageCannotOpenStore(t *testing
 	require.NoError(t, err)
 	assert.True(t, called)
 	assert.NotNil(t, got)
+}
+
+func TestInitSessionStoreReturnsFallbackOpenError(t *testing.T) {
+	t.Parallel()
+
+	dbPathAsDir := filepath.Join(t.TempDir(), "session.db")
+	require.NoError(t, os.Mkdir(dbPathAsDir, 0o700))
+
+	cfg := config.DefaultConfig()
+	cfg.Session.DatabasePath = dbPathAsDir
+
+	got, err := initSessionStore(cfg, nil)
+
+	require.Error(t, err)
+	assert.Nil(t, got)
+	assert.ErrorContains(t, err, "session store:")
+	assert.ErrorContains(t, err, "unable to open database file")
 }
