@@ -628,3 +628,10 @@
 - [x] 80.2 Add focused tests for deterministic `internal/app/app.go` channel start error lifecycle branch using a fake channel without binding a gateway listener
 - [x] 80.3 Run subagent-driven development and review checkpoints for the batch
 - [x] 80.4 Prepare the batch for a separate scoped commit
+
+## 81. Coverage Batch: App Helper Residuals
+
+- [x] 81.1 Add focused tests for deterministic `internal/app/compaction_sync_holder.go` waiter swap, delegation, and nil reset branches
+- [x] 81.2 Add focused tests for deterministic `internal/app/bridge_team_metrics.go` counters and `internal/app/bridge_workspace_team.go` ID truncation helpers using in-memory event bus only
+- [x] 81.3 Run subagent-driven development and review checkpoints for the batch
+- [x] 81.4 Prepare the batch for a separate scoped commit
