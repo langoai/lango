@@ -461,12 +461,12 @@
 
 ## 57. Coverage Wave: Remaining High-Uncovered Deterministic Hotspots
 
-- [ ] 57.1 Add focused tests for deterministic `internal/app/wiring_p2p.go`, `internal/app/modules.go`, `internal/app/tools_meta.go`, `internal/app/wiring.go`, `internal/app/tools_p2p.go`, `internal/app/app.go`, `internal/app/tools_workspace.go`, and `internal/app/wiring_ontology.go` helper/error branches that can be exercised without live providers, listeners, peers, chain RPC, or long-running workers
+- [x] 57.1 Add focused tests for deterministic `internal/app/wiring_p2p.go`, `internal/app/modules.go`, `internal/app/tools_meta.go`, `internal/app/wiring.go`, `internal/app/tools_p2p.go`, `internal/app/app.go`, `internal/app/tools_workspace.go`, and `internal/app/wiring_ontology.go` helper/error branches that can be exercised without live providers, listeners, peers, chain RPC, or long-running workers
 - [x] 57.2 Add focused tests for deterministic `internal/graph/rag.go`, `internal/p2p/gitbundle/bundle.go`, and `internal/p2p/handshake/handshake.go` branches using local fakes, temp repositories, and in-memory streams only
 - [x] 57.3 Add focused tests for deterministic `internal/cli/settings/editor.go`, `internal/cli/smartaccount/paymaster.go`, `internal/p2p/team/tools.go`, and `internal/cron/tools.go` parsing, validation, render, and command-construction branches without launching interactive UI loops, live chain RPC, or external peers
 - [x] 57.4 Add focused tests for deterministic `internal/mission/store.go`, `internal/smartaccount/session/manager.go`, `internal/ontology/service.go`, `internal/smartaccount/manager.go`, and `internal/storagebroker/server.go` store/helper/error branches using temp stores and local fakes only
-- [ ] 57.5 Run subagent-driven review checkpoints for the wave
-- [ ] 57.6 Commit the wave separately
+- [x] 57.5 Run subagent-driven review checkpoints for the wave
+- [x] 57.6 Commit the wave separately
 
 ## 58. Test Naming Cleanup
 
