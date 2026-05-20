@@ -59,6 +59,8 @@ func TestServerConnectionDiscoverCapabilitiesRecordsServerItems(t *testing.T) {
 	require.Len(t, tools, 1)
 	require.Equal(t, "local", tools[0].ServerName)
 	require.Equal(t, "lookup", tools[0].Tool.Name)
+	require.Equal(t, "Lookup data", tools[0].Tool.Description)
+	require.Equal(t, map[string]any{"type": "object"}, tools[0].Tool.InputSchema)
 
 	conn.mu.RLock()
 	resources := append([]DiscoveredResource(nil), conn.resources...)
@@ -68,8 +70,10 @@ func TestServerConnectionDiscoverCapabilitiesRecordsServerItems(t *testing.T) {
 	require.Len(t, resources, 1)
 	require.Equal(t, "local", resources[0].ServerName)
 	require.Equal(t, "readme", resources[0].Resource.Name)
+	require.Equal(t, "file:///readme.md", resources[0].Resource.URI)
 
 	require.Len(t, prompts, 1)
 	require.Equal(t, "local", prompts[0].ServerName)
 	require.Equal(t, "summarize", prompts[0].Prompt.Name)
+	require.Equal(t, "Summarize context", prompts[0].Prompt.Description)
 }

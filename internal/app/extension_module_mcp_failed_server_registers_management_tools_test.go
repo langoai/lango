@@ -45,9 +45,14 @@ func TestExtensionModuleMCPFailedServerRegistersManagementTools(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, mcp.StateFailed, conn.State())
 
-	mcpEntry := requireCatalogEntry(t, result.CatalogEntries, "mcp")
-	assert.True(t, mcpEntry.Enabled)
-	assert.Empty(t, mcpEntry.Tools)
+	entries := extensionModuleMCPFailedServerRegistersManagementToolsCatalogEntries(
+		result.CatalogEntries,
+		"mcp",
+	)
+	require.Len(t, entries, 2)
+	assert.Equal(t, "MCP plugin tools (external servers)", entries[0].Description)
+	assert.True(t, entries[0].Enabled)
+	assert.Empty(t, entries[0].Tools)
 
 	management := findTool(result.Tools, "mcp_status")
 	require.NotNil(t, management)
@@ -56,6 +61,22 @@ func TestExtensionModuleMCPFailedServerRegistersManagementTools(t *testing.T) {
 	assert.Equal(t, "broken: failed", status)
 
 	assert.NotNil(t, findTool(result.Tools, "mcp_tools"))
+	assert.Equal(t, "MCP management tools", entries[1].Description)
+	assert.True(t, entries[1].Enabled)
+	assert.ElementsMatch(t, []string{"mcp_status", "mcp_tools"}, catalogEntryToolNames(entries[1]))
 	require.Len(t, result.Components, 1)
 	assert.Equal(t, "mcp-manager", result.Components[0].Component.Name())
+}
+
+func extensionModuleMCPFailedServerRegistersManagementToolsCatalogEntries(
+	entries []appinit.CatalogEntry,
+	category string,
+) []appinit.CatalogEntry {
+	var out []appinit.CatalogEntry
+	for _, entry := range entries {
+		if entry.Category == category {
+			out = append(out, entry)
+		}
+	}
+	return out
 }
