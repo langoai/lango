@@ -144,6 +144,57 @@ func TestBrowserAction_BlocksEvalForP2PBeforeSessionCreation(t *testing.T) {
 	assert.Empty(t, sm.tool.sessions)
 }
 
+func TestBrowserNavigate_BlocksP2PPrivateURLBeforeSessionCreation(t *testing.T) {
+	t.Parallel()
+
+	sm := &SessionManager{
+		tool: &Tool{
+			sessions: make(map[string]*Session),
+		},
+	}
+	navigateTool := testBrowserToolByName(t, BuildTools(sm), "browser_navigate")
+
+	result, err := navigateTool.Handler(
+		ctxkeys.WithP2PRequest(context.Background()),
+		map[string]interface{}{"url": "http://127.0.0.1:8080/admin"},
+	)
+
+	require.Error(t, err)
+	assert.Nil(t, result)
+	assert.ErrorContains(t, err, "loopback address is not allowed")
+	assert.Empty(t, sm.sessionID)
+	assert.Empty(t, sm.tool.sessions)
+}
+
+func TestBrowserSearchHandler_RecordsQueryBeforeBrowserNavigation(t *testing.T) {
+	t.Parallel()
+
+	state := NewRequestState()
+	searchTool := testBrowserToolByName(t, BuildTools(newStubBrowserSessionManager()), "browser_search")
+
+	result, err := searchTool.Handler(
+		WithRequestState(context.Background(), state),
+		map[string]interface{}{"query": "lango coverage", "limit": 3},
+	)
+
+	require.Error(t, err)
+	assert.Nil(t, result)
+	assert.ErrorContains(t, err, "browser panic recovered")
+	assert.Equal(t, []string{"lango coverage"}, state.queries)
+}
+
+func TestBrowserExtractHandler_RejectsUnknownModeWithoutBrowser(t *testing.T) {
+	t.Parallel()
+
+	extractTool := testBrowserToolByName(t, BuildTools(newStubBrowserSessionManager()), "browser_extract")
+
+	result, err := extractTool.Handler(context.Background(), map[string]interface{}{"mode": "unknown"})
+
+	require.Error(t, err)
+	assert.Nil(t, result)
+	assert.EqualError(t, err, "unknown extract mode: unknown")
+}
+
 func TestBuildTools_Metadata(t *testing.T) {
 	t.Parallel()
 

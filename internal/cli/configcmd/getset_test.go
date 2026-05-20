@@ -1331,6 +1331,40 @@ func TestConfigSet_PreservesExistingExplicitKeys(t *testing.T) {
 	}
 }
 
+func TestConfigSet_SaveFailureStillRunsCleanupAndKeepsMutation(t *testing.T) {
+	cfg := config.DefaultConfig()
+	var calls []string
+
+	cmd := NewSetCmd(
+		func() (*config.Config, map[string]bool, func(), error) {
+			return cfg, nil, func() { calls = append(calls, "cleanup") }, nil
+		},
+		func(updated *config.Config, explicitKeys map[string]bool) error {
+			cfg = updated
+			calls = append(calls, "save")
+			return errors.New("disk full")
+		},
+	)
+
+	out, err := executeConfigCommand(t, cmd, "agent.provider", "openai")
+
+	if err == nil {
+		t.Fatal("expected save error")
+	}
+	if !strings.Contains(err.Error(), "save config: disk full") {
+		t.Fatalf("expected wrapped save error, got %v", err)
+	}
+	if out != "" {
+		t.Fatalf("expected no success output on save failure, got %q", out)
+	}
+	if got, want := calls, []string{"save", "cleanup"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("expected save before cleanup on failure, got %v", got)
+	}
+	if cfg.Agent.Provider != "openai" {
+		t.Fatalf("expected config mutation before save failure, got %q", cfg.Agent.Provider)
+	}
+}
+
 func TestConfigSet_MarksContextRelatedPathExplicit(t *testing.T) {
 	cfg := config.DefaultConfig()
 	var savedExplicit map[string]bool

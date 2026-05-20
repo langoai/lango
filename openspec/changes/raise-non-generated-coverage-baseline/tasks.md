@@ -512,3 +512,10 @@
 - [x] 63.2 Add focused tests for deterministic `internal/app/wiring_p2p.go` branches using only local ephemeral P2P resources and cleanup
 - [x] 63.3 Run subagent-driven review checkpoints for the batch
 - [x] 63.4 Commit the batch separately
+
+## 64. Coverage Batch: Browser Tool And Config Save Residuals
+
+- [x] 64.1 Add focused tests for deterministic `internal/tools/browser/tools.go` handler validation, P2P pre-session blocking, and search/extract handler behavior without launching a live browser
+- [x] 64.2 Add focused tests for deterministic `internal/cli/configcmd/getset.go` config-save failure handling and cleanup behavior
+- [x] 64.3 Run subagent-driven review checkpoints for the batch
+- [x] 64.4 Commit the batch separately
