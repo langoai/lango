@@ -2,6 +2,7 @@ package extension
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -14,6 +15,27 @@ type staticSource struct{}
 
 func (staticSource) Fetch(context.Context) (*WorkingCopy, error) {
 	return nil, nil
+}
+
+type errSource struct {
+	err error
+}
+
+func (s errSource) Fetch(context.Context) (*WorkingCopy, error) {
+	return nil, s.err
+}
+
+func TestInstaller_Inspect_ReturnsFetchError(t *testing.T) {
+	t.Parallel()
+
+	inst := newTestInstaller(t)
+	wantErr := errors.New("fetch failed")
+
+	report, wc, err := inst.Inspect(context.Background(), errSource{err: wantErr})
+
+	require.ErrorIs(t, err, wantErr)
+	assert.Nil(t, report)
+	assert.Nil(t, wc)
 }
 
 func TestInstaller_Install_RollbackOnCopyPackFilesError(t *testing.T) {
@@ -199,6 +221,109 @@ func TestReplaceInstallDirsRestoresExistingInstallWhenSkillCommitFails(t *testin
 	assert.Equal(t, "old skill", string(preservedSkill))
 }
 
+func TestReplaceInstallDirsInstallsWhenNoExistingDirs(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	finalDir := filepath.Join(root, "extensions", "fake-pack")
+	extSkillDir := filepath.Join(root, "skills", "ext-fake-pack")
+	packStaging := filepath.Join(root, "extensions", ".fake-pack.staging")
+	skillStaging := filepath.Join(root, "skills", ".fake-pack.skills-staging")
+	require.NoError(t, os.MkdirAll(packStaging, 0o755))
+	require.NoError(t, os.MkdirAll(skillStaging, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(packStaging, manifestFileName), []byte("new manifest"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(skillStaging, "SKILL.md"), []byte("new skill"), 0o644))
+
+	require.NoError(t, replaceInstallDirs(packStaging, finalDir, skillStaging, extSkillDir))
+
+	assert.FileExists(t, filepath.Join(finalDir, manifestFileName))
+	assert.FileExists(t, filepath.Join(extSkillDir, "SKILL.md"))
+	assert.NoDirExists(t, packStaging)
+	assert.NoDirExists(t, skillStaging)
+}
+
+func TestReplaceInstallDirsRestoresPackWhenSkillBackupFails(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	finalDir := filepath.Join(root, "extensions", "fake-pack")
+	require.NoError(t, os.MkdirAll(finalDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(finalDir, manifestFileName), []byte("old manifest"), 0o644))
+
+	packStaging := filepath.Join(root, "extensions", ".fake-pack.staging")
+	skillStaging := filepath.Join(root, "skills", ".fake-pack.skills-staging")
+	require.NoError(t, os.MkdirAll(packStaging, 0o755))
+	require.NoError(t, os.MkdirAll(skillStaging, 0o755))
+
+	err := replaceInstallDirs(packStaging, finalDir, skillStaging, filepath.Join(root, "skills", "bad\x00name"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "backup existing skills")
+
+	preservedManifest, readErr := os.ReadFile(filepath.Join(finalDir, manifestFileName))
+	require.NoError(t, readErr)
+	assert.Equal(t, "old manifest", string(preservedManifest))
+	assert.DirExists(t, packStaging)
+}
+
+func TestMoveToBackupBranches(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	missingBackup, had, err := moveToBackup(filepath.Join(root, "missing"))
+	require.NoError(t, err)
+	assert.False(t, had)
+	assert.Empty(t, missingBackup)
+
+	dir := filepath.Join(root, "installed")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "marker.txt"), []byte("old"), 0o644))
+	backup, had, err := moveToBackup(dir)
+	require.NoError(t, err)
+	assert.True(t, had)
+	assert.NotEmpty(t, backup)
+	assert.NoDirExists(t, dir)
+	assert.FileExists(t, filepath.Join(backup, "marker.txt"))
+
+	badBackup, had, err := moveToBackup(filepath.Join(root, "bad\x00path"))
+	require.Error(t, err)
+	assert.False(t, had)
+	assert.Empty(t, badBackup)
+}
+
+func TestTempBackupPathReturnsMkdirTempError(t *testing.T) {
+	t.Parallel()
+
+	parentFile := filepath.Join(t.TempDir(), "not-a-dir")
+	require.NoError(t, os.WriteFile(parentFile, []byte("file"), 0o644))
+
+	backup, err := tempBackupPath(parentFile, ".backup-")
+
+	require.Error(t, err)
+	assert.Empty(t, backup)
+}
+
+func TestRestoreBackupBranches(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	target := filepath.Join(root, "target")
+	require.NoError(t, os.MkdirAll(target, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(target, "current.txt"), []byte("current"), 0o644))
+
+	restoreBackup("", target)
+	assert.FileExists(t, filepath.Join(target, "current.txt"))
+
+	backup := filepath.Join(root, "backup")
+	require.NoError(t, os.MkdirAll(backup, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(backup, "restored.txt"), []byte("restored"), 0o644))
+
+	restoreBackup(backup, target)
+
+	assert.NoDirExists(t, backup)
+	assert.NoFileExists(t, filepath.Join(target, "current.txt"))
+	assert.FileExists(t, filepath.Join(target, "restored.txt"))
+}
+
 func TestInstaller_Remove_MissingInstalledButExistingPack(t *testing.T) {
 	t.Parallel()
 
@@ -212,6 +337,33 @@ func TestInstaller_Remove_MissingInstalledButExistingPack(t *testing.T) {
 
 	assert.NoDirExists(t, packDir)
 	assert.NoDirExists(t, extSkillDir)
+}
+
+func TestInstaller_Remove_ReturnsInstalledMetadataRemoveError(t *testing.T) {
+	t.Parallel()
+
+	inst := newTestInstaller(t)
+	packDir := filepath.Join(inst.ExtensionsDir, "bad-meta")
+	require.NoError(t, os.MkdirAll(filepath.Join(packDir, installedFileName), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(packDir, installedFileName, "child.txt"), []byte("blocks remove"), 0o644))
+
+	err := inst.Remove(context.Background(), "bad-meta")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "remove")
+	assert.Contains(t, err.Error(), installedFileName)
+	assert.DirExists(t, packDir)
+}
+
+func TestInstaller_Remove_ReturnsStatError(t *testing.T) {
+	t.Parallel()
+
+	inst := newTestInstaller(t)
+
+	err := inst.Remove(context.Background(), "bad\x00name")
+
+	require.Error(t, err)
+	assert.NotErrorIs(t, err, ErrPackNotFound)
 }
 
 func TestCopyPackFiles_PathError(t *testing.T) {
@@ -247,6 +399,62 @@ func TestCopySkillsToStore_PathError(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), `skill "foo"`)
 	assert.Contains(t, err.Error(), "parent-directory")
+}
+
+func TestCopyFileReturnsLstatError(t *testing.T) {
+	t.Parallel()
+
+	dst := filepath.Join(t.TempDir(), "out.txt")
+
+	err := copyFile(filepath.Join(t.TempDir(), "missing.txt"), dst)
+
+	require.Error(t, err)
+	assert.NoFileExists(t, dst)
+}
+
+func TestCopyFileReturnsDestinationDirectoryError(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src.txt")
+	require.NoError(t, os.WriteFile(src, []byte("content"), 0o644))
+	parentFile := filepath.Join(dir, "not-a-dir")
+	require.NoError(t, os.WriteFile(parentFile, []byte("file"), 0o644))
+
+	err := copyFile(src, filepath.Join(parentFile, "out.txt"))
+
+	require.Error(t, err)
+}
+
+func TestCopyTreeReturnsRootAndSourceResolveErrors(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	src := filepath.Join(root, "skills", "foo")
+	require.NoError(t, os.MkdirAll(src, 0o755))
+
+	err := copyTree(src, t.TempDir(), filepath.Join(root, "missing-root"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "resolve root dir")
+
+	err = copyTree(filepath.Join(root, "missing-src"), t.TempDir(), root)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "resolve src dir")
+}
+
+func TestCopyTreeReturnsDestinationDirectoryError(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	src := filepath.Join(root, "skills", "foo")
+	require.NoError(t, os.MkdirAll(src, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(src, "SKILL.md"), []byte("skill"), 0o644))
+	dstFile := filepath.Join(t.TempDir(), "not-a-dir")
+	require.NoError(t, os.WriteFile(dstFile, []byte("file"), 0o644))
+
+	err := copyTree(src, dstFile, root)
+
+	require.Error(t, err)
 }
 
 func TestSourceDescription(t *testing.T) {
