@@ -158,7 +158,7 @@ func (r *Recorder) RecordPaymentExecution(ctx context.Context, entry toolpayment
 	}
 
 	builder := r.client.AuditLog.Create().
-		SetAction(auditlog.Action("payment_execution")).
+		SetAction(auditlog.ActionPaymentExecution).
 		SetActor("agent").
 		SetTarget(entry.ToolName).
 		SetDetails(details)

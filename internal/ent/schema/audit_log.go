@@ -40,6 +40,7 @@ func (AuditLog) Fields() []ent.Field {
 				"artifact_release_approval",
 				"alert",
 				"sandbox_decision",
+				"payment_execution",
 			),
 		field.String("actor").
 			NotEmpty(),
