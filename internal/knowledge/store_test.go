@@ -1001,6 +1001,27 @@ func TestDeleteLearningsWhere(t *testing.T) {
 		}
 	}
 
+	count, err := store.CountLearningsWhere(ctx, "general", 0.5, time.Time{})
+	if err != nil {
+		t.Fatalf("CountLearningsWhere: %v", err)
+	}
+	if count != 5 {
+		t.Errorf("want 5 counted, got %d", count)
+	}
+
+	count, err = store.CountLearningsWhere(ctx, "general", 0.4, time.Time{})
+	if err != nil {
+		t.Fatalf("CountLearningsWhere with max confidence: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("want 0 counted above max confidence, got %d", count)
+	}
+
+	_, err = store.CountLearningsWhere(ctx, "", 0, time.Time{})
+	if err == nil {
+		t.Fatal("expected CountLearningsWhere without criteria to fail")
+	}
+
 	n, err := store.DeleteLearningsWhere(ctx, "general", 0, time.Time{})
 	if err != nil {
 		t.Fatalf("DeleteLearningsWhere: %v", err)

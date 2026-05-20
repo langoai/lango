@@ -499,3 +499,9 @@
 - [x] 61.2 Add focused tests for deterministic `internal/app/wiring.go` and `internal/app/wiring_provenance.go` helper and early-return branches
 - [x] 61.3 Run subagent-driven review checkpoints for the batch
 - [x] 61.4 Commit the batch separately
+
+## 62. Coverage Batch: App Meta Tool Early Handlers
+
+- [x] 62.1 Add focused tests for deterministic `internal/app/tools_meta.go` knowledge, learning, skill, exportability, and dry-run cleanup count branches without live network services
+- [x] 62.2 Run subagent-driven review checkpoints for the batch
+- [x] 62.3 Commit the batch separately

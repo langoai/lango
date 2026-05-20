@@ -1579,6 +1579,20 @@ func (s *Store) ListLearnings(ctx context.Context, category string, minConfidenc
 	return entries, total, nil
 }
 
+func learningDeletePredicates(category string, maxConfidence float64, olderThan time.Time) []predicate.Learning {
+	var preds []predicate.Learning
+	if category != "" {
+		preds = append(preds, entlearning.CategoryEQ(entlearning.Category(category)))
+	}
+	if maxConfidence > 0 {
+		preds = append(preds, entlearning.ConfidenceLTE(maxConfidence))
+	}
+	if !olderThan.IsZero() {
+		preds = append(preds, entlearning.CreatedAtLTE(olderThan))
+	}
+	return preds
+}
+
 // DeleteLearning deletes a single learning entry by UUID.
 func (s *Store) DeleteLearning(ctx context.Context, id uuid.UUID) error {
 	err := s.client.Learning.DeleteOneID(id).Exec(ctx)
@@ -1592,21 +1606,27 @@ func (s *Store) DeleteLearning(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
+// CountLearningsWhere counts learning entries matching the same criteria used
+// by DeleteLearningsWhere without mutating the store.
+func (s *Store) CountLearningsWhere(ctx context.Context, category string, maxConfidence float64, olderThan time.Time) (int, error) {
+	preds := learningDeletePredicates(category, maxConfidence, olderThan)
+	if len(preds) == 0 {
+		return 0, fmt.Errorf("at least one filter criterion is required for bulk count")
+	}
+
+	n, err := s.client.Learning.Query().Where(preds...).Count(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("count learnings: %w", err)
+	}
+	return n, nil
+}
+
 // DeleteLearningsWhere deletes learning entries matching the given criteria
 // and returns the number of deleted entries.
 func (s *Store) DeleteLearningsWhere(ctx context.Context, category string, maxConfidence float64, olderThan time.Time) (int, error) {
 	q := s.client.Learning.Delete()
 
-	var preds []predicate.Learning
-	if category != "" {
-		preds = append(preds, entlearning.CategoryEQ(entlearning.Category(category)))
-	}
-	if maxConfidence > 0 {
-		preds = append(preds, entlearning.ConfidenceLTE(maxConfidence))
-	}
-	if !olderThan.IsZero() {
-		preds = append(preds, entlearning.CreatedAtLTE(olderThan))
-	}
+	preds := learningDeletePredicates(category, maxConfidence, olderThan)
 	if len(preds) == 0 {
 		return 0, fmt.Errorf("at least one filter criterion is required for bulk delete")
 	}

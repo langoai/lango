@@ -1079,18 +1079,9 @@ func buildMetaToolsWithRuntimes(
 				}
 
 				if dryRun {
-					// Count matching entries without deleting.
-					_, total, err := store.ListLearnings(ctx, category, 0, olderThan, 0, 0)
+					total, err := store.CountLearningsWhere(ctx, category, maxConfidence, olderThan)
 					if err != nil {
 						return nil, fmt.Errorf("count learnings: %w", err)
-					}
-					// Apply maxConfidence filter for count (ListLearnings uses minConfidence).
-					if maxConfidence > 0 {
-						_, filteredTotal, err := store.ListLearnings(ctx, category, 0, olderThan, 1, 0)
-						if err != nil {
-							return nil, fmt.Errorf("count filtered learnings: %w", err)
-						}
-						_ = filteredTotal
 					}
 					return map[string]interface{}{"would_delete": total, "dry_run": true}, nil
 				}
