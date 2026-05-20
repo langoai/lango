@@ -20,13 +20,13 @@ func TestServiceStartMissionCreatesPreparedMission(t *testing.T) {
 
 	row, err := svc.StartMission(ctx, StartMissionInput{
 		SessionKey:  "svc-start",
-		Title:       "Ship Wave 2 durable missions",
+		Title:       "Ship durable missions",
 		Description: "Create durable mission rows before turn dispatch.",
 	})
 	require.NoError(t, err)
 	require.NotNil(t, row)
 	assert.Equal(t, StatusPrepared, row.Status)
-	assert.Equal(t, "Ship Wave 2 durable missions", row.Title)
+	assert.Equal(t, "Ship durable missions", row.Title)
 	assert.Equal(t, "user", row.SourceKind)
 	require.NotNil(t, row.Description)
 	assert.Equal(t, "Create durable mission rows before turn dispatch.", *row.Description)

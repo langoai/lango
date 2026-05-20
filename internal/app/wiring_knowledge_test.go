@@ -54,7 +54,7 @@ func TestInitKnowledge_ConfigAndStoreBranches(t *testing.T) {
 	assert.False(t, status.Healthy)
 	assert.Equal(t, "requires EntStore backend", status.Reason)
 
-	entStore := newWave35EntStore(t)
+	entStore := newWiringKnowledgeEntStore(t)
 	components, status = initKnowledge(enabledCfg, entStore, nil, eventbus.New(), nil)
 	require.NotNil(t, components)
 	require.NotNil(t, components.store)
@@ -66,7 +66,7 @@ func TestInitKnowledge_ConfigAndStoreBranches(t *testing.T) {
 }
 
 func TestInitFTS5_BulkIndexesExistingKnowledgeAndLearnings(t *testing.T) {
-	entStore := newWave35EntStore(t)
+	entStore := newWiringKnowledgeEntStore(t)
 	rawDB := entStore.DB()
 	if !search.ProbeFTS5(rawDB) {
 		t.Skip("FTS5 not available in current SQLite runtime")
@@ -122,8 +122,8 @@ func TestInitSkills_LoadsUserSkillsAndSkipsExtPacksWithoutRegistry(t *testing.T)
 	t.Parallel()
 
 	skillsDir := t.TempDir()
-	writeWave35Skill(t, skillsDir, "wave35-user", "User-authored knowledge skill")
-	writeWave35ExtSkill(t, skillsDir, "rogue-pack", "rogue", "Extension skill without registry")
+	writeWiringKnowledgeSkill(t, skillsDir, "wiringKnowledge5-user", "User-authored knowledge skill")
+	writeWiringKnowledgeExtSkill(t, skillsDir, "rogue-pack", "rogue", "Extension skill without registry")
 
 	cfg := &config.Config{
 		Skill: config.SkillConfig{
@@ -136,7 +136,7 @@ func TestInitSkills_LoadsUserSkillsAndSkipsExtPacksWithoutRegistry(t *testing.T)
 	require.NoError(t, err)
 	require.NotNil(t, registry)
 
-	_, ok := registry.GetSkillTool("wave35-user")
+	_, ok := registry.GetSkillTool("wiringKnowledge5-user")
 	assert.True(t, ok)
 	_, ok = registry.GetSkillTool("rogue")
 	assert.False(t, ok)
@@ -146,12 +146,12 @@ func TestInitSkills_LoadsUserSkillsAndSkipsExtPacksWithoutRegistry(t *testing.T)
 		toolNames[tool.Name] = true
 	}
 	assert.True(t, toolNames["base_tool"])
-	assert.True(t, toolNames["skill_wave35-user"])
+	assert.True(t, toolNames["skill_wiringKnowledge5-user"])
 	assert.False(t, toolNames["skill_rogue"])
 
 	infos, err := (&skillProviderAdapter{registry: registry}).ListActiveSkillInfos(context.Background())
 	require.NoError(t, err)
-	assert.Contains(t, skillInfoNames(infos), "wave35-user")
+	assert.Contains(t, skillInfoNames(infos), "wiringKnowledge5-user")
 	assert.NotContains(t, skillInfoNames(infos), "rogue")
 }
 
@@ -166,7 +166,7 @@ func TestInitSkills_DisabledReturnsNilRegistry(t *testing.T) {
 func TestInquiryProviderAdapter_ConvertsPendingInquiriesToContextItems(t *testing.T) {
 	t.Parallel()
 
-	entStore := newWave35EntStore(t)
+	entStore := newWiringKnowledgeEntStore(t)
 	ctx := context.Background()
 	store := librarian.NewInquiryStore(entStore.Client(), testLog())
 	require.NoError(t, store.SaveInquiry(ctx, librarian.Inquiry{
@@ -267,10 +267,10 @@ func mustJSON(t *testing.T, v interface{}) []byte {
 	return data
 }
 
-func newWave35EntStore(t *testing.T) *session.EntStore {
+func newWiringKnowledgeEntStore(t *testing.T) *session.EntStore {
 	t.Helper()
 
-	dbPath := filepath.Join(t.TempDir(), "wave35.db")
+	dbPath := filepath.Join(t.TempDir(), "wiringKnowledge5.db")
 	store, err := session.NewEntStore(dbPath)
 	require.NoError(t, err)
 	t.Cleanup(func() {
@@ -300,7 +300,7 @@ func fts5SourceIDs(t *testing.T, db *sql.DB, tableName, match string) []string {
 	return ids
 }
 
-func writeWave35Skill(t *testing.T, root, name, description string) {
+func writeWiringKnowledgeSkill(t *testing.T, root, name, description string) {
 	t.Helper()
 
 	dir := filepath.Join(root, name)
@@ -315,7 +315,7 @@ func writeWave35Skill(t *testing.T, root, name, description string) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(content), 0o600))
 }
 
-func writeWave35ExtSkill(t *testing.T, root, pack, name, description string) {
+func writeWiringKnowledgeExtSkill(t *testing.T, root, pack, name, description string) {
 	t.Helper()
 
 	dir := filepath.Join(root, "ext-"+pack, name)

@@ -487,7 +487,7 @@ func TestBoltStore_TypedTripleOSPQuery(t *testing.T) {
 	assert.Equal(t, "Session", triples[0].ObjectType)
 }
 
-func TestWave53BoltStore_CountStatsAllTriplesAndClearAll(t *testing.T) {
+func TestBoltStore_CountStatsAllTriplesAndClearAll(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t)
 
@@ -498,7 +498,7 @@ func TestWave53BoltStore_CountStatsAllTriplesAndClearAll(t *testing.T) {
 			Predicate:   Contains,
 			Object:      "obs:1",
 			ObjectType:  "Observation",
-			Metadata:    map[string]string{"source": "wave53"},
+			Metadata:    map[string]string{"source": "networkModuleInitEconomyWithoutPaymentKeepsNetworkDisabled3"},
 		},
 		{Subject: "session:1", Predicate: Contains, Object: "obs:2"},
 		{Subject: "obs:2", Predicate: CausedBy, Object: "error:timeout"},
@@ -523,7 +523,7 @@ func TestWave53BoltStore_CountStatsAllTriplesAndClearAll(t *testing.T) {
 		Object:      "obs:1",
 		ObjectType:  "Observation",
 		Metadata: map[string]string{
-			"source":        "wave53",
+			"source":        "networkModuleInitEconomyWithoutPaymentKeepsNetworkDisabled3",
 			"_subject_type": "Session",
 			"_object_type":  "Observation",
 		},
@@ -548,22 +548,22 @@ func TestWave53BoltStore_CountStatsAllTriplesAndClearAll(t *testing.T) {
 	assert.Empty(t, byObject)
 }
 
-func TestWave53BoltStore_NewBoltStoreExpandsTildeIntoLocalHome(t *testing.T) {
+func TestBoltStore_NewBoltStoreExpandsTildeIntoLocalHome(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
-	store, err := NewBoltStore("~/wave53.db")
+	store, err := NewBoltStore("~/networkModuleInitEconomyWithoutPaymentKeepsNetworkDisabled3.db")
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, store.Close()) })
 
-	require.FileExists(t, filepath.Join(home, "wave53.db"))
+	require.FileExists(t, filepath.Join(home, "networkModuleInitEconomyWithoutPaymentKeepsNetworkDisabled3.db"))
 
 	count, err := store.Count(context.Background())
 	require.NoError(t, err)
 	assert.Zero(t, count)
 }
 
-func TestWave53BoltStore_RemoveTripleKeepsOtherIndexesConsistent(t *testing.T) {
+func TestBoltStore_RemoveTripleKeepsOtherIndexesConsistent(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t)
 
@@ -593,7 +593,7 @@ func TestWave53BoltStore_RemoveTripleKeepsOtherIndexesConsistent(t *testing.T) {
 	assert.Equal(t, keep, byObject[0])
 }
 
-func TestWave53BoltStore_ScanAndAggregationReturnDecodeErrors(t *testing.T) {
+func TestBoltStore_ScanAndAggregationReturnDecodeErrors(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t)
 

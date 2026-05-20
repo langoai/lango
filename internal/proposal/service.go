@@ -22,7 +22,7 @@ type proposalPreparer interface {
 	PrepareLearningSuggestion(source LearningSuggestionSource) (PreparedBrief, error)
 }
 
-// Service is the explicit Wave 3 write boundary for transient proposal lifecycle.
+// Service is the explicit write boundary for transient proposal lifecycle.
 // It owns proposal creation/update, preparation lifecycle, dismissal, acceptance,
 // and expiration pruning through the registry.
 type Service struct {
@@ -41,7 +41,7 @@ func NewService(registry proposalRegistry, preparer proposalPreparer) *Service {
 	}
 }
 
-// UpsertLearningSuggestion creates or updates a proposal from the active Wave 3
+// UpsertLearningSuggestion creates or updates a proposal from the active
 // producer, then deterministically prepares it.
 func (s *Service) UpsertLearningSuggestion(ctx context.Context, source LearningSuggestionSource) (*Proposal, error) {
 	_ = ctx

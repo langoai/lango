@@ -195,7 +195,7 @@ func (s *cancelRecordingSubmitter) Submit(
 	background.Origin,
 ) (string, error) {
 	if s.taskID == "" {
-		s.taskID = "task-wave26"
+		s.taskID = "task-mainInvokesExitOnlyForNonZeroRunMain6"
 	}
 	return s.taskID, nil
 }

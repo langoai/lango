@@ -462,19 +462,26 @@
 ## 57. Coverage Wave: Remaining High-Uncovered Deterministic Hotspots
 
 - [ ] 57.1 Add focused tests for deterministic `internal/app/wiring_p2p.go`, `internal/app/modules.go`, `internal/app/tools_meta.go`, `internal/app/wiring.go`, `internal/app/tools_p2p.go`, `internal/app/app.go`, `internal/app/tools_workspace.go`, and `internal/app/wiring_ontology.go` helper/error branches that can be exercised without live providers, listeners, peers, chain RPC, or long-running workers
-- [ ] 57.2 Add focused tests for deterministic `internal/graph/rag.go`, `internal/p2p/gitbundle/bundle.go`, and `internal/p2p/handshake/handshake.go` branches using local fakes, temp repositories, and in-memory streams only
-- [ ] 57.3 Add focused tests for deterministic `internal/cli/settings/editor.go`, `internal/cli/smartaccount/paymaster.go`, `internal/p2p/team/tools.go`, and `internal/cron/tools.go` parsing, validation, render, and command-construction branches without launching interactive UI loops, live chain RPC, or external peers
-- [ ] 57.4 Add focused tests for deterministic `internal/mission/store.go`, `internal/smartaccount/session/manager.go`, `internal/ontology/service.go`, `internal/smartaccount/manager.go`, and `internal/storagebroker/server.go` store/helper/error branches using temp stores and local fakes only
+- [x] 57.2 Add focused tests for deterministic `internal/graph/rag.go`, `internal/p2p/gitbundle/bundle.go`, and `internal/p2p/handshake/handshake.go` branches using local fakes, temp repositories, and in-memory streams only
+- [x] 57.3 Add focused tests for deterministic `internal/cli/settings/editor.go`, `internal/cli/smartaccount/paymaster.go`, `internal/p2p/team/tools.go`, and `internal/cron/tools.go` parsing, validation, render, and command-construction branches without launching interactive UI loops, live chain RPC, or external peers
+- [x] 57.4 Add focused tests for deterministic `internal/mission/store.go`, `internal/smartaccount/session/manager.go`, `internal/ontology/service.go`, `internal/smartaccount/manager.go`, and `internal/storagebroker/server.go` store/helper/error branches using temp stores and local fakes only
 - [ ] 57.5 Run subagent-driven review checkpoints for the wave
 - [ ] 57.6 Commit the wave separately
 
-## 58. Verification And Enforcement
+## 58. Test Naming Cleanup
 
-- [ ] 58.1 Run `go build ./...`
-- [ ] 58.2 Run `go test ./...`
-- [ ] 58.3 Run the non-generated coverage report and confirm coverage is at least 90%
-- [ ] 58.4 Run the executable 90% coverage gate and confirm it passes
-- [ ] 58.5 Run `git diff --check`
-- [ ] 58.6 Run subagent-driven spec and code-quality review checkpoints
-- [ ] 58.7 Run `openspec validate --all --strict`
-- [ ] 58.8 Archive the completed OpenSpec change
+- [x] 58.1 Rename legacy `waveNN` test files to behavior-oriented names without work-unit numbers
+- [x] 58.2 Rename `WaveNN`/`waveNN` test and helper identifiers to behavior-oriented names where they are not fixture values
+- [x] 58.3 Run subagent-driven review checkpoints for the naming cleanup
+- [ ] 58.4 Commit the naming cleanup separately
+
+## 59. Verification And Enforcement
+
+- [ ] 59.1 Run `go build ./...`
+- [ ] 59.2 Run `go test ./...`
+- [ ] 59.3 Run the non-generated coverage report and confirm coverage is at least 90%
+- [ ] 59.4 Run the executable 90% coverage gate and confirm it passes
+- [ ] 59.5 Run `git diff --check`
+- [ ] 59.6 Run subagent-driven spec and code-quality review checkpoints
+- [ ] 59.7 Run `openspec validate --all --strict`
+- [ ] 59.8 Archive the completed OpenSpec change

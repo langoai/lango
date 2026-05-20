@@ -1388,18 +1388,18 @@ func TestSummarizeEvents_PrefersLatestFamilyOnDominantTie(t *testing.T) {
 	require.Equal(t, "manual-retry", summary.DominantFamily)
 }
 
-func TestWave53ServiceWithBackgroundTaskReaderUsesExplicitReader(t *testing.T) {
+func TestServiceWithBackgroundTaskReaderUsesExplicitReader(t *testing.T) {
 	t.Parallel()
 
 	store := newFakeStatusStore()
-	transaction := makeDeadLetterTransaction("tx-wave53", "sub-wave53", receipts.EscrowAdjudicationRelease)
+	transaction := makeDeadLetterTransaction("tx-networkModuleInitEconomyWithoutPaymentKeepsNetworkDisabled3", "sub-networkModuleInitEconomyWithoutPaymentKeepsNetworkDisabled3", receipts.EscrowAdjudicationRelease)
 	store.SetTransaction(transaction)
 	store.SetSubmission(receipts.SubmissionReceipt{
-		SubmissionReceiptID:  "sub-wave53",
-		TransactionReceiptID: "tx-wave53",
-	}, []receipts.ReceiptEvent{deadLetterEvent("sub-wave53", 3, "dispatch-wave53")})
+		SubmissionReceiptID:  "sub-networkModuleInitEconomyWithoutPaymentKeepsNetworkDisabled3",
+		TransactionReceiptID: "tx-networkModuleInitEconomyWithoutPaymentKeepsNetworkDisabled3",
+	}, []receipts.ReceiptEvent{deadLetterEvent("sub-networkModuleInitEconomyWithoutPaymentKeepsNetworkDisabled3", 3, "dispatch-networkModuleInitEconomyWithoutPaymentKeepsNetworkDisabled3")})
 
-	reader := wave53TaskReader{tasks: []BackgroundTaskSnapshot{
+	reader := serviceTaskReader{tasks: []BackgroundTaskSnapshot{
 		{
 			TaskID:       "task-wrong-store-reader-would-not-see-this",
 			Status:       "failed",
@@ -1410,15 +1410,15 @@ func TestWave53ServiceWithBackgroundTaskReaderUsesExplicitReader(t *testing.T) {
 		{
 			TaskID:       "task-explicit-reader",
 			Status:       "pending",
-			RetryKey:     "tx-wave53:release",
+			RetryKey:     "tx-networkModuleInitEconomyWithoutPaymentKeepsNetworkDisabled3:release",
 			AttemptCount: 2,
 			NextRetryAt:  time.Date(2026, time.May, 1, 9, 30, 0, 0, time.UTC),
 		},
 	}}
 
-	svc := NewServiceWithBackgroundTaskReader(wave53ReceiptOnlyStore{store: store}, reader)
+	svc := NewServiceWithBackgroundTaskReader(serviceReceiptOnlyStore{store: store}, reader)
 
-	got, err := svc.GetTransactionStatus(context.Background(), "tx-wave53")
+	got, err := svc.GetTransactionStatus(context.Background(), "tx-networkModuleInitEconomyWithoutPaymentKeepsNetworkDisabled3")
 	require.NoError(t, err)
 	require.NotNil(t, got.LatestBackgroundTask)
 	assert.Equal(t, "task-explicit-reader", got.LatestBackgroundTask.TaskID)
@@ -1427,7 +1427,7 @@ func TestWave53ServiceWithBackgroundTaskReaderUsesExplicitReader(t *testing.T) {
 	assert.Equal(t, "2026-05-01T09:30:00Z", got.LatestBackgroundTask.NextRetryAt)
 }
 
-func TestWave53ServiceCanonicalSnapshotMissingBranches(t *testing.T) {
+func TestServiceCanonicalSnapshotMissingBranches(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -1480,7 +1480,7 @@ func TestWave53ServiceCanonicalSnapshotMissingBranches(t *testing.T) {
 	}
 }
 
-func TestWave53ServiceSubmissionReceiptsForTransactionFallbackBranches(t *testing.T) {
+func TestServiceSubmissionReceiptsForTransactionFallbackBranches(t *testing.T) {
 	t.Parallel()
 
 	t.Run("current submission only without lister", func(t *testing.T) {
@@ -1495,7 +1495,7 @@ func TestWave53ServiceSubmissionReceiptsForTransactionFallbackBranches(t *testin
 			SubmissionReceiptID:  "sub-history",
 			TransactionReceiptID: "tx-current",
 		}, nil)
-		svc := NewService(wave53ReceiptOnlyStore{store: store})
+		svc := NewService(serviceReceiptOnlyStore{store: store})
 
 		got, err := svc.submissionReceiptsForTransaction(context.Background(), receipts.TransactionReceipt{
 			TransactionReceiptID:       "tx-current",
@@ -1514,7 +1514,7 @@ func TestWave53ServiceSubmissionReceiptsForTransactionFallbackBranches(t *testin
 			SubmissionReceiptID:  "sub-mismatch",
 			TransactionReceiptID: "tx-other",
 		}, nil)
-		svc := NewService(wave53ReceiptOnlyStore{store: store})
+		svc := NewService(serviceReceiptOnlyStore{store: store})
 
 		for _, transaction := range []receipts.TransactionReceipt{
 			{TransactionReceiptID: "tx-blank"},
@@ -1528,24 +1528,24 @@ func TestWave53ServiceSubmissionReceiptsForTransactionFallbackBranches(t *testin
 	})
 }
 
-func TestWave53ServiceFallbackAggregationUsesOnlyCurrentSubmission(t *testing.T) {
+func TestServiceFallbackAggregationUsesOnlyCurrentSubmission(t *testing.T) {
 	t.Parallel()
 
 	store := newFakeStatusStore()
-	transaction := makeDeadLetterTransaction("tx-wave53", "sub-current", receipts.EscrowAdjudicationRelease)
+	transaction := makeDeadLetterTransaction("tx-networkModuleInitEconomyWithoutPaymentKeepsNetworkDisabled3", "sub-current", receipts.EscrowAdjudicationRelease)
 	store.SetTransactions([]receipts.TransactionReceipt{transaction})
 	store.SetSubmission(receipts.SubmissionReceipt{
 		SubmissionReceiptID:  "sub-current",
-		TransactionReceiptID: "tx-wave53",
+		TransactionReceiptID: "tx-networkModuleInitEconomyWithoutPaymentKeepsNetworkDisabled3",
 	}, []receipts.ReceiptEvent{deadLetterEventAt("sub-current", 4, "dispatch-current", "2026-05-01T10:00:00Z")})
 	store.SetSubmission(receipts.SubmissionReceipt{
 		SubmissionReceiptID:  "sub-history",
-		TransactionReceiptID: "tx-wave53",
+		TransactionReceiptID: "tx-networkModuleInitEconomyWithoutPaymentKeepsNetworkDisabled3",
 	}, []receipts.ReceiptEvent{
 		manualRetryEventAt("sub-history", "operator:history", "2026-05-01T09:00:00Z"),
 	})
 
-	svc := NewService(wave53ReceiptOnlyStore{store: store})
+	svc := NewService(serviceReceiptOnlyStore{store: store})
 
 	got, err := svc.ListCurrentDeadLettersPage(context.Background(), DeadLetterListOptions{})
 	require.NoError(t, err)
@@ -1561,19 +1561,19 @@ func TestWave53ServiceFallbackAggregationUsesOnlyCurrentSubmission(t *testing.T)
 	}, got.Items[0].SubmissionBreakdown)
 }
 
-func TestWave53ServiceListCurrentDeadLettersPageFilteringAndPaginationEdges(t *testing.T) {
+func TestServiceListCurrentDeadLettersPageFilteringAndPaginationEdges(t *testing.T) {
 	t.Parallel()
 
 	store := newFakeStatusStore()
 	store.SetTransactions([]receipts.TransactionReceipt{
-		makeDeadLetterTransaction("tx-wave53", "sub-wave53", receipts.EscrowAdjudicationRelease),
+		makeDeadLetterTransaction("tx-networkModuleInitEconomyWithoutPaymentKeepsNetworkDisabled3", "sub-networkModuleInitEconomyWithoutPaymentKeepsNetworkDisabled3", receipts.EscrowAdjudicationRelease),
 	})
 	store.SetSubmission(receipts.SubmissionReceipt{
-		SubmissionReceiptID:  "sub-wave53",
-		TransactionReceiptID: "tx-wave53",
+		SubmissionReceiptID:  "sub-networkModuleInitEconomyWithoutPaymentKeepsNetworkDisabled3",
+		TransactionReceiptID: "tx-networkModuleInitEconomyWithoutPaymentKeepsNetworkDisabled3",
 	}, []receipts.ReceiptEvent{
-		manualRetryEventAt("sub-wave53", "operator:alice", "2026-05-01T09:00:00Z"),
-		deadLetterEventAt("sub-wave53", 3, "dispatch-wave53", "2026-05-01T10:00:00Z"),
+		manualRetryEventAt("sub-networkModuleInitEconomyWithoutPaymentKeepsNetworkDisabled3", "operator:alice", "2026-05-01T09:00:00Z"),
+		deadLetterEventAt("sub-networkModuleInitEconomyWithoutPaymentKeepsNetworkDisabled3", 3, "dispatch-networkModuleInitEconomyWithoutPaymentKeepsNetworkDisabled3", "2026-05-01T10:00:00Z"),
 	})
 	svc := NewService(store)
 
@@ -1627,17 +1627,17 @@ func TestWave53ServiceListCurrentDeadLettersPageFilteringAndPaginationEdges(t *t
 	}
 }
 
-func TestWave53BackgroundRetryKeyAndSnapshotOrderingBranches(t *testing.T) {
+func TestBackgroundRetryKeyAndSnapshotOrderingBranches(t *testing.T) {
 	t.Parallel()
 
 	assert.Empty(t, backgroundRetryKey(receipts.TransactionReceipt{
-		TransactionReceiptID: "tx-wave53",
+		TransactionReceiptID: "tx-networkModuleInitEconomyWithoutPaymentKeepsNetworkDisabled3",
 	}))
 	assert.Empty(t, backgroundRetryKey(receipts.TransactionReceipt{
 		EscrowAdjudication: receipts.EscrowAdjudicationRelease,
 	}))
-	assert.Equal(t, "tx-wave53:refund", backgroundRetryKey(receipts.TransactionReceipt{
-		TransactionReceiptID: " tx-wave53 ",
+	assert.Equal(t, "tx-networkModuleInitEconomyWithoutPaymentKeepsNetworkDisabled3:refund", backgroundRetryKey(receipts.TransactionReceipt{
+		TransactionReceiptID: " tx-networkModuleInitEconomyWithoutPaymentKeepsNetworkDisabled3 ",
 		EscrowAdjudication:   receipts.EscrowAdjudicationRefund,
 	}))
 
@@ -1660,28 +1660,28 @@ func TestWave53BackgroundRetryKeyAndSnapshotOrderingBranches(t *testing.T) {
 	))
 }
 
-type wave53ReceiptOnlyStore struct {
+type serviceReceiptOnlyStore struct {
 	store *fakeStatusStore
 }
 
-func (w wave53ReceiptOnlyStore) ListTransactionReceipts(ctx context.Context) ([]receipts.TransactionReceipt, error) {
+func (w serviceReceiptOnlyStore) ListTransactionReceipts(ctx context.Context) ([]receipts.TransactionReceipt, error) {
 	return w.store.ListTransactionReceipts(ctx)
 }
 
-func (w wave53ReceiptOnlyStore) GetTransactionReceipt(ctx context.Context, transactionReceiptID string) (receipts.TransactionReceipt, error) {
+func (w serviceReceiptOnlyStore) GetTransactionReceipt(ctx context.Context, transactionReceiptID string) (receipts.TransactionReceipt, error) {
 	return w.store.GetTransactionReceipt(ctx, transactionReceiptID)
 }
 
-func (w wave53ReceiptOnlyStore) GetSubmissionReceipt(ctx context.Context, submissionReceiptID string) (receipts.SubmissionReceipt, []receipts.ReceiptEvent, error) {
+func (w serviceReceiptOnlyStore) GetSubmissionReceipt(ctx context.Context, submissionReceiptID string) (receipts.SubmissionReceipt, []receipts.ReceiptEvent, error) {
 	return w.store.GetSubmissionReceipt(ctx, submissionReceiptID)
 }
 
-type wave53TaskReader struct {
+type serviceTaskReader struct {
 	tasks []BackgroundTaskSnapshot
 	err   error
 }
 
-func (w wave53TaskReader) ListTaskSnapshots(context.Context) ([]BackgroundTaskSnapshot, error) {
+func (w serviceTaskReader) ListTaskSnapshots(context.Context) ([]BackgroundTaskSnapshot, error) {
 	if w.err != nil {
 		return nil, w.err
 	}

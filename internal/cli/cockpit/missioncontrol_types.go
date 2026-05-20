@@ -15,7 +15,7 @@ const (
 	MissionKindProposed MissionKind = "proposed"
 )
 
-// MissionStatus is the limited mission status space for Wave 1 projection.
+// MissionStatus is the limited mission status space for Mission Control projection.
 type MissionStatus string
 
 const (
@@ -71,7 +71,7 @@ type MissionView struct {
 	Collaboration CollaborationView
 }
 
-// DecisionView is the single live decision row for Wave 1.
+// DecisionView is the single live decision row for Mission Control.
 type DecisionView struct {
 	ID                   string
 	Category             DecisionCategory

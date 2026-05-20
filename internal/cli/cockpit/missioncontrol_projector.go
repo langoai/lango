@@ -29,7 +29,7 @@ const (
 	defaultMissionControlActivityLimit = 6
 )
 
-// MissionControlProjector derives a deterministic Wave 1 Mission Control view.
+// MissionControlProjector derives a deterministic Mission Control view.
 type MissionControlProjector struct {
 	cfg                *config.Config
 	sessionKey         string

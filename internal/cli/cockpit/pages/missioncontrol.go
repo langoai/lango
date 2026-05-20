@@ -56,7 +56,7 @@ type missionControlTaskSource interface {
 	List() []background.TaskSnapshot
 }
 
-// MissionControlPage renders the Wave 1 Mission Control surface.
+// MissionControlPage renders the Mission Control surface.
 type MissionControlPage struct {
 	projector            missionControlProjector
 	taskSource           missionControlTaskSource

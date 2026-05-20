@@ -506,7 +506,7 @@ func TestMissionControlHeaderContextRendering(t *testing.T) {
 		Header: cockpit.HeaderView{
 			ActiveAgentSummary:   "worker-c active",
 			ModelProviderSummary: "openai / gpt-5",
-			ContextSummary:       "mission-control-wave-one",
+			ContextSummary:       "mission-control-rollout",
 			MetricsSummary:       "150 tokens across 1 requests",
 			DegradedNote:         "RunLedger unavailable",
 		},
@@ -516,7 +516,7 @@ func TestMissionControlHeaderContextRendering(t *testing.T) {
 	assert.Contains(t, view, "worker-c active")
 	assert.Contains(t, view, "Pending decisions: 0")
 	assert.Contains(t, view, "openai / gpt-5")
-	assert.Contains(t, view, "mission-control-wave-one")
+	assert.Contains(t, view, "mission-control-rollout")
 	assert.Contains(t, view, "150 tokens across 1 requests")
 	assert.Contains(t, view, "RunLedger unavailable")
 }
@@ -528,7 +528,7 @@ func TestMissionControlHeaderSanitizesSummaryText(t *testing.T) {
 		Header: cockpit.HeaderView{
 			ActiveAgentSummary:   "worker\x1b[31m-c\nactive",
 			ModelProviderSummary: "openai\x1b[31m /\ngpt-5",
-			ContextSummary:       "mission\x1b[31m-control\nwave-one",
+			ContextSummary:       "mission\x1b[31m-control\nrollout",
 			MetricsSummary:       "150\x1b[31m tokens\nacross 1 requests",
 			DegradedNote:         "RunLedger\x1b[31m unavailable\nnow",
 		},
@@ -537,7 +537,7 @@ func TestMissionControlHeaderSanitizesSummaryText(t *testing.T) {
 	view := page.View()
 	assert.Contains(t, view, "worker-c active")
 	assert.Contains(t, view, "openai / gpt-5")
-	assert.Contains(t, view, "mission-control wave-one")
+	assert.Contains(t, view, "mission-control rollout")
 	assert.Contains(t, view, "150 tokens across 1 requests")
 	assert.Contains(t, view, "RunLedger unavailable now")
 	assert.NotContains(t, view, "\x1b")

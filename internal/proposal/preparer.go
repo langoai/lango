@@ -8,8 +8,8 @@ import (
 
 const learningProposalSourceKind = "proposed_learning"
 
-// LearningSuggestionSource is the source-native input for the first Wave 3
-// proposal preparation slice.
+// LearningSuggestionSource is the source-native input for deterministic
+// proposal preparation.
 type LearningSuggestionSource struct {
 	SessionKey   string
 	SuggestionID string
@@ -25,7 +25,7 @@ type Preparer interface {
 	PrepareLearningSuggestion(source LearningSuggestionSource) (PreparedBrief, error)
 }
 
-// DeterministicPreparer implements the Wave 3 low-risk preparation contract.
+// DeterministicPreparer implements the low-risk preparation contract.
 // It only formats already-available source fields and performs no external work.
 type DeterministicPreparer struct{}
 
