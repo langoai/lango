@@ -96,11 +96,20 @@ func (i *Installer) Install(_ context.Context, src Source, wc *WorkingCopy, opts
 		return fmt.Errorf("create staging dir: %w", err)
 	}
 	extSkillDir := filepath.Join(i.SkillsDir, extSkillPrefix+wc.Manifest.Name)
+	if err := os.MkdirAll(i.SkillsDir, 0o755); err != nil {
+		_ = os.RemoveAll(stagingDir)
+		return fmt.Errorf("create skills dir: %w", err)
+	}
+	skillStagingDir, err := os.MkdirTemp(i.SkillsDir, "."+wc.Manifest.Name+".skills-staging-")
+	if err != nil {
+		_ = os.RemoveAll(stagingDir)
+		return fmt.Errorf("create skills staging dir: %w", err)
+	}
 
 	// Roll back any writes done by this install on failure.
 	rollback := func() {
 		_ = os.RemoveAll(stagingDir)
-		_ = os.RemoveAll(extSkillDir)
+		_ = os.RemoveAll(skillStagingDir)
 	}
 
 	// Copy pack files (manifest + skills + prompts) into staging.
@@ -112,7 +121,7 @@ func (i *Installer) Install(_ context.Context, src Source, wc *WorkingCopy, opts
 	// Copy skills into <skillsDir>/ext-<name>/. Each skill lives at
 	// <skillsDir>/ext-<name>/<skill-name>/SKILL.md with resource files
 	// preserved.
-	if err := i.copySkillsToStore(wc, extSkillDir); err != nil {
+	if err := i.copySkillsToStore(wc, skillStagingDir); err != nil {
 		rollback()
 		return err
 	}
@@ -135,15 +144,92 @@ func (i *Installer) Install(_ context.Context, src Source, wc *WorkingCopy, opts
 	// Atomic rename into final location.
 	finalDir := filepath.Join(i.ExtensionsDir, wc.Manifest.Name)
 	if opts.AllowOverwrite {
-		_ = os.RemoveAll(finalDir)
-	}
-	if err := os.Rename(stagingDir, finalDir); err != nil {
-		rollback()
-		return fmt.Errorf("move staging → final: %w", err)
+		if err := replaceInstallDirs(stagingDir, finalDir, skillStagingDir, extSkillDir); err != nil {
+			rollback()
+			return err
+		}
+	} else {
+		if err := os.Rename(stagingDir, finalDir); err != nil {
+			rollback()
+			return fmt.Errorf("move staging → final: %w", err)
+		}
+		if err := os.Rename(skillStagingDir, extSkillDir); err != nil {
+			_ = os.RemoveAll(finalDir)
+			rollback()
+			return fmt.Errorf("move skills staging → final: %w", err)
+		}
 	}
 
 	slog.Info("extension.installed", "pack", wc.Manifest.Name, "version", wc.Manifest.Version)
 	return nil
+}
+
+func replaceInstallDirs(packStaging, finalDir, skillStaging, extSkillDir string) error {
+	finalBackup, finalHad, err := moveToBackup(finalDir)
+	if err != nil {
+		return fmt.Errorf("backup existing pack: %w", err)
+	}
+	skillBackup, skillHad, err := moveToBackup(extSkillDir)
+	if err != nil {
+		restoreBackup(finalBackup, finalDir)
+		return fmt.Errorf("backup existing skills: %w", err)
+	}
+
+	if err := os.Rename(packStaging, finalDir); err != nil {
+		restoreBackup(skillBackup, extSkillDir)
+		restoreBackup(finalBackup, finalDir)
+		return fmt.Errorf("move staging → final: %w", err)
+	}
+	if err := os.Rename(skillStaging, extSkillDir); err != nil {
+		_ = os.RemoveAll(finalDir)
+		restoreBackup(skillBackup, extSkillDir)
+		restoreBackup(finalBackup, finalDir)
+		return fmt.Errorf("move skills staging → final: %w", err)
+	}
+
+	if finalHad {
+		_ = os.RemoveAll(finalBackup)
+	}
+	if skillHad {
+		_ = os.RemoveAll(skillBackup)
+	}
+	return nil
+}
+
+func moveToBackup(path string) (string, bool, error) {
+	if _, err := os.Stat(path); err != nil {
+		if os.IsNotExist(err) {
+			return "", false, nil
+		}
+		return "", false, err
+	}
+	backup, err := tempBackupPath(filepath.Dir(path), "."+filepath.Base(path)+".backup-")
+	if err != nil {
+		return "", false, err
+	}
+	if err := os.Rename(path, backup); err != nil {
+		return "", false, err
+	}
+	return backup, true, nil
+}
+
+func tempBackupPath(parent, pattern string) (string, error) {
+	backup, err := os.MkdirTemp(parent, pattern)
+	if err != nil {
+		return "", err
+	}
+	if err := os.Remove(backup); err != nil {
+		return "", err
+	}
+	return backup, nil
+}
+
+func restoreBackup(backup, target string) {
+	if backup == "" {
+		return
+	}
+	_ = os.RemoveAll(target)
+	_ = os.Rename(backup, target)
 }
 
 // Remove runs the ordered deletion: .installed → ext-<name>/ → pack dir.
