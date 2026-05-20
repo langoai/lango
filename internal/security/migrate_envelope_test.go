@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"entgo.io/ent/dialect"
@@ -187,6 +188,30 @@ func TestMigrateToEnvelope_WrongPassphrase(t *testing.T) {
 	}
 }
 
+func TestMigrateToEnvelope_RejectsInvalidLegacySaltBeforeWritingEnvelope(t *testing.T) {
+	dir := t.TempDir()
+
+	env, mk, err := MigrateToEnvelope(
+		context.Background(), nil, nil, dir,
+		"passphrase", []byte("short"), nil, false,
+	)
+	if err == nil {
+		t.Fatal("expected invalid legacy salt error")
+	}
+	if env != nil {
+		t.Fatalf("expected nil envelope, got %+v", env)
+	}
+	if mk != nil {
+		t.Fatalf("expected nil master key, got %d bytes", len(mk))
+	}
+	if !strings.Contains(err.Error(), "invalid legacy salt size") {
+		t.Fatalf("expected invalid salt error, got %v", err)
+	}
+	if HasEnvelopeFile(dir) {
+		t.Fatal("envelope file should not exist when salt validation fails")
+	}
+}
+
 func TestRetryMigration_LegacyData(t *testing.T) {
 	// RetryMigration is designed to be called by bootstrap when a previous
 	// migration crashed between envelope creation and TX commit. In that
@@ -231,6 +256,34 @@ func TestRetryMigration_LegacyData(t *testing.T) {
 	}
 }
 
+func TestRetryMigration_RejectsInvalidLegacySaltBeforeOpeningTransaction(t *testing.T) {
+	err := RetryMigration(context.Background(), nil, make([]byte, KeySize), "passphrase", []byte("short"))
+	if err == nil {
+		t.Fatal("expected invalid legacy salt error")
+	}
+	if !strings.Contains(err.Error(), "invalid legacy salt size") {
+		t.Fatalf("expected invalid salt error, got %v", err)
+	}
+}
+
+func TestRetryRekey_ReturnsErrorWhenDatabaseIsClosed(t *testing.T) {
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("sql open: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close db: %v", err)
+	}
+
+	err = RetryRekey(db, make([]byte, KeySize))
+	if err == nil {
+		t.Fatal("expected rekey error for closed database")
+	}
+	if !strings.Contains(err.Error(), "pragma rekey") {
+		t.Fatalf("expected pragma rekey error, got %v", err)
+	}
+}
+
 func TestAESGCMHelpers_RoundTrip(t *testing.T) {
 	key := make([]byte, KeySize)
 	for i := range key {
@@ -265,5 +318,103 @@ func TestAESGCMDecrypt_WrongKey(t *testing.T) {
 	}
 	if !errors.Is(err, ErrDecryptionFailed) {
 		t.Fatalf("expected ErrDecryptionFailed, got %v", err)
+	}
+}
+
+func TestAESGCMHelpers_RejectInvalidKeySizes(t *testing.T) {
+	invalidKey := make([]byte, KeySize-1)
+
+	if _, err := aesGCMEncrypt([]byte("data"), invalidKey); err == nil {
+		t.Fatal("expected encrypt error for invalid key size")
+	} else if !strings.Contains(err.Error(), "new cipher") {
+		t.Fatalf("expected new cipher error, got %v", err)
+	}
+
+	if _, err := aesGCMDecrypt(make([]byte, NonceSize), invalidKey); err == nil {
+		t.Fatal("expected decrypt error for invalid key size")
+	} else if !strings.Contains(err.Error(), "new cipher") {
+		t.Fatalf("expected new cipher error, got %v", err)
+	}
+}
+
+func TestAESGCMDecrypt_RejectsCiphertextShorterThanNonce(t *testing.T) {
+	_, err := aesGCMDecrypt(make([]byte, NonceSize-1), make([]byte, KeySize))
+	if err == nil {
+		t.Fatal("expected ciphertext too short error")
+	}
+	if errors.Is(err, ErrDecryptionFailed) {
+		t.Fatalf("ciphertext length validation should not wrap ErrDecryptionFailed: %v", err)
+	}
+	if !strings.Contains(err.Error(), "ciphertext too short") {
+		t.Fatalf("expected ciphertext too short error, got %v", err)
+	}
+}
+
+func TestAESGCMDecrypt_PreservesDecryptionFailureForTamperedCiphertext(t *testing.T) {
+	key := make([]byte, KeySize)
+	ct, err := aesGCMEncrypt([]byte("data"), key)
+	if err != nil {
+		t.Fatalf("encrypt: %v", err)
+	}
+	ct[len(ct)-1] ^= 0xff
+
+	_, err = aesGCMDecrypt(ct, key)
+	if err == nil {
+		t.Fatal("expected error for tampered ciphertext")
+	}
+	if !errors.Is(err, ErrDecryptionFailed) {
+		t.Fatalf("expected ErrDecryptionFailed, got %v", err)
+	}
+}
+
+func TestBackupDatabase_ReturnsErrorWhenDatabaseIsClosed(t *testing.T) {
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("sql open: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close db: %v", err)
+	}
+
+	err = backupDatabase(context.Background(), db)
+	if err == nil {
+		t.Fatal("expected backup error for closed database")
+	}
+	if !strings.Contains(err.Error(), "wal_checkpoint") {
+		t.Fatalf("expected wal_checkpoint error, got %v", err)
+	}
+}
+
+func TestBackupDatabase_ReturnsErrorWhenMainDatabaseHasNoPath(t *testing.T) {
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("sql open: %v", err)
+	}
+	defer db.Close()
+
+	err = backupDatabase(context.Background(), db)
+	if err == nil {
+		t.Fatal("expected backup error for in-memory database")
+	}
+	if !strings.Contains(err.Error(), "main db path not found") {
+		t.Fatalf("expected missing main db path error, got %v", err)
+	}
+}
+
+func TestRekeyDatabase_ReturnsErrorWhenDatabaseIsClosed(t *testing.T) {
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("sql open: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close db: %v", err)
+	}
+
+	err = rekeyDatabase(db, make([]byte, KeySize))
+	if err == nil {
+		t.Fatal("expected rekey error for closed database")
+	}
+	if !strings.Contains(err.Error(), "pragma rekey") {
+		t.Fatalf("expected pragma rekey error, got %v", err)
 	}
 }
