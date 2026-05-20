@@ -581,3 +581,10 @@
 - [x] 73.2 Add focused tests for deterministic `internal/tools/filesystem/filesystem.go` read, edit, write, metadata, and validation residual branches using temp dirs only
 - [x] 73.3 Run subagent-driven development and review checkpoints for the batch
 - [x] 73.4 Commit the batch separately
+
+## 74. Coverage Batch: ADK Context Model And Knowledge Retriever Residuals
+
+- [x] 74.1 Add focused tests for deterministic `internal/adk/context_model.go` compaction sync, recall, catalog, and mode prompt branches using local fakes only
+- [x] 74.2 Add focused tests for deterministic `internal/knowledge/retriever.go` skill, inquiry, default limit, unsupported layer, and keyword sanitization branches using local fakes only
+- [x] 74.3 Run subagent-driven development and review checkpoints for the batch
+- [x] 74.4 Prepare the batch for a separate scoped commit

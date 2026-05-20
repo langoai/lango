@@ -2,6 +2,7 @@ package knowledge
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -228,6 +229,34 @@ func (m *mockRuntimeProvider) GetRuntimeContext() RuntimeContext {
 	return m.rc
 }
 
+type mockSkillProvider struct {
+	skills []SkillInfo
+	err    error
+}
+
+func (m *mockSkillProvider) ListActiveSkillInfos(ctx context.Context) ([]SkillInfo, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	return m.skills, nil
+}
+
+type mockInquiryProvider struct {
+	items      []ContextItem
+	err        error
+	sessionKey string
+	limit      int
+}
+
+func (m *mockInquiryProvider) PendingInquiryItems(ctx context.Context, sessionKey string, limit int) ([]ContextItem, error) {
+	m.sessionKey = sessionKey
+	m.limit = limit
+	if m.err != nil {
+		return nil, m.err
+	}
+	return m.items, nil
+}
+
 func TestContextRetriever_RetrieveTools(t *testing.T) {
 	retriever, _ := newTestRetriever(t)
 	ctx := context.Background()
@@ -320,6 +349,135 @@ func TestContextRetriever_RetrieveRuntimeContext(t *testing.T) {
 			t.Errorf("want 0 items with nil provider, got %d", result.TotalItems)
 		}
 	})
+}
+
+func TestContextRetriever_RetrieveSkillsFiltersLimitsAndContinuesAfterError(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("filters active skills and applies limit", func(t *testing.T) {
+		retriever, _ := newTestRetriever(t)
+		retriever.WithSkillProvider(&mockSkillProvider{skills: []SkillInfo{
+			{Name: "deploy-helper", Description: "Plan rollback-safe deployments", Type: "workflow"},
+			{Name: "debugger", Description: "Inspect runtime failures", Type: "diagnostic"},
+			{Name: "rollback-auditor", Description: "Review release rollback plans", Type: "review"},
+		}})
+
+		result, err := retriever.Retrieve(ctx, RetrievalRequest{
+			Query:       "rollback",
+			Layers:      []ContextLayer{LayerSkillPatterns},
+			MaxPerLayer: 1,
+		})
+		if err != nil {
+			t.Fatalf("Retrieve: %v", err)
+		}
+
+		items := result.Items[LayerSkillPatterns]
+		if len(items) != 1 {
+			t.Fatalf("expected one skill item after limit, got %#v", items)
+		}
+		if items[0].Key != "deploy-helper" || items[0].Category != "workflow" {
+			t.Fatalf("unexpected skill item: %#v", items[0])
+		}
+	})
+
+	t.Run("provider error is logged and other layers still return", func(t *testing.T) {
+		retriever, _ := newTestRetriever(t)
+		retriever.WithSkillProvider(&mockSkillProvider{err: errors.New("skill registry unavailable")})
+		retriever.WithRuntimeContext(&mockRuntimeProvider{rc: RuntimeContext{
+			SessionKey:      "session-1",
+			ChannelType:     "direct",
+			ActiveToolCount: 2,
+		}})
+
+		result, err := retriever.Retrieve(ctx, RetrievalRequest{
+			Query:  "runtime rollback",
+			Layers: []ContextLayer{LayerSkillPatterns, LayerRuntimeContext},
+		})
+		if err != nil {
+			t.Fatalf("Retrieve: %v", err)
+		}
+		if _, ok := result.Items[LayerSkillPatterns]; ok {
+			t.Fatalf("skill layer should be omitted after provider error: %#v", result.Items)
+		}
+		if got := len(result.Items[LayerRuntimeContext]); got != 1 {
+			t.Fatalf("expected runtime layer to survive skill error, got %d items", got)
+		}
+	})
+}
+
+func TestContextRetriever_RetrievePendingInquiriesAndAssemblePrompt(t *testing.T) {
+	retriever, _ := newTestRetriever(t)
+	ctx := context.Background()
+	provider := &mockInquiryProvider{items: []ContextItem{
+		{Layer: LayerPendingInquiries, Key: "inq-1", Content: "Ask about deployment windows?", Source: "release planning"},
+		{Layer: LayerPendingInquiries, Key: "inq-2", Content: "Clarify rollback owner."},
+	}}
+	retriever.WithInquiryProvider(provider)
+
+	result, err := retriever.Retrieve(ctx, RetrievalRequest{
+		Query:       "deployment question",
+		SessionKey:  "session-42",
+		Layers:      []ContextLayer{LayerPendingInquiries},
+		MaxPerLayer: 2,
+	})
+	if err != nil {
+		t.Fatalf("Retrieve: %v", err)
+	}
+	if provider.sessionKey != "session-42" || provider.limit != 2 {
+		t.Fatalf("provider called with session=%q limit=%d", provider.sessionKey, provider.limit)
+	}
+	if result.TotalItems != 2 {
+		t.Fatalf("expected two inquiry items, got %d", result.TotalItems)
+	}
+
+	prompt := retriever.AssemblePrompt("Base prompt.", result)
+	for _, want := range []string{
+		"## Pending Knowledge Inquiries",
+		"Consider weaving ONE of these questions naturally into your response:",
+		"- [inq-1] Ask about deployment windows? (context: release planning)",
+		"- [inq-2] Clarify rollback owner.",
+	} {
+		if !strings.Contains(prompt, want) {
+			t.Fatalf("assembled prompt missing %q:\n%s", want, prompt)
+		}
+	}
+}
+
+func TestContextRetriever_RetrieveIgnoresUnsupportedLayersAndUsesDefaultLimit(t *testing.T) {
+	retriever, store := newTestRetriever(t)
+	retriever = NewContextRetriever(store, 0, zap.NewNop().Sugar())
+
+	provider := &mockInquiryProvider{items: []ContextItem{{Layer: LayerPendingInquiries, Key: "inq-1", Content: "Ask a focused question."}}}
+	retriever.WithInquiryProvider(provider)
+
+	result, err := retriever.Retrieve(context.Background(), RetrievalRequest{
+		Query:      "focused question",
+		SessionKey: "session-default-limit",
+		Layers:     []ContextLayer{ContextLayer(999), LayerPendingInquiries},
+	})
+	if err != nil {
+		t.Fatalf("Retrieve: %v", err)
+	}
+	if result.TotalItems != 1 {
+		t.Fatalf("expected unsupported layer to be ignored while inquiries return, got %#v", result.Items)
+	}
+	if provider.limit != 5 {
+		t.Fatalf("expected constructor default maxPerLayer 5, got %d", provider.limit)
+	}
+}
+
+func TestExtractKeywordsSanitizesAndCapsSearchTerms(t *testing.T) {
+	long := strings.Repeat("a", _maxKeywordLength+10)
+	got := extractKeywords("go!!! c++ " + long + " alpha_beta alpha-beta final extra")
+	want := []string{"go", strings.Repeat("a", _maxKeywordLength), "alpha_beta", "alpha-beta", "final"}
+	if len(got) != len(want) {
+		t.Fatalf("expected %d keywords %v, got %d keywords %v", len(want), want, len(got), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("keyword[%d]: expected %q, got %q", i, want[i], got[i])
+		}
+	}
 }
 
 func TestAssemblePrompt_WithToolsAndRuntime(t *testing.T) {
