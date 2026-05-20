@@ -247,6 +247,197 @@ func TestMigrateToEnvelope_RejectsInvalidLegacySaltBeforeWritingEnvelope(t *test
 	}
 }
 
+func TestMigrateToEnvelope_ReturnsErrorWhenEnvelopePathCannotBeCreated(t *testing.T) {
+	dir := t.TempDir()
+	langoDir := filepath.Join(dir, "not-a-directory")
+	if err := os.WriteFile(langoDir, []byte("occupied"), 0o600); err != nil {
+		t.Fatalf("write occupied path: %v", err)
+	}
+
+	env, mk, err := MigrateToEnvelope(
+		context.Background(), nil, nil, langoDir,
+		"passphrase", []byte("legacy-salt16bts"), nil, false,
+	)
+	if err == nil {
+		t.Fatal("expected envelope persistence error")
+	}
+	if env != nil {
+		t.Fatalf("expected nil envelope, got %+v", env)
+	}
+	if mk != nil {
+		t.Fatalf("expected nil master key, got %d bytes", len(mk))
+	}
+	if !strings.Contains(err.Error(), "persist envelope") {
+		t.Fatalf("expected persist envelope error, got %v", err)
+	}
+}
+
+func TestMigrateToEnvelope_ReturnsBackupErrorWithPendingEnvelopeWhenDatabaseIsClosed(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "test.db")
+	passphrase := "migration-backup-pass"
+
+	client, db := setupLegacyDB(t, dbPath, passphrase)
+	defer client.Close()
+
+	store := NewSecurityConfigStore(db)
+	salt, err := store.LoadSalt()
+	if err != nil {
+		t.Fatalf("load salt: %v", err)
+	}
+	checksum, err := store.LoadChecksum()
+	if err != nil {
+		t.Fatalf("load checksum: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close db: %v", err)
+	}
+
+	env, mk, err := MigrateToEnvelope(
+		context.Background(), db, client, dir,
+		passphrase, salt, checksum, false,
+	)
+	if err == nil {
+		t.Fatal("expected backup error for closed database")
+	}
+	if env != nil {
+		t.Fatalf("expected nil envelope on failed migration, got %+v", env)
+	}
+	if mk != nil {
+		t.Fatalf("expected nil master key on failed migration, got %d bytes", len(mk))
+	}
+	if !strings.Contains(err.Error(), "backup db") {
+		t.Fatalf("expected backup db error, got %v", err)
+	}
+	loaded, loadErr := LoadEnvelopeFile(dir)
+	if loadErr != nil {
+		t.Fatalf("load pending envelope: %v", loadErr)
+	}
+	if loaded == nil || !loaded.PendingMigration {
+		t.Fatalf("expected persisted pending migration envelope, got %+v", loaded)
+	}
+}
+
+func TestMigrateToEnvelope_ReturnsDecryptSecretErrorAndKeepsPendingEnvelope(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "test.db")
+	passphrase := "migration-secret-pass"
+
+	client, db := setupLegacyDB(t, dbPath, passphrase)
+	defer client.Close()
+
+	if _, err := db.Exec(`UPDATE secrets SET encrypted_value = ? WHERE name = ?`, []byte("bad"), "api-key"); err != nil {
+		t.Fatalf("corrupt secret ciphertext: %v", err)
+	}
+	store := NewSecurityConfigStore(db)
+	salt, err := store.LoadSalt()
+	if err != nil {
+		t.Fatalf("load salt: %v", err)
+	}
+	checksum, err := store.LoadChecksum()
+	if err != nil {
+		t.Fatalf("load checksum: %v", err)
+	}
+
+	env, mk, err := MigrateToEnvelope(
+		context.Background(), db, client, dir,
+		passphrase, salt, checksum, false,
+	)
+	if err == nil {
+		t.Fatal("expected decrypt secret error")
+	}
+	if env != nil {
+		t.Fatalf("expected nil envelope on failed migration, got %+v", env)
+	}
+	if mk != nil {
+		t.Fatalf("expected nil master key on failed migration, got %d bytes", len(mk))
+	}
+	if !strings.Contains(err.Error(), `decrypt secret "api-key"`) {
+		t.Fatalf("expected decrypt secret error, got %v", err)
+	}
+	loaded, loadErr := LoadEnvelopeFile(dir)
+	if loadErr != nil {
+		t.Fatalf("load pending envelope: %v", loadErr)
+	}
+	if loaded == nil || !loaded.PendingMigration {
+		t.Fatalf("expected persisted pending migration envelope, got %+v", loaded)
+	}
+}
+
+func TestMigrateToEnvelope_ReturnsDecryptProfileError(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "test.db")
+	passphrase := "migration-profile-pass"
+
+	client, db := setupLegacyDB(t, dbPath, passphrase)
+	defer client.Close()
+
+	if _, err := db.Exec(`UPDATE config_profiles SET encrypted_data = ? WHERE name = ?`, []byte("bad"), "default"); err != nil {
+		t.Fatalf("corrupt profile ciphertext: %v", err)
+	}
+	store := NewSecurityConfigStore(db)
+	salt, err := store.LoadSalt()
+	if err != nil {
+		t.Fatalf("load salt: %v", err)
+	}
+	checksum, err := store.LoadChecksum()
+	if err != nil {
+		t.Fatalf("load checksum: %v", err)
+	}
+
+	_, mk, err := MigrateToEnvelope(
+		context.Background(), db, client, dir,
+		passphrase, salt, checksum, false,
+	)
+	if mk != nil {
+		t.Fatalf("expected nil master key on failed migration, got %d bytes", len(mk))
+	}
+	if err == nil {
+		t.Fatal("expected decrypt profile error")
+	}
+	if !strings.Contains(err.Error(), `decrypt profile "default"`) {
+		t.Fatalf("expected decrypt profile error, got %v", err)
+	}
+}
+
+func TestMigrateToEnvelope_DBEncryptedClearsPendingRekey(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "test.db")
+	passphrase := "migration-rekey-pass"
+
+	client, db := setupLegacyDB(t, dbPath, passphrase)
+	defer client.Close()
+
+	store := NewSecurityConfigStore(db)
+	salt, err := store.LoadSalt()
+	if err != nil {
+		t.Fatalf("load salt: %v", err)
+	}
+	checksum, err := store.LoadChecksum()
+	if err != nil {
+		t.Fatalf("load checksum: %v", err)
+	}
+
+	env, mk, err := MigrateToEnvelope(
+		context.Background(), db, client, dir,
+		passphrase, salt, checksum, true,
+	)
+	if err != nil {
+		t.Fatalf("MigrateToEnvelope with dbEncrypted=true: %v", err)
+	}
+	defer ZeroBytes(mk)
+	if env.PendingMigration || env.PendingRekey {
+		t.Fatalf("pending flags should be clear after rekey migration: %+v", env)
+	}
+	loaded, err := LoadEnvelopeFile(dir)
+	if err != nil {
+		t.Fatalf("LoadEnvelopeFile: %v", err)
+	}
+	if loaded.PendingMigration || loaded.PendingRekey {
+		t.Fatalf("persisted pending flags should be clear after rekey migration: %+v", loaded)
+	}
+}
+
 func TestRetryMigration_LegacyData(t *testing.T) {
 	// RetryMigration is designed to be called by bootstrap when a previous
 	// migration crashed between envelope creation and TX commit. In that
@@ -298,6 +489,56 @@ func TestRetryMigration_RejectsInvalidLegacySaltBeforeOpeningTransaction(t *test
 	}
 	if !strings.Contains(err.Error(), "invalid legacy salt size") {
 		t.Fatalf("expected invalid salt error, got %v", err)
+	}
+}
+
+func TestRetryMigration_ReturnsTransactionErrorWhenClientIsClosed(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "test.db")
+	passphrase := "retry-closed-client-pass"
+
+	client, db := setupLegacyDB(t, dbPath, passphrase)
+	store := NewSecurityConfigStore(db)
+	salt, err := store.LoadSalt()
+	if err != nil {
+		t.Fatalf("load salt: %v", err)
+	}
+	if err := client.Close(); err != nil {
+		t.Fatalf("close client: %v", err)
+	}
+
+	err = RetryMigration(context.Background(), client, make([]byte, KeySize), passphrase, salt)
+	if err == nil {
+		t.Fatal("expected transaction start error")
+	}
+	if !strings.Contains(err.Error(), "start tx") {
+		t.Fatalf("expected start tx error, got %v", err)
+	}
+}
+
+func TestRetryMigration_ReturnsReencryptSecretErrorForInvalidMasterKey(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "test.db")
+	passphrase := "retry-invalid-mk-pass"
+
+	client, db := setupLegacyDB(t, dbPath, passphrase)
+	defer client.Close()
+
+	store := NewSecurityConfigStore(db)
+	salt, err := store.LoadSalt()
+	if err != nil {
+		t.Fatalf("load salt: %v", err)
+	}
+
+	err = RetryMigration(context.Background(), client, make([]byte, KeySize-1), passphrase, salt)
+	if err == nil {
+		t.Fatal("expected re-encrypt secret error")
+	}
+	if !strings.Contains(err.Error(), `re-encrypt secret "api-key"`) {
+		t.Fatalf("expected re-encrypt secret error, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "new cipher") {
+		t.Fatalf("expected new cipher cause, got %v", err)
 	}
 }
 

@@ -595,3 +595,9 @@
 - [x] 75.2 Add focused tests for deterministic `internal/cli/cockpit/missioncontrol_projector.go` status, time, and active-agent summary residual branches using local data only
 - [x] 75.3 Run subagent-driven development and review checkpoints for the batch
 - [x] 75.4 Prepare the batch for a separate scoped commit
+
+## 76. Coverage Batch: Security Migration Residuals
+
+- [x] 76.1 Add focused tests for deterministic `internal/security/migrate_envelope.go` envelope persistence, backup, decrypt, rekey, transaction, and invalid master-key residual branches using temp SQLite only
+- [x] 76.2 Run subagent-driven development and review checkpoints for the batch
+- [x] 76.3 Prepare the batch for a separate scoped commit
