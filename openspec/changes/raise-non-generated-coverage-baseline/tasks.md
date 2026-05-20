@@ -546,3 +546,10 @@
 - [x] 68.1 Add focused tests for deterministic `internal/app/wiring_knowledge.go` FTS5 table creation and bulk-insert error branches using temp SQLite only
 - [x] 68.2 Run subagent-driven review checkpoints for the batch
 - [x] 68.3 Commit the batch separately
+
+## 69. Coverage Batch: Smart Account Policy Helper Residuals
+
+- [x] 69.1 Add a minimal test seam for deterministic `internal/cli/smartaccount/policy.go` helper branches without live RPC, wallet, or bootstrap services
+- [x] 69.2 Add focused tests for policy show/set helper success, error, and policy mutation branches using local fakes only
+- [x] 69.3 Run subagent-driven review checkpoints for the batch
+- [x] 69.4 Commit the batch separately

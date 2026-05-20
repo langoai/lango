@@ -36,7 +36,7 @@ var loadPolicyShowInfo = func(bootLoader BootLoader) (policyShowInfo, func(), er
 		return policyShowInfo{}, nil, fmt.Errorf("bootstrap: %w", err)
 	}
 
-	deps, err := initSmartAccountDeps(boot)
+	deps, err := initSmartAccountPolicyDeps(boot)
 	if err != nil {
 		boot.Close()
 		return policyShowInfo{}, nil, err
@@ -93,7 +93,7 @@ var updatePolicyLimits = func(bootLoader BootLoader, maxTx, daily, monthly strin
 		return policySetResult{}, nil, fmt.Errorf("bootstrap: %w", err)
 	}
 
-	deps, err := initSmartAccountDeps(boot)
+	deps, err := initSmartAccountPolicyDeps(boot)
 	if err != nil {
 		boot.Close()
 		return policySetResult{}, nil, err
@@ -142,6 +142,8 @@ var updatePolicyLimits = func(bootLoader BootLoader, maxTx, daily, monthly strin
 		boot.Close()
 	}, nil
 }
+
+var initSmartAccountPolicyDeps = initSmartAccountDeps
 
 func policyCmd(bootLoader BootLoader) *cobra.Command {
 	cmd := &cobra.Command{
