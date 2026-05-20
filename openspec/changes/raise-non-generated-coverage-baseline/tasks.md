@@ -553,3 +553,10 @@
 - [x] 69.2 Add focused tests for policy show/set helper success, error, and policy mutation branches using local fakes only
 - [x] 69.3 Run subagent-driven review checkpoints for the batch
 - [x] 69.4 Commit the batch separately
+
+## 70. Coverage Batch: Receipt Settlement Evidence Residuals
+
+- [x] 70.1 Add focused tests for deterministic `internal/receipts/store.go` escrow refund failure, dispute hold success, and adjudication failure guard branches using in-memory stores only
+- [x] 70.2 Add focused tests for remaining escrow adjudication validation branches without external services
+- [x] 70.3 Run subagent-driven review checkpoints for the batch
+- [x] 70.4 Commit the batch separately

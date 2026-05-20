@@ -144,6 +144,258 @@ func TestEscrowDisputeHoldEvidenceCoversFallbackReasonAndFailureGuards(t *testin
 	}
 }
 
+func TestEscrowDisputeHoldSuccessRejectsInvalidEvidenceState(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	tests := []struct {
+		name string
+		run  func(*testing.T)
+	}{
+		{
+			name: "missing transaction",
+			run: func(t *testing.T) {
+				store, submission, _, escrowRef := receiptsEvidenceBranchFundedDisputeReady(t, ctx, "receipts-evidence-hold-success-missing-tx")
+				err := store.RecordEscrowDisputeHoldSuccess(ctx, EscrowDisputeHoldEvidenceRequest{
+					TransactionReceiptID: "missing-tx",
+					SubmissionReceiptID:  submission.SubmissionReceiptID,
+					EscrowReference:      escrowRef,
+				})
+				require.ErrorIs(t, err, ErrTransactionReceiptNotFound)
+			},
+		},
+		{
+			name: "missing submission",
+			run: func(t *testing.T) {
+				store, _, tx, escrowRef := receiptsEvidenceBranchFundedDisputeReady(t, ctx, "receipts-evidence-hold-success-missing-sub")
+				err := store.RecordEscrowDisputeHoldSuccess(ctx, EscrowDisputeHoldEvidenceRequest{
+					TransactionReceiptID: tx.TransactionReceiptID,
+					SubmissionReceiptID:  "missing-submission",
+					EscrowReference:      escrowRef,
+				})
+				require.ErrorIs(t, err, ErrSubmissionReceiptNotFound)
+			},
+		},
+		{
+			name: "foreign submission",
+			run: func(t *testing.T) {
+				store, _, tx, escrowRef := receiptsEvidenceBranchFundedDisputeReady(t, ctx, "receipts-evidence-hold-success-foreign")
+				foreignSubmission, _ := receiptsEvidenceBranchCreateSubmitted(t, store, ctx, "receipts-evidence-hold-success-foreign-other")
+				err := store.RecordEscrowDisputeHoldSuccess(ctx, EscrowDisputeHoldEvidenceRequest{
+					TransactionReceiptID: tx.TransactionReceiptID,
+					SubmissionReceiptID:  foreignSubmission.SubmissionReceiptID,
+					EscrowReference:      escrowRef,
+				})
+				require.ErrorIs(t, err, ErrSubmissionReceiptNotFound)
+			},
+		},
+		{
+			name: "non current submission",
+			run: func(t *testing.T) {
+				store := newTestStore(t)
+				first, _ := receiptsEvidenceBranchCreateSubmitted(t, store, ctx, "receipts-evidence-hold-success-non-current")
+				_, latest := receiptsEvidenceBranchCreateSubmitted(t, store, ctx, "receipts-evidence-hold-success-non-current")
+				err := store.RecordEscrowDisputeHoldSuccess(ctx, EscrowDisputeHoldEvidenceRequest{
+					TransactionReceiptID: latest.TransactionReceiptID,
+					SubmissionReceiptID:  first.SubmissionReceiptID,
+					EscrowReference:      "escrow-non-current",
+				})
+				require.ErrorIs(t, err, ErrInvalidSettlementProgressionState)
+			},
+		},
+		{
+			name: "wrong escrow status",
+			run: func(t *testing.T) {
+				store := newTestStore(t)
+				submission, tx := receiptsEvidenceBranchCreateSubmitted(t, store, ctx, "receipts-evidence-hold-success-wrong-escrow")
+				err := store.RecordEscrowDisputeHoldSuccess(ctx, EscrowDisputeHoldEvidenceRequest{
+					TransactionReceiptID: tx.TransactionReceiptID,
+					SubmissionReceiptID:  submission.SubmissionReceiptID,
+					EscrowReference:      "escrow-wrong-status",
+				})
+				require.ErrorIs(t, err, ErrInvalidSettlementProgressionState)
+			},
+		},
+		{
+			name: "wrong settlement status",
+			run: func(t *testing.T) {
+				store, submission, tx, escrowRef := receiptsEvidenceBranchFunded(t, ctx, "receipts-evidence-hold-success-wrong-settlement")
+				err := store.RecordEscrowDisputeHoldSuccess(ctx, EscrowDisputeHoldEvidenceRequest{
+					TransactionReceiptID: tx.TransactionReceiptID,
+					SubmissionReceiptID:  submission.SubmissionReceiptID,
+					EscrowReference:      escrowRef,
+				})
+				require.ErrorIs(t, err, ErrInvalidSettlementProgressionState)
+			},
+		},
+		{
+			name: "escrow reference mismatch",
+			run: func(t *testing.T) {
+				store, submission, tx, _ := receiptsEvidenceBranchFundedDisputeReady(t, ctx, "receipts-evidence-hold-success-ref-mismatch")
+				err := store.RecordEscrowDisputeHoldSuccess(ctx, EscrowDisputeHoldEvidenceRequest{
+					TransactionReceiptID: tx.TransactionReceiptID,
+					SubmissionReceiptID:  submission.SubmissionReceiptID,
+					EscrowReference:      "escrow-other",
+				})
+				require.ErrorIs(t, err, ErrInvalidSettlementProgressionState)
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, tt.run)
+	}
+}
+
+func TestEscrowRefundFailureCoversSuccessAndGuardBranches(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store, submission, tx, _ := receiptsEvidenceBranchFunded(t, ctx, "receipts-evidence-refund-failure-success")
+	reviewNeeded, err := store.ApplySettlementProgression(ctx, tx.TransactionReceiptID, SettlementProgressionReviewNeeded, SettlementProgressionReasonCodeReject, "review needed", "")
+	require.NoError(t, err)
+	err = store.RecordEscrowRefundFailure(ctx, SettlementFailureRequest{
+		TransactionReceiptID: reviewNeeded.TransactionReceiptID,
+		SubmissionReceiptID:  submission.SubmissionReceiptID,
+		Reason:               "refund execution reverted",
+	})
+	require.NoError(t, err)
+	last := store.events[submission.SubmissionReceiptID][len(store.events[submission.SubmissionReceiptID])-1]
+	assert.Equal(t, "escrow_refund", last.Source)
+	assert.Equal(t, "failed", last.Subtype)
+	assert.Equal(t, EventSettlementExecutionFailed, last.Type)
+
+	tests := []struct {
+		name string
+		run  func(*testing.T)
+	}{
+		{
+			name: "missing transaction",
+			run: func(t *testing.T) {
+				store, submission, _, _ := receiptsEvidenceBranchFunded(t, ctx, "receipts-evidence-refund-failure-missing-tx")
+				err := store.RecordEscrowRefundFailure(ctx, SettlementFailureRequest{
+					TransactionReceiptID: "missing-tx",
+					SubmissionReceiptID:  submission.SubmissionReceiptID,
+				})
+				require.ErrorIs(t, err, ErrTransactionReceiptNotFound)
+			},
+		},
+		{
+			name: "missing submission",
+			run: func(t *testing.T) {
+				store, _, tx, _ := receiptsEvidenceBranchFunded(t, ctx, "receipts-evidence-refund-failure-missing-sub")
+				err := store.RecordEscrowRefundFailure(ctx, SettlementFailureRequest{
+					TransactionReceiptID: tx.TransactionReceiptID,
+					SubmissionReceiptID:  "missing-submission",
+				})
+				require.ErrorIs(t, err, ErrSubmissionReceiptNotFound)
+			},
+		},
+		{
+			name: "foreign submission",
+			run: func(t *testing.T) {
+				store, _, tx, _ := receiptsEvidenceBranchFunded(t, ctx, "receipts-evidence-refund-failure-foreign")
+				foreignSubmission, _ := receiptsEvidenceBranchCreateSubmitted(t, store, ctx, "receipts-evidence-refund-failure-foreign-other")
+				err := store.RecordEscrowRefundFailure(ctx, SettlementFailureRequest{
+					TransactionReceiptID: tx.TransactionReceiptID,
+					SubmissionReceiptID:  foreignSubmission.SubmissionReceiptID,
+				})
+				require.ErrorIs(t, err, ErrSubmissionReceiptNotFound)
+			},
+		},
+		{
+			name: "non current submission",
+			run: func(t *testing.T) {
+				store := newTestStore(t)
+				first, _ := receiptsEvidenceBranchCreateSubmitted(t, store, ctx, "receipts-evidence-refund-failure-non-current")
+				_, latest := receiptsEvidenceBranchCreateSubmitted(t, store, ctx, "receipts-evidence-refund-failure-non-current")
+				err := store.RecordEscrowRefundFailure(ctx, SettlementFailureRequest{
+					TransactionReceiptID: latest.TransactionReceiptID,
+					SubmissionReceiptID:  first.SubmissionReceiptID,
+				})
+				require.ErrorIs(t, err, ErrInvalidSettlementProgressionState)
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, tt.run)
+	}
+}
+
+func TestEscrowAdjudicationResidualValidationBranches(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	t.Run("invalid outcome", func(t *testing.T) {
+		store, submission, tx, escrowRef := receiptsEvidenceBranchFundedDisputeReady(t, ctx, "receipts-evidence-adjudication-invalid-outcome")
+		err := store.RecordEscrowDisputeHoldSuccess(ctx, EscrowDisputeHoldEvidenceRequest{
+			TransactionReceiptID: tx.TransactionReceiptID,
+			SubmissionReceiptID:  submission.SubmissionReceiptID,
+			EscrowReference:      escrowRef,
+		})
+		require.NoError(t, err)
+		_, err = store.ApplyEscrowAdjudication(ctx, EscrowAdjudicationRequest{
+			TransactionReceiptID: tx.TransactionReceiptID,
+			SubmissionReceiptID:  submission.SubmissionReceiptID,
+			EscrowReference:      escrowRef,
+			Outcome:              EscrowAdjudicationDecision("split"),
+		})
+		require.ErrorIs(t, err, ErrInvalidSettlementProgressionState)
+	})
+
+	t.Run("failure missing transaction", func(t *testing.T) {
+		store, submission, _, escrowRef := receiptsEvidenceBranchFundedDisputeReady(t, ctx, "receipts-evidence-adjudication-failure-missing-tx")
+		err := store.RecordEscrowAdjudicationFailure(ctx, EscrowAdjudicationFailureRequest{
+			TransactionReceiptID: "missing-tx",
+			SubmissionReceiptID:  submission.SubmissionReceiptID,
+			EscrowReference:      escrowRef,
+		})
+		require.ErrorIs(t, err, ErrTransactionReceiptNotFound)
+	})
+
+	t.Run("failure missing submission", func(t *testing.T) {
+		store, _, tx, escrowRef := receiptsEvidenceBranchFundedDisputeReady(t, ctx, "receipts-evidence-adjudication-failure-missing-sub")
+		err := store.RecordEscrowAdjudicationFailure(ctx, EscrowAdjudicationFailureRequest{
+			TransactionReceiptID: tx.TransactionReceiptID,
+			SubmissionReceiptID:  "missing-submission",
+			EscrowReference:      escrowRef,
+		})
+		require.ErrorIs(t, err, ErrSubmissionReceiptNotFound)
+	})
+
+	t.Run("failure foreign submission", func(t *testing.T) {
+		store, _, tx, escrowRef := receiptsEvidenceBranchFundedDisputeReady(t, ctx, "receipts-evidence-adjudication-failure-foreign")
+		foreignSubmission, _ := receiptsEvidenceBranchCreateSubmitted(t, store, ctx, "receipts-evidence-adjudication-failure-foreign-other")
+		err := store.RecordEscrowAdjudicationFailure(ctx, EscrowAdjudicationFailureRequest{
+			TransactionReceiptID: tx.TransactionReceiptID,
+			SubmissionReceiptID:  foreignSubmission.SubmissionReceiptID,
+			EscrowReference:      escrowRef,
+		})
+		require.ErrorIs(t, err, ErrSubmissionReceiptNotFound)
+	})
+
+	t.Run("failure non current submission", func(t *testing.T) {
+		store := newTestStore(t)
+		first, _ := receiptsEvidenceBranchCreateSubmitted(t, store, ctx, "receipts-evidence-adjudication-failure-non-current")
+		_, latest := receiptsEvidenceBranchCreateSubmitted(t, store, ctx, "receipts-evidence-adjudication-failure-non-current")
+		err := store.RecordEscrowAdjudicationFailure(ctx, EscrowAdjudicationFailureRequest{
+			TransactionReceiptID: latest.TransactionReceiptID,
+			SubmissionReceiptID:  first.SubmissionReceiptID,
+			EscrowReference:      "escrow-non-current",
+		})
+		require.ErrorIs(t, err, ErrInvalidSettlementProgressionState)
+	})
+
+	t.Run("failure escrow reference mismatch", func(t *testing.T) {
+		store, submission, tx, escrowRef := receiptsEvidenceBranchFundedDisputeReady(t, ctx, "receipts-evidence-adjudication-failure-ref-mismatch")
+		err := store.RecordEscrowAdjudicationFailure(ctx, EscrowAdjudicationFailureRequest{
+			TransactionReceiptID: tx.TransactionReceiptID,
+			SubmissionReceiptID:  submission.SubmissionReceiptID,
+			EscrowReference:      escrowRef + "-other",
+		})
+		require.ErrorIs(t, err, ErrInvalidSettlementProgressionState)
+	})
+}
+
 func TestPartialSettlementEvidenceGuardsAndEvents(t *testing.T) {
 	t.Parallel()
 
