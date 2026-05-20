@@ -9,11 +9,11 @@ import (
 )
 
 const (
-	timingLogDir      = "diagnostics"
-	timingLogFile     = "bootstrap-timing.jsonl"
-	maxTimingEntries  = 50
-	timingFilePerm    = 0o644
-	timingDirPerm     = 0o755
+	timingLogDir     = "diagnostics"
+	timingLogFile    = "bootstrap-timing.jsonl"
+	maxTimingEntries = 50
+	timingFilePerm   = 0o644
+	timingDirPerm    = 0o755
 )
 
 type TimingLogEntry struct {

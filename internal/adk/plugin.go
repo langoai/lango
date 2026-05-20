@@ -282,7 +282,9 @@ func mapKeys(m map[string]any) []string {
 
 // Ensure callback type compatibility at compile time.
 var (
-	_ llmagent.BeforeToolCallback  = func(tool.Context, tool.Tool, map[string]any) (map[string]any, error) { return nil, nil }
-	_ llmagent.AfterToolCallback   = func(tool.Context, tool.Tool, map[string]any, map[string]any, error) (map[string]any, error) { return nil, nil }
+	_ llmagent.BeforeToolCallback = func(tool.Context, tool.Tool, map[string]any) (map[string]any, error) { return nil, nil }
+	_ llmagent.AfterToolCallback  = func(tool.Context, tool.Tool, map[string]any, map[string]any, error) (map[string]any, error) {
+		return nil, nil
+	}
 	_ llmagent.OnToolErrorCallback = func(tool.Context, tool.Tool, map[string]any, error) (map[string]any, error) { return nil, nil }
 )

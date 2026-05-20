@@ -520,10 +520,10 @@ type traceRecorder struct {
 	onThinking      func(agentName string, started bool, summary string)
 	delegationCount int
 	delegationMax   int
-	toolStartedAt   map[string]time.Time    // callID → start time for duration calculation
-	inThinking      bool                    // tracks thinking state for boundary detection
-	thinkingStart   time.Time               // when thinking phase started
-	thinkingText    strings.Builder         // accumulates thought text across chunks
+	toolStartedAt   map[string]time.Time // callID → start time for duration calculation
+	inThinking      bool                 // tracks thinking state for boundary detection
+	thinkingStart   time.Time            // when thinking phase started
+	thinkingText    strings.Builder      // accumulates thought text across chunks
 }
 
 func newTraceRecorder(parentCtx context.Context, store turntrace.Store, traceID string, delegationMax int) *traceRecorder {

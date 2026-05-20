@@ -41,22 +41,22 @@ func (v Verdict) String() string {
 type ReasonCode string
 
 const (
-	ReasonNone            ReasonCode = ""
-	ReasonKillVerb        ReasonCode = "kill_verb"
-	ReasonProtectedPath   ReasonCode = "protected_path"
-	ReasonLangoCLI        ReasonCode = "lango_cli"
-	ReasonSkillImport     ReasonCode = "skill_import"
-	ReasonCmdSubstitution ReasonCode = "cmd_substitution"
-	ReasonUnsafeVarExpand ReasonCode = "unsafe_var_expansion"
-	ReasonEvalVerb        ReasonCode = "eval_verb"
-	ReasonEncodedPipe          ReasonCode = "encoded_pipe"
-	ReasonCatastrophicPattern  ReasonCode = "catastrophic_pattern"
-	ReasonHeredoc              ReasonCode = "heredoc"
-	ReasonProcessSubst         ReasonCode = "process_substitution"
-	ReasonGroupedSubshell      ReasonCode = "grouped_subshell"
-	ReasonShellFunction        ReasonCode = "shell_function"
-	ReasonXargsInner           ReasonCode = "xargs_inner"
-	ReasonFindExecInner        ReasonCode = "find_exec_inner"
+	ReasonNone                ReasonCode = ""
+	ReasonKillVerb            ReasonCode = "kill_verb"
+	ReasonProtectedPath       ReasonCode = "protected_path"
+	ReasonLangoCLI            ReasonCode = "lango_cli"
+	ReasonSkillImport         ReasonCode = "skill_import"
+	ReasonCmdSubstitution     ReasonCode = "cmd_substitution"
+	ReasonUnsafeVarExpand     ReasonCode = "unsafe_var_expansion"
+	ReasonEvalVerb            ReasonCode = "eval_verb"
+	ReasonEncodedPipe         ReasonCode = "encoded_pipe"
+	ReasonCatastrophicPattern ReasonCode = "catastrophic_pattern"
+	ReasonHeredoc             ReasonCode = "heredoc"
+	ReasonProcessSubst        ReasonCode = "process_substitution"
+	ReasonGroupedSubshell     ReasonCode = "grouped_subshell"
+	ReasonShellFunction       ReasonCode = "shell_function"
+	ReasonXargsInner          ReasonCode = "xargs_inner"
+	ReasonFindExecInner       ReasonCode = "find_exec_inner"
 )
 
 // PolicyDecision is the structured result of evaluating a command.
@@ -83,10 +83,10 @@ type EventPublisher interface {
 // PolicyEvaluator performs structured command policy evaluation with
 // shell wrapper unwrapping and opaque pattern detection.
 type PolicyEvaluator struct {
-	guard               *CommandGuard
-	langoClassifier     func(cmd string) (message string, reason ReasonCode)
-	bus                 EventPublisher // nil = no event publishing
-	safeVars            map[string]struct{}
+	guard                *CommandGuard
+	langoClassifier      func(cmd string) (message string, reason ReasonCode)
+	bus                  EventPublisher // nil = no event publishing
+	safeVars             map[string]struct{}
 	catastrophicPatterns []string // pre-lowercased, deduped
 }
 

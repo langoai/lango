@@ -52,7 +52,7 @@ func BuildTools(secretsStore *security.SecretsStore, refs *security.RefStore, sc
 				ConcurrencySafe: true,
 			},
 			Parameters: agent.Schema().Build(),
-			Handler:     st.List,
+			Handler:    st.List,
 		},
 		{
 			Name:        "secrets_delete",

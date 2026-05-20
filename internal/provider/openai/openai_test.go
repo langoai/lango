@@ -103,9 +103,9 @@ func TestCanUseStrictMode(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		give string
+		give   string
 		params map[string]interface{}
-		want bool
+		want   bool
 	}{
 		{
 			give: "all properties required with additionalProperties false",
@@ -156,9 +156,9 @@ func TestCanUseStrictMode(t *testing.T) {
 			want: false,
 		},
 		{
-			give: "nil params",
+			give:   "nil params",
 			params: nil,
-			want: false,
+			want:   false,
 		},
 		{
 			give: "no properties with additionalProperties false",

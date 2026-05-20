@@ -60,9 +60,9 @@ func TestFormatUSDC(t *testing.T) {
 
 func TestFloatToMicroUSDC(t *testing.T) {
 	tests := []struct {
-		give string
+		give  string
 		giveF float64
-		want int64
+		want  int64
 	}{
 		{give: "1.0", giveF: 1.0, want: 1_000_000},
 		{give: "0.5", giveF: 0.5, want: 500_000},

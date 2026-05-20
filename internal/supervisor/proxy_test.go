@@ -12,8 +12,8 @@ import (
 
 // mockProvider records calls and returns pre-configured results.
 type mockProvider struct {
-	id        string
-	calls     []mockCall
+	id         string
+	calls      []mockCall
 	generateFn func(ctx context.Context, params provider.GenerateParams) (iter.Seq2[provider.StreamEvent, error], error)
 }
 

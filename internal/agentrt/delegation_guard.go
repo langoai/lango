@@ -12,7 +12,7 @@ import (
 type CircuitState int
 
 const (
-	CircuitClosed   CircuitState = iota + 1
+	CircuitClosed CircuitState = iota + 1
 	CircuitOpen
 	CircuitHalfOpen
 )

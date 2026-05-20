@@ -23,11 +23,11 @@ type SuggestionEmitter struct {
 	dedupWindow    time.Duration
 	now            func() time.Time
 
-	mu             sync.Mutex
-	turnCounters   map[string]int       // sessionKey -> turns since last emit
-	recentHashes   map[string]time.Time // pattern hash -> last emit time
-	dismissed      map[string]time.Time // pattern hash -> dismissal time (also serves as negative dedup)
-	driftCounters  map[string]driftEntry // "toolName:errorClass" -> count + first seen
+	mu            sync.Mutex
+	turnCounters  map[string]int        // sessionKey -> turns since last emit
+	recentHashes  map[string]time.Time  // pattern hash -> last emit time
+	dismissed     map[string]time.Time  // pattern hash -> dismissal time (also serves as negative dedup)
+	driftCounters map[string]driftEntry // "toolName:errorClass" -> count + first seen
 }
 
 type driftEntry struct {

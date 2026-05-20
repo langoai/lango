@@ -36,9 +36,9 @@ func TestFSM_InvalidTransitions(t *testing.T) {
 		from SchemaStatus
 		to   SchemaStatus
 	}{
-		{SchemaProposed, SchemaActive},    // must go through shadow
-		{SchemaActive, SchemaProposed},    // can't un-activate
-		{SchemaDeprecated, SchemaActive},  // deprecated is terminal
+		{SchemaProposed, SchemaActive},   // must go through shadow
+		{SchemaActive, SchemaProposed},   // can't un-activate
+		{SchemaDeprecated, SchemaActive}, // deprecated is terminal
 		{SchemaDeprecated, SchemaProposed},
 		{SchemaShadow, SchemaProposed},    // must go through quarantined
 		{SchemaQuarantined, SchemaActive}, // must re-propose first

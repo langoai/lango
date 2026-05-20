@@ -231,10 +231,10 @@ func TestFetch_P2PContextBlocksPrivateURL(t *testing.T) {
 
 func TestExtractText_Readability(t *testing.T) {
 	tests := []struct {
-		give       string
-		wantTitle  string
-		wantIn     []string
-		wantNotIn  []string
+		give      string
+		wantTitle string
+		wantIn    []string
+		wantNotIn []string
 	}{
 		{
 			give: `<html><head><title>T</title></head><body>

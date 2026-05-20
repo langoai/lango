@@ -40,31 +40,31 @@ func buildIntegrationCatalog() *Catalog {
 			Capability: agent.ToolCapability{
 				Aliases: []string{"cat", "read"}, Category: "filesystem",
 				SearchHints: []string{"file", "content", "open"},
-				Exposure: agent.ExposureDefault, ReadOnly: true, Activity: agent.ActivityRead,
+				Exposure:    agent.ExposureDefault, ReadOnly: true, Activity: agent.ActivityRead,
 			}, Handler: echoHandler("fs_read")},
 		{Name: "fs_write", Description: "write content to a file", SafetyLevel: agent.SafetyLevelDangerous,
 			Capability: agent.ToolCapability{
 				Aliases: []string{"write", "save"}, Category: "filesystem",
 				SearchHints: []string{"file", "create", "modify"},
-				Exposure: agent.ExposureDefault, Activity: agent.ActivityWrite,
+				Exposure:    agent.ExposureDefault, Activity: agent.ActivityWrite,
 			}, Handler: echoHandler("fs_write")},
 		{Name: "fs_list", Description: "list files in a directory", SafetyLevel: agent.SafetyLevelSafe,
 			Capability: agent.ToolCapability{
 				Aliases: []string{"ls", "dir"}, Category: "filesystem",
 				SearchHints: []string{"directory", "listing", "folder"},
-				Exposure: agent.ExposureDeferred, ReadOnly: true, Activity: agent.ActivityRead,
+				Exposure:    agent.ExposureDeferred, ReadOnly: true, Activity: agent.ActivityRead,
 			}, Handler: echoHandler("fs_list")},
 		{Name: "fs_edit", Description: "edit a file in place", SafetyLevel: agent.SafetyLevelDangerous,
 			Capability: agent.ToolCapability{
 				Aliases: []string{"edit", "sed"}, Category: "filesystem",
 				SearchHints: []string{"modify", "replace", "patch"},
-				Exposure: agent.ExposureDeferred, Activity: agent.ActivityWrite,
+				Exposure:    agent.ExposureDeferred, Activity: agent.ActivityWrite,
 			}, Handler: echoHandler("fs_edit")},
 		{Name: "fs_delete", Description: "delete a file or directory", SafetyLevel: agent.SafetyLevelDangerous,
 			Capability: agent.ToolCapability{
 				Aliases: []string{"rm", "remove"}, Category: "filesystem",
 				SearchHints: []string{"delete", "unlink"},
-				Exposure: agent.ExposureDeferred, Activity: agent.ActivityWrite,
+				Exposure:    agent.ExposureDeferred, Activity: agent.ActivityWrite,
 			}, Handler: echoHandler("fs_delete")},
 	})
 
@@ -74,25 +74,25 @@ func buildIntegrationCatalog() *Catalog {
 			Capability: agent.ToolCapability{
 				Aliases: []string{"shell", "bash", "sh"}, Category: "execution",
 				SearchHints: []string{"command", "terminal", "run"},
-				Exposure: agent.ExposureDefault, Activity: agent.ActivityExecute,
+				Exposure:    agent.ExposureDefault, Activity: agent.ActivityExecute,
 			}, Handler: echoHandler("exec_shell")},
 		{Name: "exec_bg", Description: "run a command in background", SafetyLevel: agent.SafetyLevelDangerous,
 			Capability: agent.ToolCapability{
 				Aliases: []string{"background"}, Category: "execution",
 				SearchHints: []string{"async", "background", "detach"},
-				Exposure: agent.ExposureDeferred, Activity: agent.ActivityExecute,
+				Exposure:    agent.ExposureDeferred, Activity: agent.ActivityExecute,
 			}, Handler: echoHandler("exec_bg")},
 		{Name: "exec_status", Description: "check status of a background job", SafetyLevel: agent.SafetyLevelSafe,
 			Capability: agent.ToolCapability{
 				Aliases: []string{"jobs", "status"}, Category: "execution",
 				SearchHints: []string{"job", "process", "running"},
-				Exposure: agent.ExposureDeferred, ReadOnly: true, Activity: agent.ActivityQuery,
+				Exposure:    agent.ExposureDeferred, ReadOnly: true, Activity: agent.ActivityQuery,
 			}, Handler: echoHandler("exec_status")},
 		{Name: "exec_stop", Description: "stop a background job", SafetyLevel: agent.SafetyLevelDangerous,
 			Capability: agent.ToolCapability{
 				Aliases: []string{"kill", "stop"}, Category: "execution",
 				SearchHints: []string{"terminate", "cancel"},
-				Exposure: agent.ExposureDeferred, Activity: agent.ActivityManage,
+				Exposure:    agent.ExposureDeferred, Activity: agent.ActivityManage,
 			}, Handler: echoHandler("exec_stop")},
 	})
 
@@ -102,19 +102,19 @@ func buildIntegrationCatalog() *Catalog {
 			Capability: agent.ToolCapability{
 				Aliases: []string{"goto", "open_url"}, Category: "web",
 				SearchHints: []string{"url", "page", "navigate", "browse"},
-				Exposure: agent.ExposureDefault, Activity: agent.ActivityRead,
+				Exposure:    agent.ExposureDefault, Activity: agent.ActivityRead,
 			}, Handler: echoHandler("browser_navigate")},
 		{Name: "browser_screenshot", Description: "capture a screenshot", SafetyLevel: agent.SafetyLevelSafe,
 			Capability: agent.ToolCapability{
 				Aliases: []string{"screenshot", "capture"}, Category: "web",
 				SearchHints: []string{"image", "screen", "visual"},
-				Exposure: agent.ExposureDefault, ReadOnly: true, Activity: agent.ActivityRead,
+				Exposure:    agent.ExposureDefault, ReadOnly: true, Activity: agent.ActivityRead,
 			}, Handler: echoHandler("browser_screenshot")},
 		{Name: "browser_action", Description: "perform a browser action (click, type, etc.)", SafetyLevel: agent.SafetyLevelDangerous,
 			Capability: agent.ToolCapability{
 				Aliases: []string{"click", "type"}, Category: "web",
 				SearchHints: []string{"interact", "form", "button"},
-				Exposure: agent.ExposureDeferred, Activity: agent.ActivityExecute,
+				Exposure:    agent.ExposureDeferred, Activity: agent.ActivityExecute,
 			}, Handler: echoHandler("browser_action")},
 		{Name: "browser_internal_debug", Description: "internal browser debugging tool", SafetyLevel: agent.SafetyLevelSafe,
 			Capability: agent.ToolCapability{
@@ -128,25 +128,25 @@ func buildIntegrationCatalog() *Catalog {
 			Capability: agent.ToolCapability{
 				Aliases: []string{"hash", "digest"}, Category: "cryptography",
 				SearchHints: []string{"sha256", "md5", "checksum"},
-				Exposure: agent.ExposureDefault, ReadOnly: true, Activity: agent.ActivityRead,
+				Exposure:    agent.ExposureDefault, ReadOnly: true, Activity: agent.ActivityRead,
 			}, Handler: echoHandler("crypto_hash")},
 		{Name: "crypto_encrypt", Description: "encrypt data", SafetyLevel: agent.SafetyLevelDangerous,
 			Capability: agent.ToolCapability{
 				Aliases: []string{"encrypt"}, Category: "cryptography",
 				SearchHints: []string{"aes", "cipher", "protect"},
-				Exposure: agent.ExposureDeferred, Activity: agent.ActivityWrite,
+				Exposure:    agent.ExposureDeferred, Activity: agent.ActivityWrite,
 			}, Handler: echoHandler("crypto_encrypt")},
 		{Name: "crypto_sign", Description: "sign data with a private key", SafetyLevel: agent.SafetyLevelDangerous,
 			Capability: agent.ToolCapability{
 				Aliases: []string{"sign"}, Category: "cryptography",
 				SearchHints: []string{"signature", "verify", "key"},
-				Exposure: agent.ExposureDeferred, Activity: agent.ActivityWrite,
+				Exposure:    agent.ExposureDeferred, Activity: agent.ActivityWrite,
 			}, Handler: echoHandler("crypto_sign")},
 		{Name: "crypto_keys", Description: "list available keys", SafetyLevel: agent.SafetyLevelSafe,
 			Capability: agent.ToolCapability{
 				Aliases: []string{"keys", "keyring"}, Category: "cryptography",
 				SearchHints: []string{"keypair", "public", "private"},
-				Exposure: agent.ExposureDefault, ReadOnly: true, Activity: agent.ActivityQuery,
+				Exposure:    agent.ExposureDefault, ReadOnly: true, Activity: agent.ActivityQuery,
 			}, Handler: echoHandler("crypto_keys")},
 	})
 
@@ -156,25 +156,25 @@ func buildIntegrationCatalog() *Catalog {
 			Capability: agent.ToolCapability{
 				Aliases: []string{"search", "find"}, Category: "knowledge",
 				SearchHints: []string{"query", "lookup", "retrieve"},
-				Exposure: agent.ExposureDefault, ReadOnly: true, Activity: agent.ActivityQuery,
+				Exposure:    agent.ExposureDefault, ReadOnly: true, Activity: agent.ActivityQuery,
 			}, Handler: echoHandler("search_knowledge")},
 		{Name: "save_knowledge", Description: "save an item to the knowledge base", SafetyLevel: agent.SafetyLevelModerate,
 			Capability: agent.ToolCapability{
 				Aliases: []string{"remember", "store"}, Category: "knowledge",
 				SearchHints: []string{"persist", "memorize"},
-				Exposure: agent.ExposureDefault, Activity: agent.ActivityWrite,
+				Exposure:    agent.ExposureDefault, Activity: agent.ActivityWrite,
 			}, Handler: echoHandler("save_knowledge")},
 		{Name: "knowledge_graph_query", Description: "query the knowledge graph", SafetyLevel: agent.SafetyLevelSafe,
 			Capability: agent.ToolCapability{
 				Aliases: []string{"graph_query", "sparql"}, Category: "knowledge",
 				SearchHints: []string{"graph", "triple", "relation"},
-				Exposure: agent.ExposureDeferred, ReadOnly: true, Activity: agent.ActivityQuery,
+				Exposure:    agent.ExposureDeferred, ReadOnly: true, Activity: agent.ActivityQuery,
 			}, Handler: echoHandler("knowledge_graph_query")},
 		{Name: "knowledge_import", Description: "import knowledge from external source", SafetyLevel: agent.SafetyLevelModerate,
 			Capability: agent.ToolCapability{
 				Aliases: []string{"import"}, Category: "knowledge",
 				SearchHints: []string{"ingest", "load", "external"},
-				Exposure: agent.ExposureDeferred, Activity: agent.ActivityWrite,
+				Exposure:    agent.ExposureDeferred, Activity: agent.ActivityWrite,
 			}, Handler: echoHandler("knowledge_import")},
 	})
 

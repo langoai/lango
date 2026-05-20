@@ -38,9 +38,9 @@ var (
 
 // Semantic color aliases for state-driven rendering.
 var (
-	Danger    = Error     // destructive/high-risk operations
+	Danger    = Error                     // destructive/high-risk operations
 	Info      = lipgloss.Color("#3B82F6") // informational highlights
-	Selection = Accent    // user selection/focus indicator
+	Selection = Accent                    // user selection/focus indicator
 )
 
 // Sidebar width constants.

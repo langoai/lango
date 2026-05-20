@@ -105,7 +105,7 @@ func TestFormatDuration(t *testing.T) {
 func TestRelativeTime(t *testing.T) {
 	now := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
 	tests := []struct {
-		give string
+		give  string
 		giveT time.Time
 		want  string
 	}{

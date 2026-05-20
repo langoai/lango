@@ -60,7 +60,7 @@ func (e *GraphEngine) publishTriples(triples []graph.Triple) {
 	}
 	e.bus.Publish(eventbus.TriplesExtractedEvent{
 		Triples: ebTriples,
-		Source:   "learning",
+		Source:  "learning",
 	})
 }
 

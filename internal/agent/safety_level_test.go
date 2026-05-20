@@ -49,9 +49,9 @@ func TestSafetyLevel_IsDangerous(t *testing.T) {
 
 func TestParseSafetyLevel(t *testing.T) {
 	tests := []struct {
-		give     string
-		wantLvl  SafetyLevel
-		wantOK   bool
+		give    string
+		wantLvl SafetyLevel
+		wantOK  bool
 	}{
 		{give: "safe", wantLvl: SafetyLevelSafe, wantOK: true},
 		{give: "moderate", wantLvl: SafetyLevelModerate, wantOK: true},

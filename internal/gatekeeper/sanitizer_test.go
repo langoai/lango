@@ -110,12 +110,12 @@ func TestSanitizer_Enabled(t *testing.T) {
 
 func TestSanitizer_ChunkSanitization(t *testing.T) {
 	tests := []struct {
-		give     string
+		give      string
 		wantEmpty bool
-		want     string
+		want      string
 	}{
 		{
-			give: "<thought>entire chunk is internal</thought>",
+			give:      "<thought>entire chunk is internal</thought>",
 			wantEmpty: true,
 		},
 		{
@@ -123,7 +123,7 @@ func TestSanitizer_ChunkSanitization(t *testing.T) {
 			want: "visible text",
 		},
 		{
-			give: "[INTERNAL] debug line only",
+			give:      "[INTERNAL] debug line only",
 			wantEmpty: true,
 		},
 		{

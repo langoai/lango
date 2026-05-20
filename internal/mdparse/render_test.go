@@ -17,14 +17,18 @@ func TestRenderFrontmatter(t *testing.T) {
 		want     string
 	}{
 		{
-			give:     "simple struct",
-			giveMeta: struct{ Name string `yaml:"name"` }{Name: "hello"},
+			give: "simple struct",
+			giveMeta: struct {
+				Name string `yaml:"name"`
+			}{Name: "hello"},
 			giveBody: "Body text.\n",
 			want:     "---\nname: hello\n---\n\nBody text.\n",
 		},
 		{
-			give:     "empty body",
-			giveMeta: struct{ Name string `yaml:"name"` }{Name: "test"},
+			give: "empty body",
+			giveMeta: struct {
+				Name string `yaml:"name"`
+			}{Name: "test"},
 			giveBody: "",
 			want:     "---\nname: test\n---\n\n",
 		},
@@ -37,8 +41,10 @@ func TestRenderFrontmatter(t *testing.T) {
 			want:     "---\ntitle: doc\n---\n\n# Heading\n\nParagraph.\n",
 		},
 		{
-			give:     "body without trailing newline",
-			giveMeta: struct{ Key string `yaml:"key"` }{Key: "val"},
+			give: "body without trailing newline",
+			giveMeta: struct {
+				Key string `yaml:"key"`
+			}{Key: "val"},
 			giveBody: "no newline",
 			want:     "---\nkey: val\n---\n\nno newline",
 		},

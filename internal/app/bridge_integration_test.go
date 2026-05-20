@@ -18,7 +18,6 @@ import (
 	"github.com/langoai/lango/internal/p2p/team"
 )
 
-
 func bridgeTestLog() *zap.SugaredLogger { return zap.NewNop().Sugar() }
 
 // setupBridgeTestEnv creates an event bus, coordinator, escrow engine, and budget engine

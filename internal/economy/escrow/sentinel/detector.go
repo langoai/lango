@@ -53,7 +53,6 @@ func (wc *windowCounter) record(key string) int {
 	return len(pruned)
 }
 
-
 // RapidCreationDetector tracks creation timestamps per peer.
 // If more than Max deals from the same peer arrive in Window, it alerts.
 type RapidCreationDetector struct {

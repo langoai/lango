@@ -13,9 +13,9 @@ import (
 
 // CheckpointService manages checkpoint creation and lifecycle.
 type CheckpointService struct {
-	store       CheckpointStore
-	ledger      runledger.RunLedgerStore
-	cfg         config.CheckpointConfig
+	store  CheckpointStore
+	ledger runledger.RunLedgerStore
+	cfg    config.CheckpointConfig
 }
 
 // NewCheckpointService creates a new checkpoint service.

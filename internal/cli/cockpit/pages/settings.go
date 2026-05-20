@@ -9,8 +9,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/langoai/lango/internal/cli/settings"
 	"github.com/langoai/lango/internal/cli/cockpit/theme"
+	"github.com/langoai/lango/internal/cli/settings"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/storage"
 )
@@ -18,8 +18,8 @@ import (
 // SettingsPage embeds a settings.Editor in the cockpit.
 // Save operations use the OnSave callback instead of quitting.
 type SettingsPage struct {
-	editor           *settings.Editor
-	storeConfigured  bool
+	editor          *settings.Editor
+	storeConfigured bool
 }
 
 // NewSettingsPage creates a SettingsPage with an embedded Editor.

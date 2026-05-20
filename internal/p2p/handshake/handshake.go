@@ -119,7 +119,7 @@ type Handshaker struct {
 // Config configures the Handshaker.
 type Config struct {
 	Signer                 Signer
-	LegacySigner           Signer                        // v1 secp256k1 fallback (optional)
+	LegacySigner           Signer // v1 secp256k1 fallback (optional)
 	Sessions               *SessionStore
 	ApprovalFn             ApprovalFunc
 	ZKProver               ZKProverFunc
@@ -130,9 +130,9 @@ type Config struct {
 	NonceCache             *NonceCache
 	RequireSignedChallenge bool
 	Verifiers              map[string]SignatureVerifyFunc // nil → default with secp256k1 + ed25519
-	BundleCache            identity.BundleResolver       // optional: for caching received bundles
-	DIDAlias               *identity.DIDAlias            // optional: v1/v2 DID alias for session continuity
-	EnablePQKEM            bool                          // enable PQ KEM key exchange (default false)
+	BundleCache            identity.BundleResolver        // optional: for caching received bundles
+	DIDAlias               *identity.DIDAlias             // optional: v1/v2 DID alias for session continuity
+	EnablePQKEM            bool                           // enable PQ KEM key exchange (default false)
 	Logger                 *zap.SugaredLogger
 }
 
@@ -619,7 +619,6 @@ func (h *Handshaker) StreamHandlerV11() network.StreamHandler {
 		}
 	}
 }
-
 
 // validateChallengeTimestamp ensures the challenge timestamp is within the
 // acceptable window: not older than challengeTimestampWindow and not more

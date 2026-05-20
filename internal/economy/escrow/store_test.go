@@ -208,11 +208,11 @@ func TestStoreListByStatus(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		give       string
-		status     EscrowStatus
-		setup      func(Store)
-		wantLen    int
-		wantIDs    []string
+		give    string
+		status  EscrowStatus
+		setup   func(Store)
+		wantLen int
+		wantIDs []string
 	}{
 		{
 			give:   "filters pending only",
@@ -238,9 +238,9 @@ func TestStoreListByStatus(t *testing.T) {
 			wantLen: 1,
 		},
 		{
-			give:    "empty result when no match",
-			status:  StatusDisputed,
-			setup:   func(s Store) {
+			give:   "empty result when no match",
+			status: StatusDisputed,
+			setup: func(s Store) {
 				_ = s.Create(newTestEntry("e1", "did:buyer:1", "did:seller:1"))
 			},
 			wantLen: 0,

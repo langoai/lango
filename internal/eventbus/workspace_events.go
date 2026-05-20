@@ -4,13 +4,13 @@ import "time"
 
 // Event name constants for workspace domain events.
 const (
-	EventWorkspaceCreated         = "workspace.created"
-	EventWorkspaceMemberJoined    = "workspace.member.joined"
-	EventWorkspaceMemberLeft      = "workspace.member.left"
-	EventWorkspaceCommitReceived  = "workspace.commit.received"
-	EventWorkspaceMessagePosted   = "workspace.message.posted"
-	EventWorkspaceArchived        = "workspace.archived"
-	EventWorkspaceGitDivergence   = "workspace.git.divergence"
+	EventWorkspaceCreated        = "workspace.created"
+	EventWorkspaceMemberJoined   = "workspace.member.joined"
+	EventWorkspaceMemberLeft     = "workspace.member.left"
+	EventWorkspaceCommitReceived = "workspace.commit.received"
+	EventWorkspaceMessagePosted  = "workspace.message.posted"
+	EventWorkspaceArchived       = "workspace.archived"
+	EventWorkspaceGitDivergence  = "workspace.git.divergence"
 )
 
 // WorkspaceCreatedEvent is published when a new workspace is created.

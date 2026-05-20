@@ -77,9 +77,9 @@ func TestSplitGitRef(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
-		in        string
-		wantURL   string
-		wantRef   string
+		in      string
+		wantURL string
+		wantRef string
 	}{
 		{"https://example.com/x.git", "https://example.com/x.git", ""},
 		{"https://example.com/x.git#abc123", "https://example.com/x.git", "abc123"},
@@ -113,15 +113,15 @@ func TestLooksLikeSHA(t *testing.T) {
 		give string
 		want bool
 	}{
-		{"abc1234", true},         // 7 hex chars (minimum)
+		{"abc1234", true}, // 7 hex chars (minimum)
 		{"abc1234def5678901234567890abcdef12345678", true}, // 40 hex chars (full SHA)
-		{"abc123", false},         // too short (6)
+		{"abc123", false}, // too short (6)
 		{"abc1234def5678901234567890abcdef123456789", false}, // too long (41)
-		{"main", false},           // branch name
-		{"v1.0.0", false},         // tag with dots
-		{"ABCDEF1", false},        // uppercase hex
-		{"abc123g", false},        // non-hex char
-		{"", false},               // empty
+		{"main", false},    // branch name
+		{"v1.0.0", false},  // tag with dots
+		{"ABCDEF1", false}, // uppercase hex
+		{"abc123g", false}, // non-hex char
+		{"", false},        // empty
 	}
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {

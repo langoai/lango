@@ -287,10 +287,10 @@ func TestTruthMaintainer_FactsAt_Past(t *testing.T) {
 
 	// Assert with ValidFrom in the past.
 	_, err := svc.AssertFact(ctx, ontology.AssertionInput{
-		Triple:   graph.Triple{Subject: "node:1", Predicate: graph.RelatedTo, Object: "node:2"},
-		Source:   "manual",
+		Triple:     graph.Triple{Subject: "node:1", Predicate: graph.RelatedTo, Object: "node:2"},
+		Source:     "manual",
 		Confidence: 0.9,
-		ValidFrom: pastTime,
+		ValidFrom:  pastTime,
 	})
 	require.NoError(t, err)
 

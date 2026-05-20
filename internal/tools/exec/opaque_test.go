@@ -76,9 +76,9 @@ func TestExtractSingleCommandFromConstruct(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		give           string
-		wantInner      string
-		wantReason     ReasonCode
+		give            string
+		wantInner       string
+		wantReason      ReasonCode
 		wantExtractable bool
 	}{
 		// Subshell with single command → extractable.

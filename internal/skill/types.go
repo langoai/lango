@@ -59,8 +59,8 @@ type SkillEntry struct {
 	Status           SkillStatus
 	CreatedBy        string
 	RequiresApproval bool
-	Source           string   // import source URL (empty for locally created)
-	AllowedTools     []string // pre-approved tools (from "allowed-tools" frontmatter)
+	Source           string            // import source URL (empty for locally created)
+	AllowedTools     []string          // pre-approved tools (from "allowed-tools" frontmatter)
 	WhenToUse        string            // human-readable trigger description
 	Paths            []string          // file path glob patterns for auto-activation
 	Context          string            // additional context for the LLM

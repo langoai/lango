@@ -22,22 +22,22 @@ const TopicAgentCard = "/lango/agentcard/1.0.0"
 
 // GossipCard is an agent card propagated via GossipSub.
 type GossipCard struct {
-	Name               string          `json:"name"`
-	Description        string          `json:"description"`
-	DID                string          `json:"did,omitempty"`
-	Multiaddrs         []string        `json:"multiaddrs,omitempty"`
-	Capabilities       []string        `json:"capabilities,omitempty"`
-	Pricing            *PricingInfo    `json:"pricing,omitempty"`
-	ZKCredentials      []ZKCredential  `json:"zkCredentials,omitempty"`
-	OntologyDigest     *OntologyDigest `json:"ontologyDigest,omitempty"`
-	PeerID             string          `json:"peerId"`
-	Timestamp          time.Time       `json:"timestamp"`
-	Bundle             json.RawMessage `json:"bundle,omitempty"`             // v2: serialized IdentityBundle for DID resolution
-	Signature          []byte          `json:"signature,omitempty"`          // classical signature over canonical payload
-	SignatureAlgorithm string          `json:"signatureAlgorithm,omitempty"` // algorithm for classical signature
-	PQSignerPublicKey  []byte          `json:"pqSignerPublicKey,omitempty"`  // embedded ML-DSA-65 pubkey for rotation-safe PQ verification
-	PQSignature        []byte          `json:"pqSignature,omitempty"`        // ML-DSA-65 signature over canonical payload
-	PQSignatureAlgorithm string        `json:"pqSignatureAlgorithm,omitempty"`
+	Name                 string          `json:"name"`
+	Description          string          `json:"description"`
+	DID                  string          `json:"did,omitempty"`
+	Multiaddrs           []string        `json:"multiaddrs,omitempty"`
+	Capabilities         []string        `json:"capabilities,omitempty"`
+	Pricing              *PricingInfo    `json:"pricing,omitempty"`
+	ZKCredentials        []ZKCredential  `json:"zkCredentials,omitempty"`
+	OntologyDigest       *OntologyDigest `json:"ontologyDigest,omitempty"`
+	PeerID               string          `json:"peerId"`
+	Timestamp            time.Time       `json:"timestamp"`
+	Bundle               json.RawMessage `json:"bundle,omitempty"`             // v2: serialized IdentityBundle for DID resolution
+	Signature            []byte          `json:"signature,omitempty"`          // classical signature over canonical payload
+	SignatureAlgorithm   string          `json:"signatureAlgorithm,omitempty"` // algorithm for classical signature
+	PQSignerPublicKey    []byte          `json:"pqSignerPublicKey,omitempty"`  // embedded ML-DSA-65 pubkey for rotation-safe PQ verification
+	PQSignature          []byte          `json:"pqSignature,omitempty"`        // ML-DSA-65 signature over canonical payload
+	PQSignatureAlgorithm string          `json:"pqSignatureAlgorithm,omitempty"`
 }
 
 // PricingInfo describes the pricing for an agent's services.
@@ -155,16 +155,16 @@ const defaultMaxCredentialAge = 24 * time.Hour
 
 // GossipService manages agent card propagation via GossipSub.
 type GossipService struct {
-	host        host.Host
-	ps          *pubsub.PubSub
-	topic       *pubsub.Topic
-	sub         *pubsub.Subscription
-	localCard   *GossipCard
-	interval    time.Duration
-	verifier    ZKCredentialVerifier
+	host            host.Host
+	ps              *pubsub.PubSub
+	topic           *pubsub.Topic
+	sub             *pubsub.Subscription
+	localCard       *GossipCard
+	interval        time.Duration
+	verifier        ZKCredentialVerifier
 	cardSigner      CardSigner              // optional: for signing published cards
 	pqSigner        PQCardSigner            // optional: for PQ dual-signing
-	classicalVerify CardSignatureVerifyFunc  // optional: verify received card signatures
+	classicalVerify CardSignatureVerifyFunc // optional: verify received card signatures
 
 	mu     sync.RWMutex
 	peers  map[string]*GossipCard // keyed by DID
@@ -186,8 +186,8 @@ type GossipConfig struct {
 	LocalCard       *GossipCard
 	Interval        time.Duration
 	Verifier        ZKCredentialVerifier
-	CardSigner      CardSigner            // optional: sign published cards
-	PQCardSigner    PQCardSigner          // optional: PQ dual-sign
+	CardSigner      CardSigner              // optional: sign published cards
+	PQCardSigner    PQCardSigner            // optional: PQ dual-sign
 	ClassicalVerify CardSignatureVerifyFunc // optional: verify received card signatures
 	Logger          *zap.SugaredLogger
 }

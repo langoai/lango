@@ -112,4 +112,3 @@ func wireTeamBudgetBridge(ctx context.Context, bus *eventbus.Bus, budgetEngine *
 
 	log.Info("team-budget bridge wired")
 }
-

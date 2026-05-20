@@ -16,12 +16,12 @@ func BuildTools() []*agent.Tool {
 			Description: "Search the web for information. Returns structured search results without requiring a browser session.",
 			SafetyLevel: agent.SafetyLevelSafe,
 			Capability: agent.ToolCapability{
-				Category:    "web",
-				Aliases:     []string{"search_web", "internet_search"},
-				SearchHints: []string{"search", "find", "lookup", "web"},
-				ReadOnly:    true,
+				Category:        "web",
+				Aliases:         []string{"search_web", "internet_search"},
+				SearchHints:     []string{"search", "find", "lookup", "web"},
+				ReadOnly:        true,
 				ConcurrencySafe: true,
-				Activity:    agent.ActivityQuery,
+				Activity:        agent.ActivityQuery,
 			},
 			Parameters: agent.Schema().
 				Str("query", "The search query to run").

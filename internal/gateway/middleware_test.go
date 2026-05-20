@@ -50,8 +50,10 @@ func (m *mockStore) AnnotateTimeout(_ string, _ string) error        { return ni
 func (m *mockStore) End(_ string) error                              { return nil }
 func (m *mockStore) Close() error                                    { return nil }
 func (m *mockStore) GetSalt(_ string) ([]byte, error)                { return nil, nil }
-func (m *mockStore) SetSalt(_ string, _ []byte) error                              { return nil }
-func (m *mockStore) ListSessions(_ context.Context) ([]session.SessionSummary, error) { return nil, nil }
+func (m *mockStore) SetSalt(_ string, _ []byte) error                { return nil }
+func (m *mockStore) ListSessions(_ context.Context) ([]session.SessionSummary, error) {
+	return nil, nil
+}
 
 func TestRequireAuth_NilAuthPassesThrough(t *testing.T) {
 	t.Parallel()

@@ -28,12 +28,12 @@ func TestGolden_MessageRoundTrip(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name           string
-		giveEvents     []*session.Event
-		wantRoles      []string // expected Content.Role in restored events
-		wantTexts      []string // expected Text parts (empty string if none)
-		wantFuncCalls  []roundTripFuncCall
-		wantFuncResps  []roundTripFuncResp
+		name          string
+		giveEvents    []*session.Event
+		wantRoles     []string // expected Content.Role in restored events
+		wantTexts     []string // expected Text parts (empty string if none)
+		wantFuncCalls []roundTripFuncCall
+		wantFuncResps []roundTripFuncResp
 	}{
 		{
 			name: "FunctionCall round-trip preserves ID, Name, Args, Thought, ThoughtSignature",
@@ -61,11 +61,11 @@ func TestGolden_MessageRoundTrip(t *testing.T) {
 			wantTexts: []string{""},
 			wantFuncCalls: []roundTripFuncCall{
 				{
-					EventIdx: 0,
-					ID:       "call_abc123",
-					Name:     "execute_command",
-					Args:     map[string]any{"cmd": "ls -la", "timeout": float64(30)},
-					Thought:  true,
+					EventIdx:   0,
+					ID:         "call_abc123",
+					Name:       "execute_command",
+					Args:       map[string]any{"cmd": "ls -la", "timeout": float64(30)},
+					Thought:    true,
 					ThoughtSig: []byte("sig-opaque-bytes-xyz"),
 				},
 			},
@@ -348,7 +348,7 @@ func TestGolden_OrphanedToolResponse(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name      string
+		name       string
 		giveDeltas []*provider.ToolCall
 		wantParts  int
 	}{
@@ -364,12 +364,12 @@ func TestGolden_OrphanedToolResponse(t *testing.T) {
 			giveDeltas: []*provider.ToolCall{
 				{Arguments: `{"orphan":"true"}`}, // dropped
 				{ID: "call_1", Name: "exec"},     // valid start
-				{Arguments: `{"cmd":"ls"}`},       // appended to call_1
+				{Arguments: `{"cmd":"ls"}`},      // appended to call_1
 			},
 			wantParts: 1,
 		},
 		{
-			name: "nil tool call is safely ignored",
+			name:       "nil tool call is safely ignored",
 			giveDeltas: []*provider.ToolCall{nil},
 			wantParts:  0,
 		},
@@ -561,11 +561,11 @@ func TestGolden_ThoughtSignatureRoundTrip(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name             string
-		giveThought      bool
-		giveThoughtSig   []byte
-		wantThought      bool
-		wantThoughtSig   []byte
+		name           string
+		giveThought    bool
+		giveThoughtSig []byte
+		wantThought    bool
+		wantThoughtSig []byte
 	}{
 		{
 			name:           "binary thought signature preserved",
@@ -669,11 +669,11 @@ func TestGolden_FunctionResponseRoleCorrection(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name           string
-		giveRole       string // role as ADK sends it
-		giveParts      []*genai.Part
-		wantStoreRole  types.MessageRole // expected role in internal message
-		wantEventRole  string            // expected role in restored event
+		name          string
+		giveRole      string // role as ADK sends it
+		giveParts     []*genai.Part
+		wantStoreRole types.MessageRole // expected role in internal message
+		wantEventRole string            // expected role in restored event
 	}{
 		{
 			name:     "ADK sends role=user for FunctionResponse — corrected to tool on save, function on restore",

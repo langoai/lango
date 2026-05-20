@@ -26,7 +26,7 @@ func TestBundleProvider_Creation(t *testing.T) {
 	legacyProv := NewProvider(&mockKeyProvider{pubkey: walletPub}, testLogger())
 
 	bp, err := NewBundleProvider(BundleProviderConfig{
-		SigningKey:     priv,
+		SigningKey:    priv,
 		SettlementPub: walletPub,
 		LangoDir:      dir,
 		Legacy:        legacyProv,
@@ -70,7 +70,7 @@ func TestBundleProvider_LoadExisting(t *testing.T) {
 
 	// Create first.
 	bp1, err := NewBundleProvider(BundleProviderConfig{
-		SigningKey:     priv,
+		SigningKey:    priv,
 		SettlementPub: walletPub,
 		LangoDir:      dir,
 		Legacy:        legacyProv,
@@ -82,7 +82,7 @@ func TestBundleProvider_LoadExisting(t *testing.T) {
 
 	// Load again — should reuse existing.
 	bp2, err := NewBundleProvider(BundleProviderConfig{
-		SigningKey:     priv,
+		SigningKey:    priv,
 		SettlementPub: walletPub,
 		LangoDir:      dir,
 		Legacy:        legacyProv,
@@ -103,7 +103,7 @@ func TestBundleProvider_SignMessage(t *testing.T) {
 	pub := priv.Public().(ed25519.PublicKey)
 
 	bp, err := NewBundleProvider(BundleProviderConfig{
-		SigningKey:     priv,
+		SigningKey:    priv,
 		SettlementPub: make([]byte, 33),
 		Logger:        testLogger(),
 	})
@@ -123,7 +123,7 @@ func TestBundleProvider_Algorithm(t *testing.T) {
 	require.NoError(t, err)
 
 	bp, err := NewBundleProvider(BundleProviderConfig{
-		SigningKey:     priv,
+		SigningKey:    priv,
 		SettlementPub: make([]byte, 33),
 		Logger:        testLogger(),
 	})
@@ -145,7 +145,7 @@ func TestBundleProvider_LegacyDID(t *testing.T) {
 	legacyProv := NewProvider(&mockKeyProvider{pubkey: walletPub}, testLogger())
 
 	bp, err := NewBundleProvider(BundleProviderConfig{
-		SigningKey:     priv,
+		SigningKey:    priv,
 		SettlementPub: walletPub,
 		Legacy:        legacyProv,
 		Logger:        testLogger(),
@@ -165,7 +165,7 @@ func TestBundleProvider_DIDString(t *testing.T) {
 	require.NoError(t, err)
 
 	bp, err := NewBundleProvider(BundleProviderConfig{
-		SigningKey:     priv,
+		SigningKey:    priv,
 		SettlementPub: make([]byte, 33),
 		Logger:        testLogger(),
 	})

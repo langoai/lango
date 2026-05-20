@@ -21,8 +21,8 @@ const (
 // AssertionInput carries a triple plus provenance metadata for fact assertion.
 type AssertionInput struct {
 	Triple     graph.Triple
-	Source     string  // origin category (key in SourcePrecedence)
-	Confidence float64 // 0.0–1.0
+	Source     string    // origin category (key in SourcePrecedence)
+	Confidence float64   // 0.0–1.0
 	ValidFrom  time.Time // zero = now
 }
 

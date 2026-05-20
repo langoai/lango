@@ -18,14 +18,14 @@ var (
 	ErrNoEnvelopeFile  = errors.New("envelope file not found")
 
 	// KMS errors
-	ErrKMSUnavailable  = errors.New("KMS service unavailable")
-	ErrKMSAccessDenied = errors.New("KMS access denied")
-	ErrKMSKeyDisabled  = errors.New("KMS key is disabled")
-	ErrKMSThrottled    = errors.New("KMS request throttled")
-	ErrKMSInvalidKey   = errors.New("KMS invalid key")
-	ErrPKCS11Module    = errors.New("PKCS#11 module error")
-	ErrPKCS11Session       = errors.New("PKCS#11 session error")
-	ErrKMSSlotUnavailable  = errors.New("KMS KEK slot unavailable")
+	ErrKMSUnavailable     = errors.New("KMS service unavailable")
+	ErrKMSAccessDenied    = errors.New("KMS access denied")
+	ErrKMSKeyDisabled     = errors.New("KMS key is disabled")
+	ErrKMSThrottled       = errors.New("KMS request throttled")
+	ErrKMSInvalidKey      = errors.New("KMS invalid key")
+	ErrPKCS11Module       = errors.New("PKCS#11 module error")
+	ErrPKCS11Session      = errors.New("PKCS#11 session error")
+	ErrKMSSlotUnavailable = errors.New("KMS KEK slot unavailable")
 )
 
 // KMSError wraps a KMS operation error with context.

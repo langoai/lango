@@ -419,7 +419,7 @@ func (c *Client) call(
 // v0.7 splits composite fields:
 //   - initCode (≥20 bytes) → factory (20) + factoryData (rest)
 //   - paymasterAndData (≥52 bytes) → paymaster (20) + paymasterVerificationGasLimit (16)
-//     + paymasterPostOpGasLimit (16) + paymasterData (rest)
+//   - paymasterPostOpGasLimit (16) + paymasterData (rest)
 func userOpToMap(
 	op *UserOperation,
 ) map[string]interface{} {

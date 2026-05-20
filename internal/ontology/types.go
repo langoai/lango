@@ -13,8 +13,8 @@ type Permission int
 
 const (
 	PermRead  Permission = iota + 1 // query, list, validate
-	PermWrite                        // register, assert, retract, set property
-	PermAdmin                        // deprecate, merge, split, resolve conflict, delete
+	PermWrite                       // register, assert, retract, set property
+	PermAdmin                       // deprecate, merge, split, resolve conflict, delete
 )
 
 // ErrPermissionDenied is returned when a principal lacks the required permission.
@@ -23,12 +23,12 @@ var ErrPermissionDenied = errors.New("ontology: permission denied")
 // Reserved metadata keys for temporal and provenance fields.
 // These live in graph.Triple.Metadata (prefix "_" to avoid collision with user properties).
 const (
-	MetaValidFrom  = "_valid_from"   // RFC3339 — fact validity start (empty = epoch)
-	MetaValidTo    = "_valid_to"     // RFC3339 — fact validity end (empty = still valid)
-	MetaRecordedAt = "_recorded_at"  // RFC3339 — system time when triple was first recorded
-	MetaRecordedBy = "_recorded_by"  // who recorded (agent ID, "human", peer DID)
-	MetaSource     = "_source"       // origin category for source precedence
-	MetaConfidence = "_confidence"   // "0.0000" ~ "1.0000"
+	MetaValidFrom  = "_valid_from"  // RFC3339 — fact validity start (empty = epoch)
+	MetaValidTo    = "_valid_to"    // RFC3339 — fact validity end (empty = still valid)
+	MetaRecordedAt = "_recorded_at" // RFC3339 — system time when triple was first recorded
+	MetaRecordedBy = "_recorded_by" // who recorded (agent ID, "human", peer DID)
+	MetaSource     = "_source"      // origin category for source precedence
+	MetaConfidence = "_confidence"  // "0.0000" ~ "1.0000"
 )
 
 // SourcePrecedence defines priority ordering for source-of-truth auto-resolution.
@@ -111,10 +111,10 @@ type SchemaBundle struct {
 	Version       int                   `json:"version"`       // bundle format version (1)
 	SchemaVersion int                   `json:"schemaVersion"` // ontology version at export time
 	ExportedAt    time.Time             `json:"exportedAt"`
-	ExportedBy    string                `json:"exportedBy"`    // DID or "local"
+	ExportedBy    string                `json:"exportedBy"` // DID or "local"
 	Types         []SchemaTypeSlim      `json:"types"`
 	Predicates    []SchemaPredicateSlim `json:"predicates"`
-	Digest        string                `json:"digest"`        // SHA256(canonical JSON of Types+Predicates)
+	Digest        string                `json:"digest"` // SHA256(canonical JSON of Types+Predicates)
 }
 
 // ImportMode determines how imported schema elements are treated.
@@ -288,10 +288,10 @@ type ActionEffects struct {
 
 // ActionResult is the outcome of executing an action.
 type ActionResult struct {
-	LogID   uuid.UUID    `json:"logID"`
-	Status  ActionStatus `json:"status"`
+	LogID   uuid.UUID      `json:"logID"`
+	Status  ActionStatus   `json:"status"`
 	Effects *ActionEffects `json:"effects,omitempty"`
-	Error   string       `json:"error,omitempty"`
+	Error   string         `json:"error,omitempty"`
 }
 
 // ActionSummary provides metadata about a registered action (for listing).
@@ -304,15 +304,15 @@ type ActionSummary struct {
 
 // ActionLogEntry represents a persisted action execution record.
 type ActionLogEntry struct {
-	ID         uuid.UUID         `json:"id"`
-	ActionName string            `json:"actionName"`
-	Principal  string            `json:"principal"`
-	Params     map[string]string `json:"params"`
-	Status     ActionStatus      `json:"status"`
-	Effects    *ActionEffects    `json:"effects,omitempty"`
-	Error      string            `json:"error,omitempty"`
-	StartedAt  time.Time         `json:"startedAt"`
-	CompletedAt *time.Time       `json:"completedAt,omitempty"`
+	ID          uuid.UUID         `json:"id"`
+	ActionName  string            `json:"actionName"`
+	Principal   string            `json:"principal"`
+	Params      map[string]string `json:"params"`
+	Status      ActionStatus      `json:"status"`
+	Effects     *ActionEffects    `json:"effects,omitempty"`
+	Error       string            `json:"error,omitempty"`
+	StartedAt   time.Time         `json:"startedAt"`
+	CompletedAt *time.Time        `json:"completedAt,omitempty"`
 }
 
 // PredicateDefinition represents a formal relationship type in the ontology.

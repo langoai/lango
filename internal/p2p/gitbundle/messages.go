@@ -12,15 +12,15 @@ const ProtocolID = "/lango/p2p-git/1.0.0"
 type RequestType string
 
 const (
-	RequestPushBundle              RequestType = "push_bundle"
-	RequestFetchByHash             RequestType = "fetch_by_hash"
-	RequestListCommits             RequestType = "list_commits"
-	RequestFindLeaves              RequestType = "find_leaves"
-	RequestDiff                    RequestType = "diff"
-	RequestPushIncrementalBundle   RequestType = "push_incremental_bundle"
-	RequestFetchIncremental        RequestType = "fetch_incremental"
-	RequestVerifyBundle            RequestType = "verify_bundle"
-	RequestHasCommit               RequestType = "has_commit"
+	RequestPushBundle            RequestType = "push_bundle"
+	RequestFetchByHash           RequestType = "fetch_by_hash"
+	RequestListCommits           RequestType = "list_commits"
+	RequestFindLeaves            RequestType = "find_leaves"
+	RequestDiff                  RequestType = "diff"
+	RequestPushIncrementalBundle RequestType = "push_incremental_bundle"
+	RequestFetchIncremental      RequestType = "fetch_incremental"
+	RequestVerifyBundle          RequestType = "verify_bundle"
+	RequestHasCommit             RequestType = "has_commit"
 )
 
 // Request is a git protocol request.

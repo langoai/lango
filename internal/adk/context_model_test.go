@@ -337,7 +337,7 @@ func TestEmergencyCompaction_TriggeredAtThreshold(t *testing.T) {
 	ctx := session.WithSessionKey(context.Background(), "compact-test")
 	req := &model.LLMRequest{
 		Contents: []*genai.Content{{
-			Role: "user",
+			Role:  "user",
 			Parts: []*genai.Part{{Text: "test"}},
 		}},
 	}
@@ -367,7 +367,7 @@ func TestEmergencyCompaction_DegradedDoesNotTrigger(t *testing.T) {
 	ctx := session.WithSessionKey(context.Background(), "degraded-test")
 	req := &model.LLMRequest{
 		Contents: []*genai.Content{{
-			Role: "user",
+			Role:  "user",
 			Parts: []*genai.Part{{Text: "test"}},
 		}},
 	}
@@ -390,7 +390,7 @@ func TestEmergencyCompaction_NilCompactorSkips(t *testing.T) {
 	ctx := session.WithSessionKey(context.Background(), "nil-compactor-test")
 	req := &model.LLMRequest{
 		Contents: []*genai.Content{{
-			Role: "user",
+			Role:  "user",
 			Parts: []*genai.Part{{Text: "test"}},
 		}},
 	}

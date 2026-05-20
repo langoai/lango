@@ -104,12 +104,12 @@ func NewOntologyForm(cfg *config.Config) *tuicore.FormModel {
 	learningConfidence := cfg.Ontology.Governance.EffectiveLearningDefaultConfidence()
 	librarianConfidence := cfg.Ontology.Governance.EffectiveLibrarianDefaultConfidence()
 	form.AddField(&tuicore.Field{
-		Key:                      "ontology_gov_admission_mode",
-		Label:                    "    Runtime Admission Mode",
-		Type:                     tuicore.InputSelect,
-		Value:                    admissionMode,
-		Options:                  []string{config.OntologyAdmissionModeOff, config.OntologyAdmissionModeObserve},
-		Description:              "Observe supported runtime graph inputs without changing write routing",
+		Key:                       "ontology_gov_admission_mode",
+		Label:                     "    Runtime Admission Mode",
+		Type:                      tuicore.InputSelect,
+		Value:                     admissionMode,
+		Options:                   []string{config.OntologyAdmissionModeOff, config.OntologyAdmissionModeObserve},
+		Description:               "Observe supported runtime graph inputs without changing write routing",
 		PreserveAbsentIfUntouched: true,
 	})
 	form.AddField(&tuicore.Field{

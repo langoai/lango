@@ -10,7 +10,7 @@ import (
 type cprState int
 
 const (
-	cprIdle     cprState = iota
+	cprIdle cprState = iota
 	cprGotEsc
 	cprGotBracket
 	cprInParams

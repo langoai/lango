@@ -15,7 +15,7 @@ type SmartAccountConfig struct {
 	FallbackHandler      string `mapstructure:"fallbackHandler" json:"fallbackHandler"`
 	BundlerURL           string `mapstructure:"bundlerURL" json:"bundlerURL"`
 
-	Session SmartAccountSessionConfig `mapstructure:"session" json:"session"`
+	Session   SmartAccountSessionConfig   `mapstructure:"session" json:"session"`
 	Modules   SmartAccountModulesConfig   `mapstructure:"modules" json:"modules"`
 	Paymaster SmartAccountPaymasterConfig `mapstructure:"paymaster" json:"paymaster"`
 }

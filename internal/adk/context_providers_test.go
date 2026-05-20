@@ -153,7 +153,7 @@ func TestToolRegistryAdapter_SearchTools_Aliases(t *testing.T) {
 		{give: "ls", wantCount: 1, wantFirst: "fs_list"},
 		{give: "dir", wantCount: 1, wantFirst: "fs_list"},
 		{give: "cat", wantCount: 1, wantFirst: "fs_read"},
-		{give: "LS", wantCount: 1, wantFirst: "fs_list"},  // case insensitive
+		{give: "LS", wantCount: 1, wantFirst: "fs_list"}, // case insensitive
 		{give: "nope", wantCount: 0},
 	}
 
@@ -204,7 +204,7 @@ func TestToolRegistryAdapter_SearchTools_CategoryAndHints(t *testing.T) {
 		wantCount int
 		wantFirst string
 	}{
-		{give: "crypto", wantCount: 2, wantFirst: "encrypt_data"}, // category match
+		{give: "crypto", wantCount: 2, wantFirst: "encrypt_data"},   // category match
 		{give: "security", wantCount: 1, wantFirst: "encrypt_data"}, // hint match
 		{give: "checksum", wantCount: 1, wantFirst: "hash_file"},    // hint match
 		{give: "network", wantCount: 1, wantFirst: "web_search"},    // category match
