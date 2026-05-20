@@ -533,3 +533,10 @@
 - [x] 66.2 Add focused tests for deterministic app module lifecycle component registration without starting long-running workers
 - [x] 66.3 Run subagent-driven review checkpoints for the batch
 - [x] 66.4 Commit the batch separately
+
+## 67. Coverage Batch: Run Ledger Write-Through Residuals
+
+- [x] 67.1 Add focused tests for deterministic workflow write-through shadow, degraded sync, status mapping, and drift branches using in-memory stores only
+- [x] 67.2 Add focused tests for deterministic background write-through disabled and error branches using local fakes only
+- [x] 67.3 Run subagent-driven review checkpoints for the batch
+- [x] 67.4 Commit the batch separately
