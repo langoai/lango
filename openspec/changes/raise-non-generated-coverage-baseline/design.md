@@ -36,10 +36,10 @@ The first baseline identified these largest non-generated files by uncovered sta
 | 9 | `internal/app/wiring.go` | 42.64% | 226 | 394 |
 | 10 | `internal/p2p/handshake/handshake.go` | 8.09% | 216 | 235 |
 
-These files are starting targets, not a license to write shallow execution tests. If a hotspot is hard to test safely, split out deterministic seams first and document the reason in the wave commit.
+These files are starting targets, not a license to write shallow execution tests. If a hotspot is hard to test safely, split out deterministic seams first and document the reason in the batch commit.
 
 ## Implementation Strategy
-Work proceeds in waves, each producing a reviewable commit:
+Work proceeds in batches, each producing a reviewable commit:
 
 1. Coverage measurement tooling and baseline report.
 2. Small deterministic packages and pure helpers.
@@ -49,7 +49,7 @@ Work proceeds in waves, each producing a reviewable commit:
 6. App wiring and P2P hotspots: `internal/app/wiring_p2p.go`, `internal/app/wiring.go`, `internal/app/tools_meta.go`, `internal/p2p/handshake/handshake.go`.
 7. Final threshold enforcement once the measured coverage is at or above 90%.
 
-Each wave should follow TDD:
+Each batch should follow TDD:
 
 - write failing tests for uncovered behavior
 - verify the tests fail for the intended reason

@@ -28,7 +28,7 @@ Generated code SHALL be excluded from this target when it is under a known gener
 ### Requirement: Coverage increases remain behavior-focused
 Coverage-improving tests SHALL assert observable behavior rather than only executing code to raise percentages.
 
-#### Scenario: Coverage wave tests assert behavior
-- **WHEN** a coverage wave adds or updates tests
+#### Scenario: Coverage batch tests assert behavior
+- **WHEN** a coverage batch adds or updates tests
 - **THEN** the tests SHALL include assertions for expected outputs, errors, state transitions, or side effects
 - **AND** review SHALL reject tests that only invoke functions without checking behavior

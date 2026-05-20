@@ -15,13 +15,12 @@ The gap is too large for ad hoc package-by-package fixes. The project needs one 
 ## Scope
 - Define the non-generated coverage measurement contract.
 - Add repeatable local coverage reporting that excludes generated Go code.
-- Raise test coverage with high-impact package waves prioritized by uncovered statement count.
+- Raise test coverage with high-impact package batches prioritized by uncovered statement count.
 - Keep commits well-scoped by package or subsystem.
-- Use subagent-driven implementation and review checkpoints for each coverage wave.
+- Use subagent-driven implementation and review checkpoints for each coverage batch.
 
 ## Non-Goals
 - Do not count Ent-generated code toward the 90% target.
 - Do not inflate coverage with tests that only execute code without assertions.
 - Do not create separate OpenSpec changes for every package-level test addition.
 - Do not refactor production architecture solely to improve coverage percentages.
-
