@@ -574,3 +574,10 @@
 - [x] 72.2 Add focused tests for deterministic `internal/p2p/zkp/zkp.go` Groth16 export and SRS file residual branches without network services
 - [x] 72.3 Run subagent-driven development and review checkpoints for the batch
 - [x] 72.4 Commit the batch separately
+
+## 73. Coverage Batch: Security Migration And Filesystem Residuals
+
+- [x] 73.1 Add focused tests for deterministic `internal/security/migrate_envelope.go` checksum-optional migration and quoted backup path residual branches
+- [x] 73.2 Add focused tests for deterministic `internal/tools/filesystem/filesystem.go` read, edit, write, metadata, and validation residual branches using temp dirs only
+- [x] 73.3 Run subagent-driven development and review checkpoints for the batch
+- [x] 73.4 Commit the batch separately

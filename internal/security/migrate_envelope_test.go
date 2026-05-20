@@ -160,6 +160,41 @@ func TestMigrateToEnvelope_Plaintext_RoundTrip(t *testing.T) {
 	os.Remove(EnvelopeFilePath(dir))
 }
 
+func TestMigrateToEnvelope_AllowsMissingChecksum(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "test.db")
+	passphrase := "migration-test-pass"
+
+	client, db := setupLegacyDB(t, dbPath, passphrase)
+	defer client.Close()
+
+	store := NewSecurityConfigStore(db)
+	salt, err := store.LoadSalt()
+	if err != nil {
+		t.Fatalf("load salt: %v", err)
+	}
+
+	env, mk, err := MigrateToEnvelope(
+		context.Background(), db, client, dir,
+		passphrase, salt, nil, false,
+	)
+	if err != nil {
+		t.Fatalf("MigrateToEnvelope with missing checksum: %v", err)
+	}
+	defer ZeroBytes(mk)
+
+	if env.PendingMigration || env.PendingRekey {
+		t.Fatalf("pending flags should be clear after successful migration: %+v", env)
+	}
+	loaded, err := LoadEnvelopeFile(dir)
+	if err != nil {
+		t.Fatalf("LoadEnvelopeFile: %v", err)
+	}
+	if loaded.PendingMigration || loaded.PendingRekey {
+		t.Fatalf("persisted envelope pending flags should be clear: %+v", loaded)
+	}
+}
+
 func TestMigrateToEnvelope_WrongPassphrase(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "test.db")
@@ -398,6 +433,34 @@ func TestBackupDatabase_ReturnsErrorWhenMainDatabaseHasNoPath(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "main db path not found") {
 		t.Fatalf("expected missing main db path error, got %v", err)
+	}
+}
+
+func TestBackupDatabase_CreatesBackupForQuotedPath(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "quoted'name.db")
+	db, err := sql.Open("sqlite3", "file:"+dbPath+"?_journal_mode=WAL")
+	if err != nil {
+		t.Fatalf("sql open: %v", err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`CREATE TABLE t (id INTEGER PRIMARY KEY, value TEXT)`); err != nil {
+		t.Fatalf("create table: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO t (value) VALUES ('ok')`); err != nil {
+		t.Fatalf("insert row: %v", err)
+	}
+
+	if err := backupDatabase(context.Background(), db); err != nil {
+		t.Fatalf("backupDatabase: %v", err)
+	}
+	backupPath := dbPath + migrationBackupSuffix
+	info, err := os.Stat(backupPath)
+	if err != nil {
+		t.Fatalf("stat backup: %v", err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("expected backup mode 0600, got %v", info.Mode().Perm())
 	}
 }
 
