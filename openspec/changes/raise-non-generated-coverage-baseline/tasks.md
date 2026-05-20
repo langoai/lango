@@ -540,3 +540,9 @@
 - [x] 67.2 Add focused tests for deterministic background write-through disabled and error branches using local fakes only
 - [x] 67.3 Run subagent-driven review checkpoints for the batch
 - [x] 67.4 Commit the batch separately
+
+## 68. Coverage Batch: Knowledge Wiring FTS5 Residuals
+
+- [x] 68.1 Add focused tests for deterministic `internal/app/wiring_knowledge.go` FTS5 table creation and bulk-insert error branches using temp SQLite only
+- [x] 68.2 Run subagent-driven review checkpoints for the batch
+- [x] 68.3 Commit the batch separately

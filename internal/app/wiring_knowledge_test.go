@@ -155,6 +155,89 @@ func TestInitFTS5AndBulkIndexErrorBranches(t *testing.T) {
 	assert.ErrorContains(t, err, "query learnings for FTS5 index")
 }
 
+func TestInitFTS5_ReturnsFalseWhenKnowledgeTableCreationFails(t *testing.T) {
+	t.Parallel()
+
+	entStore := newWiringKnowledgeEntStore(t)
+	rawDB := entStore.DB()
+	if !search.ProbeFTS5(rawDB) {
+		t.Skip("FTS5 not available in current SQLite runtime")
+	}
+
+	require.NoError(t, createFTS5ShadowTableConflict(rawDB, "knowledge_fts"))
+
+	store := knowledge.NewStore(entStore.Client(), testLog())
+	assert.False(t, initFTS5(context.Background(), rawDB, store))
+}
+
+func TestInitFTS5_ReturnsFalseWhenLearningTableCreationFails(t *testing.T) {
+	t.Parallel()
+
+	entStore := newWiringKnowledgeEntStore(t)
+	rawDB := entStore.DB()
+	if !search.ProbeFTS5(rawDB) {
+		t.Skip("FTS5 not available in current SQLite runtime")
+	}
+
+	require.NoError(t, createFTS5ShadowTableConflict(rawDB, "learning_fts"))
+
+	store := knowledge.NewStore(entStore.Client(), testLog())
+	assert.False(t, initFTS5(context.Background(), rawDB, store))
+}
+
+func TestBulkIndexKnowledge_ReturnsBulkInsertErrorForIncompatibleIndexShape(t *testing.T) {
+	t.Parallel()
+
+	entStore := newWiringKnowledgeEntStore(t)
+	rawDB := entStore.DB()
+	if !search.ProbeFTS5(rawDB) {
+		t.Skip("FTS5 not available in current SQLite runtime")
+	}
+
+	ctx := context.Background()
+	store := knowledge.NewStore(entStore.Client(), testLog())
+	require.NoError(t, store.SaveKnowledge(ctx, "session-1", knowledge.KnowledgeEntry{
+		Key:      "incompatible-knowledge-index",
+		Category: entknowledge.CategoryFact,
+		Content:  "record forces bulk insert after source query succeeds",
+	}))
+	require.NoError(t, createIncompatibleKnowledgeFTS5Table(rawDB))
+
+	idx := search.NewFTS5Index(rawDB, "knowledge_fts", []string{"key", "content"})
+	err := bulkIndexKnowledge(ctx, rawDB, idx)
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "bulk insert knowledge FTS5")
+}
+
+func TestBulkIndexLearnings_ReturnsBulkInsertErrorForIncompatibleIndexShape(t *testing.T) {
+	t.Parallel()
+
+	entStore := newWiringKnowledgeEntStore(t)
+	rawDB := entStore.DB()
+	if !search.ProbeFTS5(rawDB) {
+		t.Skip("FTS5 not available in current SQLite runtime")
+	}
+
+	ctx := context.Background()
+	store := knowledge.NewStore(entStore.Client(), testLog())
+	require.NoError(t, store.SaveLearning(ctx, "session-1", knowledge.LearningEntry{
+		Trigger:      "incompatible learning index",
+		ErrorPattern: "record forces bulk insert after source query succeeds",
+		Fix:          "use matching FTS5 column shape",
+		Category:     entlearning.CategoryTimeout,
+	}))
+	require.NoError(t, createIncompatibleLearningFTS5Table(rawDB))
+
+	idx := search.NewFTS5Index(rawDB, "learning_fts", []string{
+		"trigger",
+		"error_pattern",
+		"fix",
+	})
+	err := bulkIndexLearnings(ctx, rawDB, idx)
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "bulk insert learning FTS5")
+}
+
 func TestInitSkills_LoadsUserSkillsAndSkipsExtPacksWithoutRegistry(t *testing.T) {
 	t.Parallel()
 
@@ -391,6 +474,25 @@ func fts5SourceIDs(t *testing.T, db *sql.DB, tableName, match string) []string {
 	}
 	require.NoError(t, rows.Err())
 	return ids
+}
+
+func createFTS5ShadowTableConflict(db *sql.DB, tableName string) error {
+	_, err := db.Exec(`CREATE TABLE ` + tableName + `_data(id INTEGER PRIMARY KEY, block BLOB)`)
+	return err
+}
+
+func createIncompatibleKnowledgeFTS5Table(db *sql.DB) error {
+	_, err := db.Exec(
+		`CREATE VIRTUAL TABLE knowledge_fts USING fts5(title, source_id UNINDEXED, tokenize='unicode61')`,
+	)
+	return err
+}
+
+func createIncompatibleLearningFTS5Table(db *sql.DB) error {
+	_, err := db.Exec(
+		`CREATE VIRTUAL TABLE learning_fts USING fts5(title, source_id UNINDEXED, tokenize='unicode61')`,
+	)
+	return err
 }
 
 func wiringKnowledgeContextInjectedEvent(key string) eventbus.ContextInjectedEvent {
