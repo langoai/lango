@@ -11,6 +11,14 @@ import (
 	"github.com/langoai/lango/internal/config"
 )
 
+type configGetTestJSONMarshaler struct {
+	Value string
+}
+
+func (m configGetTestJSONMarshaler) MarshalJSON() ([]byte, error) {
+	return []byte(`"` + m.Value + `"`), nil
+}
+
 func TestFormatPlainScalarAndReflectionValues(t *testing.T) {
 	type namedString string
 
@@ -304,4 +312,177 @@ func TestConfigSetRejectsInvalidScalarBeforeSave(t *testing.T) {
 	if saveCalled {
 		t.Fatal("cfgSaver must not run after invalid scalar parsing")
 	}
+}
+
+func TestConfigGetScalarAndJSONCompatibilityResidualBranches(t *testing.T) {
+	var nilPointer *string
+	if !isConfigGetScalarValue(reflect.ValueOf(nilPointer)) {
+		t.Fatal("expected nil pointer to be treated as scalar")
+	}
+
+	value := "visible"
+	interfaceValue := interface{}(&value)
+	if !isConfigGetScalarValue(reflect.ValueOf(&interfaceValue)) {
+		t.Fatal("expected pointer through interface to scalar string to be scalar")
+	}
+
+	if _, ok := configGetJSONCompatibleValue(func() {}); ok {
+		t.Fatal("expected non-marshalable function value to be rejected")
+	}
+}
+
+func TestRedactConfigGetReflectValuePreservesJSONMarshalers(t *testing.T) {
+	value := configGetTestJSONMarshaler{Value: "custom"}
+	got := redactConfigGetReflectValue([]string{"custom"}, reflect.ValueOf(value))
+	if got != value {
+		t.Fatalf("expected struct JSON marshaler to be preserved, got %#v", got)
+	}
+
+	pointer := &value
+	got = redactConfigGetReflectValue([]string{"custom"}, reflect.ValueOf(pointer))
+	if got != pointer {
+		t.Fatalf("expected pointer JSON marshaler to be preserved, got %#v", got)
+	}
+
+	if got := redactConfigGetReflectValue([]string{"apiKey"}, reflect.ValueOf("raw")); got != "<redacted>" {
+		t.Fatalf("expected sensitive reflect path to redact before scalar handling, got %#v", got)
+	}
+	if got := redactConfigGetReflectValue([]string{"missing"}, reflect.Value{}); got != nil {
+		t.Fatalf("expected invalid reflect value to redact to nil, got %#v", got)
+	}
+}
+
+func TestConfigPathAndSuggestionResidualBranches(t *testing.T) {
+	if segments := splitConfigPath(""); segments != nil {
+		t.Fatalf("expected empty path to split to nil, got %#v", segments)
+	}
+
+	if got := configPathDiscoveryError("bad path", "", []string{"agent.provider", "", "agent.provider"}).Error(); !strings.Contains(got, "did you mean: agent.provider") {
+		t.Fatalf("expected duplicate suggestions to be collapsed, got %q", got)
+	}
+
+	if prefix := parentConfigPrefix("agent"); prefix != "" {
+		t.Fatalf("expected top-level parent prefix to be empty, got %q", prefix)
+	}
+
+	if got := nearestConfigKeys("zzzz", []string{"agent.provider", "p2p.enabled"}); len(got) != 0 {
+		t.Fatalf("expected no nearby config keys, got %#v", got)
+	}
+	if got := nearestConfigKeys("abc", []string{"abc", "abd", "abe", "abf", "abg"}); len(got) != 3 {
+		t.Fatalf("expected nearest config keys to be capped at three, got %#v", got)
+	}
+
+	if got := editDistance("", "abc"); got != 3 {
+		t.Fatalf("expected insertion distance 3, got %d", got)
+	}
+	if got := editDistance("abc", ""); got != 3 {
+		t.Fatalf("expected deletion distance 3, got %d", got)
+	}
+}
+
+func TestConfigCollectionResidualBranches(t *testing.T) {
+	type unsupportedLeaf struct {
+		Delay time.Duration `mapstructure:"delay"`
+		Blob  []int         `mapstructure:"blob"`
+		Name  string        `mapstructure:"name"`
+	}
+	type nestedMaps struct {
+		ByInt    map[int]string              `mapstructure:"byInt"`
+		ByName   map[string]string           `mapstructure:"byName"`
+		Nested   map[string]map[string]int   `mapstructure:"nested"`
+		Profiles map[string]*unsupportedLeaf `mapstructure:"profiles"`
+	}
+
+	if got := collectMapKeys(reflect.TypeOf(map[int]string{}), "bad"); got != nil {
+		t.Fatalf("expected non-string map keys to be skipped, got %#v", got)
+	}
+
+	keys := collectKeys(reflect.TypeOf(nestedMaps{}), "")
+	for _, want := range []string{
+		"byInt",
+		"byName",
+		"byName.<key>",
+		"nested.<name>.<key>",
+		"profiles.<name>.name",
+	} {
+		if !containsString(keys, want) {
+			t.Fatalf("expected collected keys to include %q, got %#v", want, keys)
+		}
+	}
+	if containsString(keys, "profiles.<name>.delay") || containsString(keys, "profiles.<name>.blob") {
+		t.Fatalf("expected unsupported settable fields to be omitted, got %#v", keys)
+	}
+
+	if !configSetFieldTypeIsSupported(reflect.TypeOf((*string)(nil))) {
+		t.Fatal("expected pointer to supported scalar type to be settable")
+	}
+	if configSetFieldTypeIsSupported(reflect.TypeOf(time.Second)) {
+		t.Fatal("expected time.Duration to be rejected as a settable config field")
+	}
+
+	if got := collectSettableConfigKeys(reflect.TypeOf(map[string]string{}), "labels"); !reflect.DeepEqual(got, []string{"labels.<key>"}) {
+		t.Fatalf("expected settable map keys, got %#v", got)
+	}
+	if got := collectSettableConfigKeys(reflect.TypeOf(""), "name"); !reflect.DeepEqual(got, []string{"name"}) {
+		t.Fatalf("expected direct scalar settable key, got %#v", got)
+	}
+	if got := collectSettableConfigKeys(reflect.TypeOf([]int{}), "numbers"); got != nil {
+		t.Fatalf("expected unsupported direct leaf to be skipped, got %#v", got)
+	}
+}
+
+func TestConfigFieldNamesAndSensitiveSegmentsResidualBranches(t *testing.T) {
+	type tagged struct {
+		EmptyMapstructure string `mapstructure:",squash" json:"jsonName,omitempty"`
+		EmptyJSON         string `json:",omitempty"`
+		Plain             string
+	}
+
+	typ := reflect.TypeOf(tagged{})
+	if got := configFieldPathName(typ.Field(0)); got != "jsonName" {
+		t.Fatalf("expected json fallback name, got %q", got)
+	}
+	if got := configFieldPathName(typ.Field(1)); got != "EmptyJSON" {
+		t.Fatalf("expected field name fallback, got %q", got)
+	}
+	if got := configFieldPathName(typ.Field(2)); got != "Plain" {
+		t.Fatalf("expected plain field name fallback, got %q", got)
+	}
+
+	for _, segment := range []string{"wallet_private-key", "aws_access-key", "session.credentials"} {
+		if !configSetSegmentIsSensitive(normalizeConfigPathSegment(segment)) {
+			t.Fatalf("expected %q to be sensitive", segment)
+		}
+	}
+}
+
+func TestSetConfigValueAndPrintResidualErrors(t *testing.T) {
+	err := setConfigValue(reflect.ValueOf(&struct{}{}).Elem(), nil, "value", "empty", nil)
+	if err == nil || !strings.Contains(err.Error(), "empty path") {
+		t.Fatalf("expected empty path error, got %v", err)
+	}
+
+	type customMap struct {
+		Values map[int]string `mapstructure:"values"`
+	}
+	holder := customMap{}
+	err = setConfigValue(reflect.ValueOf(&holder).Elem(), []string{"values", "one"}, "value", "values.one", nil)
+	if err == nil || !strings.Contains(err.Error(), "unsupported map key type int") {
+		t.Fatalf("expected unsupported map key error, got %v", err)
+	}
+
+	var out bytes.Buffer
+	err = printValue(&out, func() {}, "json")
+	if err == nil || !strings.Contains(err.Error(), "marshal value") {
+		t.Fatalf("expected JSON marshal error, got %v", err)
+	}
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }

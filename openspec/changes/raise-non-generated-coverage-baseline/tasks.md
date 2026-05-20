@@ -560,3 +560,10 @@
 - [x] 70.2 Add focused tests for remaining escrow adjudication validation branches without external services
 - [x] 70.3 Run subagent-driven review checkpoints for the batch
 - [x] 70.4 Commit the batch separately
+
+## 71. Coverage Batch: Config Command And Workbench Helper Residuals
+
+- [x] 71.1 Add focused tests for deterministic `internal/cli/configcmd/getset.go` redaction, path, suggestion, collection, and print error residual branches
+- [x] 71.2 Add focused tests for deterministic `internal/cli/cockpit/pages/missioncontrol_workbench.go` starter prompt, follow-up, hint, and footer residual branches without launching TUI loops
+- [x] 71.3 Run subagent-driven development and review checkpoints for the batch
+- [x] 71.4 Commit the batch separately
