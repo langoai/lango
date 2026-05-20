@@ -529,7 +529,7 @@
 
 ## 66. Coverage Batch: App Module Residuals
 
-- [ ] 66.1 Add focused tests for deterministic `internal/app/modules.go` foundation module session-store error wrapping without live providers
-- [ ] 66.2 Add focused tests for deterministic app module lifecycle branches without starting long-running workers
-- [ ] 66.3 Run subagent-driven review checkpoints for the batch
-- [ ] 66.4 Commit the batch separately
+- [x] 66.1 Add focused tests for deterministic `internal/app/modules.go` foundation module session-store error wrapping without live providers
+- [x] 66.2 Add focused tests for deterministic app module lifecycle component registration without starting long-running workers
+- [x] 66.3 Run subagent-driven review checkpoints for the batch
+- [x] 66.4 Commit the batch separately

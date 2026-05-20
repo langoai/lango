@@ -10,6 +10,7 @@ import (
 	"github.com/langoai/lango/internal/appinit"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/eventbus"
+	"github.com/langoai/lango/internal/lifecycle"
 	"github.com/langoai/lango/internal/receipts"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/testutil"
@@ -65,4 +66,22 @@ func TestAutomationModuleInitAllEnabledComposesToolsWithoutStartingComponents(t 
 	assert.NotNil(t, findTool(result.Tools, "workflow_run"))
 	assert.NotNil(t, findTool(result.Tools, "agent_spawn"))
 	assert.NotNil(t, findTool(result.Tools, "task_create"))
+
+	for _, name := range []string{"cron-scheduler", "background-manager", "workflow-engine"} {
+		entry := requireLifecycleComponentEntry(t, result.Components, name)
+		assert.Equal(t, lifecycle.PriorityAutomation, entry.Priority)
+	}
+}
+
+func requireLifecycleComponentEntry(t *testing.T, entries []lifecycle.ComponentEntry, name string) lifecycle.ComponentEntry {
+	t.Helper()
+
+	for _, entry := range entries {
+		if entry.Component.Name() == name {
+			return entry
+		}
+	}
+
+	t.Fatalf("lifecycle component %q not found", name)
+	return lifecycle.ComponentEntry{}
 }

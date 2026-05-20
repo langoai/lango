@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -61,6 +62,23 @@ func TestFoundationModuleInitBuildsBaseToolsAndDisabledOptionalCatalog(t *testin
 	assert.False(t, requireCatalogEntry(t, result.CatalogEntries, "browser").Enabled)
 	assert.False(t, requireCatalogEntry(t, result.CatalogEntries, "crypto").Enabled)
 	assert.False(t, requireCatalogEntry(t, result.CatalogEntries, "secrets").Enabled)
+}
+
+func TestFoundationModuleInitWrapsSessionStoreOpenError(t *testing.T) {
+	t.Parallel()
+
+	cfg := foundationModuleInitBuildsBaseToolsAndDisabledOptionalCatalogModuleConfig(t)
+	dbPathAsDir := filepath.Join(t.TempDir(), "session.db")
+	require.NoError(t, os.Mkdir(dbPathAsDir, 0o700))
+	cfg.Session.DatabasePath = dbPathAsDir
+
+	result, err := (&foundationModule{cfg: cfg}).Init(context.Background(), nil)
+
+	require.Error(t, err)
+	assert.Nil(t, result)
+	assert.ErrorContains(t, err, "create session store:")
+	assert.ErrorContains(t, err, "session store:")
+	assert.ErrorContains(t, err, "unable to open database file")
 }
 
 func TestIntelligenceModuleInitCollectsUnavailableDependencyStatuses(t *testing.T) {
