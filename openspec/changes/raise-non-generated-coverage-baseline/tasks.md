@@ -567,3 +567,10 @@
 - [x] 71.2 Add focused tests for deterministic `internal/cli/cockpit/pages/missioncontrol_workbench.go` starter prompt, follow-up, hint, and footer residual branches without launching TUI loops
 - [x] 71.3 Run subagent-driven development and review checkpoints for the batch
 - [x] 71.4 Commit the batch separately
+
+## 72. Coverage Batch: Run Ledger Ent Store And ZKP Residuals
+
+- [x] 72.1 Add focused tests for deterministic `internal/runledger/ent_store.go` cached snapshot, journal tail, prune, and retry residual branches using local SQLite Ent stores only
+- [x] 72.2 Add focused tests for deterministic `internal/p2p/zkp/zkp.go` Groth16 export and SRS file residual branches without network services
+- [x] 72.3 Run subagent-driven development and review checkpoints for the batch
+- [x] 72.4 Commit the batch separately

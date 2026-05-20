@@ -1,6 +1,7 @@
 package zkp
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
@@ -259,10 +260,47 @@ func TestExportGroth16VerifierWrapsCompileErrors(t *testing.T) {
 	assert.Contains(t, err.Error(), "define failed")
 }
 
+func TestExportGroth16VerifierWritesSolidity(t *testing.T) {
+	svc := newProofSchemeAndSrsModeValidationService(SchemePlonk)
+	circuit, _ := validOwnershipAssignment()
+
+	var out bytes.Buffer
+	err := svc.ExportGroth16Verifier("ownership", circuit, &out)
+	require.NoError(t, err)
+	assert.Contains(t, out.String(), "contract Verifier")
+	assert.Contains(t, out.String(), "function verifyProof")
+}
+
+func TestCompilePlonkFileSRSFallsBackWhenFileMissing(t *testing.T) {
+	svc, err := NewProverService(Config{
+		CacheDir: t.TempDir(),
+		Scheme:   SchemePlonk,
+		Logger:   newTestLogger(),
+		SRSMode:  SRSModeFile,
+		SRSPath:  filepath.Join(t.TempDir(), "missing.srs"),
+	})
+	require.NoError(t, err)
+
+	circuit, _ := validOwnershipAssignment()
+	require.NoError(t, svc.Compile("ownership", circuit))
+	assert.True(t, svc.IsCompiled("ownership"))
+}
+
 func TestLoadSRSFromFileReportsMissingFile(t *testing.T) {
 	canonical, lagrange, err := loadSRSFromFile(filepath.Join(t.TempDir(), "missing.srs"))
 	require.ErrorIs(t, err, os.ErrNotExist)
 	assert.Nil(t, canonical)
 	assert.Nil(t, lagrange)
 	assert.Contains(t, err.Error(), "open SRS file")
+}
+
+func TestLoadSRSFromFileReportsReadErrors(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "empty.srs")
+	require.NoError(t, os.WriteFile(path, nil, 0o600))
+
+	canonical, lagrange, err := loadSRSFromFile(path)
+	require.Error(t, err)
+	assert.Nil(t, canonical)
+	assert.Nil(t, lagrange)
+	assert.Contains(t, err.Error(), "read canonical SRS")
 }
