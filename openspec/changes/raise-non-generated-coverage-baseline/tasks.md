@@ -621,3 +621,10 @@
 - [x] 79.2 Add focused tests for deterministic negotiation handler nil, success, backend error, and tolerant payload decode branches without libp2p streams
 - [x] 79.3 Run subagent-driven development and review checkpoints for the batch
 - [x] 79.4 Prepare the batch for a separate scoped commit
+
+## 80. Coverage Batch: Network Module And Lifecycle Residuals
+
+- [x] 80.1 Add focused tests for deterministic `internal/app/modules.go` no-payment economy escrow and sentinel catalog/tool registration branches without RPC or P2P startup
+- [x] 80.2 Add focused tests for deterministic `internal/app/app.go` channel start error lifecycle branch using a fake channel without binding a gateway listener
+- [x] 80.3 Run subagent-driven development and review checkpoints for the batch
+- [x] 80.4 Prepare the batch for a separate scoped commit
