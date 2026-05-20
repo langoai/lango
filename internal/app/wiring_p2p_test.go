@@ -23,6 +23,7 @@ import (
 	"github.com/langoai/lango/internal/payment/eip3009"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/testutil"
+	libp2pproto "github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -515,6 +516,112 @@ func TestInitP2P_InitializesDeterministicComponentsWithEphemeralHost(t *testing.
 	require.NoError(t, err)
 	require.NotNil(t, localDID)
 	assert.NotEmpty(t, localDID.ID)
+}
+
+func TestInitP2P_FallsBackToLegacyIdentityWhenBundleWalletPublicKeyFails(t *testing.T) {
+	_, signingKey, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+
+	cfg := initP2PInitializesLocalComponentsWithDefaultDurationsP2PConfig(t)
+	cfg.P2P.Pricing.Enabled = false
+	walletErr := errors.New("wallet public key unavailable")
+
+	components := initP2P(
+		cfg,
+		&wiringP2PWallet{pubErr: walletErr},
+		nil,
+		nil,
+		nil,
+		nil,
+		signingKey,
+		nil,
+		t.TempDir(),
+	)
+	require.NotNil(t, components)
+	t.Cleanup(func() { initP2PInitializesLocalComponentsWithDefaultDurationsStopP2PComponents(t, components) })
+
+	assert.IsType(t, &legacyLocalIdentity{}, components.identity)
+	assert.Nil(t, components.payGate)
+	assert.Nil(t, components.pricingFn)
+	assert.False(t, components.kemEnabled)
+
+	did, err := components.identity.DID(context.Background())
+	require.Error(t, err)
+	assert.Nil(t, did)
+	assert.ErrorContains(t, err, "wallet public key unavailable")
+}
+
+func TestInitP2P_EnablesPQHandshakeWithFreePricingFallback(t *testing.T) {
+	key, err := ethcrypto.GenerateKey()
+	require.NoError(t, err)
+
+	cfg := initP2PInitializesLocalComponentsWithDefaultDurationsP2PConfig(t)
+	cfg.P2P.EnablePQHandshake = true
+	cfg.P2P.Pricing.Enabled = true
+	cfg.P2P.Pricing.PerQuery = ""
+	cfg.P2P.Pricing.ToolPrices = nil
+
+	components := initP2P(
+		cfg,
+		&wiringP2PWallet{publicKey: ethcrypto.CompressPubkey(&key.PublicKey)},
+		&paymentComponents{chainID: 84532},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		"",
+	)
+	require.NotNil(t, components)
+	t.Cleanup(func() { initP2PInitializesLocalComponentsWithDefaultDurationsStopP2PComponents(t, components) })
+
+	assert.True(t, components.kemEnabled)
+	assert.NotNil(t, components.payGate)
+	assert.Equal(t, cfg.P2P.Pricing, components.pricingCfg)
+	assert.Contains(t, components.node.Host().Mux().Protocols(), libp2pproto.ID(handshake.ProtocolIDv12))
+
+	price, free := components.pricingFn("unpriced_tool")
+	assert.Empty(t, price)
+	assert.True(t, free)
+
+	result, err := components.payGate.Check("did:lango:peer", "unpriced_tool", nil)
+	require.NoError(t, err)
+	assert.Equal(t, paygate.StatusFree, result.Status)
+}
+
+func TestInitP2P_WiresOwnerShieldFromEmailAndPhone(t *testing.T) {
+	key, err := ethcrypto.GenerateKey()
+	require.NoError(t, err)
+
+	cfg := initP2PInitializesLocalComponentsWithDefaultDurationsP2PConfig(t)
+	cfg.P2P.OwnerProtection.OwnerEmail = "owner@example.com"
+	cfg.P2P.OwnerProtection.OwnerPhone = "010-1234-5678"
+
+	components := initP2P(
+		cfg,
+		&wiringP2PWallet{publicKey: ethcrypto.CompressPubkey(&key.PublicKey)},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		"",
+	)
+	require.NotNil(t, components)
+	t.Cleanup(func() { initP2PInitializesLocalComponentsWithDefaultDurationsStopP2PComponents(t, components) })
+
+	sanitized := components.fw.SanitizeResponse(map[string]interface{}{
+		"email":        "owner@example.com",
+		"phone":        "Call 010-1234-5678",
+		"summary":      "Public content stays visible",
+		"conversation": "conversation text without direct owner contact",
+	})
+
+	assert.Equal(t, "[owner-data-redacted]", sanitized["email"])
+	assert.Equal(t, "[owner-data-redacted]", sanitized["phone"])
+	assert.Equal(t, "[owner-data-redacted]", sanitized["conversation"])
+	assert.Equal(t, "Public content stays visible", sanitized["summary"])
 }
 
 func TestPayGateAdapter_CheckMapsPaymentRequiredQuote(t *testing.T) {
