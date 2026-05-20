@@ -22,6 +22,7 @@ import (
 	"github.com/langoai/lango/internal/search"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/testutil"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 func TestInitKnowledge_ConfigAndStoreBranches(t *testing.T) {
@@ -118,6 +119,42 @@ func TestInitFTS5_BulkIndexesExistingKnowledgeAndLearnings(t *testing.T) {
 	assert.Empty(t, fts5SourceIDs(t, rawDB, "learning_fts", "obsolete"))
 }
 
+func TestInitFTS5AndBulkIndexErrorBranches(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	assert.False(t, initFTS5(ctx, nil, nil))
+
+	db, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "fts-errors.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, db.Close())
+	})
+	if !search.ProbeFTS5(db) {
+		t.Skip("FTS5 not available in current SQLite runtime")
+	}
+
+	knowledgeIdx := search.NewFTS5Index(db, "knowledge_fts", []string{"key", "content"})
+	err = bulkIndexKnowledge(ctx, db, knowledgeIdx)
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "clear knowledge FTS5")
+
+	require.NoError(t, knowledgeIdx.EnsureTable())
+	err = bulkIndexKnowledge(ctx, db, knowledgeIdx)
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "query knowledge for FTS5 index")
+
+	learningIdx := search.NewFTS5Index(db, "learning_fts", []string{"trigger", "error_pattern", "fix"})
+	err = bulkIndexLearnings(ctx, db, learningIdx)
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "clear learning FTS5")
+
+	require.NoError(t, learningIdx.EnsureTable())
+	err = bulkIndexLearnings(ctx, db, learningIdx)
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "query learnings for FTS5 index")
+}
+
 func TestInitSkills_LoadsUserSkillsAndSkipsExtPacksWithoutRegistry(t *testing.T) {
 	t.Parallel()
 
@@ -161,6 +198,62 @@ func TestInitSkills_DisabledReturnsNilRegistry(t *testing.T) {
 	registry, err := initSkills(&config.Config{}, nil, eventbus.New(), nil)
 	require.NoError(t, err)
 	assert.Nil(t, registry)
+}
+
+func TestInitConversationAnalysisAndRetrievalGuards(t *testing.T) {
+	t.Parallel()
+
+	cfg := &config.Config{}
+	assert.Nil(t, initConversationAnalysis(cfg, nil, testutil.NewMockSessionStore(), nil, nil, eventbus.New()))
+
+	entStore := newWiringKnowledgeEntStore(t)
+	kc := &knowledgeComponents{store: knowledge.NewStore(entStore.Client(), testLog())}
+	assert.Nil(t, initConversationAnalysis(cfg, nil, testutil.NewMockSessionStore(), kc, nil, eventbus.New()))
+
+	cfg.ObservationalMemory.Enabled = true
+	cfg.Agent.Provider = "test-provider"
+	cfg.Agent.Model = "test-model"
+	cfg.Knowledge.AnalysisTurnThreshold = 2
+	cfg.Knowledge.AnalysisTokenThreshold = 20
+	require.NotNil(t, initConversationAnalysis(cfg, nil, testutil.NewMockSessionStore(), kc, nil, eventbus.New()))
+
+	initFeedbackProcessor(&config.Config{}, eventbus.New())
+	initFeedbackProcessor(&config.Config{Retrieval: config.RetrievalConfig{Feedback: true}}, nil)
+	feedbackBus := eventbus.New()
+	initFeedbackProcessor(&config.Config{Retrieval: config.RetrievalConfig{Feedback: true}}, feedbackBus)
+	feedbackBus.Publish(wiringKnowledgeContextInjectedEvent("wiringKnowledge5-feedback"))
+
+	ctx := context.Background()
+	require.NoError(t, kc.store.SaveKnowledge(ctx, "session-1", knowledge.KnowledgeEntry{
+		Key:      "wiringKnowledge5-relevance",
+		Category: entknowledge.CategoryFact,
+		Content:  "retrieval guard branch coverage",
+	}))
+	initRelevanceAdjuster(&config.Config{}, kc.store, eventbus.New())
+	initRelevanceAdjuster(&config.Config{Retrieval: config.RetrievalConfig{AutoAdjust: config.AutoAdjustConfig{Enabled: true}}}, nil, eventbus.New())
+	initRelevanceAdjuster(&config.Config{Retrieval: config.RetrievalConfig{AutoAdjust: config.AutoAdjustConfig{Enabled: true}}}, kc.store, nil)
+	disabledBus := eventbus.New()
+	initRelevanceAdjuster(&config.Config{}, kc.store, disabledBus)
+	disabledBus.Publish(wiringKnowledgeContextInjectedEvent("wiringKnowledge5-relevance"))
+	assert.Equal(t, 1.0, wiringKnowledgeRelevanceScore(t, entStore, "wiringKnowledge5-relevance"))
+
+	activeBus := eventbus.New()
+	initRelevanceAdjuster(&config.Config{
+		Retrieval: config.RetrievalConfig{
+			AutoAdjust: config.AutoAdjustConfig{
+				Enabled:       true,
+				Mode:          "active",
+				BoostDelta:    0.2,
+				DecayDelta:    0.1,
+				DecayInterval: 3,
+				MinScore:      0.1,
+				MaxScore:      4,
+				WarmupTurns:   0,
+			},
+		},
+	}, kc.store, activeBus)
+	activeBus.Publish(wiringKnowledgeContextInjectedEvent("wiringKnowledge5-relevance"))
+	assert.Equal(t, 1.2, wiringKnowledgeRelevanceScore(t, entStore, "wiringKnowledge5-relevance"))
 }
 
 func TestInquiryProviderAdapter_ConvertsPendingInquiriesToContextItems(t *testing.T) {
@@ -298,6 +391,28 @@ func fts5SourceIDs(t *testing.T, db *sql.DB, tableName, match string) []string {
 	}
 	require.NoError(t, rows.Err())
 	return ids
+}
+
+func wiringKnowledgeContextInjectedEvent(key string) eventbus.ContextInjectedEvent {
+	return eventbus.ContextInjectedEvent{
+		SessionKey: "session-1",
+		Query:      "retrieval guard branch coverage",
+		Items: []eventbus.ContextInjectedItem{{
+			Layer:  knowledge.LayerUserKnowledge.String(),
+			Key:    key,
+			Source: "like",
+		}},
+	}
+}
+
+func wiringKnowledgeRelevanceScore(t *testing.T, store *session.EntStore, key string) float64 {
+	t.Helper()
+
+	row, err := store.Client().Knowledge.Query().
+		Where(entknowledge.Key(key), entknowledge.IsLatest(true)).
+		Only(context.Background())
+	require.NoError(t, err)
+	return row.RelevanceScore
 }
 
 func writeWiringKnowledgeSkill(t *testing.T, root, name, description string) {
