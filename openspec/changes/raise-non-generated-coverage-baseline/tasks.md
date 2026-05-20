@@ -607,3 +607,10 @@
 - [x] 77.1 Add focused tests for deterministic `internal/app/wiring_economy.go` pricing, paygate wiring, negotiation expiry, P2P negotiator, and escrow config residual branches without live network or RPC services
 - [x] 77.2 Run subagent-driven development and review checkpoints for the batch
 - [x] 77.3 Prepare the batch for a separate scoped commit
+
+## 78. Coverage Batch: CLI HTTP And Cockpit Activity Helpers
+
+- [x] 78.1 Add focused tests for deterministic `internal/cli/clihttp` POST, output, JSON printing, and gateway error branches using local `httptest` servers only
+- [x] 78.2 Add focused tests for deterministic `internal/cli/cockpit` mission activity reset, assistant fallback, and activity constructor branches without interactive TUI loops
+- [x] 78.3 Run subagent-driven development and review checkpoints for the batch
+- [x] 78.4 Prepare the batch for a separate scoped commit

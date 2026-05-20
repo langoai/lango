@@ -57,6 +57,18 @@ func TestMissionActivityBufferAppendCompactsSummary(t *testing.T) {
 	assert.NotContains(t, items[1].Summary, "\n")
 }
 
+func TestMissionActivityBufferResetAndEmptySnapshot(t *testing.T) {
+	buf := NewMissionActivityBuffer()
+	assert.Nil(t, buf.Snapshot())
+
+	buf.Append(MissionActivityItem{Summary: "visible"})
+	require.Len(t, buf.Snapshot(), 1)
+
+	buf.Reset()
+
+	assert.Nil(t, buf.Snapshot())
+}
+
 func TestNewAssistantSummaryActivity(t *testing.T) {
 	now := time.Date(2026, 5, 13, 12, 0, 0, 0, time.UTC)
 
@@ -107,10 +119,131 @@ func TestNewAssistantSummaryActivity(t *testing.T) {
 		assert.NotContains(t, items[0].Summary, "\x1b")
 	})
 
+	t.Run("falls back to response text", func(t *testing.T) {
+		item, ok := newAssistantSummaryActivity("sess-1", chat.DoneMsg{
+			Result: turnrunner.Result{
+				Outcome:      "success",
+				ResponseText: "Response body fallback",
+			},
+		}, now)
+		require.True(t, ok)
+		assert.Equal(t, "Assistant reply: Response body fallback", item.Summary)
+	})
+
 	t.Run("empty summary skipped", func(t *testing.T) {
 		_, ok := newAssistantSummaryActivity("sess-1", chat.DoneMsg{}, now)
 		assert.False(t, ok)
 	})
+}
+
+func TestMissionActivityConstructors(t *testing.T) {
+	now := time.Date(2026, 5, 13, 12, 0, 0, 0, time.UTC)
+
+	tests := []struct {
+		name        string
+		item        MissionActivityItem
+		wantKind    MissionActivityKind
+		wantSession string
+		wantSummary string
+	}{
+		{
+			name: "compaction slow",
+			item: newCompactionSlowActivity(eventbus.CompactionSlowEvent{
+				SessionKey: "sess-1",
+				WaitedFor:  1500 * time.Millisecond,
+				Timestamp:  now,
+			}),
+			wantKind:    MissionActivityContinuity,
+			wantSession: "sess-1",
+			wantSummary: "Compaction slow path after 2s",
+		},
+		{
+			name: "learning suggestion",
+			item: newLearningSuggestionActivity(eventbus.LearningSuggestionEvent{
+				SessionKey:   "sess-1",
+				Confidence:   0.87,
+				ProposedRule: "Prefer smaller slices",
+				Timestamp:    now,
+			}),
+			wantKind:    MissionActivityLearning,
+			wantSession: "sess-1",
+			wantSummary: "Learning suggestion 87%: Prefer smaller slices",
+		},
+		{
+			name: "mode changed empty old mode",
+			item: newModeChangedActivity(eventbus.ModeChangedEvent{
+				SessionKey: "sess-1",
+				OldMode:    " ",
+				NewMode:    "agent",
+			}, now),
+			wantKind:    MissionActivityGeneric,
+			wantSession: "sess-1",
+			wantSummary: "Mode changed from \"none\" to \"agent\"",
+		},
+		{
+			name:        "turn completed",
+			item:        newTurnCompletedActivity(eventbus.TurnCompletedEvent{SessionKey: "sess-1"}, now),
+			wantKind:    MissionActivityGeneric,
+			wantSession: "sess-1",
+			wantSummary: "Turn completed",
+		},
+		{
+			name: "policy decision",
+			item: newPolicyDecisionActivity(eventbus.PolicyDecisionEvent{
+				SessionKey: "sess-1",
+				Verdict:    "allow",
+				Command:    "go test ./...",
+			}, now),
+			wantKind:    MissionActivityGeneric,
+			wantSession: "sess-1",
+			wantSummary: "Policy allow for go test ./...",
+		},
+		{
+			name: "alert",
+			item: newAlertActivity(eventbus.AlertEvent{
+				SessionKey: "sess-1",
+				Severity:   "warning",
+				Message:    "budget near limit",
+				Timestamp:  now,
+			}),
+			wantKind:    MissionActivityGeneric,
+			wantSession: "sess-1",
+			wantSummary: "Alert warning: budget near limit",
+		},
+		{
+			name:        "run ledger mirror failure",
+			item:        newRunLedgerMirrorFailureActivity(eventbus.RunLedgerMirrorFailureEvent{Target: "projection", Phase: "sync"}, now),
+			wantKind:    MissionActivityGeneric,
+			wantSummary: "RunLedger mirror failure for projection during sync",
+		},
+		{
+			name:        "user submission trims input",
+			item:        newUserSubmissionActivity("sess-1", "  hello\n", now),
+			wantKind:    MissionActivityUser,
+			wantSession: "sess-1",
+			wantSummary: "User submitted: hello",
+		},
+		{
+			name: "turn summary",
+			item: newTurnSummaryActivity("sess-1", chat.TurnTokenUsageMsg{
+				TotalTokens:  15,
+				InputTokens:  10,
+				OutputTokens: 5,
+			}, now),
+			wantKind:    MissionActivityTurn,
+			wantSession: "sess-1",
+			wantSummary: "Turn summary: 15 total tokens (10 in / 5 out)",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.wantKind, tt.item.Kind)
+			assert.Equal(t, tt.wantSession, tt.item.SessionKey)
+			assert.Equal(t, tt.wantSummary, tt.item.Summary)
+			assert.Equal(t, now, tt.item.Timestamp)
+		})
+	}
 }
 
 func TestMissionActivityContinuityEventAppend(t *testing.T) {
