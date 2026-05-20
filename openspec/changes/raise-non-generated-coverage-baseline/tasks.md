@@ -473,7 +473,7 @@
 - [x] 58.1 Rename legacy `waveNN` test files to behavior-oriented names without work-unit numbers
 - [x] 58.2 Rename `WaveNN`/`waveNN` test and helper identifiers to behavior-oriented names where they are not fixture values
 - [x] 58.3 Run subagent-driven review checkpoints for the naming cleanup
-- [ ] 58.4 Commit the naming cleanup separately
+- [x] 58.4 Commit the naming cleanup separately
 
 ## 59. Verification And Enforcement
 
