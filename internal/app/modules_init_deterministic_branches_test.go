@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -12,9 +13,13 @@ import (
 	"github.com/langoai/lango/internal/appinit"
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/ent"
+	"github.com/langoai/lango/internal/ent/tokenusage"
 	"github.com/langoai/lango/internal/eventbus"
+	"github.com/langoai/lango/internal/observability"
 	"github.com/langoai/lango/internal/receipts"
 	"github.com/langoai/lango/internal/storage"
+	"github.com/langoai/lango/internal/testutil"
 )
 
 func TestIntelligenceModuleInitWiresGraphAdmissionWithoutExternalServices(t *testing.T) {
@@ -128,6 +133,62 @@ func TestExtensionModuleInitRegistersMCPManagementForDisabledConfiguredServer(t 
 	status, err := statusTool.Handler(context.Background(), nil)
 	require.NoError(t, err)
 	assert.Equal(t, "No MCP servers configured.", status)
+}
+
+func TestExtensionModuleInitAddsObservabilityTokenCleanupLifecycle(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	client := testutil.TestEntClient(t)
+	facade := storage.NewFacade(nil, nil, storage.WithEntClient(client))
+	tokenStore := facade.TokenStore()
+	now := time.Now().UTC()
+	require.NoError(t, tokenStore.Save(observability.TokenUsage{
+		Provider:     "provider",
+		Model:        "model",
+		SessionKey:   "modulesInitDeterministicBranches9-old",
+		AgentName:    "agent",
+		InputTokens:  1,
+		OutputTokens: 2,
+		TotalTokens:  3,
+		Timestamp:    now.AddDate(0, 0, -10),
+	}))
+	require.NoError(t, tokenStore.Save(observability.TokenUsage{
+		Provider:     "provider",
+		Model:        "model",
+		SessionKey:   "modulesInitDeterministicBranches9-recent",
+		AgentName:    "agent",
+		InputTokens:  4,
+		OutputTokens: 5,
+		TotalTokens:  9,
+		Timestamp:    now.AddDate(0, 0, -1),
+	}))
+
+	cfg := foundationModuleInitContinuesAfterSanitizerPatternErrorModuleConfig(t)
+	cfg.Observability.Enabled = true
+	cfg.Observability.Tokens.Enabled = true
+	cfg.Observability.Tokens.PersistHistory = true
+	cfg.Observability.Tokens.RetentionDays = 3
+	module := &extensionModule{
+		cfg:  cfg,
+		boot: &bootstrap.Result{Storage: facade},
+		bus:  eventbus.New(),
+	}
+
+	result, err := module.Init(ctx, staticResolver{})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, result.Components, 1)
+	assert.Equal(t, "observability-token-cleanup", result.Components[0].Component.Name())
+
+	require.NoError(t, result.Components[0].Component.Stop(ctx))
+
+	rows, err := client.TokenUsage.Query().
+		Order(ent.Asc(tokenusage.FieldSessionKey)).
+		All(ctx)
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	assert.Equal(t, "modulesInitDeterministicBranches9-recent", rows[0].SessionKey)
 }
 
 func TestModuleMetadataIncludesAutomationDependencyContracts(t *testing.T) {
