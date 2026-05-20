@@ -151,6 +151,75 @@ func TestOperationalDispatchRequiresOpenedDatabase(t *testing.T) {
 	}
 }
 
+func TestDispatchRejectsMalformedTypedPayloadsBeforeBackendCalls(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	srv := NewServer()
+	badPayload := json.RawMessage(`{"broken":`)
+
+	tests := []struct {
+		name   string
+		method string
+	}{
+		{name: "db status", method: methodDBStatus},
+		{name: "encrypt payload", method: methodEncryptPayload},
+		{name: "decrypt payload", method: methodDecryptPayload},
+		{name: "store salt", method: methodStoreSalt},
+		{name: "store checksum", method: methodStoreChecksum},
+		{name: "config load", method: methodConfigLoad},
+		{name: "config save", method: methodConfigSave},
+		{name: "config set active", method: methodConfigSetActive},
+		{name: "config delete", method: methodConfigDelete},
+		{name: "config exists", method: methodConfigExists},
+		{name: "session create", method: methodSessionCreate},
+		{name: "session get", method: methodSessionGet},
+		{name: "session update", method: methodSessionUpdate},
+		{name: "session delete", method: methodSessionDelete},
+		{name: "session append", method: methodSessionAppend},
+		{name: "session end", method: methodSessionEnd},
+		{name: "session get salt", method: methodSessionGetSalt},
+		{name: "session set salt", method: methodSessionSetSalt},
+		{name: "recall index", method: methodRecallIndex},
+		{name: "recall search", method: methodRecallSearch},
+		{name: "recall summary", method: methodRecallSummary},
+		{name: "learning history", method: methodLearningHistory},
+		{name: "pending inquiries", method: methodPendingInquiries},
+		{name: "workflow runs", method: methodWorkflowRuns},
+		{name: "alerts", method: methodAlerts},
+		{name: "reputation get", method: methodReputationGet},
+		{name: "payment history", method: methodPaymentHistory},
+		{name: "open db", method: methodOpenDB},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := srv.dispatch(ctx, Request{Method: tt.method, Payload: badPayload})
+
+			require.ErrorContains(t, err, "decode broker payload")
+		})
+	}
+}
+
+func TestDispatchNoPayloadMethodsIgnoreMalformedPayloadBytes(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	srv := NewServer()
+	badPayload := json.RawMessage(`{"broken":`)
+
+	result, err := srv.dispatch(ctx, Request{Method: methodHealth, Payload: badPayload})
+	require.NoError(t, err)
+	require.Equal(t, HealthResult{Opened: false}, result)
+
+	_, err = srv.dispatch(ctx, Request{Method: methodLoadSecurityState, Payload: badPayload})
+	require.ErrorContains(t, err, "database not opened")
+
+	result, err = srv.dispatch(ctx, Request{Method: methodShutdown, Payload: badPayload})
+	require.NoError(t, err)
+	require.Equal(t, ShutdownResult{ShuttingDown: true}, result)
+}
+
 type serverHandleEncodesResultAndPayloadErrorsPayloadAPI struct {
 	API
 
