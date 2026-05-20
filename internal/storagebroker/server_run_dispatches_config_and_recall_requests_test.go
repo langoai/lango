@@ -120,7 +120,8 @@ func TestServerPaymentAndWorkflowDefaultLimitBranches(t *testing.T) {
 
 	ctx := context.Background()
 	srv := openServerSecurityAndConfigWrappersServer(t, false)
-	start := time.Now().Add(time.Hour).UTC().Truncate(time.Second)
+	now := time.Now()
+	start := time.Date(now.Year(), now.Month(), now.Day(), 1, 0, 0, 0, now.Location()).Truncate(time.Second)
 
 	for i := 0; i < 22; i++ {
 		require.NoError(t, srv.client.WorkflowRun.Create().

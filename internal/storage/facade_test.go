@@ -145,8 +145,8 @@ func TestWithEntClientReadersFilterSortAndDefaultLimits(t *testing.T) {
 		require.NoError(t, client.Close())
 	})
 
-	oldTime := time.Now().Add(-2 * time.Hour).Truncate(time.Second)
-	newTime := time.Now().Add(-1 * time.Hour).Truncate(time.Second)
+	oldTime := storageStartOfToday().Add(time.Hour).Truncate(time.Second)
+	newTime := oldTime.Add(time.Hour)
 	require.NoError(t, client.Learning.Create().
 		SetTrigger("old").
 		SetCategory(entlearning.CategoryTimeout).
