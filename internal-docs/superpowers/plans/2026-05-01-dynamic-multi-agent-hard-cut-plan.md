@@ -768,7 +768,7 @@ fix: narrow teammate approval projection race
 
 ## Task 7: Verify Root-Only Tree and RunLedger/agent_control Audit
 
-_Wave mapping: this task bridges late Slice 2 verification and early Slice 3 operator-surface truthfulness._
+_Slice mapping: this task bridges late Slice 2 verification and early Slice 3 operator-surface truthfulness._
 
 **Files:**
 - Modify: `internal/app/wiring.go`
