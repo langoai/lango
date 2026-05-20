@@ -485,3 +485,10 @@
 - [ ] 59.6 Run subagent-driven spec and code-quality review checkpoints
 - [ ] 59.7 Run `openspec validate --all --strict`
 - [ ] 59.8 Archive the completed OpenSpec change
+
+## 60. Coverage Batch: Residual Deterministic Hotspots
+
+- [x] 60.1 Add focused tests for remaining deterministic `internal/app` provenance and channel sender helpers without live channel or P2P services
+- [x] 60.2 Add focused tests for deterministic extension registry, gateway auth, and security CLI helper branches using local fakes and temp files only
+- [x] 60.3 Run subagent-driven review checkpoints for the batch
+- [ ] 60.4 Commit the batch separately

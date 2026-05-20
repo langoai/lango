@@ -138,6 +138,41 @@ func TestReadIdentityBundleStatus_MissingAndCorruptReturnEmpty(t *testing.T) {
 	assert.False(t, corrupt.Present)
 }
 
+func TestReadIdentityBundleStatus_PresentWithoutOptionalKeys(t *testing.T) {
+	dir := t.TempDir()
+	bundle := &p2pidentity.IdentityBundle{
+		Version: 1,
+		SigningKey: p2pidentity.PublicKeyEntry{
+			Algorithm: "ed25519",
+			PublicKey: bytes.Repeat([]byte{0x04}, 32),
+		},
+		LegacyDID: "did:lango:legacy",
+		CreatedAt: time.Unix(1_700_000_000, 0).UTC(),
+	}
+	require.NoError(t, p2pidentity.StoreBundleFile(dir, bundle))
+	wantDID, err := p2pidentity.ComputeDIDv2(bundle)
+	require.NoError(t, err)
+
+	got := readIdentityBundleStatus(dir)
+	assert.True(t, got.Present)
+	assert.Equal(t, wantDID, got.DIDv2)
+	assert.Equal(t, "ed25519", got.SigningAlgorithm)
+	assert.False(t, got.HasSettlement)
+	assert.Equal(t, "did:lango:legacy", got.LegacyDID)
+	assert.False(t, got.PQSigningKeyAvailable)
+	assert.Empty(t, got.PQSigningAlgorithm)
+}
+
+func TestDefaultLangoDirAndExpandPathUseHomeDirectory(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	assert.Equal(t, filepath.Join(home, ".lango"), defaultLangoDir())
+	assert.Equal(t, filepath.Join(home, "nested", "lango.db"), expandPath("~/nested/lango.db"))
+	assert.Equal(t, "/var/tmp/lango.db", expandPath("/var/tmp/lango.db"))
+	assert.Equal(t, "~", expandPath("~"))
+}
+
 func TestRenderStatus_IncludesEnvelopeIdentityAndPQSections(t *testing.T) {
 	out := statusOutput{
 		SignerProvider:       "local",
@@ -186,6 +221,60 @@ func TestRenderStatus_IncludesEnvelopeIdentityAndPQSections(t *testing.T) {
 	assert.Contains(t, rendered, "Settlement Key:   enabled")
 	assert.Contains(t, rendered, "PQ Signing Key:   available (mldsa65)")
 	assert.Contains(t, rendered, "PQ Handshake:       enabled (X25519-MLKEM768)")
+}
+
+func TestRenderStatus_DisabledEnvelopeAndIdentityBranches(t *testing.T) {
+	out := statusOutput{
+		SignerProvider:       "local",
+		ApprovalPolicy:       "dangerous",
+		ExportabilityEnabled: false,
+		DBEncryption:         "disabled (plaintext)",
+		Envelope: envelopeSection{
+			Present:       true,
+			Version:       1,
+			SlotCount:     1,
+			SlotTypes:     []string{"passphrase"},
+			RecoverySetup: false,
+			KMSProtected:  false,
+		},
+		IdentityBundle: identityBundleSection{
+			Present:          true,
+			DIDv2:            "did:lango:v2:def456",
+			SigningAlgorithm: "ed25519",
+			HasSettlement:    false,
+			LegacyDID:        "did:lango:legacy",
+		},
+		DBAvailable:        true,
+		PQHandshakeEnabled: false,
+	}
+
+	var stdout bytes.Buffer
+	err := renderStatus(&stdout, out, "table")
+	require.NoError(t, err)
+	rendered := stdout.String()
+	assert.Contains(t, rendered, "Recovery Setup:   disabled")
+	assert.Contains(t, rendered, "KMS Protection:   disabled")
+	assert.Contains(t, rendered, "Settlement Key:   disabled")
+	assert.Contains(t, rendered, "PQ Signing Key:   not available")
+	assert.Contains(t, rendered, "PQ Handshake:       disabled")
+}
+
+func TestRenderStatus_AbsentSectionsAndDBUnavailable(t *testing.T) {
+	out := statusOutput{
+		ApprovalPolicy:       "dangerous",
+		ExportabilityEnabled: true,
+		DBEncryption:         "disabled (plaintext)",
+		DBAvailable:          false,
+	}
+
+	var stdout bytes.Buffer
+	err := renderStatus(&stdout, out, "table")
+	require.NoError(t, err)
+	rendered := stdout.String()
+	assert.Contains(t, rendered, "Signer Provider:    unavailable")
+	assert.Contains(t, rendered, "DB Access:          unavailable (no non-interactive credential)")
+	assert.Contains(t, rendered, "absent (legacy format)")
+	assert.Contains(t, rendered, "absent (v1 identity only)")
 }
 
 func TestStatusHelpers_PQAlgorithmLabel(t *testing.T) {

@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/oauth2"
 
+	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/session"
 )
 
@@ -83,6 +84,75 @@ type authLoginMissingProviderReturnsNotFoundRoundTripFunc func(*http.Request) (*
 
 func (f authLoginMissingProviderReturnsNotFoundRoundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
 	return f(r)
+}
+
+func TestNewAuthManagerWithEmptyConfigRegistersNoProviders(t *testing.T) {
+	t.Parallel()
+
+	store := newAuthLoginMissingProviderReturnsNotFoundSessionStore()
+
+	auth, err := NewAuthManager(config.AuthConfig{}, store)
+
+	require.NoError(t, err)
+	require.Same(t, store, auth.store)
+	require.Empty(t, auth.providers)
+}
+
+func TestNewAuthManagerReturnsProviderCreationError(t *testing.T) {
+	t.Parallel()
+
+	auth, err := NewAuthManager(config.AuthConfig{
+		Providers: map[string]config.OIDCProviderConfig{
+			"broken": {
+				IssuerURL: "://invalid-issuer",
+				ClientID:  "client-id",
+			},
+		},
+	}, newAuthLoginMissingProviderReturnsNotFoundSessionStore())
+
+	require.Nil(t, auth)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "create provider broken")
+	require.Contains(t, err.Error(), `query provider "://invalid-issuer"`)
+}
+
+func TestNewOIDCProviderReturnsInvalidIssuerURLError(t *testing.T) {
+	t.Parallel()
+
+	provider, err := NewOIDCProvider("broken", config.OIDCProviderConfig{
+		IssuerURL: "://invalid-issuer",
+		ClientID:  "client-id",
+	})
+
+	require.Nil(t, provider)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), `query provider "://invalid-issuer"`)
+}
+
+func TestAuthRegisterRoutesDispatchesHandlers(t *testing.T) {
+	t.Parallel()
+
+	auth := &AuthManager{
+		providers: make(map[string]*OIDCProvider),
+		store:     newAuthLoginMissingProviderReturnsNotFoundSessionStore(),
+	}
+	router := chi.NewRouter()
+	auth.RegisterRoutes(router)
+
+	loginRec := httptest.NewRecorder()
+	router.ServeHTTP(loginRec, httptest.NewRequest(http.MethodGet, "/auth/login/missing", nil))
+
+	require.Equal(t, http.StatusNotFound, loginRec.Code)
+	require.Contains(t, loginRec.Body.String(), "provider not found")
+
+	logoutRec := httptest.NewRecorder()
+	logoutReq := httptest.NewRequest(http.MethodPost, "/auth/logout", nil)
+	logoutReq.Header.Set("X-Forwarded-Proto", "https")
+	router.ServeHTTP(logoutRec, logoutReq)
+
+	require.Equal(t, http.StatusOK, logoutRec.Code)
+	require.JSONEq(t, `{"status":"logged_out"}`, logoutRec.Body.String())
+	require.True(t, requireCookie(t, logoutRec.Result().Cookies(), "lango_session").Secure)
 }
 
 func TestAuthLoginMissingProviderReturnsNotFound(t *testing.T) {
