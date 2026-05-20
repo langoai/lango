@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	ethcrypto "github.com/ethereum/go-ethereum/crypto"
@@ -43,6 +44,36 @@ func TestInitSecurityDeterministicDisabledAndErrorBranches(t *testing.T) {
 	require.Error(t, err)
 	assert.ErrorContains(t, err, `unsupported security provider "initSecurityDeterministicDisabledAndErrorBranches4-unsupported"`)
 	assert.ErrorContains(t, err, "valid providers are local, rpc")
+}
+
+func TestInitSecurityKMSErrorFamilyReturnsNilOutputs(t *testing.T) {
+	t.Parallel()
+
+	for _, provider := range []string{"aws-kms", "gcp-kms", "azure-kv", "pkcs11"} {
+		t.Run(provider, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := config.DefaultConfig()
+			cfg.Security.Signer.Provider = provider
+			cfg.Security.KMS.KeyID = "initSecurityDeterministicDisabledAndErrorBranches4-key"
+
+			crypto, keys, secrets, err := initSecurity(cfg, &stubSessionStore{}, nil)
+
+			require.Error(t, err)
+			errText := err.Error()
+			switch {
+			case strings.Contains(errText, "KMS provider"):
+				assert.Contains(t, errText, provider)
+			case strings.Contains(errText, "KMS security provider requires bootstrap"):
+				assert.NotContains(t, errText, provider)
+			default:
+				t.Fatalf("expected KMS provider creation or bootstrap error, got %q", errText)
+			}
+			assert.Nil(t, crypto)
+			assert.Nil(t, keys)
+			assert.Nil(t, secrets)
+		})
+	}
 }
 
 func TestRetrievalWiringHelpersRespectConfigAndNilDependencies(t *testing.T) {
