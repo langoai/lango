@@ -228,12 +228,196 @@ func TestEntStoreResidualBranchesPruneDeletesTerminalRowsAndPreservesActiveRuns(
 	assertResidualRunDeleted(t, ctx, store, "run-ent-residual-prune-completed")
 	assertResidualRunPresent(t, ctx, store, "run-ent-residual-prune-active")
 	assertResidualRunDeleted(t, ctx, store, "run-ent-residual-prune-failed")
+
+	cached, seq, err := store.GetCachedSnapshot(ctx, "run-ent-residual-prune-completed")
+	require.NoError(t, err)
+	assert.Nil(t, cached)
+	assert.Zero(t, seq)
 }
 
 func TestShouldRetryAppendJournalErrorStringBranches(t *testing.T) {
 	assert.True(t, shouldRetryAppendJournalError(errors.New("create run_journal: database table is locked")))
 	assert.True(t, shouldRetryAppendJournalError(errors.New("commit journal event: DATABASE IS LOCKED")))
 	assert.False(t, shouldRetryAppendJournalError(errors.New("create run_journal: disk I/O error")))
+}
+
+func TestShouldRetryAppendJournalErrorEntConstraintBranch(t *testing.T) {
+	store, ctx := newEntStoreResidualBranchesStore(t)
+
+	_, err := store.client.RunSnapshot.Create().
+		SetRunID("run-ent-residual-constraint").
+		SetSessionKey("session-constraint").
+		SetStatus(entrunsnapshot.StatusRunning).
+		SetGoal("constraint branch").
+		SetSnapshotData(`{"run_id":"run-ent-residual-constraint","session_key":"session-constraint","status":"running","notes":{}}`).
+		SetLastJournalSeq(1).
+		Save(ctx)
+	require.NoError(t, err)
+
+	_, err = store.client.RunSnapshot.Create().
+		SetRunID("run-ent-residual-constraint").
+		SetSessionKey("session-constraint").
+		SetStatus(entrunsnapshot.StatusRunning).
+		SetGoal("constraint branch duplicate").
+		SetSnapshotData(`{"run_id":"run-ent-residual-constraint","session_key":"session-constraint","status":"running","notes":{}}`).
+		SetLastJournalSeq(2).
+		Save(ctx)
+	require.Error(t, err)
+	assert.True(t, shouldRetryAppendJournalError(err))
+}
+
+func TestEntStoreResidualBranchesClosedClientReportsStorageErrors(t *testing.T) {
+	dsn := fmt.Sprintf("file:%s?_fk=1", filepath.Join(t.TempDir(), "runledger-ent-store-closed.db"))
+	client := enttest.Open(t, "sqlite3", dsn)
+	store := NewEntStore(client)
+	ctx := context.Background()
+	require.NoError(t, client.Close())
+
+	err := store.AppendJournalEvent(ctx, JournalEvent{
+		RunID:   "run-ent-residual-closed",
+		Type:    EventNoteWritten,
+		Payload: marshalPayload(NoteWrittenPayload{Key: "closed", Value: "client"}),
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "begin tx")
+
+	events, err := store.GetJournalEvents(ctx, "run-ent-residual-closed")
+	require.Error(t, err)
+	assert.Nil(t, events)
+	assert.Contains(t, err.Error(), "query journal events")
+
+	events, err = store.GetJournalEventsSince(ctx, "run-ent-residual-closed", 1)
+	require.Error(t, err)
+	assert.Nil(t, events)
+	assert.Contains(t, err.Error(), "query journal events since 1")
+
+	snapshot, err := store.MaterializeRunSnapshot(ctx, "run-ent-residual-closed")
+	require.Error(t, err)
+	assert.Nil(t, snapshot)
+	assert.Contains(t, err.Error(), "query journal events")
+
+	cached, seq, err := store.GetCachedSnapshot(ctx, "run-ent-residual-closed")
+	require.Error(t, err)
+	assert.Nil(t, cached)
+	assert.Zero(t, seq)
+	assert.Contains(t, err.Error(), "query cached snapshot")
+
+	err = store.UpdateCachedSnapshot(ctx, &RunSnapshot{
+		RunID:          "run-ent-residual-closed",
+		SessionKey:     "session-closed",
+		Status:         RunStatusRunning,
+		LastJournalSeq: 1,
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "begin snapshot tx")
+
+	runs, err := store.ListRuns(ctx, 10)
+	require.Error(t, err)
+	assert.Nil(t, runs)
+	assert.Contains(t, err.Error(), "list run snapshots")
+
+	sessionRuns, err := store.ListRunSummariesBySession(ctx, "session-closed", 10)
+	require.Error(t, err)
+	assert.Nil(t, sessionRuns)
+	assert.Contains(t, err.Error(), "list run summaries by session")
+
+	maxSeq, err := store.MaxJournalSeqForSession(ctx, "session-closed")
+	require.Error(t, err)
+	assert.Zero(t, maxSeq)
+	assert.Contains(t, err.Error(), "query max journal seq for session")
+
+	err = store.PruneOldRuns(ctx, 1)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "count run snapshots")
+}
+
+func TestEntStoreResidualBranchesGetRunSnapshotCachedTailErrors(t *testing.T) {
+	store, ctx := newEntStoreResidualBranchesStore(t)
+	const runID = "run-ent-residual-tail-error"
+
+	appendResidualRunCreatedAndPlan(t, ctx, store, runID)
+	initial, err := store.GetRunSnapshot(ctx, runID)
+	require.NoError(t, err)
+	require.Equal(t, int64(2), initial.LastJournalSeq)
+
+	require.NoError(t, store.AppendJournalEvent(ctx, JournalEvent{
+		RunID:   runID,
+		Type:    EventStepStarted,
+		Payload: []byte(`{`),
+	}))
+
+	snapshot, err := store.GetRunSnapshot(ctx, runID)
+	require.Error(t, err)
+	assert.Nil(t, snapshot)
+	assert.Contains(t, err.Error(), "apply tail")
+	assert.Contains(t, err.Error(), "unmarshal step_started")
+}
+
+func TestEntStoreResidualBranchesGetRunSnapshotCachedTailQueryError(t *testing.T) {
+	dsn := fmt.Sprintf("file:%s?_fk=1", filepath.Join(t.TempDir(), "runledger-ent-store-tail-query-closed.db"))
+	client := enttest.Open(t, "sqlite3", dsn)
+	store := NewEntStore(client)
+	ctx := context.Background()
+
+	store.cache.Store("run-ent-residual-tail-query-closed", &RunSnapshot{
+		RunID:          "run-ent-residual-tail-query-closed",
+		SessionKey:     "session-tail-query-closed",
+		Status:         RunStatusRunning,
+		LastJournalSeq: 5,
+	})
+	require.NoError(t, client.Close())
+
+	snapshot, err := store.GetRunSnapshot(ctx, "run-ent-residual-tail-query-closed")
+	require.Error(t, err)
+	assert.Nil(t, snapshot)
+	assert.Contains(t, err.Error(), "query journal events since 5")
+}
+
+func TestEntStoreResidualBranchesMaterializeMissingRunReportsNoEvents(t *testing.T) {
+	store, ctx := newEntStoreResidualBranchesStore(t)
+
+	snapshot, err := store.MaterializeRunSnapshot(ctx, "run-ent-residual-missing")
+	require.Error(t, err)
+	assert.Nil(t, snapshot)
+	assert.Contains(t, err.Error(), `run "run-ent-residual-missing": no journal events`)
+}
+
+func TestEntStoreResidualBranchesUpdateCachedSnapshotValidationErrorsRollback(t *testing.T) {
+	store, ctx := newEntStoreResidualBranchesStore(t)
+
+	err := store.UpdateCachedSnapshot(ctx, &RunSnapshot{
+		RunID:          "run-ent-residual-invalid-status",
+		SessionKey:     "session-invalid-status",
+		Status:         RunStatus("invalid"),
+		LastJournalSeq: 1,
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "upsert snapshot")
+	assert.Contains(t, err.Error(), "invalid enum value for status")
+
+	err = store.UpdateCachedSnapshot(ctx, &RunSnapshot{
+		RunID:          "run-ent-residual-invalid-step-status",
+		SessionKey:     "session-invalid-step-status",
+		Status:         RunStatusRunning,
+		LastJournalSeq: 1,
+		Steps: []Step{{
+			StepID:     "step-invalid",
+			Goal:       "invalid step status rolls back",
+			OwnerAgent: "tester",
+			Status:     StepStatus("invalid"),
+			Validator:  ValidatorSpec{Type: ValidatorBuildPass},
+			MaxRetries: DefaultMaxRetries,
+		}},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `create run step "step-invalid"`)
+	assert.Contains(t, err.Error(), "invalid enum value for status")
+
+	count, err := store.client.RunSnapshot.Query().
+		Where(entrunsnapshot.RunIDEQ("run-ent-residual-invalid-step-status")).
+		Count(ctx)
+	require.NoError(t, err)
+	assert.Zero(t, count)
 }
 
 func assertResidualRunDeleted(t *testing.T, ctx context.Context, store *EntStore, runID string) {

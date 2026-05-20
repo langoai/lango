@@ -588,3 +588,10 @@
 - [x] 74.2 Add focused tests for deterministic `internal/knowledge/retriever.go` skill, inquiry, default limit, unsupported layer, and keyword sanitization branches using local fakes only
 - [x] 74.3 Run subagent-driven development and review checkpoints for the batch
 - [x] 74.4 Prepare the batch for a separate scoped commit
+
+## 75. Coverage Batch: Run Ledger Store And Cockpit Projector Residuals
+
+- [x] 75.1 Add focused tests for deterministic `internal/runledger/ent_store.go` query, snapshot tail, validation rollback, prune, and retry residual branches using temp SQLite Ent stores only
+- [x] 75.2 Add focused tests for deterministic `internal/cli/cockpit/missioncontrol_projector.go` status, time, and active-agent summary residual branches using local data only
+- [x] 75.3 Run subagent-driven development and review checkpoints for the batch
+- [x] 75.4 Prepare the batch for a separate scoped commit

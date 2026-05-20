@@ -97,6 +97,9 @@ func TestMissionControlProjectorStatusHelpersCoverMappings(t *testing.T) {
 
 	assert.Equal(t, 1, missionStatusPriority(MissionStatusBlocked))
 	assert.Equal(t, 2, missionStatusPriority(MissionStatusPrepared))
+	assert.Equal(t, 0, missionKindPriority(MissionKindActive))
+	assert.Equal(t, 1, missionKindPriority(MissionKindProposed))
+	assert.Equal(t, 2, missionKindPriority(MissionKind("unknown")))
 	assert.Equal(t, "prepared", proposalStatusString(MissionStatusPrepared))
 	assert.Equal(t, "blocked", durableMissionStatusString(MissionStatusBlocked))
 }
@@ -108,10 +111,88 @@ func TestMissionControlProjectorTimeAndSummaryHelpersCoverEdges(t *testing.T) {
 	assert.Equal(t, wantTime, parseRFC3339OrZero("2026-05-18T09:10:11Z"))
 	assert.True(t, parseRFC3339OrZero("   ").IsZero())
 	assert.True(t, parseRFC3339OrZero("not-rfc3339").IsZero())
+	assert.True(t, valueOrZero(nil).IsZero())
+	assert.Equal(t, wantTime, valueOrZero(&wantTime))
 
 	assert.Equal(t, "1 more mission", pluralSummary(1, "mission", "missions"))
 	assert.Equal(t, "2 more missions", pluralSummary(2, "mission", "missions"))
 	assert.Equal(t, "0 more missions", pluralSummary(0, "mission", "missions"))
+
+	projector := NewMissionControlProjector(Deps{})
+	assert.WithinDuration(t, time.Now(), projector.now(), time.Second)
+
+	fixedNow := time.Date(2026, 5, 18, 10, 0, 0, 0, time.UTC)
+	projector.nowFn = func() time.Time { return fixedNow }
+	assert.Equal(t, fixedNow, projector.now())
+}
+
+func TestMissionControlProjectorDurableStatusResidualMappings(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		status     mission.Status
+		wantStatus MissionStatus
+		wantAction string
+	}{
+		{
+			name:       "active",
+			status:     mission.StatusActive,
+			wantStatus: MissionStatusRunning,
+			wantAction: "Continue mission",
+		},
+		{
+			name:       "done",
+			status:     mission.StatusDone,
+			wantStatus: MissionStatusDone,
+			wantAction: "Review completed output",
+		},
+		{
+			name:       "cancelled",
+			status:     mission.StatusCancelled,
+			wantStatus: MissionStatusCancelled,
+			wantAction: "Restart if still needed",
+		},
+		{
+			name:       "unknown",
+			status:     mission.Status("unexpected"),
+			wantStatus: MissionStatusUnknown,
+			wantAction: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			view := missionViewFromDurableRow(&mission.Mission{
+				Status: tt.status,
+				Title:  "Residual status",
+			})
+			assert.Equal(t, tt.wantStatus, view.Status)
+			assert.Equal(t, tt.wantAction, view.NextAction)
+		})
+	}
+}
+
+func TestMissionControlProjectorActiveAgentSummaryResidualBranches(t *testing.T) {
+	t.Parallel()
+
+	assert.Empty(t, buildActiveAgentSummary(nil))
+	assert.Empty(t, buildActiveAgentSummary([]MissionView{
+		{Kind: MissionKindProposed, OwnerAgent: "planner"},
+		{Kind: MissionKindActive, Status: MissionStatusDone, OwnerAgent: "done-agent"},
+		{Kind: MissionKindActive, Status: MissionStatusFailed, OwnerAgent: "failed-agent"},
+		{Kind: MissionKindActive, Status: MissionStatusCancelled, OwnerAgent: "cancelled-agent"},
+		{Kind: MissionKindActive, Status: MissionStatusRunning},
+	}))
+
+	assert.Equal(t, "planner agent active", buildActiveAgentSummary([]MissionView{
+		{Kind: MissionKindActive, Status: MissionStatusRunning, OwnerAgent: " planner\nagent "},
+		{Kind: MissionKindActive, Status: MissionStatusPending, OwnerAgent: "planner agent"},
+	}))
+	assert.Equal(t, "planner +1 more active", buildActiveAgentSummary([]MissionView{
+		{Kind: MissionKindActive, Status: MissionStatusRunning, OwnerAgent: "planner"},
+		{Kind: MissionKindActive, Status: MissionStatusPending, OwnerAgent: "reviewer"},
+	}))
 }
 
 func TestMissionControlProjectorCurrentRunStepStatusBranches(t *testing.T) {
