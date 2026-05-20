@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
-### Requirement: Mission Control presents timeline and header as first-class Wave 1 outputs
-Mission Control SHALL add a real direct mission-start write path in Wave 2 while preserving timeline and header behavior from Wave 1.
+### Requirement: Mission Control presents timeline and header as first-class Slice 1 outputs
+Mission Control SHALL add a real direct mission-start write path in Slice 2 while preserving timeline and header behavior from Slice 1.
 
 #### Scenario: Active-agent summary aggregation stays replay-safe
 - **WHEN** mission owner-agent labels contain ANSI/OSC escape sequences or embedded newlines before header aggregation

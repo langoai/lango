@@ -1,4 +1,4 @@
-## 1. Wave 1a: ApprovalViewModel + Tier Classification + Request Field Extension
+## 1. Slice 1a: ApprovalViewModel + Tier Classification + Request Field Extension
 
 - [x] 1.1 Add `SafetyLevel`, `Category`, `Activity` string fields (omitempty) to `ApprovalRequest` in `internal/approval/approval.go`
 - [x] 1.2 Create `internal/approval/viewmodel.go` with `DisplayTier`, `RiskIndicator`, `ApprovalViewModel` types
@@ -8,14 +8,14 @@
 - [x] 1.6 Create `internal/approval/viewmodel_test.go` with table-driven tests for all SafetyLevel × Category × Activity combinations
 - [x] 1.7 Verify `go build ./...` and `go test ./...` pass
 
-## 2. Wave 1b: Semantic Palette
+## 2. Slice 1b: Semantic Palette
 
 - [x] 2.1 Add semantic color aliases (`Danger`, `Info`, `Selection`) to `internal/cli/cockpit/theme/theme.go`
 - [x] 2.2 Add `BadgeStyle(color)` and `DividerStyle` helpers to `internal/cli/tui/styles.go`
 - [x] 2.3 Reduce border-heavy styles to spacing/badge alternatives in `styles.go`
 - [x] 2.4 Verify `go build ./...` passes — no existing consumers broken
 
-## 3. Wave 2: turnrunner.Request Extension
+## 3. Slice 2: turnrunner.Request Extension
 
 - [x] 3.1 Add `OnToolCall func(callID, toolName string, params map[string]any)` to `turnrunner.Request` in `internal/turnrunner/runner.go`
 - [x] 3.2 Add `OnToolResult func(callID, toolName string, success bool, duration time.Duration, preview string)` to `turnrunner.Request`
@@ -28,7 +28,7 @@
 - [x] 3.9 Add tests in `runner_test.go` for new callback invocation timing and nil safety
 - [x] 3.10 Verify `go build ./...` and `go test ./...` pass
 
-## 4. Wave 3: Chat Model Integration (Hub File Exclusive)
+## 4. Slice 3: Chat Model Integration (Hub File Exclusive)
 
 - [x] 4.1 Add `ToolStartedMsg`, `ToolFinishedMsg`, `ThinkingStartedMsg`, `ThinkingFinishedMsg`, `TaskStripTickMsg`, `PendingIndicatorTickMsg` to `internal/cli/chat/messages.go`
 - [x] 4.2 Add `ViewModel approval.ApprovalViewModel` field to `ApprovalRequestMsg` in `messages.go`
@@ -52,7 +52,7 @@
 - [x] 4.20 Add headless tests: tool item append/state/render, thinking item, pending indicator, footer HUD, task strip nil-manager, approval tier dispatch, bridge msg routing
 - [x] 4.21 Verify `go build ./...` and `go test ./...` pass
 
-## 5. Wave 4: Approval Surfaces + Cockpit Wiring + Documentation
+## 5. Slice 4: Approval Surfaces + Cockpit Wiring + Documentation
 
 - [x] 5.1 Replace `internal/cli/chat/approval_strip.go` stub with real Tier 1 renderer — single-line compact strip with tool name, summary, action keys
 - [x] 5.2 Replace `internal/cli/chat/approval_dialog.go` stub with real Tier 2 renderer — fullscreen overlay with risk badge, params, diff viewport, action bar, `t` toggle, `↑↓` scroll, 500-line diff cap

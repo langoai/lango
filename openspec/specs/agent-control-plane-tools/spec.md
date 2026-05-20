@@ -61,12 +61,12 @@ The `agent_message` tool SHALL NOT be included in the initial `BuildControlTools
 
 ### Requirement: Task management tools provide CRUD on TaskEntry
 
-Task management tools SHALL continue providing lightweight CRUD over `TaskEntry` in Wave 2. This change SHALL NOT promote `TaskEntry` into the durable mission checklist model or make task-tracking rows the authoritative durable mission truth.
+Task management tools SHALL continue providing lightweight CRUD over `TaskEntry` in Slice 2. This change SHALL NOT promote `TaskEntry` into the durable mission checklist model or make task-tracking rows the authoritative durable mission truth.
 
 #### Scenario: Task tracking remains operational rather than durable mission truth
 - **WHEN** task management tools create, list, or update `TaskEntry` rows
 - **THEN** those rows SHALL remain lightweight operational tracking records
-- **AND** Wave 2 SHALL NOT require them to serve as the authoritative durable mission checklist model
+- **AND** Slice 2 SHALL NOT require them to serve as the authoritative durable mission checklist model
 
 #### Scenario: Missing task required input fails at the wrapper
 - **WHEN** `task_create`, `task_get`, or `task_update` is invoked without its required `title` or `task_id`
@@ -211,7 +211,7 @@ When control-plane or mission-bound runtime work creates a new execution for an 
 - **THEN** the application SHALL record the `MissionExecutionLink` as part of that execution creation flow
 - **AND** the durable relationship SHALL reference the mission's `mission_id` plus the execution identity created by that flow
 
-#### Scenario: Wave 2 does not retrofit all task tracking into mission linkage truth
+#### Scenario: Slice 2 does not retrofit all task tracking into mission linkage truth
 - **WHEN** a `TaskEntry` exists without mission-aware execution linkage
-- **THEN** Wave 2 SHALL NOT require the system to reconstruct durable mission ownership only by retrofitting all task-tracking records
+- **THEN** Slice 2 SHALL NOT require the system to reconstruct durable mission ownership only by retrofitting all task-tracking records
 - **AND** mission-execution linkage truth SHALL remain attached to execution creation sites

@@ -1,6 +1,6 @@
 ## Why
 
-Wave 1 (Unit B) added `DefaultSaveableTools` as a hard-coded constant in `toolchain/hook_knowledge.go`. This works but drifts when tools are added/renamed/removed. The `ToolCapability` struct already has `ReadOnly bool` and `Activity ActivityKind` fields that semantically indicate which tools produce saveable read-type results. This change replaces the hard-coded list with a catalog query so `KnowledgeSaveHook.SaveableTools` is automatically derived from tool metadata.
+Slice 1 (Unit B) added `DefaultSaveableTools` as a hard-coded constant in `toolchain/hook_knowledge.go`. This works but drifts when tools are added/renamed/removed. The `ToolCapability` struct already has `ReadOnly bool` and `Activity ActivityKind` fields that semantically indicate which tools produce saveable read-type results. This change replaces the hard-coded list with a catalog query so `KnowledgeSaveHook.SaveableTools` is automatically derived from tool metadata.
 
 ## What Changes
 

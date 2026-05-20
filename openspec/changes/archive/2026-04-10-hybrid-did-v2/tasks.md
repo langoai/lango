@@ -1,6 +1,6 @@
 # Tasks: hybrid-did-v2
 
-## Wave 1 — Foundation types (parallel)
+## Slice 1 — Foundation types (parallel)
 
 ### Unit 1: DID v2 types + IdentityBundle + ParseDID dispatcher
 - [x] Add `DIDv2Prefix = "did:lango:v2:"` to `internal/types/identity.go`
@@ -24,7 +24,7 @@
 - [x] Create `internal/p2p/identity/bundle_file_test.go`
 - [x] Verify: `go test ./internal/p2p/identity/...`
 
-## Wave 2 — BundleProvider
+## Slice 2 — BundleProvider
 
 ### Unit 4: BundleProvider + bundle creation
 - [x] Create `internal/p2p/identity/bundle_provider.go`: BundleProvider struct
@@ -33,7 +33,7 @@
 - [x] Create `internal/p2p/identity/bundle_provider_test.go`
 - [x] Verify: `go test ./internal/p2p/identity/...`
 
-## Wave 3 — Protocol + Economy (parallel)
+## Slice 3 — Protocol + Economy (parallel)
 
 ### Unit 5: Handshake v2 + Signer.DID() + LegacySigner + Bundle transport
 - [x] Add `DID(ctx) (string, error)` to Signer interface in `handshake.go`
@@ -59,7 +59,7 @@
 - [x] Tests: v1 resolves, v2 resolves via bundle, v2 without bundle errors
 - [x] Verify: `go build ./... && go test ./internal/economy/escrow/...`
 
-## Wave 4 — Bootstrap + App wiring
+## Slice 4 — Bootstrap + App wiring
 
 ### Unit 7: Bootstrap identity phase + app wiring
 - [x] Add `phaseDeriveIdentityKey` to phases.go (after phaseInitCrypto)
@@ -73,7 +73,7 @@
 - [x] Update pipeline_test.go for 12 phases
 - [x] Verify: `go build ./... && go test ./internal/bootstrap/... ./internal/app/...`
 
-## Wave 5 — Surface layer (parallel)
+## Slice 5 — Surface layer (parallel)
 
 ### Unit 8: GossipCard + AgentCard v2 DID
 - [x] Add optional `Bundle` field to GossipCard

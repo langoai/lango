@@ -4,7 +4,7 @@ Capability spec for interactive-tui-chat. See requirements below for scope and b
 ## Requirements
 ### Requirement: Interactive TUI chat on bare invocation
 
-Running `lango chat` SHALL start the interactive terminal chat session using Bubble Tea. `lango serve` SHALL continue to work as the full gateway plus channels mode. Wave 6 SHALL remove the older bare-`lango` chat interpretation from this surface contract.
+Running `lango chat` SHALL start the interactive terminal chat session using Bubble Tea. `lango serve` SHALL continue to work as the full gateway plus channels mode. Slice 6 SHALL remove the older bare-`lango` chat interpretation from this surface contract.
 
 #### Scenario: Explicit chat command launches TUI chat
 - **WHEN** the user runs `lango chat` on an interactive TTY
@@ -253,11 +253,11 @@ These entries SHALL NOT block streaming and SHALL NOT be persisted as assistant 
 - **AND** the chat viewport SHALL remain responsive
 
 ### Requirement: Learning suggestion rendering in TUI
-Wave 1 SHALL NOT require the chat transcript surface to present learning suggestions as inline approvals that persist learning directly. Mission Control becomes the required projection surface for those suggestions as actionable proposed missions, and chat may remain informational if it renders them at all.
+Slice 1 SHALL NOT require the chat transcript surface to present learning suggestions as inline approvals that persist learning directly. Mission Control becomes the required projection surface for those suggestions as actionable proposed missions, and chat may remain informational if it renders them at all.
 
 #### Scenario: Mission Control owns learning suggestion proposal semantics
 - **WHEN** a `LearningSuggestionEvent` occurs during a cockpit session
-- **THEN** the Wave 1 requirement SHALL be satisfied by Mission Control projecting it as a proposed mission
+- **THEN** the Slice 1 requirement SHALL be satisfied by Mission Control projecting it as a proposed mission
 - **AND** this delta SHALL replace the earlier requirement that chat itself present the suggestion as an inline approval with direct persistence semantics
 - **AND** chat SHALL NOT be required to persist the suggestion through the approval pipeline on its own
 

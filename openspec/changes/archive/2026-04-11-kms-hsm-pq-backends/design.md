@@ -50,8 +50,8 @@ Bootstrap KMS path:
   5. On failure: warn → fall through to mnemonic/passphrase path
 ```
 
-## Waves
+## Slices
 
-1. **Wave 1**: Envelope KMS Slot — `envelope.go` (AddKMSSlot, UnwrapFromKMS, tests)
-2. **Wave 2**: Bootstrap — `kms_env.go`, `phases.go`, `bootstrap.go` (KMS detection, unwrap, fallback)
-3. **Wave 3**: CLI + Status — `kms.go` (wrap/detach), `status.go` (KMS protection display)
+1. **Slice 1**: Envelope KMS Slot — `envelope.go` (AddKMSSlot, UnwrapFromKMS, tests)
+2. **Slice 2**: Bootstrap — `kms_env.go`, `phases.go`, `bootstrap.go` (KMS detection, unwrap, fallback)
+3. **Slice 3**: CLI + Status — `kms.go` (wrap/detach), `status.go` (KMS protection display)

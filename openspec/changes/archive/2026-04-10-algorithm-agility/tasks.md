@@ -1,6 +1,6 @@
 # Tasks: algorithm-agility
 
-## Wave 1 — Foundation (parallel)
+## Slice 1 — Foundation (parallel)
 
 ### Unit 1: SignatureScheme + algorithm constants + Verify implementations
 - [ ] Create `internal/security/signature_scheme.go` with SignatureScheme struct + algorithm constants
@@ -21,7 +21,7 @@
 - [ ] Add tests in `identity_test.go`
 - [ ] Verify: `go build ./internal/p2p/identity/... && go test ./internal/p2p/identity/...`
 
-## Wave 2 — Handshake algorithm awareness
+## Slice 2 — Handshake algorithm awareness
 
 ### Unit 4: Signer.Algorithm() + verifier map + protocol fields
 - [ ] Add `Algorithm() string` to Signer interface in `handshake.go`
@@ -40,7 +40,7 @@
 - [ ] Add `TestVerifyResponse_Ed25519` integration test
 - [ ] Verify: `go build ./... && go test ./internal/p2p/handshake/... ./internal/app/...`
 
-## Wave 3 — Wiring + enforcement
+## Slice 3 — Wiring + enforcement
 
 ### Unit 5: Provenance Ed25519 registration + constant migration
 - [ ] Update `provenance/bundle.go`: re-export AlgorithmSecp256k1Keccak256 from security

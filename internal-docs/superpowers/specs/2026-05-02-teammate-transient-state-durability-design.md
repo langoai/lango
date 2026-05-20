@@ -167,9 +167,9 @@ The likely artifact shape is:
 - `run-ledger` gains the actual new requirements
 - secondary specs receive only the cross-reference needed to keep terminology and operator expectations aligned
 
-## Implementation Waves
+## Implementation Slices
 
-### Wave 1: Contract Closure
+### Slice 1: Contract Closure
 
 - Define teammate transient state durability in `run-ledger`
 - Close the archived audit gap for approval-blocked conditions
@@ -182,7 +182,7 @@ The likely artifact shape is:
   - snapshot fields are extended through `RunSnapshot` / `snapshot_data`
   - new Ent columns are not assumed by default
 
-### Wave 2: Runtime Mirror Wiring
+### Slice 2: Runtime Mirror Wiring
 
 - Mirror approval block transitions
 - Mirror approval unblock transitions

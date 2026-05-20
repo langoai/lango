@@ -6,7 +6,7 @@
 
 The `Catalog` (`toolcatalog/catalog.go`) holds all registered tools with their capabilities. The `KnowledgeSaveHook` needs the list at construction time in `app.go` builder.
 
-Currently `BuildHookRegistry` in `app.go` uses `toolchain.DefaultSaveableTools` (hard-coded constant from Wave 1). The catalog is available at the same wiring point (`app.go:150+` — catalog is built before hooks).
+Currently `BuildHookRegistry` in `app.go` uses `toolchain.DefaultSaveableTools` (hard-coded constant from Slice 1). The catalog is available at the same wiring point (`app.go:150+` — catalog is built before hooks).
 
 ## Goals / Non-Goals
 

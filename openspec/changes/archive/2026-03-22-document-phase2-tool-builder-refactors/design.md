@@ -1,6 +1,6 @@
 ## Context
 
-Four recent commits finished a second wave of tool-builder extraction and follow-up verification:
+Four recent commits finished a second slice of tool-builder extraction and follow-up verification:
 
 - `4f59b8c`: package-owned builders for agent memory, automation, data, team, and sentinel tools
 - `eddbe4b`: package-owned builders for foundation tools plus additional wiring tests

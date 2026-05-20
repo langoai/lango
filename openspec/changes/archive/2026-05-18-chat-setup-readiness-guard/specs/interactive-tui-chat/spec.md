@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Interactive TUI chat on bare invocation
-Running `lango chat` SHALL start the interactive terminal chat session using Bubble Tea. `lango serve` SHALL continue to work as the full gateway plus channels mode. Wave 6 SHALL remove the older bare-`lango` chat interpretation from this surface contract.
+Running `lango chat` SHALL start the interactive terminal chat session using Bubble Tea. `lango serve` SHALL continue to work as the full gateway plus channels mode. Slice 6 SHALL remove the older bare-`lango` chat interpretation from this surface contract.
 
 #### Scenario: Focused chat shows setup-required state for incomplete profiles
 - **WHEN** the active config does not satisfy `config.EvaluateAgentSetup`

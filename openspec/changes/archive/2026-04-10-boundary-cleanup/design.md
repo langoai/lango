@@ -60,5 +60,5 @@ Replace `BundleSignFunc func(ctx, payload) ([]byte, error)` with `BundleSigner i
 |------|--------|------------|
 | NewBundleService signature change (11 call sites) | Compile error if missed | Full call site list documented in the plan + go build verification |
 | Incorrect assumption about implicit interface satisfaction | Runtime failure | Compile-time check `var _ Signer = (*wallet.LocalWallet)(nil)` is unnecessary — wiring produces compile errors directly |
-| archtest trailing slash fix breaks existing tests | CI failure | Strengthen archtest only after wallet imports are already removed from all p2p packages (Wave 4) |
+| archtest trailing slash fix breaks existing tests | CI failure | Strengthen archtest only after wallet imports are already removed from all p2p packages (Slice 4) |
 | provenance default verifier regression | Separation boundary collapse | Enforce `provenance → p2p/identity` prohibition with archtest rule |

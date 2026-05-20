@@ -85,7 +85,7 @@ Mission Control follows the same rule: if its backing projector is unavailable, 
 | `Ctrl+5` | Switch to Tasks page |
 | `Ctrl+6` | Switch to Approvals page |
 
-Mission Control, Sessions, and Dead Letters are reached from the sidebar. Wave 1 intentionally keeps the existing `Ctrl+1` through `Ctrl+6` mappings for the detail pages instead of remapping them around Mission Control.
+Mission Control, Sessions, and Dead Letters are reached from the sidebar. Slice 1 intentionally keeps the existing `Ctrl+1` through `Ctrl+6` mappings for the detail pages instead of remapping them around Mission Control.
 
 ## Settings Page
 

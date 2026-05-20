@@ -1,6 +1,6 @@
 # Tasks: P2P Workspace & Git Bundle Integration
 
-## Wave 1: Foundation (no dependencies)
+## Slice 1: Foundation (no dependencies)
 
 - [x] **WU-1**: Add `WorkspaceConfig` struct to `internal/config/types_p2p.go`
   - Added 7-field config struct and `Workspace` field to `P2PConfig`
@@ -12,7 +12,7 @@
   - `BareRepoStore` with Init, Repo, RepoPath, List, Remove methods
   - Added `go-git/go-git/v5` dependency
 
-## Wave 2: Core packages
+## Slice 2: Core packages
 
 - [x] **WU-3**: PubSub sharing refactor
   - Added `ps *pubsub.PubSub` field and `PubSub()` method to `p2p.Node`
@@ -32,7 +32,7 @@
   - `internal/p2p/gitbundle/messages.go` — Protocol ID, 5 request types, payload structs
   - `internal/p2p/gitbundle/protocol.go` — Stream handler with session validation
 
-## Wave 3: Integration layer
+## Slice 3: Integration layer
 
 - [x] **WU-5**: Create `internal/p2p/workspace/gossip.go`
   - `WorkspaceGossip` with Subscribe, Unsubscribe, Publish, Stop
@@ -51,7 +51,7 @@
   - `internal/p2p/workspace/chronicler.go` — Message → graph triple conversion
   - `internal/p2p/workspace/contribution.go` — Per-member contribution tracking
 
-## Wave 4: Final integration
+## Slice 4: Final integration
 
 - [x] **WU-11**: App wiring
   - Created `internal/app/wiring_workspace.go` — `initWorkspace()` function

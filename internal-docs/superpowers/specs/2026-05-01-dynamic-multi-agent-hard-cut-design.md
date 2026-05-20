@@ -243,11 +243,11 @@ The purpose is not to rename the channel unless necessary. The purpose is to pre
 
 ## Change Boundary
 
-This work is intended to land as **one OpenSpec change with multiple implementation waves**, not as separate independently archived changes. The reason is simple: the spec rewrite and the runtime cutover must be archived in a state where they still match each other.
+This work is intended to land as **one OpenSpec change with multiple implementation slices**, not as separate independently archived changes. The reason is simple: the spec rewrite and the runtime cutover must be archived in a state where they still match each other.
 
-## Implementation Waves
+## Implementation Slices
 
-### Wave 1: Contract Rewrite
+### Slice 1: Contract Rewrite
 
 - Rewrite `multi-agent-orchestration` around built-in spawn-only production execution.
 - Rewrite `agent-control-plane-tools` so built-in teammate execution is anchored on `agent_spawn`.
@@ -257,7 +257,7 @@ This work is intended to land as **one OpenSpec change with multiple implementat
 - Record RunLedger secondary impact expectations.
 - At plan time, run a concrete grep inventory for `transfer_to_agent`, `lango-orchestrator`, sub-agent escalation, and `failed to find agent` patterns across all primary and secondary specs before drafting delta text.
 
-### Wave 2: Runtime Cutover
+### Slice 2: Runtime Cutover
 
 - Remove built-in production reliance on `transfer_to_agent`.
 - Convert built-in orchestration prompts and routing text to spawn-only semantics.
@@ -274,7 +274,7 @@ This work is intended to land as **one OpenSpec change with multiple implementat
 
 Note: `internal/skill/executor.go` defaults `skill.Agent` to `"operator"` when unset. That means most fork-style skill executions currently follow the built-in path, making this switch high-impact rather than peripheral cleanup.
 
-### Wave 3: Operator Surfaces
+### Slice 3: Operator Surfaces
 
 - Update CLI/TUI/status wiring and language.
 - Update docs and skills that still describe built-in execution as legacy-compatible first.

@@ -28,7 +28,7 @@ This creates four runtime failures:
 - Preserve user-response continuity even when ontology growth or graph storage fails.
 - Convert unknown predicates into mapped, proposed, shadow, quarantined, or dead-lettered outcomes, and treat unknown types as a separate lifecycle concern once the runtime has explicit type validation coverage.
 - Keep graph predicate validation as a final integrity guard, but feed it from one authoritative predicate state.
-- Define the first-wave retrieval, FTS5, governance, and replay semantics for shadow predicates.
+- Define the first-slice retrieval, FTS5, governance, and replay semantics for shadow predicates.
 
 ## Non-Goals
 
@@ -73,7 +73,7 @@ Decision meanings:
 
 `shadow` continues to mean "usable but experimental." The design does not create a second shadow concept.
 
-Decision table for non-admitted unknown terms in Wave 1:
+Decision table for non-admitted unknown terms in Slice 1:
 
 | Condition | Outcome |
 |---|---|
@@ -91,18 +91,18 @@ There must be one source of truth for predicate validity.
 - `ValidateTriple` and the graph store validator must both consume that same predicate truth.
 - The graph store must not maintain a separate predicate set.
 - "Refresh predicate validator immediately" means refreshing the ontology service cache and continuing to use the same closure already injected into `BoltStore`.
-- In the current runtime, `RegisterPredicate` already performs a synchronous `refreshPredicateCache()` before returning; first-wave admission relies on that synchronous invalidation model rather than a separate publish/subscribe refresh path.
+- In the current runtime, `RegisterPredicate` already performs a synchronous `refreshPredicateCache()` before returning; first-slice admission relies on that synchronous invalidation model rather than a separate publish/subscribe refresh path.
 
 This matters because the current runtime rejects unknown predicates in two places. The design is valid only if both gates read from the same refreshed ontology state.
 
-Important Wave 1 constraint:
+Important Slice 1 constraint:
 
 - With governance enabled, `RegisterPredicate` forces new predicates to `proposed` status before persistence.
 - Therefore the shadow admission path cannot rely on a single `RegisterPredicate(Status=shadow)` call.
-- Wave 1 shadow admission must use one of two explicit strategies:
+- Slice 1 shadow admission must use one of two explicit strategies:
   - `RegisterPredicate(proposed)` followed by `PromotePredicate(proposed -> shadow)` in the same admission workflow.
   - a future internal-only API that preserves shadow registration semantics without exposing a second public lifecycle surface.
-- The default design assumption for Wave 1 is the existing-API two-step path: register as `proposed`, then promote to `shadow`, then admit only after the shared validator closure recognizes the refreshed shadow predicate.
+- The default design assumption for Slice 1 is the existing-API two-step path: register as `proposed`, then promote to `shadow`, then admit only after the shared validator closure recognizes the refreshed shadow predicate.
 - This shadow-promotion path is part of the broader admission-hardening program, not the `Phase A1 observe-only runtime app sub-slice`.
 - Any future runtime that performs `PromotePredicate(proposed -> shadow)` automatically must define which internal admin-capable principal or API performs that transition when ACL is enabled.
 - That execution identity is explicitly deferred beyond `Phase A1`; no automatic schema mutation occurs in the observe-only slice.
@@ -111,22 +111,22 @@ Important Wave 1 constraint:
 
 The admission boundary is only meaningful if it covers the real producer set.
 
-| Producer Path | Current Entry | Current Validation Path | Confidence Available Today | First-Wave Action |
+| Producer Path | Current Entry | Current Validation Path | Confidence Available Today | First-Slice Action |
 |---|---|---|---|---|
 | `internal/learning/parse.go` -> `TriplesExtractedEvent` -> `internal/app/wiring_graph.go` | Event bus to `GraphBuffer` | Graph store validator only | No explicit numeric confidence on event triple | Route through admission in event subscriber; add confidence/source metadata or default producer policy |
 | `internal/librarian/proactive_buffer.go` -> `TriplesExtractedEvent` | Event bus to `GraphBuffer` | Graph store validator only | No explicit numeric confidence on event triple | Same as learning event path |
 | `internal/learning/graph_engine.go` event-bus publish path | `TriplesExtractedEvent` with `Source: "learning"` | Graph store validator only after app wiring | Producer-local source exists; no explicit confidence in event payload | Inventory as a distinct dynamic producer path |
 | `internal/learning/graph_engine.go` direct graph write fallback | `graph.Store.AddTriples` when event bus is absent | Graph store validator only | Producer-local knowledge of source exists; no shared admission shape | Reroute through admission batch API before direct store writes |
 | `internal/ontology/truth.go` via `AssertFact` | `ValidateTriple` before truth maintenance | Ontology validator first | Yes, `AssertionInput.Confidence` exists today | Reuse confidence; route schema discovery before `ValidateTriple` hard rejection |
-| `internal/app/wiring_graph.go` content saved containment triples | `GraphBuffer` | Known seeded predicates | Deterministic | Wave 1 keeps a fast path and bypasses dynamic admission because this producer only emits seeded predicates; existing validators still apply unchanged |
-| `internal/memory/graph_hooks.go` | `GraphBuffer` | Known seeded predicates | Deterministic | Wave 1 keeps a fast path and bypasses dynamic admission because this producer only emits seeded predicates; existing validators still apply unchanged |
+| `internal/app/wiring_graph.go` content saved containment triples | `GraphBuffer` | Known seeded predicates | Deterministic | Slice 1 keeps a fast path and bypasses dynamic admission because this producer only emits seeded predicates; existing validators still apply unchanged |
+| `internal/memory/graph_hooks.go` | `GraphBuffer` | Known seeded predicates | Deterministic | Slice 1 keeps a fast path and bypasses dynamic admission because this producer only emits seeded predicates; existing validators still apply unchanged |
 | `internal/cli/graph/import_cmd.go` | Direct `AddTriples` | Graph store validator only | Import payload dependent | Route import through admission batch API |
 | Ontology tools and actions using `AssertFact` | `OntologyService.AssertFact` | `ValidateTriple` first | Tool input controlled | Admission must sit before unknown-predicate rejection for growth-enabled flows |
 | Type-bearing dynamic producers | Same as the corresponding dynamic triple path | Same as predicate path | Depends on producer | Unknown type discovery follows the same admission path whenever the producer emits non-empty `SubjectType` or `ObjectType` values |
 
-The key boundary decision is this: Wave 1 keeps a fast path for deterministic seeded-predicate producers and requires the admission API for every path that can emit LLM- or user-supplied arbitrary predicates. This does not weaken the validation model because both fast-path and admission-path triples still terminate at the same existing ontology and graph validators.
+The key boundary decision is this: Slice 1 keeps a fast path for deterministic seeded-predicate producers and requires the admission API for every path that can emit LLM- or user-supplied arbitrary predicates. This does not weaken the validation model because both fast-path and admission-path triples still terminate at the same existing ontology and graph validators.
 
-`internal/app/wiring_graph.go` contains both sides of this split today: it has dynamic subscriber paths that ingest `TriplesExtractedEvent` values, and it also emits deterministic containment triples locally. Wave 1 applies admission only to the dynamic subscriber side in that file.
+`internal/app/wiring_graph.go` contains both sides of this split today: it has dynamic subscriber paths that ingest `TriplesExtractedEvent` values, and it also emits deterministic containment triples locally. Slice 1 applies admission only to the dynamic subscriber side in that file.
 
 ## Admission Architecture
 
@@ -162,7 +162,7 @@ New helper used only by `TripleAdmissionPolicy` on the unknown-predicate or unkn
 
 `SchemaCandidateStore`
 
-New or extended persistence for schema candidates and evidence. Wave 1 keeps this deliberately small: one candidate row per normalized unknown term, recent `K=20` sample admissions, per-source counters, subject/object type frequency summaries, last rejection reason, and last observed schema version.
+New or extended persistence for schema candidates and evidence. Slice 1 keeps this deliberately small: one candidate row per normalized unknown term, recent `K=20` sample admissions, per-source counters, subject/object type frequency summaries, last rejection reason, and last observed schema version.
 
 `GraphAdmissionDeadLetterStore`
 
@@ -174,12 +174,12 @@ Required extension for budget enforcement if automatic shadow admission is enabl
 
 ## Batch And Transaction Model
 
-First wave chooses one batch model explicitly:
+First slice chooses one batch model explicitly:
 
 - Admission pre-filters and rewrites candidates before they reach `GraphBuffer`.
 - `GraphBuffer` continues to submit one atomic BoltDB transaction per admitted batch.
 - Invalid or deferred candidates are removed before batch write.
-- The system does not split normal batches into per-triple transactions in first wave.
+- The system does not split normal batches into per-triple transactions in first slice.
 
 This means the primary fix for batch rollback is not retry fan-out. The fix is that `GraphBuffer` no longer receives raw unknown predicates from dynamic producers.
 
@@ -228,7 +228,7 @@ raw triple: thing uses stuff
 
 The current FTS5 indexes are attached to knowledge and learning stores, not to graph triples directly. That means shadow predicate behavior must be defined in graph retrieval terms, not by pretending predicates create direct FTS5 rows.
 
-First-wave semantics:
+First-slice semantics:
 
 - Shadow predicates are usable for graph storage and graph traversal because they are valid ontology predicates in `shadow` state.
 - GraphRAG may traverse shadow predicates, but retrieval results expanded through shadow predicates must be marked experimental in provenance metadata and should apply a score penalty relative to `active` predicate edges.
@@ -247,16 +247,16 @@ Existing surface already includes:
 - `ontology_promote_predicate`;
 - documented `minUsageForPromotion` and shadow duration fields.
 
-First-wave design assumptions:
+First-slice design assumptions:
 
 - manual promotion through existing governance surfaces is the reliable promotion path;
 - automatic active promotion should not be a prerequisite for this admission change;
-- if auto-promotion runtime is incomplete or unverified, the change must state that shadow-to-active automation is a follow-up wave.
+- if auto-promotion runtime is incomplete or unverified, the change must state that shadow-to-active automation is a follow-up slice.
 
 Therefore:
 
-- Wave 1 uses manual promotion plus status/usage observability.
-- Wave 2 may implement or harden automatic shadow-to-active promotion using the already defined `MinUsageForPromotion` policy and shadow usage counters.
+- Slice 1 uses manual promotion plus status/usage observability.
+- Slice 2 may implement or harden automatic shadow-to-active promotion using the already defined `MinUsageForPromotion` policy and shadow usage counters.
 
 ## Observe-Only Phase
 
@@ -304,7 +304,7 @@ Each dead-letter record must store:
 Replay rules:
 
 - the current `SchemaVersion()` value is an in-memory atomic counter and is not durable across process restarts;
-- therefore Wave 1 and Wave 2 may only use schema version as a best-effort in-process signal, not as durable replay truth;
+- therefore Slice 1 and Slice 2 may only use schema version as a best-effort in-process signal, not as durable replay truth;
 - if schema version is unchanged within the same process lifetime, replay should attempt the same admission decision first;
 - if schema version advanced within the same process lifetime, replay reruns admission against the latest schema but preserves the original snapshot for audit;
 - durable replay semantics across restart require a persisted schema version source and belong to Change C prerequisite work;
@@ -314,10 +314,10 @@ Replay rules:
 
 The generic predicate denylist must be operational, not an undocumented hardcoded bag of strings.
 
-First-wave rule:
+First-slice rule:
 
 - generic-predicate heuristics live in one policy module with config-backed defaults;
-- the Wave 1 config lives under the `ontology.governance` namespace as admission-policy fields, not as ontology rows;
+- the Slice 1 config lives under the `ontology.governance` namespace as admission-policy fields, not as ontology rows;
 - the initial defaults may include values such as `has`, `is`, `uses`, `related`, `thing`, and `misc`;
 - additions and removals must be configuration-driven rather than scattered hardcoded checks;
 - the policy must not assume English-only future inputs, even if the first default list is English.
@@ -411,7 +411,7 @@ Recommended split:
   - dead-letter replay idempotency
   - operator review surfaces
 
-These should be separate changes or clearly separated waves because rollback boundaries differ. Admission boundary hardening is a safety fix. Automatic shadow growth changes runtime write behavior. Promotion automation changes governance behavior again.
+These should be separate changes or clearly separated slices because rollback boundaries differ. Admission boundary hardening is a safety fix. Automatic shadow growth changes runtime write behavior. Promotion automation changes governance behavior again.
 
 ## Acceptance Criteria
 
@@ -419,7 +419,7 @@ These should be separate changes or clearly separated waves because rollback bou
 - There is one authoritative predicate validity source consumed by both `ValidateTriple` and graph store validation.
 - All dynamic producer call sites are inventoried and assigned an admission migration path.
 - Batch rollback is addressed by pre-admission filtering while retaining atomic admitted-batch writes.
-- Shadow predicate retrieval and FTS5 semantics are defined for first wave.
+- Shadow predicate retrieval and FTS5 semantics are defined for first slice.
 - Promotion, budget, replay, and generic-predicate policy boundaries are explicit rather than implied.
 - The design explicitly resolves the governance-enabled `RegisterPredicate` status-override conflict for shadow admission.
 - Phase A1 observe-only behavior is unambiguous and Phase A2 is the first enforcing phase.
@@ -428,7 +428,7 @@ These should be separate changes or clearly separated waves because rollback bou
 
 ## Growth-Enabled AssertFact Scope
 
-Wave 1 does not assume every `AssertFact` caller participates in schema growth automatically.
+Slice 1 does not assume every `AssertFact` caller participates in schema growth automatically.
 
 Current direct caller families include:
 

@@ -189,7 +189,7 @@ The cockpit `Update()` SHALL dispatch messages to named handler methods instead 
 
 ### Requirement: Cockpit root model orchestrates Mission Control as the default first surface
 
-The cockpit root model SHALL treat Mission Control as the default active page for explicit `lango cockpit` launches while continuing to host the existing detail pages. The sidebar remains secondary navigation inside cockpit, but cockpit no longer owns the bare-`lango` contract in Wave 6.
+The cockpit root model SHALL treat Mission Control as the default active page for explicit `lango cockpit` launches while continuing to host the existing detail pages. The sidebar remains secondary navigation inside cockpit, but cockpit no longer owns the bare-`lango` contract in Slice 6.
 
 #### Scenario: Explicit cockpit launch starts on Mission Control
 - **WHEN** cockpit is created for the explicit `lango cockpit` surface

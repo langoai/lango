@@ -61,7 +61,7 @@ The current `multi-agent-orchestration` spec is not a small downstream impact. I
 
 ### Deprecated Requirements
 
-These current requirements are incompatible with the dynamic teammate model and should be deprecated in the rewrite wave:
+These current requirements are incompatible with the dynamic teammate model and should be deprecated in the rewrite slice:
 
 | Existing requirement area | Reason |
 | --- | --- |
@@ -86,7 +86,7 @@ These requirements remain valuable but must be reframed:
 
 ### New Requirements
 
-The rewrite wave should introduce requirements for:
+The rewrite slice should introduce requirements for:
 
 - Dynamic teammate run creation under `agent.multiAgent=true`.
 - Main-agent direct answer and spawn decision protocol.
@@ -98,7 +98,7 @@ The rewrite wave should introduce requirements for:
 - Teammate run projection for CLI/TUI inspection.
 - Recovery behavior for timeout, cancel, blocked approval, partial result, and orphaned runs.
 
-This rewrite should be its own OpenSpec wave before implementation. It is the contract boundary for every later slice.
+This rewrite should be its own OpenSpec slice before implementation. It is the contract boundary for every later slice.
 
 ## Source-Of-Truth Boundaries
 
@@ -213,7 +213,7 @@ Slice D must define two contract details before implementation:
 
 `transfer_to_agent` remains as a legacy ADK specialist fallback in v1 because current built-in prompts, tests, and A2A routing still depend on it. The dynamic teammate path should become the primary path for new multi-agent work, but `transfer_to_agent` removal requires a later compatibility change with prompt, registry, and test updates.
 
-The main-agent prompt must include a temporary v1 selection rule: new dynamic teammate work uses `agent_spawn`; `transfer_to_agent` is only for legacy ADK static sub-agent fallback, specialist re-routing, or existing remote A2A paths until a compatibility wave removes or narrows that surface.
+The main-agent prompt must include a temporary v1 selection rule: new dynamic teammate work uses `agent_spawn`; `transfer_to_agent` is only for legacy ADK static sub-agent fallback, specialist re-routing, or existing remote A2A paths until a compatibility slice removes or narrows that surface.
 
 ### Operational Surfaces
 
@@ -363,7 +363,7 @@ Teammates should not receive the entire parent context by default. The spawn ins
 
 ### Spec Rewrite Tests
 
-The first OpenSpec wave inside the same teammate-runtime change should update `multi-agent-orchestration`, `agent-control-plane-tools`, and related specs before implementation tasks switch behavior. Tests should fail if code still assumes the old tool-less orchestrator contract after the implementation waves are applied.
+The first OpenSpec slice inside the same teammate-runtime change should update `multi-agent-orchestration`, `agent-control-plane-tools`, and related specs before implementation tasks switch behavior. Tests should fail if code still assumes the old tool-less orchestrator contract after the implementation slices are applied.
 
 ### Asset Mapping Tests
 
@@ -391,11 +391,11 @@ Verify cockpit and CLI surfaces read the same projection and show blocked reason
 
 ## Rollout Plan
 
-### Slice A: OpenSpec Rewrite Wave
+### Slice A: OpenSpec Rewrite Slice
 
 Rewrite `multi-agent-orchestration` and `agent-control-plane-tools` from static tool-less orchestrator and advisory spawn semantics to dynamic teammate runtime semantics. Classify old requirements as deprecated, reframed, or replaced. Update related specs only where the contract boundary requires it.
 
-This is a wave inside the same OpenSpec change as implementation, not a separately archived docs-only change. Do not archive the change until the spec rewrite and the matching implementation waves are both verified.
+This is a slice inside the same OpenSpec change as implementation, not a separately archived docs-only change. Do not archive the change until the spec rewrite and the matching implementation slices are both verified.
 
 ### Slice B: Existing Asset Mapping And In-Process Control Path
 
@@ -419,7 +419,7 @@ Investigate worker-process or sandboxed teammate execution after the in-process 
 
 ## Documentation And Spec Impact
 
-Primary OpenSpec wave:
+Primary OpenSpec slice:
 
 - `multi-agent-orchestration`
 - `agent-control-plane-tools`

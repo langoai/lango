@@ -519,3 +519,17 @@
 - [x] 64.2 Add focused tests for deterministic `internal/cli/configcmd/getset.go` config-save failure handling and cleanup behavior
 - [x] 64.3 Run subagent-driven review checkpoints for the batch
 - [x] 64.4 Commit the batch separately
+
+## 65. Naming Cleanup: Replace Legacy Sequence Labels
+
+- [x] 65.1 Rename legacy sequential internal planning and archived OpenSpec artifacts to `slice-*`
+- [x] 65.2 Replace old sequential wording in affected internal planning, archived OpenSpec, and public spec references with `Slice N`/`slice`
+- [x] 65.3 Run subagent-driven review checkpoints for the naming cleanup
+- [x] 65.4 Commit the naming cleanup separately
+
+## 66. Coverage Batch: App Module Residuals
+
+- [ ] 66.1 Add focused tests for deterministic `internal/app/modules.go` foundation module session-store error wrapping without live providers
+- [ ] 66.2 Add focused tests for deterministic app module lifecycle branches without starting long-running workers
+- [ ] 66.3 Run subagent-driven review checkpoints for the batch
+- [ ] 66.4 Commit the batch separately

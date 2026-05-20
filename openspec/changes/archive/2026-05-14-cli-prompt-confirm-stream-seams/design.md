@@ -2,7 +2,7 @@
 
 The repository has been steadily removing test dependencies on process-global stdin/stdout/stderr and routing user-facing output through explicit writers. `prompt.Passphrase(...)` and `ConfirmIO(...)` already fit that direction, but `prompt.Confirm(...)` still binds directly to `os.Stdin` and `os.Stdout`, which makes the wrapper itself harder to verify without global stream replacement.
 
-The same cleanup wave also removed a shared CLI harness from `internal/testutil`. That was correct for the global stdout interception path, but several packages still rely on the package's lightweight config/bootstrap loader helpers for command construction.
+The same cleanup slice also removed a shared CLI harness from `internal/testutil`. That was correct for the global stdout interception path, but several packages still rely on the package's lightweight config/bootstrap loader helpers for command construction.
 
 ## Goals / Non-Goals
 

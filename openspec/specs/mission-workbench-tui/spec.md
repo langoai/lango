@@ -10,7 +10,7 @@ Running `lango` without a subcommand on an interactive terminal SHALL launch a s
 #### Scenario: Bare `lango` launches the workbench
 - **WHEN** the user runs `lango` on an interactive terminal
 - **THEN** the application SHALL open the mission workbench surface
-- **AND** that surface SHALL become the bare-`lango` contract for Wave 6
+- **AND** that surface SHALL become the bare-`lango` contract for Slice 6
 
 ### Requirement: The mission workbench hosts Mission Control content without cockpit chrome
 
@@ -23,7 +23,7 @@ The mission workbench SHALL present Mission Control content directly without the
 
 ### Requirement: The workbench remains a lighter local surface than cockpit
 
-The first Wave 6 workbench slice SHALL stay local and mission-native. It may reuse the same Mission Control projection assets as cockpit, but it SHALL NOT imply that cockpit-only surfaces or channel startup belong to bare `lango`.
+The first Slice 6 workbench slice SHALL stay local and mission-native. It may reuse the same Mission Control projection assets as cockpit, but it SHALL NOT imply that cockpit-only surfaces or channel startup belong to bare `lango`.
 
 #### Scenario: Workbench hints to the other explicit surfaces
 - **WHEN** the workbench renders first-screen copy or help
@@ -32,7 +32,7 @@ The first Wave 6 workbench slice SHALL stay local and mission-native. It may reu
 
 #### Scenario: Cockpit-only channel startup is not implied by bare `lango`
 - **WHEN** the user launches bare `lango`
-- **THEN** the first Wave 6 slice SHALL NOT imply that `--with-channels` or live channel startup belongs to the workbench contract
+- **THEN** the first Slice 6 slice SHALL NOT imply that `--with-channels` or live channel startup belongs to the workbench contract
 
 ### Requirement: Workbench empty state guides incomplete profiles
 The standalone workbench empty state SHALL guide the operator toward setup and verification when the active profile is obviously incomplete.

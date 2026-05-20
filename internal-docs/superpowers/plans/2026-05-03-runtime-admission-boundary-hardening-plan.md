@@ -1,4 +1,4 @@
-# Runtime Admission Observe Wave One Implementation Plan
+# Runtime Admission Observe Slice One Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -444,7 +444,7 @@ Run:
 
 ```bash
 git add openspec/changes/runtime-admission-boundary-hardening
-git commit -m "openspec: scaffold runtime admission observe wave one"
+git commit -m "openspec: scaffold runtime admission observe slice one"
 ```
 
 Expected: commit succeeds

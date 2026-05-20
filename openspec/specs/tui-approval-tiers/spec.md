@@ -156,7 +156,7 @@ The TUI approval surfaces SHALL continue to use the existing approval tier rende
 - **WHEN** a pending approval is displayed from Mission Control or cockpit chat
 - **THEN** both surfaces SHALL render from the same underlying pending approval request
 - **AND** they SHALL present the same risk, reason, and action labels
-- **AND** Wave 1 SHALL treat that shared request as the single live approval decision in cockpit state
+- **AND** Slice 1 SHALL treat that shared request as the single live approval decision in cockpit state
 
 #### Scenario: Approval resolves through the original response channel
 - **WHEN** the user approves, denies, or allows for session from any cockpit TUI approval surface

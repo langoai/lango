@@ -11,7 +11,7 @@ The spike confirmed that `genai.Part.Thought` (bool) is available in ADK v1.0.0.
 - Separate low-risk and high-risk approval requests into two distinct UI tiers
 - Make background task activity visible without leaving the chat view
 - Transform the footer into an operational status display
-- Deliver via 4 sequential implementation waves with hub file ownership rules
+- Deliver via 4 sequential implementation slices with hub file ownership rules
 
 **Non-Goals:**
 - Channel-to-TUI real-time integration (gateway not started in local-chat mode)
@@ -44,9 +44,9 @@ A `PendingIndicatorTickMsg` covers the submit-to-first-event gap for responses t
 
 ### D4. Renderer stub pattern for approval surfaces
 
-Wave 3 creates `approval_strip.go` and `approval_dialog.go` as stubs that delegate to `renderApprovalBanner()`. Wave 3 also plants the tier dispatch in `renderApproval()` and key dispatch stubs (`handleApprovalDialogKey`, `scrollApprovalDialog`) as no-ops. Wave 4 replaces the stub files entirely with real implementations. This ensures hub files (chat.go, approval.go) are only modified in Wave 3.
+Slice 3 creates `approval_strip.go` and `approval_dialog.go` as stubs that delegate to `renderApprovalBanner()`. Slice 3 also plants the tier dispatch in `renderApproval()` and key dispatch stubs (`handleApprovalDialogKey`, `scrollApprovalDialog`) as no-ops. Slice 4 replaces the stub files entirely with real implementations. This ensures hub files (chat.go, approval.go) are only modified in Slice 3.
 
-**Alternative considered:** Function variable / renderer registry. Rejected as over-engineering for a sequential wave delivery where the stub file replacement is simpler.
+**Alternative considered:** Function variable / renderer registry. Rejected as over-engineering for a sequential slice delivery where the stub file replacement is simpler.
 
 ### D5. Approval tier classification: SafetyLevel + ToolCapability combination
 
@@ -56,9 +56,9 @@ Wave 3 creates `approval_strip.go` and `approval_dialog.go` as stubs that delega
 
 The task strip (1-2 line summary) is part of `ChatModel.View()` so it appears in both `lango` (cockpit) and `lango chat` (standalone). The full Tasks page is a cockpit `Page` registered at `PageTasks` with Ctrl+5. BackgroundManager is passed via `Deps` — nil in minimal configurations.
 
-### D7. Hub file ownership: Wave 3 exclusive
+### D7. Hub file ownership: Slice 3 exclusive
 
-`chat.go`, `chatview.go`, `messages.go`, `statusbar.go`, `approval.go` are modified ONLY in Wave 3. Wave 4 adds new files and modifies cockpit/wiring files. This eliminates merge conflicts between waves. The stub pattern (D4) enables this by pre-planting all dispatch points in Wave 3.
+`chat.go`, `chatview.go`, `messages.go`, `statusbar.go`, `approval.go` are modified ONLY in Slice 3. Slice 4 adds new files and modifies cockpit/wiring files. This eliminates merge conflicts between slices. The stub pattern (D4) enables this by pre-planting all dispatch points in Slice 3.
 
 ## Risks / Trade-offs
 
@@ -70,4 +70,4 @@ The task strip (1-2 line summary) is part of `ChatModel.View()` so it appears in
 
 **[R4] BackgroundManager nil in some configurations** — Local-chat mode may not have background tasks enabled. → Mitigation: All task surface code checks for nil manager and renders empty/hidden.
 
-**[R5] Palette change touches many consumers** — Semantic alias approach minimizes this: existing constants remain, aliases point to them. → Mitigation: No constants deleted, only aliases added. Single wave for easy revert.
+**[R5] Palette change touches many consumers** — Semantic alias approach minimizes this: existing constants remain, aliases point to them. → Mitigation: No constants deleted, only aliases added. Single slice for easy revert.
