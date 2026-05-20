@@ -112,6 +112,7 @@ func initEconomy(cfg *config.Config, p2pc *p2pComponents, pc *paymentComponents,
 			// If P2P is active, adapt pricing engine into paygate PricingFunc.
 			if p2pc != nil && p2pc.payGate != nil {
 				p2pc.pricingFn = pricingEngine.AdaptToPricingFunc()
+				p2pc.payGate.SetPricingFunc(p2pc.pricingFn)
 				logger().Info("economy: pricing engine wired to paygate")
 			}
 			logger().Info("economy: pricing engine initialized")

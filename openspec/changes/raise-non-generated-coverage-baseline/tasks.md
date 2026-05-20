@@ -601,3 +601,9 @@
 - [x] 76.1 Add focused tests for deterministic `internal/security/migrate_envelope.go` envelope persistence, backup, decrypt, rekey, transaction, and invalid master-key residual branches using temp SQLite only
 - [x] 76.2 Run subagent-driven development and review checkpoints for the batch
 - [x] 76.3 Prepare the batch for a separate scoped commit
+
+## 77. Coverage Batch: Economy Wiring Residuals
+
+- [x] 77.1 Add focused tests for deterministic `internal/app/wiring_economy.go` pricing, paygate wiring, negotiation expiry, P2P negotiator, and escrow config residual branches without live network or RPC services
+- [x] 77.2 Run subagent-driven development and review checkpoints for the batch
+- [x] 77.3 Prepare the batch for a separate scoped commit
