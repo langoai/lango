@@ -149,6 +149,62 @@ func TestPolicySetTableFormatsReturnedLimitsAndRunsCleanup(t *testing.T) {
 	assert.Contains(t, out, "300")
 }
 
+func TestPolicyCommandDispatchesShowAndSetSubcommands(t *testing.T) {
+	showCalled := false
+	setCalled := false
+	installPolicyShowTableFormatsPolicyFieldsAndRunsCleanupPolicyShowSeam(t, func(_ BootLoader) (policyShowInfo, func(), error) {
+		showCalled = true
+		return policyShowInfo{
+			Account:   "0x1234abcd5678ef901234abcdef567890abcdef12",
+			HasPolicy: false,
+		}, nil, nil
+	})
+	installPolicyShowTableFormatsPolicyFieldsAndRunsCleanupPolicySetSeam(t, func(_ BootLoader, maxTx, daily, monthly string) (policySetResult, func(), error) {
+		setCalled = true
+		assert.Equal(t, "100", maxTx)
+		assert.Empty(t, daily)
+		assert.Empty(t, monthly)
+		return policySetResult{
+			Account:     "0x1234abcd5678ef901234abcdef567890abcdef12",
+			MaxTxAmount: "100",
+		}, nil, nil
+	})
+
+	showCmd := policyCmd(nil)
+	showOut, showErr := executeSmartAccountCmd(t, showCmd, "show")
+	require.NoError(t, showErr)
+	assert.Contains(t, showOut, "Harness Policy")
+	assert.True(t, showCalled)
+	assert.False(t, setCalled)
+
+	showCalled = false
+	setCmd := policyCmd(nil)
+	setOut, setErr := executeSmartAccountCmd(t, setCmd, "set", "--max-tx", "100")
+	require.NoError(t, setErr)
+	assert.Contains(t, setOut, "Policy Updated")
+	assert.False(t, showCalled)
+	assert.True(t, setCalled)
+}
+
+func TestPolicyShowRunsCleanupWhenTableFlushFails(t *testing.T) {
+	cleanupCalled := false
+	installPolicyShowTableFormatsPolicyFieldsAndRunsCleanupPolicyShowSeam(t, func(_ BootLoader) (policyShowInfo, func(), error) {
+		return policyShowInfo{
+			Account:   "0x1234abcd5678ef901234abcdef567890abcdef12",
+			HasPolicy: false,
+		}, func() { cleanupCalled = true }, nil
+	})
+
+	cmd := policyShowCmd(nil)
+	cmd.SetOut(errorWriter{err: fmt.Errorf("writer failed")})
+
+	err := cmd.Execute()
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "writer failed")
+	assert.True(t, cleanupCalled)
+}
+
 func TestPolicySetRunsCleanupWhenTableFlushFails(t *testing.T) {
 	cleanupCalled := false
 	installPolicyShowTableFormatsPolicyFieldsAndRunsCleanupPolicySetSeam(t, func(_ BootLoader, _, _, _ string) (policySetResult, func(), error) {
