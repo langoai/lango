@@ -7,13 +7,18 @@ import (
 	"testing"
 	"time"
 
+	"github.com/langoai/lango/internal/agentmemory"
+	"github.com/langoai/lango/internal/cron"
 	langoent "github.com/langoai/lango/internal/ent"
 	entauditlog "github.com/langoai/lango/internal/ent/auditlog"
 	"github.com/langoai/lango/internal/ent/enttest"
 	entinquiry "github.com/langoai/lango/internal/ent/inquiry"
 	entlearning "github.com/langoai/lango/internal/ent/learning"
 	entpaymenttx "github.com/langoai/lango/internal/ent/paymenttx"
+	"github.com/langoai/lango/internal/runledger"
+	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/session"
+	"github.com/langoai/lango/internal/turntrace"
 	"github.com/langoai/lango/internal/types"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/require"
@@ -134,6 +139,121 @@ func TestFacadeOptionsDelegateErrorsAndArguments(t *testing.T) {
 	decisions, err := f.RecentSandboxDecisions(ctx, "abc", 7)
 	require.NoError(t, err)
 	require.Equal(t, []SandboxDecisionRecord{{SessionKey: "abc-1", Decision: "allow"}}, decisions)
+}
+
+type facadeTestCrypto struct{}
+
+func (facadeTestCrypto) Sign(context.Context, string, []byte) ([]byte, error) {
+	return nil, nil
+}
+
+func (facadeTestCrypto) Encrypt(context.Context, string, []byte) ([]byte, error) {
+	return nil, nil
+}
+
+func (facadeTestCrypto) Decrypt(context.Context, string, []byte) ([]byte, error) {
+	return nil, nil
+}
+
+func TestFacadeCapabilityFactoriesAreDelegated(t *testing.T) {
+	t.Parallel()
+
+	calls := map[string]int{}
+	provenanceStores := &ProvenanceStores{}
+	wantKeyRegistry := &security.KeyRegistry{}
+	wantSecretsStore := &security.SecretsStore{}
+	wantRunLedger := runledger.RunLedgerStore(&struct{ runledger.RunLedgerStore }{})
+	wantCron := cron.Store(&struct{ cron.Store }{})
+	wantTurnTrace := turntrace.Store(&struct{ turntrace.Store }{})
+	wantAgentMemory := agentmemory.Store(&struct{ agentmemory.Store }{})
+	f := NewFacade(nil, nil,
+		WithKeyRegistryFactory(func() *security.KeyRegistry {
+			calls["keyRegistry"]++
+			return wantKeyRegistry
+		}),
+		WithSecretsStoreFactory(func(crypto security.CryptoProvider) *security.SecretsStore {
+			calls["secretsStore"]++
+			require.NotNil(t, crypto)
+			return wantSecretsStore
+		}),
+		WithRunLedgerFactory(func() runledger.RunLedgerStore {
+			calls["runLedger"]++
+			return wantRunLedger
+		}),
+		WithCronFactory(func() cron.Store {
+			calls["cron"]++
+			return wantCron
+		}),
+		WithTurnTraceFactory(func() turntrace.Store {
+			calls["turnTrace"]++
+			return wantTurnTrace
+		}),
+		WithAgentMemoryFactory(func() agentmemory.Store {
+			calls["agentMemory"]++
+			return wantAgentMemory
+		}),
+		WithProvenanceStores(provenanceStores),
+	)
+
+	require.Same(t, wantKeyRegistry, f.KeyRegistry())
+	require.Same(t, wantSecretsStore, f.SecretsStore(facadeTestCrypto{}))
+	require.Same(t, wantRunLedger, f.RunLedger())
+	require.Same(t, wantCron, f.Cron())
+	require.Same(t, wantTurnTrace, f.TurnTrace())
+	require.Same(t, wantAgentMemory, f.AgentMemory())
+	require.Same(t, provenanceStores, f.Provenance())
+	require.Equal(t, map[string]int{
+		"keyRegistry":  1,
+		"secretsStore": 1,
+		"runLedger":    1,
+		"cron":         1,
+		"turnTrace":    1,
+		"agentMemory":  1,
+	}, calls)
+}
+
+func TestProvenanceStoresZeroValueGettersReturnNilStores(t *testing.T) {
+	t.Parallel()
+
+	stores := &ProvenanceStores{}
+
+	require.Nil(t, stores.Checkpoints())
+	require.Nil(t, stores.SessionTree())
+	require.Nil(t, stores.Attribution())
+	require.Nil(t, stores.TokenUsage())
+}
+
+func TestFacadeWithEntClientExposesDerivedCapabilities(t *testing.T) {
+	t.Parallel()
+
+	client := enttest.Open(t, "sqlite3", "file:storage-facade-derived-capabilities?mode=memory&_fk=1")
+	t.Cleanup(func() {
+		require.NoError(t, client.Close())
+	})
+
+	f := NewFacade(nil, nil, WithEntClient(client))
+
+	require.NotNil(t, f.KeyRegistry())
+	require.NotNil(t, f.SecretsStore(facadeTestCrypto{}))
+	require.NotNil(t, f.RunLedger())
+	require.NotNil(t, f.Cron())
+	require.NotNil(t, f.TurnTrace())
+	require.NotNil(t, f.AgentMemory())
+	require.NotNil(t, f.Provenance())
+	require.NotNil(t, f.Provenance().Checkpoints())
+	require.NotNil(t, f.Provenance().SessionTree())
+	require.NotNil(t, f.Provenance().Attribution())
+	require.NotNil(t, f.Provenance().TokenUsage())
+	require.NotNil(t, f.AuditRecorder())
+	require.NotNil(t, f.TokenStore())
+	require.NotNil(t, f.OntologyDeps())
+	require.NotNil(t, f.ReputationStore(nil))
+	require.NotNil(t, f.WorkflowStateStore(nil))
+	require.NotNil(t, f.PaymentTxStore())
+
+	limiter, err := f.NewSpendingLimiter("10", "20", "1")
+	require.NoError(t, err)
+	require.NotNil(t, limiter)
 }
 
 func TestWithEntClientReadersFilterSortAndDefaultLimits(t *testing.T) {
