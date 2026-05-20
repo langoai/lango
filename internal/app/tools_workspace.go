@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/p2p/workspace"
 	"github.com/langoai/lango/internal/toolparam"
@@ -259,6 +261,7 @@ func buildWorkspaceTools(wc *wsComponents) []*agent.Tool {
 			parentID := toolparam.OptionalString(params, "parentId", "")
 
 			msg := workspace.Message{
+				ID:        uuid.New().String(),
 				Type:      workspace.MessageType(msgType),
 				Content:   content,
 				ParentID:  parentID,
