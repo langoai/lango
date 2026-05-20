@@ -614,3 +614,10 @@
 - [x] 78.2 Add focused tests for deterministic `internal/cli/cockpit` mission activity reset, assistant fallback, and activity constructor branches without interactive TUI loops
 - [x] 78.3 Run subagent-driven development and review checkpoints for the batch
 - [x] 78.4 Prepare the batch for a separate scoped commit
+
+## 79. Coverage Batch: P2P Protocol Team And Negotiation Residuals
+
+- [x] 79.1 Add focused tests for deterministic `internal/p2p/protocol` team router typed dispatch, handler-missing, payload marshal/decode, and unknown request branches
+- [x] 79.2 Add focused tests for deterministic negotiation handler nil, success, backend error, and tolerant payload decode branches without libp2p streams
+- [x] 79.3 Run subagent-driven development and review checkpoints for the batch
+- [x] 79.4 Prepare the batch for a separate scoped commit
