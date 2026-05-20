@@ -491,4 +491,11 @@
 - [x] 60.1 Add focused tests for remaining deterministic `internal/app` provenance and channel sender helpers without live channel or P2P services
 - [x] 60.2 Add focused tests for deterministic extension registry, gateway auth, and security CLI helper branches using local fakes and temp files only
 - [x] 60.3 Run subagent-driven review checkpoints for the batch
-- [ ] 60.4 Commit the batch separately
+- [x] 60.4 Commit the batch separately
+
+## 61. Coverage Batch: App Module And Wiring Residuals
+
+- [x] 61.1 Add focused tests for deterministic `internal/app/modules.go` branches without provider credentials, listeners, or live P2P services
+- [x] 61.2 Add focused tests for deterministic `internal/app/wiring.go` and `internal/app/wiring_provenance.go` helper and early-return branches
+- [x] 61.3 Run subagent-driven review checkpoints for the batch
+- [x] 61.4 Commit the batch separately

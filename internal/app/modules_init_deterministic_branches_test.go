@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -16,8 +17,10 @@ import (
 	"github.com/langoai/lango/internal/ent"
 	"github.com/langoai/lango/internal/ent/tokenusage"
 	"github.com/langoai/lango/internal/eventbus"
+	"github.com/langoai/lango/internal/lifecycle"
 	"github.com/langoai/lango/internal/observability"
 	"github.com/langoai/lango/internal/receipts"
+	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/storage"
 	"github.com/langoai/lango/internal/testutil"
 )
@@ -54,6 +57,69 @@ func TestIntelligenceModuleInitWiresGraphAdmissionWithoutExternalServices(t *tes
 	assert.NotEmpty(t, result.Components)
 	assert.False(t, requireCatalogEntry(t, result.CatalogEntries, "meta").Enabled)
 	assert.False(t, requireCatalogEntry(t, result.CatalogEntries, "memory").Enabled)
+}
+
+func TestIntelligenceModuleInitWiresLocalStoresAndOntologyWithoutProviders(t *testing.T) {
+	t.Parallel()
+
+	cfg := foundationModuleInitContinuesAfterSanitizerPatternErrorModuleConfig(t)
+	cfg.Knowledge.Enabled = true
+	cfg.Graph.Enabled = true
+	cfg.Graph.DatabasePath = filepath.Join(t.TempDir(), "graph.db")
+	cfg.ObservationalMemory.Enabled = true
+	cfg.Librarian.Enabled = true
+	cfg.AgentMemory.Enabled = true
+	cfg.Ontology.Enabled = true
+	cfg.Ontology.Governance.Enabled = true
+	cfg.Ontology.Governance.AdmissionMode = config.OntologyAdmissionModeObserve
+	cfg.Ontology.Exchange.Enabled = true
+
+	client := testutil.TestEntClient(t)
+	store := session.NewEntStoreWithClient(client)
+	facade := storage.NewFacade(nil, nil, storage.WithEntClient(client))
+	module := &intelligenceModule{
+		cfg:  cfg,
+		boot: &bootstrap.Result{Storage: facade},
+		bus:  eventbus.New(),
+	}
+
+	result, err := module.Init(context.Background(), staticResolver{
+		appinit.ProvidesSupervisor: &foundationValues{
+			Store:        store,
+			ReceiptStore: nil,
+		},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	values, ok := result.Values[appinit.ProvidesKnowledge].(*intelligenceValues)
+	require.True(t, ok)
+	require.NotNil(t, values)
+	require.NotNil(t, values.GC)
+	t.Cleanup(func() { require.NoError(t, values.GC.store.Close()) })
+
+	assert.NotNil(t, values.KC)
+	assert.NotNil(t, values.MC)
+	assert.NotNil(t, values.LC)
+	assert.NotNil(t, values.AgentMemoryStore)
+	assert.NotNil(t, values.OntologyBridge)
+	assert.Same(t, values.GC, result.Values[appinit.ProvidesGraph])
+	assert.Same(t, values.MC, result.Values[appinit.ProvidesMemory])
+	assert.Same(t, values.LC, result.Values[appinit.ProvidesLibrarian])
+	assert.Same(t, values.SkillRegistry, result.Values[appinit.ProvidesSkills])
+	require.NotNil(t, values.FeatureStatuses)
+	assert.GreaterOrEqual(t, values.FeatureStatuses.SilentDisabledCount(), 0)
+
+	assert.True(t, requireCatalogEntry(t, result.CatalogEntries, "ontology").Enabled)
+	assert.True(t, requireCatalogEntry(t, result.CatalogEntries, "meta").Enabled)
+	assert.True(t, requireCatalogEntry(t, result.CatalogEntries, "graph").Enabled)
+	assert.True(t, requireCatalogEntry(t, result.CatalogEntries, "memory").Enabled)
+	assert.True(t, requireCatalogEntry(t, result.CatalogEntries, "agent_memory").Enabled)
+	assert.True(t, requireCatalogEntry(t, result.CatalogEntries, "librarian").Enabled)
+	assert.NotNil(t, findTool(result.Tools, "ontology_list_types"))
+	assert.NotNil(t, findTool(result.Tools, "librarian_pending_inquiries"))
+	assert.NotNil(t, findTool(result.Tools, "memory_agent_save"))
+	assert.Contains(t, modulesInitDeterministicBranchesComponentNames(result.Components), "librarian-proactive-buffer")
 }
 
 func TestNetworkModuleInitUsesBootStorageFacadeWhenPaymentIsDisabled(t *testing.T) {
@@ -128,6 +194,8 @@ func TestExtensionModuleInitRegistersMCPManagementForDisabledConfiguredServer(t 
 	assert.True(t, requireCatalogEntry(t, result.CatalogEntries, "mcp").Enabled)
 	assert.NotNil(t, findTool(result.Tools, "mcp_status"))
 	assert.NotNil(t, findTool(result.Tools, "mcp_tools"))
+	require.NoError(t, result.Components[0].Component.Start(context.Background(), &sync.WaitGroup{}))
+	require.NoError(t, result.Components[0].Component.Stop(context.Background()))
 
 	statusTool := findTool(result.Tools, "mcp_status")
 	status, err := statusTool.Handler(context.Background(), nil)
@@ -189,6 +257,14 @@ func TestExtensionModuleInitAddsObservabilityTokenCleanupLifecycle(t *testing.T)
 	require.NoError(t, err)
 	require.Len(t, rows, 1)
 	assert.Equal(t, "modulesInitDeterministicBranches9-recent", rows[0].SessionKey)
+}
+
+func modulesInitDeterministicBranchesComponentNames(entries []lifecycle.ComponentEntry) []string {
+	names := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		names = append(names, entry.Component.Name())
+	}
+	return names
 }
 
 func TestModuleMetadataIncludesAutomationDependencyContracts(t *testing.T) {
