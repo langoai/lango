@@ -187,6 +187,22 @@ func TestApplySettlementProgression_RequiresTransactionReceiptIDParameter(t *tes
 	assert.ErrorContains(t, err, "missing transaction_receipt_id parameter")
 }
 
+func TestApplySettlementProgression_RejectsBlankTransactionReceiptID(t *testing.T) {
+	t.Parallel()
+
+	tool := findTool(buildMetaTools(nil, nil, nil, config.SkillConfig{}, nil, receipts.NewStore()), "apply_settlement_progression")
+	require.NotNil(t, tool)
+
+	got, err := tool.Handler(context.Background(), map[string]interface{}{
+		"transaction_receipt_id": "   ",
+		"outcome":                "approve",
+	})
+
+	require.Error(t, err)
+	assert.Nil(t, got)
+	assert.ErrorContains(t, err, "missing transaction_receipt_id parameter")
+}
+
 func TestApplySettlementProgression_RequiresOutcomeParameter(t *testing.T) {
 	t.Parallel()
 
@@ -201,4 +217,40 @@ func TestApplySettlementProgression_RequiresOutcomeParameter(t *testing.T) {
 	require.Error(t, err)
 	assert.Nil(t, got)
 	assert.ErrorContains(t, err, "missing outcome parameter")
+}
+
+func TestApplySettlementProgression_RejectsBlankOutcome(t *testing.T) {
+	t.Parallel()
+
+	store := receipts.NewStore()
+	tx := createSubmittedTransaction(t, store, context.Background(), "deal-settlement-progress-blank-outcome")
+	tool := findTool(buildMetaTools(nil, nil, nil, config.SkillConfig{}, nil, store), "apply_settlement_progression")
+	require.NotNil(t, tool)
+
+	got, err := tool.Handler(context.Background(), map[string]interface{}{
+		"transaction_receipt_id": tx.TransactionReceiptID,
+		"outcome":                "   ",
+	})
+
+	require.Error(t, err)
+	assert.Nil(t, got)
+	assert.ErrorContains(t, err, "missing outcome parameter")
+}
+
+func TestApplySettlementProgression_PropagatesSettlementServiceErrors(t *testing.T) {
+	t.Parallel()
+
+	store := receipts.NewStore()
+	tx := createSubmittedTransaction(t, store, context.Background(), "deal-settlement-progress-service-error")
+	tool := findTool(buildMetaTools(nil, nil, nil, config.SkillConfig{}, nil, store), "apply_settlement_progression")
+	require.NotNil(t, tool)
+
+	got, err := tool.Handler(context.Background(), map[string]interface{}{
+		"transaction_receipt_id": tx.TransactionReceiptID,
+		"outcome":                "not-a-release-outcome",
+	})
+
+	require.Error(t, err)
+	assert.Nil(t, got)
+	assert.ErrorContains(t, err, "unsupported release decision")
 }
