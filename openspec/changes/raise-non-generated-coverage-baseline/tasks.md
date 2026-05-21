@@ -650,3 +650,9 @@
 - [x] 83.2 Add focused tests for deterministic learning suggestion fallback title and collaboration degradation branches
 - [x] 83.3 Run subagent-driven development and review checkpoints for the batch
 - [x] 83.4 Prepare the batch for a separate scoped commit
+
+## 84. Coverage Batch: Bootstrap Confirmation Residuals
+
+- [x] 84.1 Add a focused test for deterministic `internal/bootstrap/phases.go` confirmation prompt writer error propagation
+- [x] 84.2 Run subagent-driven development and review checkpoints for the batch
+- [x] 84.3 Prepare the batch for a separate scoped commit
