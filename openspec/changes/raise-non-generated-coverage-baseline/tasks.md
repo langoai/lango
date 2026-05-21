@@ -844,3 +844,9 @@
 - [x] 112.2 Add focused tests for KMS slot validation, invalid plaintext, and domain mapping residual branches
 - [x] 112.3 Run subagent-driven development and review checkpoints for the batch
 - [x] 112.4 Prepare the batch for a separate scoped commit
+
+## 113. Coverage Batch: App Meta Tool Residuals
+
+- [x] 113.1 Add focused tests for approve-artifact, skill listing/view, and learning-cleanup residual error branches
+- [x] 113.2 Run subagent-driven development and review checkpoints for the batch
+- [x] 113.3 Prepare the batch for a separate scoped commit

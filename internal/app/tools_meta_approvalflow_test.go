@@ -53,6 +53,21 @@ func TestBuildMetaTools_IncludesApproveArtifactRelease(t *testing.T) {
 	assert.NotContains(t, required, "high_risk")
 }
 
+func TestApproveArtifactRelease_RejectsUnavailableStore(t *testing.T) {
+	tool := findTool(buildMetaTools(nil, nil, nil, config.SkillConfig{}, nil, nil), "approve_artifact_release")
+	require.NotNil(t, tool)
+
+	got, err := tool.Handler(context.Background(), map[string]interface{}{
+		"artifact_label":      "artifact/no-store",
+		"requested_scope":     "artifact/no-store",
+		"exportability_state": "exportable",
+	})
+
+	require.Error(t, err)
+	assert.Nil(t, got)
+	assert.ErrorContains(t, err, "knowledge store is not available")
+}
+
 func TestApproveArtifactRelease_EscalatesNeedsHumanReview(t *testing.T) {
 	store, client := newApprovalFlowToolStore(t)
 	tools := buildMetaTools(store, nil, nil, config.SkillConfig{}, nil, nil)

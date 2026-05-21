@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -226,6 +227,41 @@ func TestBuildMetaToolsEarlyLearningCleanup_RejectsInvalidID(t *testing.T) {
 	require.Error(t, err)
 	assert.Nil(t, got)
 	assert.ErrorContains(t, err, "invalid id")
+}
+
+func TestBuildMetaToolsEarlyLearningCleanup_PropagatesDeleteErrors(t *testing.T) {
+	store := newAppKnowledgeStore(t)
+	tool := findTool(
+		buildMetaTools(store, nil, nil, config.SkillConfig{}, nil, nil),
+		"learning_cleanup",
+	)
+	require.NotNil(t, tool)
+
+	got, err := tool.Handler(context.Background(), map[string]interface{}{
+		"id":      uuid.NewString(),
+		"dry_run": false,
+	})
+	require.Error(t, err)
+	assert.Nil(t, got)
+	assert.ErrorContains(t, err, "delete learning")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	got, err = tool.Handler(ctx, map[string]interface{}{
+		"category": string(entlearning.CategoryToolError),
+	})
+	require.Error(t, err)
+	assert.Nil(t, got)
+	assert.ErrorContains(t, err, "count learnings")
+
+	got, err = tool.Handler(ctx, map[string]interface{}{
+		"category": string(entlearning.CategoryToolError),
+		"dry_run":  false,
+	})
+	require.Error(t, err)
+	assert.Nil(t, got)
+	assert.ErrorContains(t, err, "delete learnings")
 }
 
 func TestBuildMetaToolsEarlySkillHandlers_CreateListAndViewSkill(t *testing.T) {

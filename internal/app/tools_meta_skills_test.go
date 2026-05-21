@@ -33,6 +33,14 @@ func newMetaToolSkillRegistry(t *testing.T) *skill.Registry {
 	return skill.NewRegistry(store, []*agent.Tool{baseTool}, logger)
 }
 
+func newMetaToolBrokenSkillRegistry(t *testing.T) *skill.Registry {
+	t.Helper()
+	skillsRoot := filepath.Join(t.TempDir(), "skills-file")
+	require.NoError(t, os.WriteFile(skillsRoot, []byte("not a directory"), 0o600))
+	logger := zap.NewNop().Sugar()
+	return skill.NewRegistry(skill.NewFileSkillStore(skillsRoot, logger), nil, logger)
+}
+
 func TestListSkills_AcceptsSummaryParameter(t *testing.T) {
 	// Tool builds without a registry so handler short-circuits to empty set;
 	// what we verify is that the parameter schema accepts `summary`.
@@ -82,6 +90,30 @@ func TestListSkills_HandlerReturnsEmptyWhenNoRegistry(t *testing.T) {
 	require.NoError(t, err)
 	m := res.(map[string]interface{})
 	assert.Equal(t, 0, m["count"])
+}
+
+func TestListSkills_PropagatesRegistryListError(t *testing.T) {
+	registry := newMetaToolBrokenSkillRegistry(t)
+	tool := findTool(buildMetaTools(nil, nil, registry, config.SkillConfig{}, nil, nil), "list_skills")
+	require.NotNil(t, tool)
+
+	got, err := tool.Handler(context.Background(), map[string]interface{}{})
+	require.Error(t, err)
+	assert.Nil(t, got)
+	assert.ErrorContains(t, err, "list skills")
+}
+
+func TestViewSkill_PropagatesRegistryListError(t *testing.T) {
+	registry := newMetaToolBrokenSkillRegistry(t)
+	tool := findTool(buildMetaTools(nil, nil, registry, config.SkillConfig{}, nil, nil), "view_skill")
+	require.NotNil(t, tool)
+
+	got, err := tool.Handler(context.Background(), map[string]interface{}{
+		"name": "unreachable",
+	})
+	require.Error(t, err)
+	assert.Nil(t, got)
+	assert.ErrorContains(t, err, "list skills")
 }
 
 func TestSaveLearning_RequiresCanonicalInputs(t *testing.T) {
