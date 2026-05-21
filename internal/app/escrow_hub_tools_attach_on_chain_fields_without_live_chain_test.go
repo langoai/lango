@@ -245,6 +245,129 @@ func TestEscrowVaultToolsAttachOnChainFieldsWithoutLiveChain(t *testing.T) {
 	assert.Equal(t, vaultAddr, amountReq.Address)
 }
 
+func TestEscrowVaultReleaseRefundDisputeAndResolveUseLocalMappings(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("release", func(t *testing.T) {
+		caller := newEscrowHubToolsAttachOnChainFieldsWithoutLiveChainContractCaller()
+		vaultAddr := common.HexToAddress("0x3333333333333333333333333333333333333333")
+		settler := newEscrowHubToolsAttachOnChainFieldsWithoutLiveChainVaultSettler(caller)
+		rig := newEscrowHubToolsAttachOnChainFieldsWithoutLiveChainEscrowToolRig(settler)
+		escrowID := rig.createEscrow(t, ctx, "did:lango:buyer-vault-release", "did:lango:seller-vault-release")
+		settler.SetVaultMapping(escrowID, vaultAddr)
+		_, err := rig.tool("escrow_fund").Handler(ctx, map[string]interface{}{"escrowId": escrowID})
+		require.NoError(t, err)
+		_, err = rig.tool("escrow_activate").Handler(ctx, map[string]interface{}{"escrowId": escrowID})
+		require.NoError(t, err)
+		rig.completeAllMilestones(t, ctx, escrowID)
+
+		got, err := rig.tool("escrow_release").Handler(ctx, map[string]interface{}{"escrowId": escrowID})
+		require.NoError(t, err)
+		payload := escrowHubToolsAttachOnChainFieldsWithoutLiveChainEscrowPayload(t, got)
+		assert.Equal(t, "released", payload["status"])
+		assert.Equal(t, vaultAddr.Hex(), payload["vaultAddress"])
+		assert.NotEmpty(t, payload["onChainTxHash"])
+		releaseReq := caller.requireWrite(t, "release")
+		assert.Equal(t, int64(31337), releaseReq.ChainID)
+		assert.Equal(t, vaultAddr, releaseReq.Address)
+		assert.Empty(t, releaseReq.Args)
+	})
+
+	t.Run("refund", func(t *testing.T) {
+		caller := newEscrowHubToolsAttachOnChainFieldsWithoutLiveChainContractCaller()
+		vaultAddr := common.HexToAddress("0x4444444444444444444444444444444444444444")
+		settler := newEscrowHubToolsAttachOnChainFieldsWithoutLiveChainVaultSettler(caller)
+		rig := newEscrowHubToolsAttachOnChainFieldsWithoutLiveChainEscrowToolRig(settler)
+		escrowID := rig.createEscrow(t, ctx, "did:lango:buyer-vault-refund", "did:lango:seller-vault-refund")
+		settler.SetVaultMapping(escrowID, vaultAddr)
+		_, err := rig.tool("escrow_fund").Handler(ctx, map[string]interface{}{"escrowId": escrowID})
+		require.NoError(t, err)
+		_, err = rig.tool("escrow_activate").Handler(ctx, map[string]interface{}{"escrowId": escrowID})
+		require.NoError(t, err)
+		_, err = rig.tool("escrow_dispute").Handler(ctx, map[string]interface{}{
+			"escrowId": escrowID,
+			"note":     "vault refund dispute",
+		})
+		require.NoError(t, err)
+
+		got, err := rig.tool("escrow_refund").Handler(ctx, map[string]interface{}{"escrowId": escrowID})
+		require.NoError(t, err)
+		payload := escrowHubToolsAttachOnChainFieldsWithoutLiveChainEscrowPayload(t, got)
+		assert.Equal(t, "refunded", payload["status"])
+		assert.Equal(t, vaultAddr.Hex(), payload["vaultAddress"])
+		assert.NotEmpty(t, payload["onChainTxHash"])
+		refundReq := caller.requireWrite(t, "refund")
+		assert.Equal(t, int64(31337), refundReq.ChainID)
+		assert.Equal(t, vaultAddr, refundReq.Address)
+		assert.Empty(t, refundReq.Args)
+	})
+
+	t.Run("dispute", func(t *testing.T) {
+		caller := newEscrowHubToolsAttachOnChainFieldsWithoutLiveChainContractCaller()
+		vaultAddr := common.HexToAddress("0x5555555555555555555555555555555555555555")
+		settler := newEscrowHubToolsAttachOnChainFieldsWithoutLiveChainVaultSettler(caller)
+		rig := newEscrowHubToolsAttachOnChainFieldsWithoutLiveChainEscrowToolRig(settler)
+		escrowID := rig.createEscrow(t, ctx, "did:lango:buyer-vault-dispute", "did:lango:seller-vault-dispute")
+		settler.SetVaultMapping(escrowID, vaultAddr)
+		_, err := rig.tool("escrow_fund").Handler(ctx, map[string]interface{}{"escrowId": escrowID})
+		require.NoError(t, err)
+		_, err = rig.tool("escrow_activate").Handler(ctx, map[string]interface{}{"escrowId": escrowID})
+		require.NoError(t, err)
+
+		got, err := rig.tool("escrow_dispute").Handler(ctx, map[string]interface{}{
+			"escrowId": escrowID,
+			"note":     "vault dispute",
+		})
+		require.NoError(t, err)
+		payload := escrowHubToolsAttachOnChainFieldsWithoutLiveChainEscrowPayload(t, got)
+		assert.Equal(t, "disputed", payload["status"])
+		assert.Equal(t, vaultAddr.Hex(), payload["vaultAddress"])
+		assert.NotEmpty(t, payload["onChainTxHash"])
+		disputeReq := caller.requireWrite(t, "dispute")
+		assert.Equal(t, int64(31337), disputeReq.ChainID)
+		assert.Equal(t, vaultAddr, disputeReq.Address)
+		assert.Empty(t, disputeReq.Args)
+	})
+
+	t.Run("resolve", func(t *testing.T) {
+		caller := newEscrowHubToolsAttachOnChainFieldsWithoutLiveChainContractCaller()
+		vaultAddr := common.HexToAddress("0x6666666666666666666666666666666666666666")
+		settler := newEscrowHubToolsAttachOnChainFieldsWithoutLiveChainVaultSettler(caller)
+		rig := newEscrowHubToolsAttachOnChainFieldsWithoutLiveChainEscrowToolRig(settler)
+		escrowID := rig.createEscrow(t, ctx, "did:lango:buyer-vault-resolve", "did:lango:seller-vault-resolve")
+		settler.SetVaultMapping(escrowID, vaultAddr)
+		_, err := rig.tool("escrow_fund").Handler(ctx, map[string]interface{}{"escrowId": escrowID})
+		require.NoError(t, err)
+		_, err = rig.tool("escrow_activate").Handler(ctx, map[string]interface{}{"escrowId": escrowID})
+		require.NoError(t, err)
+		_, err = rig.tool("escrow_dispute").Handler(ctx, map[string]interface{}{
+			"escrowId": escrowID,
+			"note":     "vault resolve dispute",
+		})
+		require.NoError(t, err)
+
+		got, err := rig.tool("escrow_resolve").Handler(ctx, map[string]interface{}{
+			"escrowId":      escrowID,
+			"favor":         "seller",
+			"sellerPercent": float64(100),
+		})
+		require.NoError(t, err)
+		payload := escrowHubToolsAttachOnChainFieldsWithoutLiveChainEscrowPayload(t, got)
+		assert.Equal(t, "released", payload["status"])
+		assert.Equal(t, "12.50", payload["sellerAmount"])
+		assert.Equal(t, "0.00", payload["buyerAmount"])
+		assert.Equal(t, vaultAddr.Hex(), payload["vaultAddress"])
+		assert.NotEmpty(t, payload["onChainTxHash"])
+		resolveReq := caller.requireWrite(t, "resolve")
+		assert.Equal(t, int64(31337), resolveReq.ChainID)
+		assert.Equal(t, vaultAddr, resolveReq.Address)
+		require.Len(t, resolveReq.Args, 3)
+		assert.Equal(t, true, resolveReq.Args[0])
+		assertEscrowHubToolsAttachOnChainFieldsWithoutLiveChainBigIntArg(t, resolveReq.Args, 1, 12_500_000)
+		assertEscrowHubToolsAttachOnChainFieldsWithoutLiveChainBigIntArg(t, resolveReq.Args, 2, 0)
+	})
+}
+
 func TestEscrowValidationBranchesRejectMissingRequiredInputs(t *testing.T) {
 	t.Parallel()
 
@@ -365,6 +488,17 @@ type escrowHubToolsAttachOnChainFieldsWithoutLiveChainContractCaller struct {
 
 func newEscrowHubToolsAttachOnChainFieldsWithoutLiveChainContractCaller() *escrowHubToolsAttachOnChainFieldsWithoutLiveChainContractCaller {
 	return &escrowHubToolsAttachOnChainFieldsWithoutLiveChainContractCaller{}
+}
+
+func newEscrowHubToolsAttachOnChainFieldsWithoutLiveChainVaultSettler(caller contract.ContractCaller) *hub.VaultSettler {
+	return hub.NewVaultSettler(
+		caller,
+		common.HexToAddress("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+		common.HexToAddress("0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
+		common.HexToAddress("0xcccccccccccccccccccccccccccccccccccccccc"),
+		common.HexToAddress("0xdddddddddddddddddddddddddddddddddddddddd"),
+		31337,
+	)
 }
 
 func (c *escrowHubToolsAttachOnChainFieldsWithoutLiveChainContractCaller) Read(_ context.Context, req contract.ContractCallRequest) (*contract.ContractCallResult, error) {

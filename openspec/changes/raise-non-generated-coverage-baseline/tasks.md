@@ -717,3 +717,9 @@
 - [x] 93.2 Add focused tests for deterministic status lookup without a background task reader
 - [x] 93.3 Run subagent-driven development and review checkpoints for the batch
 - [x] 93.4 Prepare the batch for a separate scoped commit
+
+## 94. Coverage Batch: Escrow Vault Tool Residuals
+
+- [x] 94.1 Add focused tests for deterministic `internal/app/tools_escrow.go` vault release, refund, dispute, and resolve on-chain field branches using a fake contract caller only
+- [x] 94.2 Run subagent-driven development and review checkpoints for the batch
+- [x] 94.3 Prepare the batch for a separate scoped commit
