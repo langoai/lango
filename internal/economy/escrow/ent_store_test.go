@@ -1,11 +1,13 @@
 package escrow
 
 import (
+	"encoding/json"
 	"errors"
 	"math/big"
 	"testing"
 	"time"
 
+	"github.com/langoai/lango/internal/ent"
 	"github.com/langoai/lango/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -105,6 +107,48 @@ func TestEntStore_ListByPeer(t *testing.T) {
 			assert.Len(t, result, tt.wantLen)
 		})
 	}
+}
+
+func TestEntStore_ListByStatusAndBeforeFiltersByStatusAndCreatedAt(t *testing.T) {
+	t.Parallel()
+
+	client := testutil.TestEntClient(t)
+	store := NewEntStore(client)
+	ctx := t.Context()
+
+	oldCreatedAt := time.Date(2026, 5, 21, 9, 0, 0, 0, time.UTC)
+	newCreatedAt := oldCreatedAt.Add(2 * time.Hour)
+
+	pendingOld := newEntTestEntry("escrow-status-pending-old")
+	createEntEscrowEntryAt(t, client, pendingOld, oldCreatedAt)
+
+	pendingNew := newEntTestEntry("escrow-status-pending-new")
+	createEntEscrowEntryAt(t, client, pendingNew, newCreatedAt)
+
+	activeOld := newEntTestEntry("escrow-status-active-old")
+	activeOld.Status = StatusActive
+	createEntEscrowEntryAt(t, client, activeOld, oldCreatedAt.Add(time.Hour))
+
+	pending := store.ListByStatus(StatusPending)
+	require.Len(t, pending, 2)
+	assert.Equal(t, []string{"escrow-status-pending-old", "escrow-status-pending-new"}, escrowEntryIDs(pending))
+	assert.Equal(t, oldCreatedAt, pending[0].CreatedAt)
+	assert.Equal(t, newCreatedAt, pending[1].CreatedAt)
+
+	active := store.ListByStatus(StatusActive)
+	require.Len(t, active, 1)
+	assert.Equal(t, activeOld.ID, active[0].ID)
+
+	beforeNew := store.ListByStatusBefore(StatusPending, newCreatedAt)
+	require.Len(t, beforeNew, 1)
+	assert.Equal(t, pendingOld.ID, beforeNew[0].ID)
+	assert.Equal(t, oldCreatedAt, beforeNew[0].CreatedAt)
+
+	assert.Empty(t, store.ListByStatusBefore(StatusCompleted, newCreatedAt))
+
+	count, err := client.EscrowDeal.Query().Count(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, 3, count)
 }
 
 func TestEntStore_Update(t *testing.T) {
@@ -225,4 +269,32 @@ func TestEntStore_Errors(t *testing.T) {
 		err := store.SetTxHash("nonexistent", TxDeposit, "0xabc")
 		assert.True(t, errors.Is(err, ErrEscrowNotFound))
 	})
+}
+
+func createEntEscrowEntryAt(t *testing.T, client *ent.Client, entry *EscrowEntry, createdAt time.Time) {
+	t.Helper()
+	milestones, err := json.Marshal(entry.Milestones)
+	require.NoError(t, err)
+	_, err = client.EscrowDeal.Create().
+		SetEscrowID(entry.ID).
+		SetBuyerDid(entry.BuyerDID).
+		SetSellerDid(entry.SellerDID).
+		SetTotalAmount(entry.TotalAmount.String()).
+		SetStatus(string(entry.Status)).
+		SetMilestones(milestones).
+		SetTaskID(entry.TaskID).
+		SetReason(entry.Reason).
+		SetCreatedAt(createdAt).
+		SetUpdatedAt(createdAt).
+		SetExpiresAt(entry.ExpiresAt).
+		Save(t.Context())
+	require.NoError(t, err)
+}
+
+func escrowEntryIDs(entries []*EscrowEntry) []string {
+	ids := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		ids = append(ids, entry.ID)
+	}
+	return ids
 }

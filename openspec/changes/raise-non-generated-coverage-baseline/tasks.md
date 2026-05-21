@@ -704,3 +704,9 @@
 - [x] 91.1 Add focused tests for deterministic `internal/cli/chat/commands.go` clear, model, mode, cost, and exit slash command branches without running a Bubble Tea loop
 - [x] 91.2 Run subagent-driven development and review checkpoints for the batch
 - [x] 91.3 Prepare the batch for a separate scoped commit
+
+## 92. Coverage Batch: Escrow Ent Store Residuals
+
+- [x] 92.1 Add focused tests for deterministic `internal/economy/escrow/ent_store.go` status and created-before list filters using local Ent SQLite only
+- [x] 92.2 Run subagent-driven development and review checkpoints for the batch
+- [x] 92.3 Prepare the batch for a separate scoped commit
