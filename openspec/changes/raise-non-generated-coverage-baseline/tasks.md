@@ -877,3 +877,10 @@
 - [x] 117.2 Add focused tests for env whitelist/custom blacklist filtering, reference resolution, event-bus wiring, and sync buffer helpers
 - [x] 117.3 Run subagent-driven review checkpoint for the batch
 - [x] 117.4 Prepare the batch for a separate scoped commit
+
+## 118. Coverage Batch: Storage Broker Client Residuals
+
+- [x] 118.1 Add focused tests for broker-error zero-value returns across result-producing client wrappers
+- [x] 118.2 Add focused tests for residual client helper branches
+- [x] 118.3 Run subagent-driven review checkpoint for the batch
+- [x] 118.4 Prepare the batch for a separate scoped commit

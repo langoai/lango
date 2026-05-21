@@ -335,6 +335,12 @@ func TestClientWrappersThroughFakeBroker(t *testing.T) {
 	now := time.Unix(200, 0).UTC()
 
 	expectClientCall(t, func(c *Client) error {
+		got, err := c.Health(ctx)
+		require.Equal(t, HealthResult{Opened: true}, got)
+		return err
+	}, methodHealth, nil, HealthResult{Opened: true})
+
+	expectClientCall(t, func(c *Client) error {
 		got, err := c.OpenDB(ctx, OpenDBRequest{DBPath: "db.sqlite"})
 		require.Equal(t, OpenDBResult{Opened: true}, got)
 		return err
@@ -489,6 +495,210 @@ func TestClientWrappersThroughFakeBroker(t *testing.T) {
 	}, methodPaymentUsage, nil, PaymentUsageResult{DailySpent: "1.00"})
 }
 
+func TestClientResultWrappersReturnZeroValuesOnBrokerError(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	wantErr := "broker unavailable"
+	now := time.Unix(300, 0).UTC()
+
+	tests := []struct {
+		name string
+		run  func(*testing.T, *Client) error
+	}{
+		{
+			name: "health",
+			run: func(t *testing.T, c *Client) error {
+				got, err := c.Health(ctx)
+				require.Equal(t, HealthResult{}, got)
+				return err
+			},
+		},
+		{
+			name: "open db",
+			run: func(t *testing.T, c *Client) error {
+				got, err := c.OpenDB(ctx, OpenDBRequest{DBPath: "db.sqlite"})
+				require.Equal(t, OpenDBResult{}, got)
+				return err
+			},
+		},
+		{
+			name: "db status summary",
+			run: func(t *testing.T, c *Client) error {
+				got, err := c.DBStatusSummary(ctx, DBStatusSummaryRequest{DBPath: "db.sqlite"})
+				require.Equal(t, DBStatusSummaryResult{}, got)
+				return err
+			},
+		},
+		{
+			name: "encrypt payload",
+			run: func(t *testing.T, c *Client) error {
+				got, err := c.EncryptPayload(ctx, []byte("plain"))
+				require.Equal(t, EncryptPayloadResult{}, got)
+				return err
+			},
+		},
+		{
+			name: "decrypt payload",
+			run: func(t *testing.T, c *Client) error {
+				got, err := c.DecryptPayload(ctx, []byte("cipher"), []byte("nonce"), 4)
+				require.Equal(t, DecryptPayloadResult{}, got)
+				return err
+			},
+		},
+		{
+			name: "load security state",
+			run: func(t *testing.T, c *Client) error {
+				got, err := c.LoadSecurityState(ctx)
+				require.Equal(t, LoadSecurityStateResult{}, got)
+				return err
+			},
+		},
+		{
+			name: "config load",
+			run: func(t *testing.T, c *Client) error {
+				got, err := c.ConfigLoad(ctx, "alpha")
+				require.Equal(t, ConfigLoadResult{}, got)
+				return err
+			},
+		},
+		{
+			name: "config load active",
+			run: func(t *testing.T, c *Client) error {
+				got, err := c.ConfigLoadActive(ctx)
+				require.Equal(t, ConfigLoadActiveResult{}, got)
+				return err
+			},
+		},
+		{
+			name: "config list",
+			run: func(t *testing.T, c *Client) error {
+				got, err := c.ConfigList(ctx)
+				require.Equal(t, ConfigListResult{}, got)
+				return err
+			},
+		},
+		{
+			name: "config exists",
+			run: func(t *testing.T, c *Client) error {
+				got, err := c.ConfigExists(ctx, "alpha")
+				require.Equal(t, ConfigExistsResult{}, got)
+				return err
+			},
+		},
+		{
+			name: "session get",
+			run: func(t *testing.T, c *Client) error {
+				got, err := c.SessionGet(ctx, "s1")
+				require.Nil(t, got)
+				return err
+			},
+		},
+		{
+			name: "session list",
+			run: func(t *testing.T, c *Client) error {
+				got, err := c.SessionList(ctx)
+				require.Nil(t, got)
+				return err
+			},
+		},
+		{
+			name: "session get salt",
+			run: func(t *testing.T, c *Client) error {
+				got, err := c.SessionGetSalt(ctx, "agent")
+				require.Nil(t, got)
+				return err
+			},
+		},
+		{
+			name: "recall search",
+			run: func(t *testing.T, c *Client) error {
+				got, err := c.RecallSearch(ctx, "hello", 2)
+				require.Nil(t, got)
+				return err
+			},
+		},
+		{
+			name: "recall summary",
+			run: func(t *testing.T, c *Client) error {
+				got, err := c.RecallGetSummary(ctx, "s1")
+				require.Empty(t, got)
+				return err
+			},
+		},
+		{
+			name: "learning history",
+			run: func(t *testing.T, c *Client) error {
+				got, err := c.LearningHistory(ctx, 7)
+				require.Equal(t, LearningHistoryResult{}, got)
+				return err
+			},
+		},
+		{
+			name: "pending inquiries",
+			run: func(t *testing.T, c *Client) error {
+				got, err := c.PendingInquiries(ctx, 8)
+				require.Equal(t, PendingInquiriesResult{}, got)
+				return err
+			},
+		},
+		{
+			name: "workflow runs",
+			run: func(t *testing.T, c *Client) error {
+				got, err := c.WorkflowRuns(ctx, 9)
+				require.Equal(t, WorkflowRunsResult{}, got)
+				return err
+			},
+		},
+		{
+			name: "alerts",
+			run: func(t *testing.T, c *Client) error {
+				got, err := c.Alerts(ctx, now)
+				require.Equal(t, AlertsResult{}, got)
+				return err
+			},
+		},
+		{
+			name: "reputation get",
+			run: func(t *testing.T, c *Client) error {
+				got, err := c.ReputationGet(ctx, "did:example:peer")
+				require.Equal(t, ReputationGetResult{}, got)
+				return err
+			},
+		},
+		{
+			name: "payment history",
+			run: func(t *testing.T, c *Client) error {
+				got, err := c.PaymentHistory(ctx, 10)
+				require.Equal(t, PaymentHistoryResult{}, got)
+				return err
+			},
+		},
+		{
+			name: "payment usage",
+			run: func(t *testing.T, c *Client) error {
+				got, err := c.PaymentUsage(ctx)
+				require.Equal(t, PaymentUsageResult{}, got)
+				return err
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			c, cleanup := newPipeClient(t, func(req Request) Response {
+				return Response{ID: req.ID, OK: false, Error: wantErr}
+			})
+			defer cleanup()
+
+			require.ErrorContains(t, tt.run(t, c), wantErr)
+		})
+	}
+}
+
 func TestClientCallErrorBranches(t *testing.T) {
 	t.Parallel()
 
@@ -536,6 +746,14 @@ func TestClientCallErrorBranches(t *testing.T) {
 	err = closeClient.Close(closeCtx)
 	require.ErrorContains(t, err, "close failed")
 	require.True(t, closeClient.closed)
+}
+
+func TestClientMaxReturnsSecondWhenGreaterOrEqual(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, int64(7), max(7, 5))
+	require.Equal(t, int64(5), max(3, 5))
+	require.Equal(t, int64(5), max(5, 5))
 }
 
 func openServerSecurityAndConfigWrappersServer(t *testing.T, withMasterKey bool) *Server {
