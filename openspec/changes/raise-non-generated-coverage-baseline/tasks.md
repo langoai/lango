@@ -643,3 +643,10 @@
 - [x] 82.3 Add focused tests for deterministic `internal/app/wiring.go` auth manager success wiring using a local OIDC discovery server only
 - [x] 82.4 Run subagent-driven development and review checkpoints for the batch
 - [x] 82.5 Prepare the batch for a separate scoped commit
+
+## 83. Coverage Batch: Cockpit Mission Control Projector Residuals
+
+- [x] 83.1 Add focused tests for deterministic `internal/cli/cockpit/missioncontrol_projector.go` nil receiver and empty activity projection branches
+- [x] 83.2 Add focused tests for deterministic learning suggestion fallback title and collaboration degradation branches
+- [x] 83.3 Run subagent-driven development and review checkpoints for the batch
+- [x] 83.4 Prepare the batch for a separate scoped commit
