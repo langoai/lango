@@ -698,3 +698,9 @@
 - [x] 90.2 Add focused tests for deterministic missing transaction receipt propagation using in-memory receipts only
 - [x] 90.3 Run subagent-driven development and review checkpoints for the batch
 - [x] 90.4 Prepare the batch for a separate scoped commit
+
+## 91. Coverage Batch: Chat Slash Command Residuals
+
+- [x] 91.1 Add focused tests for deterministic `internal/cli/chat/commands.go` clear, model, mode, cost, and exit slash command branches without running a Bubble Tea loop
+- [x] 91.2 Run subagent-driven development and review checkpoints for the batch
+- [x] 91.3 Prepare the batch for a separate scoped commit
