@@ -160,6 +160,65 @@ func TestNetworkModuleInitUsesBootStorageFacadeWhenPaymentIsDisabled(t *testing.
 	assert.Contains(t, p2pEntry.Description, "payment required")
 }
 
+func TestNetworkModuleInitRegistersEconomyToolsWhenPaymentIsDisabled(t *testing.T) {
+	t.Parallel()
+
+	cfg := foundationModuleInitContinuesAfterSanitizerPatternErrorModuleConfig(t)
+	cfg.Payment.Enabled = false
+	cfg.P2P.Enabled = false
+	cfg.Economy.Enabled = true
+	cfg.Economy.Pricing.Enabled = true
+	cfg.Economy.Negotiate.Enabled = true
+	cfg.Economy.Escrow.Enabled = true
+	module := &networkModule{
+		cfg: cfg,
+		bus: eventbus.New(),
+		app: &App{ctx: context.Background()},
+	}
+
+	result, err := module.Init(context.Background(), staticResolver{
+		appinit.ProvidesSupervisor: &foundationValues{
+			ReceiptStore: receipts.NewStore(),
+		},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	values, ok := result.Values[appinit.ProvidesEconomy].(*economyComponents)
+	require.True(t, ok)
+	require.NotNil(t, values)
+	t.Cleanup(func() {
+		if values.sentinelEngine != nil {
+			require.NoError(t, values.sentinelEngine.Stop())
+		}
+	})
+
+	assert.Nil(t, result.Values[appinit.ProvidesPayment])
+	assert.Nil(t, result.Values[appinit.ProvidesP2P])
+	assert.Nil(t, result.Values[appinit.ProvidesContract])
+	assert.Nil(t, result.Values[appinit.ProvidesSmartAccount])
+	assert.NotNil(t, values.budgetEngine)
+	assert.NotNil(t, values.riskEngine)
+	assert.NotNil(t, values.pricingEngine)
+	assert.NotNil(t, values.negotiationEngine)
+	assert.NotNil(t, values.escrowEngine)
+	assert.NotNil(t, values.escrowSettler)
+	assert.NotNil(t, values.sentinelEngine)
+
+	assert.True(t, requireCatalogEntry(t, result.CatalogEntries, "economy").Enabled)
+	assert.True(t, requireCatalogEntry(t, result.CatalogEntries, "escrow").Enabled)
+	assert.True(t, requireCatalogEntry(t, result.CatalogEntries, "sentinel").Enabled)
+	assert.False(t, requireCatalogEntry(t, result.CatalogEntries, "payment").Enabled)
+	assert.False(t, requireCatalogEntry(t, result.CatalogEntries, "contract").Enabled)
+	assert.False(t, requireCatalogEntry(t, result.CatalogEntries, "p2p").Enabled)
+	assert.False(t, requireCatalogEntry(t, result.CatalogEntries, "smartaccount").Enabled)
+	assert.NotNil(t, findTool(result.Tools, "economy_budget_allocate"))
+	assert.NotNil(t, findTool(result.Tools, "economy_price_quote"))
+	assert.NotNil(t, findTool(result.Tools, "economy_negotiate"))
+	assert.NotNil(t, findTool(result.Tools, "economy_escrow_create"))
+	assert.NotNil(t, findTool(result.Tools, "sentinel_status"))
+}
+
 func TestExtensionModuleInitRegistersMCPManagementForDisabledConfiguredServer(t *testing.T) {
 	tmp := t.TempDir()
 	origWD, err := os.Getwd()

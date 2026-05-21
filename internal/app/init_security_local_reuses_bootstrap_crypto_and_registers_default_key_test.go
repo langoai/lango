@@ -67,6 +67,35 @@ func TestInitSecurityLocalReusesBootstrapCryptoAndRegistersDefaultKey(t *testing
 	assert.Equal(t, security.KeyTypeEncryption, defaultKey.Type)
 }
 
+func TestInitSecurityLocalReturnsDefaultKeyRegistrationError(t *testing.T) {
+	t.Parallel()
+
+	client := testutil.TestEntClient(t)
+	keys := security.NewKeyRegistry(client)
+
+	crypto := security.NewLocalCryptoProvider()
+	facade := storage.NewFacade(nil, nil,
+		storage.WithKeyRegistryFactory(func() *security.KeyRegistry { return keys }),
+		storage.WithSecretsStoreFactory(func(provider security.CryptoProvider) *security.SecretsStore {
+			return security.NewSecretsStore(client, keys, provider)
+		}),
+	)
+	cfg := config.DefaultConfig()
+	cfg.Security.Signer.Provider = "local"
+	require.NoError(t, client.Close())
+
+	gotCrypto, gotKeys, secrets, err := initSecurity(cfg, &stubSessionStore{}, &bootstrap.Result{
+		Crypto:  crypto,
+		Storage: facade,
+	})
+
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "register default key")
+	assert.Nil(t, gotCrypto)
+	assert.Nil(t, gotKeys)
+	assert.Nil(t, secrets)
+}
+
 func TestProvenanceAgentOptionsRegisterRootAndConfigCheckpoint(t *testing.T) {
 	t.Parallel()
 

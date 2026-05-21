@@ -759,3 +759,10 @@
 - [x] 100.1 Add focused tests for deterministic `internal/app/app.go` observability alerts route and audit recorder wiring using local Ent storage only
 - [x] 100.2 Run subagent-driven development and review checkpoints for the batch
 - [x] 100.3 Prepare the batch for a separate scoped commit
+
+## 101. Coverage Batch: App Wiring Residuals
+
+- [x] 101.1 Add focused tests for deterministic `internal/app/modules.go` payment-disabled economy, escrow, and sentinel wiring without P2P or RPC startup
+- [x] 101.2 Add focused tests for deterministic `internal/app/wiring.go` local security default-key registration failure without external providers
+- [x] 101.3 Run subagent-driven development and review checkpoints for the batch
+- [x] 101.4 Prepare the batch for a separate scoped commit
