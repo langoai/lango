@@ -189,6 +189,75 @@ func TestCreateSkill_RequiresCanonicalInputs(t *testing.T) {
 	}
 }
 
+func TestCreateSkill_ValidationBranches(t *testing.T) {
+	registry := newMetaToolSkillRegistry(t)
+
+	cases := []struct {
+		name      string
+		registry  *skill.Registry
+		params    map[string]interface{}
+		wantError string
+	}{
+		{
+			name:     "invalid definition json",
+			registry: registry,
+			params: map[string]interface{}{
+				"name":        "invalid-definition",
+				"description": "Reusable sequence",
+				"type":        "template",
+				"definition":  "{",
+			},
+			wantError: "parse definition JSON",
+		},
+		{
+			name:     "invalid parameters json",
+			registry: registry,
+			params: map[string]interface{}{
+				"name":        "invalid-parameters",
+				"description": "Reusable sequence",
+				"type":        "template",
+				"definition":  `{"steps":[]}`,
+				"parameters":  "{",
+			},
+			wantError: "parse parameters JSON",
+		},
+		{
+			name:     "missing registry",
+			registry: nil,
+			params: map[string]interface{}{
+				"name":        "missing-registry",
+				"description": "Reusable sequence",
+				"type":        "template",
+				"definition":  `{"steps":[]}`,
+			},
+			wantError: "skill system is not enabled",
+		},
+		{
+			name:     "invalid type",
+			registry: registry,
+			params: map[string]interface{}{
+				"name":        "invalid-type",
+				"description": "Reusable sequence",
+				"type":        "invalid",
+				"definition":  `{"steps":[]}`,
+			},
+			wantError: "skill type must be",
+		},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			tool := findTool(buildMetaTools(nil, nil, tt.registry, config.SkillConfig{}, nil, nil), "create_skill")
+			require.NotNil(t, tool)
+
+			got, err := tool.Handler(context.Background(), tt.params)
+			require.Error(t, err)
+			assert.Nil(t, got)
+			assert.ErrorContains(t, err, tt.wantError)
+		})
+	}
+}
+
 func TestViewSkill_RequiresNameParameter(t *testing.T) {
 	registry := newMetaToolSkillRegistry(t)
 	tool := findTool(buildMetaTools(nil, nil, registry, config.SkillConfig{}, nil, nil), "view_skill")
@@ -198,6 +267,35 @@ func TestViewSkill_RequiresNameParameter(t *testing.T) {
 	require.Error(t, err)
 	assert.Nil(t, got)
 	assert.ErrorContains(t, err, "name is required")
+}
+
+func TestViewSkill_ReturnsReadErrorForMissingSupportingFile(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "skills")
+	logger := zap.NewNop().Sugar()
+	store := skill.NewFileSkillStore(dir, logger)
+	registry := skill.NewRegistry(store, nil, logger)
+	ctx := context.Background()
+	entry := skill.SkillEntry{
+		Name:        "missing-support",
+		Description: "Reads a supporting file",
+		Type:        skill.SkillTypeInstruction,
+		Context:     "reference material",
+		Status:      skill.SkillStatusActive,
+	}
+	require.NoError(t, registry.CreateSkill(ctx, entry))
+	require.NoError(t, registry.ActivateSkill(ctx, entry.Name))
+
+	cfg := config.SkillConfig{SkillsDir: dir}
+	tool := findTool(buildMetaTools(nil, nil, registry, cfg, nil, nil), "view_skill")
+	require.NotNil(t, tool)
+
+	got, err := tool.Handler(ctx, map[string]interface{}{
+		"name": entry.Name,
+		"path": "missing.txt",
+	})
+	require.Error(t, err)
+	assert.Nil(t, got)
+	assert.ErrorContains(t, err, "read missing.txt")
 }
 
 func TestImportSkill_RequiresURLParameter(t *testing.T) {
@@ -210,4 +308,50 @@ func TestImportSkill_RequiresURLParameter(t *testing.T) {
 	require.Error(t, err)
 	assert.Nil(t, got)
 	assert.ErrorContains(t, err, "missing url parameter")
+}
+
+func TestImportSkill_EarlyValidationBranches(t *testing.T) {
+	registry := newMetaToolSkillRegistry(t)
+
+	cases := []struct {
+		name      string
+		registry  *skill.Registry
+		cfg       config.SkillConfig
+		params    map[string]interface{}
+		wantError string
+	}{
+		{
+			name:      "disabled",
+			registry:  registry,
+			cfg:       config.SkillConfig{AllowImport: false},
+			params:    map[string]interface{}{"url": "https://github.com/langoai/lango"},
+			wantError: "skill import disabled",
+		},
+		{
+			name:      "missing registry",
+			registry:  nil,
+			cfg:       config.SkillConfig{AllowImport: true},
+			params:    map[string]interface{}{"url": "https://github.com/langoai/lango"},
+			wantError: "skill system is not enabled",
+		},
+		{
+			name:      "malformed github url",
+			registry:  registry,
+			cfg:       config.SkillConfig{AllowImport: true},
+			params:    map[string]interface{}{"url": "https://github.com"},
+			wantError: "parse GitHub URL",
+		},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			tool := findTool(buildMetaTools(nil, nil, tt.registry, tt.cfg, nil, nil), "import_skill")
+			require.NotNil(t, tool)
+
+			got, err := tool.Handler(context.Background(), tt.params)
+			require.Error(t, err)
+			assert.Nil(t, got)
+			assert.ErrorContains(t, err, tt.wantError)
+		})
+	}
 }

@@ -766,3 +766,11 @@
 - [x] 101.2 Add focused tests for deterministic `internal/app/wiring.go` local security default-key registration failure without external providers
 - [x] 101.3 Run subagent-driven development and review checkpoints for the batch
 - [x] 101.4 Prepare the batch for a separate scoped commit
+
+## 102. Coverage Batch: Meta Tool Residuals
+
+- [x] 102.1 Add focused tests for deterministic `internal/app/tools_meta.go` skill-import early validation branches without network calls
+- [x] 102.2 Add focused tests for deterministic post-adjudication dead-letter list option forwarding using in-memory receipts only
+- [x] 102.3 Add focused tests for deterministic skill creation and view-skill read error branches
+- [x] 102.4 Run subagent-driven development and review checkpoints for the batch
+- [x] 102.5 Prepare the batch for a separate scoped commit
