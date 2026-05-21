@@ -16,11 +16,13 @@ import (
 	entknowledge "github.com/langoai/lango/internal/ent/knowledge"
 	entlearning "github.com/langoai/lango/internal/ent/learning"
 	"github.com/langoai/lango/internal/eventbus"
+	"github.com/langoai/lango/internal/extension"
 	"github.com/langoai/lango/internal/knowledge"
 	"github.com/langoai/lango/internal/librarian"
 	"github.com/langoai/lango/internal/runledger"
 	"github.com/langoai/lango/internal/search"
 	"github.com/langoai/lango/internal/session"
+	"github.com/langoai/lango/internal/supervisor"
 	"github.com/langoai/lango/internal/testutil"
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -275,6 +277,53 @@ func TestInitSkills_LoadsUserSkillsAndSkipsExtPacksWithoutRegistry(t *testing.T)
 	assert.NotContains(t, skillInfoNames(infos), "rogue")
 }
 
+func TestInitSkills_AllowsOnlyHealthyExtensionPacksFromRegistry(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	skillsDir := filepath.Join(root, "skills")
+	extensionsDir := filepath.Join(root, "extensions")
+
+	inst := &extension.Installer{
+		ExtensionsDir: extensionsDir,
+		SkillsDir:     skillsDir,
+	}
+	src := extension.NewLocalSource(writeWiringKnowledgeExtensionPack(t, root))
+	_, wc, err := inst.Inspect(context.Background(), src)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = wc.Cleanup() })
+	require.NoError(t, inst.Install(context.Background(), src, wc, extension.InstallOptions{}))
+
+	writeWiringKnowledgeExtSkill(t, skillsDir, "rogue-pack", "rogue-skill", "Untrusted extension skill")
+	extReg, err := extension.LoadRegistry(extensionsDir, false)
+	require.NoError(t, err)
+	require.Len(t, extReg.OKPacks(), 1)
+
+	cfg := &config.Config{
+		Skill: config.SkillConfig{
+			Enabled:   true,
+			SkillsDir: skillsDir,
+		},
+	}
+	baseTool := &agent.Tool{Name: "base_tool"}
+	registry, err := initSkills(cfg, []*agent.Tool{baseTool}, eventbus.New(), extReg)
+	require.NoError(t, err)
+	require.NotNil(t, registry)
+
+	_, ok := registry.GetSkillTool("trusted-skill")
+	assert.True(t, ok)
+	_, ok = registry.GetSkillTool("rogue-skill")
+	assert.False(t, ok)
+
+	toolNames := make(map[string]bool)
+	for _, tool := range registry.AllTools() {
+		toolNames[tool.Name] = true
+	}
+	assert.True(t, toolNames["base_tool"])
+	assert.True(t, toolNames["skill_trusted-skill"])
+	assert.False(t, toolNames["skill_rogue-skill"])
+}
+
 func TestInitSkills_DisabledReturnsNilRegistry(t *testing.T) {
 	t.Parallel()
 
@@ -337,6 +386,27 @@ func TestInitConversationAnalysisAndRetrievalGuards(t *testing.T) {
 	}, kc.store, activeBus)
 	activeBus.Publish(wiringKnowledgeContextInjectedEvent("wiringKnowledge5-relevance"))
 	assert.Equal(t, 1.2, wiringKnowledgeRelevanceScore(t, entStore, "wiringKnowledge5-relevance"))
+}
+
+func TestProviderTextGeneratorGenerateTextWrapsProxyError(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.DefaultConfig()
+	cfg.Agent.Provider = ""
+	cfg.Agent.Model = ""
+	cfg.Providers = nil
+
+	sv, err := supervisor.New(cfg)
+	require.NoError(t, err)
+	generator := &providerTextGenerator{
+		proxy: supervisor.NewProviderProxy(sv, "missing-provider", "test-model"),
+	}
+
+	result, err := generator.GenerateText(context.Background(), "system prompt", "user prompt")
+	require.Error(t, err)
+	assert.Empty(t, result)
+	assert.ErrorContains(t, err, "generate text")
+	assert.ErrorContains(t, err, "provider not found: missing-provider")
 }
 
 func TestInquiryProviderAdapter_ConvertsPendingInquiriesToContextItems(t *testing.T) {
@@ -530,6 +600,34 @@ func writeWiringKnowledgeSkill(t *testing.T, root, name, description string) {
 		"---\n\n" +
 		"Use this skill for deterministic wiring tests.\n"
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(content), 0o600))
+}
+
+func writeWiringKnowledgeExtensionPack(t *testing.T, root string) string {
+	t.Helper()
+
+	dir := filepath.Join(root, "trusted-pack-source")
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "skills", "trusted-skill"), 0o700))
+
+	manifest := `schema: lango.extension/v1
+name: trusted-pack
+version: 0.1.0
+description: Trusted pack for wiring tests
+contents:
+  skills:
+    - name: trusted-skill
+      path: skills/trusted-skill/SKILL.md
+`
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "extension.yaml"), []byte(manifest), 0o600))
+
+	content := "---\n" +
+		"name: trusted-skill\n" +
+		"description: Trusted extension skill\n" +
+		"type: instruction\n" +
+		"status: active\n" +
+		"---\n\n" +
+		"Trusted extension-owned skill for wiring tests.\n"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "skills", "trusted-skill", "SKILL.md"), []byte(content), 0o600))
+	return dir
 }
 
 func writeWiringKnowledgeExtSkill(t *testing.T, root, pack, name, description string) {

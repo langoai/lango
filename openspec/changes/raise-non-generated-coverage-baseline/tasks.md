@@ -684,3 +684,10 @@
 - [x] 88.2 Add focused tests for deterministic post-quantum signing key absent/present accessor and signing branches
 - [x] 88.3 Run subagent-driven development and review checkpoints for the batch
 - [x] 88.4 Prepare the batch for a separate scoped commit
+
+## 89. Coverage Batch: App Knowledge Wiring Residuals
+
+- [x] 89.1 Add focused tests for deterministic `internal/app/wiring_knowledge.go` extension-pack skill allowlist wiring using local extension installs only
+- [x] 89.2 Add focused tests for deterministic provider text generation proxy error wrapping without network providers
+- [x] 89.3 Run subagent-driven development and review checkpoints for the batch
+- [x] 89.4 Prepare the batch for a separate scoped commit
