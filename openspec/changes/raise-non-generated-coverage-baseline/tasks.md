@@ -850,3 +850,10 @@
 - [x] 113.1 Add focused tests for approve-artifact, skill listing/view, and learning-cleanup residual error branches
 - [x] 113.2 Run subagent-driven development and review checkpoints for the batch
 - [x] 113.3 Prepare the batch for a separate scoped commit
+
+## 114. Coverage Batch: OpenAI Provider Streaming Residuals
+
+- [x] 114.1 Add focused tests for OpenAI model listing and streaming generate success/error branches using local HTTP fixtures
+- [x] 114.2 Add focused tests for strict schema residual validation branches
+- [x] 114.3 Run subagent-driven review checkpoint for the batch
+- [x] 114.4 Prepare the batch for a separate scoped commit
