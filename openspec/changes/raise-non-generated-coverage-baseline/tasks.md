@@ -802,3 +802,10 @@
 - [x] 106.2 Add focused tests for deterministic MCP reconnect canceled-context and stopped-channel early returns
 - [x] 106.3 Run subagent-driven development and review checkpoints for the batch
 - [x] 106.4 Prepare the batch for a separate scoped commit
+
+## 107. Coverage Batch: Channel Sender Residuals
+
+- [x] 107.1 Add focused tests for deterministic Telegram send, parse-error, allowlist fallback, and typing branches using fake BotAPI only
+- [x] 107.2 Add focused tests for deterministic Discord, Slack, and Telegram required-target handling with fake channel adapters only
+- [x] 107.3 Run subagent-driven development and review checkpoints for the batch
+- [x] 107.4 Prepare the batch for a separate scoped commit
