@@ -863,3 +863,10 @@
 - [x] 115.1 Add focused tests for automation lifecycle component Start/Stop closures without external services
 - [x] 115.2 Run subagent-driven review checkpoint for the batch
 - [x] 115.3 Prepare the batch for a separate scoped commit
+
+## 116. Coverage Batch: Agent Wiring Residuals
+
+- [x] 116.1 Add focused tests for single-agent `initAgent` execution using a local provider fixture
+- [x] 116.2 Add focused tests for memory-only `initAgent` context adapter execution using a local provider fixture
+- [x] 116.3 Run subagent-driven review checkpoint for the batch
+- [x] 116.4 Prepare the batch for a separate scoped commit
