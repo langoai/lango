@@ -466,6 +466,185 @@ func TestGovernanceToolsValidateInputsPayloadsAndPropagateErrors(t *testing.T) {
 	assert.Nil(t, result)
 }
 
+func TestStaticOntologyToolsResidualValidationAndErrorBranches(t *testing.T) {
+	ctx := context.Background()
+	wantErr := errors.New("ontology unavailable")
+	conflictID := uuid.MustParse("22222222-2222-2222-2222-222222222222")
+	svc := &buildToolsIncludesDynamicToolsAndMetadataToolService{
+		listTypesResult: []ontology.ObjectType{{
+			Name:        "Agent",
+			Description: "Agent type",
+			Status:      ontology.SchemaActive,
+			Properties:  []ontology.PropertyDef{{Name: "name", Type: ontology.TypeString}},
+		}},
+		getTypeResult: &ontology.ObjectType{
+			Name:        "Agent",
+			Description: "Agent type",
+			Status:      ontology.SchemaActive,
+			Properties:  []ontology.PropertyDef{{Name: "name", Type: ontology.TypeString}},
+		},
+		listPredicatesResult: []ontology.PredicateDefinition{{
+			Name:        "uses",
+			Description: "Agent uses tool",
+			SourceTypes: []string{"Agent"},
+			TargetTypes: []string{"Tool"},
+			Cardinality: ontology.ManyToMany,
+		}},
+		assertFactResult: &ontology.AssertionResult{
+			Stored:     false,
+			Message:    "conflict detected",
+			ConflictID: &conflictID,
+		},
+		mergeResult: &ontology.MergeResult{TriplesUpdated: 2, AliasesCreated: 1},
+	}
+	tools := ontology.BuildTools(svc, nil)
+
+	listTypes := requireBuildToolsIncludesDynamicToolsAndMetadataTool(t, tools, "ontology_list_types")
+	result, err := listTypes.Handler(ctx, nil)
+	require.NoError(t, err)
+	payload := result.(map[string]interface{})
+	assert.Equal(t, 1, payload["count"])
+	svc.listTypesErr = wantErr
+	result, err = listTypes.Handler(ctx, nil)
+	require.ErrorIs(t, err, wantErr)
+	assert.ErrorContains(t, err, "list types")
+	assert.Nil(t, result)
+	svc.listTypesErr = nil
+
+	describe := requireBuildToolsIncludesDynamicToolsAndMetadataTool(t, tools, "ontology_describe_type")
+	result, err = describe.Handler(ctx, map[string]interface{}{"type_name": "Agent"})
+	require.NoError(t, err)
+	describePayload := result.(map[string]interface{})
+	assert.Equal(t, "Agent", describePayload["name"])
+	assert.Len(t, describePayload["predicates"], 1)
+	result, err = describe.Handler(ctx, map[string]interface{}{})
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "missing type_name parameter")
+	assert.Nil(t, result)
+	svc.getTypeErr = wantErr
+	result, err = describe.Handler(ctx, map[string]interface{}{"type_name": "Agent"})
+	require.ErrorIs(t, err, wantErr)
+	assert.ErrorContains(t, err, "describe type")
+	assert.Nil(t, result)
+	svc.getTypeErr = nil
+
+	assertFact := requireBuildToolsIncludesDynamicToolsAndMetadataTool(t, tools, "ontology_assert_fact")
+	result, err = assertFact.Handler(ctx, map[string]interface{}{
+		"subject":    "agent:1",
+		"predicate":  "uses",
+		"object":     "tool:1",
+		"confidence": 0.25,
+	})
+	require.NoError(t, err)
+	assertPayload := result.(map[string]interface{})
+	assert.Equal(t, false, assertPayload["stored"])
+	assert.Equal(t, conflictID.String(), assertPayload["conflict_id"])
+	assert.Equal(t, 0.25, svc.assertFactCalls[len(svc.assertFactCalls)-1].confidence)
+	result, err = assertFact.Handler(ctx, map[string]interface{}{"subject": "agent:1", "object": "tool:1"})
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "missing predicate parameter")
+	assert.Nil(t, result)
+	svc.assertFactErrBySubject = map[string]error{"agent:1": wantErr}
+	result, err = assertFact.Handler(ctx, map[string]interface{}{
+		"subject":   "agent:1",
+		"predicate": "uses",
+		"object":    "tool:1",
+	})
+	require.ErrorIs(t, err, wantErr)
+	assert.ErrorContains(t, err, "assert fact")
+	assert.Nil(t, result)
+	svc.assertFactErrBySubject = nil
+
+	retract := requireBuildToolsIncludesDynamicToolsAndMetadataTool(t, tools, "ontology_retract_fact")
+	result, err = retract.Handler(ctx, map[string]interface{}{"subject": "agent:1", "predicate": "uses", "object": "tool:1"})
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "missing reason parameter")
+	assert.Nil(t, result)
+	svc.retractFactErr = wantErr
+	result, err = retract.Handler(ctx, map[string]interface{}{
+		"subject":   "agent:1",
+		"predicate": "uses",
+		"object":    "tool:1",
+		"reason":    "duplicate",
+	})
+	require.ErrorIs(t, err, wantErr)
+	assert.ErrorContains(t, err, "retract fact")
+	assert.Nil(t, result)
+	svc.retractFactErr = nil
+
+	conflicts := requireBuildToolsIncludesDynamicToolsAndMetadataTool(t, tools, "ontology_list_conflicts")
+	svc.openConflictsErr = wantErr
+	result, err = conflicts.Handler(ctx, nil)
+	require.ErrorIs(t, err, wantErr)
+	assert.ErrorContains(t, err, "list conflicts")
+	assert.Nil(t, result)
+	svc.openConflictsErr = nil
+
+	merge := requireBuildToolsIncludesDynamicToolsAndMetadataTool(t, tools, "ontology_merge_entities")
+	result, err = merge.Handler(ctx, map[string]interface{}{"canonical": "agent:1"})
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "missing duplicate parameter")
+	assert.Nil(t, result)
+	svc.mergeEntitiesErr = wantErr
+	result, err = merge.Handler(ctx, map[string]interface{}{"canonical": "agent:1", "duplicate": "agent:old"})
+	require.ErrorIs(t, err, wantErr)
+	assert.ErrorContains(t, err, "merge entities")
+	assert.Nil(t, result)
+	svc.mergeEntitiesErr = nil
+	result, err = merge.Handler(ctx, map[string]interface{}{"canonical": "agent:1", "duplicate": "agent:old"})
+	require.NoError(t, err)
+	assert.Equal(t, map[string]interface{}{"status": "merged", "triples_updated": 2, "aliases_created": 1}, result)
+}
+
+func TestIngestionAndGovernanceResidualErrorBranches(t *testing.T) {
+	ctx := context.Background()
+	wantErr := errors.New("governance unavailable")
+	svc := &buildToolsIncludesDynamicToolsAndMetadataToolService{}
+	tools := ontology.BuildTools(svc, nil)
+
+	importCSV := requireBuildToolsIncludesDynamicToolsAndMetadataTool(t, tools, "ontology_import_csv")
+	result, err := importCSV.Handler(ctx, map[string]interface{}{"data": "entity_id,name\nagent:1,Alice"})
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "missing type parameter")
+	assert.Nil(t, result)
+	result, err = importCSV.Handler(ctx, map[string]interface{}{"type": "Agent", "data": "\"unterminated"})
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "import csv parse")
+	assert.Nil(t, result)
+	result, err = importCSV.Handler(ctx, map[string]interface{}{"type": "Agent", "data": "entity_id,name\nagent:1"})
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "import csv parse")
+	assert.Nil(t, result)
+
+	fromMCP := requireBuildToolsIncludesDynamicToolsAndMetadataTool(t, tools, "ontology_from_mcp")
+	result, err = fromMCP.Handler(ctx, map[string]interface{}{"tool_name": "weather"})
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "missing result_json parameter")
+	assert.Nil(t, result)
+
+	promotePredicate := requireBuildToolsIncludesDynamicToolsAndMetadataTool(t, tools, "ontology_promote_predicate")
+	svc.promotePredicateErr = wantErr
+	result, err = promotePredicate.Handler(ctx, map[string]interface{}{
+		"predicate_name": "uses",
+		"target_status":  "active",
+		"reason":         "approved",
+	})
+	require.ErrorIs(t, err, wantErr)
+	assert.Nil(t, result)
+
+	schemaHealth := requireBuildToolsIncludesDynamicToolsAndMetadataTool(t, tools, "ontology_schema_health")
+	svc.schemaHealthErr = wantErr
+	result, err = schemaHealth.Handler(ctx, nil)
+	require.ErrorIs(t, err, wantErr)
+	assert.Nil(t, result)
+
+	typeUsage := requireBuildToolsIncludesDynamicToolsAndMetadataTool(t, tools, "ontology_type_usage")
+	svc.typeUsageErr = wantErr
+	result, err = typeUsage.Handler(ctx, map[string]interface{}{"type_name": "Agent"})
+	require.ErrorIs(t, err, wantErr)
+	assert.Nil(t, result)
+}
+
 func requireBuildToolsIncludesDynamicToolsAndMetadataTool(t *testing.T, tools []*agent.Tool, name string) *agent.Tool {
 	t.Helper()
 	for _, tool := range tools {
@@ -483,6 +662,14 @@ type buildToolsIncludesDynamicToolsAndMetadataToolService struct {
 	listActionsResult []ontology.ActionSummary
 	listActionsErr    error
 	listActionsCalls  int
+
+	listTypesResult []ontology.ObjectType
+	listTypesErr    error
+
+	getTypeResult        *ontology.ObjectType
+	getTypeErr           error
+	listPredicatesResult []ontology.PredicateDefinition
+	listPredicatesErr    error
 
 	executeActionResult *ontology.ActionResult
 	executeActionErr    error
@@ -509,6 +696,14 @@ type buildToolsIncludesDynamicToolsAndMetadataToolService struct {
 
 	assertFactErrBySubject map[string]error
 	assertFactCalls        []buildToolsIncludesDynamicToolsAndMetadataAssertionCall
+	assertFactResult       *ontology.AssertionResult
+
+	retractFactErr error
+
+	openConflictsErr error
+
+	mergeResult      *ontology.MergeResult
+	mergeEntitiesErr error
 
 	promoteTypeErr        error
 	promoteTypeCalls      []buildToolsIncludesDynamicToolsAndMetadataPromotionCall
@@ -521,6 +716,27 @@ type buildToolsIncludesDynamicToolsAndMetadataToolService struct {
 	typeUsageResult   *ontology.TypeUsageInfo
 	typeUsageErr      error
 	lastTypeUsageName string
+}
+
+func (s *buildToolsIncludesDynamicToolsAndMetadataToolService) ListTypes(context.Context) ([]ontology.ObjectType, error) {
+	if s.listTypesErr != nil {
+		return nil, s.listTypesErr
+	}
+	return append([]ontology.ObjectType(nil), s.listTypesResult...), nil
+}
+
+func (s *buildToolsIncludesDynamicToolsAndMetadataToolService) GetType(context.Context, string) (*ontology.ObjectType, error) {
+	if s.getTypeErr != nil {
+		return nil, s.getTypeErr
+	}
+	return s.getTypeResult, nil
+}
+
+func (s *buildToolsIncludesDynamicToolsAndMetadataToolService) ListPredicates(context.Context) ([]ontology.PredicateDefinition, error) {
+	if s.listPredicatesErr != nil {
+		return nil, s.listPredicatesErr
+	}
+	return append([]ontology.PredicateDefinition(nil), s.listPredicatesResult...), nil
 }
 
 func (s *buildToolsIncludesDynamicToolsAndMetadataToolService) ListActions(context.Context) ([]ontology.ActionSummary, error) {
@@ -600,7 +816,28 @@ func (s *buildToolsIncludesDynamicToolsAndMetadataToolService) AssertFact(_ cont
 			return nil, err
 		}
 	}
+	if s.assertFactResult != nil {
+		return s.assertFactResult, nil
+	}
 	return &ontology.AssertionResult{Stored: true, Message: "stored"}, nil
+}
+
+func (s *buildToolsIncludesDynamicToolsAndMetadataToolService) RetractFact(context.Context, string, string, string, string) error {
+	return s.retractFactErr
+}
+
+func (s *buildToolsIncludesDynamicToolsAndMetadataToolService) OpenConflicts(context.Context) ([]ontology.Conflict, error) {
+	if s.openConflictsErr != nil {
+		return nil, s.openConflictsErr
+	}
+	return nil, nil
+}
+
+func (s *buildToolsIncludesDynamicToolsAndMetadataToolService) MergeEntities(context.Context, string, string) (*ontology.MergeResult, error) {
+	if s.mergeEntitiesErr != nil {
+		return nil, s.mergeEntitiesErr
+	}
+	return s.mergeResult, nil
 }
 
 func (s *buildToolsIncludesDynamicToolsAndMetadataToolService) PromoteType(_ context.Context, typeName string, targetStatus ontology.SchemaStatus, reason string) error {

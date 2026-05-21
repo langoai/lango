@@ -823,3 +823,10 @@
 - [x] 109.2 Add focused tests for available-backend PASS and FAIL smoke-test summaries using fake isolators only
 - [x] 109.3 Run subagent-driven development and review checkpoints for the batch
 - [x] 109.4 Prepare the batch for a separate scoped commit
+
+## 110. Coverage Batch: Ontology Tool Residuals
+
+- [x] 110.1 Add focused tests for deterministic ontology static tool validation and service-error branches
+- [x] 110.2 Add focused tests for deterministic ontology ingestion and governance residual error branches
+- [x] 110.3 Run subagent-driven development and review checkpoints for the batch
+- [x] 110.4 Prepare the batch for a separate scoped commit
