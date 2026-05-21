@@ -809,3 +809,10 @@
 - [x] 107.2 Add focused tests for deterministic Discord, Slack, and Telegram required-target handling with fake channel adapters only
 - [x] 107.3 Run subagent-driven development and review checkpoints for the batch
 - [x] 107.4 Prepare the batch for a separate scoped commit
+
+## 108. Coverage Batch: Workspace Git Tool Residuals
+
+- [x] 108.1 Add focused tests for deterministic workspace git tool registration and local bare-repo success branches
+- [x] 108.2 Add focused tests for deterministic workspace git service-error propagation branches
+- [x] 108.3 Run subagent-driven development and review checkpoints for the batch
+- [x] 108.4 Prepare the batch for a separate scoped commit
