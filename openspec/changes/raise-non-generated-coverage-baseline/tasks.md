@@ -747,3 +747,9 @@
 - [x] 98.1 Add focused tests for deterministic `internal/cli/security/status.go` full-bootstrap status output, KMS details, storage summary, DB encryption labels, and bootstrap error branches using fake bootstrap results only
 - [x] 98.2 Run subagent-driven development and review checkpoints for the batch
 - [x] 98.3 Prepare the batch for a separate scoped commit
+
+## 99. Coverage Batch: App Payment Wiring Residuals
+
+- [x] 99.1 Add focused tests for deterministic `internal/app/wiring_payment.go` payment early-exit and X402 configuration branches without live network calls
+- [x] 99.2 Run subagent-driven development and review checkpoints for the batch
+- [x] 99.3 Prepare the batch for a separate scoped commit
