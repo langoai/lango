@@ -830,3 +830,10 @@
 - [x] 110.2 Add focused tests for deterministic ontology ingestion and governance residual error branches
 - [x] 110.3 Run subagent-driven development and review checkpoints for the batch
 - [x] 110.4 Prepare the batch for a separate scoped commit
+
+## 111. Coverage Batch: P2P Settlement Lifecycle Residuals
+
+- [x] 111.1 Add focused tests for settlement success, submit failure, confirmation failure, and reputation success branches
+- [x] 111.2 Add focused tests for build-and-sign RPC, fee fallback, and signature error branches
+- [x] 111.3 Run subagent-driven development and review checkpoints for the batch
+- [x] 111.4 Prepare the batch for a separate scoped commit
