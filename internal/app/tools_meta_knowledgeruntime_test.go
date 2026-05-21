@@ -149,6 +149,34 @@ func TestSelectKnowledgeExchangePath_RequiresTransactionReceiptIDParameter(t *te
 	assert.ErrorContains(t, err, "missing transaction_receipt_id parameter")
 }
 
+func TestSelectKnowledgeExchangePath_RequiresReceiptStore(t *testing.T) {
+	t.Parallel()
+
+	tool := findTool(buildMetaTools(nil, nil, nil, config.SkillConfig{}, nil, nil), "select_knowledge_exchange_path")
+	require.NotNil(t, tool)
+
+	got, err := tool.Handler(context.Background(), map[string]interface{}{
+		"transaction_receipt_id": "missing-store-receipt",
+	})
+	require.Error(t, err)
+	assert.Nil(t, got)
+	assert.ErrorContains(t, err, "receipts store dependency is not configured")
+}
+
+func TestSelectKnowledgeExchangePath_PropagatesMissingTransactionReceipt(t *testing.T) {
+	t.Parallel()
+
+	tool := findTool(buildMetaTools(nil, nil, nil, config.SkillConfig{}, nil, receipts.NewStore()), "select_knowledge_exchange_path")
+	require.NotNil(t, tool)
+
+	got, err := tool.Handler(context.Background(), map[string]interface{}{
+		"transaction_receipt_id": "missing-transaction-receipt",
+	})
+	require.Error(t, err)
+	assert.Nil(t, got)
+	assert.ErrorIs(t, err, receipts.ErrTransactionReceiptNotFound)
+}
+
 func TestOpenKnowledgeExchangeTransaction_RequiresCanonicalOpenInputs(t *testing.T) {
 	t.Parallel()
 

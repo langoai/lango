@@ -691,3 +691,10 @@
 - [x] 89.2 Add focused tests for deterministic provider text generation proxy error wrapping without network providers
 - [x] 89.3 Run subagent-driven development and review checkpoints for the batch
 - [x] 89.4 Prepare the batch for a separate scoped commit
+
+## 90. Coverage Batch: Knowledge Exchange Tool Residuals
+
+- [x] 90.1 Add focused tests for deterministic `internal/app/tools_meta.go` select-knowledge-exchange-path missing receipt-store handling
+- [x] 90.2 Add focused tests for deterministic missing transaction receipt propagation using in-memory receipts only
+- [x] 90.3 Run subagent-driven development and review checkpoints for the batch
+- [x] 90.4 Prepare the batch for a separate scoped commit
