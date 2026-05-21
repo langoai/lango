@@ -710,3 +710,10 @@
 - [x] 92.1 Add focused tests for deterministic `internal/economy/escrow/ent_store.go` status and created-before list filters using local Ent SQLite only
 - [x] 92.2 Run subagent-driven development and review checkpoints for the batch
 - [x] 92.3 Prepare the batch for a separate scoped commit
+
+## 93. Coverage Batch: Post-Adjudication Status Service Residuals
+
+- [x] 93.1 Add focused tests for deterministic `internal/postadjudicationstatus/service.go` list/status dependency error propagation branches
+- [x] 93.2 Add focused tests for deterministic status lookup without a background task reader
+- [x] 93.3 Run subagent-driven development and review checkpoints for the batch
+- [x] 93.4 Prepare the batch for a separate scoped commit

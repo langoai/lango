@@ -2,6 +2,7 @@ package postadjudicationstatus
 
 import (
 	"context"
+	"errors"
 	"sort"
 	"strconv"
 	"sync"
@@ -120,6 +121,22 @@ func TestServiceRequiresStoreForStatusEntryPoints(t *testing.T) {
 	require.Error(t, err)
 	require.Equal(t, TransactionStatus{}, status)
 	require.ErrorContains(t, err, "receipt store is required")
+}
+
+func TestServiceListCurrentDeadLettersPropagatesStoreFailures(t *testing.T) {
+	t.Parallel()
+
+	store := newFakeStatusStore()
+	store.SetListTransactionError(errors.New("list transactions failed"))
+	svc := NewService(store)
+
+	got, err := svc.ListCurrentDeadLetters(context.Background())
+	require.ErrorContains(t, err, "list transactions failed")
+	assert.Nil(t, got)
+
+	page, err := svc.ListCurrentDeadLettersPage(context.Background(), DeadLetterListOptions{})
+	require.ErrorContains(t, err, "list transactions failed")
+	assert.Equal(t, DeadLetterListPage{}, page)
 }
 
 func TestServiceListCurrentDeadLetters_ExtractsFocusedFields(t *testing.T) {
@@ -405,6 +422,69 @@ func TestServiceGetTransactionStatus_ReturnsMissingTransactionFailure(t *testing
 	require.Error(t, err)
 	assert.ErrorIs(t, err, ErrTransactionReceiptNotFound)
 	assert.Equal(t, TransactionStatus{}, got)
+}
+
+func TestServiceGetTransactionStatusPropagatesDependencyFailures(t *testing.T) {
+	t.Parallel()
+
+	t.Run("transaction lookup failure", func(t *testing.T) {
+		t.Parallel()
+
+		store := newFakeStatusStore()
+		store.SetTransactionError(errors.New("transaction store offline"))
+		svc := NewService(store)
+
+		got, err := svc.GetTransactionStatus(context.Background(), "tx-1")
+		require.ErrorContains(t, err, "transaction store offline")
+		assert.Equal(t, TransactionStatus{}, got)
+	})
+
+	t.Run("current submission lookup failure", func(t *testing.T) {
+		t.Parallel()
+
+		store := newFakeStatusStore()
+		store.SetTransaction(makeDeadLetterTransaction("tx-1", "sub-1", receipts.EscrowAdjudicationRelease))
+		store.SetSubmissionError(errors.New("submission store offline"))
+		svc := NewService(store)
+
+		got, err := svc.GetTransactionStatus(context.Background(), "tx-1")
+		require.ErrorContains(t, err, "submission store offline")
+		assert.Equal(t, TransactionStatus{}, got)
+	})
+
+	t.Run("background task reader failure", func(t *testing.T) {
+		t.Parallel()
+
+		store := newFakeStatusStore()
+		store.SetTransaction(makeDeadLetterTransaction("tx-1", "sub-1", receipts.EscrowAdjudicationRelease))
+		store.SetSubmission(receipts.SubmissionReceipt{
+			SubmissionReceiptID:  "sub-1",
+			TransactionReceiptID: "tx-1",
+		}, []receipts.ReceiptEvent{deadLetterEvent("sub-1", 3, "dispatch-1")})
+		svc := NewServiceWithBackgroundTaskReader(store, serviceTaskReader{err: errors.New("task reader offline")})
+
+		got, err := svc.GetTransactionStatus(context.Background(), "tx-1")
+		require.ErrorContains(t, err, "task reader offline")
+		assert.Equal(t, TransactionStatus{}, got)
+	})
+}
+
+func TestServiceGetTransactionStatusWithoutBackgroundReaderReturnsStatus(t *testing.T) {
+	t.Parallel()
+
+	store := newFakeStatusStore()
+	store.SetTransaction(makeDeadLetterTransaction("tx-1", "sub-1", receipts.EscrowAdjudicationRelease))
+	store.SetSubmission(receipts.SubmissionReceipt{
+		SubmissionReceiptID:  "sub-1",
+		TransactionReceiptID: "tx-1",
+	}, []receipts.ReceiptEvent{deadLetterEvent("sub-1", 3, "dispatch-1")})
+	svc := NewService(serviceReceiptOnlyStore{store: store})
+
+	got, err := svc.GetTransactionStatus(context.Background(), " tx-1 ")
+	require.NoError(t, err)
+	assert.Equal(t, "tx-1", got.CanonicalSnapshot.TransactionReceipt.TransactionReceiptID)
+	assert.Nil(t, got.LatestBackgroundTask)
+	assert.True(t, got.IsDeadLettered)
 }
 
 func TestServiceGetTransactionStatus_RequiresTransactionReceiptID(t *testing.T) {
@@ -1006,13 +1086,14 @@ func TestServiceGetTransactionStatus_IncludesNavigationHints(t *testing.T) {
 type fakeStatusStore struct {
 	mu sync.Mutex
 
-	transactions      []receipts.TransactionReceipt
-	transactionByID   map[string]receipts.TransactionReceipt
-	submissions       map[string]receipts.SubmissionReceipt
-	events            map[string][]receipts.ReceiptEvent
-	tasks             []BackgroundTaskSnapshot
-	getTransactionErr error
-	getSubmissionErr  error
+	transactions       []receipts.TransactionReceipt
+	transactionByID    map[string]receipts.TransactionReceipt
+	submissions        map[string]receipts.SubmissionReceipt
+	events             map[string][]receipts.ReceiptEvent
+	tasks              []BackgroundTaskSnapshot
+	listTransactionErr error
+	getTransactionErr  error
+	getSubmissionErr   error
 }
 
 func newFakeStatusStore() *fakeStatusStore {
@@ -1027,6 +1108,9 @@ func (f *fakeStatusStore) ListTransactionReceipts(context.Context) ([]receipts.T
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
+	if f.listTransactionErr != nil {
+		return nil, f.listTransactionErr
+	}
 	if f.transactions == nil {
 		return nil, nil
 	}
@@ -1124,6 +1208,13 @@ func (f *fakeStatusStore) SetTransactionError(err error) {
 	defer f.mu.Unlock()
 
 	f.getTransactionErr = err
+}
+
+func (f *fakeStatusStore) SetListTransactionError(err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.listTransactionErr = err
 }
 
 func (f *fakeStatusStore) SetSubmissionError(err error) {
