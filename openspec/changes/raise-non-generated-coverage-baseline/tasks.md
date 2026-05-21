@@ -656,3 +656,10 @@
 - [x] 84.1 Add a focused test for deterministic `internal/bootstrap/phases.go` confirmation prompt writer error propagation
 - [x] 84.2 Run subagent-driven development and review checkpoints for the batch
 - [x] 84.3 Prepare the batch for a separate scoped commit
+
+## 85. Coverage Batch: App P2P Sandbox Wiring Residuals
+
+- [x] 85.1 Add focused tests for deterministic `internal/app/app.go` P2P tool isolation subprocess and native-container sandbox executor wiring branches
+- [x] 85.2 Add focused tests for deterministic required-container fail-closed sandbox wiring branch without executing sandbox commands
+- [x] 85.3 Run subagent-driven development and review checkpoints for the batch
+- [x] 85.4 Prepare the batch for a separate scoped commit
