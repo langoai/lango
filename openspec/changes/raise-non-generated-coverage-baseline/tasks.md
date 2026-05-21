@@ -663,3 +663,10 @@
 - [x] 85.2 Add focused tests for deterministic required-container fail-closed sandbox wiring branch without executing sandbox commands
 - [x] 85.3 Run subagent-driven development and review checkpoints for the batch
 - [x] 85.4 Prepare the batch for a separate scoped commit
+
+## 86. Coverage Batch: P2P Workspace CLI Residuals
+
+- [x] 86.1 Add focused tests for deterministic `internal/cli/p2p/workspace.go` table output branches without network startup
+- [x] 86.2 Add focused tests for deterministic workspace manager missing-bootstrap-config and nil-member projection branches
+- [x] 86.3 Run subagent-driven development and review checkpoints for the batch
+- [x] 86.4 Prepare the batch for a separate scoped commit

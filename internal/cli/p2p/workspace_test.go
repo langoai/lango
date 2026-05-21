@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/langoai/lango/internal/config"
+	workspacepkg "github.com/langoai/lango/internal/p2p/workspace"
 )
 
 func TestWorkspaceCommands_ManageLocalPersistentWorkspace(t *testing.T) {
@@ -92,6 +93,77 @@ func TestWorkspaceCommands_MutateLocalMembership(t *testing.T) {
 	var joinedStatus map[string]any
 	require.NoError(t, json.Unmarshal([]byte(statusAfterJoin), &joinedStatus))
 	assert.Equal(t, float64(1), joinedStatus["memberCount"])
+}
+
+func TestWorkspaceListCmd_TableOutputShowsEmptyState(t *testing.T) {
+	_, bootLoader := workspaceCommandTestBoot(t)
+
+	out, err := executeP2PCmd(t, newWorkspaceListCmd(bootLoader))
+	require.NoError(t, err)
+
+	assert.Contains(t, out, "No local workspaces found.")
+}
+
+func TestWorkspaceStatusCmd_TableOutputShowsWorkspaceAndLocalMember(t *testing.T) {
+	_, bootLoader := workspaceCommandTestBoot(t)
+
+	createOut, err := executeP2PCmd(t, newWorkspaceCreateCmd(bootLoader), "table-project", "--output", "json")
+	require.NoError(t, err)
+
+	var created map[string]any
+	require.NoError(t, json.Unmarshal([]byte(createOut), &created))
+	workspaceID, ok := created["id"].(string)
+	require.True(t, ok)
+	require.NotEmpty(t, workspaceID)
+
+	statusOut, err := executeP2PCmd(t, newWorkspaceStatusCmd(bootLoader), workspaceID)
+	require.NoError(t, err)
+
+	assert.Contains(t, statusOut, "Workspace")
+	assert.Contains(t, statusOut, "ID:")
+	assert.Contains(t, statusOut, "Members:")
+	assert.Contains(t, statusOut, "did:lango:local-cli  creator")
+}
+
+func TestWorkspaceOpenLocalManagerRequiresBootstrapConfig(t *testing.T) {
+	manager, err := openLocalWorkspaceCLIManager(nil)
+	require.Error(t, err)
+	assert.Nil(t, manager)
+	assert.EqualError(t, err, "load config: missing bootstrap config")
+
+	manager, err = openLocalWorkspaceCLIManager(&bootstrap.Result{})
+	require.Error(t, err)
+	assert.Nil(t, manager)
+	assert.EqualError(t, err, "load config: missing bootstrap config")
+}
+
+func TestWorkspaceViewSkipsNilMembers(t *testing.T) {
+	joinedAt := time.Unix(100, 0).UTC()
+	ws := &workspacepkg.Workspace{
+		ID:     "workspace-nil-members",
+		Name:   "nil-members",
+		Status: workspacepkg.StatusForming,
+		Members: []*workspacepkg.Member{
+			nil,
+			{
+				DID:      "did:lango:member",
+				Name:     "member",
+				Role:     workspacepkg.RoleMember,
+				JoinedAt: joinedAt,
+			},
+		},
+		CreatedAt: joinedAt,
+		UpdatedAt: joinedAt,
+	}
+
+	view := workspaceView(ws)
+
+	assert.Equal(t, 1, view["memberCount"])
+	members, ok := view["members"].([]map[string]interface{})
+	require.True(t, ok)
+	require.Len(t, members, 1)
+	assert.Equal(t, "did:lango:member", members[0]["did"])
+	assert.Equal(t, workspacepkg.RoleMember, members[0]["role"])
 }
 
 func TestWorkspaceCommands_RequireFeatureGatesBeforeOpeningStore(t *testing.T) {
