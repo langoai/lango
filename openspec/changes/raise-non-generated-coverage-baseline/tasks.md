@@ -870,3 +870,10 @@
 - [x] 116.2 Add focused tests for memory-only `initAgent` context adapter execution using a local provider fixture
 - [x] 116.3 Run subagent-driven review checkpoint for the batch
 - [x] 116.4 Prepare the batch for a separate scoped commit
+
+## 117. Coverage Batch: Exec Tool Residuals
+
+- [x] 117.1 Add focused tests for exec error exits, PTY timeout/error exits, background listing/status errors, and cleanup paths
+- [x] 117.2 Add focused tests for env whitelist/custom blacklist filtering, reference resolution, event-bus wiring, and sync buffer helpers
+- [x] 117.3 Run subagent-driven review checkpoint for the batch
+- [x] 117.4 Prepare the batch for a separate scoped commit

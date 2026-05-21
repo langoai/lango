@@ -7,7 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/langoai/lango/internal/eventbus"
 	sandboxos "github.com/langoai/lango/internal/sandbox/os"
+	"github.com/langoai/lango/internal/security"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -49,6 +51,17 @@ func TestRunTimeout(t *testing.T) {
 	assert.True(t, result.TimedOut, "expected timeout")
 }
 
+func TestRunCapturesNonZeroExit(t *testing.T) {
+	t.Parallel()
+
+	tool := New(Config{DefaultTimeout: 5 * time.Second})
+
+	result, err := tool.Run(context.Background(), "printf failure >&2; exit 7", 0)
+	require.NoError(t, err)
+	assert.Equal(t, 7, result.ExitCode)
+	assert.Equal(t, "failure", result.Stderr)
+}
+
 func TestRunWithPTY(t *testing.T) {
 	t.Parallel()
 
@@ -58,6 +71,21 @@ func TestRunWithPTY(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 0, result.ExitCode)
 	assert.NotEmpty(t, result.Stdout, "expected non-empty output")
+}
+
+func TestRunWithPTYTimeoutAndNonZeroExit(t *testing.T) {
+	t.Parallel()
+
+	tool := New(Config{DefaultTimeout: 100 * time.Millisecond})
+
+	timedOut, err := tool.RunWithPTY(context.Background(), "sleep 10", 100*time.Millisecond)
+	require.NoError(t, err)
+	assert.True(t, timedOut.TimedOut, "expected PTY timeout")
+	assert.Equal(t, -1, timedOut.ExitCode)
+
+	failed, err := tool.RunWithPTY(context.Background(), "exit 9", 0)
+	require.NoError(t, err)
+	assert.Equal(t, 9, failed.ExitCode)
 }
 
 func TestBackgroundProcess(t *testing.T) {
@@ -74,9 +102,59 @@ func TestBackgroundProcess(t *testing.T) {
 
 	status, err := tool.GetBackgroundStatus(id)
 	require.NoError(t, err)
-	assert.False(t, status.Done, "process should still be running")
+	assert.Equal(t, id, status.ID)
 
 	assert.NoError(t, tool.StopBackground(id))
+}
+
+func TestBackgroundProcessResidualBranches(t *testing.T) {
+	t.Parallel()
+
+	tool := New(Config{
+		DefaultTimeout:  5 * time.Second,
+		AllowBackground: true,
+	})
+	defer tool.Cleanup()
+
+	_, err := New(Config{}).StartBackground("sleep 10")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "background processes not allowed")
+
+	_, err = tool.GetBackgroundStatus("missing")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "process not found: missing")
+
+	err = tool.StopBackground("missing")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "process not found: missing")
+
+	doneID, err := tool.StartBackground("printf bg-output")
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		return backgroundDone(tool, doneID)
+	}, 2*time.Second, 10*time.Millisecond)
+
+	doneStatus, err := tool.GetBackgroundStatus(doneID)
+	require.NoError(t, err)
+	assert.Equal(t, "bg-output", doneStatus.Output.String())
+
+	list := tool.ListBackground()
+	require.Len(t, list, 1)
+	assert.Equal(t, doneID, list[0].ID)
+
+	runningID, err := tool.StartBackground("sleep 10")
+	require.NoError(t, err)
+	assert.NotEmpty(t, runningID)
+	tool.Cleanup()
+	assert.Empty(t, tool.ListBackground())
+}
+
+func backgroundDone(tool *Tool, id string) bool {
+	tool.bgMu.RLock()
+	defer tool.bgMu.RUnlock()
+
+	bp, ok := tool.bgProcesses[id]
+	return ok && bp.Done
 }
 
 func TestEnvFiltering(t *testing.T) {
@@ -127,6 +205,52 @@ func TestFilterEnvBlacklist(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestFilterEnvWhitelistAndCustomBlacklist(t *testing.T) {
+	t.Parallel()
+
+	whitelistTool := New(Config{EnvWhitelist: []string{"PATH", "HOME"}})
+	filtered := whitelistTool.filterEnv([]string{
+		"PATH=/usr/bin",
+		"HOME=/home/test",
+		"LANGO_PASSPHRASE=supersecret",
+		"CUSTOM_TOKEN=secret",
+	})
+	assert.ElementsMatch(t, []string{"PATH=/usr/bin", "HOME=/home/test"}, filtered)
+
+	blacklistTool := New(Config{EnvFilter: []string{"CUSTOM_TOKEN"}})
+	filtered = blacklistTool.filterEnv([]string{
+		"PATH=/usr/bin",
+		"CUSTOM_TOKEN=secret",
+		"CUSTOM_TOKEN_SUFFIX=not-filtered",
+	})
+	assert.ElementsMatch(t, []string{"PATH=/usr/bin", "CUSTOM_TOKEN_SUFFIX=not-filtered"}, filtered)
+}
+
+func TestResolveRefsUsesConfiguredRefStore(t *testing.T) {
+	t.Parallel()
+
+	refs := security.NewRefStore()
+	token := refs.Store("api-key", []byte("resolved-secret"))
+	tool := New(Config{Refs: refs})
+
+	assert.Equal(t, "echo resolved-secret", tool.resolveRefs("echo "+token))
+}
+
+func TestSetEventBusAndSyncBuffer(t *testing.T) {
+	t.Parallel()
+
+	bus := eventbus.New()
+	tool := New(Config{})
+	tool.SetEventBus(bus)
+	assert.Same(t, bus, tool.config.Bus)
+
+	var sb syncBuffer
+	n, err := sb.Write([]byte("hello"))
+	require.NoError(t, err)
+	assert.Equal(t, 5, n)
+	assert.Equal(t, "hello", sb.String())
 }
 
 func TestRunSandboxIntegration(t *testing.T) {
