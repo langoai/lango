@@ -457,6 +457,44 @@ func TestCopyTreeReturnsDestinationDirectoryError(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestPlannedWritesFallbackWhenRootMissing(t *testing.T) {
+	t.Parallel()
+
+	inst := newTestInstaller(t)
+	manifest := &Manifest{
+		Name: "fallback-pack",
+		Contents: Contents{
+			Skills:  []SkillRef{{Name: "fallback", Path: "skills/fallback/SKILL.md"}},
+			Prompts: []PromptRef{{Path: "prompts/hello.md"}},
+		},
+	}
+
+	got := inst.plannedWrites(manifest, "")
+
+	packDir := filepath.Join(inst.ExtensionsDir, "fallback-pack")
+	extSkillDir := filepath.Join(inst.SkillsDir, "ext-fallback-pack", "fallback")
+	assert.Contains(t, got, filepath.Join(packDir, manifestFileName))
+	assert.Contains(t, got, filepath.Join(packDir, installedFileName))
+	assert.Contains(t, got, filepath.Join(packDir, "skills", "fallback", "SKILL.md"))
+	assert.Contains(t, got, filepath.Join(extSkillDir, "SKILL.md"))
+	assert.Contains(t, got, filepath.Join(packDir, "prompts", "hello.md"))
+}
+
+func TestCopyTreeReturnsDanglingSymlinkResolveError(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	src := filepath.Join(root, "skills", "foo")
+	require.NoError(t, os.MkdirAll(src, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(src, "SKILL.md"), []byte("skill"), 0o644))
+	require.NoError(t, os.Symlink(filepath.Join(root, "missing.md"), filepath.Join(src, "dangling.md")))
+
+	err := copyTree(src, t.TempDir(), root)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), filepath.Join("skills", "foo", "dangling.md"))
+}
+
 func TestSourceDescription(t *testing.T) {
 	t.Parallel()
 

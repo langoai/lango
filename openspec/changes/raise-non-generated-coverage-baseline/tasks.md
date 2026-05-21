@@ -774,3 +774,10 @@
 - [x] 102.3 Add focused tests for deterministic skill creation and view-skill read error branches
 - [x] 102.4 Run subagent-driven development and review checkpoints for the batch
 - [x] 102.5 Prepare the batch for a separate scoped commit
+
+## 103. Coverage Batch: Extension and Session Helper Residuals
+
+- [x] 103.1 Add focused tests for deterministic `internal/extension/installer.go` planned write fallback and dangling symlink copy-tree errors using temp files only
+- [x] 103.2 Add focused tests for deterministic `internal/session/ent_store.go` nil close and nil message resolver branches
+- [x] 103.3 Run subagent-driven development and review checkpoints for the batch
+- [x] 103.4 Prepare the batch for a separate scoped commit

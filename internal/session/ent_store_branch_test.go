@@ -6,6 +6,20 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestEntStoreCloseAndNilMessageResolversAreNoops(t *testing.T) {
+	store := &EntStore{}
+
+	require.NoError(t, store.Close())
+
+	content, err := store.resolveMessageContent(nil)
+	require.NoError(t, err)
+	require.Empty(t, content)
+
+	toolCalls, err := store.resolveMessageToolCalls(nil)
+	require.NoError(t, err)
+	require.Nil(t, toolCalls)
+}
+
 func TestEntStoreCreateRejectsDuplicateSessionKey(t *testing.T) {
 	store := newTestEntStore(t)
 
