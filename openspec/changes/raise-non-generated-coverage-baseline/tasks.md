@@ -635,3 +635,11 @@
 - [x] 81.2 Add focused tests for deterministic `internal/app/bridge_team_metrics.go` counters and `internal/app/bridge_workspace_team.go` ID truncation helpers using in-memory event bus only
 - [x] 81.3 Run subagent-driven development and review checkpoints for the batch
 - [x] 81.4 Prepare the batch for a separate scoped commit
+
+## 82. Coverage Batch: App Wiring Prompt, Catalog, And Auth Residuals
+
+- [x] 82.1 Add focused tests for deterministic `internal/app/wiring.go` default prompt builder and custom sub-agent prompt directory fallback branches
+- [x] 82.2 Add focused tests for deterministic `internal/app/wiring.go` catalog mode empty allowlist fallback and disabled category reporting branches
+- [x] 82.3 Add focused tests for deterministic `internal/app/wiring.go` auth manager success wiring using a local OIDC discovery server only
+- [x] 82.4 Run subagent-driven development and review checkpoints for the batch
+- [x] 82.5 Prepare the batch for a separate scoped commit
