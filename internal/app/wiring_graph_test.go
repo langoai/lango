@@ -15,6 +15,7 @@ import (
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/graph"
+	"github.com/langoai/lango/internal/knowledge"
 	"github.com/langoai/lango/internal/memory"
 )
 
@@ -94,6 +95,94 @@ func (s *failingRuntimeGraphStore) AllTriples(context.Context) ([]graph.Triple, 
 }
 func (s *failingRuntimeGraphStore) ClearAll(context.Context) error { return nil }
 func (s *failingRuntimeGraphStore) Close() error                   { return nil }
+
+type fakeContentSearchSource struct {
+	calls   []fakeContentSearchCall
+	results []knowledge.ScoredKnowledgeEntry
+	err     error
+}
+
+type fakeContentSearchCall struct {
+	query    string
+	category string
+	limit    int
+}
+
+func (s *fakeContentSearchSource) SearchKnowledgeScored(_ context.Context, query string, category string, limit int) ([]knowledge.ScoredKnowledgeEntry, error) {
+	s.calls = append(s.calls, fakeContentSearchCall{query: query, category: category, limit: limit})
+	if s.err != nil {
+		return nil, s.err
+	}
+	return append([]knowledge.ScoredKnowledgeEntry(nil), s.results...), nil
+}
+
+func TestKnowledgeContentRetrieverRetrieveHandlesFiltersLimitsAndMapping(t *testing.T) {
+	t.Parallel()
+
+	t.Run("nil store and empty query skip search", func(t *testing.T) {
+		t.Parallel()
+
+		got, err := (&knowledgeContentRetriever{}).Retrieve(context.Background(), "query", graph.ContentRetrieveOptions{})
+		require.NoError(t, err)
+		assert.Nil(t, got)
+
+		source := &fakeContentSearchSource{}
+		got, err = (&knowledgeContentRetriever{store: source}).Retrieve(context.Background(), "", graph.ContentRetrieveOptions{})
+		require.NoError(t, err)
+		assert.Nil(t, got)
+		assert.Empty(t, source.calls)
+	})
+
+	t.Run("non knowledge collection skips search", func(t *testing.T) {
+		t.Parallel()
+
+		source := &fakeContentSearchSource{}
+		got, err := (&knowledgeContentRetriever{store: source}).Retrieve(context.Background(), "query", graph.ContentRetrieveOptions{
+			Collections: []string{"learning"},
+		})
+		require.NoError(t, err)
+		assert.Nil(t, got)
+		assert.Empty(t, source.calls)
+	})
+
+	t.Run("default limit maps scored knowledge results", func(t *testing.T) {
+		t.Parallel()
+
+		source := &fakeContentSearchSource{results: []knowledge.ScoredKnowledgeEntry{
+			{
+				Entry: knowledge.KnowledgeEntry{
+					Key:     "knowledge-1",
+					Content: "Graph retrieval note",
+				},
+				Score: 0.75,
+			},
+		}}
+
+		got, err := (&knowledgeContentRetriever{store: source}).Retrieve(context.Background(), "graph", graph.ContentRetrieveOptions{})
+		require.NoError(t, err)
+		assert.Equal(t, []fakeContentSearchCall{{query: "graph", limit: 5}}, source.calls)
+		require.Len(t, got, 1)
+		assert.Equal(t, graph.ContentResult{
+			Collection: "knowledge",
+			SourceID:   "knowledge-1",
+			Content:    "Graph retrieval note",
+			Score:      0.75,
+		}, got[0])
+	})
+
+	t.Run("knowledge collection uses explicit limit and propagates errors", func(t *testing.T) {
+		t.Parallel()
+
+		source := &fakeContentSearchSource{err: errors.New("search failed")}
+		got, err := (&knowledgeContentRetriever{store: source}).Retrieve(context.Background(), "graph", graph.ContentRetrieveOptions{
+			Collections: []string{"learning", "knowledge"},
+			Limit:       2,
+		})
+		require.ErrorContains(t, err, "search failed")
+		assert.Nil(t, got)
+		assert.Equal(t, []fakeContentSearchCall{{query: "graph", limit: 2}}, source.calls)
+	})
+}
 
 func TestObserveExtractedTriples_PublishesAdmissionAndPreservesOriginalTriples(t *testing.T) {
 	t.Parallel()

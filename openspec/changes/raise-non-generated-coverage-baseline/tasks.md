@@ -723,3 +723,9 @@
 - [x] 94.1 Add focused tests for deterministic `internal/app/tools_escrow.go` vault release, refund, dispute, and resolve on-chain field branches using a fake contract caller only
 - [x] 94.2 Run subagent-driven development and review checkpoints for the batch
 - [x] 94.3 Prepare the batch for a separate scoped commit
+
+## 95. Coverage Batch: Graph RAG Retriever Residuals
+
+- [x] 95.1 Add focused tests for deterministic `internal/app/wiring_graph.go` knowledge content retriever filter, limit, error, and mapping branches using a fake search source only
+- [x] 95.2 Run subagent-driven development and review checkpoints for the batch
+- [x] 95.3 Prepare the batch for a separate scoped commit
