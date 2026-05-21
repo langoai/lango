@@ -735,3 +735,9 @@
 - [x] 96.1 Add focused tests for deterministic `internal/bootstrap/phases.go` direct security salt/checksum store fallback branches using a local SQLite test DB only
 - [x] 96.2 Run subagent-driven development and review checkpoints for the batch
 - [x] 96.3 Prepare the batch for a separate scoped commit
+
+## 97. Coverage Batch: Config Profile CLI Residuals
+
+- [x] 97.1 Add focused tests for deterministic `internal/cli/configcmd/profile.go` command wiring, empty output, preset, storage-unavailable, and store error branches using fake profile storage only
+- [x] 97.2 Run subagent-driven development and review checkpoints for the batch
+- [x] 97.3 Prepare the batch for a separate scoped commit
