@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -41,6 +42,42 @@ func TestNodeAccessorsOnNotStartedNode(t *testing.T) {
 	ps2, err := node.PubSub()
 	require.NoError(t, err)
 	assert.Same(t, ps1, ps2)
+}
+
+func TestConnectedPeersDeduplicatesConnections(t *testing.T) {
+	t.Parallel()
+
+	peerA := peer.ID("peer-a")
+	peerB := peer.ID("peer-b")
+	net := &nodeAccessorsOnNotStartedNodeNetwork{
+		conns: []network.Conn{
+			nodeAccessorsOnNotStartedNodeConn{remote: peerA},
+			nodeAccessorsOnNotStartedNodeConn{remote: peerA},
+			nodeAccessorsOnNotStartedNodeConn{remote: peerB},
+		},
+	}
+	node := &Node{host: &nodeAccessorsOnNotStartedNodeNetworkHost{network: net}}
+
+	assert.Equal(t, []peer.ID{peerA, peerB}, node.ConnectedPeers())
+}
+
+func TestNodeStopCancelsAndReturnsHostCloseError(t *testing.T) {
+	t.Parallel()
+
+	var canceled bool
+	host := &nodeAccessorsOnNotStartedNodeCloseHost{closeErr: errors.New("close failed")}
+	node := &Node{
+		host:   host,
+		logger: zap.NewNop().Sugar(),
+		cancel: func() { canceled = true },
+	}
+
+	err := node.Stop()
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "close host")
+	assert.ErrorContains(t, err, "close failed")
+	assert.True(t, canceled)
+	assert.True(t, host.closed)
 }
 
 func TestNodeSetStreamHandlerServesLocalStream(t *testing.T) {
@@ -159,6 +196,44 @@ func (h *nodeAccessorsOnNotStartedNodeMDNSHost) Connect(_ context.Context, pi pe
 	h.connectCalls++
 	h.connected = append(h.connected, pi)
 	return nil
+}
+
+type nodeAccessorsOnNotStartedNodeNetworkHost struct {
+	host.Host
+	network network.Network
+}
+
+func (h *nodeAccessorsOnNotStartedNodeNetworkHost) Network() network.Network {
+	return h.network
+}
+
+type nodeAccessorsOnNotStartedNodeNetwork struct {
+	network.Network
+	conns []network.Conn
+}
+
+func (n *nodeAccessorsOnNotStartedNodeNetwork) Conns() []network.Conn {
+	return n.conns
+}
+
+type nodeAccessorsOnNotStartedNodeConn struct {
+	network.Conn
+	remote peer.ID
+}
+
+func (c nodeAccessorsOnNotStartedNodeConn) RemotePeer() peer.ID {
+	return c.remote
+}
+
+type nodeAccessorsOnNotStartedNodeCloseHost struct {
+	host.Host
+	closeErr error
+	closed   bool
+}
+
+func (h *nodeAccessorsOnNotStartedNodeCloseHost) Close() error {
+	h.closed = true
+	return h.closeErr
 }
 
 func (cfg nodeAccessorsOnNotStartedNodeNodeConfig) GetKeyDir() string {

@@ -781,3 +781,10 @@
 - [x] 103.2 Add focused tests for deterministic `internal/session/ent_store.go` nil close and nil message resolver branches
 - [x] 103.3 Run subagent-driven development and review checkpoints for the batch
 - [x] 103.4 Prepare the batch for a separate scoped commit
+
+## 104. Coverage Batch: P2P Node Residuals
+
+- [x] 104.1 Add focused tests for deterministic `internal/p2p/node.go` connected-peer de-duplication without external peers
+- [x] 104.2 Add focused tests for deterministic node stop host-close error propagation and legacy-key migration cleanup warning branches
+- [x] 104.3 Run subagent-driven development and review checkpoints for the batch
+- [x] 104.4 Prepare the batch for a separate scoped commit

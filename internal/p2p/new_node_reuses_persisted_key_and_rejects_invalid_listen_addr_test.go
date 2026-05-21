@@ -146,6 +146,26 @@ func TestMigrateKeyToSecretsStoresWhenLegacyFileAlreadyGone(t *testing.T) {
 	assert.True(t, bytes.Equal(raw, stored))
 }
 
+func TestMigrateKeyToSecretsKeepsUnreadableLegacyDirectoryAfterStore(t *testing.T) {
+	t.Parallel()
+
+	secrets := newNewNodeReusesPersistedKeyAndRejectsInvalidListenAddrSecretsStore(t)
+	key, _, err := crypto.GenerateEd25519Key(nil)
+	require.NoError(t, err)
+	raw, err := crypto.MarshalPrivateKey(key)
+	require.NoError(t, err)
+
+	legacyPath := filepath.Join(t.TempDir(), nodeKeyFile)
+	require.NoError(t, os.Mkdir(legacyPath, 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(legacyPath, "child"), []byte("legacy"), 0o600))
+
+	require.NoError(t, migrateKeyToSecrets(secrets, raw, legacyPath, zap.NewNop().Sugar()))
+	stored, err := secrets.Get(context.Background(), nodeKeySecret)
+	require.NoError(t, err)
+	assert.True(t, bytes.Equal(raw, stored))
+	assert.DirExists(t, legacyPath)
+}
+
 func TestExpandHomeAndMDNSConnectErrorBranches(t *testing.T) {
 	t.Parallel()
 
