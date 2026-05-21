@@ -155,8 +155,8 @@ func TestIntegration_SessionKeyLifecycle(t *testing.T) {
 	var registeredAddr common.Address
 	var revokedAddr common.Address
 
-	// Encryption is required for SignUserOp to work — the manager
-	// stores encrypted key material and decrypts it at signing time.
+	// Exercise the encrypted key-material path; the manager also supports a
+	// plaintext hex fallback when no encryptor is configured.
 	// Use XOR as a simple reversible cipher.
 	const cipherKey byte = 0x55
 	encryptFn := func(_ context.Context, _ string, pt []byte) ([]byte, error) {

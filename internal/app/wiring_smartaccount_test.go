@@ -25,7 +25,7 @@ func TestInitSmartAccount_DisabledReturnsNil(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.SmartAccount.Enabled = false
 
-	result := initSmartAccount(cfg, nil, nil, nil)
+	result := initSmartAccount(cfg, nil, nil, nil, nil)
 
 	assert.Nil(t, result, "expected nil when smart account is disabled")
 }
@@ -35,7 +35,7 @@ func TestInitSmartAccount_NilPaymentComponentsReturnsNil(t *testing.T) {
 	cfg.SmartAccount.Enabled = true
 	// Even with enabled config, nil payment components should cause early return.
 
-	result := initSmartAccount(cfg, nil, nil, nil)
+	result := initSmartAccount(cfg, nil, nil, nil, nil)
 
 	assert.Nil(t, result, "expected nil when payment components are nil")
 }
@@ -47,7 +47,7 @@ func TestInitSmartAccount_IncompleteConfigReturnsNil(t *testing.T) {
 	cfg.SmartAccount.Enabled = true
 	pc := &paymentComponents{}
 
-	result := initSmartAccount(cfg, pc, nil, nil)
+	result := initSmartAccount(cfg, pc, nil, nil, nil)
 
 	assert.Nil(t, result, "expected nil when config validation fails due to missing fields")
 }
@@ -102,7 +102,7 @@ func TestInitSmartAccount_DisabledBranch_TableDriven(t *testing.T) {
 			cfg := config.DefaultConfig()
 			cfg.SmartAccount.Enabled = tt.giveOn
 
-			result := initSmartAccount(cfg, tt.givePC, tt.giveEconc, tt.giveBus)
+			result := initSmartAccount(cfg, tt.givePC, tt.giveEconc, tt.giveBus, nil)
 
 			if tt.wantNil {
 				assert.Nil(t, result)

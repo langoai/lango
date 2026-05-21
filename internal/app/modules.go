@@ -1011,7 +1011,7 @@ func (m *networkModule) Init(ctx context.Context, r appinit.Resolver) (*appinit.
 		}
 
 		// Smart Account.
-		saResult := initSmartAccount(cfg, pc, econc, m.bus)
+		saResult := initSmartAccount(cfg, pc, econc, m.bus, fv.Crypto)
 		if saResult != nil {
 			sacc = saResult.components
 			components = append(components, saResult.lifecycle...)

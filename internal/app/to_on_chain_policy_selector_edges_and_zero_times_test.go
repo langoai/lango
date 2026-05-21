@@ -1,6 +1,8 @@
 package app
 
 import (
+	"context"
+	"encoding/hex"
 	"math/big"
 	"reflect"
 	"testing"
@@ -13,6 +15,7 @@ import (
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/economy/budget"
 	sa "github.com/langoai/lango/internal/smartaccount"
+	"github.com/langoai/lango/internal/testutil"
 )
 
 func TestToOnChainPolicy_SelectorEdgesAndZeroTimes(t *testing.T) {
@@ -51,7 +54,7 @@ func TestInitSmartAccount_LightweightWiringSkipsMissingOptionalDependencies(t *t
 	cfg.SmartAccount.Paymaster.PaymasterAddress = "0x5000000000000000000000000000000000000005"
 	cfg.SmartAccount.Paymaster.TokenAddress = "0x6000000000000000000000000000000000000006"
 
-	result := initSmartAccount(cfg, &paymentComponents{chainID: 84532}, nil, nil)
+	result := initSmartAccount(cfg, &paymentComponents{chainID: 84532}, nil, nil, nil)
 
 	require.NotNil(t, result)
 	require.NotNil(t, result.components)
@@ -75,7 +78,7 @@ func TestInitSmartAccount_LightweightWiringSkipsMissingOptionalDependencies(t *t
 func TestInitSmartAccount_OnChainTrackerRecordsWithoutBudgetEngine(t *testing.T) {
 	cfg := toOnChainPolicySelectorEdgesAndZeroTimesSmartAccountConfig()
 
-	result := initSmartAccount(cfg, &paymentComponents{chainID: 84532}, &economyComponents{}, nil)
+	result := initSmartAccount(cfg, &paymentComponents{chainID: 84532}, &economyComponents{}, nil, nil)
 
 	require.NotNil(t, result)
 	tracker := result.components.OnChainTracker()
@@ -96,7 +99,7 @@ func TestInitSmartAccount_OnChainTrackerSyncsToBudgetEngineWhenPresent(t *testin
 	_, err = engine.Allocate("session-with-budget", big.NewInt(100))
 	require.NoError(t, err)
 
-	result := initSmartAccount(cfg, &paymentComponents{chainID: 84532}, &economyComponents{budgetEngine: engine}, nil)
+	result := initSmartAccount(cfg, &paymentComponents{chainID: 84532}, &economyComponents{budgetEngine: engine}, nil, nil)
 
 	require.NotNil(t, result)
 	tracker := result.components.OnChainTracker()
@@ -111,6 +114,23 @@ func TestInitSmartAccount_OnChainTrackerSyncsToBudgetEngineWhenPresent(t *testin
 	require.Len(t, synced.Entries, 1)
 	assert.Equal(t, "on-chain spend sync", synced.Entries[0].Reason)
 	assert.Equal(t, big.NewInt(12), synced.Entries[0].Amount)
+}
+
+func TestInitSmartAccount_WiresSessionKeyEncryption(t *testing.T) {
+	cfg := toOnChainPolicySelectorEdgesAndZeroTimesSmartAccountConfig()
+	crypto := testutil.NewMockCryptoProvider()
+
+	result := initSmartAccount(cfg, &paymentComponents{chainID: 84532}, nil, nil, crypto)
+
+	require.NotNil(t, result)
+	key, err := result.components.SessionManager().Create(context.Background(), sa.SessionPolicy{
+		SpendLimit: big.NewInt(1),
+		ValidAfter: time.Now().Add(-time.Minute),
+		ValidUntil: time.Now().Add(time.Minute),
+	}, "")
+	require.NoError(t, err)
+	assert.Equal(t, 1, crypto.EncryptCalls())
+	assert.Equal(t, hex.EncodeToString(crypto.EncryptResult), key.PrivateKeyRef)
 }
 
 func toOnChainPolicySelectorEdgesAndZeroTimesSmartAccountConfig() *config.Config {

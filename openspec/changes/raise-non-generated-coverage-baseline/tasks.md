@@ -891,3 +891,11 @@
 - [x] 119.2 Run focused ADK session service tests and coverage check
 - [x] 119.3 Run subagent-driven review checkpoint for the batch
 - [x] 119.4 Prepare the batch for a separate scoped commit
+
+## 120. Coverage Batch: Smart Account Session Execute Residuals
+
+- [x] 120.1 Add focused tests for session execute validation, policy, signing, manager, and spend-recording branches
+- [x] 120.2 Fix uncovered session-key signing fallback and production encryption wiring exposed by the tests
+- [x] 120.3 Run focused smart account tool tests and coverage check
+- [x] 120.4 Run subagent-driven review checkpoint for the batch
+- [x] 120.5 Prepare the batch for a separate scoped commit

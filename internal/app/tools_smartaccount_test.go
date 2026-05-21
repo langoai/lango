@@ -252,6 +252,141 @@ func TestSessionKeyCreateAndListTools_Success(t *testing.T) {
 	assert.NotEmpty(t, sessions[0]["expiresAt"])
 }
 
+func TestSessionExecuteTool_SuccessAndErrorBranches(t *testing.T) {
+	t.Parallel()
+
+	target := common.HexToAddress("0xb00000000000000000000000000000000000000b")
+
+	t.Run("invalid value fails before signing", func(t *testing.T) {
+		t.Parallel()
+
+		sac := newSmartAccountTestComponents(&fakeSmartAccountManager{})
+		got, err := sessionExecuteTool(sac).Handler(context.Background(), map[string]interface{}{
+			"session_id": "session-1",
+			"target":     target.Hex(),
+			"value":      "not-an-integer",
+		})
+
+		require.Error(t, err)
+		assert.Nil(t, got)
+		assert.Contains(t, err.Error(), `parse value "not-an-integer"`)
+	})
+
+	t.Run("invalid call data fails before signing", func(t *testing.T) {
+		t.Parallel()
+
+		sac := newSmartAccountTestComponents(&fakeSmartAccountManager{})
+		got, err := sessionExecuteTool(sac).Handler(context.Background(), map[string]interface{}{
+			"session_id": "session-1",
+			"target":     target.Hex(),
+			"data":       "0xzz",
+		})
+
+		require.Error(t, err)
+		assert.Nil(t, got)
+		assert.Contains(t, err.Error(), "decode data hex")
+	})
+
+	t.Run("policy denial stops before signing", func(t *testing.T) {
+		t.Parallel()
+
+		manager := &fakeSmartAccountManager{}
+		sac := newSmartAccountTestComponents(manager)
+		sac.policyEngine.SetPolicy(target, &policy.HarnessPolicy{
+			MaxTxAmount: big.NewInt(10),
+		})
+
+		got, err := sessionExecuteTool(sac).Handler(context.Background(), map[string]interface{}{
+			"session_id": "session-1",
+			"target":     target.Hex(),
+			"value":      "11",
+		})
+
+		require.Error(t, err)
+		assert.Nil(t, got)
+		assert.Contains(t, err.Error(), "policy check")
+		assert.Empty(t, manager.lastExecuteCalls)
+	})
+
+	t.Run("missing session key wraps signing failure", func(t *testing.T) {
+		t.Parallel()
+
+		manager := &fakeSmartAccountManager{}
+		sac := newSmartAccountTestComponents(manager)
+		sac.policyEngine.SetPolicy(target, &policy.HarnessPolicy{
+			MaxTxAmount: big.NewInt(100),
+		})
+
+		got, err := sessionExecuteTool(sac).Handler(context.Background(), map[string]interface{}{
+			"session_id": "missing-session",
+			"target":     target.Hex(),
+			"value":      "1",
+		})
+
+		require.Error(t, err)
+		assert.Nil(t, got)
+		assert.Contains(t, err.Error(), "sign with session key")
+		assert.Empty(t, manager.lastExecuteCalls)
+	})
+
+	t.Run("manager execution error is wrapped after signing", func(t *testing.T) {
+		t.Parallel()
+
+		manager := &fakeSmartAccountManager{executeErr: errors.New("bundler rejected user op")}
+		sac := newSmartAccountTestComponents(manager)
+		sac.policyEngine.SetPolicy(target, &policy.HarnessPolicy{
+			MaxTxAmount: big.NewInt(100),
+		})
+		sessionID := createSmartAccountTestSession(t, sac, target)
+
+		got, err := sessionExecuteTool(sac).Handler(context.Background(), map[string]interface{}{
+			"session_id":   sessionID,
+			"target":       target.Hex(),
+			"value":        "1",
+			"data":         "0x1234",
+			"function_sig": "transfer(address,uint256)",
+		})
+
+		require.Error(t, err)
+		assert.Nil(t, got)
+		assert.Contains(t, err.Error(), "execute call")
+		assert.Contains(t, err.Error(), "bundler rejected user op")
+	})
+
+	t.Run("success records spend and returns execution metadata", func(t *testing.T) {
+		t.Parallel()
+
+		manager := &fakeSmartAccountManager{executeHash: "0xsessionexecute"}
+		sac := newSmartAccountTestComponents(manager)
+		sac.policyEngine.SetPolicy(target, &policy.HarnessPolicy{
+			MaxTxAmount:      big.NewInt(100),
+			AllowedTargets:   []common.Address{target},
+			AllowedFunctions: []string{"transfer(address,uint256)"},
+		})
+		sessionID := createSmartAccountTestSession(t, sac, target)
+
+		got, err := sessionExecuteTool(sac).Handler(context.Background(), map[string]interface{}{
+			"session_id":   sessionID,
+			"target":       target.Hex(),
+			"value":        "7",
+			"data":         "0x1234",
+			"function_sig": "transfer(address,uint256)",
+		})
+
+		require.NoError(t, err)
+		result := requireMap(t, got)
+		assert.Equal(t, "0xsessionexecute", result["txHash"])
+		assert.Equal(t, sessionID, result["sessionId"])
+		assert.Equal(t, target.Hex(), result["target"])
+		require.Len(t, manager.lastExecuteCalls, 1)
+		assert.Equal(t, target, manager.lastExecuteCalls[0].Target)
+		assert.Equal(t, big.NewInt(7), manager.lastExecuteCalls[0].Value)
+		assert.Equal(t, []byte{0x12, 0x34}, manager.lastExecuteCalls[0].Data)
+		assert.Equal(t, "transfer(address,uint256)", manager.lastExecuteCalls[0].FunctionSig)
+		assert.Equal(t, "7", sac.onChainTracker.GetSpent(sessionID).String())
+	})
+}
+
 func TestPolicyCheckTool_ReturnsAllowedAndDenied(t *testing.T) {
 	t.Parallel()
 
@@ -458,6 +593,19 @@ func newSmartAccountTestComponents(manager sa.AccountManager) *smartAccountCompo
 		moduleRegistry: module.NewRegistry(),
 		onChainTracker: budget.NewOnChainTracker(),
 	}
+}
+
+func createSmartAccountTestSession(t *testing.T, sac *smartAccountComponents, target common.Address) string {
+	t.Helper()
+
+	now := time.Now()
+	sessionKey, err := sac.sessionManager.Create(context.Background(), sa.SessionPolicy{
+		AllowedTargets: []common.Address{target},
+		ValidAfter:     now.Add(-time.Minute),
+		ValidUntil:     now.Add(30 * time.Minute),
+	}, "")
+	require.NoError(t, err)
+	return sessionKey.ID
 }
 
 func requireMap(t *testing.T, got interface{}) map[string]interface{} {

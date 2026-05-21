@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/stretchr/testify/require"
 
 	sa "github.com/langoai/lango/internal/smartaccount"
@@ -22,13 +23,15 @@ func TestManagerEncryptionOptionsAndSignUserOp(t *testing.T) {
 	store := NewMemoryStore()
 	ciphertext := []byte("encrypted session key")
 	var encryptedPlaintext []byte
+	var encryptKeyID string
 	var decryptKeyID string
 	var decryptCiphertext []byte
 
 	mgr := NewManager(
 		store,
 		WithEncryption(
-			func(_ context.Context, _ string, plaintext []byte) ([]byte, error) {
+			func(_ context.Context, keyID string, plaintext []byte) ([]byte, error) {
+				encryptKeyID = keyID
 				encryptedPlaintext = append([]byte(nil), plaintext...)
 				return ciphertext, nil
 			},
@@ -46,8 +49,9 @@ func TestManagerEncryptionOptionsAndSignUserOp(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, hex.EncodeToString(ciphertext), key.PrivateKeyRef)
 	require.NotEqual(t, string(encryptedPlaintext), key.PrivateKeyRef)
+	require.Equal(t, defaultCryptoKeyID, encryptKeyID)
 
-	sig, err := mgr.SignUserOp(ctx, key.ID, &sa.UserOperation{
+	op := &sa.UserOperation{
 		Sender:               key.Address,
 		Nonce:                big.NewInt(1),
 		InitCode:             []byte{0x01},
@@ -58,11 +62,66 @@ func TestManagerEncryptionOptionsAndSignUserOp(t *testing.T) {
 		MaxFeePerGas:         big.NewInt(40),
 		MaxPriorityFeePerGas: big.NewInt(5),
 		PaymasterAndData:     []byte{0x03},
-	})
+	}
+	sig, err := mgr.SignUserOp(ctx, key.ID, op)
 	require.NoError(t, err)
 	require.Len(t, sig, 65)
-	require.Equal(t, key.ID, decryptKeyID)
+	require.Equal(t, defaultCryptoKeyID, decryptKeyID)
 	require.Equal(t, ciphertext, decryptCiphertext)
+	requireSessionSignatureAddress(t, op, sig, key.Address)
+}
+
+func TestManagerSignUserOpWithoutEncryptionUsesStoredPrivateKey(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := NewMemoryStore()
+	mgr := NewManager(
+		store,
+		WithEntryPoint(common.HexToAddress("0x0000000071727De22E5E9d8BAf0edAc6f37da032")),
+		WithChainID(84532),
+	)
+
+	key, err := mgr.Create(ctx, defaultPolicy(time.Hour), "")
+	require.NoError(t, err)
+	require.NotEmpty(t, key.PrivateKeyRef)
+	decoded, err := hex.DecodeString(key.PrivateKeyRef)
+	require.NoError(t, err)
+	require.Len(t, decoded, 32)
+
+	op := &sa.UserOperation{
+		Sender:               key.Address,
+		Nonce:                big.NewInt(1),
+		InitCode:             []byte{0x01},
+		CallData:             []byte{0x02},
+		CallGasLimit:         big.NewInt(100),
+		VerificationGasLimit: big.NewInt(200),
+		PreVerificationGas:   big.NewInt(30),
+		MaxFeePerGas:         big.NewInt(40),
+		MaxPriorityFeePerGas: big.NewInt(5),
+		PaymasterAndData:     []byte{0x03},
+	}
+	sig, err := mgr.SignUserOp(ctx, key.ID, op)
+	require.NoError(t, err)
+	require.Len(t, sig, 65)
+	requireSessionSignatureAddress(t, op, sig, key.Address)
+}
+
+func requireSessionSignatureAddress(
+	t *testing.T, op *sa.UserOperation, sig []byte, want common.Address,
+) {
+	t.Helper()
+
+	hash := sa.ComputeUserOpHash(
+		op,
+		common.HexToAddress("0x0000000071727De22E5E9d8BAf0edAc6f37da032"),
+		84532,
+	)
+	recoveredPub, err := crypto.Ecrecover(hash, sig)
+	require.NoError(t, err)
+	pubKey, err := crypto.UnmarshalPubkey(recoveredPub)
+	require.NoError(t, err)
+	require.Equal(t, want, crypto.PubkeyToAddress(*pubKey))
 }
 
 func TestManagerSignUserOpEncryptedKeyErrors(t *testing.T) {
@@ -80,7 +139,7 @@ func TestManagerSignUserOpEncryptedKeyErrors(t *testing.T) {
 	}))
 
 	_, err := mgr.SignUserOp(ctx, "bad-hex", &sa.UserOperation{})
-	require.ErrorContains(t, err, "decode encrypted key")
+	require.ErrorContains(t, err, "decode session key")
 
 	decryptErr := errors.New("kms unavailable")
 	encrypted := makeSessionKey("decrypt-error", "", false, time.Now().Add(time.Hour))

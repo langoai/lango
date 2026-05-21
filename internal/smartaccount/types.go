@@ -39,7 +39,7 @@ type SessionKey struct {
 	ID            string         `json:"id"`
 	PublicKey     []byte         `json:"publicKey"`
 	Address       common.Address `json:"address"`
-	PrivateKeyRef string         `json:"privateKeyRef"` // CryptoProvider key ID
+	PrivateKeyRef string         `json:"privateKeyRef"` // hex-encoded encrypted or plaintext private key material
 	Policy        SessionPolicy  `json:"policy"`
 	ParentID      string         `json:"parentId,omitempty"` // empty = master session
 	CreatedAt     time.Time      `json:"createdAt"`
