@@ -670,3 +670,10 @@
 - [x] 86.2 Add focused tests for deterministic workspace manager missing-bootstrap-config and nil-member projection branches
 - [x] 86.3 Run subagent-driven development and review checkpoints for the batch
 - [x] 86.4 Prepare the batch for a separate scoped commit
+
+## 87. Coverage Batch: Session Ent Store History Residuals
+
+- [x] 87.1 Add focused tests for deterministic `internal/session/ent_store.go` initial history persistence with author and plaintext tool call projection
+- [x] 87.2 Add focused tests for deterministic session history/tool call round-trip without payload protector encryption
+- [x] 87.3 Run subagent-driven development and review checkpoints for the batch
+- [x] 87.4 Prepare the batch for a separate scoped commit
