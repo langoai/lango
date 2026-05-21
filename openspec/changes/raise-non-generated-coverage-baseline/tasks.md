@@ -795,3 +795,10 @@
 - [x] 105.2 Add focused tests for deterministic mission approval formatting, mission ID resolution, and invalid-transition helper branches
 - [x] 105.3 Run subagent-driven development and review checkpoints for the batch
 - [x] 105.4 Prepare the batch for a separate scoped commit
+
+## 106. Coverage Batch: Mission Links And MCP Reconnect Residuals
+
+- [x] 106.1 Add focused tests for deterministic mission execution-link resolution and attach-error propagation branches
+- [x] 106.2 Add focused tests for deterministic MCP reconnect canceled-context and stopped-channel early returns
+- [x] 106.3 Run subagent-driven development and review checkpoints for the batch
+- [x] 106.4 Prepare the batch for a separate scoped commit

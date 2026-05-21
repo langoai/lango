@@ -223,6 +223,35 @@ func TestServerConnectionHealthCheckUsesInMemorySessionState(t *testing.T) {
 	})
 }
 
+func TestServerConnectionReconnectReturnsWhenCanceledOrStopped(t *testing.T) {
+	t.Parallel()
+
+	t.Run("canceled context returns before attempting reconnect", func(t *testing.T) {
+		t.Parallel()
+
+		conn := NewServerConnection("reconnect-canceled", config.MCPServerConfig{}, config.MCPConfig{MaxReconnectAttempts: 1})
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		conn.reconnect(ctx)
+
+		require.Equal(t, StateDisconnected, conn.State())
+		require.Nil(t, conn.Session())
+	})
+
+	t.Run("closed stop channel returns before attempting reconnect", func(t *testing.T) {
+		t.Parallel()
+
+		conn := NewServerConnection("reconnect-stopped", config.MCPServerConfig{}, config.MCPConfig{MaxReconnectAttempts: 1})
+		require.NoError(t, conn.Disconnect(context.Background()))
+
+		conn.reconnect(context.Background())
+
+		require.Equal(t, StateStopped, conn.State())
+		require.Nil(t, conn.Session())
+	})
+}
+
 func newServerConnectionToolsReturnsSliceCopyInMemorySession(t *testing.T) (*sdkmcp.ClientSession, *sdkmcp.ServerSession) {
 	t.Helper()
 

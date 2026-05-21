@@ -604,7 +604,8 @@ func TestMissionApprovalFormattingResidualBranches(t *testing.T) {
 	t.Parallel()
 
 	client := testutil.TestEntClient(t)
-	hooks := &missionApprovalHooks{service: mission.NewService(mission.NewEntStore(client))}
+	service := mission.NewService(mission.NewEntStore(client))
+	hooks := &missionApprovalHooks{service: service}
 
 	assert.Equal(t, "mission-from-request", hooks.resolveMissionID(context.Background(), approval.ApprovalRequest{
 		MissionID: " mission-from-request ",
@@ -636,6 +637,52 @@ func TestMissionApprovalFormattingResidualBranches(t *testing.T) {
 	assert.True(t, isInvalidMissionTransition(errors.New("invalid transition from completed to active")))
 	assert.False(t, isInvalidMissionTransition(errors.New("database unavailable")))
 	assert.False(t, isInvalidMissionTransition(nil))
+}
+
+func TestMissionLinkHooksResolveAndPropagateAttachErrors(t *testing.T) {
+	t.Parallel()
+
+	client := testutil.TestEntClient(t)
+	service := mission.NewService(mission.NewEntStore(client))
+	ctx := context.Background()
+
+	started, err := service.StartMission(ctx, mission.StartMissionInput{
+		SessionKey:  "session-mission-link",
+		Title:       "Mission Link",
+		SourceKind:  "user",
+		StartActive: true,
+	})
+	require.NoError(t, err)
+	require.NoError(t, service.AttachExecution(ctx, mission.AttachExecutionInput{
+		MissionID:     started.ID.String(),
+		ExecutionKind: mission.ExecutionKindTaskOSExecution,
+		ExecutionRef:  "task-linked",
+		LinkRole:      mission.LinkRolePrimary,
+	}))
+
+	approvalHooks := &missionApprovalHooks{service: service}
+	assert.Equal(t, started.ID.String(), approvalHooks.resolveMissionID(ctx, approval.ApprovalRequest{
+		ExecutionKind: string(mission.ExecutionKindTaskOSExecution),
+		ExecutionRef:  " task-linked ",
+	}))
+
+	backgroundHooks := &missionBackgroundLinkHooks{service: service}
+	require.NoError(t, backgroundHooks.LinkBackgroundTask(ctx, "task-no-mission", background.Origin{}, "prompt"))
+	require.Equal(t, []string{"task-no-mission"}, backgroundHooks.taskIDs)
+	require.Equal(t, []string{"prompt"}, backgroundHooks.prompts)
+
+	err = backgroundHooks.LinkBackgroundTask(ctxkeys.WithMissionID(ctx, "not-a-uuid"), "task-invalid", background.Origin{}, "prompt")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not-a-uuid")
+
+	runHooks := &missionRunLedgerLinkHooks{service: service}
+	require.NoError(t, runHooks.LinkRun(ctx, "run-no-mission", "session-1", "request", "goal"))
+	require.Equal(t, []string{"run-no-mission"}, runHooks.runIDs)
+	require.Equal(t, []string{"session-1"}, runHooks.sessionKeys)
+
+	err = runHooks.LinkRun(ctxkeys.WithMissionID(ctx, "not-a-uuid"), "run-invalid", "session-2", "request", "goal")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not-a-uuid")
 }
 
 func TestProposalModule_InitProvidesRegistryPreparerAndService(t *testing.T) {
