@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -546,6 +547,95 @@ func TestMissionModule_DisabledWithoutDurableStorage(t *testing.T) {
 	assert.False(t, (&missionModule{}).Enabled())
 	assert.False(t, (&missionModule{boot: &bootstrap.Result{}}).Enabled())
 	assert.False(t, (&missionModule{boot: &bootstrap.Result{Storage: storage.NewFacade(nil, nil)}}).Enabled())
+}
+
+func TestMissionHookResidualHelpers(t *testing.T) {
+	t.Parallel()
+
+	var nilApprovalHooks *missionApprovalHooks
+	nilApprovalHooks.OnApprovalRequested(context.Background(), toolchain.ApprovalRequest{})
+	nilApprovalHooks.OnApprovalResolved(context.Background(), toolchain.ApprovalRequest{}, toolchain.ApprovalResolution{})
+	assert.Nil(t, nilApprovalHooks.MissionService())
+	assert.Empty(t, nilApprovalHooks.resolveMissionID(context.Background(), approval.ApprovalRequest{}))
+
+	approvalHooks := &missionApprovalHooks{}
+	approvalHooks.OnApprovalRequested(context.Background(), toolchain.ApprovalRequest{
+		Request: approval.ApprovalRequest{ToolName: "approve-tool"},
+	})
+	assert.Equal(t, []string{"approve-tool"}, approvalHooks.requests)
+	assert.Nil(t, approvalHooks.MissionService())
+
+	var nilBackgroundHooks *missionBackgroundLinkHooks
+	require.NoError(t, nilBackgroundHooks.LinkBackgroundTask(context.Background(), "task-nil", background.Origin{}, "prompt"))
+	assert.Nil(t, nilBackgroundHooks.MissionService())
+
+	backgroundHooks := &missionBackgroundLinkHooks{}
+	require.NoError(t, backgroundHooks.LinkBackgroundTask(
+		ctxkeys.WithMissionID(context.Background(), "mission-ignored-without-service"),
+		"task-1",
+		background.Origin{Session: "session-1"},
+		"prompt-1",
+	))
+	assert.Equal(t, []string{"task-1"}, backgroundHooks.taskIDs)
+	assert.Equal(t, []string{"prompt-1"}, backgroundHooks.prompts)
+	assert.Equal(t, []string{"session-1"}, backgroundHooks.sessions)
+	assert.Nil(t, backgroundHooks.MissionService())
+
+	var nilRunHooks *missionRunLedgerLinkHooks
+	require.NoError(t, nilRunHooks.LinkRun(context.Background(), "run-nil", "session", "request", "goal"))
+	assert.Nil(t, nilRunHooks.MissionService())
+
+	runHooks := &missionRunLedgerLinkHooks{}
+	require.NoError(t, runHooks.LinkRun(
+		ctxkeys.WithMissionID(context.Background(), "mission-ignored-without-service"),
+		"run-1",
+		"session-2",
+		"original request",
+		"goal text",
+	))
+	assert.Equal(t, []string{"run-1"}, runHooks.runIDs)
+	assert.Equal(t, []string{"session-2"}, runHooks.sessionKeys)
+	assert.Equal(t, []string{"original request"}, runHooks.originalRequests)
+	assert.Equal(t, []string{"goal text"}, runHooks.goals)
+	assert.Nil(t, runHooks.MissionService())
+}
+
+func TestMissionApprovalFormattingResidualBranches(t *testing.T) {
+	t.Parallel()
+
+	client := testutil.TestEntClient(t)
+	hooks := &missionApprovalHooks{service: mission.NewService(mission.NewEntStore(client))}
+
+	assert.Equal(t, "mission-from-request", hooks.resolveMissionID(context.Background(), approval.ApprovalRequest{
+		MissionID: " mission-from-request ",
+	}))
+	assert.Equal(t, "mission-from-context", hooks.resolveMissionID(
+		ctxkeys.WithMissionID(context.Background(), " mission-from-context "),
+		approval.ApprovalRequest{},
+	))
+	assert.Empty(t, hooks.resolveMissionID(context.Background(), approval.ApprovalRequest{
+		ExecutionKind: "task_os_execution",
+		ExecutionRef:  "missing-execution",
+	}))
+
+	assert.Equal(t, "approve-tool", waitingDecisionSummary(approval.ApprovalRequest{ToolName: " approve-tool "}, ""))
+	assert.Equal(t, "summary text (timed out)", waitingDecisionSummary(approval.ApprovalRequest{Summary: " summary text "}, "timed out"))
+
+	assert.Equal(t, "approved", approvalResolutionLabel(toolchain.ApprovalResolution{
+		Response: approval.ApprovalResponse{Approved: true},
+	}))
+	assert.Equal(t, "denied", approvalResolutionLabel(toolchain.ApprovalResolution{}))
+	assert.Equal(t, "timed out", approvalResolutionLabel(toolchain.ApprovalResolution{Err: approval.ErrTimeout}))
+	assert.Equal(t, "unavailable", approvalResolutionLabel(toolchain.ApprovalResolution{Err: approval.ErrUnavailable}))
+	assert.Equal(t, "denied", approvalResolutionLabel(toolchain.ApprovalResolution{Err: errors.New("approval denied")}))
+
+	assert.Equal(t, "gateway", approvalResolutionActorRef(toolchain.ApprovalResolution{
+		Response: approval.ApprovalResponse{Provider: " gateway "},
+	}))
+	assert.Equal(t, "approval-middleware", approvalResolutionActorRef(toolchain.ApprovalResolution{}))
+	assert.True(t, isInvalidMissionTransition(errors.New("invalid transition from completed to active")))
+	assert.False(t, isInvalidMissionTransition(errors.New("database unavailable")))
+	assert.False(t, isInvalidMissionTransition(nil))
 }
 
 func TestProposalModule_InitProvidesRegistryPreparerAndService(t *testing.T) {

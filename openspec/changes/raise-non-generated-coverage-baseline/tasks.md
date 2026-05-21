@@ -788,3 +788,10 @@
 - [x] 104.2 Add focused tests for deterministic node stop host-close error propagation and legacy-key migration cleanup warning branches
 - [x] 104.3 Run subagent-driven development and review checkpoints for the batch
 - [x] 104.4 Prepare the batch for a separate scoped commit
+
+## 105. Coverage Batch: Mission Module Residual Helpers
+
+- [x] 105.1 Add focused tests for deterministic mission hook nil/service-less recording branches without external services
+- [x] 105.2 Add focused tests for deterministic mission approval formatting, mission ID resolution, and invalid-transition helper branches
+- [x] 105.3 Run subagent-driven development and review checkpoints for the batch
+- [x] 105.4 Prepare the batch for a separate scoped commit
