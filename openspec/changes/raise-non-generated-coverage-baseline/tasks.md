@@ -837,3 +837,10 @@
 - [x] 111.2 Add focused tests for build-and-sign RPC, fee fallback, and signature error branches
 - [x] 111.3 Run subagent-driven development and review checkpoints for the batch
 - [x] 111.4 Prepare the batch for a separate scoped commit
+
+## 112. Coverage Batch: Security Envelope Residuals
+
+- [x] 112.1 Add focused tests for envelope KDF, wrap, unwrap, and slot validation error branches
+- [x] 112.2 Add focused tests for KMS slot validation, invalid plaintext, and domain mapping residual branches
+- [x] 112.3 Run subagent-driven development and review checkpoints for the batch
+- [x] 112.4 Prepare the batch for a separate scoped commit
