@@ -153,6 +153,91 @@ func TestInitAgentMemoryOnlyRunsContextAdapterWithLocalProviderFixture(t *testin
 	require.Contains(t, fixture.body(0), "memory-only reflection fixture")
 }
 
+func TestInitAgentPIIRedactionRedactsUserInput(t *testing.T) {
+	t.Parallel()
+
+	fixture := newInitAgentOpenAITestServer(t, "pii-ok")
+
+	cfg := config.DefaultConfig()
+	cfg.Agent.Provider = "openai"
+	cfg.Agent.Model = "gpt-test"
+	cfg.Providers = map[string]config.ProviderConfig{
+		"openai": {
+			Type:    "openai",
+			APIKey:  "test-key",
+			BaseURL: fixture.server.URL,
+		},
+	}
+	cfg.Security.Interceptor.Enabled = true
+	cfg.Security.Interceptor.RedactPII = true
+
+	sv, err := supervisor.New(cfg)
+	require.NoError(t, err)
+
+	got, err := initAgent(context.Background(), &agentDeps{
+		sv:      sv,
+		cfg:     cfg,
+		store:   &stubSessionStore{},
+		scanner: agent.NewSecretScanner(),
+	})
+	require.NoError(t, err)
+	require.NotNil(t, got)
+
+	response, err := got.RunAndCollect(context.Background(), "init-agent-pii", "email me at person@example.com")
+	require.NoError(t, err)
+	require.Equal(t, "pii-ok", response)
+
+	require.Len(t, fixture.requests(), 1)
+	body := fixture.body(0)
+	require.NotContains(t, body, "person@example.com")
+	require.Contains(t, body, "[REDACTED]")
+}
+
+func TestInitAgentMultiAgentInitializesDefaultTree(t *testing.T) {
+	t.Parallel()
+
+	fixture := newInitAgentOpenAITestServer(t, "multi-agent-ok")
+
+	cfg := config.DefaultConfig()
+	cfg.Agent.Provider = "openai"
+	cfg.Agent.Model = "gpt-test"
+	cfg.Agent.MultiAgent = true
+	cfg.Agent.MaxDelegationRounds = 2
+	cfg.Providers = map[string]config.ProviderConfig{
+		"openai": {
+			Type:    "openai",
+			APIKey:  "test-key",
+			BaseURL: fixture.server.URL,
+		},
+	}
+
+	sv, err := supervisor.New(cfg)
+	require.NoError(t, err)
+
+	got, err := initAgent(context.Background(), &agentDeps{
+		sv:      sv,
+		cfg:     cfg,
+		store:   &stubSessionStore{},
+		scanner: agent.NewSecretScanner(),
+	})
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	require.Equal(t, "lango-orchestrator", got.ADKAgent().Name())
+	require.NotEqual(t, "lango-agent", got.ADKAgent().Name())
+	require.Empty(t, got.ADKAgent().SubAgents(), "default production specs route through agent_spawn")
+
+	response, err := got.RunAndCollect(context.Background(), "init-agent-multi", "hello orchestrator")
+	require.NoError(t, err)
+	require.Equal(t, "multi-agent-ok", response)
+
+	require.Len(t, fixture.requests(), 1)
+	body := fixture.body(0)
+	require.Contains(t, body, "## Routing Table (use EXACTLY these agent names)")
+	require.Contains(t, body, "### planner")
+	require.Contains(t, body, "Built-in teammate work MUST use agent_spawn")
+	require.Contains(t, body, "maximum of 2 delegation rounds")
+}
+
 type initAgentOpenAITestServer struct {
 	server *httptest.Server
 	mu     sync.Mutex

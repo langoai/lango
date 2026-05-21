@@ -899,3 +899,10 @@
 - [x] 120.3 Run focused smart account tool tests and coverage check
 - [x] 120.4 Run subagent-driven review checkpoint for the batch
 - [x] 120.5 Prepare the batch for a separate scoped commit
+
+## 121. Coverage Batch: Agent Initialization Residuals
+
+- [x] 121.1 Add focused tests for PII redaction and multi-agent initialization branches
+- [x] 121.2 Run focused agent initialization tests and coverage check
+- [x] 121.3 Run subagent-driven review checkpoint for the batch
+- [x] 121.4 Prepare the batch for a separate scoped commit
