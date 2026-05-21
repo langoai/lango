@@ -14,10 +14,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
 	p2pidentity "github.com/langoai/lango/internal/p2p/identity"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/security/passphrase"
+	"github.com/langoai/lango/internal/storage"
 	"github.com/langoai/lango/internal/storagebroker"
 )
 
@@ -537,6 +539,115 @@ func TestRunStatusNonInteractive_FallsBackToDefaultsWhenDBUnavailable(t *testing
 	assert.True(t, decoded.ExportabilityEnabled)
 	assert.False(t, decoded.PQHandshakeEnabled)
 	assert.Equal(t, "", decoded.PQHandshakeAlgo)
+}
+
+func TestRunStatusFullBootstrap_ReportsKMSAndStorageSummary(t *testing.T) {
+	langoDir := t.TempDir()
+	env, mk, err := security.NewEnvelope("full-status-passphrase")
+	require.NoError(t, err)
+	defer security.ZeroBytes(mk)
+	require.NoError(t, env.AddKMSSlot(
+		context.Background(),
+		"primary-kms",
+		mk,
+		statusFakeKMSProvider{},
+		"aws-kms",
+		"arn:aws:kms:us-east-1:123456789012:key/full-status",
+	))
+	require.NoError(t, security.StoreEnvelopeFile(langoDir, env))
+
+	bundle := &p2pidentity.IdentityBundle{
+		Version: 1,
+		SigningKey: p2pidentity.PublicKeyEntry{
+			Algorithm: "ed25519",
+			PublicKey: bytes.Repeat([]byte{0x05}, 32),
+		},
+		LegacyDID: "did:lango:legacy-full",
+		CreatedAt: time.Unix(1_700_000_000, 0).UTC(),
+	}
+	require.NoError(t, p2pidentity.StoreBundleFile(langoDir, bundle))
+
+	dbPath := filepath.Join(t.TempDir(), "legacy.db")
+	require.NoError(t, os.WriteFile(dbPath, []byte("not a sqlite database header"), 0o600))
+
+	cfg := config.DefaultConfig()
+	cfg.Session.DatabasePath = dbPath
+	cfg.Security.Signer.Provider = "aws-kms"
+	cfg.Security.KMS.KeyID = "arn:aws:kms:us-east-1:123456789012:key/full-status"
+	cfg.Security.KMS.FallbackToLocal = true
+	cfg.Security.Interceptor.Enabled = false
+	cfg.Security.Interceptor.RedactPII = true
+	cfg.Security.Interceptor.ApprovalPolicy = config.ApprovalPolicyNone
+	cfg.Security.Exportability.Enabled = false
+	cfg.P2P.EnablePQHandshake = true
+
+	bootLoader := func() (*bootstrap.Result, error) {
+		return &bootstrap.Result{
+			Config:      cfg,
+			ProfileName: "full",
+			LangoDir:    langoDir,
+			Storage: storage.NewFacade(nil, nil, storage.WithSecurityDiagnostics(func(context.Context) (storage.SecuritySummary, error) {
+				return storage.SecuritySummary{EncryptionKeys: 12, StoredSecrets: 34}, nil
+			})),
+		}, nil
+	}
+
+	var stdout bytes.Buffer
+	err = runStatusFullBootstrap(&stdout, bootLoader, "json")
+	require.NoError(t, err)
+
+	var decoded statusOutput
+	require.NoError(t, json.Unmarshal(stdout.Bytes(), &decoded))
+	assert.Equal(t, "aws-kms", decoded.SignerProvider)
+	assert.Equal(t, 12, decoded.EncryptionKeys)
+	assert.Equal(t, 34, decoded.StoredSecrets)
+	assert.Equal(t, "disabled", decoded.Interceptor)
+	assert.Equal(t, "enabled", decoded.PIIRedaction)
+	assert.Equal(t, "none", decoded.ApprovalPolicy)
+	assert.False(t, decoded.ExportabilityEnabled)
+	assert.Equal(t, "legacy encrypted or unreadable DB (unsupported)", decoded.DBEncryption)
+	assert.True(t, decoded.DBAvailable)
+	assert.True(t, decoded.Envelope.Present)
+	assert.True(t, decoded.Envelope.KMSProtected)
+	assert.Equal(t, "aws-kms", decoded.Envelope.KMSProvider)
+	assert.True(t, decoded.IdentityBundle.Present)
+	assert.Equal(t, "aws-kms", decoded.KMSProvider)
+	assert.Equal(t, cfg.Security.KMS.KeyID, decoded.KMSKeyID)
+	assert.Equal(t, "enabled", decoded.KMSFallback)
+	assert.True(t, decoded.PQHandshakeEnabled)
+	assert.Equal(t, "X25519-MLKEM768", decoded.PQHandshakeAlgo)
+}
+
+func TestRunStatusFullBootstrap_ErrorAndDeprecatedDBEncryptionBranches(t *testing.T) {
+	var stdout bytes.Buffer
+	err := runStatusFullBootstrap(&stdout, func() (*bootstrap.Result, error) {
+		return nil, errors.New("bootstrap failed")
+	}, "json")
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "load config: bootstrap failed")
+
+	dbPath := filepath.Join(t.TempDir(), "plain.db")
+	require.NoError(t, os.WriteFile(dbPath, append([]byte("SQLite format 3\x00"), []byte("payload")...), 0o600))
+
+	cfg := config.DefaultConfig()
+	cfg.Session.DatabasePath = dbPath
+	cfg.Security.DBEncryption.Enabled = true
+	cfg.Security.Interceptor.ApprovalPolicy = ""
+	langoDir := t.TempDir()
+
+	stdout.Reset()
+	err = runStatusFullBootstrap(&stdout, func() (*bootstrap.Result, error) {
+		return &bootstrap.Result{Config: cfg, LangoDir: langoDir}, nil
+	}, "json")
+	require.NoError(t, err)
+
+	var decoded statusOutput
+	require.NoError(t, json.Unmarshal(stdout.Bytes(), &decoded))
+	assert.Equal(t, "deprecated config (ignored)", decoded.DBEncryption)
+	assert.Equal(t, "dangerous", decoded.ApprovalPolicy)
+	assert.True(t, decoded.DBAvailable)
+	assert.False(t, decoded.Envelope.Present)
+	assert.False(t, decoded.IdentityBundle.Present)
 }
 
 type statusFakeKMSProvider struct{}

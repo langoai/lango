@@ -741,3 +741,9 @@
 - [x] 97.1 Add focused tests for deterministic `internal/cli/configcmd/profile.go` command wiring, empty output, preset, storage-unavailable, and store error branches using fake profile storage only
 - [x] 97.2 Run subagent-driven development and review checkpoints for the batch
 - [x] 97.3 Prepare the batch for a separate scoped commit
+
+## 98. Coverage Batch: Security Status Full Bootstrap Residuals
+
+- [x] 98.1 Add focused tests for deterministic `internal/cli/security/status.go` full-bootstrap status output, KMS details, storage summary, DB encryption labels, and bootstrap error branches using fake bootstrap results only
+- [x] 98.2 Run subagent-driven development and review checkpoints for the batch
+- [x] 98.3 Prepare the batch for a separate scoped commit
