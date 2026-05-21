@@ -10,7 +10,34 @@ import (
 	ethcrypto "github.com/ethereum/go-ethereum/crypto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/langoai/lango/internal/security"
 )
+
+var bundleProviderTestSeed = []byte{
+	0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+	0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+	0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+	0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,
+}
+
+func newDeterministicBundleProvider(t *testing.T, cfg BundleProviderConfig) *BundleProvider {
+	t.Helper()
+
+	if cfg.SigningKey == nil {
+		cfg.SigningKey = ed25519.NewKeyFromSeed(bundleProviderTestSeed)
+	}
+	if len(cfg.SettlementPub) == 0 {
+		cfg.SettlementPub = make([]byte, 33)
+	}
+	if cfg.Logger == nil {
+		cfg.Logger = testLogger()
+	}
+
+	bp, err := NewBundleProvider(cfg)
+	require.NoError(t, err)
+	return bp
+}
 
 func TestBundleProvider_Creation(t *testing.T) {
 	t.Parallel()
@@ -116,6 +143,21 @@ func TestBundleProvider_SignMessage(t *testing.T) {
 	assert.True(t, ed25519.Verify(pub, msg, sig))
 }
 
+func TestBundleProvider_PublicKeyAccessorReturnsEd25519PublicKey(t *testing.T) {
+	t.Parallel()
+
+	priv := ed25519.NewKeyFromSeed(bundleProviderTestSeed)
+	wantPub := priv.Public().(ed25519.PublicKey)
+
+	bp := newDeterministicBundleProvider(t, BundleProviderConfig{
+		SigningKey: priv,
+	})
+
+	gotPub, err := bp.PublicKey(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, []byte(wantPub), gotPub)
+}
+
 func TestBundleProvider_Algorithm(t *testing.T) {
 	t.Parallel()
 
@@ -158,6 +200,17 @@ func TestBundleProvider_LegacyDID(t *testing.T) {
 	assert.Equal(t, 1, legacyDID.Version)
 }
 
+func TestBundleProvider_LegacyDIDWithoutLegacyProvider(t *testing.T) {
+	t.Parallel()
+
+	bp := newDeterministicBundleProvider(t, BundleProviderConfig{})
+
+	legacyDID, err := bp.LegacyDID(context.Background())
+	require.Error(t, err)
+	assert.Nil(t, legacyDID)
+	assert.Contains(t, err.Error(), "no legacy identity provider")
+}
+
 func TestBundleProvider_DIDString(t *testing.T) {
 	t.Parallel()
 
@@ -174,6 +227,73 @@ func TestBundleProvider_DIDString(t *testing.T) {
 	didStr, err := bp.DIDString(context.Background())
 	require.NoError(t, err)
 	assert.True(t, strings.HasPrefix(didStr, "did:lango:v2:"))
+}
+
+func TestBundleProvider_VerifyDIDRejectsNilAndV2(t *testing.T) {
+	t.Parallel()
+
+	bp := newDeterministicBundleProvider(t, BundleProviderConfig{})
+
+	err := bp.VerifyDID(nil, "")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "nil DID")
+
+	err = bp.VerifyDID(&DID{Version: 2}, "")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "v2 DID verification requires BundleResolver")
+}
+
+func TestBundleProvider_VerifyDIDV1WithoutLegacyProvider(t *testing.T) {
+	t.Parallel()
+
+	bp := newDeterministicBundleProvider(t, BundleProviderConfig{})
+
+	err := bp.VerifyDID(&DID{Version: 1}, "")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no legacy provider for v1 DID verification")
+}
+
+func TestBundleProvider_PQMethodsWithoutPQKey(t *testing.T) {
+	t.Parallel()
+
+	bp := newDeterministicBundleProvider(t, BundleProviderConfig{})
+
+	sig, err := bp.SignPQ(context.Background(), []byte("message"))
+	require.Error(t, err)
+	assert.Nil(t, sig)
+	assert.Contains(t, err.Error(), "PQ signing key not available")
+	assert.Nil(t, bp.PQPublicKey())
+	assert.False(t, bp.HasPQKey())
+	assert.Equal(t, security.AlgorithmMLDSA65, bp.PQAlgorithm())
+}
+
+func TestBundleProvider_PQMethodsWithSeed(t *testing.T) {
+	t.Parallel()
+
+	bp := newDeterministicBundleProvider(t, BundleProviderConfig{
+		PQSigningKeySeed: bundleProviderTestSeed,
+	})
+
+	bundle := bp.Bundle()
+	require.NotNil(t, bundle.PQSigningKey)
+	assert.Equal(t, security.AlgorithmMLDSA65, bundle.PQSigningKey.Algorithm)
+	assert.NotEmpty(t, bundle.PQSigningKey.PublicKey)
+	assert.NotEmpty(t, bundle.Proofs.MLDSA65)
+	assert.True(t, bp.HasPQKey())
+
+	pqPub := bp.PQPublicKey()
+	assert.NotEmpty(t, pqPub)
+	assert.Equal(t, bundle.PQSigningKey.PublicKey, pqPub)
+
+	msg := []byte("deterministic pq message")
+	sig, err := bp.SignPQ(context.Background(), msg)
+	require.NoError(t, err)
+	assert.NotEmpty(t, sig)
+	assert.NoError(t, security.VerifyMLDSA65(pqPub, msg, sig))
+
+	canonical, err := CanonicalBundleBytes(bundle)
+	require.NoError(t, err)
+	assert.NoError(t, security.VerifyMLDSA65(bundle.PQSigningKey.PublicKey, canonical, bundle.Proofs.MLDSA65))
 }
 
 func TestBundleProvider_NilArgs(t *testing.T) {

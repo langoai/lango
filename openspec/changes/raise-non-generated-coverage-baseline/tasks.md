@@ -677,3 +677,10 @@
 - [x] 87.2 Add focused tests for deterministic session history/tool call round-trip without payload protector encryption
 - [x] 87.3 Run subagent-driven development and review checkpoints for the batch
 - [x] 87.4 Prepare the batch for a separate scoped commit
+
+## 88. Coverage Batch: P2P Identity Bundle Provider Residuals
+
+- [x] 88.1 Add focused tests for deterministic `internal/p2p/identity/bundle_provider.go` public key, DID verification, and missing legacy provider branches
+- [x] 88.2 Add focused tests for deterministic post-quantum signing key absent/present accessor and signing branches
+- [x] 88.3 Run subagent-driven development and review checkpoints for the batch
+- [x] 88.4 Prepare the batch for a separate scoped commit
