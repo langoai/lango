@@ -11,10 +11,13 @@ import (
 
 	"github.com/langoai/lango/internal/appinit"
 	"github.com/langoai/lango/internal/approval"
+	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/lifecycle"
 	"github.com/langoai/lango/internal/observability"
+	"github.com/langoai/lango/internal/storage"
+	"github.com/langoai/lango/internal/testutil"
 	execpkg "github.com/langoai/lango/internal/tools/exec"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -97,6 +100,54 @@ func TestWirePostAgent_RegistersObservabilityMetricsRoutesWhenCollectorAvailable
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.Contains(t, rec.Body.String(), `"toolExecutions"`)
 	assert.Contains(t, rec.Body.String(), `"tokenUsage"`)
+}
+
+func TestWirePostAgent_RegistersObservabilityAlertsAndAuditRecorder(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.DefaultConfig()
+	cfg.Observability.Audit.Enabled = true
+	client := testutil.TestEntClient(t)
+	boot := &bootstrap.Result{
+		Storage: storage.NewFacade(nil, nil, storage.WithEntClient(client)),
+	}
+	bus := eventbus.New()
+	application := &App{
+		Config:  cfg,
+		Gateway: initGateway(cfg, nil, &stubSessionStore{}, nil),
+	}
+
+	wirePostAgent(
+		application,
+		staticResolver{
+			appinit.ProvidesObservability: &observabilityComponents{
+				collector: observability.NewCollector(),
+			},
+		},
+		nil,
+		bus,
+		approval.NewCompositeProvider(),
+		approval.NewGrantStore(),
+		boot,
+		nil,
+	)
+
+	bus.Publish(eventbus.AlertEvent{
+		Type:       "wire_post_agent_alerts",
+		Severity:   "warning",
+		Message:    "storage-backed alert",
+		SessionKey: "wire-post-agent-alerts-session",
+		Timestamp:  time.Now().UTC(),
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/alerts?days=1", nil)
+	rec := httptest.NewRecorder()
+	application.Gateway.Router().ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Contains(t, rec.Body.String(), `"total":1`)
+	assert.Contains(t, rec.Body.String(), `"type":"wire_post_agent_alerts"`)
+	assert.Contains(t, rec.Body.String(), `"message":"storage-backed alert"`)
 }
 
 func TestRegisterPostBuildLifecycle_ChannelStartAndStopAreLifecycleManaged(t *testing.T) {

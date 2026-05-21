@@ -753,3 +753,9 @@
 - [x] 99.1 Add focused tests for deterministic `internal/app/wiring_payment.go` payment early-exit and X402 configuration branches without live network calls
 - [x] 99.2 Run subagent-driven development and review checkpoints for the batch
 - [x] 99.3 Prepare the batch for a separate scoped commit
+
+## 100. Coverage Batch: App WirePostAgent Observability Residuals
+
+- [x] 100.1 Add focused tests for deterministic `internal/app/app.go` observability alerts route and audit recorder wiring using local Ent storage only
+- [x] 100.2 Run subagent-driven development and review checkpoints for the batch
+- [x] 100.3 Prepare the batch for a separate scoped commit
