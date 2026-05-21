@@ -473,6 +473,14 @@ func truncateSessionKey(key string, width int) string {
 
 // newTestCmd creates `lango sandbox test`.
 func newTestCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
+	return newTestCmdWithBackendResolver(cfgLoader, sandboxos.PlatformBackendCandidates, sandboxos.SelectBackend)
+}
+
+func newTestCmdWithBackendResolver(
+	cfgLoader func() (*config.Config, error),
+	candidatesFunc func() []sandboxos.BackendCandidate,
+	selectBackend func(sandboxos.BackendMode, []sandboxos.BackendCandidate) (sandboxos.OSIsolator, sandboxos.BackendInfo),
+) *cobra.Command {
 	return &cobra.Command{
 		Use:   "test",
 		Short: "Run OS sandbox smoke tests",
@@ -491,7 +499,7 @@ func newTestCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 				fmt.Fprintln(w, "Sandbox backend explicitly set to none — no isolation to test")
 				return nil
 			}
-			isolator, info := sandboxos.SelectBackend(mode, sandboxos.PlatformBackendCandidates())
+			isolator, info := selectBackend(mode, candidatesFunc())
 			if !isolator.Available() {
 				fmt.Fprintf(w, "Sandbox backend %s not available: %s\n", info.Mode.String(), isolator.Reason())
 				return nil

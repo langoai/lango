@@ -2,9 +2,11 @@ package sandbox
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
@@ -77,6 +79,74 @@ func TestNewTestCmdReturnsConfigLoaderErrorWithUsage(t *testing.T) {
 	assert.Contains(t, out.String(), "Usage:")
 }
 
+func TestNewTestCmdAvailableBackendRunsSmokeTestsAndReportsAllPassed(t *testing.T) {
+	require.FileExists(t, "/bin/sh")
+
+	cmd := newTestCmdWithBackendResolver(
+		func() (*config.Config, error) {
+			cfg := defaultTestConfig()
+			cfg.Sandbox.Enabled = true
+			cfg.Sandbox.Backend = "bwrap"
+			return cfg, nil
+		},
+		func() []sandboxos.BackendCandidate { return nil },
+		func(mode sandboxos.BackendMode, _ []sandboxos.BackendCandidate) (sandboxos.OSIsolator, sandboxos.BackendInfo) {
+			assert.Equal(t, sandboxos.BackendBwrap, mode)
+			return sandboxSmokeTestFakeIsolator{networkDenied: true}, sandboxos.BackendInfo{
+				Name:      "fake",
+				Mode:      sandboxos.BackendBwrap,
+				Available: true,
+			}
+		},
+	)
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+
+	require.NoError(t, cmd.Execute())
+
+	rendered := out.String()
+	assert.Contains(t, rendered, "Using isolator: fake-isolator (backend: bwrap)")
+	assert.Contains(t, rendered, "Version: fake-version")
+	assert.Contains(t, rendered, "Write restriction")
+	assert.Contains(t, rendered, "PASS (write correctly denied)")
+	assert.Contains(t, rendered, "PASS (read succeeded)")
+	assert.Contains(t, rendered, "PASS (workspace write succeeded)")
+	assert.Contains(t, rendered, "PASS (connect correctly denied)")
+	assert.Contains(t, rendered, "All tests passed.")
+}
+
+func TestNewTestCmdAvailableBackendReportsFailedSmokeTests(t *testing.T) {
+	require.FileExists(t, "/bin/sh")
+
+	cmd := newTestCmdWithBackendResolver(
+		func() (*config.Config, error) {
+			cfg := defaultTestConfig()
+			cfg.Sandbox.Enabled = true
+			cfg.Sandbox.Backend = "bwrap"
+			return cfg, nil
+		},
+		func() []sandboxos.BackendCandidate { return nil },
+		func(sandboxos.BackendMode, []sandboxos.BackendCandidate) (sandboxos.OSIsolator, sandboxos.BackendInfo) {
+			return sandboxSmokeTestFakeIsolator{networkDenied: false}, sandboxos.BackendInfo{
+				Name:      "fake",
+				Mode:      sandboxos.BackendBwrap,
+				Available: true,
+			}
+		},
+	)
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+
+	require.NoError(t, cmd.Execute())
+
+	rendered := out.String()
+	assert.Contains(t, rendered, "FAIL (sandboxed child reached host listener)")
+	assert.Contains(t, rendered, "Some tests failed.")
+	assert.NotContains(t, rendered, "All tests passed.")
+}
+
 func TestNewProbeNetCmdRequiresAddressArgument(t *testing.T) {
 	cmd := newProbeNetCmd()
 	var out bytes.Buffer
@@ -89,6 +159,45 @@ func TestNewProbeNetCmdRequiresAddressArgument(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "accepts 1 arg")
 	assert.Contains(t, out.String(), "Usage:")
+}
+
+type sandboxSmokeTestFakeIsolator struct {
+	networkDenied bool
+}
+
+func (f sandboxSmokeTestFakeIsolator) Apply(_ context.Context, cmd *exec.Cmd, _ sandboxos.Policy) error {
+	target := ""
+	if len(cmd.Args) > 0 {
+		target = cmd.Args[len(cmd.Args)-1]
+	}
+
+	switch {
+	case target == "/etc/lango-sandbox-test":
+		rewriteSandboxSmokeTestCommand(cmd, "exit 1")
+	case filepath.Base(target) == "probe.txt":
+		rewriteSandboxSmokeTestCommand(cmd, "touch \"$1\"", target)
+	case cmd.Path == "/bin/cat":
+		rewriteSandboxSmokeTestCommand(cmd, "exit 0")
+	case len(cmd.Args) >= 3 && cmd.Args[1] == "sandbox" && cmd.Args[2] == "_probe-net":
+		if f.networkDenied {
+			rewriteSandboxSmokeTestCommand(cmd, "exit 1")
+		} else {
+			rewriteSandboxSmokeTestCommand(cmd, "exit 0")
+		}
+	default:
+		rewriteSandboxSmokeTestCommand(cmd, "exit 1")
+	}
+	return nil
+}
+
+func (sandboxSmokeTestFakeIsolator) Available() bool { return true }
+func (sandboxSmokeTestFakeIsolator) Name() string    { return "fake-isolator" }
+func (sandboxSmokeTestFakeIsolator) Reason() string  { return "" }
+func (sandboxSmokeTestFakeIsolator) Version() string { return "fake-version" }
+
+func rewriteSandboxSmokeTestCommand(cmd *exec.Cmd, script string, args ...string) {
+	cmd.Path = "/bin/sh"
+	cmd.Args = append([]string{"sh", "-c", script, "sh"}, args...)
 }
 
 func TestReadOnlyPolicyAllowsReadsTmpWritesAndDeniesNetwork(t *testing.T) {

@@ -816,3 +816,10 @@
 - [x] 108.2 Add focused tests for deterministic workspace git service-error propagation branches
 - [x] 108.3 Run subagent-driven development and review checkpoints for the batch
 - [x] 108.4 Prepare the batch for a separate scoped commit
+
+## 109. Coverage Batch: Sandbox CLI Smoke Test Residuals
+
+- [x] 109.1 Add a test-only backend resolver seam for deterministic sandbox smoke-test command coverage
+- [x] 109.2 Add focused tests for available-backend PASS and FAIL smoke-test summaries using fake isolators only
+- [x] 109.3 Run subagent-driven development and review checkpoints for the batch
+- [x] 109.4 Prepare the batch for a separate scoped commit
