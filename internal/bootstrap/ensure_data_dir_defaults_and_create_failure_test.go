@@ -239,6 +239,28 @@ func TestLoadSecurityStateDirectAndBrokerBranches(t *testing.T) {
 	assert.ErrorContains(t, err, "load security state for pending migration: load failed")
 }
 
+func TestStoreSecurityStateForStateUsesDirectDatabaseFallback(t *testing.T) {
+	client, rawDB, err := openDatabase(filepath.Join(t.TempDir(), "security-store.db"), "", false, 0)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = client.Close()
+		_ = rawDB.Close()
+	})
+
+	state := &State{RawDB: rawDB}
+	wantSalt := []byte("direct-state-salt")
+	wantChecksum := []byte("direct-state-checksum")
+
+	require.NoError(t, storeSaltForState(context.Background(), state, wantSalt))
+	require.NoError(t, storeChecksumForState(context.Background(), state, wantChecksum))
+
+	gotSalt, gotChecksum, firstRun, err := loadSecurityStateForState(context.Background(), state)
+	require.NoError(t, err)
+	assert.False(t, firstRun)
+	assert.Equal(t, wantSalt, gotSalt)
+	assert.Equal(t, wantChecksum, gotChecksum)
+}
+
 func TestInitCryptoEnvelopeFirstRunAndMismatchBranches(t *testing.T) {
 	env, mk, err := security.NewEnvelope("envelope-passphrase")
 	require.NoError(t, err)

@@ -729,3 +729,9 @@
 - [x] 95.1 Add focused tests for deterministic `internal/app/wiring_graph.go` knowledge content retriever filter, limit, error, and mapping branches using a fake search source only
 - [x] 95.2 Run subagent-driven development and review checkpoints for the batch
 - [x] 95.3 Prepare the batch for a separate scoped commit
+
+## 96. Coverage Batch: Bootstrap Security State Residuals
+
+- [x] 96.1 Add focused tests for deterministic `internal/bootstrap/phases.go` direct security salt/checksum store fallback branches using a local SQLite test DB only
+- [x] 96.2 Run subagent-driven development and review checkpoints for the batch
+- [x] 96.3 Prepare the batch for a separate scoped commit
