@@ -227,3 +227,143 @@ func TestCleanupFailedTurnReturnsDiscardErrorAfterRollback(t *testing.T) {
 	assert.Empty(t, store.messages["test-session"], "failure note should not be appended after discard failure")
 	assert.Nil(t, svc.activeChild["test-session"])
 }
+
+func TestSessionServiceAdapterResidualBranches(t *testing.T) {
+	t.Parallel()
+
+	t.Run("nil lifecycle hook and empty discard note stay no-op", func(t *testing.T) {
+		t.Parallel()
+
+		store := newMockStore()
+		svc := NewSessionServiceAdapter(store, "lango-orchestrator")
+
+		assert.Same(t, svc, svc.WithChildLifecycleHook(nil))
+		assert.Nil(t, svc.childStore)
+		require.NoError(t, svc.appendOutcomeToParent(nil, "ignored"))
+		require.NoError(t, svc.appendOutcomeToParent(&runtimeChild{parentID: "test-session"}, "   "))
+		assert.Empty(t, store.messages)
+
+		svc.appendOutcomeToParentMemory(nil, "ignored")
+		svc.appendOutcomeToParentMemory(&runtimeChild{}, "ignored")
+		parent := &SessionAdapter{sess: &internal.Session{}}
+		svc.appendOutcomeToParentMemory(&runtimeChild{parent: parent}, "   ")
+		assert.Empty(t, parent.sess.History)
+		assert.Empty(t, store.messages)
+
+		assert.Equal(t,
+			"[Isolated sub-agent operator discarded: discarded. Raw child history discarded.]",
+			formatDiscardNote("operator", ""),
+		)
+	})
+
+	t.Run("get propagates non lifecycle store errors", func(t *testing.T) {
+		t.Parallel()
+
+		getErr := errors.New("store read failed")
+		store := &sessionServiceBranchStore{
+			mockStore: newMockStore(),
+			getErrs:   []error{getErr},
+		}
+		svc := NewSessionServiceAdapter(store, "lango-agent")
+
+		resp, err := svc.Get(context.Background(), &session.GetRequest{SessionID: "test-session"})
+
+		require.Error(t, err)
+		assert.Nil(t, resp)
+		assert.ErrorIs(t, err, getErr)
+	})
+
+	t.Run("state delta events are skipped without appending history", func(t *testing.T) {
+		t.Parallel()
+
+		store := newMockStore()
+		sess := &internal.Session{
+			Key:       "test-session",
+			Metadata:  make(map[string]string),
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		}
+		require.NoError(t, store.Create(sess))
+		adapter := NewSessionAdapter(sess, store, "lango-agent")
+		svc := NewSessionServiceAdapter(store, "lango-agent")
+
+		err := svc.AppendEvent(context.Background(), adapter, &session.Event{
+			Timestamp: time.Now(),
+			Actions:   session.EventActions{StateDelta: map[string]any{"status": "running"}},
+		})
+
+		require.NoError(t, err)
+		assert.Empty(t, adapter.sess.History)
+		assert.Empty(t, store.messages["test-session"])
+	})
+
+	t.Run("overlay helpers guard nil out of range and parent changes", func(t *testing.T) {
+		t.Parallel()
+
+		store := newMockStore()
+		svc := NewSessionServiceAdapter(store, "lango-orchestrator")
+		parent := &SessionAdapter{sess: &internal.Session{History: []internal.Message{{
+			Role:    types.RoleUser,
+			Content: "root request",
+			Author:  "user",
+		}}}}
+
+		svc.rollbackOverlay(nil)
+		svc.bindParentOverlay(nil, parent)
+
+		outOfRange := &runtimeChild{
+			agent:       "operator",
+			parentID:    "test-session",
+			parent:      parent,
+			baseHistory: 2,
+			overlayLen:  1,
+		}
+		svc.rollbackOverlay(outOfRange)
+		require.Len(t, parent.sess.History, 1)
+
+		replacement := &SessionAdapter{sess: &internal.Session{}}
+		svc.bindParentOverlay(outOfRange, replacement)
+		assert.Same(t, parent, outOfRange.parent)
+	})
+
+	t.Run("dangling tool call closure handles store read error and fallback author", func(t *testing.T) {
+		t.Parallel()
+
+		getErr := errors.New("store read failed")
+		errStore := &sessionServiceBranchStore{
+			mockStore: newMockStore(),
+			getErrs:   []error{getErr},
+		}
+		errSvc := NewSessionServiceAdapter(errStore, "lango-orchestrator")
+		err := errSvc.closeDanglingParentToolCalls("missing-session", nil)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, getErr)
+
+		store := newMockStore()
+		sess := &internal.Session{
+			Key: "test-session",
+			History: []internal.Message{{
+				Role:   types.RoleAssistant,
+				Author: "",
+				ToolCalls: []internal.ToolCall{{
+					ID:    "call-slow",
+					Name:  "slow_tool",
+					Input: `{"id":1}`,
+				}},
+			}},
+		}
+		require.NoError(t, store.Create(sess))
+		svc := NewSessionServiceAdapter(store, "lango-orchestrator")
+
+		require.NoError(t, svc.CleanupFailedTurn("test-session", ""))
+
+		require.Len(t, store.messages["test-session"], 1)
+		closure := store.messages["test-session"][0]
+		assert.Equal(t, types.RoleTool, closure.Role)
+		assert.Equal(t, "lango-orchestrator", closure.Author)
+		assert.Equal(t, interruptedToolCallOutput, closure.Content)
+		require.Len(t, closure.ToolCalls, 1)
+		assert.Equal(t, "call-slow", closure.ToolCalls[0].ID)
+		assert.Empty(t, danglingToolCalls(sess.History))
+	})
+}
