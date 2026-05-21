@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -71,6 +72,15 @@ func TestAutomationModuleInitAllEnabledComposesToolsWithoutStartingComponents(t 
 		entry := requireLifecycleComponentEntry(t, result.Components, name)
 		assert.Equal(t, lifecycle.PriorityAutomation, entry.Priority)
 	}
+
+	ctx := context.Background()
+	var wg sync.WaitGroup
+	for _, name := range []string{"cron-scheduler", "background-manager", "workflow-engine"} {
+		entry := requireLifecycleComponentEntry(t, result.Components, name)
+		require.NoError(t, entry.Component.Start(ctx, &wg), "start %s", name)
+		require.NoError(t, entry.Component.Stop(ctx), "stop %s", name)
+	}
+	wg.Wait()
 }
 
 func requireLifecycleComponentEntry(t *testing.T, entries []lifecycle.ComponentEntry, name string) lifecycle.ComponentEntry {
