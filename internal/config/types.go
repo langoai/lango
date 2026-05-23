@@ -82,6 +82,9 @@ type Config struct {
 	// A2A protocol configuration
 	A2A A2AConfig `mapstructure:"a2a" json:"a2a"`
 
+	// Voice configuration (STT/TTS for channel adapters)
+	Voice VoiceConfig `mapstructure:"voice" json:"voice"`
+
 	// Payment configuration (blockchain micropayments)
 	Payment PaymentConfig `mapstructure:"payment" json:"payment"`
 
@@ -375,6 +378,46 @@ type AgentConfig struct {
 	// Structure: <dir>/<name>/AGENT.md
 	// If empty, only built-in agents are used.
 	AgentsDir string `mapstructure:"agentsDir" json:"agentsDir"`
+}
+
+// VoiceConfig configures the voice/STT/TTS subsystem for channel adapters.
+// When Enabled is false (default), no voice processing is performed and
+// channels fall back to text-only behavior.
+type VoiceConfig struct {
+	// Enabled is the global on/off switch for the voice subsystem.
+	Enabled bool `mapstructure:"enabled" json:"enabled"`
+
+	// DefaultLanguage is a BCP-47 tag (e.g. "ko-KR") used when a request
+	// does not specify a language.
+	DefaultLanguage string `mapstructure:"defaultLanguage" json:"defaultLanguage"`
+
+	// STTModel overrides the Gemini model used for transcription.
+	// Empty uses the provider default.
+	STTModel string `mapstructure:"sttModel" json:"sttModel"`
+
+	// TTSModel selects the Gemini TTS-capable model. Empty disables TTS
+	// (Synthesize returns ErrTTSNotConfigured).
+	TTSModel string `mapstructure:"ttsModel" json:"ttsModel"`
+
+	// PerChannel allows fine-grained enable/disable + voice override per channel.
+	// Key is the channel name ("telegram", "discord", "slack").
+	PerChannel map[string]VoiceChannelConfig `mapstructure:"perChannel" json:"perChannel,omitempty"`
+
+	// CostGuard caps voice processing per day.
+	CostGuard VoiceCostGuard `mapstructure:"costGuard" json:"costGuard"`
+}
+
+// VoiceChannelConfig is the per-channel overlay on VoiceConfig.
+type VoiceChannelConfig struct {
+	Enabled bool   `mapstructure:"enabled" json:"enabled"`
+	Voice   string `mapstructure:"voice" json:"voice,omitempty"`
+}
+
+// VoiceCostGuard caps daily voice processing.
+type VoiceCostGuard struct {
+	// MaxAudioSecondsPerDay caps the total audio seconds processed per day.
+	// Zero means no limit.
+	MaxAudioSecondsPerDay int `mapstructure:"maxAudioSecondsPerDay" json:"maxAudioSecondsPerDay"`
 }
 
 // ProviderConfig defines AI provider settings
