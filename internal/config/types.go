@@ -317,6 +317,13 @@ type AgentConfig struct {
 	// If empty, built-in default sections are used.
 	PromptsDir string `mapstructure:"promptsDir" json:"promptsDir"`
 
+	// SkillsDir is the directory containing ADK-compatible skill bundles.
+	// Each skill is a subdirectory with SKILL.md containing YAML frontmatter
+	// (name, description) plus optional references/, assets/, scripts/.
+	// If empty (default), the skill toolset is not registered.
+	// See: tool/skilltoolset in google.golang.org/adk.
+	SkillsDir string `mapstructure:"skillsDir" json:"skillsDir"`
+
 	// Fallback provider ID
 	FallbackProvider string `mapstructure:"fallbackProvider" json:"fallbackProvider"`
 

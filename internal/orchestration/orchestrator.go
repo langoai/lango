@@ -55,6 +55,9 @@ type Config struct {
 	// DynamicAgents provides P2P agents discovered at runtime.
 	// When set, discovered agents are added to the routing table.
 	DynamicAgents agentpool.DynamicAgentProvider
+	// Toolsets are passed to the orchestrator's llmagent.Config.Toolsets.
+	// Sub-agents do not receive these toolsets.
+	Toolsets []adk_tool.Toolset
 }
 
 // BuildAgentTree creates a hierarchical agent tree with an orchestrator root
@@ -167,6 +170,7 @@ func BuildAgentTree(cfg Config) (adk_agent.Agent, error) {
 		Model:       cfg.Model,
 		SubAgents:   subAgents,
 		Instruction: orchestratorInstruction,
+		Toolsets:    cfg.Toolsets,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create orchestrator agent: %w", err)

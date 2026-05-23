@@ -535,6 +535,22 @@ func initAgent(ctx context.Context, deps *agentDeps) (*adk.Agent, error) {
 		logger().Info("PII redaction interceptor enabled")
 	}
 
+	// Optionally build a skill toolset from configured skills directory.
+	// Both multi-agent and single-agent branches reuse this toolset.
+	var skillToolset adk_tool.Toolset
+	if cfg.Agent.SkillsDir != "" {
+		ts, err := adk.BuildSkillToolset(ctx, cfg.Agent.SkillsDir)
+		if err != nil {
+			logger().Warnw("skill toolset disabled",
+				"skillsDir", cfg.Agent.SkillsDir,
+				"error", err,
+			)
+		} else if ts != nil {
+			skillToolset = ts
+			logger().Infow("skill toolset registered", "skillsDir", cfg.Agent.SkillsDir)
+		}
+	}
+
 	// Multi-agent orchestration mode.
 	if cfg.Agent.MultiAgent {
 		logger().Info("initializing multi-agent orchestration...")
@@ -591,6 +607,10 @@ func initAgent(ctx context.Context, deps *agentDeps) (*adk.Agent, error) {
 			logger().Info("P2P dynamic agent provider wired to orchestrator")
 		}
 
+		if skillToolset != nil {
+			orchCfg.Toolsets = []adk_tool.Toolset{skillToolset}
+		}
+
 		agentTree, err := orchestration.BuildAgentTree(orchCfg)
 		if err != nil {
 			return nil, fmt.Errorf("build agent tree: %w", err)
@@ -611,6 +631,9 @@ func initAgent(ctx context.Context, deps *agentDeps) (*adk.Agent, error) {
 	logger().Info("initializing agent runtime (ADK)...")
 	agentOpts := buildAgentOptions(cfg, kc)
 	agentOpts = append(agentOpts, buildProvenanceAgentOptions(deps.prov, deps.hookRegistry)...)
+	if skillToolset != nil {
+		agentOpts = append(agentOpts, adk.WithToolsets(skillToolset))
+	}
 	adkAgent, err := adk.NewAgent(ctx, adkTools, llm, systemPrompt, store, agentOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("adk agent: %w", err)

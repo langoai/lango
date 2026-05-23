@@ -52,6 +52,7 @@ type agentOptions struct {
 	childLifecycleHook  func(internal.SessionLifecycleEvent)
 	isolatedAgents      []string
 	plugins             []*plugin.Plugin
+	toolsets            []tool.Toolset
 }
 
 // WithAgentTokenBudget sets the session history token budget.
@@ -91,6 +92,16 @@ func WithAgentIsolatedAgents(names []string) AgentOption {
 // Zero plugins preserves current behavior.
 func WithPlugins(plugins ...*plugin.Plugin) AgentOption {
 	return func(o *agentOptions) { o.plugins = append(o.plugins, plugins...) }
+}
+
+// WithToolsets adds ADK toolsets to the agent. Toolsets contribute tools
+// dynamically and can also preprocess LLM requests (e.g., SkillToolset
+// injects a system instruction explaining how to use skill tools).
+// Zero toolsets preserves current behavior.
+func WithToolsets(toolsets ...tool.Toolset) AgentOption {
+	return func(o *agentOptions) {
+		o.toolsets = append(o.toolsets, toolsets...)
+	}
 }
 
 // Agent wraps the ADK runner for integration with Lango.
@@ -133,6 +144,7 @@ func NewAgent(ctx context.Context, tools []tool.Tool, mod model.LLM, systemPromp
 		Model:       mod,
 		Tools:       tools,
 		Instruction: systemPrompt,
+		Toolsets:    o.toolsets,
 	}
 
 	adkAgent, err := llmagent.New(cfg)
