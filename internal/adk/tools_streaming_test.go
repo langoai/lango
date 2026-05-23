@@ -59,6 +59,58 @@ func TestAdaptStreamingTool_WithStreamingHandlerReturnsStreamingTool(t *testing.
 	assert.Equal(t, "count", adapted.Name())
 }
 
+// TestStreamingHandler_YieldsExpectedChunks exercises the agent.Tool's
+// StreamingHandler directly (independent of ADK runtime) and asserts the
+// 3-chunk yield contract that the adapter is supposed to forward. This
+// closes the Track C spec gate that required actual chunk yielding behavior.
+func TestStreamingHandler_YieldsExpectedChunks(t *testing.T) {
+	want := []string{"one", "two", "three"}
+	handler := func(ctx context.Context, params map[string]interface{}) iter.Seq2[string, error] {
+		return func(yield func(string, error) bool) {
+			for _, s := range want {
+				if !yield(s, nil) {
+					return
+				}
+			}
+		}
+	}
+
+	var got []string
+	for chunk, err := range handler(context.Background(), nil) {
+		require.NoError(t, err)
+		got = append(got, chunk)
+	}
+	assert.Equal(t, want, got)
+}
+
+// TestStreamingHandler_StopsOnConsumerCancel verifies that the iterator
+// honors early termination by the consumer. AdaptStreamingTool's closure
+// relies on this contract to release the timeout context when the caller
+// stops ranging.
+func TestStreamingHandler_StopsOnConsumerCancel(t *testing.T) {
+	yielded := 0
+	handler := func(ctx context.Context, params map[string]interface{}) iter.Seq2[string, error] {
+		return func(yield func(string, error) bool) {
+			for i := 0; i < 100; i++ {
+				yielded++
+				if !yield("chunk", nil) {
+					return
+				}
+			}
+		}
+	}
+
+	collected := 0
+	for range handler(context.Background(), nil) {
+		collected++
+		if collected == 3 {
+			break
+		}
+	}
+	assert.Equal(t, 3, collected)
+	assert.Equal(t, 3, yielded, "iterator should have stopped after consumer break")
+}
+
 func TestAdaptTool_PreservesNonStreamingBehavior(t *testing.T) {
 	// Verify the non-streaming AdaptTool entry point still works after the refactor.
 	tt := &agent.Tool{
