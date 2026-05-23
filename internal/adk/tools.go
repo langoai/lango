@@ -3,6 +3,7 @@ package adk
 import (
 	"context"
 	"fmt"
+	"iter"
 	"time"
 
 	"github.com/google/jsonschema-go/jsonschema"
@@ -35,6 +36,19 @@ func AdaptToolForAgent(t *agent.Tool, agentName string) (tool.Tool, error) {
 // AdaptToolForAgentWithTimeout combines agent name injection with a per-call timeout.
 func AdaptToolForAgentWithTimeout(t *agent.Tool, agentName string, timeout time.Duration) (tool.Tool, error) {
 	return adaptToolWithOptions(t, agentName, timeout)
+}
+
+// AdaptStreamingTool converts an internal agent.Tool to an ADK tool.Tool.
+// If t.StreamingHandler is non-nil, the returned tool yields partial chunks
+// via functiontool.NewStreaming. Otherwise this behaves identically to AdaptTool
+// (the streaming intent is opt-in per tool).
+//
+// In non-live runs, the runtime aggregates yielded chunks into a single result
+// string. In Live API runs (Track E), each chunk is delivered to the live session
+// as it is produced. Callers that need partial-chunk visibility in non-live mode
+// should NOT use this — there is nothing to observe between yields.
+func AdaptStreamingTool(t *agent.Tool) (tool.Tool, error) {
+	return adaptToolWithOptions(t, "", 0)
 }
 
 // buildInputSchema builds a JSON Schema from an agent.Tool's parameter definitions.
@@ -157,6 +171,8 @@ func buildSchemaFromMap(m map[string]interface{}) *jsonschema.Schema {
 }
 
 // adaptToolWithOptions is the shared implementation for agent-name-aware tool adaptation.
+// When t.StreamingHandler is non-nil, routes through functiontool.NewStreaming;
+// otherwise falls back to functiontool.New.
 func adaptToolWithOptions(t *agent.Tool, agentName string, timeout time.Duration) (tool.Tool, error) {
 	cfg := functiontool.Config{
 		Name:        t.Name,
@@ -165,12 +181,35 @@ func adaptToolWithOptions(t *agent.Tool, agentName string, timeout time.Duration
 	}
 
 	toolName := t.Name
-	handler := func(ctx tool.Context, args map[string]any) (any, error) {
-		// Inject agent name into context so hooks/middleware can identify the owning agent.
-		var callCtx context.Context = ctx
-		if agentName != "" {
-			callCtx = ctxkeys.WithAgentName(ctx, agentName)
+
+	if t.StreamingHandler != nil {
+		streamingHandler := func(ctx tool.Context, args map[string]any) iter.Seq2[string, error] {
+			callCtx := injectCallContext(ctx, agentName)
+			if timeout > 0 {
+				var cancel context.CancelFunc
+				callCtx, cancel = context.WithTimeout(callCtx, timeout)
+				// NOTE: cancel is called when the consumer stops ranging over the iterator
+				// or when the timeout fires. Defer is not used because the iter.Seq2 may
+				// outlive this function's stack frame.
+				return func(yield func(string, error) bool) {
+					defer cancel()
+					for chunk, err := range t.StreamingHandler(callCtx, args) {
+						if err != nil && callCtx.Err() == context.DeadlineExceeded {
+							err = fmt.Errorf("tool %q timed out after %v", toolName, timeout)
+						}
+						if !yield(chunk, err) {
+							return
+						}
+					}
+				}
+			}
+			return t.StreamingHandler(callCtx, args)
 		}
+		return functiontool.NewStreaming[map[string]any](cfg, streamingHandler)
+	}
+
+	handler := func(ctx tool.Context, args map[string]any) (any, error) {
+		callCtx := injectCallContext(ctx, agentName)
 
 		var result any
 		var err error
@@ -200,4 +239,14 @@ func adaptToolWithOptions(t *agent.Tool, agentName string, timeout time.Duration
 	}
 
 	return functiontool.New(cfg, handler)
+}
+
+// injectCallContext wires the agent name into the call context so downstream
+// hooks/middleware can identify the owning agent.
+func injectCallContext(ctx tool.Context, agentName string) context.Context {
+	var callCtx context.Context = ctx
+	if agentName != "" {
+		callCtx = ctxkeys.WithAgentName(ctx, agentName)
+	}
+	return callCtx
 }

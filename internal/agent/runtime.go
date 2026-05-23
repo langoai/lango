@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"iter"
 )
 
 // SafetyLevel classifies the risk level of a tool.
@@ -72,8 +73,12 @@ type Tool struct {
 	Description string
 	Parameters  map[string]interface{}
 	Handler     ToolHandler
-	SafetyLevel SafetyLevel
-	Capability  ToolCapability // Zero value = backward compatible defaults
+	// StreamingHandler is an optional streaming implementation. When non-nil,
+	// AdaptStreamingTool routes the tool through ADK's functiontool.NewStreaming.
+	// Handler is still required as the non-streaming fallback.
+	StreamingHandler StreamingToolHandler
+	SafetyLevel      SafetyLevel
+	Capability       ToolCapability // Zero value = backward compatible defaults
 }
 
 // ParameterDef defines a tool parameter
@@ -86,3 +91,10 @@ type ParameterDef struct {
 
 // ToolHandler is the function signature for tool implementations
 type ToolHandler func(ctx context.Context, params map[string]interface{}) (interface{}, error)
+
+// StreamingToolHandler is the function signature for streaming tool implementations.
+// Yields zero or more partial result strings followed by an optional error.
+// In non-live agent runs, the runtime aggregates all yielded strings into a single
+// final result before returning to the model. In Live API runs (Track E), each
+// yielded chunk is delivered to the live session as it is produced.
+type StreamingToolHandler func(ctx context.Context, params map[string]interface{}) iter.Seq2[string, error]
