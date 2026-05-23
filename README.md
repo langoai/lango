@@ -127,8 +127,11 @@ Full configuration reference: [getting started](docs/getting-started/configurati
 ### Run
 
 ```bash
-# Interactive Cockpit TUI (default)
+# Mission Workbench TUI (default — bare invocation)
 ./bin/lango
+
+# Multi-panel Cockpit dashboard (Mission Control, Sessions, Tasks, Approvals, ...)
+./bin/lango cockpit
 
 # Interactive chat session
 ./bin/lango chat
@@ -145,7 +148,7 @@ Lango is a layered Go runtime. Each layer depends only on layers below it.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  Surfaces      Cockpit TUI · Gateway (HTTP/WS) · CLI         │
+│  Surfaces      TUI (Workbench/Cockpit/Chat) · Gateway · CLI  │
 ├─────────────────────────────────────────────────────────────┤
 │  Orchestration agentrt · TurnRunner · multi-agent · workflow │
 ├─────────────────────────────────────────────────────────────┤

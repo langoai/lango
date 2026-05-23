@@ -76,7 +76,7 @@ the headline capabilities, and a single `→` link to the relevant `docs/` page:
 
 ### Documentation Map (Section 6)
 
-Nine sub-sections, each a small Markdown table (or short list) mapping topic → doc path. Categories:
+Ten sub-sections, each a small Markdown table (or short list) mapping topic → doc path. Categories:
 
 1. **Getting Started** — installation, quickstart, configuration.
 2. **CLI Reference** — overview + grouped command families (agent/run/config,
