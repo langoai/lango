@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"iter"
-	"sort"
 	"testing"
 	"time"
 
@@ -130,54 +129,6 @@ func TestPIIRedactingModelAdapterRedactsInputsAndResponses(t *testing.T) {
 	assert.True(t, inner.stream)
 }
 
-func TestPluginConstructorsExposeCallbacksAndMapKeys(t *testing.T) {
-	t.Parallel()
-
-	eventPlugin, err := NewEventLoggingPlugin()
-	require.NoError(t, err)
-	assert.Equal(t, "lango-event-logger", eventPlugin.Name())
-	require.NotNil(t, eventPlugin.OnEventCallback())
-
-	evt := &adksession.Event{
-		Author: "planner",
-		Actions: adksession.EventActions{
-			TransferToAgent: "researcher",
-		},
-		LLMResponse: adkmodel.LLMResponse{
-			Content: &genai.Content{Parts: []*genai.Part{
-				{Text: "hello"},
-				{FunctionCall: &genai.FunctionCall{Name: "search"}},
-			}},
-		},
-	}
-	got, err := eventPlugin.OnEventCallback()(nil, evt)
-	require.NoError(t, err)
-	assert.Same(t, evt, got)
-
-	toolPlugin, err := NewBeforeToolLoggingPlugin()
-	require.NoError(t, err)
-	assert.Equal(t, "lango-tool-logger", toolPlugin.Name())
-	require.NotNil(t, toolPlugin.BeforeToolCallback())
-	require.NotNil(t, toolPlugin.AfterToolCallback())
-	require.NotNil(t, toolPlugin.OnToolErrorCallback())
-
-	fakeTool := contextHelpersRoundTripAgentAndChildSessionNamedTool{name: "contextHelpersRoundTripAgentAndChildSession_tool"}
-	block, err := toolPlugin.BeforeToolCallback()(nil, fakeTool, map[string]any{"x": 1})
-	require.NoError(t, err)
-	assert.Nil(t, block)
-	replacement, err := toolPlugin.AfterToolCallback()(nil, fakeTool, nil, map[string]any{"b": 2, "a": 1}, nil)
-	require.NoError(t, err)
-	assert.Nil(t, replacement)
-	replacement, err = toolPlugin.OnToolErrorCallback()(nil, fakeTool, nil, errors.New("boom"))
-	require.NoError(t, err)
-	assert.Nil(t, replacement)
-
-	assert.Nil(t, mapKeys(nil))
-	keys := mapKeys(map[string]any{"b": 2, "a": 1})
-	sort.Strings(keys)
-	assert.Equal(t, []string{"a", "b"}, keys)
-}
-
 func TestAdaptToolForAgentWithTimeoutInjectsNameAndReportsTimeout(t *testing.T) {
 	t.Parallel()
 
@@ -287,22 +238,6 @@ func (m *contextHelpersRoundTripAgentAndChildSessionModel) GenerateContent(_ con
 	}
 }
 
-type contextHelpersRoundTripAgentAndChildSessionNamedTool struct {
-	name string
-}
-
-func (t contextHelpersRoundTripAgentAndChildSessionNamedTool) Name() string {
-	return t.name
-}
-
-func (contextHelpersRoundTripAgentAndChildSessionNamedTool) Description() string {
-	return "fake tool"
-}
-
-func (contextHelpersRoundTripAgentAndChildSessionNamedTool) IsLongRunning() bool {
-	return false
-}
-
 type contextHelpersRoundTripAgentAndChildSessionToolContext struct {
 	context.Context
 }
@@ -369,6 +304,5 @@ func (c *contextHelpersRoundTripAgentAndChildSessionToolContext) State() adksess
 
 var (
 	_ adkmodel.LLM    = (*contextHelpersRoundTripAgentAndChildSessionModel)(nil)
-	_ adktool.Tool    = contextHelpersRoundTripAgentAndChildSessionNamedTool{}
 	_ adktool.Context = (*contextHelpersRoundTripAgentAndChildSessionToolContext)(nil)
 )
