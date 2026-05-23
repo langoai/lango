@@ -149,7 +149,12 @@ type SkillConfig struct {
 	// Enable the skill system.
 	Enabled bool `mapstructure:"enabled" json:"enabled"`
 
-	// SkillsDir is the directory containing skill files (default: ~/.lango/skills).
+	// SkillsDir is the directory containing skill files for the knowledge
+	// module's internal skill registry (default: ~/.lango/skills).
+	//
+	// NOTE: Distinct from cfg.Agent.SkillsDir, which feeds the ADK agent's
+	// SkillToolset (agentskills.io spec). The two paths are independent and
+	// may target the same or different directories per deployment.
 	SkillsDir string `mapstructure:"skillsDir" json:"skillsDir"`
 
 	// AllowImport enables importing skills from external URLs and GitHub repositories.

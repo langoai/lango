@@ -320,11 +320,19 @@ type AgentConfig struct {
 	// If empty, built-in default sections are used.
 	PromptsDir string `mapstructure:"promptsDir" json:"promptsDir"`
 
-	// SkillsDir is the directory containing ADK-compatible skill bundles.
+	// SkillsDir is the directory containing ADK-compatible skill bundles
+	// (agentskills.io spec, YAML frontmatter).
 	// Each skill is a subdirectory with SKILL.md containing YAML frontmatter
 	// (name, description) plus optional references/, assets/, scripts/.
 	// If empty (default), the skill toolset is not registered.
 	// See: tool/skilltoolset in google.golang.org/adk.
+	//
+	// NOTE: There is also a separate cfg.Skill.SkillsDir (SkillConfig in
+	// types_knowledge.go) which configures the knowledge-layer skill loader.
+	// The two fields are independent: cfg.Agent.SkillsDir feeds the ADK
+	// agent's SkillToolset; cfg.Skill.SkillsDir feeds the knowledge module's
+	// internal skill registry. They may point at the same or different
+	// directories depending on deployment.
 	SkillsDir string `mapstructure:"skillsDir" json:"skillsDir"`
 
 	// Fallback provider ID
