@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	adkagent "google.golang.org/adk/agent"
-	"google.golang.org/adk/agent/remoteagent"
+	remoteagent "google.golang.org/adk/agent/remoteagent/v2"
 
 	"github.com/langoai/lango/internal/config"
 )

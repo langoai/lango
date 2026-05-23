@@ -6,7 +6,7 @@ import (
 
 	"go.uber.org/zap"
 	"google.golang.org/adk/agent"
-	"google.golang.org/adk/agent/remoteagent"
+	remoteagent "google.golang.org/adk/agent/remoteagent/v2"
 
 	"github.com/langoai/lango/internal/config"
 )
@@ -32,9 +32,9 @@ func LoadRemoteAgents(remotes []config.RemoteAgentConfig, logger *zap.SugaredLog
 		}
 
 		a2aCfg := remoteagent.A2AConfig{
-			Name:            rc.Name,
-			Description:     fmt.Sprintf("Remote A2A agent: %s", rc.Name),
-			AgentCardSource: rc.AgentCardURL,
+			Name:              rc.Name,
+			Description:       fmt.Sprintf("Remote A2A agent: %s", rc.Name),
+			AgentCardProvider: remoteagent.NewAgentCardProvider(rc.AgentCardURL),
 		}
 
 		remoteAgent, err := newRemoteA2AFn(a2aCfg)
