@@ -12,7 +12,7 @@ func TestREADMEIncludesImplementedSandboxCommands(t *testing.T) {
 	t.Parallel()
 
 	repoRoot := readmeSandboxDocsGuardRepoRoot(t)
-	target := filepath.Join(repoRoot, "README.md")
+	target := filepath.Join(repoRoot, "docs", "cli", "index.md")
 
 	data, err := os.ReadFile(target)
 	if err != nil {

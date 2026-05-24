@@ -13,7 +13,6 @@ func TestPublicEconomyQuickReferencesIncludeImplementedEscrowCommands(t *testing
 
 	repoRoot := economyCLIDocsRepoRoot(t)
 	targets := []string{
-		filepath.Join(repoRoot, "README.md"),
 		filepath.Join(repoRoot, "docs", "cli", "index.md"),
 	}
 

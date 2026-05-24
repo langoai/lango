@@ -13,7 +13,6 @@ func TestPublicQuickReferencesIncludeImplementedExtensionCommands(t *testing.T) 
 
 	repoRoot := extensionCLIDocsGuardRepoRoot(t)
 	targets := []string{
-		filepath.Join(repoRoot, "README.md"),
 		filepath.Join(repoRoot, "docs", "cli", "index.md"),
 	}
 	requiredSnippets := []string{

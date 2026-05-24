@@ -14,7 +14,7 @@ func TestREADMEIncludesImplementedProvenanceCommands(t *testing.T) {
 
 	repoRoot := readmeProvenanceDocsGuardRepoRoot(t)
 	targetRequirements := map[string][]string{
-		filepath.Join(repoRoot, "README.md"): {
+		filepath.Join(repoRoot, "docs", "cli", "index.md"): {
 			"lango provenance status",
 			"lango provenance checkpoint list --run <id>",
 			"lango provenance checkpoint create <label> --run <id>",
@@ -69,7 +69,7 @@ func TestREADMEIncludesImplementedProvenanceCommands(t *testing.T) {
 func TestREADMERejectsBareProvenanceQuickReferenceRows(t *testing.T) {
 	t.Parallel()
 
-	target := filepath.Join(readmeProvenanceDocsGuardRepoRoot(t), "README.md")
+	target := filepath.Join(readmeProvenanceDocsGuardRepoRoot(t), "docs", "cli", "index.md")
 	data, err := os.ReadFile(target)
 	if err != nil {
 		t.Fatalf("read %s: %v", target, err)

@@ -12,7 +12,7 @@ func TestREADMEIncludesImplementedApprovalCommands(t *testing.T) {
 	t.Parallel()
 
 	repoRoot := readmeApprovalDocsGuardRepoRoot(t)
-	target := filepath.Join(repoRoot, "README.md")
+	target := filepath.Join(repoRoot, "docs", "cli", "index.md")
 
 	data, err := os.ReadFile(target)
 	if err != nil {

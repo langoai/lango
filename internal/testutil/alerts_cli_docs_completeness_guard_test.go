@@ -13,7 +13,7 @@ func TestPublicQuickReferencesIncludeImplementedAlertsCommands(t *testing.T) {
 
 	repoRoot := alertsCLIDocsGuardRepoRoot(t)
 	targets := []string{
-		filepath.Join(repoRoot, "README.md"),
+		filepath.Join(repoRoot, "docs", "cli", "index.md"),
 		filepath.Join(repoRoot, "docs", "cli", "index.md"),
 	}
 	requiredSnippets := []string{

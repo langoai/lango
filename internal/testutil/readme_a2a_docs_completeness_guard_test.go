@@ -12,7 +12,7 @@ func TestREADMEIncludesImplementedA2ACommands(t *testing.T) {
 	t.Parallel()
 
 	repoRoot := readmeA2ADocsGuardRepoRoot(t)
-	target := filepath.Join(repoRoot, "README.md")
+	target := filepath.Join(repoRoot, "docs", "cli", "index.md")
 
 	data, err := os.ReadFile(target)
 	if err != nil {

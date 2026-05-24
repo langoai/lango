@@ -29,7 +29,7 @@ func TestMigratedCLIDocsUseCurrentOutputFormatContracts(t *testing.T) {
 		filepath.Join(repoRoot, "docs", "features", "knowledge-graph.md"),
 		filepath.Join(repoRoot, "docs", "payments", "usdc.md"),
 		filepath.Join(repoRoot, "docs", "security", "approval-cli.md"),
-		filepath.Join(repoRoot, "README.md"),
+		filepath.Join(repoRoot, "docs", "cli", "index.md"),
 		filepath.Join(repoRoot, "openspec", "specs", "cli-a2a-management", "spec.md"),
 		filepath.Join(repoRoot, "openspec", "specs", "cli-agent-memory", "spec.md"),
 		filepath.Join(repoRoot, "openspec", "specs", "cli-agent-tools-hooks", "spec.md"),

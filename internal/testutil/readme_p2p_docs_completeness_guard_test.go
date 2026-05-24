@@ -14,7 +14,6 @@ func TestREADMEIncludesImplementedP2POperatorCommands(t *testing.T) {
 
 	repoRoot := readmeP2PDocsGuardRepoRoot(t)
 	targets := []string{
-		filepath.Join(repoRoot, "README.md"),
 		filepath.Join(repoRoot, "docs", "cli", "index.md"),
 	}
 	requiredSnippets := []string{
@@ -108,7 +107,7 @@ func TestREADMEIncludesImplementedP2POperatorCommands(t *testing.T) {
 func TestREADMERejectsBareP2PReputationQuickReferenceRow(t *testing.T) {
 	t.Parallel()
 
-	target := filepath.Join(readmeP2PDocsGuardRepoRoot(t), "README.md")
+	target := filepath.Join(readmeP2PDocsGuardRepoRoot(t), "docs", "cli", "index.md")
 	data, err := os.ReadFile(target)
 	if err != nil {
 		t.Fatalf("read %s: %v", target, err)

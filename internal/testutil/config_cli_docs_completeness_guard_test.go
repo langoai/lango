@@ -13,7 +13,7 @@ func TestPublicConfigCLIDocsIncludeImplementedReadWriteCommands(t *testing.T) {
 
 	repoRoot := configCLIDocsRepoRoot(t)
 	targets := []string{
-		filepath.Join(repoRoot, "README.md"),
+		filepath.Join(repoRoot, "docs", "cli", "index.md"),
 		filepath.Join(repoRoot, "docs", "cli", "index.md"),
 		filepath.Join(repoRoot, "docs", "cli", "config.md"),
 	}

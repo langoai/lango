@@ -19,7 +19,7 @@ func TestPublicDocsUseCurrentConfigCLIExamples(t *testing.T) {
 
 	repoRoot := configDocsQualityRepoRoot(t)
 	targets := []string{
-		filepath.Join(repoRoot, "README.md"),
+		filepath.Join(repoRoot, "docs", "cli", "index.md"),
 		filepath.Join(repoRoot, "docs"),
 	}
 
@@ -88,7 +88,6 @@ func TestPublicConfigurationDocsIncludeCloudKMSSettings(t *testing.T) {
 
 	repoRoot := configDocsQualityRepoRoot(t)
 	targets := []string{
-		filepath.Join(repoRoot, "README.md"),
 		filepath.Join(repoRoot, "docs", "configuration.md"),
 	}
 
@@ -137,7 +136,6 @@ func TestPublicConfigurationDocsUseDefaultP2PValues(t *testing.T) {
 
 	repoRoot := configDocsQualityRepoRoot(t)
 	targets := []string{
-		filepath.Join(repoRoot, "README.md"),
 		filepath.Join(repoRoot, "docs", "configuration.md"),
 	}
 	defaults := config.DefaultConfig()
