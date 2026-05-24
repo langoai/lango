@@ -86,9 +86,7 @@ func (p *AdmissionPolicy) ObserveBatch(batch AdmissionBatch) AdmissionObserveRes
 	result := AdmissionObserveResult{
 		Forwarded: make([]Triple, 0, len(batch.Triples)),
 	}
-	for _, triple := range batch.Triples {
-		result.Forwarded = append(result.Forwarded, triple)
-	}
+	result.Forwarded = append(result.Forwarded, batch.Triples...)
 
 	sourceKind := normalizeAdmissionSourceKind(batch)
 

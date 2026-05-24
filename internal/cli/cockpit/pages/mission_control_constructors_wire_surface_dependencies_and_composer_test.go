@@ -166,8 +166,7 @@ func TestMissionControlProposalCommandErrorsReturnSystemMessages(t *testing.T) {
 		page.proposalSvc = proposalSvc
 		page.focus = missionControlFocusMissions
 
-		updated, cmd := page.Update(tea.KeyMsg{Type: tea.KeyEnter})
-		page = updated.(*MissionControlPage)
+		_, cmd := page.Update(tea.KeyMsg{Type: tea.KeyEnter})
 		require.NotNil(t, cmd)
 		assert.Equal(t, 0, proposalSvc.acceptCalls)
 
@@ -203,8 +202,7 @@ func TestMissionControlProposalCommandErrorsReturnSystemMessages(t *testing.T) {
 		page.proposalSvc = proposalSvc
 		page.focus = missionControlFocusMissions
 
-		updated, cmd := page.Update(tea.KeyMsg{Type: tea.KeyEnter})
-		page = updated.(*MissionControlPage)
+		_, cmd := page.Update(tea.KeyMsg{Type: tea.KeyEnter})
 		require.NotNil(t, cmd)
 		assert.Equal(t, 1, proposalSvc.acceptCalls)
 
@@ -229,8 +227,7 @@ func TestMissionControlProposalCommandErrorsReturnSystemMessages(t *testing.T) {
 		page.proposalSvc = proposalSvc
 		page.focus = missionControlFocusMissions
 
-		updated, cmd := page.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
-		page = updated.(*MissionControlPage)
+		_, cmd := page.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
 		require.NotNil(t, cmd)
 		assert.Equal(t, 1, proposalSvc.dismissCalls)
 
@@ -275,8 +272,7 @@ func TestMissionControlProposalRestoreFailureIsReported(t *testing.T) {
 	page.proposalSvc = proposalSvc
 	page.focus = missionControlFocusMissions
 
-	updated, cmd := page.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	page = updated.(*MissionControlPage)
+	_, cmd := page.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	require.NotNil(t, cmd)
 	assert.Equal(t, 1, proposalSvc.restoreCalls)
 
@@ -337,8 +333,7 @@ func TestMissionControlSubmitCommandAndErrorBranches(t *testing.T) {
 		page.missionService = svc
 		page.focus = missionControlFocusComposer
 
-		updated, cmd := page.Update(tea.KeyMsg{Type: tea.KeyEnter})
-		page = updated.(*MissionControlPage)
+		_, cmd := page.Update(tea.KeyMsg{Type: tea.KeyEnter})
 		require.NotNil(t, cmd)
 		assert.Equal(t, 0, svc.startCalls)
 		assert.Equal(t, 0, executor.calls, "command execution is intentionally not forced in this branch test")

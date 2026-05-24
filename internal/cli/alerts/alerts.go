@@ -13,8 +13,6 @@ import (
 	"github.com/langoai/lango/internal/config"
 )
 
-const defaultGatewayAddr = clihttp.DefaultGatewayAddr
-
 type configLoader func() (*config.Config, error)
 
 // NewAlertsCmd creates the alerts command group.
@@ -85,10 +83,6 @@ type alertEntry struct {
 	Timestamp string                 `json:"timestamp"`
 }
 
-func listRunE(cmd *cobra.Command, _ []string) error {
-	return listRunEWithConfig(nil)(cmd, nil)
-}
-
 func listRunEWithConfig(loadConfig configLoader) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, _ []string) error {
 		format, err := getOutputFormat(cmd)
@@ -137,10 +131,6 @@ func listRunEWithConfig(loadConfig configLoader) func(*cobra.Command, []string) 
 		}
 		return w.Flush()
 	}
-}
-
-func summaryRunE(cmd *cobra.Command, _ []string) error {
-	return summaryRunEWithConfig(nil)(cmd, nil)
 }
 
 func summaryRunEWithConfig(loadConfig configLoader) func(*cobra.Command, []string) error {

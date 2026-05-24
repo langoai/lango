@@ -14,20 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type stubNamedSandboxExecutor struct {
-	runtimeName string
-	result      map[string]interface{}
-	err         error
-}
-
-func (s stubNamedSandboxExecutor) Execute(_ context.Context, _ string, _ map[string]interface{}) (map[string]interface{}, error) {
-	return s.result, s.err
-}
-
-func (s stubNamedSandboxExecutor) RuntimeName() string {
-	return s.runtimeName
-}
-
 type stubSandboxExecutor struct {
 	result map[string]interface{}
 	err    error

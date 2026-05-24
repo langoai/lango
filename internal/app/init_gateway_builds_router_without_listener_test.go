@@ -40,6 +40,7 @@ func TestInitP2PEarlyExitBranchesAvoidListenerBinding(t *testing.T) {
 
 	cfg := config.DefaultConfig()
 	cfg.P2P.Enabled = false
+	//nolint:staticcheck // intentional: regression test exercises legacy KeyDir code path.
 	cfg.P2P.KeyDir = filepath.Join(t.TempDir(), "disabled-keys")
 	cfg.P2P.ListenAddrs = []string{"not-a-multiaddr"}
 	assert.Nil(t, initP2P(cfg, nil, nil, nil, nil, nil, nil, nil, ""))
@@ -49,6 +50,7 @@ func TestInitP2PEarlyExitBranchesAvoidListenerBinding(t *testing.T) {
 
 	key, err := ethcrypto.GenerateKey()
 	require.NoError(t, err)
+	//nolint:staticcheck // intentional: regression test exercises legacy KeyDir code path.
 	cfg.P2P.KeyDir = filepath.Join(t.TempDir(), "invalid-listen-keys")
 	wallet := &wiringP2PWallet{publicKey: ethcrypto.CompressPubkey(&key.PublicKey)}
 

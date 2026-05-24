@@ -32,5 +32,5 @@ func TestADKv13SurfaceReachable(t *testing.T) {
 	_ = skilltoolset.Config{}
 
 	// v1.3: live session interface is reachable (used in Track E).
-	var _ adkagent.LiveSession = (adkagent.LiveSession)(nil)
+	var _ adkagent.LiveSession
 }

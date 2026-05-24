@@ -273,6 +273,7 @@ func initP2PInitializesLocalComponentsWithDefaultDurationsP2PConfig(t *testing.T
 	cfg.A2A.AgentName = "initP2PInitializesLocalComponentsWithDefaultDurations7-agent"
 	cfg.P2P.Enabled = true
 	cfg.P2P.ListenAddrs = []string{"/ip4/127.0.0.1/tcp/0"}
+	//nolint:staticcheck // intentional: regression test pins legacy KeyDir behavior.
 	cfg.P2P.KeyDir = keyDir
 	cfg.P2P.EnableRelay = false
 	cfg.P2P.EnableMDNS = false

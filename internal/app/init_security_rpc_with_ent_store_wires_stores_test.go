@@ -45,6 +45,7 @@ func TestInitP2PEarlyExitBranchesAvoidRuntimeStartup(t *testing.T) {
 	t.Parallel()
 
 	cfg := config.DefaultConfig()
+	//nolint:staticcheck // intentional: regression test pins legacy KeyDir behavior.
 	cfg.P2P.KeyDir = filepath.Join(t.TempDir(), "p2p-keys")
 	cfg.P2P.ListenAddrs = []string{"/ip4/127.0.0.1/tcp/0"}
 

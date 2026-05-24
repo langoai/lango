@@ -26,16 +26,20 @@ func TestP2PWiringSafeBranchesAvoidRuntimeStartup(t *testing.T) {
 	cfg.P2P.Enabled = false
 	cfg.P2P.ZKHandshake = false
 	cfg.P2P.ZKAttestation = false
+	//nolint:staticcheck // intentional: regression test pins legacy KeyDir behavior.
 	cfg.P2P.KeyDir = filepath.Join(t.TempDir(), "disabled-keys")
 	cfg.P2P.ListenAddrs = []string{"/ip4/127.0.0.1/tcp/0"}
 
 	assert.Nil(t, initP2P(cfg, &wiringP2PWallet{}, nil, nil, nil, nil, nil, nil, ""))
+	//nolint:staticcheck // intentional: regression test pins legacy KeyDir behavior.
 	assert.NoDirExists(t, cfg.P2P.KeyDir)
 	assert.Nil(t, initZKP(cfg))
 
 	cfg.P2P.Enabled = true
+	//nolint:staticcheck // intentional: regression test pins legacy KeyDir behavior.
 	cfg.P2P.KeyDir = filepath.Join(t.TempDir(), "missing-wallet-keys")
 	assert.Nil(t, initP2P(cfg, nil, nil, nil, nil, nil, nil, nil, ""))
+	//nolint:staticcheck // intentional: regression test pins legacy KeyDir behavior.
 	assert.NoDirExists(t, cfg.P2P.KeyDir)
 }
 

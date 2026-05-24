@@ -84,7 +84,7 @@ func TestMockGraphStoreCRUDQueriesCountersAndClear(t *testing.T) {
 		Predicate: "mutated",
 		Object:    "mutated",
 	}
-	allTriples = append(allTriples, graph.Triple{
+	_ = append(allTriples, graph.Triple{
 		Subject:   "extra",
 		Predicate: "extra",
 		Object:    "extra",

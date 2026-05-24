@@ -49,10 +49,8 @@ func MergedServersStrict(cfg *config.MCPConfig) (map[string]config.MCPServerConf
 		if err != nil {
 			return merged, err
 		}
-		if servers != nil {
-			for name, srv := range servers {
-				merged[name] = srv
-			}
+		for name, srv := range servers {
+			merged[name] = srv
 		}
 	}
 
@@ -62,10 +60,8 @@ func MergedServersStrict(cfg *config.MCPConfig) (map[string]config.MCPServerConf
 	if err != nil {
 		return merged, err
 	}
-	if servers != nil {
-		for name, srv := range servers {
-			merged[name] = srv
-		}
+	for name, srv := range servers {
+		merged[name] = srv
 	}
 
 	return merged, nil

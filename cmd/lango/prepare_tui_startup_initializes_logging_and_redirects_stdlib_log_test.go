@@ -325,9 +325,10 @@ func TestWatchServeSignalsReturnsWhenSignalChannelCloses(t *testing.T) {
 
 	sigChan := make(chan os.Signal)
 	done := make(chan struct{})
+	exited := make(chan int, 1)
 	go func() {
-		watchServeSignals(ctx, &fakeServeApp{}, zap.NewNop().Sugar(), sigChan, 10, cancel, func(int) {
-			t.Fatal("closed signal channel must not force exit")
+		watchServeSignals(ctx, &fakeServeApp{}, zap.NewNop().Sugar(), sigChan, 10, cancel, func(code int) {
+			exited <- code
 		})
 		close(done)
 	}()
@@ -338,5 +339,10 @@ func TestWatchServeSignalsReturnsWhenSignalChannelCloses(t *testing.T) {
 	case <-done:
 	case <-time.After(2 * time.Second):
 		t.Fatal("watchServeSignals did not return")
+	}
+	select {
+	case code := <-exited:
+		t.Fatalf("closed signal channel must not force exit (got code=%d)", code)
+	default:
 	}
 }

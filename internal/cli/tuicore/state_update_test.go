@@ -274,6 +274,7 @@ func TestUpdateConfigFromFormAppliesPrimarySections(t *testing.T) {
 		cfg.ObservationalMemory.MaxReflectionsInContext != 5 || cfg.ObservationalMemory.MaxObservationsInContext != 8 {
 		t.Fatalf("observational memory fields not updated: %+v", cfg.ObservationalMemory)
 	}
+	//nolint:staticcheck // intentional: regression test confirms legacy ProviderID is cleared after migration.
 	if cfg.Embedding.Provider != "local" || cfg.Embedding.ProviderID != "" || cfg.Embedding.Model != "nomic-embed-text" ||
 		cfg.Embedding.Dimensions != 768 || cfg.Embedding.Local.BaseURL != "http://ollama.test" ||
 		!cfg.Embedding.RAG.Enabled || cfg.Embedding.RAG.MaxResults != 6 ||

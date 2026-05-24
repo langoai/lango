@@ -26,8 +26,6 @@ import (
 	"github.com/langoai/lango/internal/types"
 )
 
-const defaultAddr = clihttp.DefaultGatewayAddr
-
 const (
 	defaultDeadLetterSummaryTopN       = 5
 	defaultDeadLetterTrendWindow       = 24 * time.Hour

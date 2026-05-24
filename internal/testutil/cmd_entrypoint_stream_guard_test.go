@@ -60,7 +60,7 @@ func TestCmdEntrypointsAvoidRawPrintsAndDirectStdStreams(t *testing.T) {
 		}
 		allowed := allowedStdStreamLines[filepath.Clean(relPath)]
 		for _, line := range strings.Split(text, "\n") {
-			if !(strings.Contains(line, "os.Stdout") || strings.Contains(line, "os.Stderr") || strings.Contains(line, "os.Stdin")) {
+			if !strings.Contains(line, "os.Stdout") && !strings.Contains(line, "os.Stderr") && !strings.Contains(line, "os.Stdin") {
 				continue
 			}
 			ok := false

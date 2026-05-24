@@ -287,7 +287,7 @@ func TestBackgroundWriteThrough_PrepareTaskWithID_ErrorBranches(t *testing.T) {
 			require.Error(t, err)
 			require.Contains(t, err.Error(), tc.wantErr)
 
-			events, eventsErr := ledger.MemoryStore.GetJournalEvents(ctx, "bg-error")
+			events, eventsErr := ledger.GetJournalEvents(ctx, "bg-error")
 			if tc.wantEventCount == 0 {
 				require.Error(t, eventsErr)
 				return
@@ -343,7 +343,7 @@ func TestBackgroundWriteThrough_SyncTask_ErrorBranches(t *testing.T) {
 			ledger := &failingRunLedgerStore{MemoryStore: NewMemoryStore(), err: errors.New("ledger write failed")}
 			projection := NewBackgroundWriteThrough(ledger, RolloutConfig{Stage: StageWriteThrough}).WithMaxHistory(1)
 			require.NoError(t, projection.PrepareTaskWithID(ctx, "background prompt", background.Origin{Session: "session-1"}, "bg-sync-error"))
-			beforeEvents, err := ledger.MemoryStore.GetJournalEvents(ctx, "bg-sync-error")
+			beforeEvents, err := ledger.GetJournalEvents(ctx, "bg-sync-error")
 			require.NoError(t, err)
 			beforeSynced := countProjectionSyncStatus(t, beforeEvents, "synced")
 
@@ -357,7 +357,7 @@ func TestBackgroundWriteThrough_SyncTask_ErrorBranches(t *testing.T) {
 			require.Error(t, err)
 			require.Contains(t, err.Error(), tc.wantErr)
 
-			afterEvents, eventsErr := ledger.MemoryStore.GetJournalEvents(ctx, "bg-sync-error")
+			afterEvents, eventsErr := ledger.GetJournalEvents(ctx, "bg-sync-error")
 			require.NoError(t, eventsErr)
 			require.Equal(t, beforeSynced, countProjectionSyncStatus(t, afterEvents, "synced"))
 		})

@@ -13,6 +13,7 @@ import (
 	"github.com/langoai/lango/internal/config"
 )
 
+
 const defaultGatewayAddr = clihttp.DefaultGatewayAddr
 
 type configLoader func() (*config.Config, error)
@@ -78,10 +79,6 @@ func printJSON(w io.Writer, v interface{}) error {
 
 func newTabWriter(w io.Writer) *tabwriter.Writer {
 	return tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-}
-
-func summaryRunE(cmd *cobra.Command, _ []string) error {
-	return summaryRunEWithConfig(nil)(cmd, nil)
 }
 
 func summaryRunEWithConfig(loadConfig configLoader) func(*cobra.Command, []string) error {

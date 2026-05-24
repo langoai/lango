@@ -444,8 +444,8 @@ func TestContextRetriever_RetrievePendingInquiriesAndAssemblePrompt(t *testing.T
 }
 
 func TestContextRetriever_RetrieveIgnoresUnsupportedLayersAndUsesDefaultLimit(t *testing.T) {
-	retriever, store := newTestRetriever(t)
-	retriever = NewContextRetriever(store, 0, zap.NewNop().Sugar())
+	_, store := newTestRetriever(t)
+	retriever := NewContextRetriever(store, 0, zap.NewNop().Sugar())
 
 	provider := &mockInquiryProvider{items: []ContextItem{{Layer: LayerPendingInquiries, Key: "inq-1", Content: "Ask a focused question."}}}
 	retriever.WithInquiryProvider(provider)

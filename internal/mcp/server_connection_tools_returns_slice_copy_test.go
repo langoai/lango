@@ -29,7 +29,7 @@ func TestServerConnectionToolsReturnsSliceCopy(t *testing.T) {
 	got := conn.Tools()
 	require.Len(t, got, 1)
 	got[0] = DiscoveredTool{ServerName: "mutated", Tool: replacementTool}
-	got = append(got, DiscoveredTool{ServerName: "extra", Tool: replacementTool})
+	_ = append(got, DiscoveredTool{ServerName: "extra", Tool: replacementTool})
 
 	again := conn.Tools()
 	require.Len(t, again, 1)

@@ -795,8 +795,7 @@ func TestMissionControlWorkbenchSeededStarterSubmitsOutsideComposerFocus(t *test
 
 	page.composer.SetComposerValue("Summarize this repository")
 	page.focus = missionControlFocusMissions
-	updated, cmd := page.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	page = updated.(*MissionControlPage)
+	_, cmd := page.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	require.NotNil(t, cmd)
 
 	_ = collectImmediateMsgs(cmd)
@@ -1008,8 +1007,7 @@ func TestMissionControlAcceptProposedMissionSanitizesPersistedLabels(t *testing.
 
 	require.Len(t, page.snapshot.Missions, 1)
 	page.focus = missionControlFocusMissions
-	updated, cmd := page.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	page = updated.(*MissionControlPage)
+	_, cmd := page.Update(tea.KeyMsg{Type: tea.KeyEnter})
 
 	assert.Nil(t, cmd)
 	assert.Equal(t, "Apply bounded retry guidance", svc.lastAcceptInput.Title)
@@ -1133,8 +1131,7 @@ func TestMissionControlAcceptProposedMissionFailsClosedWithoutMissionService(t *
 	})
 	page.focus = missionControlFocusMissions
 
-	updated, cmd := page.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	page = updated.(*MissionControlPage)
+	_, cmd := page.Update(tea.KeyMsg{Type: tea.KeyEnter})
 
 	require.NotNil(t, cmd)
 	msgs := collectImmediateMsgs(cmd)
@@ -1157,8 +1154,7 @@ func TestMissionControlDismissProposedMissionFailsClosedWithoutProposalService(t
 	})
 	page.focus = missionControlFocusMissions
 
-	updated, cmd := page.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
-	page = updated.(*MissionControlPage)
+	_, cmd := page.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
 
 	require.NotNil(t, cmd)
 	msgs := collectImmediateMsgs(cmd)

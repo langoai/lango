@@ -88,6 +88,7 @@ func TestInitP2PReturnsNilWhenNodeCreationFailsOnInvalidListenAddr(t *testing.T)
 
 	cfg := config.DefaultConfig()
 	cfg.P2P.Enabled = true
+	//nolint:staticcheck // intentional: regression test pins legacy KeyDir behavior.
 	cfg.P2P.KeyDir = filepath.Join(t.TempDir(), "keys")
 	cfg.P2P.ListenAddrs = []string{"not-a-multiaddr"}
 

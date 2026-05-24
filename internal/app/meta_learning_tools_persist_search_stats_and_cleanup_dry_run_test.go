@@ -170,15 +170,18 @@ func TestInitP2PDisabledOrMissingWalletKeepsFilesystemUntouched(t *testing.T) {
 	t.Parallel()
 
 	cfg := metaLearningToolsPersistSearchStatsAndCleanupDryRunModuleConfig(t)
+	//nolint:staticcheck // intentional: regression test pins legacy KeyDir behavior.
 	cfg.P2P.KeyDir = filepath.Join(t.TempDir(), "keys")
 	cfg.P2P.ListenAddrs = []string{"not-a-real-multiaddr"}
 
 	cfg.P2P.Enabled = false
 	assert.Nil(t, initP2P(cfg, nil, nil, nil, nil, nil, nil, nil, ""))
+	//nolint:staticcheck // intentional: regression test pins legacy KeyDir behavior.
 	assert.NoDirExists(t, cfg.P2P.KeyDir)
 
 	cfg.P2P.Enabled = true
 	assert.Nil(t, initP2P(cfg, nil, nil, nil, nil, nil, nil, nil, ""))
+	//nolint:staticcheck // intentional: regression test pins legacy KeyDir behavior.
 	assert.NoDirExists(t, cfg.P2P.KeyDir)
 }
 

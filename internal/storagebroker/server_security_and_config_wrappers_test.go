@@ -786,6 +786,7 @@ func serverSecurityAndConfigWrappersConfig(t *testing.T, model string) *config.C
 	cfg.Graph.DatabasePath = "graph.db"
 	cfg.Skill.SkillsDir = "skills"
 	cfg.Workflow.StateDir = "workflow"
+	//nolint:staticcheck // intentional: regression test seeds legacy KeyDir to verify config redaction.
 	cfg.P2P.KeyDir = "p2p/keys"
 	cfg.P2P.ZKP.ProofCacheDir = "p2p/proofs"
 	cfg.P2P.Workspace.DataDir = "p2p/workspace"

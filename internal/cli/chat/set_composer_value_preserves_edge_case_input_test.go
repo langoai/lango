@@ -143,7 +143,7 @@ func TestSubmitCmdNilParentReturnsDoneAndTracksTurnState(t *testing.T) {
 		SessionKey: "setComposerValuePreservesEdgeCaseInput0-session",
 	})
 
-	cmd := m.submitCmd(nil, "direct submit")
+	cmd := m.submitCmd(nil, "direct submit") //nolint:staticcheck // intentional: covers nil-parent ctx code path.
 	require.NotNil(t, cmd)
 	require.NotNil(t, m.runCtx)
 	require.NotNil(t, m.cancelFn)

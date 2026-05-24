@@ -1,8 +1,6 @@
 package chat
 
 import (
-	"strings"
-
 	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -100,11 +98,3 @@ func (m *inputModel) Blur() {
 	m.textarea.Blur()
 }
 
-func renderFooter(input inputModel, state chatState, width int) string {
-	parts := make([]string, 0, 3)
-	if state != stateApproving {
-		parts = append(parts, input.View())
-	}
-	parts = append(parts, renderHelpBar(state, width))
-	return strings.Join(parts, "\n")
-}

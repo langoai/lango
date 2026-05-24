@@ -26,7 +26,7 @@ func executeExtensionCmd(
 	cmdArgs []string,
 	cfg *config.Config,
 	input io.Reader,
-) (string, error, int) {
+) (string, int, error) {
 	t.Helper()
 
 	cmd := NewExtensionCmd(func() (*config.Config, error) { return cfg, nil })
@@ -46,7 +46,7 @@ func executeExtensionCmd(
 		exitCode = code
 	}
 
-	return out.String(), err, exitCode
+	return out.String(), exitCode, err
 }
 
 func newTestConfig(t *testing.T) *config.Config {
@@ -359,7 +359,7 @@ func TestInstallCmd_ConfirmUsesCommandStreams(t *testing.T) {
 	cfg := newTestConfig(t)
 	packDir := writeSmokePack(t)
 
-	out, err, exitCode := executeExtensionCmd(
+	out, exitCode, err := executeExtensionCmd(
 		t,
 		[]string{"install", packDir},
 		cfg,
@@ -379,7 +379,7 @@ func TestInstallCmd_DenyCancelsWithoutWritingFiles(t *testing.T) {
 	cfg := newTestConfig(t)
 	packDir := writeSmokePack(t)
 
-	out, err, exitCode := executeExtensionCmd(
+	out, exitCode, err := executeExtensionCmd(
 		t,
 		[]string{"install", packDir},
 		cfg,
@@ -404,7 +404,7 @@ func TestInstallCmd_NonTTYWithoutYesReturnsGuidance(t *testing.T) {
 	t.Cleanup(func() { _ = reader.Close() })
 	t.Cleanup(func() { _ = writer.Close() })
 
-	out, cmdErr, exitCode := executeExtensionCmd(t, []string{"install", packDir}, cfg, reader)
+	out, exitCode, cmdErr := executeExtensionCmd(t, []string{"install", packDir}, cfg, reader)
 	require.Error(t, cmdErr)
 	assert.Equal(t, exitUserDeclined, exitCode)
 	assert.False(t, cliexit.Silent(cmdErr))
@@ -419,7 +419,7 @@ func TestInspectCmd_InvalidManifestReturnsStructuredUserError(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "extension.yaml"), []byte("schema: lango.extension/v1\n"), 0o644))
 
-	out, err, exitCode := executeExtensionCmd(t, []string{"inspect", dir}, cfg, nil)
+	out, exitCode, err := executeExtensionCmd(t, []string{"inspect", dir}, cfg, nil)
 
 	require.Error(t, err)
 	assert.Equal(t, exitUserError, exitCode)
@@ -433,7 +433,7 @@ func TestInspectCmd_UnknownOutputFormatReturnsStructuredInternalError(t *testing
 	cfg := newTestConfig(t)
 	packDir := writeSmokePack(t)
 
-	out, err, exitCode := executeExtensionCmd(t, []string{"inspect", packDir, "--output", "yaml"}, cfg, nil)
+	out, exitCode, err := executeExtensionCmd(t, []string{"inspect", packDir, "--output", "yaml"}, cfg, nil)
 
 	require.Error(t, err)
 	assert.Equal(t, exitInternal, exitCode)
@@ -471,7 +471,7 @@ func TestListCmd_RegistryReadErrorReturnsStructuredInternalError(t *testing.T) {
 	require.NoError(t, os.WriteFile(registryFile, []byte("not a directory"), 0o644))
 	cfg.Extensions.Dir = registryFile
 
-	out, err, exitCode := executeExtensionCmd(t, []string{"list"}, cfg, nil)
+	out, exitCode, err := executeExtensionCmd(t, []string{"list"}, cfg, nil)
 
 	require.Error(t, err)
 	assert.Equal(t, exitInternal, exitCode)
@@ -519,7 +519,7 @@ func TestRemoveCmd_ConfirmUsesCommandStreams(t *testing.T) {
 	require.NoError(t, inst.Install(context.Background(), src, wc, extension.InstallOptions{}))
 	_ = wc.Cleanup()
 
-	out, err, exitCode := executeExtensionCmd(
+	out, exitCode, err := executeExtensionCmd(
 		t,
 		[]string{"remove", "smoke-pack"},
 		cfg,
@@ -539,7 +539,7 @@ func TestRemoveCmd_MissingPackReturnsStructuredUserError(t *testing.T) {
 
 	cfg := newTestConfig(t)
 
-	out, err, exitCode := executeExtensionCmd(
+	out, exitCode, err := executeExtensionCmd(
 		t,
 		[]string{"remove", "missing", "--yes"},
 		cfg,
@@ -581,7 +581,7 @@ func TestRemoveCmd_DisabledExtensionsReturnUserErrorBeforePreview(t *testing.T) 
 	disabled := false
 	cfg.Extensions.Enabled = &disabled
 
-	out, err, exitCode := executeExtensionCmd(
+	out, exitCode, err := executeExtensionCmd(
 		t,
 		[]string{"remove", "smoke-pack", "--yes"},
 		cfg,

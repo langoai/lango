@@ -15,6 +15,7 @@ func TestInitP2PMissingWalletShortCircuitsBeforeNodeSetup(t *testing.T) {
 	keyDir := filepath.Join(t.TempDir(), "p2p-keys")
 	cfg := config.DefaultConfig()
 	cfg.P2P.Enabled = true
+	//nolint:staticcheck // intentional: regression test pins legacy KeyDir behavior.
 	cfg.P2P.KeyDir = keyDir
 	cfg.P2P.ListenAddrs = []string{"not-a-valid-multiaddr"}
 

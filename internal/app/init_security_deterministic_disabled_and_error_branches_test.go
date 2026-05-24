@@ -186,6 +186,7 @@ func TestInitP2PEnabledNodeCreationFailureAvoidsComponents(t *testing.T) {
 
 	cfg := config.DefaultConfig()
 	cfg.P2P.Enabled = true
+	//nolint:staticcheck // intentional: regression test pins legacy KeyDir behavior.
 	cfg.P2P.KeyDir = keyDirFile
 	cfg.P2P.ListenAddrs = []string{"/ip4/127.0.0.1/tcp/0"}
 	wallet := &wiringP2PWallet{publicKey: ethcrypto.CompressPubkey(&key.PublicKey)}

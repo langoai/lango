@@ -195,7 +195,7 @@ func TestFormUpdateHandlesNavigationTextToggleAndCancelBranches(t *testing.T) {
 
 	updated.Cursor = 1
 	updated.Fields[1].TextInput.Focus()
-	updated, cmd = updated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+	updated, _ = updated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
 	assert.Equal(t, "botx", updated.Fields[1].Value)
 	assert.True(t, updated.Fields[1].Edited)
 

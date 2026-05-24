@@ -114,6 +114,7 @@ func TestInitP2PRejectsInvalidListenAddressWithoutRuntimeStartup(t *testing.T) {
 
 	cfg := config.DefaultConfig()
 	cfg.P2P.Enabled = true
+	//nolint:staticcheck // intentional: regression test exercises legacy KeyDir code path.
 	cfg.P2P.KeyDir = filepath.Join(t.TempDir(), "keys")
 	cfg.P2P.ListenAddrs = []string{"/ip4/127.0.0.1/tcp/not-a-port"}
 

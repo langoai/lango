@@ -41,7 +41,7 @@ func TestCLIIndexDelegatesGraphCommandsToDedicatedSection(t *testing.T) {
 	agentMemoryStart := strings.Index(text, "### Agent & Memory")
 	graphStart := strings.Index(text, "### Graph Store")
 	alertsStart := strings.Index(text, "### Alerts")
-	if agentMemoryStart == -1 || graphStart == -1 || alertsStart == -1 || !(agentMemoryStart < graphStart && graphStart < alertsStart) {
+	if agentMemoryStart == -1 || graphStart == -1 || alertsStart == -1 || agentMemoryStart >= graphStart || graphStart >= alertsStart {
 		t.Fatalf("%s is missing the expected Agent & Memory -> Graph Store -> Alerts section ordering", target)
 	}
 

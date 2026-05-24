@@ -151,7 +151,7 @@ func TestAddRemoveAndRulesCopySemantics(t *testing.T) {
 	copied := fw.Rules()
 	copied[0].PeerDID = "did:key:mutated"
 	copied[0].Tools[0] = "mutated"
-	copied = append(copied, ACLRule{PeerDID: "did:key:extra", Action: ACLActionDeny})
+	_ = append(copied, ACLRule{PeerDID: "did:key:extra", Action: ACLActionDeny})
 
 	stored := fw.Rules()
 	require.Len(t, stored, 2)

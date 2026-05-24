@@ -406,14 +406,17 @@ func TestInitP2P_SkipsDisabledOrMissingWalletWithoutNetwork(t *testing.T) {
 	t.Parallel()
 
 	cfg := config.DefaultConfig()
+	//nolint:staticcheck // intentional: regression test pins legacy KeyDir behavior.
 	cfg.P2P.KeyDir = filepath.Join(t.TempDir(), "p2p-keys")
 	cfg.P2P.ListenAddrs = []string{"/ip4/127.0.0.1/tcp/0"}
 	cfg.P2P.Enabled = false
 	assert.Nil(t, initP2P(cfg, nil, nil, nil, nil, nil, nil, nil, ""))
+	//nolint:staticcheck // intentional: regression test pins legacy KeyDir behavior.
 	assert.NoDirExists(t, cfg.P2P.KeyDir)
 
 	cfg.P2P.Enabled = true
 	assert.Nil(t, initP2P(cfg, nil, nil, nil, nil, nil, nil, nil, ""))
+	//nolint:staticcheck // intentional: regression test pins legacy KeyDir behavior.
 	assert.NoDirExists(t, cfg.P2P.KeyDir)
 }
 
@@ -427,6 +430,7 @@ func TestInitP2P_ReturnsNilWhenNodeCreationFailsBeforeNetwork(t *testing.T) {
 
 	cfg := config.DefaultConfig()
 	cfg.P2P.Enabled = true
+	//nolint:staticcheck // intentional: regression test pins legacy KeyDir behavior.
 	cfg.P2P.KeyDir = keyDirFile
 	cfg.P2P.ListenAddrs = []string{"/ip4/127.0.0.1/tcp/0"}
 	wallet := &wiringP2PWallet{publicKey: ethcrypto.CompressPubkey(&key.PublicKey)}
@@ -447,6 +451,7 @@ func TestInitP2P_InitializesDeterministicComponentsWithEphemeralHost(t *testing.
 	cfg.P2P.Enabled = true
 	cfg.P2P.ListenAddrs = []string{"/ip4/127.0.0.1/tcp/0"}
 	cfg.P2P.BootstrapPeers = nil
+	//nolint:staticcheck // intentional: regression test pins legacy KeyDir behavior.
 	cfg.P2P.KeyDir = filepath.Join(t.TempDir(), "p2p-keys")
 	cfg.P2P.EnableRelay = false
 	cfg.P2P.EnableMDNS = false

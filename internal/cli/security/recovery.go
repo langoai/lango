@@ -229,7 +229,7 @@ func pickConfirmationIndexes(n int) (int, int) {
 
 func confirmWord(in io.Reader, out io.Writer, words []string, index int) error {
 	got, err := prompt.ReadLineIO(in, out, fmt.Sprintf("Enter word %d to confirm: ", index))
-	if err != nil && !(errors.Is(err, io.EOF) && strings.TrimSpace(got) != "") {
+	if err != nil && (!errors.Is(err, io.EOF) || strings.TrimSpace(got) == "") {
 		return fmt.Errorf("read confirmation word: %w", err)
 	}
 	if strings.TrimSpace(strings.ToLower(got)) != words[index-1] {

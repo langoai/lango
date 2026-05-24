@@ -59,8 +59,8 @@ func TestDockerRuntimeRunAssemblesContainerAndExecutionRequest(t *testing.T) {
 		"lango.tool":    "calc",
 	}, snapshot.createRequest.Labels)
 	assert.Equal(t, container.NetworkMode("none"), snapshot.createRequest.HostConfig.NetworkMode)
-	assert.Equal(t, int64(64*1024*1024), snapshot.createRequest.HostConfig.Resources.Memory)
-	assert.Equal(t, int64(25000), snapshot.createRequest.HostConfig.Resources.CPUQuota)
+	assert.Equal(t, int64(64*1024*1024), snapshot.createRequest.HostConfig.Memory)
+	assert.Equal(t, int64(25000), snapshot.createRequest.HostConfig.CPUQuota)
 	assert.True(t, snapshot.createRequest.HostConfig.ReadonlyRootfs)
 	assert.Equal(t, "", snapshot.createRequest.HostConfig.Tmpfs["/tmp"])
 

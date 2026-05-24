@@ -771,7 +771,9 @@ func TestRedactConfigGetReflectValue_UsesJSONTagFallbackAndSkipsPrivateFields(t 
 		VisibleSecret string `json:"clientSecret"`
 		VisibleName   string `json:"name"`
 		Ignored       string `json:"-"`
-		privateSecret string `json:"privateSecret"`
+		// privateSecret is unexported and must be skipped regardless of any tag presence;
+		// the redaction logic gates on field.PkgPath (unexported), so no json tag is needed.
+		privateSecret string
 	}
 	value := taggedConfig{
 		VisibleSecret: "raw-secret",
@@ -1182,7 +1184,9 @@ func TestConfigSet_DoesNotRedactNonSecretKeyDirOutput(t *testing.T) {
 	if strings.Contains(out, "<redacted>") {
 		t.Fatalf("keyDir output must not be redacted, got %q", out)
 	}
+	//nolint:staticcheck // intentional: regression test pins legacy KeyDir behavior.
 	if cfg.P2P.KeyDir != keyDir {
+		//nolint:staticcheck // intentional: regression test pins legacy KeyDir behavior.
 		t.Fatalf("expected raw keyDir to be saved, got %q", cfg.P2P.KeyDir)
 	}
 }
