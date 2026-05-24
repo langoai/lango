@@ -11,11 +11,11 @@ import (
 
 // MockSession implements Session interface for testing
 type MockSession struct {
-	Handlers      []interface{}
-	SentMessages  []string
+	Handlers       []interface{}
+	SentMessages   []string
 	EditedMessages []string
-	State         *discordgo.State
-	TypingCalls   []string
+	State          *discordgo.State
+	TypingCalls    []string
 }
 
 func (m *MockSession) Open() error {

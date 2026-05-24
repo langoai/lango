@@ -13,7 +13,10 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/langoai/lango/internal/bootstrap"
+	"github.com/langoai/lango/internal/cli/clihttp"
 )
+
+var provenancePostJSON = postJSON
 
 func newProvenanceCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 	cmd := &cobra.Command{
@@ -42,17 +45,17 @@ func newProvenancePushCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.C
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 			if !boot.Config.P2P.Enabled {
 				return errP2PDisabled
 			}
 			addr = gatewayAddr(addr, boot)
 			body := provenanceRequestBody(args[0], args[1], redaction)
 			var out map[string]any
-			if err := postJSON(addr, "/api/p2p/provenance/push", body, &out); err != nil {
+			if err := provenancePostJSON(addr, "/api/p2p/provenance/push", body, &out); err != nil {
 				return err
 			}
-			fmt.Printf("Pushed provenance bundle to %s (redaction=%s)\n", args[0], redaction)
+			fmt.Fprintf(cmd.OutOrStdout(), "Pushed provenance bundle to %s (redaction=%s)\n", args[0], redaction)
 			return nil
 		},
 	}
@@ -75,17 +78,17 @@ func newProvenanceFetchCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 			if !boot.Config.P2P.Enabled {
 				return errP2PDisabled
 			}
 			addr = gatewayAddr(addr, boot)
 			body := provenanceRequestBody(args[0], args[1], redaction)
 			var out map[string]any
-			if err := postJSON(addr, "/api/p2p/provenance/fetch", body, &out); err != nil {
+			if err := provenancePostJSON(addr, "/api/p2p/provenance/fetch", body, &out); err != nil {
 				return err
 			}
-			fmt.Printf("Fetched provenance bundle from %s (redaction=%v)\n", args[0], out["redaction"])
+			fmt.Fprintf(cmd.OutOrStdout(), "Fetched provenance bundle from %s (redaction=%v)\n", args[0], out["redaction"])
 			return nil
 		},
 	}
@@ -94,10 +97,7 @@ func newProvenanceFetchCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.
 }
 
 func gatewayAddr(addr string, boot *bootstrap.Result) string {
-	if addr != "" {
-		return addr
-	}
-	return fmt.Sprintf("http://%s:%d", boot.Config.Server.Host, boot.Config.Server.Port)
+	return clihttp.ResolveGatewayAddr(addr, boot.Config)
 }
 
 func provenanceRequestBody(peerDID, sessionKey, redaction string) map[string]string {

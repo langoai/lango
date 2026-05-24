@@ -56,6 +56,6 @@ Automatic session invalidation based on security events:
 
 ## CLI Commands
 
-- `lango p2p session list [--json]` — show active sessions
+- `lango p2p session list [--output table|json]` — show active sessions
 - `lango p2p session revoke --peer-did <did>` — revoke specific session
 - `lango p2p session revoke-all` — revoke all sessions

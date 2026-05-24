@@ -17,7 +17,7 @@ The system SHALL route channel, gateway, and automation agent execution through 
 - **AND** the resulting trace SHALL record the automation entrypoint distinctly from channel/gateway entrypoints
 
 ### Requirement: Append-only per-turn trace journal
-Every agent turn SHALL create an append-only trace identified by a stable trace ID. The trace SHALL record session key, entrypoint, start/end timestamps, user input metadata, delegation events, tool calls, tool results, retries, and final outcome.
+Every agent turn SHALL create an append-only trace identified by a stable trace ID. The trace SHALL record session key, entrypoint, start/end timestamps, user input metadata, delegation events, tool calls, tool results, retries, and final outcome. When the Runner retries a turn due to transient failures, all retry attempts and recovery events SHALL accumulate within the same trace instance. Each retry attempt SHALL NOT create a separate trace.
 
 #### Scenario: Multi-agent turn records delegation and tool activity
 - **WHEN** the orchestrator delegates to `vault` and `vault` calls `payment_balance`
@@ -27,6 +27,11 @@ Every agent turn SHALL create an append-only trace identified by a stable trace 
 #### Scenario: Trace survives post-turn diagnostics
 - **WHEN** a turn completes and later diagnostic tooling inspects the latest trace for the session
 - **THEN** the trace SHALL still contain the recorded event sequence and classified outcome
+
+#### Scenario: Retry attempts accumulate in single trace
+- **WHEN** the Runner retries a turn after a transient provider error
+- **THEN** the recovery event SHALL be recorded in the same trace as the original attempt
+- **AND** a new trace SHALL NOT be created for the retry attempt
 
 ### Requirement: Classified terminal outcomes
 Each turn trace SHALL terminate in exactly one classified outcome: `success`, `user_error`, `model_error`, `timeout`, `empty_after_tool_use`, or `loop_detected`. The trace SHALL include a concise root-cause summary for non-success outcomes.
@@ -126,3 +131,4 @@ All methods SHALL be implemented in `EntStore`. All methods SHALL be nil-safe (r
 #### Scenario: Nil store returns safely
 - **WHEN** any method is called on a nil `EntStore`
 - **THEN** it SHALL return nil/0/empty without error
+

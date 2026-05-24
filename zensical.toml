@@ -1,0 +1,223 @@
+[project]
+site_name = "Lango"
+site_url = "https://langoai.github.io/lango/"
+site_description = "A high-performance AI agent built with Go"
+repo_name = "langoai/lango"
+repo_url = "https://github.com/langoai/lango"
+edit_uri = "edit/main/docs/"
+copyright = "Copyright &copy; 2026 langoai - MIT License"
+docs_dir = "docs"
+site_dir = "site"
+extra_css = ["stylesheets/extra.css"]
+
+nav = [
+  { "Home" = "index.md" },
+  { "Getting Started" = [
+      "getting-started/index.md",
+      { "Installation" = "getting-started/installation.md" },
+      { "Quick Start" = "getting-started/quickstart.md" },
+      { "Configuration Basics" = "getting-started/configuration.md" }
+  ]},
+  { "Architecture" = [
+      "architecture/index.md",
+      { "System Overview" = "architecture/overview.md" },
+      { "Project Structure" = "architecture/project-structure.md" },
+      { "Data Flow" = "architecture/data-flow.md" },
+      { "Master Document" = "architecture/master-document.md" },
+      { "External Collaboration Audit" = "architecture/external-collaboration-audit.md" },
+      { "Trust, Security & Policy Audit" = "architecture/trust-security-policy-audit.md" },
+      { "Identity Trust Reputation Audit" = "architecture/identity-trust-reputation-audit.md" },
+      { "Pricing Negotiation Settlement Audit" = "architecture/pricing-negotiation-settlement-audit.md" },
+      { "Knowledge Exchange Runtime" = "architecture/knowledge-exchange-runtime.md" },
+      { "Settlement Progression" = "architecture/settlement-progression.md" },
+      { "Actual Settlement Execution" = "architecture/actual-settlement-execution.md" },
+      { "Partial Settlement Execution" = "architecture/partial-settlement-execution.md" },
+      { "Escrow Release" = "architecture/escrow-release.md" },
+      { "Escrow Refund" = "architecture/escrow-refund.md" },
+      { "Dispute Hold" = "architecture/dispute-hold.md" },
+      { "Release vs Refund Adjudication" = "architecture/release-vs-refund-adjudication.md" },
+      { "Adjudication-Aware Release/Refund Execution Gating" = "architecture/adjudication-aware-release-refund-execution-gating.md" },
+      { "Automatic Post-Adjudication Execution" = "architecture/automatic-post-adjudication-execution.md" },
+      { "Background Post-Adjudication Execution" = "architecture/background-post-adjudication-execution.md" },
+      { "Retry / Dead-Letter Handling" = "architecture/retry-dead-letter-handling.md" },
+      { "Operator Replay / Manual Retry" = "architecture/operator-replay-manual-retry.md" },
+      { "Policy-Driven Replay Controls" = "architecture/policy-driven-replay-controls.md" },
+      { "Dead-Letter Browsing / Status Observation" = "architecture/dead-letter-browsing-status-observation.md" },
+      { "P2P Knowledge Exchange Track" = "architecture/p2p-knowledge-exchange-track.md" }
+  ]},
+  { "Features" = [
+      "features/index.md",
+      { "AI Providers" = "features/ai-providers.md" },
+      { "Channels" = "features/channels.md" },
+      { "Knowledge System" = "features/knowledge.md" },
+      { "Observational Memory" = "features/observational-memory.md" },
+      { "Embedding & RAG" = "features/embedding-rag.md" },
+      { "Knowledge Graph" = "features/knowledge-graph.md" },
+      { "Knowledge Ontology" = "features/ontology.md" },
+      { "Multi-Agent Orchestration" = "features/multi-agent.md" },
+      { "A2A Protocol" = "features/a2a-protocol.md" },
+      { "P2P Network" = "features/p2p-network.md" },
+      { "P2P Economy" = "features/economy.md" },
+      { "Smart Contracts" = "features/contracts.md" },
+      { "Observability" = "features/observability.md" },
+      { "Skill System" = "features/skills.md" },
+      { "Proactive Librarian" = "features/librarian.md" },
+      { "System Prompts" = "features/system-prompts.md" },
+      { "Smart Accounts" = "features/smart-accounts.md" },
+      { "Config Presets" = "features/config-presets.md" },
+      { "ZKP" = "features/zkp.md" },
+      { "Learning" = "features/learning.md" },
+      { "Agent Format" = "features/agent-format.md" },
+      { "MCP Integration" = "features/mcp-integration.md" },
+      { "RunLedger (Task OS)" = "features/run-ledger.md" },
+      { "Session Provenance" = "features/provenance.md" },
+      { "Operational Alerting" = "features/alerting.md" },
+      { "Exec Safety" = "features/exec-safety.md" },
+      { "Cockpit TUI" = "features/cockpit.md" }
+  ]},
+  { "Automation" = [
+      "automation/index.md",
+      { "Cron Scheduling" = "automation/cron.md" },
+      { "Background Tasks" = "automation/background.md" },
+      { "Workflow Engine" = "automation/workflows.md" }
+  ]},
+  { "Security" = [
+      "security/index.md",
+      { "Encryption & Secrets" = "security/encryption.md" },
+      { "Envelope Migration" = "security/envelope-migration.md" },
+      { "PII Redaction" = "security/pii-redaction.md" },
+      { "Exportability Policy" = "security/exportability.md" },
+      { "Approval Flow" = "security/approval-flow.md" },
+      { "Approval CLI" = "security/approval-cli.md" },
+      { "Upfront Payment Approval" = "security/upfront-payment-approval.md" },
+      { "Escrow Execution" = "security/escrow-execution.md" },
+      { "Actual Payment Execution Gating" = "security/actual-payment-execution-gating.md" },
+      { "Dispute-Ready Receipts" = "security/dispute-ready-receipts.md" },
+      { "Tool Approval" = "security/tool-approval.md" },
+      { "Authentication" = "security/authentication.md" }
+  ]},
+  { "Research" = [
+      { "Phase 7 PQ On-Chain Feasibility" = "research/phase7-pq-onchain-feasibility.md" }
+  ]},
+  { "Payments" = [
+      "payments/index.md",
+      { "USDC Payments" = "payments/usdc.md" },
+      { "X402 Protocol" = "payments/x402.md" }
+  ]},
+  { "CLI Reference" = [
+      "cli/index.md",
+      { "Core Commands" = "cli/core.md" },
+      { "Config Management" = "cli/config.md" },
+      { "Agent & Memory" = "cli/agent-memory.md" },
+      { "A2A Commands" = "cli/a2a.md" },
+      { "Security Commands" = "cli/security.md" },
+      { "Payment Commands" = "cli/payment.md" },
+      { "P2P Commands" = "cli/p2p.md" },
+      { "Economy Commands" = "cli/economy.md" },
+      { "Contract Commands" = "cli/contract.md" },
+      { "Metrics Commands" = "cli/metrics.md" },
+      { "Automation Commands" = "cli/automation.md" },
+      { "Status Dashboard" = "cli/status.md" },
+      { "MCP Commands" = "cli/mcp.md" },
+      { "Smart Account Commands" = "cli/smartaccount.md" },
+      { "Provenance Commands" = "cli/provenance.md" },
+      { "RunLedger Commands" = "cli/run.md" },
+      { "Sandbox Commands" = "cli/sandbox.md" },
+      { "Alerts Commands" = "cli/alerts.md" },
+      { "Learning Commands" = "cli/learning.md" }
+  ]},
+  { "Gateway & API" = [
+      "gateway/index.md",
+      { "HTTP API" = "gateway/http-api.md" },
+      { "WebSocket" = "gateway/websocket.md" }
+  ]},
+  { "Deployment" = [
+      "deployment/index.md",
+      { "Docker" = "deployment/docker.md" },
+      { "Production Checklist" = "deployment/production.md" }
+  ]},
+  { "Development" = [
+      "development/index.md",
+      { "Build & Test" = "development/build-test.md" }
+  ]},
+  { "Configuration Reference" = "configuration.md" }
+]
+
+[project.theme]
+logo = "assets/logo.png"
+favicon = "assets/logo.png"
+features = [
+  "navigation.tabs",
+  "navigation.tabs.sticky",
+  "navigation.sections",
+  "navigation.expand",
+  "navigation.path",
+  "navigation.top",
+  "navigation.indexes",
+  "navigation.footer",
+  "search.suggest",
+  "search.share",
+  "search.highlight",
+  "content.code.copy",
+  "content.code.annotate",
+  "content.tabs.link",
+  "toc.follow",
+]
+
+[project.theme.icon]
+repo = "fontawesome/brands/github"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: light)"
+scheme = "default"
+primary = "deep purple"
+accent = "amber"
+toggle.icon = "lucide/sun"
+toggle.name = "Switch to dark mode"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: dark)"
+scheme = "slate"
+primary = "deep purple"
+accent = "amber"
+toggle.icon = "lucide/moon"
+toggle.name = "Switch to light mode"
+
+[project.extra]
+generator = false
+
+[project.markdown_extensions.abbr]
+[project.markdown_extensions.admonition]
+[project.markdown_extensions.attr_list]
+[project.markdown_extensions.def_list]
+[project.markdown_extensions.footnotes]
+[project.markdown_extensions.md_in_html]
+[project.markdown_extensions.tables]
+
+[project.markdown_extensions.toc]
+permalink = true
+toc_depth = 3
+
+[project.markdown_extensions.pymdownx.details]
+[project.markdown_extensions.pymdownx.inlinehilite]
+[project.markdown_extensions.pymdownx.keys]
+[project.markdown_extensions.pymdownx.mark]
+
+[project.markdown_extensions.pymdownx.tabbed]
+alternate_style = true
+
+[project.markdown_extensions.pymdownx.tasklist]
+custom_checkbox = true
+
+[project.markdown_extensions.pymdownx.highlight]
+line_spans = "__span"
+pygments_lang_class = true
+
+[project.markdown_extensions.pymdownx.emoji]
+emoji_index = "zensical.extensions.emoji.twemoji"
+emoji_generator = "zensical.extensions.emoji.to_svg"
+
+[project.markdown_extensions.pymdownx.superfences]
+custom_fences = [
+  { name = "mermaid", class = "mermaid", format = "pymdownx.superfences.fence_code_format" }
+]

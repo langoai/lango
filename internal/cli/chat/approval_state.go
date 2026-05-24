@@ -17,7 +17,7 @@ type diffLineCache struct {
 type approvalState struct {
 	pending        *ApprovalRequestMsg
 	confirmPending bool
-	confirmAction  string    // "a" or "s"
+	confirmAction  string // "a" or "s"
 	confirmTime    time.Time
 	scrollOffset   int  // was dialogScrollOffset (package global)
 	splitMode      bool // was dialogSplitMode (package global)

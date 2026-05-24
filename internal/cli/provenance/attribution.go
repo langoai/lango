@@ -31,7 +31,7 @@ func newAttributionShowCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.
 			if err != nil {
 				return err
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			if isProvenanceDisabled(boot, cmd) {
 				return nil
@@ -72,7 +72,7 @@ func newAttributionReportCmd(bootLoader func() (*bootstrap.Result, error)) *cobr
 			if err != nil {
 				return err
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			if isProvenanceDisabled(boot, cmd) {
 				return nil

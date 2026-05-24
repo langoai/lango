@@ -35,6 +35,9 @@ lango cron add --name "deploy-reminder" \
   --prompt "Remind team about the deployment window"
 ```
 
+`--deliver` and `--deliver-to` are equivalent. Both accept one or more delivery
+targets such as `slack`, `telegram`, or channel-specific identifiers.
+
 ### Per-Job Timeout
 
 Each job can specify a per-job timeout that overrides the global `cron.defaultJobTimeout`. If no per-job timeout is set, the global default (30 minutes) applies.
@@ -70,21 +73,31 @@ lango cron list
 ### Pause / Resume
 
 ```bash
-lango cron pause --id <job-id>
-lango cron resume --id <job-id>
+lango cron pause <id-or-name>
+lango cron resume <id-or-name>
+
+# The documented --id form is also accepted.
+lango cron pause --id <id-or-name>
+lango cron resume --id <id-or-name>
 ```
 
 ### Delete a Job
 
 ```bash
-lango cron delete --id <job-id>
+lango cron delete <id-or-name>
+
+# The documented --id form is also accepted.
+lango cron delete --id <id-or-name>
 ```
 
 ### View History
 
 ```bash
 # History for a specific job
-lango cron history --id <job-id> --limit 10
+lango cron history <id-or-name> --limit 10
+
+# The documented --id form is also accepted.
+lango cron history --id <id-or-name> --limit 10
 
 # History across all jobs
 lango cron history --limit 20
@@ -92,7 +105,7 @@ lango cron history --limit 20
 
 ## Session Modes
 
-Each cron job runs in its own agent session. The session mode controls whether conversations persist across runs:
+Each cron job runs in its own agent session by default. The session mode controls whether conversations persist across runs:
 
 | Mode | Session Key Format | Behavior |
 |------|-------------------|----------|
@@ -100,12 +113,15 @@ Each cron job runs in its own agent session. The session mode controls whether c
 | `main` | `cron:<name>` | Shared session across all runs. Agent remembers previous outputs. |
 
 ```bash
-# Use shared session (agent remembers previous runs)
+# Use shared session for this job (agent remembers previous runs)
 lango cron add --name "weekly-report" \
   --schedule "0 9 * * 1" \
   --prompt "Write this week's report, building on previous ones" \
   --isolated=false
 ```
+
+`lango cron add` uses `cron.defaultSessionMode` when no explicit
+`--isolated` flag is supplied. The default configuration is `isolated`.
 
 ## Result Delivery
 

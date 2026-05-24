@@ -18,21 +18,21 @@ import (
 )
 
 // newFTS5TestStore creates a store with both Ent and FTS5 indexes wired up.
-// Skips if FTS5 is not available (build without -tags fts5).
+// Skips if FTS5 is unavailable in the current SQLite runtime.
 func newFTS5TestStore(t *testing.T) (*Store, *sql.DB) {
 	t.Helper()
 
 	// Ent client for ORM operations.
-	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&_fk=1")
+	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&cache=shared&_fk=1")
 	t.Cleanup(func() { client.Close() })
 
 	// Separate raw DB for FTS5 (in-memory, shared cache so Ent and FTS5 coexist).
-	rawDB, err := sql.Open("sqlite3", "file:ent?mode=memory&_fk=1")
+	rawDB, err := sql.Open("sqlite3", "file:ent?mode=memory&cache=shared&_fk=1")
 	require.NoError(t, err)
 	t.Cleanup(func() { rawDB.Close() })
 
 	if !search.ProbeFTS5(rawDB) {
-		t.Skip("FTS5 not available (build with -tags fts5)")
+		t.Skip("FTS5 not available in current SQLite runtime")
 	}
 
 	logger := zap.NewNop().Sugar()
@@ -170,6 +170,41 @@ func TestWriteTimeSync_Knowledge(t *testing.T) {
 	assert.Equal(t, 0, count)
 }
 
+func TestWriteTimeSync_Knowledge_ProtectedFirstSave(t *testing.T) {
+	store, rawDB := newFTS5TestStore(t)
+	store.SetPayloadProtector(stubPayloadProtector{})
+	ctx := context.Background()
+
+	entry := KnowledgeEntry{
+		Key:         "protected-first-save",
+		Category:    entknowledge.CategoryFact,
+		Content:     "first protected content",
+		Source:      "tool:save_knowledge",
+		SourceClass: "private-confidential",
+		AssetLabel:  "knowledge/protected-first-save",
+	}
+	require.NoError(t, store.SaveKnowledge(ctx, "s1", entry))
+
+	got, err := store.GetKnowledge(ctx, entry.Key)
+	require.NoError(t, err)
+	assert.Equal(t, 1, got.Version)
+	assert.Equal(t, entry.Content, got.Content)
+	assert.Equal(t, entry.SourceClass, got.SourceClass)
+	assert.Equal(t, entry.AssetLabel, got.AssetLabel)
+
+	row := store.client.Knowledge.Query().Where(entknowledge.Key(entry.Key), entknowledge.IsLatest(true)).OnlyX(ctx)
+	require.NotNil(t, row.ContentCiphertext)
+	require.NotNil(t, row.ContentNonce)
+	require.NotNil(t, row.ContentKeyVersion)
+	assert.Equal(t, 1, row.Version)
+	assert.True(t, row.IsLatest)
+
+	var count int
+	err = rawDB.QueryRow(`SELECT count(*) FROM knowledge_fts WHERE source_id = ?`, entry.Key).Scan(&count)
+	require.NoError(t, err)
+	assert.Equal(t, 1, count)
+}
+
 func TestFTS5_OnlyLatestVersion(t *testing.T) {
 	store, rawDB := newFTS5TestStore(t)
 	ctx := context.Background()
@@ -204,12 +239,13 @@ func TestFTS5_OnlyLatestVersion(t *testing.T) {
 
 func TestWriteTimeSync_Learning(t *testing.T) {
 	store, rawDB := newFTS5TestStore(t)
+	store.SetPayloadProtector(stubPayloadProtector{})
 	ctx := context.Background()
 
 	require.NoError(t, store.SaveLearning(ctx, "s1", LearningEntry{
 		Trigger:      "timeout error",
-		ErrorPattern: "context deadline exceeded",
-		Fix:          "increase timeout to 30s",
+		ErrorPattern: "context deadline exceeded alice@example.com",
+		Fix:          "increase timeout to 30s token SECRETSECRETSECRETSECRETSECRETSECRET",
 		Category:     entlearning.CategoryTimeout,
 	}))
 
@@ -217,6 +253,12 @@ func TestWriteTimeSync_Learning(t *testing.T) {
 	err := rawDB.QueryRow(`SELECT count(*) FROM learning_fts WHERE learning_fts MATCH 'timeout'`).Scan(&count)
 	require.NoError(t, err)
 	assert.Equal(t, 1, count)
+
+	var trigger, errorPattern, fix string
+	err = rawDB.QueryRow(`SELECT trigger, error_pattern, fix FROM learning_fts LIMIT 1`).Scan(&trigger, &errorPattern, &fix)
+	require.NoError(t, err)
+	assert.NotContains(t, errorPattern, "alice@example.com")
+	assert.NotContains(t, fix, "SECRETSECRETSECRETSECRETSECRETSECRET")
 }
 
 func TestSearchKnowledge_FTS5ErrorFallback(t *testing.T) {

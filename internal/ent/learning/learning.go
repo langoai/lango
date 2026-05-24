@@ -23,6 +23,12 @@ const (
 	FieldDiagnosis = "diagnosis"
 	// FieldFix holds the string denoting the fix field in the database.
 	FieldFix = "fix"
+	// FieldPayloadCiphertext holds the string denoting the payload_ciphertext field in the database.
+	FieldPayloadCiphertext = "payload_ciphertext"
+	// FieldPayloadNonce holds the string denoting the payload_nonce field in the database.
+	FieldPayloadNonce = "payload_nonce"
+	// FieldPayloadKeyVersion holds the string denoting the payload_key_version field in the database.
+	FieldPayloadKeyVersion = "payload_key_version"
 	// FieldCategory holds the string denoting the category field in the database.
 	FieldCategory = "category"
 	// FieldTags holds the string denoting the tags field in the database.
@@ -48,6 +54,9 @@ var Columns = []string{
 	FieldErrorPattern,
 	FieldDiagnosis,
 	FieldFix,
+	FieldPayloadCiphertext,
+	FieldPayloadNonce,
+	FieldPayloadKeyVersion,
 	FieldCategory,
 	FieldTags,
 	FieldOccurrenceCount,
@@ -139,6 +148,11 @@ func ByDiagnosis(opts ...sql.OrderTermOption) OrderOption {
 // ByFix orders the results by the fix field.
 func ByFix(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldFix, opts...).ToFunc()
+}
+
+// ByPayloadKeyVersion orders the results by the payload_key_version field.
+func ByPayloadKeyVersion(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPayloadKeyVersion, opts...).ToFunc()
 }
 
 // ByCategory orders the results by the category field.

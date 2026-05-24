@@ -12,9 +12,18 @@ import (
 
 // Extractor uses an LLM to extract entities and relationships from text.
 type Extractor struct {
-	generator llm.TextGenerator
-	validator PredicateValidatorFunc
-	logger    *zap.SugaredLogger
+	generator        llm.TextGenerator
+	validator        PredicateValidatorFunc
+	onDroppedUnknown func(DroppedUnknownPredicateEvent)
+	logger           *zap.SugaredLogger
+}
+
+type DroppedUnknownPredicateEvent struct {
+	Source    string
+	SourceID  string
+	Predicate string
+	Subject   string
+	Object    string
 }
 
 // ExtractorOption configures optional Extractor behavior.
@@ -25,6 +34,11 @@ type ExtractorOption func(*Extractor)
 // When not set, the hardcoded 9-predicate list is used as fallback.
 func WithPredicateValidator(v PredicateValidatorFunc) ExtractorOption {
 	return func(e *Extractor) { e.validator = v }
+}
+
+// WithDroppedUnknownObserver emits a baseline event when extraction rejects an unknown predicate.
+func WithDroppedUnknownObserver(fn func(DroppedUnknownPredicateEvent)) ExtractorOption {
+	return func(e *Extractor) { e.onDroppedUnknown = fn }
 }
 
 // NewExtractor creates a new LLM-based entity/relationship extractor.
@@ -108,6 +122,15 @@ func (e *Extractor) parseResponse(response, sourceID string) []Triple {
 		}
 
 		if !e.isValidPredicate(predicate) {
+			if e.onDroppedUnknown != nil {
+				e.onDroppedUnknown(DroppedUnknownPredicateEvent{
+					Source:    string(AdmissionSourceContentSavedExtractor),
+					SourceID:  sourceID,
+					Predicate: predicate,
+					Subject:   subject,
+					Object:    object,
+				})
+			}
 			e.logger.Warnw("rejected unknown predicate from extraction",
 				"predicate", predicate,
 				"subject", subject,

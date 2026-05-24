@@ -50,7 +50,7 @@ After Phase 1-4 completion, state became concentrated in cockpit TUI hub files. 
 
 ## Risks / Trade-offs
 
-- [Risk] Merge conflicts from cascading chat.go modifications across waves → Mitigation: Units within a wave designed to avoid file overlap, waves executed sequentially
+- [Risk] Merge conflicts from cascading chat.go modifications across slices → Mitigation: Units within a slice designed to avoid file overlap, slices executed sequentially
 - [Risk] approvalState extraction requires simultaneous test file modifications → Mitigation: approval_dialog_test.go and chat_test.go both modified in the same unit
 - [Risk] sidebar.New() signature change affects external call sites → Mitigation: sidebar_test.go and cockpit_test.go both modified in the same unit
 - [Risk] RelativeTimeHuman separation causes future confusion → Mitigation: Function name clearly conveys intent, difference documented in format_test.go

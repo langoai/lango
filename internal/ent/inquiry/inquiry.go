@@ -21,6 +21,12 @@ const (
 	FieldTopic = "topic"
 	// FieldQuestion holds the string denoting the question field in the database.
 	FieldQuestion = "question"
+	// FieldPayloadCiphertext holds the string denoting the payload_ciphertext field in the database.
+	FieldPayloadCiphertext = "payload_ciphertext"
+	// FieldPayloadNonce holds the string denoting the payload_nonce field in the database.
+	FieldPayloadNonce = "payload_nonce"
+	// FieldPayloadKeyVersion holds the string denoting the payload_key_version field in the database.
+	FieldPayloadKeyVersion = "payload_key_version"
 	// FieldContext holds the string denoting the context field in the database.
 	FieldContext = "context"
 	// FieldPriority holds the string denoting the priority field in the database.
@@ -47,6 +53,9 @@ var Columns = []string{
 	FieldSessionKey,
 	FieldTopic,
 	FieldQuestion,
+	FieldPayloadCiphertext,
+	FieldPayloadNonce,
+	FieldPayloadKeyVersion,
 	FieldContext,
 	FieldPriority,
 	FieldStatus,
@@ -155,6 +164,11 @@ func ByTopic(opts ...sql.OrderTermOption) OrderOption {
 // ByQuestion orders the results by the question field.
 func ByQuestion(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldQuestion, opts...).ToFunc()
+}
+
+// ByPayloadKeyVersion orders the results by the payload_key_version field.
+func ByPayloadKeyVersion(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPayloadKeyVersion, opts...).ToFunc()
 }
 
 // ByContext orders the results by the context field.

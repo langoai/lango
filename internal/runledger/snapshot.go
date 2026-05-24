@@ -9,21 +9,26 @@ import (
 // RunSnapshot is a materialized view derived entirely from the journal.
 // It is a read cache — never the source of truth.
 type RunSnapshot struct {
-	RunID            string                `json:"run_id"`
-	SessionKey       string                `json:"session_key"`
-	OriginalRequest  string                `json:"original_request"`
-	Goal             string                `json:"goal"`
-	Status           RunStatus             `json:"status"`
-	CurrentStepID    string                `json:"current_step_id,omitempty"`
-	CurrentBlocker   string                `json:"current_blocker,omitempty"`
-	AcceptanceState  []AcceptanceCriterion `json:"acceptance_state"`
-	Steps            []Step                `json:"steps"`
-	Notes            map[string]string     `json:"notes"`
-	SourceKind       string                `json:"source_kind,omitempty"`
-	SourceDescriptor json.RawMessage       `json:"source_descriptor,omitempty"`
-	LastJournalSeq   int64                 `json:"last_journal_seq"`
-	UpdatedAt        time.Time             `json:"updated_at"`
-	stepIndex        map[string]int        `json:"-"` // lazy-built, nil = needs rebuild
+	RunID                    string                `json:"run_id"`
+	SessionKey               string                `json:"session_key"`
+	OriginalRequest          string                `json:"original_request"`
+	Goal                     string                `json:"goal"`
+	Status                   RunStatus             `json:"status"`
+	CurrentStepID            string                `json:"current_step_id,omitempty"`
+	CurrentBlocker           string                `json:"current_blocker,omitempty"`
+	TeammateRuntimeCondition string                `json:"teammate_runtime_condition,omitempty"`
+	TeammateBlockedReason    string                `json:"teammate_blocked_reason,omitempty"`
+	TeammateGrantRequestID   string                `json:"teammate_grant_request_id,omitempty"`
+	TeammateGrantAttempt     int                   `json:"teammate_grant_attempt,omitempty"`
+	TeammateGrantState       string                `json:"teammate_grant_state,omitempty"`
+	AcceptanceState          []AcceptanceCriterion `json:"acceptance_state"`
+	Steps                    []Step                `json:"steps"`
+	Notes                    map[string]string     `json:"notes"`
+	SourceKind               string                `json:"source_kind,omitempty"`
+	SourceDescriptor         json.RawMessage       `json:"source_descriptor,omitempty"`
+	LastJournalSeq           int64                 `json:"last_journal_seq"`
+	UpdatedAt                time.Time             `json:"updated_at"`
+	stepIndex                map[string]int        `json:"-"` // lazy-built, nil = needs rebuild
 }
 
 // DeepCopy returns a fully independent copy of the snapshot.
@@ -292,6 +297,20 @@ func applyEvent(snap *RunSnapshot, ev *JournalEvent) error {
 		}
 		snap.Notes[p.Key] = p.Value
 
+	case EventTeammateApprovalBlocked:
+		var p TeammateApprovalBlockedPayload
+		if err := json.Unmarshal(ev.Payload, &p); err != nil {
+			return fmt.Errorf("unmarshal teammate_approval_blocked: %w", err)
+		}
+		snap.TeammateRuntimeCondition = p.RuntimeCondition
+		snap.TeammateBlockedReason = p.BlockedReason
+		snap.TeammateGrantRequestID = p.GrantRequestID
+		snap.TeammateGrantAttempt = p.GrantAttempt
+		snap.TeammateGrantState = p.GrantState
+
+	case EventTeammateApprovalUnblocked:
+		clearTeammateApprovalState(snap)
+
 	case EventRunPaused:
 		snap.Status = RunStatusPaused
 
@@ -301,9 +320,11 @@ func applyEvent(snap *RunSnapshot, ev *JournalEvent) error {
 
 	case EventRunCompleted:
 		snap.Status = RunStatusCompleted
+		clearTeammateApprovalState(snap)
 
 	case EventRunFailed:
 		snap.Status = RunStatusFailed
+		clearTeammateApprovalState(snap)
 
 	case EventCriterionMet:
 		var p CriterionMetPayload
@@ -370,10 +391,19 @@ func applyPolicyToSnapshot(snap *RunSnapshot, stepID string, decision *PolicyDec
 	case PolicyAbort:
 		snap.Status = RunStatusFailed
 		snap.CurrentBlocker = decision.Reason
+		clearTeammateApprovalState(snap)
 
 	case PolicyEscalate:
 		snap.CurrentBlocker = "escalated: " + decision.Reason
 	}
+}
+
+func clearTeammateApprovalState(snap *RunSnapshot) {
+	snap.TeammateRuntimeCondition = ""
+	snap.TeammateBlockedReason = ""
+	snap.TeammateGrantRequestID = ""
+	snap.TeammateGrantAttempt = 0
+	snap.TeammateGrantState = ""
 }
 
 func copyStep(step Step) Step {

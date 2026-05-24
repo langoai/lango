@@ -79,11 +79,12 @@ type ServerConnection struct {
 	resources []DiscoveredResource
 	prompts   []DiscoveredPrompt
 
-	isolator      sandboxos.OSIsolator
-	failClosed    bool
-	workspacePath string        // User workspace root, used by MCPServerPolicy to walk up to .git
-	dataRoot      string        // Lango control-plane root, masked from sandboxed MCP child
-	bus           *eventbus.Bus // event bus for SandboxDecisionEvent (optional)
+	isolator       sandboxos.OSIsolator
+	failClosed     bool
+	workspacePath  string // User workspace root, used by MCPServerPolicy to walk up to .git
+	dataRoot       string // Lango control-plane root, masked from sandboxed MCP child
+	protectedPaths []string
+	bus            *eventbus.Bus // event bus for SandboxDecisionEvent (optional)
 
 	stopCh chan struct{}
 }
@@ -115,6 +116,13 @@ func (sc *ServerConnection) SetOSIsolator(iso sandboxos.OSIsolator, workspacePat
 	sc.isolator = iso
 	sc.workspacePath = workspacePath
 	sc.dataRoot = dataRoot
+}
+
+// SetProtectedPaths stores the resolved runtime denylist for policy construction.
+func (sc *ServerConnection) SetProtectedPaths(paths []string) {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+	sc.protectedPaths = append([]string(nil), paths...)
 }
 
 // SetFailClosed sets whether this connection blocks stdio transport
@@ -362,7 +370,7 @@ func (sc *ServerConnection) createTransport() (sdkmcp.Transport, error) {
 			return nil, fmt.Errorf("%w: no OS isolator configured for MCP server %q", sandboxos.ErrSandboxRequired, sc.name)
 		}
 		if sc.isolator != nil {
-			policy := sandboxos.MCPServerPolicy(sc.workspacePath, sc.dataRoot)
+			policy := sandboxos.MCPServerPolicyWithProtectedPaths(sc.workspacePath, sc.dataRoot, sc.protectedPaths)
 			if err := sc.isolator.Apply(context.Background(), cmd, policy); err != nil {
 				if sc.failClosed {
 					sc.publishSandboxDecision("rejected", err.Error())

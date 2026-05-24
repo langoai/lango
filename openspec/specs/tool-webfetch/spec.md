@@ -66,3 +66,7 @@ The `BuildTools()` function SHALL return a single `web_fetch` tool with `SafetyL
 - **WHEN** `BuildTools()` is called
 - **THEN** it returns exactly one tool named `web_fetch` with the specified capability metadata
 
+#### Scenario: Missing URL parameter
+- **WHEN** the `web_fetch` tool handler is invoked without `url`
+- **THEN** it SHALL return an actionable missing-parameter error
+- **AND** SHALL reject the request before any HTTP fetch begins

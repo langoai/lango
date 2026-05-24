@@ -52,15 +52,32 @@ func BuildEscrowTools(coord *Coordinator, escrowEngine *escrow.Engine, budgetEng
 			"required": []string{"name", "goal", "capability", "memberCount", "leaderDid", "budget"},
 		},
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-			name := toolparam.OptionalString(params, "name", "")
-			goal := toolparam.OptionalString(params, "goal", "")
-			capability := toolparam.OptionalString(params, "capability", "")
-			leaderDID := toolparam.OptionalString(params, "leaderDid", "")
-			memberCount := toolparam.OptionalInt(params, "memberCount", 1)
-			budgetAmount := toolparam.OptionalFloat64(params, "budget", 0.0)
-
-			if name == "" || capability == "" || leaderDID == "" || budgetAmount <= 0 {
-				return nil, fmt.Errorf("missing required parameters or invalid budget")
+			name, err := toolparam.RequireString(params, "name")
+			if err != nil {
+				return nil, err
+			}
+			goal, err := toolparam.RequireString(params, "goal")
+			if err != nil {
+				return nil, err
+			}
+			capability, err := toolparam.RequireString(params, "capability")
+			if err != nil {
+				return nil, err
+			}
+			leaderDID, err := toolparam.RequireString(params, "leaderDid")
+			if err != nil {
+				return nil, err
+			}
+			memberCount, err := toolparam.RequireInt(params, "memberCount")
+			if err != nil {
+				return nil, err
+			}
+			budgetAmount, err := toolparam.RequireFloat64(params, "budget")
+			if err != nil {
+				return nil, err
+			}
+			if budgetAmount <= 0 {
+				return nil, fmt.Errorf("budget must be greater than zero")
 			}
 
 			// Step 1: Form team.
@@ -206,12 +223,15 @@ func BuildEscrowTools(coord *Coordinator, escrowEngine *escrow.Engine, budgetEng
 			"required": []string{"escrowId", "milestoneId"},
 		},
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-			escrowID := toolparam.OptionalString(params, "escrowId", "")
-			milestoneID := toolparam.OptionalString(params, "milestoneId", "")
-			evidence := toolparam.OptionalString(params, "evidence", "")
-			if escrowID == "" || milestoneID == "" {
-				return nil, fmt.Errorf("missing escrowId or milestoneId")
+			escrowID, err := toolparam.RequireString(params, "escrowId")
+			if err != nil {
+				return nil, err
 			}
+			milestoneID, err := toolparam.RequireString(params, "milestoneId")
+			if err != nil {
+				return nil, err
+			}
+			evidence := toolparam.OptionalString(params, "evidence", "")
 			if evidence == "" {
 				evidence = "manual completion"
 			}

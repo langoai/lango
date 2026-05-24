@@ -28,29 +28,29 @@ const (
 
 // Trace is the durable summary row for a single turn.
 type Trace struct {
-	TraceID    string
-	SessionKey string
-	Entrypoint string
-	Outcome    Outcome
-	ErrorCode  string
-	CauseClass string
+	TraceID     string
+	SessionKey  string
+	Entrypoint  string
+	Outcome     Outcome
+	ErrorCode   string
+	CauseClass  string
 	CauseDetail string
-	Summary    string
-	StartedAt  time.Time
-	EndedAt    *time.Time
+	Summary     string
+	StartedAt   time.Time
+	EndedAt     *time.Time
 }
 
 // Event is a single append-only trace event.
 type Event struct {
-	TraceID       string
-	Seq           int64
-	EventType     string
-	AgentName     string
-	ToolName      string
-	CallSignature string
-	PayloadJSON   string
+	TraceID          string
+	Seq              int64
+	EventType        string
+	AgentName        string
+	ToolName         string
+	CallSignature    string
+	PayloadJSON      string
 	PayloadTruncated bool
-	CreatedAt     time.Time
+	CreatedAt        time.Time
 }
 
 // Store persists durable turn traces.
@@ -153,9 +153,9 @@ func (s *EntStore) AppendEvent(ctx context.Context, event Event) error {
 	if event.CallSignature != "" {
 		builder.SetCallSignature(event.CallSignature)
 	}
-		if event.PayloadJSON != "" {
-			builder.SetPayloadJSON(event.PayloadJSON)
-		}
+	if event.PayloadJSON != "" {
+		builder.SetPayloadJSON(event.PayloadJSON)
+	}
 	if event.PayloadTruncated {
 		builder.SetPayloadTruncated(true)
 	}
@@ -379,15 +379,15 @@ func entToEvent(row *ent.TurnTraceEvent) Event {
 
 func entToTrace(row *ent.TurnTrace) Trace {
 	trace := Trace{
-		TraceID:    row.TraceID,
-		SessionKey: row.SessionKey,
-		Entrypoint: row.Entrypoint,
-		Outcome:    Outcome(row.Outcome),
-		ErrorCode:  row.ErrorCode,
-		CauseClass: row.CauseClass,
+		TraceID:     row.TraceID,
+		SessionKey:  row.SessionKey,
+		Entrypoint:  row.Entrypoint,
+		Outcome:     Outcome(row.Outcome),
+		ErrorCode:   row.ErrorCode,
+		CauseClass:  row.CauseClass,
 		CauseDetail: row.CauseDetail,
-		Summary:    row.Summary,
-		StartedAt:  row.StartedAt,
+		Summary:     row.Summary,
+		StartedAt:   row.StartedAt,
 	}
 	if row.EndedAt != nil {
 		trace.EndedAt = row.EndedAt

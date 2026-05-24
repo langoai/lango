@@ -14,7 +14,7 @@ type Workflow struct {
 // Step represents a single unit of work in a workflow.
 type Step struct {
 	ID        string        `yaml:"id"`
-	Agent     string        `yaml:"agent"`  // executor | researcher | planner | memory-manager
+	Agent     string        `yaml:"agent"`  // current built-ins or legacy aliases
 	Prompt    string        `yaml:"prompt"` // Go template with {{step-id.result}}
 	DependsOn []string      `yaml:"depends_on"`
 	DeliverTo []string      `yaml:"deliver_to"` // per-step delivery

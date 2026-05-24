@@ -8,12 +8,13 @@ import "context"
 type contextKey string
 
 const (
-	agentNameKey         contextKey = "lango.agent_name"
-	principalKey         contextKey = "lango.principal"
-	p2pRequestKey        contextKey = "lango.p2p_request"
-	dynamicAllowedTools  contextKey = "lango.dynamic_allowed_tools"
-	spawnDepthKey        contextKey = "lango.spawn_depth"
-	spawnChainKey        contextKey = "lango.spawn_chain"
+	agentNameKey        contextKey = "lango.agent_name"
+	principalKey        contextKey = "lango.principal"
+	p2pRequestKey       contextKey = "lango.p2p_request"
+	missionIDKey        contextKey = "lango.mission_id"
+	dynamicAllowedTools contextKey = "lango.dynamic_allowed_tools"
+	spawnDepthKey       contextKey = "lango.spawn_depth"
+	spawnChainKey       contextKey = "lango.spawn_chain"
 )
 
 // WithAgentName returns a new context carrying the given agent name.
@@ -53,6 +54,20 @@ func WithP2PRequest(ctx context.Context) context.Context {
 func IsP2PRequest(ctx context.Context) bool {
 	v, _ := ctx.Value(p2pRequestKey).(bool)
 	return v
+}
+
+// WithMissionID returns a new context carrying the durable mission identifier.
+func WithMissionID(ctx context.Context, missionID string) context.Context {
+	return context.WithValue(ctx, missionIDKey, missionID)
+}
+
+// MissionIDFromContext extracts the durable mission identifier from ctx.
+// It returns an empty string if no mission binding is present.
+func MissionIDFromContext(ctx context.Context) string {
+	if v, ok := ctx.Value(missionIDKey).(string); ok {
+		return v
+	}
+	return ""
 }
 
 // WithDynamicAllowedTools returns a new context carrying a runtime tool allowlist.

@@ -1,9 +1,12 @@
 package passphrase
 
 import (
+	"bytes"
 	"errors"
 	"path/filepath"
 	"testing"
+
+	"github.com/langoai/lango/internal/keyring"
 )
 
 func TestAcquireNonInteractive_Keyfile(t *testing.T) {
@@ -49,5 +52,101 @@ func TestAcquireNonInteractive_NeverPrompts(t *testing.T) {
 	_, _, err := AcquireNonInteractive(Options{KeyfilePath: filepath.Join(dir, "missing")})
 	if !errors.Is(err, ErrNoNonInteractiveSource) {
 		t.Fatalf("expected ErrNoNonInteractiveSource, got %v", err)
+	}
+}
+
+type stubNonInteractiveKeyringProvider struct {
+	pass string
+	err  error
+}
+
+func (s stubNonInteractiveKeyringProvider) Get(service, key string) (string, error) {
+	return s.pass, s.err
+}
+func (s stubNonInteractiveKeyringProvider) Set(service, key, value string) error { return nil }
+func (s stubNonInteractiveKeyringProvider) Delete(service, key string) error     { return nil }
+
+func TestAcquireNonInteractive_KeyringErrorWarnsAndFallsThrough(t *testing.T) {
+	dir := t.TempDir()
+	keyfilePath := filepath.Join(dir, "keyfile")
+	want := "from-keyfile-pass"
+	if err := WriteKeyfile(keyfilePath, want); err != nil {
+		t.Fatalf("WriteKeyfile: %v", err)
+	}
+
+	var errBuf bytes.Buffer
+	got, src, err := acquireNonInteractiveWithIO(Options{
+		KeyfilePath:     keyfilePath,
+		KeyringProvider: stubNonInteractiveKeyringProvider{err: errors.New("boom")},
+	}, &errBuf)
+	if err != nil {
+		t.Fatalf("acquireNonInteractiveWithIO: %v", err)
+	}
+	if got != want {
+		t.Fatalf("pass mismatch: got %q want %q", got, want)
+	}
+	if src != SourceKeyfile {
+		t.Fatalf("expected SourceKeyfile, got %v", src)
+	}
+	if errBuf.String() != "warning: keyring read failed: boom\n" {
+		t.Fatalf("unexpected stderr warning: %q", errBuf.String())
+	}
+}
+
+func TestAcquireNonInteractive_PublicWrapperUsesStderrSeam(t *testing.T) {
+	restorePassphraseStdioSeams(t)
+
+	dir := t.TempDir()
+	keyfilePath := filepath.Join(dir, "keyfile")
+	want := "from-keyfile-pass"
+	if err := WriteKeyfile(keyfilePath, want); err != nil {
+		t.Fatalf("WriteKeyfile: %v", err)
+	}
+
+	var errBuf bytes.Buffer
+	passphraseStderr = &errBuf
+
+	got, src, err := AcquireNonInteractive(Options{
+		KeyfilePath:     keyfilePath,
+		KeyringProvider: stubNonInteractiveKeyringProvider{err: errors.New("boom")},
+	})
+	if err != nil {
+		t.Fatalf("AcquireNonInteractive: %v", err)
+	}
+	if got != want {
+		t.Fatalf("pass mismatch: got %q want %q", got, want)
+	}
+	if src != SourceKeyfile {
+		t.Fatalf("expected SourceKeyfile, got %v", src)
+	}
+	if errBuf.String() != "warning: keyring read failed: boom\n" {
+		t.Fatalf("unexpected stderr warning: %q", errBuf.String())
+	}
+}
+
+func TestAcquireNonInteractive_KeyringNotFoundDoesNotWarn(t *testing.T) {
+	dir := t.TempDir()
+	keyfilePath := filepath.Join(dir, "keyfile")
+	want := "from-keyfile-pass"
+	if err := WriteKeyfile(keyfilePath, want); err != nil {
+		t.Fatalf("WriteKeyfile: %v", err)
+	}
+
+	var errBuf bytes.Buffer
+	got, src, err := acquireNonInteractiveWithIO(Options{
+		KeyfilePath:     keyfilePath,
+		KeyringProvider: stubNonInteractiveKeyringProvider{err: keyring.ErrNotFound},
+	}, &errBuf)
+	if err != nil {
+		t.Fatalf("acquireNonInteractiveWithIO: %v", err)
+	}
+	if got != want {
+		t.Fatalf("pass mismatch: got %q want %q", got, want)
+	}
+	if src != SourceKeyfile {
+		t.Fatalf("expected SourceKeyfile, got %v", src)
+	}
+	if errBuf.Len() != 0 {
+		t.Fatalf("expected no stderr warning, got %q", errBuf.String())
 	}
 }

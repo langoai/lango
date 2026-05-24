@@ -143,3 +143,44 @@ func TestAlertsTool_EmptyList(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, 0, m["count"])
 }
+
+func TestAcknowledgeTool_RequiresAlertID(t *testing.T) {
+	t.Parallel()
+
+	bus := eventbus.New()
+	engine := sentinel.New(bus, sentinel.DefaultSentinelConfig())
+	tools := sentinel.BuildTools(engine)
+
+	var ackTool *agent.Tool
+	for _, tool := range tools {
+		if tool.Name == "sentinel_acknowledge" {
+			ackTool = tool
+			break
+		}
+	}
+	require.NotNil(t, ackTool)
+
+	result, err := ackTool.Handler(context.Background(), map[string]interface{}{})
+	require.Error(t, err)
+	assert.Nil(t, result)
+	assert.EqualError(t, err, "missing alertId parameter")
+}
+
+func TestAcknowledgeTool_CapabilityMetadataMatchesMutation(t *testing.T) {
+	t.Parallel()
+
+	bus := eventbus.New()
+	engine := sentinel.New(bus, sentinel.DefaultSentinelConfig())
+	tools := sentinel.BuildTools(engine)
+
+	var ackTool *agent.Tool
+	for _, tool := range tools {
+		if tool.Name == "sentinel_acknowledge" {
+			ackTool = tool
+			break
+		}
+	}
+	require.NotNil(t, ackTool)
+	assert.Equal(t, agent.ActivityManage, ackTool.Capability.Activity)
+	assert.False(t, ackTool.Capability.ReadOnly)
+}

@@ -83,6 +83,9 @@ func escrowCreateTool(ee *escrow.Engine) *agent.Tool {
 			}
 
 			rawMilestones, _ := params["milestones"].([]interface{})
+			if len(rawMilestones) == 0 {
+				return nil, &toolparam.ErrMissingParam{Name: "milestones"}
+			}
 			milestones := make([]escrow.MilestoneRequest, 0, len(rawMilestones))
 			for _, rm := range rawMilestones {
 				m, ok := rm.(map[string]interface{})
@@ -520,14 +523,29 @@ func escrowResolveTool(ee *escrow.Engine, settler escrow.SettlementExecutor) *ag
 			if err != nil {
 				return nil, err
 			}
-			sellerPctFloat, _ := params["sellerPercent"].(float64)
+			sellerPctFloat, err := toolparam.RequireFloat64(params, "sellerPercent")
+			if err != nil {
+				return nil, err
+			}
 			if sellerPctFloat < 0 || sellerPctFloat > 100 {
 				return nil, fmt.Errorf("sellerPercent must be between 0 and 100")
+			}
+			if favor != "buyer" && favor != "seller" {
+				return nil, fmt.Errorf("favor must be either buyer or seller")
+			}
+			if favor == "buyer" && sellerPctFloat != 0 {
+				return nil, fmt.Errorf("sellerPercent must be 0 when favor is buyer")
+			}
+			if favor == "seller" && sellerPctFloat != 100 {
+				return nil, fmt.Errorf("sellerPercent must be 100 when favor is seller")
 			}
 
 			entry, err := ee.Get(escrowID)
 			if err != nil {
 				return nil, err
+			}
+			if entry.Status != escrow.StatusDisputed {
+				return nil, escrow.ErrInvalidTransition
 			}
 
 			sellerFavor := favor == "seller"
@@ -542,6 +560,7 @@ func escrowResolveTool(ee *escrow.Engine, settler escrow.SettlementExecutor) *ag
 				"sellerAmount": wallet.FormatUSDC(sellerAmount),
 				"buyerAmount":  wallet.FormatUSDC(buyerAmount),
 			}
+			chainResolved := false
 
 			// On-chain resolve for hub mode.
 			if hs, ok := settler.(*hub.HubSettler); ok {
@@ -552,6 +571,7 @@ func escrowResolveTool(ee *escrow.Engine, settler escrow.SettlementExecutor) *ag
 					}
 					result["onChainTxHash"] = txHash
 					result["dealId"] = dealID.String()
+					chainResolved = true
 				}
 			}
 
@@ -565,7 +585,22 @@ func escrowResolveTool(ee *escrow.Engine, settler escrow.SettlementExecutor) *ag
 					}
 					result["onChainTxHash"] = txHash
 					result["vaultAddress"] = vaultAddr.Hex()
+					chainResolved = true
 				}
+			}
+
+			if chainResolved {
+				resolved, err := ee.RecordDisputeResolution(escrowID, sellerFavor)
+				if err != nil {
+					return nil, err
+				}
+				result["status"] = string(resolved.Status)
+			} else {
+				resolved, err := ee.ResolveDispute(ctx, escrowID, sellerFavor)
+				if err != nil {
+					return nil, err
+				}
+				result["status"] = string(resolved.Status)
 			}
 
 			return result, nil

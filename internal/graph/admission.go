@@ -1,0 +1,198 @@
+package graph
+
+import (
+	"github.com/langoai/lango/internal/eventbus"
+	"go.uber.org/zap"
+)
+
+type AdmissionSource string
+
+const (
+	AdmissionSourceConversationAnalysis  AdmissionSource = "conversation_analysis"
+	AdmissionSourceSessionLearning       AdmissionSource = "session_learning"
+	AdmissionSourceLearning              AdmissionSource = "learning"
+	AdmissionSourceProactiveLibrarian    AdmissionSource = "proactive_librarian"
+	AdmissionSourceContentSavedExtractor AdmissionSource = "content_saved_extractor"
+)
+
+type AdmissionProducerGroup string
+
+const (
+	AdmissionProducerGroupLearning  AdmissionProducerGroup = "learning"
+	AdmissionProducerGroupLibrarian AdmissionProducerGroup = "librarian"
+)
+
+type AdmissionValidatorSource string
+
+const (
+	AdmissionValidatorSourceOntologyRegistry AdmissionValidatorSource = "ontology_registry"
+	AdmissionValidatorSourceUnavailable      AdmissionValidatorSource = "unavailable"
+)
+
+type AdmissionDecision string
+
+const (
+	AdmissionDecisionKnown       AdmissionDecision = "known"
+	AdmissionDecisionUnknown     AdmissionDecision = "unknown"
+	AdmissionDecisionUnvalidated AdmissionDecision = "unvalidated"
+)
+
+type AdmissionSourceKind string
+
+const (
+	AdmissionSourceKindEventBus  AdmissionSourceKind = "event_bus"
+	AdmissionSourceKindSynthetic AdmissionSourceKind = "synthetic"
+)
+
+type AdmissionBatch struct {
+	SourceKind    AdmissionSourceKind
+	Source        AdmissionSource
+	ProducerGroup AdmissionProducerGroup
+	Triples       []Triple
+}
+
+type AdmissionRecord struct {
+	Triple   Triple
+	Decision AdmissionDecision
+}
+
+type AdmissionObserveResult struct {
+	Records       []AdmissionRecord
+	Forwarded     []Triple
+	Event         *eventbus.GraphAdmissionBatchEvent
+	UnmappedEvent *eventbus.GraphAdmissionUnmappedSourceEvent
+}
+
+type AdmissionPolicyConfig struct {
+	Validator PredicateValidatorFunc
+}
+
+type AdmissionPolicy struct {
+	cfg    AdmissionPolicyConfig
+	logger *zap.SugaredLogger
+}
+
+func NewAdmissionPolicy(cfg AdmissionPolicyConfig, logger *zap.SugaredLogger) *AdmissionPolicy {
+	if logger == nil {
+		logger = zap.NewNop().Sugar()
+	}
+	return &AdmissionPolicy{
+		cfg:    cfg,
+		logger: logger,
+	}
+}
+
+func (p *AdmissionPolicy) ObserveBatch(batch AdmissionBatch) AdmissionObserveResult {
+	result := AdmissionObserveResult{
+		Forwarded: make([]Triple, 0, len(batch.Triples)),
+	}
+	result.Forwarded = append(result.Forwarded, batch.Triples...)
+
+	sourceKind := normalizeAdmissionSourceKind(batch)
+
+	if !isObservedAdmissionSource(sourceKind, batch.Source) {
+		if sourceKind == AdmissionSourceKindEventBus {
+			result.UnmappedEvent = &eventbus.GraphAdmissionUnmappedSourceEvent{
+				RawSource:  string(batch.Source),
+				BatchCount: 1,
+			}
+		}
+		return result
+	}
+
+	result.Records = make([]AdmissionRecord, 0, len(batch.Triples))
+	result.Event = newAdmissionBatchEvent(batch)
+
+	result.Event.ValidatorSource = normalizeAdmissionValidatorSource(p.cfg.Validator)
+
+	for _, triple := range batch.Triples {
+		decision := AdmissionDecisionUnvalidated
+
+		switch {
+		case p.cfg.Validator == nil:
+			result.Event.UnvalidatedCount++
+		case p.cfg.Validator(triple.Predicate):
+			decision = AdmissionDecisionKnown
+			result.Event.KnownCount++
+		default:
+			decision = AdmissionDecisionUnknown
+			result.Event.UnknownCount++
+		}
+
+		result.Records = append(result.Records, AdmissionRecord{
+			Triple:   triple,
+			Decision: decision,
+		})
+	}
+
+	return result
+}
+
+func normalizeAdmissionSourceKind(batch AdmissionBatch) AdmissionSourceKind {
+	if sourceKind, ok := ObservedAdmissionSourceKind(batch.Source, batch.SourceKind); ok {
+		return sourceKind
+	}
+	if batch.SourceKind != "" {
+		return batch.SourceKind
+	}
+	return AdmissionSourceKindEventBus
+}
+
+func isObservedAdmissionSource(sourceKind AdmissionSourceKind, source AdmissionSource) bool {
+	if sourceKind == AdmissionSourceKindSynthetic {
+		return source == AdmissionSourceContentSavedExtractor
+	}
+	return IsSupportedAdmissionSource(source)
+}
+
+func IsSupportedAdmissionSource(source AdmissionSource) bool {
+	switch source {
+	case AdmissionSourceConversationAnalysis,
+		AdmissionSourceSessionLearning,
+		AdmissionSourceLearning,
+		AdmissionSourceProactiveLibrarian:
+		return true
+	}
+	return false
+}
+
+func ObservedAdmissionSourceKind(source AdmissionSource, hintedKind AdmissionSourceKind) (AdmissionSourceKind, bool) {
+	if IsSupportedAdmissionSource(source) {
+		return AdmissionSourceKindEventBus, true
+	}
+	if source == AdmissionSourceContentSavedExtractor && hintedKind == AdmissionSourceKindSynthetic {
+		return AdmissionSourceKindSynthetic, true
+	}
+	return "", false
+}
+
+func normalizeAdmissionValidatorSource(validator PredicateValidatorFunc) string {
+	if validator == nil {
+		return string(AdmissionValidatorSourceUnavailable)
+	}
+	return string(AdmissionValidatorSourceOntologyRegistry)
+}
+
+func newAdmissionBatchEvent(batch AdmissionBatch) *eventbus.GraphAdmissionBatchEvent {
+	return &eventbus.GraphAdmissionBatchEvent{
+		Source:        string(batch.Source),
+		ProducerGroup: CanonicalAdmissionProducerGroup(batch.Source),
+		BatchCount:    1,
+	}
+}
+
+func CanonicalAdmissionProducerGroup(source AdmissionSource) *string {
+	switch source {
+	case AdmissionSourceConversationAnalysis,
+		AdmissionSourceSessionLearning,
+		AdmissionSourceLearning:
+		group := string(AdmissionProducerGroupLearning)
+		return &group
+	case AdmissionSourceProactiveLibrarian:
+		group := string(AdmissionProducerGroupLibrarian)
+		return &group
+	case AdmissionSourceContentSavedExtractor:
+		return nil
+	}
+	return nil
+}

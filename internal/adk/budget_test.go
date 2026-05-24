@@ -121,7 +121,7 @@ func TestLookupModelWindow(t *testing.T) {
 		{give: "llama3.1", want: 128000},
 		{give: "o1-preview", want: 200000},
 		{give: "custom-model-v1", want: 128000}, // fallback
-		{give: "", want: 128000},                 // empty = fallback
+		{give: "", want: 128000},                // empty = fallback
 	}
 
 	for _, tt := range tests {
@@ -174,8 +174,8 @@ func TestReallocateBudgets(t *testing.T) {
 		give         string
 		measured     SectionTokens
 		wantChanged  bool
-		wantKnGt     int  // Knowledge budget > this value
-		wantRAG      int  // RAG budget exact
+		wantKnGt     int // Knowledge budget > this value
+		wantRAG      int // RAG budget exact
 		wantDegraded bool
 	}{
 		{
@@ -269,4 +269,3 @@ func TestReallocateBudgets_AllEmpty(t *testing.T) {
 	assert.Equal(t, 0, result.RunSummary)
 	assert.False(t, result.Degraded, "all-empty is not degradation")
 }
-

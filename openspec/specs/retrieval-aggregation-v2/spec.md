@@ -18,6 +18,10 @@ The `Finding` struct SHALL include `Source` (string), `Tags` ([]string), `Versio
 ### Requirement: Source authority ranking
 The `retrieval` package SHALL define a `sourceAuthority` map ranking knowledge sources: `"knowledge"` (4), `"session_learning"` (3), `"proactive_librarian"` (2), `"conversation_analysis"` (1), `"memory"` (1), `"learning"` (1). Unknown/empty source SHALL have implicit authority 0.
 
+#### Scenario: Unknown source receives lowest authority
+- **WHEN** a finding has an empty or unrecognized source label
+- **THEN** the authority ranking SHALL treat it as `0`
+
 ### Requirement: Evidence-based merge
 `mergeFindings` SHALL replace `dedupFindings`. For same `(Layer, Key)`, the winner SHALL be selected by deterministic priority chain: authority → version (supersedes) → recency (UpdatedAt) → score. When all provenance fields are empty, merge SHALL fall through to Score tiebreaker (preserving backward-compatible behavior).
 
@@ -44,8 +48,21 @@ The `retrieval` package SHALL define a `sourceAuthority` map ranking knowledge s
 ### Requirement: compareFindingPriority function
 The `retrieval` package SHALL expose a `compareFindingPriority(a, b Finding) int` function that returns >0 if a is preferred, <0 if b preferred, 0 if equal.
 
+#### Scenario: compareFindingPriority reports preferred finding
+- **WHEN** two findings are compared under the authority/version/recency/score rules
+- **THEN** `compareFindingPriority` SHALL return a positive, negative, or zero result matching the winning finding or tie
+
 ### Requirement: Merge resolution vs global ranking separation
-Merge resolution (authority-first) determines which variant of the SAME key survives. Global ranking (`sortFindingsByScore`) uses Score to order ALL surviving findings. These are separate concerns.
+Merge resolution (authority-first) SHALL determine which variant of the SAME key survives. Global ranking (`sortFindingsByScore`) SHALL use Score to order ALL surviving findings. These are separate concerns.
+
+#### Scenario: Merge winner selection does not dictate final list ordering
+- **WHEN** duplicate-key findings are merged and unrelated surviving findings are globally sorted
+- **THEN** authority-first rules SHALL choose the surviving duplicate
+- **AND** score-based global ranking SHALL order the final surviving set independently
 
 ### Requirement: save_knowledge default source
 The `save_knowledge` tool handler SHALL default the `source` parameter to `"knowledge"` (not `""`), ensuring user-explicit saves rank highest in authority. No backfill of existing data with empty Source.
+
+#### Scenario: save_knowledge writes explicit knowledge source by default
+- **WHEN** `save_knowledge` is called without an explicit `source` parameter
+- **THEN** the stored entry SHALL use `source="knowledge"`

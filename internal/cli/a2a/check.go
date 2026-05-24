@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"text/tabwriter"
 	"time"
 
@@ -13,14 +12,20 @@ import (
 )
 
 func newCheckCmd() *cobra.Command {
-	var jsonOutput bool
+	var output string
 
 	cmd := &cobra.Command{
-		Use:   "check <url>",
-		Short: "Fetch and display a remote agent card",
-		Long:  `Fetch the agent card from a remote A2A agent URL and display its contents.`,
-		Args:  cobra.ExactArgs(1),
+		Use:           "check <url>",
+		Short:         "Fetch and display a remote agent card",
+		Long:          `Fetch the agent card from a remote A2A agent URL and display its contents.`,
+		Args:          cobra.ExactArgs(1),
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			output, err := resolveOutput(cmd)
+			if err != nil {
+				return err
+			}
 			url := args[0]
 
 			client := &http.Client{Timeout: 10 * time.Second}
@@ -59,27 +64,25 @@ func newCheckCmd() *cobra.Command {
 				return fmt.Errorf("parse agent card: %w", err)
 			}
 
-			if jsonOutput {
-				enc := json.NewEncoder(os.Stdout)
-				enc.SetIndent("", "  ")
-				return enc.Encode(card)
+			if output == "json" {
+				return printJSON(cmd.OutOrStdout(), card)
 			}
 
-			fmt.Printf("Remote Agent Card\n")
-			fmt.Printf("  Name:         %s\n", card.Name)
-			fmt.Printf("  Description:  %s\n", card.Description)
-			fmt.Printf("  URL:          %s\n", card.URL)
+			fmt.Fprintf(cmd.OutOrStdout(), "Remote Agent Card\n")
+			fmt.Fprintf(cmd.OutOrStdout(), "  Name:         %s\n", card.Name)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Description:  %s\n", card.Description)
+			fmt.Fprintf(cmd.OutOrStdout(), "  URL:          %s\n", card.URL)
 			if card.DID != "" {
-				fmt.Printf("  DID:          %s\n", card.DID)
+				fmt.Fprintf(cmd.OutOrStdout(), "  DID:          %s\n", card.DID)
 			}
 			if len(card.Capabilities) > 0 {
-				fmt.Printf("  Capabilities: %v\n", card.Capabilities)
+				fmt.Fprintf(cmd.OutOrStdout(), "  Capabilities: %v\n", card.Capabilities)
 			}
-			fmt.Println()
+			fmt.Fprintln(cmd.OutOrStdout())
 
 			if len(card.Skills) > 0 {
-				fmt.Printf("Skills (%d)\n", len(card.Skills))
-				w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+				fmt.Fprintf(cmd.OutOrStdout(), "Skills (%d)\n", len(card.Skills))
+				w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
 				fmt.Fprintln(w, "  ID\tNAME\tTAGS")
 				for _, s := range card.Skills {
 					tags := "-"
@@ -91,11 +94,11 @@ func newCheckCmd() *cobra.Command {
 				return w.Flush()
 			}
 
-			fmt.Println("No skills advertised.")
-			return nil
+			_, err = fmt.Fprintln(cmd.OutOrStdout(), "No skills advertised.")
+			return err
 		},
 	}
 
-	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
+	cmd.Flags().StringVar(&output, "output", "table", "Output format: table or json")
 	return cmd
 }

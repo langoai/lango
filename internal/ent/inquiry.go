@@ -24,6 +24,12 @@ type Inquiry struct {
 	Topic string `json:"topic,omitempty"`
 	// Question holds the value of the "question" field.
 	Question string `json:"question,omitempty"`
+	// PayloadCiphertext holds the value of the "payload_ciphertext" field.
+	PayloadCiphertext *[]byte `json:"payload_ciphertext,omitempty"`
+	// PayloadNonce holds the value of the "payload_nonce" field.
+	PayloadNonce *[]byte `json:"payload_nonce,omitempty"`
+	// PayloadKeyVersion holds the value of the "payload_key_version" field.
+	PayloadKeyVersion *int `json:"payload_key_version,omitempty"`
 	// Context holds the value of the "context" field.
 	Context *string `json:"context,omitempty"`
 	// Priority holds the value of the "priority" field.
@@ -48,6 +54,10 @@ func (*Inquiry) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
+		case inquiry.FieldPayloadCiphertext, inquiry.FieldPayloadNonce:
+			values[i] = new([]byte)
+		case inquiry.FieldPayloadKeyVersion:
+			values[i] = new(sql.NullInt64)
 		case inquiry.FieldSessionKey, inquiry.FieldTopic, inquiry.FieldQuestion, inquiry.FieldContext, inquiry.FieldPriority, inquiry.FieldStatus, inquiry.FieldAnswer, inquiry.FieldKnowledgeKey, inquiry.FieldSourceObservationID:
 			values[i] = new(sql.NullString)
 		case inquiry.FieldCreatedAt, inquiry.FieldResolvedAt:
@@ -92,6 +102,25 @@ func (_m *Inquiry) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field question", values[i])
 			} else if value.Valid {
 				_m.Question = value.String
+			}
+		case inquiry.FieldPayloadCiphertext:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field payload_ciphertext", values[i])
+			} else if value != nil {
+				_m.PayloadCiphertext = value
+			}
+		case inquiry.FieldPayloadNonce:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field payload_nonce", values[i])
+			} else if value != nil {
+				_m.PayloadNonce = value
+			}
+		case inquiry.FieldPayloadKeyVersion:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field payload_key_version", values[i])
+			} else if value.Valid {
+				_m.PayloadKeyVersion = new(int)
+				*_m.PayloadKeyVersion = int(value.Int64)
 			}
 		case inquiry.FieldContext:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -190,6 +219,21 @@ func (_m *Inquiry) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("question=")
 	builder.WriteString(_m.Question)
+	builder.WriteString(", ")
+	if v := _m.PayloadCiphertext; v != nil {
+		builder.WriteString("payload_ciphertext=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.PayloadNonce; v != nil {
+		builder.WriteString("payload_nonce=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.PayloadKeyVersion; v != nil {
+		builder.WriteString("payload_key_version=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
 	builder.WriteString(", ")
 	if v := _m.Context; v != nil {
 		builder.WriteString("context=")

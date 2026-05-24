@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -28,8 +29,8 @@ import (
 	cliapproval "github.com/langoai/lango/internal/cli/approval"
 	clibg "github.com/langoai/lango/internal/cli/bg"
 	"github.com/langoai/lango/internal/cli/chat"
-	"github.com/langoai/lango/internal/cli/prompt"
 	"github.com/langoai/lango/internal/cli/cliboot"
+	"github.com/langoai/lango/internal/cli/cliexit"
 	"github.com/langoai/lango/internal/cli/cockpit"
 	"github.com/langoai/lango/internal/cli/cockpit/pages"
 	cliconfigcmd "github.com/langoai/lango/internal/cli/configcmd"
@@ -37,6 +38,7 @@ import (
 	clicron "github.com/langoai/lango/internal/cli/cron"
 	"github.com/langoai/lango/internal/cli/doctor"
 	clieconomy "github.com/langoai/lango/internal/cli/economy"
+	cliextension "github.com/langoai/lango/internal/cli/extension"
 	cligraph "github.com/langoai/lango/internal/cli/graph"
 	clilearning "github.com/langoai/lango/internal/cli/learning"
 	clilibrarian "github.com/langoai/lango/internal/cli/librarian"
@@ -46,19 +48,25 @@ import (
 	"github.com/langoai/lango/internal/cli/onboard"
 	clip2p "github.com/langoai/lango/internal/cli/p2p"
 	clipayment "github.com/langoai/lango/internal/cli/payment"
-	clisandbox "github.com/langoai/lango/internal/cli/sandbox"
+	"github.com/langoai/lango/internal/cli/prompt"
 	cliprovenance "github.com/langoai/lango/internal/cli/provenance"
 	clirun "github.com/langoai/lango/internal/cli/run"
+	clisandbox "github.com/langoai/lango/internal/cli/sandbox"
 	clisecurity "github.com/langoai/lango/internal/cli/security"
 	"github.com/langoai/lango/internal/cli/settings"
 	cliaccount "github.com/langoai/lango/internal/cli/smartaccount"
 	clistatus "github.com/langoai/lango/internal/cli/status"
 	"github.com/langoai/lango/internal/cli/tui"
+	"github.com/langoai/lango/internal/cli/workbench"
 	cliworkflow "github.com/langoai/lango/internal/cli/workflow"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/gatewayaddr"
 	"github.com/langoai/lango/internal/logging"
+	"github.com/langoai/lango/internal/postadjudicationstatus"
 	"github.com/langoai/lango/internal/sandbox"
 	"github.com/langoai/lango/internal/session"
+	"github.com/langoai/lango/internal/storage"
+	"github.com/langoai/lango/internal/storagebroker"
 	"github.com/langoai/lango/internal/types"
 	"go.uber.org/zap"
 )
@@ -68,7 +76,55 @@ var (
 	BuildTime = "unknown"
 )
 
-var exitFn = os.Exit
+var (
+	exitFn                             = os.Exit
+	runWorkbenchFn                     = runWorkbench
+	runCockpitFn                       = runCockpit
+	runChatFn                          = runChat
+	isInteractiveFn                    = prompt.IsInteractive
+	mainStdin                io.Reader = os.Stdin
+	mainStdout               io.Writer = os.Stdout
+	mainStderr               io.Writer = os.Stderr
+	isSandboxWorkerModeFn              = sandbox.IsWorkerMode
+	runSandboxWorkerFn                 = func() int { return sandbox.RunWorker(sandbox.ToolRegistry{}) }
+	isStorageBrokerModeFn              = storagebroker.IsBrokerMode
+	runStorageBrokerServerFn           = func(in io.Reader, out io.Writer) error {
+		return storagebroker.NewServer().Run(in, out)
+	}
+	newRootCmdFn       = newRootCmd
+	serveBootLoaderFn  = cliboot.BootResult
+	serveLoggingInitFn = logging.Init
+	serveLoggingSyncFn = logging.Sync
+	serveAppBuilderFn  = func(boot *bootstrap.Result) (stoppableApplication, error) {
+		return app.New(boot)
+	}
+	serveAwaitShutdownFn = func(ctx context.Context) {
+		<-ctx.Done()
+	}
+	newHealthHTTPClientFn = func() *http.Client {
+		return &http.Client{Timeout: 5 * time.Second}
+	}
+	cockpitBootLoaderFn                 = cliboot.BootResult
+	cockpitLoggingInitFn                = logging.Init
+	cockpitLoggingSyncFn                = logging.Sync
+	cockpitStartupErrWriter   io.Writer = os.Stderr
+	cockpitAppBuilderFn                 = func(boot *bootstrap.Result, mode app.AppOption) (*app.App, error) { return app.New(boot, mode) }
+	workbenchBootLoaderFn               = cliboot.BootResult
+	workbenchLoggingInitFn              = logging.Init
+	workbenchLoggingSyncFn              = logging.Sync
+	workbenchStartupErrWriter io.Writer = os.Stderr
+	workbenchAppBuilderFn               = func(boot *bootstrap.Result) (*app.App, error) { return app.New(boot, app.WithLocalChat()) }
+	chatBootLoaderFn                    = cliboot.BootResult
+	chatLoggingInitFn                   = logging.Init
+	chatLoggingSyncFn                   = logging.Sync
+	chatStartupErrWriter      io.Writer = os.Stderr
+	chatAppBuilderFn                    = func(boot *bootstrap.Result) (*app.App, error) { return app.New(boot, app.WithLocalChat()) }
+	startAppFn                          = func(application *app.App, ctx context.Context) error { return application.Start(ctx) }
+	stopAppFn                           = func(application *app.App, ctx context.Context) error { return application.Stop(ctx) }
+	runTeaProgramFn                     = func(p *tea.Program) (tea.Model, error) { return p.Run() }
+	configBootResultFn                  = cliboot.BootResult
+	configConfigFn                      = cliboot.Config
+)
 
 type stoppableApplication interface {
 	Start(ctx context.Context) error
@@ -76,25 +132,55 @@ type stoppableApplication interface {
 }
 
 func main() {
+	if code := runMain(); code != 0 {
+		exitFn(code)
+	}
+}
+
+func runMain() int {
 	// Check if running as sandbox worker subprocess.
-	if sandbox.IsWorkerMode() {
-		sandbox.RunWorker(sandbox.ToolRegistry{})
-		return
+	if isSandboxWorkerModeFn() {
+		return runSandboxWorkerFn()
+	}
+	if isStorageBrokerModeFn() {
+		if err := runStorageBrokerServerFn(mainStdin, mainStdout); err != nil {
+			fmt.Fprintln(mainStderr, err)
+			return 1
+		}
+		return 0
 	}
 
 	tui.SetVersionInfo(Version, BuildTime)
+	cliboot.Version = Version
 
+	rootCmd := newRootCmdFn()
+	if err := rootCmd.Execute(); err != nil {
+		if code, ok := cliexit.Code(err); ok {
+			if !cliexit.Silent(err) {
+				fmt.Fprintln(mainStderr, err)
+			}
+			return code
+		}
+		fmt.Fprintln(mainStderr, err)
+		return 1
+	}
+	return 0
+}
+
+func newRootCmd() *cobra.Command {
 	rootCmd := &cobra.Command{
 		Use:   "lango",
 		Short: "Lango - Fast AI Agent in Go",
 		Long:  `Lango is a high-performance AI agent built with Go, supporting multiple channels and tools.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if !prompt.IsInteractive() {
+			if !isInteractiveFn() {
 				return cmd.Help()
 			}
-			return runCockpit()
+			modeName, _ := cmd.Flags().GetString("mode")
+			return runWorkbenchFn(modeName)
 		},
 	}
+	rootCmd.PersistentFlags().String("mode", "", "Initial session mode (e.g., code-review, research, debug)")
 
 	rootCmd.AddGroup(
 		&cobra.Group{ID: "start", Title: "Getting Started:"},
@@ -121,7 +207,7 @@ func main() {
 	settingsCmd.GroupID = "start"
 	rootCmd.AddCommand(settingsCmd)
 
-	statusCmd := clistatus.NewStatusCmd(cliboot.BootResult)
+	statusCmd := clistatus.NewStatusCmd(cliboot.BootResult, newDeadLetterStatusLoader(cliboot.BootResult))
 	statusCmd.GroupID = "start"
 	rootCmd.AddCommand(statusCmd)
 
@@ -154,11 +240,15 @@ func main() {
 	learningCmd.GroupID = "ai"
 	rootCmd.AddCommand(learningCmd)
 
+	extensionCmd := cliextension.NewExtensionCmd(cliboot.Config)
+	extensionCmd.GroupID = "ai"
+	rootCmd.AddCommand(extensionCmd)
+
 	librarianCmd := clilibrarian.NewLibrarianCmd(cliboot.Config, cliboot.BootResult)
 	librarianCmd.GroupID = "ai"
 	rootCmd.AddCommand(librarianCmd)
 
-	metricsCmd := climetrics.NewMetricsCmd()
+	metricsCmd := climetrics.NewMetricsCmdWithConfig(cliboot.Config)
 	metricsCmd.GroupID = "ai"
 	rootCmd.AddCommand(metricsCmd)
 
@@ -179,9 +269,7 @@ func main() {
 	provenanceCmd.GroupID = "auto"
 	rootCmd.AddCommand(provenanceCmd)
 
-	bgCmd := clibg.NewBgCmd(func() (*background.Manager, error) {
-		return nil, fmt.Errorf("bg commands require a running server (use 'lango serve' first)")
-	})
+	bgCmd := clibg.NewGatewayCmd(cliboot.BootResult)
 	bgCmd.GroupID = "auto"
 	rootCmd.AddCommand(bgCmd)
 
@@ -214,7 +302,7 @@ func main() {
 	sandboxCmd.GroupID = "sys"
 	rootCmd.AddCommand(sandboxCmd)
 
-	alertsCmd := clialerts.NewAlertsCmd()
+	alertsCmd := clialerts.NewAlertsCmdWithConfig(cliboot.Config)
 	alertsCmd.GroupID = "sys"
 	rootCmd.AddCommand(alertsCmd)
 
@@ -227,46 +315,82 @@ func main() {
 	healthCmd.GroupID = "sys"
 	rootCmd.AddCommand(healthCmd)
 
-	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
+	return rootCmd
 }
 
-func runChat() error {
-	boot, err := cliboot.BootResult()
-	if err != nil {
-		return fmt.Errorf("bootstrap: %w", err)
-	}
-	defer boot.DBClient.Close()
+func writeTUIStartupNotice(w io.Writer, logPath, line string) {
+	fmt.Fprint(w, tui.Banner())
+	fmt.Fprintf(w, "\n  Logs: %s\n", logPath)
+	fmt.Fprintln(w, line)
+}
 
-	cfg := boot.Config
-	// TUI mode: redirect logging to file (stderr output corrupts alt-screen TUI).
-	logPath := filepath.Join(cfg.DataRoot, "chat.log")
-	if err := logging.Init(logging.LogConfig{
+func prepareTUIStartup(
+	cfg *config.Config,
+	profileName string,
+	logFileName string,
+	initFn func(logging.LogConfig) error,
+	syncFn func() error,
+	startupWriter io.Writer,
+	line string,
+) (func(), error) {
+	logPath := filepath.Join(cfg.DataRoot, logFileName)
+	if err := initFn(logging.LogConfig{
 		Level:      cfg.Logging.Level,
 		Format:     cfg.Logging.Format,
 		OutputPath: logPath,
 	}); err != nil {
-		return fmt.Errorf("init logging: %w", err)
+		return nil, fmt.Errorf("init logging: %w", err)
 	}
-	defer func() { _ = logging.Sync() }()
 
 	// Redirect Go stdlib logger to the same file so third-party libraries
 	// (e.g., ADK runner) that use log.Printf don't leak into the TUI.
-	if logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
-		defer logFile.Close()
+	var logFile *os.File
+	previousLogWriter := log.Writer()
+	if file, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+		logFile = file
 		log.SetOutput(logFile)
 	}
 
-	tui.SetProfile(boot.ProfileName)
+	tui.SetProfile(profileName)
 
-	fmt.Fprint(os.Stderr, tui.Banner())
-	fmt.Fprintf(os.Stderr, "\n  Logs: %s\n", logPath)
-	fmt.Fprintln(os.Stderr, "  Initializing...")
+	writeTUIStartupNotice(startupWriter, logPath, line)
+
+	return func() {
+		log.SetOutput(previousLogWriter)
+		if logFile != nil {
+			_ = logFile.Close()
+		}
+		_ = syncFn()
+	}, nil
+}
+
+func runChat(initialMode string) error {
+	boot, err := chatBootLoaderFn()
+	if err != nil {
+		return fmt.Errorf("bootstrap: %w", err)
+	}
+	defer boot.Close()
+
+	cfg := boot.Config
+	if err := validateInitialMode(cfg, initialMode); err != nil {
+		return err
+	}
+	cleanup, err := prepareTUIStartup(
+		cfg,
+		boot.ProfileName,
+		"chat.log",
+		chatLoggingInitFn,
+		chatLoggingSyncFn,
+		chatStartupErrWriter,
+		"  Initializing...",
+	)
+	if err != nil {
+		return err
+	}
+	defer cleanup()
 
 	// Create app in local-chat mode (skip gateway/channels/automation lifecycle).
-	application, err := app.New(boot, app.WithLocalChat())
+	application, err := chatAppBuilderFn(boot)
 	if err != nil {
 		return fmt.Errorf("create application: %w", err)
 	}
@@ -274,22 +398,43 @@ func runChat() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if err := application.Start(ctx); err != nil {
+	if err := startAppFn(application, ctx); err != nil {
 		return fmt.Errorf("start application: %w", err)
 	}
 	defer func() {
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer shutdownCancel()
-		_ = application.Stop(shutdownCtx)
+		_ = stopAppFn(application, shutdownCtx)
 	}()
 
 	sessionKey := fmt.Sprintf("tui-%d", time.Now().UnixMilli())
 
+	// Pre-create session and persist initial mode if --mode was provided
+	// (mirrors runCockpit's mode handling).
+	if initialMode != "" && application.Store != nil {
+		s := &session.Session{Key: sessionKey}
+		s.SetMode(initialMode)
+		if err := application.Store.Create(s); err != nil {
+			return fmt.Errorf("create initial session: %w", err)
+		}
+	}
+
 	model := chat.New(chat.Deps{
-		TurnRunner: application.TurnRunner,
-		Config:     cfg,
-		SessionKey: sessionKey,
+		TurnRunner:      application.TurnRunner,
+		Config:          cfg,
+		SessionKey:      sessionKey,
+		SessionStore:    application.Store,
+		EventBus:        application.EventBus,
+		RuntimeFeatures: chatRuntimeFeatures(application),
 	})
+
+	// Hard session end: reads model.SessionKey() so /clear key changes
+	// are respected (not the initial captured local).
+	defer func() {
+		if application.Store != nil {
+			_ = application.Store.End(model.SessionKey())
+		}
+	}()
 
 	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	model.SetProgram(p)
@@ -301,7 +446,7 @@ func runChat() error {
 		}))
 	}
 
-	if _, err := p.Run(); err != nil {
+	if _, err := runTeaProgramFn(p); err != nil {
 		return fmt.Errorf("TUI: %w", err)
 	}
 
@@ -314,30 +459,30 @@ func serveCmd() *cobra.Command {
 		Short:   "Start the gateway server",
 		GroupID: "start",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			boot, err := cliboot.BootResult()
+			boot, err := serveBootLoaderFn()
 			if err != nil {
 				return fmt.Errorf("bootstrap: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			cfg := boot.Config
-			if err := logging.Init(logging.LogConfig{
+			if err := serveLoggingInitFn(logging.LogConfig{
 				Level:      cfg.Logging.Level,
 				Format:     cfg.Logging.Format,
 				OutputPath: cfg.Logging.OutputPath,
 			}); err != nil {
 				return fmt.Errorf("init logging: %w", err)
 			}
-			defer func() { _ = logging.Sync() }()
+			defer func() { _ = serveLoggingSyncFn() }()
 
 			log := logging.Sugar()
 
 			tui.SetProfile(boot.ProfileName)
-			fmt.Print(tui.ServeBanner())
+			fmt.Fprint(cmd.OutOrStdout(), tui.ServeBanner())
 
 			log.Infow("starting lango", "version", Version, "profile", boot.ProfileName)
 
-			application, err := app.New(boot)
+			application, err := serveAppBuilderFn(boot)
 			if err != nil {
 				return fmt.Errorf("create application: %w", err)
 			}
@@ -356,9 +501,9 @@ func serveCmd() *cobra.Command {
 				return err
 			}
 
-			fmt.Print(startupSummary(cfg))
+			fmt.Fprint(cmd.OutOrStdout(), startupSummary(cfg))
 
-			<-ctx.Done()
+			serveAwaitShutdownFn(ctx)
 			return nil
 		},
 	}
@@ -410,7 +555,7 @@ func versionCmd() *cobra.Command {
 		Short:   "Print version information",
 		GroupID: "start",
 		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Printf("lango %s (built %s)\n", Version, BuildTime)
+			fmt.Fprintf(cmd.OutOrStdout(), "lango %s (built %s)\n", Version, BuildTime)
 		},
 	}
 }
@@ -419,11 +564,13 @@ func healthCmd() *cobra.Command {
 	var port int
 
 	cmd := &cobra.Command{
-		Use:   "health",
-		Short: "Check gateway health (replaces curl in Docker HEALTHCHECK)",
+		Use:           "health",
+		Short:         "Check gateway health (replaces curl in Docker HEALTHCHECK)",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			url := "http://localhost:" + strconv.Itoa(port) + "/health"
-			client := &http.Client{Timeout: 5 * time.Second}
+			client := newHealthHTTPClientFn()
 
 			resp, err := client.Get(url)
 			if err != nil {
@@ -435,7 +582,7 @@ func healthCmd() *cobra.Command {
 				return fmt.Errorf("unhealthy: status %d", resp.StatusCode)
 			}
 
-			fmt.Println("ok")
+			fmt.Fprintln(cmd.OutOrStdout(), "ok")
 			return nil
 		},
 	}
@@ -444,33 +591,43 @@ func healthCmd() *cobra.Command {
 	return cmd
 }
 
+func validateInitialMode(cfg *config.Config, initialMode string) error {
+	if initialMode == "" {
+		return nil
+	}
+	if _, ok := cfg.LookupMode(initialMode); !ok {
+		return fmt.Errorf("unknown mode %q; valid modes can be listed via /mode", initialMode)
+	}
+	return nil
+}
+
 func configCmd() *cobra.Command {
 	// Profile management subcommands (list, create, use, delete, import, export, validate).
-	cmd := cliconfigcmd.NewConfigCmd(cliboot.BootResult)
+	cmd := cliconfigcmd.NewConfigCmd(configBootResultFn)
 	cmd.GroupID = "sys"
 
 	// get/set/keys — config value inspection & modification.
-	cmd.AddCommand(cliconfigcmd.NewGetCmd(cliboot.Config))
+	cmd.AddCommand(cliconfigcmd.NewGetCmd(configConfigFn))
 	var setBootResult *bootstrap.Result
 	cmd.AddCommand(cliconfigcmd.NewSetCmd(
-		func() (*config.Config, func(), error) {
-			boot, err := cliboot.BootResult()
+		func() (*config.Config, map[string]bool, func(), error) {
+			boot, err := configBootResultFn()
 			if err != nil {
-				return nil, nil, err
+				return nil, nil, nil, err
 			}
 			setBootResult = boot
 			cleanup := func() {
-				boot.DBClient.Close()
+				_ = boot.Close()
 				setBootResult = nil
 			}
-			return boot.Config, cleanup, nil
+			return boot.Config, boot.ExplicitKeys, cleanup, nil
 		},
-		func(cfg *config.Config) error {
+		func(cfg *config.Config, explicitKeys map[string]bool) error {
 			if setBootResult == nil {
 				return fmt.Errorf("internal error: bootstrap result not available")
 			}
-			return setBootResult.ConfigStore.Save(
-				context.Background(), setBootResult.ProfileName, cfg, nil,
+			return setBootResult.Storage.ConfigProfiles().Save(
+				context.Background(), setBootResult.ProfileName, cfg, explicitKeys,
 			)
 		},
 	))
@@ -497,7 +654,7 @@ func startupSummary(cfg *config.Config) string {
 	}
 
 	features := []tui.FeatureLine{
-		{Name: "Gateway", Enabled: cfg.Server.HTTPEnabled, Detail: fmt.Sprintf("http://%s:%d", cfg.Server.Host, cfg.Server.Port)},
+		{Name: "Gateway", Enabled: cfg.Server.HTTPEnabled, Detail: gatewayaddr.HTTPURL(cfg.Server.Host, cfg.Server.Port)},
 		{Name: "Channels", Enabled: len(channels) > 0, Detail: channelDetail},
 		{Name: "Knowledge", Enabled: cfg.Knowledge.Enabled},
 		{Name: "Embedding & RAG", Enabled: cfg.Embedding.Provider != "", Detail: cfg.Embedding.Provider},
@@ -532,15 +689,17 @@ var withChannels bool
 func cockpitCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "cockpit",
-		Short:   "Launch multi-panel TUI (same as bare lango)",
+		Short:   "Launch multi-panel operator dashboard",
 		GroupID: "start",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if !prompt.IsInteractive() {
+			if !isInteractiveFn() {
 				return fmt.Errorf("cockpit requires an interactive terminal")
 			}
-			return runCockpit()
+			modeName, _ := cmd.Flags().GetString("mode")
+			return runCockpitFn(modeName)
 		},
 	}
+	cmd.Flags().String("mode", "", "Initial session mode (e.g., code-review, research, debug)")
 	cmd.Flags().BoolVar(&withChannels, "with-channels", false,
 		"Start live channel adapters (Telegram/Discord/Slack). "+
 			"Only use when no lango serve is running with the same credentials.")
@@ -553,42 +712,96 @@ func chatCmd() *cobra.Command {
 		Short:   "Launch plain chat TUI",
 		GroupID: "start",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if !prompt.IsInteractive() {
+			if !isInteractiveFn() {
 				return fmt.Errorf("chat requires an interactive terminal")
 			}
-			return runChat()
+			modeName, _ := cmd.Flags().GetString("mode")
+			return runChatFn(modeName)
 		},
 	}
 }
 
-func runCockpit() error {
-	boot, err := cliboot.BootResult()
+func buildMissionControlDeps(
+	application *app.App,
+	cfg *config.Config,
+	workDir string,
+	sessionKey string,
+	store session.Store,
+	profileName string,
+	configStore storage.ConfigProfileStore,
+	pendingApprovals *cockpit.PendingApprovalRegistry,
+	learningBuffer *cockpit.LearningSuggestionBuffer,
+	activityBuffer *cockpit.MissionActivityBuffer,
+) cockpit.Deps {
+	return cockpit.Deps{
+		TurnRunner:         application.TurnRunner,
+		Config:             cfg,
+		WorkDir:            workDir,
+		SessionKey:         sessionKey,
+		SessionStore:       store,
+		ToolCatalog:        application.ToolCatalog,
+		MetricsCollector:   application.MetricsCollector,
+		ConfigStore:        configStore,
+		ProfileName:        profileName,
+		BackgroundManager:  application.BackgroundManager,
+		EventBus:           application.EventBus,
+		RuntimeFeatures:    chatRuntimeFeatures(application),
+		ApprovalHistory:    application.ApprovalHistory,
+		GrantStore:         application.GrantStore,
+		MissionReader:      application.MissionStore,
+		ProposalReader:     application.ProposalRegistry,
+		ProposalService:    application.ProposalService,
+		LoopInquiryReader:  application.LoopInquiryReader,
+		LoopDeadReader:     application.LoopDeadLetterReader,
+		LoopCronReader:     application.LoopCronReader,
+		CollabMissionLinks: application.CollaborationMissionLinkReader,
+		CollabAgentRuns:    application.CollaborationAgentRunReader,
+		CollabDelegations:  application.CollaborationDelegationReader,
+		CollabRuntime:      application.CollaborationRuntimeReader,
+		MissionService:     application.MissionService,
+		PendingApprovals:   pendingApprovals,
+		LearningBuffer:     learningBuffer,
+		ActivityBuffer:     activityBuffer,
+		RunLedgerStore:     application.RunLedgerStore,
+		AgentRunStore:      application.AgentRunStore,
+	}
+}
+
+func chatRuntimeFeatures(application *app.App) chat.RuntimeFeatures {
+	if application == nil || application.MCPManager == nil {
+		return chat.RuntimeFeatures{}
+	}
+	return chat.RuntimeFeatures{
+		MCPActive:      true,
+		MCPServerCount: application.MCPManager.ServerCount(),
+		MCPToolCount:   len(application.MCPManager.AllTools()),
+	}
+}
+
+func runCockpit(initialMode string) error {
+	boot, err := cockpitBootLoaderFn()
 	if err != nil {
 		return fmt.Errorf("bootstrap: %w", err)
 	}
-	defer boot.DBClient.Close()
+	defer boot.Close()
 
 	cfg := boot.Config
-	logPath := filepath.Join(cfg.DataRoot, "cockpit.log")
-	if err := logging.Init(logging.LogConfig{
-		Level:      cfg.Logging.Level,
-		Format:     cfg.Logging.Format,
-		OutputPath: logPath,
-	}); err != nil {
-		return fmt.Errorf("init logging: %w", err)
+	if err := validateInitialMode(cfg, initialMode); err != nil {
+		return err
 	}
-	defer func() { _ = logging.Sync() }()
-
-	if logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
-		defer logFile.Close()
-		log.SetOutput(logFile)
+	cleanup, err := prepareTUIStartup(
+		cfg,
+		boot.ProfileName,
+		"cockpit.log",
+		cockpitLoggingInitFn,
+		cockpitLoggingSyncFn,
+		cockpitStartupErrWriter,
+		"  Initializing cockpit...",
+	)
+	if err != nil {
+		return err
 	}
-
-	tui.SetProfile(boot.ProfileName)
-
-	fmt.Fprint(os.Stderr, tui.Banner())
-	fmt.Fprintf(os.Stderr, "\n  Logs: %s\n", logPath)
-	fmt.Fprintln(os.Stderr, "  Initializing cockpit...")
+	defer cleanup()
 
 	// Use Cockpit mode (channels enabled) only when explicitly requested
 	// via --with-channels to avoid conflict with a running `lango serve`.
@@ -596,7 +809,7 @@ func runCockpit() error {
 	if withChannels {
 		appMode = app.WithCockpit()
 	}
-	application, err := app.New(boot, appMode)
+	application, err := cockpitAppBuilderFn(boot, appMode)
 	if err != nil {
 		return fmt.Errorf("create application: %w", err)
 	}
@@ -604,7 +817,7 @@ func runCockpit() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if err := application.Start(ctx); err != nil {
+	if err := startAppFn(application, ctx); err != nil {
 		return fmt.Errorf("start application: %w", err)
 	}
 	defer func() {
@@ -612,7 +825,7 @@ func runCockpit() error {
 			context.Background(), 10*time.Second,
 		)
 		defer shutdownCancel()
-		_ = application.Stop(shutdownCtx)
+		_ = stopAppFn(application, shutdownCtx)
 	}()
 
 	// Create channel tracker for cockpit status display.
@@ -637,51 +850,57 @@ func runCockpit() error {
 
 	sessionKey := fmt.Sprintf("cockpit-%d", time.Now().UnixMilli())
 
-	model := cockpit.New(cockpit.Deps{
-		TurnRunner:        application.TurnRunner,
-		Config:            cfg,
-		SessionKey:        sessionKey,
-		ToolCatalog:       application.ToolCatalog,
-		MetricsCollector:  application.MetricsCollector,
-		FeatureStatuses:   application.FeatureStatuses,
-		ConfigStore:       boot.ConfigStore,
-		ProfileName:       boot.ProfileName,
-		BackgroundManager: application.BackgroundManager,
-		EventBus:          application.EventBus,
-		ApprovalHistory:   application.ApprovalHistory,
-		GrantStore:        application.GrantStore,
-	})
-
-	// Register pages.
-	if application.ToolCatalog != nil {
-		model.RegisterPage(cockpit.PageTools,
-			pages.NewToolsPage(application.ToolCatalog))
-	}
-	if application.MetricsCollector != nil || application.FeatureStatuses != nil {
-		var statusProvider func() []types.FeatureStatus
-		if application.FeatureStatuses != nil {
-			statusProvider = application.FeatureStatuses.All
+	// Hard session end (TUI quit): bounded best-effort summarize/index.
+	// The EntStore processor honors its own hardEndTimeout so this call
+	// returns within a short bound even on a slow summarizer. Errors are
+	// ignored — a missing session (if the first turn never ran) is fine.
+	defer func() {
+		if application.Store != nil {
+			_ = application.Store.End(sessionKey)
 		}
-		model.RegisterPage(cockpit.PageStatus,
-			pages.NewStatusPage(statusProvider, application.MetricsCollector, cfg))
+	}()
+
+	// Pre-create the session and persist initial mode if --mode was provided.
+	if initialMode != "" {
+		s := &session.Session{Key: sessionKey}
+		s.SetMode(initialMode)
+		if err := application.Store.Create(s); err != nil {
+			return fmt.Errorf("create initial session: %w", err)
+		}
 	}
-	if boot.ConfigStore != nil {
-		model.RegisterPage(cockpit.PageSettings,
-			pages.NewSettingsPage(cfg, boot.ConfigStore, boot.ProfileName))
+
+	pendingApprovals := cockpit.NewPendingApprovalRegistry()
+	learningBuffer := cockpit.NewLearningSuggestionBuffer(nil)
+	activityBuffer := cockpit.NewMissionActivityBuffer()
+
+	cockpitDeps := buildMissionControlDeps(
+		application,
+		cfg,
+		currentWorkDir(cfg),
+		sessionKey,
+		application.Store,
+		boot.ProfileName,
+		boot.Storage.ConfigProfiles(),
+		pendingApprovals,
+		learningBuffer,
+		activityBuffer,
+	)
+
+	model := cockpit.New(cockpitDeps)
+	missionComposer := model.ChatModel()
+	if missionComposer == nil {
+		return fmt.Errorf("cockpit chat model is not available")
 	}
-	model.RegisterPage(cockpit.PageSessions,
-		pages.NewSessionsPage(func(ctx context.Context) ([]session.SessionSummary, error) {
-			return application.Store.ListSessions(ctx)
-		}))
-	if application.BackgroundManager != nil {
-		var actioner pages.TaskActioner = &bgTaskActioner{mgr: application.BackgroundManager}
-		model.RegisterPage(cockpit.PageTasks,
-			pages.NewTasksPage(&bgTaskLister{mgr: application.BackgroundManager}, actioner))
-	} else {
-		model.RegisterPage(cockpit.PageTasks, pages.NewTasksPage(nil, nil))
-	}
-	model.RegisterPage(cockpit.PageApprovals,
-		pages.NewApprovalsPage(application.ApprovalHistory, application.GrantStore))
+
+	registerCockpitPages(
+		model,
+		application,
+		cfg,
+		boot.ProfileName,
+		boot.Storage.ConfigProfiles(),
+		cockpitDeps,
+		missionComposer,
+	)
 
 	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	model.SetProgram(p)
@@ -690,6 +909,10 @@ func runCockpit() error {
 	// Wire runtime tracker for live token/delegation/recovery metrics.
 	runtimeTracker := cockpit.NewRuntimeTracker(application.EventBus, p, sessionKey)
 	model.SetRuntimeTracker(runtimeTracker)
+
+	// Wire cockpit-lifetime shared state subscriptions before runtime starts
+	// emitting session events.
+	cockpit.SubscribeMissionControlEvents(application.EventBus, sessionKey, learningBuffer, activityBuffer)
 
 	// Wire channel events from EventBus to TUI — BEFORE starting channels
 	// so no early inbound messages are dropped (EventBus drops unhandled events).
@@ -702,7 +925,7 @@ func runCockpit() error {
 			err := ch.Start(ctx)
 			tracker.SeedChannel(ch.Name(), err == nil)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "channel start (%s): %v\n", ch.Name(), err)
+				fmt.Fprintf(cockpitStartupErrWriter, "channel start (%s): %v\n", ch.Name(), err)
 			}
 		}()
 	}
@@ -713,11 +936,179 @@ func runCockpit() error {
 		}))
 	}
 
-	if _, err := p.Run(); err != nil {
+	if _, err := runTeaProgramFn(p); err != nil {
 		return fmt.Errorf("TUI: %w", err)
 	}
 
 	return nil
+}
+
+func registerCockpitPages(
+	model *cockpit.Model,
+	application *app.App,
+	cfg *config.Config,
+	profileName string,
+	configStore storage.ConfigProfileStore,
+	cockpitDeps cockpit.Deps,
+	missionComposer *chat.ChatModel,
+) {
+	model.RegisterPage(cockpit.PageMissionControl,
+		pages.NewMissionControlPage(cockpitDeps, missionComposer))
+	model.RegisterPage(cockpit.PageTools,
+		pages.NewToolsPage(application.ToolCatalog))
+
+	var statusProvider func() []types.FeatureStatus
+	if application.FeatureStatuses != nil {
+		statusProvider = application.FeatureStatuses.All
+	}
+	model.RegisterPage(cockpit.PageStatus,
+		pages.NewStatusPage(statusProvider, application.MetricsCollector, cfg))
+
+	model.RegisterPage(cockpit.PageSettings,
+		pages.NewSettingsPage(cfg, configStore, profileName))
+
+	model.RegisterPage(cockpit.PageSessions,
+		pages.NewSessionsPage(func(ctx context.Context) ([]session.SessionSummary, error) {
+			return application.Store.ListSessions(ctx)
+		}))
+	if application.BackgroundManager != nil {
+		var actioner pages.TaskActioner = &bgTaskActioner{mgr: application.BackgroundManager}
+		model.RegisterPage(cockpit.PageTasks,
+			pages.NewTasksPage(&bgTaskLister{mgr: application.BackgroundManager}, actioner))
+	} else {
+		model.RegisterPage(cockpit.PageTasks, pages.NewTasksPage(nil, nil))
+	}
+	model.RegisterPage(cockpit.PageDeadLetters, pages.NewDeadLettersPage(nil, nil))
+	if deadLetterBridge := cockpit.NewDeadLetterToolBridge(application.ToolCatalog); deadLetterBridge.Ready() {
+		var retryFn pages.DeadLetterRetryFn
+		if deadLetterBridge.CanRetry() {
+			retryFn = deadLetterBridge.Retry
+		}
+		listFn := func(ctx context.Context, opts pages.DeadLetterListOptions) ([]postadjudicationstatus.DeadLetterBacklogEntry, error) {
+			return deadLetterBridge.List(ctx, cockpitDeadLetterListOptions(opts))
+		}
+		model.RegisterPage(cockpit.PageDeadLetters,
+			pages.NewDeadLettersPage(listFn, deadLetterBridge.Detail, retryFn))
+	}
+	model.RegisterPage(cockpit.PageApprovals,
+		pages.NewApprovalsPage(application.ApprovalHistory, application.GrantStore))
+}
+
+func runWorkbench(initialMode string) error {
+	boot, err := workbenchBootLoaderFn()
+	if err != nil {
+		return fmt.Errorf("bootstrap: %w", err)
+	}
+	defer boot.Close()
+
+	cfg := boot.Config
+	if err := validateInitialMode(cfg, initialMode); err != nil {
+		return err
+	}
+	cleanup, err := prepareTUIStartup(
+		cfg,
+		boot.ProfileName,
+		"workbench.log",
+		workbenchLoggingInitFn,
+		workbenchLoggingSyncFn,
+		workbenchStartupErrWriter,
+		"  Initializing workbench...",
+	)
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	application, err := workbenchAppBuilderFn(boot)
+	if err != nil {
+		return fmt.Errorf("create application: %w", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := startAppFn(application, ctx); err != nil {
+		return fmt.Errorf("start application: %w", err)
+	}
+	defer func() {
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer shutdownCancel()
+		_ = stopAppFn(application, shutdownCtx)
+	}()
+
+	sessionKey := fmt.Sprintf("workbench-%d", time.Now().UnixMilli())
+	defer func() {
+		if application.Store != nil {
+			_ = application.Store.End(sessionKey)
+		}
+	}()
+
+	if initialMode != "" {
+		s := &session.Session{Key: sessionKey}
+		s.SetMode(initialMode)
+		if err := application.Store.Create(s); err != nil {
+			return fmt.Errorf("create initial session: %w", err)
+		}
+	}
+
+	pendingApprovals := cockpit.NewPendingApprovalRegistry()
+	learningBuffer := cockpit.NewLearningSuggestionBuffer(nil)
+	activityBuffer := cockpit.NewMissionActivityBuffer()
+
+	deps := buildMissionControlDeps(
+		application,
+		cfg,
+		currentWorkDir(cfg),
+		sessionKey,
+		application.Store,
+		boot.ProfileName,
+		boot.Storage.ConfigProfiles(),
+		pendingApprovals,
+		learningBuffer,
+		activityBuffer,
+	)
+
+	model := workbench.New(deps)
+	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion())
+	model.SetProgram(p)
+	model.SetRuntimeTracker(cockpit.NewRuntimeTracker(application.EventBus, p, sessionKey))
+
+	if composite, ok := application.ApprovalProvider.(*approval.CompositeProvider); ok {
+		composite.SetTTYFallback(chat.NewTUIApprovalProvider(func(msg interface{}) {
+			p.Send(msg)
+		}))
+	}
+
+	if _, err := runTeaProgramFn(p); err != nil {
+		return fmt.Errorf("TUI: %w", err)
+	}
+
+	return nil
+}
+
+func currentWorkDir(cfg *config.Config) string {
+	if cfg != nil {
+		if workDir := strings.TrimSpace(cfg.Tools.Exec.WorkDir); workDir != "" {
+			return workDir
+		}
+	}
+	workDir, _ := os.Getwd()
+	return strings.TrimSpace(workDir)
+}
+
+func cockpitDeadLetterListOptions(opts pages.DeadLetterListOptions) cockpit.DeadLetterListOptions {
+	return cockpit.DeadLetterListOptions{
+		Query:                     opts.Query,
+		Adjudication:              opts.Adjudication,
+		LatestStatusSubtype:       opts.LatestStatusSubtype,
+		LatestStatusSubtypeFamily: opts.LatestStatusSubtypeFamily,
+		AnyMatchFamily:            opts.AnyMatchFamily,
+		ManualReplayActor:         opts.ManualReplayActor,
+		DeadLetteredAfter:         opts.DeadLetteredAfter,
+		DeadLetteredBefore:        opts.DeadLetteredBefore,
+		DeadLetterReasonQuery:     opts.DeadLetterReasonQuery,
+		LatestDispatchReference:   opts.LatestDispatchReference,
+	}
 }
 
 // bgTaskLister adapts background.Manager to pages.TaskLister.
@@ -783,4 +1174,3 @@ func taskElapsed(s background.TaskSnapshot) time.Duration {
 	}
 	return time.Since(s.StartedAt) // running: wall-clock
 }
-

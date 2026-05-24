@@ -13,10 +13,16 @@ Lango provides multiple layers of security to protect sensitive data flowing bet
 | **Master Key Envelope** | Hierarchical key management | MK/KEK architecture, recovery mnemonic, passphrase rotation without re-encryption |
 | **Encryption & Secrets** | Protect data at rest and in transit | AES-256-GCM encryption, key registry, secret management |
 | **PII Redaction** | Strip personal information before it reaches AI providers | Regex patterns + optional NER via Microsoft Presidio |
+| **Exportability Policy** | Decide what early knowledge artifacts can be traded | Source-primary evaluation for knowledge exchange v1 |
+| **Approval Flow** | Decide when early artifact releases can move forward | Structured artifact release states and audit-backed receipts |
+| **Upfront Payment Approval** | Decide whether a transaction may start with an upfront payment | Structured prepayment decisioning and canonical transaction receipt state |
+| **Escrow Execution** | Execute approved escrow recommendations into canonical receipt-backed escrow state | Receipt-backed `create + fund` execution for escrow-recommended transactions |
+| **Actual Payment Execution Gating** | Enforce direct payment execution against canonical receipt state | Receipt-backed allow/deny gate for `payment_send` and `p2p_pay` |
+| **Dispute-Ready Receipts** | Preserve receipt evidence for early knowledge exchange | Lite submission/transaction receipt model with a current `create_dispute_ready_receipt` entrypoint |
 | **Tool Approval** | Control which tools agents can execute | Policy-based approval workflows with channel notifications |
 | **Authentication** | Secure gateway access | OIDC login flow, session management, CORS controls |
 | **Hardware Keyring** | Secure passphrase storage | Hardware-backed passphrase via Touch ID (macOS Secure Enclave) or TPM 2.0 (Linux) |
-| **Database Encryption** | Protect data at rest | SQLCipher transparent encryption for the application database |
+| **Payload Protection** | Protect sensitive data at rest | Broker-managed AES-256-GCM payload encryption with redacted search projections |
 | **Cloud KMS / HSM** | Hardware-backed cryptography | AWS KMS, GCP KMS, Azure Key Vault, PKCS#11 HSM integration |
 | **P2P Session Management** | Peer session lifecycle | Session listing, explicit invalidation, security-event-based revocation |
 | **P2P Tool Sandbox** | Execution isolation | Subprocess and container-based isolation for remote tool invocations |
@@ -75,8 +81,15 @@ See [Encryption & Secrets](encryption.md) for full details.
 - [Master Key Envelope](envelope-migration.md) -- MK/KEK hierarchy, migration from legacy, backup & recovery
 - [Encryption & Secrets](encryption.md) -- Key derivation, secret storage, output scanning, companion app
 - [PII Redaction](pii-redaction.md) -- Builtin patterns, custom regex, Presidio integration
+- [Exportability Policy](exportability.md) -- Source-primary exportability evaluation for early knowledge exchange
+- [Approval Flow](approval-flow.md) -- Structured artifact release decisions and audit-backed receipts
+- [Approval CLI](approval-cli.md) -- Approval-system behavior and operational entrypoints
+- [Upfront Payment Approval](upfront-payment-approval.md) -- Structured prepayment decisioning and transaction-level payment approval state
+- [Escrow Execution](escrow-execution.md) -- Receipt-backed `create + fund` execution for approved escrow recommendations
+- [Actual Payment Execution Gating](actual-payment-execution-gating.md) -- Receipt-backed direct payment allow/deny enforcement for `payment_send` and `p2p_pay`
+- [Dispute-Ready Receipts](dispute-ready-receipts.md) -- Lite receipt evidence model and current operator entrypoint
 - [Tool Approval](tool-approval.md) -- Approval policies, sensitive/exempt tools, notifications
 - [Authentication](authentication.md) -- OIDC providers, session management, CORS configuration
 - [Hardware Keyring](encryption.md#hardware-keyring-integration) -- Secure passphrase storage via Touch ID / TPM
-- [Database Encryption](encryption.md#database-encryption) -- SQLCipher transparent database encryption
+- [Payload Protection](encryption.md#database-encryption) -- Broker-managed payload encryption and legacy DB compatibility notes
 - [Cloud KMS / HSM](encryption.md#cloud-kms-mode) -- AWS, GCP, Azure, PKCS#11 integration

@@ -63,13 +63,22 @@ func (c *MultiAgentCheck) RunWithBootstrap(
 	if base.Status == StatusSkip || base.Status == StatusFail {
 		return base
 	}
-	if boot == nil || boot.DBClient == nil {
+	if boot == nil {
 		base.Status = StatusWarn
-		base.Details = "Runtime diagnostics unavailable: bootstrap DB client not available"
+		base.Details = "Runtime diagnostics unavailable: bootstrap result not available"
 		return base
 	}
 
-	traceStore := turntrace.NewEntStore(boot.DBClient)
+	var traceStore turntrace.Store
+	if boot.Storage != nil {
+		traceStore = boot.Storage.TurnTrace()
+	}
+	if traceStore == nil {
+		base.Status = StatusWarn
+		base.Details = "Runtime diagnostics unavailable: trace store not available"
+		return base
+	}
+
 	failures, err := traceStore.RecentFailures(ctx, 3)
 	if err != nil {
 		base.Status = StatusWarn
@@ -143,7 +152,7 @@ func (c *MultiAgentCheck) RunWithBootstrap(
 }
 
 // runExtendedTraceChecks performs additional trace-based diagnostics.
-func runExtendedTraceChecks(ctx context.Context, store *turntrace.EntStore, cfg *config.Config) []string {
+func runExtendedTraceChecks(ctx context.Context, store turntrace.Store, cfg *config.Config) []string {
 	var warnings []string
 	since := time.Now().Add(-24 * time.Hour)
 

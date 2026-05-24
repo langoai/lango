@@ -11,6 +11,11 @@ The system SHALL execute shell commands in a controlled environment with configu
 - **WHEN** a command is executed with a timeout
 - **THEN** the system SHALL run the command and return stdout, stderr, and exit code
 
+#### Scenario: Missing required wrapper input
+- **WHEN** `exec`, `exec_bg`, `exec_status`, or `exec_stop` is invoked without its required `command` or `id` input
+- **THEN** the handler SHALL return an actionable missing-parameter error
+- **AND** SHALL reject the request before policy evaluation or supervisor interaction begins
+
 #### Scenario: Command timeout
 - **WHEN** a command exceeds its timeout duration
 - **THEN** the process SHALL be terminated and a timeout error returned

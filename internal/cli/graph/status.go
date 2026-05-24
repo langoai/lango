@@ -2,21 +2,25 @@ package graph
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"os"
 
 	"github.com/langoai/lango/internal/config"
 	"github.com/spf13/cobra"
 )
 
 func newStatusCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
-	var jsonOutput bool
+	var output string
 
 	cmd := &cobra.Command{
-		Use:   "status",
-		Short: "Show knowledge graph status",
+		Use:           "status",
+		Short:         "Show knowledge graph status",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			output, err := resolveOutput(cmd)
+			if err != nil {
+				return err
+			}
 			cfg, err := cfgLoader()
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
@@ -37,13 +41,11 @@ func newStatusCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 
 			if !cfg.Graph.Enabled {
 				s.TripleCount = 0
-				if jsonOutput {
-					enc := json.NewEncoder(os.Stdout)
-					enc.SetIndent("", "  ")
-					return enc.Encode(s)
+				if output == "json" {
+					return printJSON(cmd.OutOrStdout(), s)
 				}
-				fmt.Println("Knowledge Graph Status")
-				fmt.Printf("  Enabled:  %v\n", s.Enabled)
+				fmt.Fprintln(cmd.OutOrStdout(), "Knowledge Graph Status")
+				fmt.Fprintf(cmd.OutOrStdout(), "  Enabled:  %v\n", s.Enabled)
 				return nil
 			}
 
@@ -59,23 +61,21 @@ func newStatusCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 			}
 			s.TripleCount = count
 
-			if jsonOutput {
-				enc := json.NewEncoder(os.Stdout)
-				enc.SetIndent("", "  ")
-				return enc.Encode(s)
+			if output == "json" {
+				return printJSON(cmd.OutOrStdout(), s)
 			}
 
-			fmt.Println("Knowledge Graph Status")
-			fmt.Printf("  Enabled:       %v\n", s.Enabled)
-			fmt.Printf("  Backend:       %s\n", s.Backend)
-			fmt.Printf("  Database Path: %s\n", s.DatabasePath)
-			fmt.Printf("  Triples:       %d\n", s.TripleCount)
+			fmt.Fprintln(cmd.OutOrStdout(), "Knowledge Graph Status")
+			fmt.Fprintf(cmd.OutOrStdout(), "  Enabled:       %v\n", s.Enabled)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Backend:       %s\n", s.Backend)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Database Path: %s\n", s.DatabasePath)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Triples:       %d\n", s.TripleCount)
 
 			return nil
 		},
 	}
 
-	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
+	cmd.Flags().StringVar(&output, "output", "table", "Output format: table or json")
 
 	return cmd
 }

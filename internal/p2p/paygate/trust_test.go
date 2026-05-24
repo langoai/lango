@@ -57,17 +57,20 @@ func TestCheck_MediumTrust_Prepay(t *testing.T) {
 	assert.Empty(t, result.SettlementID)
 }
 
-func TestCheck_ExactThreshold_Prepay(t *testing.T) {
+func TestCheck_ExactThreshold_PostPay(t *testing.T) {
 	t.Parallel()
 
 	repFn := func(ctx context.Context, peerDID string) (float64, error) {
-		return DefaultPostPayThreshold, nil // exactly at threshold — NOT post-pay (must be strictly greater)
+		return DefaultPostPayThreshold, nil // exactly at threshold should now qualify for post-pay
 	}
 	gate := testGateWithReputation(paidPricingFn, repFn, DefaultTrustConfig())
 
 	result, err := gate.Check("did:peer:borderline", "paid-tool", map[string]interface{}{})
 	require.NoError(t, err)
-	assert.Equal(t, StatusPaymentRequired, result.Status)
+	assert.Equal(t, StatusPostPayApproved, result.Status)
+	assert.NotEmpty(t, result.SettlementID)
+	assert.Nil(t, result.Auth)
+	assert.Nil(t, result.PriceQuote)
 }
 
 func TestCheck_NilReputation_Prepay(t *testing.T) {

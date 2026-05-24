@@ -71,6 +71,10 @@ The system SHALL register three agent tools: `contract_read` (SafetyLevel Safe),
 - **WHEN** the `contract_call` tool is invoked with address, ABI, method, and optional value
 - **THEN** it calls `Caller.Write()` and returns the transaction hash
 
+#### Scenario: Missing required contract input fails at the wrapper
+- **WHEN** `contract_read`, `contract_call`, or `contract_abi_load` is invoked without one of its required wrapper inputs
+- **THEN** the tool SHALL return an actionable missing-parameter error before ABI parsing or contract execution begins
+
 ### Requirement: CLI commands validate contract parameters
 The system SHALL provide `lango contract read`, `lango contract call`, and `lango contract abi load` CLI commands under GroupID `"infra"`. Commands SHALL validate ABI parsing and method existence. The `blockLangoExec` guard SHALL include `"lango contract"`.
 
@@ -78,9 +82,65 @@ The system SHALL provide `lango contract read`, `lango contract call`, and `lang
 - **WHEN** `lango contract read --address 0x... --abi ./erc20.json --method balanceOf` is run
 - **THEN** the ABI is parsed, the method is validated, and a guidance message is shown
 
+### Requirement: Contract read output routing
+`lango contract read` SHALL write validation payloads through the Cobra command output stream and informational runtime notes through the Cobra error stream so wrappers and test harnesses can capture them without intercepting process-global stdout/stderr.
+
+#### Scenario: CLI read text output writes to command streams
+- **WHEN** `lango contract read --address 0x... --abi ./erc20.json --method balanceOf` is run
+- **THEN** the command writes the validation summary to the Cobra command output stream
+- **AND** it writes the runtime note to the Cobra command error stream
+
+#### Scenario: CLI read JSON output writes to command streams
+- **WHEN** `lango contract read --address 0x... --abi ./erc20.json --method balanceOf --output json` is run
+- **THEN** the command writes the JSON payload to the Cobra command output stream
+- **AND** it writes the runtime note to the Cobra command error stream
+
+#### Scenario: CLI read rejects unknown output before config load
+- **WHEN** `lango contract read --address 0x... --abi ./erc20.json --method balanceOf --output yaml` is run
+- **THEN** the command SHALL return an actionable unknown-output-format error
+- **AND** it SHALL NOT invoke the config loader
+
+#### Scenario: CLI call validates ABI and method
+- **WHEN** `lango contract call --address 0x... --abi ./erc20.json --method transfer` is run
+- **THEN** the ABI is parsed, the method is validated, and a guidance message is shown
+
+### Requirement: Contract call output routing
+`lango contract call` SHALL write validation payloads through the Cobra command output stream and informational runtime notes through the Cobra command error stream so wrappers and test harnesses can capture them without intercepting process-global stdout/stderr.
+
+#### Scenario: CLI call text output writes to command streams
+- **WHEN** `lango contract call --address 0x... --abi ./erc20.json --method transfer` is run
+- **THEN** the command writes the validation summary to the Cobra command output stream
+- **AND** it writes the runtime note to the Cobra command error stream
+
+#### Scenario: CLI call JSON output writes to command streams
+- **WHEN** `lango contract call --address 0x... --abi ./erc20.json --method transfer --output json` is run
+- **THEN** the command writes the JSON payload to the Cobra command output stream
+- **AND** it writes the runtime note to the Cobra command error stream
+
+#### Scenario: CLI call rejects unknown output before config load
+- **WHEN** `lango contract call --address 0x... --abi ./erc20.json --method transfer --output yaml` is run
+- **THEN** the command SHALL return an actionable unknown-output-format error
+- **AND** it SHALL NOT invoke the config loader
+
 #### Scenario: CLI abi load parses and reports
 - **WHEN** `lango contract abi load --address 0x... --file ./erc20.json` is run
 - **THEN** the ABI is parsed and method/event counts are displayed
+
+### Requirement: Contract ABI load output routing
+`lango contract abi load` SHALL write all non-error output through the Cobra command output stream so wrappers and test harnesses can capture text and JSON output without intercepting process-global stdout.
+
+#### Scenario: CLI abi load text output writes to command output
+- **WHEN** `lango contract abi load --address 0x... --file ./erc20.json` is run
+- **THEN** the command writes the text summary to the Cobra command output stream
+
+#### Scenario: CLI abi load JSON output writes to command output
+- **WHEN** `lango contract abi load --address 0x... --file ./erc20.json --output json` is run
+- **THEN** the command writes the JSON payload to the Cobra command output stream
+
+#### Scenario: CLI abi load rejects unknown output before config load
+- **WHEN** `lango contract abi load --address 0x... --file ./erc20.json --output yaml` is run
+- **THEN** the command SHALL return an actionable unknown-output-format error
+- **AND** it SHALL NOT invoke the config loader
 
 ### Requirement: Contract feature documentation page
 The documentation site SHALL include a `docs/features/contracts.md` page documenting smart contract interaction capabilities including ABI cache, read (view/pure), and write (state-changing) operations, with experimental warning, architecture overview, agent tools listing, and configuration reference.
@@ -99,6 +159,7 @@ The documentation site SHALL include a `docs/cli/contract.md` page documenting `
 #### Scenario: Each subcommand documented with flags
 - **WHEN** a user reads the contract CLI reference
 - **THEN** each subcommand SHALL include a flags table with `--address`, `--abi`, `--method`, `--args`, `--chain-id`, and `--output` flags documented
+- **AND** the contract CLI reference SHALL document `--output` as accepting `table` or `json`
 
 ### Requirement: Transaction retry backoff
 The contract caller SHALL use exponential backoff for transaction submission retries: 1s, 2s, 4s (doubling each attempt) instead of linear backoff.

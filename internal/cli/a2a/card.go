@@ -1,9 +1,7 @@
 package a2a
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 	"text/tabwriter"
 
 	"github.com/langoai/lango/internal/config"
@@ -11,12 +9,18 @@ import (
 )
 
 func newCardCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
-	var jsonOutput bool
+	var output string
 
 	cmd := &cobra.Command{
-		Use:   "card",
-		Short: "Show local A2A agent card configuration",
+		Use:           "card",
+		Short:         "Show local A2A agent card configuration",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			output, err := resolveOutput(cmd)
+			if err != nil {
+				return err
+			}
 			cfg, err := cfgLoader()
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
@@ -51,24 +55,22 @@ func newCardCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 				RemoteAgents:     remotes,
 			}
 
-			if jsonOutput {
-				enc := json.NewEncoder(os.Stdout)
-				enc.SetIndent("", "  ")
-				return enc.Encode(out)
+			if output == "json" {
+				return printJSON(cmd.OutOrStdout(), out)
 			}
 
-			fmt.Printf("A2A Agent Card\n")
-			fmt.Printf("  Enabled:      %v\n", out.Enabled)
+			fmt.Fprintf(cmd.OutOrStdout(), "A2A Agent Card\n")
+			fmt.Fprintf(cmd.OutOrStdout(), "  Enabled:      %v\n", out.Enabled)
 			if out.Enabled {
-				fmt.Printf("  Base URL:     %s\n", out.BaseURL)
-				fmt.Printf("  Agent Name:   %s\n", out.AgentName)
-				fmt.Printf("  Description:  %s\n", out.AgentDescription)
+				fmt.Fprintf(cmd.OutOrStdout(), "  Base URL:     %s\n", out.BaseURL)
+				fmt.Fprintf(cmd.OutOrStdout(), "  Agent Name:   %s\n", out.AgentName)
+				fmt.Fprintf(cmd.OutOrStdout(), "  Description:  %s\n", out.AgentDescription)
 			}
-			fmt.Println()
+			fmt.Fprintln(cmd.OutOrStdout())
 
 			if len(out.RemoteAgents) > 0 {
-				fmt.Printf("Remote Agents (%d)\n", len(out.RemoteAgents))
-				w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+				fmt.Fprintf(cmd.OutOrStdout(), "Remote Agents (%d)\n", len(out.RemoteAgents))
+				w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
 				fmt.Fprintln(w, "  NAME\tAGENT CARD URL")
 				for _, r := range out.RemoteAgents {
 					fmt.Fprintf(w, "  %s\t%s\n", r.Name, r.AgentCardURL)
@@ -76,11 +78,11 @@ func newCardCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 				return w.Flush()
 			}
 
-			fmt.Println("No remote agents configured.")
-			return nil
+			_, err = fmt.Fprintln(cmd.OutOrStdout(), "No remote agents configured.")
+			return err
 		},
 	}
 
-	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
+	cmd.Flags().StringVar(&output, "output", "table", "Output format: table or json")
 	return cmd
 }

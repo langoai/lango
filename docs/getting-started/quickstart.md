@@ -14,7 +14,7 @@ cd lango
 make build
 ```
 
-See [Installation](installation.md) for detailed instructions, including [platform-specific C compiler setup](installation.md#platform-specific-c-compiler-setup) required for CGO.
+See [Installation](installation.md) for detailed instructions, including [optional C compiler setup](installation.md#optional-c-compiler-setup) required for CGO.
 
 ## Step 2: Onboard
 
@@ -97,9 +97,9 @@ Start the agent server:
 
 Your agent is now running and connected to your configured channels. Send a message through Telegram, Discord, or Slack to start a conversation.
 
-!!! tip "Interactive TUI Chat"
+!!! tip "Interactive TUI"
 
-    Run `lango` without arguments to start the interactive terminal coding-agent cockpit:
+    Run `lango` without arguments to start the standalone mission workbench. If the active profile is incomplete, that first screen points you to `lango onboard`, `lango settings`, and `lango doctor`. Once the profile is ready, the same surface switches to starter prompts and the `Enter` / `1-3` quick-start path. Use `lango cockpit` for the full multi-panel operator dashboard:
 
     ```bash
     lango

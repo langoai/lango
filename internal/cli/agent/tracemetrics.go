@@ -1,9 +1,7 @@
 package agent
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 	"sort"
 	"text/tabwriter"
 	"time"
@@ -17,21 +15,30 @@ import (
 func newTraceMetricsCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 	var (
 		agentFilter string
-		jsonOutput  bool
+		output      string
 	)
 
 	cmd := &cobra.Command{
-		Use:   "metrics",
-		Short: "Show trace-derived per-agent performance metrics",
-		Long:  "Displays per-agent success rate, turn count, tool calls, and duration percentiles derived from turn traces. Distinct from 'lango metrics agents' which shows token usage.",
+		Use:           "metrics",
+		Short:         "Show trace-derived per-agent performance metrics",
+		Long:          "Displays per-agent success rate, turn count, tool calls, and duration percentiles derived from turn traces. Distinct from 'lango metrics agents' which shows token usage.",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			output, err := resolveOutput(cmd)
+			if err != nil {
+				return err
+			}
 			boot, err := bootLoader()
 			if err != nil {
 				return fmt.Errorf("bootstrap: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
-			store := turntrace.NewEntStore(boot.DBClient)
+			store := traceStoreFromBoot(boot)
+			if store == nil {
+				return fmt.Errorf("trace store unavailable")
+			}
 			ctx := cmd.Context()
 
 			// Get recent successful and failed traces.
@@ -66,12 +73,12 @@ func newTraceMetricsCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Com
 				metrics = filtered
 			}
 
-			if jsonOutput {
-				return json.NewEncoder(os.Stdout).Encode(metrics)
+			if output == "json" {
+				return printPrettyJSON(cmd.OutOrStdout(), metrics)
 			}
 
 			if len(metrics) == 0 {
-				fmt.Println("No agent metrics found.")
+				fmt.Fprintln(cmd.OutOrStdout(), "No agent metrics found.")
 				return nil
 			}
 
@@ -82,7 +89,7 @@ func newTraceMetricsCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Com
 			}
 			sort.Strings(names)
 
-			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
 			fmt.Fprintln(w, "AGENT\tTURNS\tSUCCESS\tFAILURE\tRATE\tTOOLS\tP50\tP95")
 			for _, name := range names {
 				m := metrics[name]
@@ -102,7 +109,7 @@ func newTraceMetricsCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Com
 	}
 
 	cmd.Flags().StringVar(&agentFilter, "agent", "", "Filter by agent name")
-	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
+	cmd.Flags().StringVar(&output, "output", "table", "Output format: table or json")
 
 	return cmd
 }

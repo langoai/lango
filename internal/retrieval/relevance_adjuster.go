@@ -19,7 +19,7 @@ type RelevanceStore interface {
 
 // RelevanceAdjusterConfig mirrors config.AutoAdjustConfig to avoid import cycle.
 type RelevanceAdjusterConfig struct {
-	Mode          string  // "shadow" or "active"
+	Mode          string // "shadow" or "active"
 	BoostDelta    float64
 	DecayDelta    float64
 	DecayInterval int

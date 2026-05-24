@@ -46,6 +46,16 @@ var forbiddenForP2P = []string{
 
 var rules = []boundaryRule{
 	{
+		name: "only cmd/lango may import app",
+		sourceMatch: func(importPath string) bool {
+			return importPath != modulePath+"cmd/lango"
+		},
+		forbiddenMatch: func(dep string) bool {
+			return dep == modulePath+"internal/app" ||
+				strings.HasPrefix(dep, modulePath+"internal/app/")
+		},
+	},
+	{
 		name: "p2p networking must not import economy/payment/wallet",
 		sourceMatch: func(importPath string) bool {
 			for _, prefix := range p2pNetworkingPrefixes {
@@ -86,6 +96,18 @@ var rules = []boundaryRule{
 				strings.HasPrefix(dep, modulePath+"internal/p2p/identity/")
 		},
 	},
+	{
+		name: "non-cli internal packages must not import internal/cli",
+		sourceMatch: func(importPath string) bool {
+			return strings.HasPrefix(importPath, modulePath+"internal/") &&
+				importPath != modulePath+"internal/cli" &&
+				!strings.HasPrefix(importPath, modulePath+"internal/cli/")
+		},
+		forbiddenMatch: func(dep string) bool {
+			return dep == modulePath+"internal/cli" ||
+				strings.HasPrefix(dep, modulePath+"internal/cli/")
+		},
+	},
 }
 
 func TestBoundaryViolations(t *testing.T) {
@@ -111,12 +133,12 @@ func TestBoundaryViolations(t *testing.T) {
 	t.Logf("Boundary check complete: %d violation(s) found", violations)
 }
 
-// loadPackages runs `go list -json ./internal/...` and parses the output
+// loadPackages runs `go list -json ./...` and parses the output
 // into a slice of goListPackage. It calls t.Fatalf on setup errors.
 func loadPackages(t *testing.T) []goListPackage {
 	t.Helper()
 
-	cmd := exec.Command("go", "list", "-json", "./internal/...")
+	cmd := exec.Command("go", "list", "-json", "./...")
 	cmd.Dir = findModuleRoot(t)
 
 	out, err := cmd.Output()

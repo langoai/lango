@@ -23,7 +23,7 @@ func openTestDB(t *testing.T) *sql.DB {
 func skipWithoutFTS5(t *testing.T, db *sql.DB) {
 	t.Helper()
 	if !ProbeFTS5(db) {
-		t.Skip("FTS5 not available (build with -tags fts5)")
+		t.Skip("FTS5 not available in current SQLite runtime")
 	}
 }
 
@@ -163,11 +163,11 @@ func TestFTS5Index_Search(t *testing.T) {
 		wantCount int
 		wantFirst string
 	}{
-		{give: "deploy", wantCount: 2},                  // k1, k2 contain "deploy" (k4 has "deployment" — different token)
+		{give: "deploy", wantCount: 2}, // k1, k2 contain "deploy" (k4 has "deployment" — different token)
 		{give: "database", wantCount: 1, wantFirst: "k3"},
 		{give: `"deploy a server"`, wantCount: 1, wantFirst: "k1"}, // phrase match
-		{give: "dep*", wantCount: 3},                                // prefix match
-		{give: "", wantCount: 0},                                    // empty query
+		{give: "dep*", wantCount: 3},                               // prefix match
+		{give: "", wantCount: 0},                                   // empty query
 		{give: "nonexistent", wantCount: 0},
 	}
 

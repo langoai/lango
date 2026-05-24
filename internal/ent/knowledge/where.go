@@ -65,9 +65,34 @@ func Content(v string) predicate.Knowledge {
 	return predicate.Knowledge(sql.FieldEQ(FieldContent, v))
 }
 
+// ContentCiphertext applies equality check predicate on the "content_ciphertext" field. It's identical to ContentCiphertextEQ.
+func ContentCiphertext(v []byte) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldEQ(FieldContentCiphertext, v))
+}
+
+// ContentNonce applies equality check predicate on the "content_nonce" field. It's identical to ContentNonceEQ.
+func ContentNonce(v []byte) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldEQ(FieldContentNonce, v))
+}
+
+// ContentKeyVersion applies equality check predicate on the "content_key_version" field. It's identical to ContentKeyVersionEQ.
+func ContentKeyVersion(v int) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldEQ(FieldContentKeyVersion, v))
+}
+
 // Source applies equality check predicate on the "source" field. It's identical to SourceEQ.
 func Source(v string) predicate.Knowledge {
 	return predicate.Knowledge(sql.FieldEQ(FieldSource, v))
+}
+
+// SourceClass applies equality check predicate on the "source_class" field. It's identical to SourceClassEQ.
+func SourceClass(v string) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldEQ(FieldSourceClass, v))
+}
+
+// AssetLabel applies equality check predicate on the "asset_label" field. It's identical to AssetLabelEQ.
+func AssetLabel(v string) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldEQ(FieldAssetLabel, v))
 }
 
 // Version applies equality check predicate on the "version" field. It's identical to VersionEQ.
@@ -250,6 +275,156 @@ func ContentContainsFold(v string) predicate.Knowledge {
 	return predicate.Knowledge(sql.FieldContainsFold(FieldContent, v))
 }
 
+// ContentCiphertextEQ applies the EQ predicate on the "content_ciphertext" field.
+func ContentCiphertextEQ(v []byte) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldEQ(FieldContentCiphertext, v))
+}
+
+// ContentCiphertextNEQ applies the NEQ predicate on the "content_ciphertext" field.
+func ContentCiphertextNEQ(v []byte) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldNEQ(FieldContentCiphertext, v))
+}
+
+// ContentCiphertextIn applies the In predicate on the "content_ciphertext" field.
+func ContentCiphertextIn(vs ...[]byte) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldIn(FieldContentCiphertext, vs...))
+}
+
+// ContentCiphertextNotIn applies the NotIn predicate on the "content_ciphertext" field.
+func ContentCiphertextNotIn(vs ...[]byte) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldNotIn(FieldContentCiphertext, vs...))
+}
+
+// ContentCiphertextGT applies the GT predicate on the "content_ciphertext" field.
+func ContentCiphertextGT(v []byte) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldGT(FieldContentCiphertext, v))
+}
+
+// ContentCiphertextGTE applies the GTE predicate on the "content_ciphertext" field.
+func ContentCiphertextGTE(v []byte) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldGTE(FieldContentCiphertext, v))
+}
+
+// ContentCiphertextLT applies the LT predicate on the "content_ciphertext" field.
+func ContentCiphertextLT(v []byte) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldLT(FieldContentCiphertext, v))
+}
+
+// ContentCiphertextLTE applies the LTE predicate on the "content_ciphertext" field.
+func ContentCiphertextLTE(v []byte) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldLTE(FieldContentCiphertext, v))
+}
+
+// ContentCiphertextIsNil applies the IsNil predicate on the "content_ciphertext" field.
+func ContentCiphertextIsNil() predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldIsNull(FieldContentCiphertext))
+}
+
+// ContentCiphertextNotNil applies the NotNil predicate on the "content_ciphertext" field.
+func ContentCiphertextNotNil() predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldNotNull(FieldContentCiphertext))
+}
+
+// ContentNonceEQ applies the EQ predicate on the "content_nonce" field.
+func ContentNonceEQ(v []byte) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldEQ(FieldContentNonce, v))
+}
+
+// ContentNonceNEQ applies the NEQ predicate on the "content_nonce" field.
+func ContentNonceNEQ(v []byte) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldNEQ(FieldContentNonce, v))
+}
+
+// ContentNonceIn applies the In predicate on the "content_nonce" field.
+func ContentNonceIn(vs ...[]byte) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldIn(FieldContentNonce, vs...))
+}
+
+// ContentNonceNotIn applies the NotIn predicate on the "content_nonce" field.
+func ContentNonceNotIn(vs ...[]byte) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldNotIn(FieldContentNonce, vs...))
+}
+
+// ContentNonceGT applies the GT predicate on the "content_nonce" field.
+func ContentNonceGT(v []byte) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldGT(FieldContentNonce, v))
+}
+
+// ContentNonceGTE applies the GTE predicate on the "content_nonce" field.
+func ContentNonceGTE(v []byte) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldGTE(FieldContentNonce, v))
+}
+
+// ContentNonceLT applies the LT predicate on the "content_nonce" field.
+func ContentNonceLT(v []byte) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldLT(FieldContentNonce, v))
+}
+
+// ContentNonceLTE applies the LTE predicate on the "content_nonce" field.
+func ContentNonceLTE(v []byte) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldLTE(FieldContentNonce, v))
+}
+
+// ContentNonceIsNil applies the IsNil predicate on the "content_nonce" field.
+func ContentNonceIsNil() predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldIsNull(FieldContentNonce))
+}
+
+// ContentNonceNotNil applies the NotNil predicate on the "content_nonce" field.
+func ContentNonceNotNil() predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldNotNull(FieldContentNonce))
+}
+
+// ContentKeyVersionEQ applies the EQ predicate on the "content_key_version" field.
+func ContentKeyVersionEQ(v int) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldEQ(FieldContentKeyVersion, v))
+}
+
+// ContentKeyVersionNEQ applies the NEQ predicate on the "content_key_version" field.
+func ContentKeyVersionNEQ(v int) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldNEQ(FieldContentKeyVersion, v))
+}
+
+// ContentKeyVersionIn applies the In predicate on the "content_key_version" field.
+func ContentKeyVersionIn(vs ...int) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldIn(FieldContentKeyVersion, vs...))
+}
+
+// ContentKeyVersionNotIn applies the NotIn predicate on the "content_key_version" field.
+func ContentKeyVersionNotIn(vs ...int) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldNotIn(FieldContentKeyVersion, vs...))
+}
+
+// ContentKeyVersionGT applies the GT predicate on the "content_key_version" field.
+func ContentKeyVersionGT(v int) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldGT(FieldContentKeyVersion, v))
+}
+
+// ContentKeyVersionGTE applies the GTE predicate on the "content_key_version" field.
+func ContentKeyVersionGTE(v int) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldGTE(FieldContentKeyVersion, v))
+}
+
+// ContentKeyVersionLT applies the LT predicate on the "content_key_version" field.
+func ContentKeyVersionLT(v int) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldLT(FieldContentKeyVersion, v))
+}
+
+// ContentKeyVersionLTE applies the LTE predicate on the "content_key_version" field.
+func ContentKeyVersionLTE(v int) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldLTE(FieldContentKeyVersion, v))
+}
+
+// ContentKeyVersionIsNil applies the IsNil predicate on the "content_key_version" field.
+func ContentKeyVersionIsNil() predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldIsNull(FieldContentKeyVersion))
+}
+
+// ContentKeyVersionNotNil applies the NotNil predicate on the "content_key_version" field.
+func ContentKeyVersionNotNil() predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldNotNull(FieldContentKeyVersion))
+}
+
 // TagsIsNil applies the IsNil predicate on the "tags" field.
 func TagsIsNil() predicate.Knowledge {
 	return predicate.Knowledge(sql.FieldIsNull(FieldTags))
@@ -333,6 +508,156 @@ func SourceEqualFold(v string) predicate.Knowledge {
 // SourceContainsFold applies the ContainsFold predicate on the "source" field.
 func SourceContainsFold(v string) predicate.Knowledge {
 	return predicate.Knowledge(sql.FieldContainsFold(FieldSource, v))
+}
+
+// SourceClassEQ applies the EQ predicate on the "source_class" field.
+func SourceClassEQ(v string) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldEQ(FieldSourceClass, v))
+}
+
+// SourceClassNEQ applies the NEQ predicate on the "source_class" field.
+func SourceClassNEQ(v string) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldNEQ(FieldSourceClass, v))
+}
+
+// SourceClassIn applies the In predicate on the "source_class" field.
+func SourceClassIn(vs ...string) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldIn(FieldSourceClass, vs...))
+}
+
+// SourceClassNotIn applies the NotIn predicate on the "source_class" field.
+func SourceClassNotIn(vs ...string) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldNotIn(FieldSourceClass, vs...))
+}
+
+// SourceClassGT applies the GT predicate on the "source_class" field.
+func SourceClassGT(v string) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldGT(FieldSourceClass, v))
+}
+
+// SourceClassGTE applies the GTE predicate on the "source_class" field.
+func SourceClassGTE(v string) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldGTE(FieldSourceClass, v))
+}
+
+// SourceClassLT applies the LT predicate on the "source_class" field.
+func SourceClassLT(v string) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldLT(FieldSourceClass, v))
+}
+
+// SourceClassLTE applies the LTE predicate on the "source_class" field.
+func SourceClassLTE(v string) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldLTE(FieldSourceClass, v))
+}
+
+// SourceClassContains applies the Contains predicate on the "source_class" field.
+func SourceClassContains(v string) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldContains(FieldSourceClass, v))
+}
+
+// SourceClassHasPrefix applies the HasPrefix predicate on the "source_class" field.
+func SourceClassHasPrefix(v string) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldHasPrefix(FieldSourceClass, v))
+}
+
+// SourceClassHasSuffix applies the HasSuffix predicate on the "source_class" field.
+func SourceClassHasSuffix(v string) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldHasSuffix(FieldSourceClass, v))
+}
+
+// SourceClassIsNil applies the IsNil predicate on the "source_class" field.
+func SourceClassIsNil() predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldIsNull(FieldSourceClass))
+}
+
+// SourceClassNotNil applies the NotNil predicate on the "source_class" field.
+func SourceClassNotNil() predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldNotNull(FieldSourceClass))
+}
+
+// SourceClassEqualFold applies the EqualFold predicate on the "source_class" field.
+func SourceClassEqualFold(v string) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldEqualFold(FieldSourceClass, v))
+}
+
+// SourceClassContainsFold applies the ContainsFold predicate on the "source_class" field.
+func SourceClassContainsFold(v string) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldContainsFold(FieldSourceClass, v))
+}
+
+// AssetLabelEQ applies the EQ predicate on the "asset_label" field.
+func AssetLabelEQ(v string) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldEQ(FieldAssetLabel, v))
+}
+
+// AssetLabelNEQ applies the NEQ predicate on the "asset_label" field.
+func AssetLabelNEQ(v string) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldNEQ(FieldAssetLabel, v))
+}
+
+// AssetLabelIn applies the In predicate on the "asset_label" field.
+func AssetLabelIn(vs ...string) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldIn(FieldAssetLabel, vs...))
+}
+
+// AssetLabelNotIn applies the NotIn predicate on the "asset_label" field.
+func AssetLabelNotIn(vs ...string) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldNotIn(FieldAssetLabel, vs...))
+}
+
+// AssetLabelGT applies the GT predicate on the "asset_label" field.
+func AssetLabelGT(v string) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldGT(FieldAssetLabel, v))
+}
+
+// AssetLabelGTE applies the GTE predicate on the "asset_label" field.
+func AssetLabelGTE(v string) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldGTE(FieldAssetLabel, v))
+}
+
+// AssetLabelLT applies the LT predicate on the "asset_label" field.
+func AssetLabelLT(v string) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldLT(FieldAssetLabel, v))
+}
+
+// AssetLabelLTE applies the LTE predicate on the "asset_label" field.
+func AssetLabelLTE(v string) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldLTE(FieldAssetLabel, v))
+}
+
+// AssetLabelContains applies the Contains predicate on the "asset_label" field.
+func AssetLabelContains(v string) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldContains(FieldAssetLabel, v))
+}
+
+// AssetLabelHasPrefix applies the HasPrefix predicate on the "asset_label" field.
+func AssetLabelHasPrefix(v string) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldHasPrefix(FieldAssetLabel, v))
+}
+
+// AssetLabelHasSuffix applies the HasSuffix predicate on the "asset_label" field.
+func AssetLabelHasSuffix(v string) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldHasSuffix(FieldAssetLabel, v))
+}
+
+// AssetLabelIsNil applies the IsNil predicate on the "asset_label" field.
+func AssetLabelIsNil() predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldIsNull(FieldAssetLabel))
+}
+
+// AssetLabelNotNil applies the NotNil predicate on the "asset_label" field.
+func AssetLabelNotNil() predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldNotNull(FieldAssetLabel))
+}
+
+// AssetLabelEqualFold applies the EqualFold predicate on the "asset_label" field.
+func AssetLabelEqualFold(v string) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldEqualFold(FieldAssetLabel, v))
+}
+
+// AssetLabelContainsFold applies the ContainsFold predicate on the "asset_label" field.
+func AssetLabelContainsFold(v string) predicate.Knowledge {
+	return predicate.Knowledge(sql.FieldContainsFold(FieldAssetLabel, v))
 }
 
 // VersionEQ applies the EQ predicate on the "version" field.

@@ -4,21 +4,32 @@ package metrics
 import (
 	"encoding/json"
 	"fmt"
-	"net/http"
-	"os"
+	"io"
 	"text/tabwriter"
-	"time"
 
 	"github.com/spf13/cobra"
+
+	"github.com/langoai/lango/internal/cli/clihttp"
+	"github.com/langoai/lango/internal/config"
 )
 
-const defaultGatewayAddr = "http://localhost:18789"
+
+const defaultGatewayAddr = clihttp.DefaultGatewayAddr
+
+type configLoader func() (*config.Config, error)
 
 // NewMetricsCmd creates the metrics command group.
 func NewMetricsCmd() *cobra.Command {
+	return NewMetricsCmdWithConfig(nil)
+}
+
+// NewMetricsCmdWithConfig creates the metrics command group with config-backed gateway defaults.
+func NewMetricsCmdWithConfig(loadConfig configLoader) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "metrics",
-		Short: "View system observability metrics",
+		Use:           "metrics",
+		Short:         "View system observability metrics",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		Long: `View system observability metrics including token usage, tool execution stats,
 and agent performance.
 
@@ -31,89 +42,81 @@ Examples:
   lango metrics agents                 # Per-agent token usage
   lango metrics history --days=7       # Historical token usage
   lango metrics policy                 # Policy decision statistics`,
-		RunE: summaryRunE,
+		RunE: summaryRunEWithConfig(loadConfig),
 	}
 
 	cmd.PersistentFlags().String("output", "table", "Output format: table or json")
-	cmd.PersistentFlags().String("addr", defaultGatewayAddr, "Gateway address")
+	cmd.PersistentFlags().String("addr", "", "Gateway address (default: configured server host/port)")
 
-	cmd.AddCommand(newSessionsCmd())
-	cmd.AddCommand(newToolsCmd())
-	cmd.AddCommand(newAgentsCmd())
-	cmd.AddCommand(newHistoryCmd())
-	cmd.AddCommand(newPolicyCmd())
+	cmd.AddCommand(newSessionsCmd(loadConfig))
+	cmd.AddCommand(newToolsCmd(loadConfig))
+	cmd.AddCommand(newAgentsCmd(loadConfig))
+	cmd.AddCommand(newHistoryCmd(loadConfig))
+	cmd.AddCommand(newPolicyCmd(loadConfig))
 
 	return cmd
 }
 
-func fetchJSON(addr, path string, out interface{}) error {
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Get(addr + path)
-	if err != nil {
-		return fmt.Errorf("connect to gateway: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("gateway returned status %d", resp.StatusCode)
-	}
-	return json.NewDecoder(resp.Body).Decode(out)
+func getOutputFormat(cmd *cobra.Command) (string, error) {
+	return clihttp.ResolveTableOrJSONOutput(cmd)
 }
 
-func getOutputFormat(cmd *cobra.Command) string {
-	f, _ := cmd.Flags().GetString("output")
-	if f == "" {
-		f = "table"
-	}
-	return f
-}
-
-func getAddr(cmd *cobra.Command) string {
+func getAddr(cmd *cobra.Command, loadConfig configLoader) (string, error) {
 	a, _ := cmd.Flags().GetString("addr")
-	if a == "" {
-		a = defaultGatewayAddr
+	if a != "" || loadConfig == nil {
+		return clihttp.ResolveGatewayAddr(a, nil), nil
 	}
-	return a
+	cfg, err := loadConfig()
+	if err != nil {
+		return "", fmt.Errorf("load config: %w", err)
+	}
+	return clihttp.ResolveGatewayAddr("", cfg), nil
 }
 
-func printJSON(v interface{}) error {
-	enc := json.NewEncoder(os.Stdout)
-	enc.SetIndent("", "  ")
-	return enc.Encode(v)
+func printJSON(w io.Writer, v interface{}) error {
+	return clihttp.PrintJSON(w, v)
 }
 
-func newTabWriter() *tabwriter.Writer {
-	return tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+func newTabWriter(w io.Writer) *tabwriter.Writer {
+	return tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
 }
 
-func summaryRunE(cmd *cobra.Command, _ []string) error {
-	addr := getAddr(cmd)
-	format := getOutputFormat(cmd)
+func summaryRunEWithConfig(loadConfig configLoader) func(*cobra.Command, []string) error {
+	return func(cmd *cobra.Command, _ []string) error {
+		format, err := getOutputFormat(cmd)
+		if err != nil {
+			return err
+		}
+		addr, err := getAddr(cmd, loadConfig)
+		if err != nil {
+			return err
+		}
 
-	var snap map[string]interface{}
-	if err := fetchJSON(addr, "/metrics", &snap); err != nil {
-		return err
-	}
+		var snap map[string]interface{}
+		if err := clihttp.FetchJSON(addr, "/metrics", &snap); err != nil {
+			return err
+		}
 
-	if format == "json" {
-		return printJSON(snap)
-	}
+		if format == "json" {
+			return printJSON(cmd.OutOrStdout(), snap)
+		}
 
-	fmt.Println("=== System Metrics ===")
-	fmt.Println()
+		fmt.Fprintln(cmd.OutOrStdout(), "=== System Metrics ===")
+		fmt.Fprintln(cmd.OutOrStdout())
 
-	if uptime, ok := snap["uptime"].(string); ok {
-		fmt.Printf("Uptime:           %s\n", uptime)
-	}
-	if tokens, ok := snap["tokenUsage"].(map[string]interface{}); ok {
-		fmt.Printf("Total Input:      %.0f tokens\n", toFloat(tokens["inputTokens"]))
-		fmt.Printf("Total Output:     %.0f tokens\n", toFloat(tokens["outputTokens"]))
-	}
-	if execs, ok := snap["toolExecutions"]; ok {
-		fmt.Printf("Tool Executions:  %.0f\n", toFloat(execs))
-	}
+		if uptime, ok := snap["uptime"].(string); ok {
+			fmt.Fprintf(cmd.OutOrStdout(), "Uptime:           %s\n", uptime)
+		}
+		if tokens, ok := snap["tokenUsage"].(map[string]interface{}); ok {
+			fmt.Fprintf(cmd.OutOrStdout(), "Total Input:      %.0f tokens\n", toFloat(tokens["inputTokens"]))
+			fmt.Fprintf(cmd.OutOrStdout(), "Total Output:     %.0f tokens\n", toFloat(tokens["outputTokens"]))
+		}
+		if execs, ok := snap["toolExecutions"]; ok {
+			fmt.Fprintf(cmd.OutOrStdout(), "Tool Executions:  %.0f\n", toFloat(execs))
+		}
 
-	return nil
+		return nil
+	}
 }
 
 func toFloat(v interface{}) float64 {

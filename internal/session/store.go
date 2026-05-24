@@ -46,6 +46,55 @@ type Session struct {
 	UpdatedAt   time.Time         `json:"updatedAt"`
 }
 
+// MetadataKeyMode is the reserved key used to persist the session's active
+// mode name inside Session.Metadata.
+const MetadataKeyMode = "lango.mode"
+
+// MetadataKeyEndPending marks a session that has a pending session-end
+// processor invocation (recall indexing). Soft-end (channel idle) sets this
+// flag synchronously and defers processing to the next session-open sweep.
+// Hard-end (TUI quit) invokes the processor directly but still marks the
+// flag first so a crash mid-processing can be recovered on next open.
+const MetadataKeyEndPending = "lango.session_end_pending"
+
+// MetadataValueTrue is the canonical string representation of boolean true
+// in Session.Metadata (stored as map[string]string).
+const MetadataValueTrue = "true"
+
+// EndPending reports whether the session is marked for pending session-end
+// processing (soft-end or crashed hard-end).
+func (s *Session) EndPending() bool {
+	if s == nil || s.Metadata == nil {
+		return false
+	}
+	return s.Metadata[MetadataKeyEndPending] == MetadataValueTrue
+}
+
+// Mode returns the active mode name persisted in the session's metadata.
+// Returns an empty string if no mode is set.
+func (s *Session) Mode() string {
+	if s == nil || s.Metadata == nil {
+		return ""
+	}
+	return s.Metadata[MetadataKeyMode]
+}
+
+// SetMode persists the given mode name in the session's metadata.
+// Passing an empty string clears the mode.
+func (s *Session) SetMode(name string) {
+	if s == nil {
+		return
+	}
+	if s.Metadata == nil {
+		s.Metadata = make(map[string]string)
+	}
+	if name == "" {
+		delete(s.Metadata, MetadataKeyMode)
+		return
+	}
+	s.Metadata[MetadataKeyMode] = name
+}
+
 // Store defines the interface for session storage
 type Store interface {
 	// Create creates a new session
@@ -63,6 +112,12 @@ type Store interface {
 	// from leaking into subsequent turns.
 	// partial is any partial response text accumulated before the timeout.
 	AnnotateTimeout(key string, partial string) error
+	// End marks the session as ended. The metadata key
+	// MetadataKeyEndPending is set to MetadataValueTrue; the configured
+	// session-end processor (if any) is invoked with the concrete store's
+	// own timeout semantics. Calling End on an already-ended session is a
+	// no-op. Calling End on an unknown session returns an error.
+	End(key string) error
 	// Close closes the store
 	Close() error
 

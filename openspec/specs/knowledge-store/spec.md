@@ -1,9 +1,7 @@
 ## Purpose
 
 Capability spec for knowledge-store. See requirements below for scope and behavior contracts.
-
 ## Requirements
-
 ### Requirement: Knowledge entry structure
 The `knowledge.KnowledgeEntry` struct SHALL use `entknowledge.Category` (Ent-generated type) for its `Category` field. The `knowledge.LearningEntry` struct SHALL use `entlearning.Category` (Ent-generated type) for its `Category` field. No duplicate domain enum types SHALL exist — the Ent-generated types are the single source of truth. The `string()` cast SHALL only occur at system boundaries: metadata maps and tool parameter parsing.
 
@@ -62,24 +60,24 @@ The `LearningStats.ByCategory` field SHALL use `map[entlearning.Category]int` in
 - **THEN** the `by_category` field SHALL produce identical JSON output as the previous `map[string]int` representation
 
 ### Requirement: Knowledge CRUD Operations
-The system SHALL provide persistent CRUD operations for knowledge entries identified by key. Knowledge entries SHALL be versioned: each save appends a new version instead of updating in place. All read operations SHALL default to the latest version (`is_latest=true`). When the latest version has the same `(category, content)` as the new entry, SaveKnowledge SHALL be a no-op (no new version created). Changes to `source`, `tags`, or temporal hints alone do NOT justify a new version.
+The system SHALL provide persistent CRUD operations for knowledge entries identified by key. Knowledge entries SHALL be versioned: each save appends a new version instead of updating in place. All read operations SHALL default to the latest version (`is_latest=true`). When the latest version has the same `(category, content, source, source_class, asset_label)` as the new entry, SaveKnowledge SHALL be a no-op. Changes to `source_class` or `asset_label` SHALL be treated as version-significant because they change exportability semantics.
 
 #### Scenario: Save new knowledge entry
 - **WHEN** `SaveKnowledge` is called with a key that does not exist
-- **THEN** the system SHALL create a new knowledge entry with `version=1`, `is_latest=true`, and the given key, category, content, tags, and source
+- **THEN** the system SHALL create a new knowledge entry with `version=1`, `is_latest=true`, and the given key, category, content, tags, source, source class, and asset label
 
 #### Scenario: Save existing knowledge entry (append version)
-- **WHEN** `SaveKnowledge` is called with a key that already exists (latest version N) and the content or category differs
+- **WHEN** `SaveKnowledge` is called with a key that already exists (latest version N) and the content, category, source, source class, or asset label differs
 - **THEN** the system SHALL atomically set the existing latest row's `is_latest` to `false` and create a new entry with `version=N+1`, `is_latest=true`
 - **AND** the new version SHALL carry forward `use_count` and `relevance_score` from the previous version
 
-#### Scenario: Content-dedup no-op
-- **WHEN** `SaveKnowledge` is called with a key whose latest version has the same `(category, content)`
+#### Scenario: Content and exportability metadata dedup no-op
+- **WHEN** `SaveKnowledge` is called with a key whose latest version has the same `(category, content, source, source_class, asset_label)`
 - **THEN** the system SHALL return nil without creating a new version
 
 #### Scenario: Get knowledge by key
 - **WHEN** `GetKnowledge` is called with an existing key
-- **THEN** the system SHALL return the latest version (`is_latest=true`) of the knowledge entry with `Version` and `CreatedAt` populated
+- **THEN** the system SHALL return the latest version (`is_latest=true`) of the knowledge entry with `Version`, `CreatedAt`, `SourceClass`, and `AssetLabel` populated
 - **AND** if no latest entry exists for the key, SHALL return an error
 
 #### Scenario: Delete knowledge by key
@@ -357,3 +355,27 @@ The system SHALL mark all context-related config keys as explicitly set when sav
 - **WHEN** user sets `knowledge.enabled=false` in settings TUI and saves
 - **THEN** the saved explicitKeys SHALL include `knowledge.enabled`
 - **AND** subsequent bootstrap SHALL NOT auto-enable knowledge
+
+### Requirement: Learning payload protection coverage
+Learning entries MUST store `{error_pattern, diagnosis, fix}` as a protected bundle while keeping only redacted projections in the plaintext columns.
+
+#### Scenario: Learning save stores protected bundle
+- **WHEN** `SaveLearning` persists a learning entry
+- **THEN** `error_pattern`, `diagnosis`, and `fix` are serialized into one protected bundle
+- **AND** the plaintext columns store only redacted projections
+- **AND** `trigger` remains plaintext
+
+#### Scenario: Learning read decrypts protected fields
+- **WHEN** `GetLearning`, `SearchLearnings`, or `SearchLearningsScored` returns a row with ciphertext
+- **THEN** the returned domain object uses decrypted `error_pattern`, `diagnosis`, and `fix`
+- **AND** the plaintext projections are not promoted as original values
+
+#### Scenario: Learning FTS uses redacted projections only
+- **WHEN** learning FTS rows are written or refreshed
+- **THEN** the indexed content contains only redacted projection text
+- **AND** original `error_pattern`, `diagnosis`, and `fix` values do not appear in plaintext FTS rows
+
+#### Scenario: Learning protected row decrypt failure does not fall back
+- **WHEN** a learning row has ciphertext fields present but decryption fails
+- **THEN** the store returns an error or empty protected values
+- **AND** it does not promote the stored plaintext projections as originals

@@ -2,9 +2,7 @@
 
 ## Purpose
 The session store manages conversation sessions, message history, and metadata persistence using a robust, type-safe database backend.
-
 ## Requirements
-
 ### Requirement: Session creation
 The system SHALL create new sessions with unique identifiers and store them in SQLite.
 
@@ -162,3 +160,94 @@ The `runAndCollectOnce` and `RunStreaming` functions SHALL collect text from ses
 #### Scenario: Text parts collected without thought check
 - **WHEN** a session event contains text parts
 - **THEN** the agent SHALL collect all non-empty text parts regardless of the `Thought` field value
+
+### Requirement: Session end API
+The `session.Store` interface SHALL expose an `End(key string) error` method that marks a session as ended. Ending a session SHALL set metadata key `lango.session_end_pending=true` and trigger the configured session-end processor (see `session-recall` capability). Calling `End` on an already-ended session SHALL be a no-op.
+
+#### Scenario: End marks metadata
+- **WHEN** `store.End("sess-1")` is called on an active session
+- **THEN** the session's metadata SHALL contain `lango.session_end_pending=true`
+
+#### Scenario: End is idempotent
+- **WHEN** `store.End("sess-1")` is called twice
+- **THEN** the second call SHALL return `nil` without error
+- **AND** metadata SHALL remain stable
+
+#### Scenario: End on unknown session returns error
+- **WHEN** `store.End("missing")` is called where the session does not exist
+- **THEN** a session-not-found error SHALL be returned
+
+### Requirement: Session-end pending flag
+The system SHALL use the metadata key `lango.session_end_pending` (boolean, serialized as string `"true"`/`"false"`) to mark sessions that have a pending recall-indexing job. The store SHALL expose helpers `MarkEndPending(key)`, `ClearEndPending(key)`, and `ListEndPending()` returning keys with the flag set.
+
+#### Scenario: ListEndPending returns pending sessions
+- **WHEN** two sessions have `lango.session_end_pending=true` and one has it cleared
+- **THEN** `ListEndPending()` SHALL return the two pending keys and not include the cleared one
+
+#### Scenario: ClearEndPending flips the flag
+- **WHEN** `ClearEndPending("sess-1")` is called on a pending session
+- **THEN** subsequent `ListEndPending()` calls SHALL NOT include `sess-1`
+
+### Requirement: Session-end processor hook
+The system SHALL allow registering a `SessionEndProcessor` function (accepting a session key and returning an error) via `session.Store.SetSessionEndProcessor`. The store SHALL invoke the processor when `End(key)` is called (hard-end path) bounded by a caller-supplied timeout, and sweeps MAY invoke the processor for pending sessions asynchronously (soft-end recovery path).
+
+#### Scenario: Hard end invokes processor synchronously with timeout
+- **WHEN** `End("sess-1")` is called with a 3s bound and a processor is registered
+- **THEN** the processor SHALL be invoked with key `"sess-1"`
+- **AND** the call SHALL return within the 3s bound even if the processor is still running (timeout case leaves `lango.session_end_pending=true`)
+
+#### Scenario: Sweep invokes processor for pending sessions
+- **WHEN** a sweep runs and finds `sess-1` with `lango.session_end_pending=true`
+- **THEN** the processor SHALL be invoked asynchronously
+- **AND** on success `ClearEndPending("sess-1")` SHALL be called
+
+#### Scenario: No processor registered is a no-op
+- **WHEN** `End("sess-1")` is called and no processor is registered
+- **THEN** metadata SHALL still be set to `lango.session_end_pending=true`
+- **AND** no error SHALL be returned
+
+### Requirement: Session message payload protection coverage
+Session message persistence MUST store original content and sensitive tool-call payloads as ciphertext while keeping only redacted projections in plaintext columns.
+
+#### Scenario: Session message content stored as ciphertext
+- **WHEN** a message is created, appended, or rewritten through session storage
+- **THEN** the original message text is stored in `content_ciphertext`
+- **AND** the plaintext `content` column stores only a redacted projection
+
+#### Scenario: Tool-call payload projection excludes sensitive fields
+- **WHEN** a message with tool calls is persisted
+- **THEN** the plaintext `tool_calls` JSON stores only `id`, `name`, and `thought_signature`
+- **AND** `input`, `output`, and `thought` are not stored in plaintext
+
+### Requirement: Secret migration panic recovery
+
+The session store SHALL treat recovered panics during `MigrateSecrets` as migration failures rather than rethrowing them.
+
+#### Scenario: Panic during secret re-encryption returns error
+- **WHEN** a secret re-encryption callback panics while `MigrateSecrets` is running
+- **THEN** `MigrateSecrets` SHALL rollback the transaction
+- **AND** it SHALL return a non-nil error
+- **AND** it SHALL NOT panic
+- **AND** the original tool-call payloads are stored in ciphertext fields
+
+#### Scenario: Session reload decrypts protected payloads
+- **WHEN** a stored message row has ciphertext fields present
+- **THEN** session reload decrypts and returns the original content and tool-call payloads
+- **AND** plaintext projection values are not promoted back to the domain model as originals
+
+#### Scenario: Legacy plaintext rows still load
+- **WHEN** a stored message row has no ciphertext fields
+- **THEN** session reload may use the existing plaintext columns as a legacy fallback
+
+#### Scenario: Protected row decrypt failure does not fall back
+- **WHEN** a stored message row has ciphertext fields but decryption fails
+- **THEN** the store returns an error or empty protected value
+- **AND** it does not promote the plaintext projection as the original content
+
+### Requirement: Session compaction uses protected summary messages
+Compaction-generated summary messages MUST follow the same payload-protection rules as regular messages.
+
+#### Scenario: Compaction summary stored as protected message
+- **WHEN** session compaction rewrites earlier messages into a summary message
+- **THEN** the original summary text is stored as ciphertext
+- **AND** the plaintext column stores only a redacted projection

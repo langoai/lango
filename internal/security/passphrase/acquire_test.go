@@ -1,6 +1,9 @@
 package passphrase
 
 import (
+	"bytes"
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -31,19 +34,7 @@ func TestAcquire_KeyfilePriority(t *testing.T) {
 
 	require.NoError(t, WriteKeyfile(keyfilePath, wantPass))
 
-	// Set up a pipe on stdin (simulating piped input)
-	r, w, err := os.Pipe()
-	require.NoError(t, err)
-
-	origStdin := os.Stdin
-	os.Stdin = r
-	t.Cleanup(func() { os.Stdin = origStdin })
-
-	_, err = w.WriteString("stdin-passphrase\n")
-	require.NoError(t, err)
-	require.NoError(t, w.Close())
-
-	got, source, err := Acquire(Options{KeyfilePath: keyfilePath})
+	got, source, err := acquireWithIO(Options{KeyfilePath: keyfilePath}, bytes.NewBufferString("stdin-passphrase\n"), io.Discard, false)
 	require.NoError(t, err)
 	assert.Equal(t, wantPass, got)
 	assert.Equal(t, SourceKeyfile, source)
@@ -54,22 +45,109 @@ func TestAcquire_StdinPipe(t *testing.T) {
 	dir := t.TempDir()
 	keyfilePath := filepath.Join(dir, "nonexistent-keyfile")
 
-	r, w, err := os.Pipe()
-	require.NoError(t, err)
-
-	origStdin := os.Stdin
-	os.Stdin = r
-	t.Cleanup(func() { os.Stdin = origStdin })
-
 	wantPass := "stdin-passphrase"
-	_, err = w.WriteString(wantPass + "\n")
-	require.NoError(t, err)
-	require.NoError(t, w.Close())
-
-	got, source, err := Acquire(Options{KeyfilePath: keyfilePath})
+	got, source, err := acquireWithIO(Options{KeyfilePath: keyfilePath}, bytes.NewBufferString(wantPass+"\n"), io.Discard, false)
 	require.NoError(t, err)
 	assert.Equal(t, wantPass, got)
 	assert.Equal(t, SourceStdin, source)
+}
+
+func TestAcquire_PublicWrapperUsesStdinSeam(t *testing.T) {
+	restorePassphraseStdioSeams(t)
+
+	dir := t.TempDir()
+	keyfilePath := filepath.Join(dir, "nonexistent-keyfile")
+
+	passphraseStdin = bytes.NewBufferString("wrapped-stdin-passphrase\n")
+	passphraseStderr = io.Discard
+	passphraseIsTerminal = func() bool { return false }
+
+	got, source, err := Acquire(Options{KeyfilePath: keyfilePath})
+	require.NoError(t, err)
+	assert.Equal(t, "wrapped-stdin-passphrase", got)
+	assert.Equal(t, SourceStdin, source)
+}
+
+func TestAcquire_InteractivePromptUsesInjectedWriter(t *testing.T) {
+	dir := t.TempDir()
+	keyfilePath := filepath.Join(dir, "nonexistent-keyfile")
+	var errBuf bytes.Buffer
+
+	oldPrompt := passphrasePrompt
+	passphrasePrompt = func(out io.Writer, promptText string) (string, error) {
+		_, err := out.Write([]byte(promptText))
+		return "interactive-passphrase", err
+	}
+	t.Cleanup(func() { passphrasePrompt = oldPrompt })
+
+	got, source, err := acquireWithIO(Options{KeyfilePath: keyfilePath}, bytes.NewBuffer(nil), &errBuf, true)
+	require.NoError(t, err)
+	assert.Equal(t, "interactive-passphrase", got)
+	assert.Equal(t, SourceInteractive, source)
+	assert.Equal(t, "Enter passphrase: ", errBuf.String())
+}
+
+func TestAcquire_InteractiveCreationPromptsUseInjectedWriter(t *testing.T) {
+	dir := t.TempDir()
+	keyfilePath := filepath.Join(dir, "nonexistent-keyfile")
+	var errBuf bytes.Buffer
+
+	oldConfirm := passphraseConfirmPrompt
+	passphraseConfirmPrompt = func(out io.Writer, promptText, confirmPromptText string) (string, error) {
+		if _, err := out.Write([]byte(promptText)); err != nil {
+			return "", err
+		}
+		if _, err := out.Write([]byte(confirmPromptText)); err != nil {
+			return "", err
+		}
+		return "created-passphrase", nil
+	}
+	t.Cleanup(func() { passphraseConfirmPrompt = oldConfirm })
+
+	got, source, err := acquireWithIO(Options{KeyfilePath: keyfilePath, AllowCreation: true}, bytes.NewBuffer(nil), &errBuf, true)
+	require.NoError(t, err)
+	assert.Equal(t, "created-passphrase", got)
+	assert.Equal(t, SourceInteractive, source)
+	assert.Equal(t, "Enter new passphrase: Confirm passphrase: ", errBuf.String())
+}
+
+func TestPromptPassphraseIO_RoutesPromptToExplicitWriter(t *testing.T) {
+	oldInputFD := passphraseInputFD
+	oldReadPassword := passphraseReadPassword
+	t.Cleanup(func() {
+		passphraseInputFD = oldInputFD
+		passphraseReadPassword = oldReadPassword
+	})
+
+	passphraseInputFD = func() int { return 42 }
+	passphraseReadPassword = func(fd int) ([]byte, error) {
+		assert.Equal(t, 42, fd)
+		return []byte("hidden-passphrase"), nil
+	}
+
+	var out bytes.Buffer
+	got, err := promptPassphraseIO(&out, "Enter secret: ")
+	require.NoError(t, err)
+	assert.Equal(t, "hidden-passphrase", got)
+	assert.Equal(t, "Enter secret: \n", out.String())
+}
+
+func TestPromptPassphraseConfirmIORejectsMismatch(t *testing.T) {
+	oldReadPassword := passphraseReadPassword
+	t.Cleanup(func() { passphraseReadPassword = oldReadPassword })
+
+	reads := [][]byte{[]byte("first"), []byte("second")}
+	passphraseReadPassword = func(int) ([]byte, error) {
+		next := reads[0]
+		reads = reads[1:]
+		return next, nil
+	}
+
+	var out bytes.Buffer
+	_, err := promptPassphraseConfirmIO(&out, "Enter: ", "Confirm: ")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "passphrases do not match")
+	assert.Equal(t, "Enter: \nConfirm: \n", out.String())
 }
 
 func TestAcquire_InvalidKeyfilePermissions(t *testing.T) {
@@ -79,19 +157,8 @@ func TestAcquire_InvalidKeyfilePermissions(t *testing.T) {
 
 	require.NoError(t, os.WriteFile(keyfilePath, []byte("bad-perms\n"), 0644))
 
-	r, w, err := os.Pipe()
-	require.NoError(t, err)
-
-	origStdin := os.Stdin
-	os.Stdin = r
-	t.Cleanup(func() { os.Stdin = origStdin })
-
 	wantPass := "fallback-stdin"
-	_, err = w.WriteString(wantPass + "\n")
-	require.NoError(t, err)
-	require.NoError(t, w.Close())
-
-	got, source, err := Acquire(Options{KeyfilePath: keyfilePath})
+	got, source, err := acquireWithIO(Options{KeyfilePath: keyfilePath}, bytes.NewBufferString(wantPass+"\n"), io.Discard, false)
 	require.NoError(t, err)
 	assert.Equal(t, wantPass, got)
 	assert.Equal(t, SourceStdin, source)
@@ -102,16 +169,7 @@ func TestAcquire_NoSourceAvailable(t *testing.T) {
 	dir := t.TempDir()
 	keyfilePath := filepath.Join(dir, "nonexistent-keyfile")
 
-	r, w, err := os.Pipe()
-	require.NoError(t, err)
-
-	origStdin := os.Stdin
-	os.Stdin = r
-	t.Cleanup(func() { os.Stdin = origStdin })
-
-	require.NoError(t, w.Close())
-
-	_, _, err = Acquire(Options{KeyfilePath: keyfilePath})
+	_, _, err := acquireWithIO(Options{KeyfilePath: keyfilePath}, bytes.NewBuffer(nil), io.Discard, false)
 	assert.Error(t, err)
 }
 
@@ -124,4 +182,68 @@ func TestDefaultKeyfilePath(t *testing.T) {
 
 	want := filepath.Join(home, ".lango", "keyfile")
 	assert.Equal(t, want, got)
+}
+
+type stubAcquireKeyringProvider struct {
+	pass string
+	err  error
+}
+
+func (s stubAcquireKeyringProvider) Get(service, key string) (string, error) { return s.pass, s.err }
+func (s stubAcquireKeyringProvider) Set(service, key, value string) error    { return nil }
+func (s stubAcquireKeyringProvider) Delete(service, key string) error        { return nil }
+
+func TestAcquire_KeyringErrorWarnsAndFallsThrough(t *testing.T) {
+	dir := t.TempDir()
+	keyfilePath := filepath.Join(dir, "nonexistent-keyfile")
+	var errBuf bytes.Buffer
+
+	got, source, err := acquireWithIO(Options{
+		KeyfilePath:     keyfilePath,
+		KeyringProvider: stubAcquireKeyringProvider{err: errors.New("boom")},
+	}, bytes.NewBufferString("stdin-passphrase\n"), &errBuf, false)
+	require.NoError(t, err)
+	assert.Equal(t, "stdin-passphrase", got)
+	assert.Equal(t, SourceStdin, source)
+	assert.Contains(t, errBuf.String(), "warning: keyring read failed: boom")
+}
+
+func TestAcquire_PublicWrapperUsesStderrSeam(t *testing.T) {
+	restorePassphraseStdioSeams(t)
+
+	dir := t.TempDir()
+	keyfilePath := filepath.Join(dir, "keyfile")
+	require.NoError(t, WriteKeyfile(keyfilePath, "keyfile-passphrase"))
+
+	var errBuf bytes.Buffer
+	passphraseStdin = bytes.NewBuffer(nil)
+	passphraseStderr = &errBuf
+	passphraseIsTerminal = func() bool { return false }
+
+	got, source, err := Acquire(Options{
+		KeyfilePath:     keyfilePath,
+		KeyringProvider: stubAcquireKeyringProvider{err: errors.New("boom")},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "keyfile-passphrase", got)
+	assert.Equal(t, SourceKeyfile, source)
+	assert.Equal(t, "warning: keyring read failed: boom\n", errBuf.String())
+}
+
+func restorePassphraseStdioSeams(t *testing.T) {
+	t.Helper()
+
+	oldStdin := passphraseStdin
+	oldStderr := passphraseStderr
+	oldIsTerminal := passphraseIsTerminal
+	oldInputFD := passphraseInputFD
+	oldReadPassword := passphraseReadPassword
+
+	t.Cleanup(func() {
+		passphraseStdin = oldStdin
+		passphraseStderr = oldStderr
+		passphraseIsTerminal = oldIsTerminal
+		passphraseInputFD = oldInputFD
+		passphraseReadPassword = oldReadPassword
+	})
 }

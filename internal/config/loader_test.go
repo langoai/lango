@@ -1,6 +1,8 @@
 package config
 
 import (
+	"encoding/json"
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -17,6 +19,88 @@ func TestDefaultConfig(t *testing.T) {
 	assert.Equal(t, 18789, cfg.Server.Port)
 	assert.Equal(t, "anthropic", cfg.Agent.Provider)
 	assert.Equal(t, "info", cfg.Logging.Level)
+}
+
+func TestDefaultConfig_OntologyAdmissionObserveDefaults(t *testing.T) {
+	t.Parallel()
+
+	cfg := DefaultConfig()
+
+	assert.Equal(t, "off", cfg.Ontology.Governance.AdmissionMode)
+	assert.InDelta(t, 0.60, cfg.Ontology.Governance.LearningDefaultConfidence, 0.001)
+	assert.InDelta(t, 0.50, cfg.Ontology.Governance.LibrarianDefaultConfidence, 0.001)
+}
+
+func TestOntologyAdmissionConfidenceJSONRoundTripPreservesZero(t *testing.T) {
+	t.Parallel()
+
+	cfg := DefaultConfig()
+	cfg.Ontology.Governance.AdmissionMode = OntologyAdmissionModeObserve
+	cfg.Ontology.Governance.LearningDefaultConfidence = 0.0
+	cfg.Ontology.Governance.LibrarianDefaultConfidence = 0.0
+
+	data, err := json.Marshal(cfg)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), `"learningDefaultConfidence":0`)
+	assert.Contains(t, string(data), `"librarianDefaultConfidence":0`)
+
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "lango.json")
+	require.NoError(t, os.WriteFile(cfgPath, data, 0644))
+
+	result, err := Load(cfgPath)
+	require.NoError(t, err)
+	assert.Equal(t, 0.0, result.Config.Ontology.Governance.LearningDefaultConfidence)
+	assert.Equal(t, 0.0, result.Config.Ontology.Governance.LibrarianDefaultConfidence)
+}
+
+func TestConfigUnmarshalJSON_BackfillsLegacyAdmissionModeAndMissingConfidences(t *testing.T) {
+	t.Parallel()
+
+	var cfg Config
+	content := `{
+		"ontology": {
+			"governance": {
+				"admissionMode": ""
+			}
+		}
+	}`
+	require.NoError(t, json.Unmarshal([]byte(content), &cfg))
+
+	assert.Equal(t, OntologyAdmissionModeOff, cfg.Ontology.Governance.AdmissionMode)
+	assert.InDelta(t, OntologyLearningDefaultConfidenceFallback, cfg.Ontology.Governance.LearningDefaultConfidence, 0.001)
+	assert.InDelta(t, OntologyLibrarianDefaultConfidenceFallback, cfg.Ontology.Governance.LibrarianDefaultConfidence, 0.001)
+}
+
+func TestConfigUnmarshalJSON_BackfillsDefaultsWhenGovernanceMissing(t *testing.T) {
+	t.Parallel()
+
+	var cfg Config
+	require.NoError(t, json.Unmarshal([]byte(`{}`), &cfg))
+
+	assert.Equal(t, OntologyAdmissionModeOff, cfg.Ontology.Governance.AdmissionMode)
+	assert.InDelta(t, OntologyLearningDefaultConfidenceFallback, cfg.Ontology.Governance.LearningDefaultConfidence, 0.001)
+	assert.InDelta(t, OntologyLibrarianDefaultConfidenceFallback, cfg.Ontology.Governance.LibrarianDefaultConfidence, 0.001)
+}
+
+func TestConfigUnmarshalJSON_TreatsNullConfidenceAsMissing(t *testing.T) {
+	t.Parallel()
+
+	var cfg Config
+	content := `{
+		"ontology": {
+			"governance": {
+				"admissionMode": "observe",
+				"learningDefaultConfidence": null,
+				"librarianDefaultConfidence": null
+			}
+		}
+	}`
+	require.NoError(t, json.Unmarshal([]byte(content), &cfg))
+
+	assert.Equal(t, OntologyAdmissionModeObserve, cfg.Ontology.Governance.AdmissionMode)
+	assert.InDelta(t, OntologyLearningDefaultConfidenceFallback, cfg.Ontology.Governance.LearningDefaultConfidence, 0.001)
+	assert.InDelta(t, OntologyLibrarianDefaultConfidenceFallback, cfg.Ontology.Governance.LibrarianDefaultConfidence, 0.001)
 }
 
 func TestExpandEnvVars(t *testing.T) {
@@ -86,6 +170,82 @@ func TestPostLoad(t *testing.T) {
 		err := PostLoad(cfg)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "payment.network.rpcUrl")
+	})
+
+	t.Run("backfills legacy ontology admission defaults after direct unmarshal", func(t *testing.T) {
+		t.Parallel()
+
+		var cfg Config
+		content := `{
+			"server": { "port": 18789 },
+			"logging": { "level": "info", "format": "console" },
+			"ontology": {
+				"governance": {}
+			}
+		}`
+		require.NoError(t, json.Unmarshal([]byte(content), &cfg))
+
+		require.NoError(t, PostLoad(&cfg))
+		assert.Equal(t, OntologyAdmissionModeOff, cfg.Ontology.Governance.AdmissionMode)
+		assert.InDelta(t, OntologyLearningDefaultConfidenceFallback, cfg.Ontology.Governance.LearningDefaultConfidence, 0.001)
+		assert.InDelta(t, OntologyLibrarianDefaultConfidenceFallback, cfg.Ontology.Governance.LibrarianDefaultConfidence, 0.001)
+	})
+
+	t.Run("backfills missing observe confidences after direct unmarshal", func(t *testing.T) {
+		t.Parallel()
+
+		var cfg Config
+		content := `{
+			"server": { "port": 18789 },
+			"logging": { "level": "info", "format": "console" },
+			"ontology": {
+				"governance": {
+					"admissionMode": "observe"
+				}
+			}
+		}`
+		require.NoError(t, json.Unmarshal([]byte(content), &cfg))
+
+		require.NoError(t, PostLoad(&cfg))
+		assert.Equal(t, OntologyAdmissionModeObserve, cfg.Ontology.Governance.AdmissionMode)
+		assert.InDelta(t, OntologyLearningDefaultConfidenceFallback, cfg.Ontology.Governance.LearningDefaultConfidence, 0.001)
+		assert.InDelta(t, OntologyLibrarianDefaultConfidenceFallback, cfg.Ontology.Governance.LibrarianDefaultConfidence, 0.001)
+	})
+
+	t.Run("canonicalizes sparse in-memory observe confidences when present markers are unset", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := DefaultConfig()
+		cfg.Ontology.Governance.AdmissionMode = OntologyAdmissionModeObserve
+		cfg.Ontology.Governance.LearningDefaultConfidence = 0
+		cfg.Ontology.Governance.LibrarianDefaultConfidence = 0
+		cfg.Ontology.Governance.LearningDefaultConfidencePresent = false
+		cfg.Ontology.Governance.LibrarianDefaultConfidencePresent = false
+
+		require.NoError(t, PostLoad(cfg))
+		assert.Equal(t, OntologyAdmissionModeObserve, cfg.Ontology.Governance.AdmissionMode)
+		assert.InDelta(t, OntologyLearningDefaultConfidenceFallback, cfg.Ontology.Governance.LearningDefaultConfidence, 0.001)
+		assert.InDelta(t, OntologyLibrarianDefaultConfidenceFallback, cfg.Ontology.Governance.LibrarianDefaultConfidence, 0.001)
+	})
+
+	t.Run("preserves explicit zero admission confidences when present markers are set", func(t *testing.T) {
+		t.Parallel()
+
+		for _, mode := range []string{OntologyAdmissionModeOff, OntologyAdmissionModeObserve} {
+			cfg := DefaultConfig()
+			cfg.Ontology.Governance.AdmissionMode = mode
+			cfg.Ontology.Governance.LearningDefaultConfidence = 0
+			cfg.Ontology.Governance.LibrarianDefaultConfidence = 0
+			cfg.Ontology.Governance.LearningDefaultConfidencePresent = true
+			cfg.Ontology.Governance.LibrarianDefaultConfidencePresent = true
+			cfg.Ontology.Governance.LearningDefaultConfidenceBackfillNeeded = false
+			cfg.Ontology.Governance.LibrarianDefaultConfidenceBackfillNeeded = false
+
+			require.NoError(t, PostLoad(cfg))
+			assert.Equal(t, mode, cfg.Ontology.Governance.AdmissionMode)
+			assert.Equal(t, 0.0, cfg.Ontology.Governance.LearningDefaultConfidence)
+			assert.Equal(t, 0.0, cfg.Ontology.Governance.LibrarianDefaultConfidence)
+		}
 	})
 }
 
@@ -287,6 +447,90 @@ func TestValidate(t *testing.T) {
 		cfg.DataRoot = "/tmp/lango-test-dataroot"
 		cfg.Sandbox.WorkspacePath = ""
 		assert.NoError(t, Validate(cfg))
+	})
+
+	t.Run("ontology admission mode rejects unknown value", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := DefaultConfig()
+		cfg.Ontology.Governance.AdmissionMode = "enforce"
+
+		err := Validate(cfg)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "ontology.governance.admissionMode")
+		assert.Contains(t, err.Error(), "off, observe")
+	})
+
+	t.Run("ontology admission mode empty accepted for backward compatibility", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := DefaultConfig()
+		cfg.Ontology.Governance.AdmissionMode = ""
+
+		assert.NoError(t, Validate(cfg))
+	})
+
+	t.Run("ontology learning confidence rejects out of range", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := DefaultConfig()
+		cfg.Ontology.Governance.AdmissionMode = OntologyAdmissionModeObserve
+		cfg.Ontology.Governance.LearningDefaultConfidence = 1.25
+
+		err := Validate(cfg)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "ontology.governance.learningDefaultConfidence")
+		assert.Contains(t, err.Error(), "0.0-1.0")
+	})
+
+	t.Run("ontology librarian confidence rejects out of range", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := DefaultConfig()
+		cfg.Ontology.Governance.AdmissionMode = OntologyAdmissionModeObserve
+		cfg.Ontology.Governance.LibrarianDefaultConfidence = -0.10
+
+		err := Validate(cfg)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "ontology.governance.librarianDefaultConfidence")
+		assert.Contains(t, err.Error(), "0.0-1.0")
+	})
+
+	t.Run("ontology admission off allows legacy confidence values", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := DefaultConfig()
+		cfg.Ontology.Governance.AdmissionMode = OntologyAdmissionModeOff
+		cfg.Ontology.Governance.LearningDefaultConfidence = 1.25
+		cfg.Ontology.Governance.LibrarianDefaultConfidence = -0.10
+
+		assert.NoError(t, Validate(cfg))
+	})
+
+	t.Run("ontology non-finite confidences rejected even when admission off", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := DefaultConfig()
+		cfg.Ontology.Governance.AdmissionMode = OntologyAdmissionModeOff
+		cfg.Ontology.Governance.LearningDefaultConfidence = math.NaN()
+		cfg.Ontology.Governance.LibrarianDefaultConfidence = math.Inf(1)
+
+		err := Validate(cfg)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "ontology.governance.learningDefaultConfidence")
+		assert.Contains(t, err.Error(), "ontology.governance.librarianDefaultConfidence")
+	})
+
+	t.Run("ontology negative infinity confidence rejected even when admission off", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := DefaultConfig()
+		cfg.Ontology.Governance.AdmissionMode = OntologyAdmissionModeOff
+		cfg.Ontology.Governance.LibrarianDefaultConfidence = math.Inf(-1)
+
+		err := Validate(cfg)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "ontology.governance.librarianDefaultConfidence")
 	})
 }
 

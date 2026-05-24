@@ -10,6 +10,10 @@ title: P2P Economy
 
 Lango includes a P2P economy layer that manages the financial lifecycle of inter-agent transactions. It consists of five sub-systems: Budget Manager, Risk Assessor, Dynamic Pricer, Negotiation Engine, and Escrow Service.
 
+The economy subsystem is the local policy layer for dynamic pricing, negotiation, risk, and escrow.
+It may influence public P2P exchange behavior, but it is not the same thing as the provider-side quote surface exposed through `p2p.pricing`.
+`economy.pricing`, `economy.negotiation`, and `economy.escrow` are policy and engine surfaces layered above the P2P market path.
+
 ## Overview
 
 The economy layer coordinates spending, risk, pricing, negotiation, and settlement for paid P2P tool invocations:
@@ -19,6 +23,10 @@ The economy layer coordinates spending, risk, pricing, negotiation, and settleme
 - **Dynamic Pricing** -- peer-specific discounts based on trust score and volume
 - **Negotiation Engine** -- multi-round price negotiation protocol with auto-negotiation
 - **Escrow Service** -- milestone-based escrow with dispute resolution and on-chain settlement
+
+Admission trust and payment trust are separate gates: `minTrustScore` governs whether a peer clears the P2P firewall, while `postPayMinScore` governs whether a paid request can settle after execution.
+
+The economy wiring now reads the same canonical runtime trust entry as the rest of the P2P stack. First-time peers use the bootstrap effective score so risk and pricing can still reason about a brand-new counterparty, while returning peers use `earnedTrustScore` so temporary operational safety incidents do not silently become long-lived pricing or risk penalties.
 
 ```mermaid
 graph LR
@@ -56,6 +64,8 @@ The budget manager enforces per-task spending limits. Each task gets an isolated
 | `economy_budget_status` | Check budget burn rate for a task |
 | `economy_budget_close` | Close a task budget and get final spend report |
 
+Required economy inputs fail at the wrapper boundary too: `economy_budget_allocate`, `economy_budget_status`, and `economy_budget_close` require `taskId`; `economy_risk_assess` requires `peerDid` and `amount`; `economy_negotiate` requires `peerDid`, `toolName`, and `price`; `economy_negotiate_status` requires `sessionId`; `economy_price_quote` requires `toolName`.
+
 ### Events
 
 | Event | Description |
@@ -66,6 +76,12 @@ The budget manager enforces per-task spending limits. Each task gets an isolated
 ## Risk Assessment
 
 The risk assessor evaluates each transaction and recommends a payment strategy based on peer trust score, transaction amount, and output verifiability.
+
+When wired to the P2P reputation store, the score input comes from the runtime trust-entry contract rather than directly from the composite score:
+
+- bootstrap peers contribute the bootstrap effective score
+- returning peers contribute earned trust
+- peers already blocked as `review` or `temporarily_unsafe` are handled by admission/runtime gates before post-pay routing is considered
 
 ### Risk Levels
 
@@ -93,6 +109,8 @@ The risk assessor evaluates each transaction and recommends a payment strategy b
 ## Dynamic Pricing
 
 The dynamic pricer adjusts tool prices per-peer based on trust and transaction volume. High-trust peers receive a trust discount, and high-volume peers receive a volume discount. A configurable minimum price floor prevents prices from dropping too low.
+
+With the landed runtime integration, these trust-sensitive price adjustments follow the same input as the risk engine: bootstrap floor for first contact, earned trust for returning peers.
 
 ### Configuration
 
@@ -168,7 +186,8 @@ stateDiagram-v2
     WorkSubmitted --> Released: escrow_release
     Active --> Disputed: escrow_dispute
     Funded --> Disputed: escrow_dispute
-    Disputed --> Resolved: escrow_resolve
+    Disputed --> Released: escrow_resolve seller
+    Disputed --> Refunded: escrow_resolve buyer
     Active --> Refunded: escrow_refund
     Funded --> Refunded: escrow_refund
 ```
@@ -196,9 +215,11 @@ stateDiagram-v2
 | `escrow_release` | Release escrow funds to the seller |
 | `escrow_refund` | Refund escrow funds to the buyer |
 | `escrow_dispute` | Raise a dispute on an escrow |
-| `escrow_resolve` | Resolve a disputed escrow as arbitrator |
+| `escrow_resolve` | Resolve a disputed escrow as arbitrator; `favor=seller` requires `sellerPercent=100` and releases funds, while `favor=buyer` requires `sellerPercent=0` and refunds funds |
 | `escrow_status` | Get detailed escrow status including on-chain state |
 | `escrow_list` | List all escrows with optional filter |
+
+Required on-chain escrow inputs fail at the wrapper boundary too: `escrow_fund`, `escrow_activate`, `escrow_release`, `escrow_refund`, and `escrow_status` require `escrowId`; `escrow_submit_work` requires `escrowId` and `workHash`; `escrow_dispute` requires `escrowId` and `note`; `escrow_resolve` requires `escrowId`, `favor`, and `sellerPercent`.
 
 ### Events
 
@@ -263,18 +284,19 @@ Source: `internal/economy/escrow/hub/hub_settler.go`
 
 ### Dangling Escrow Detector
 
-The `DanglingDetector` is a lifecycle component that periodically scans for escrows stuck in `Pending` status longer than a configurable threshold. It auto-expires stale escrows and publishes an `EscrowDanglingEvent`.
+The `DanglingDetector` is a lifecycle component that periodically scans for escrows stuck in `Pending` status longer than a configurable threshold. It auto-expires stale escrows only after their `ExpiresAt` timestamp has been reached, then publishes an `EscrowDanglingEvent`.
 
 **Behavior:**
 
 1. Every `scanInterval` (default: 5m), query all escrows with `StatusPending` created before `now - maxPending`
-2. For each dangling escrow, call `engine.Expire()` to transition it to expired
-3. Publish `EscrowDanglingEvent` with escrow details and `action: "expired"`
+2. For each dangling escrow, skip expiry until `ExpiresAt` has been reached
+3. Once `ExpiresAt` is reached, call `engine.Expire()` to transition it to expired
+4. Publish `EscrowDanglingEvent` with escrow details and `action: "expired"`
 
 | Config | Default | Description |
 |--------|---------|-------------|
 | `scanInterval` | `5m` | Time between scan sweeps |
-| `maxPending` | `10m` | Maximum time an escrow can stay in Pending |
+| `maxPending` | `10m` | Age threshold for detecting pending escrows; expiry still waits for `ExpiresAt` |
 
 Source: `internal/economy/escrow/hub/dangling_detector.go`
 
@@ -351,6 +373,8 @@ Alerts are categorized by severity: `critical`, `high`, `medium`, `low`.
 | `sentinel_alerts` | List security alerts with optional severity filter |
 | `sentinel_config` | Show current detection thresholds |
 | `sentinel_acknowledge` | Acknowledge and dismiss an alert by ID |
+
+`sentinel_acknowledge` is the dangerous alert-state mutation path. It requires `alertId`; missing it fails immediately at the wrapper boundary before alert acknowledgment begins.
 
 ## Events Summary
 

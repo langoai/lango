@@ -18,10 +18,22 @@ const (
 	FieldRole = "role"
 	// FieldContent holds the string denoting the content field in the database.
 	FieldContent = "content"
+	// FieldContentCiphertext holds the string denoting the content_ciphertext field in the database.
+	FieldContentCiphertext = "content_ciphertext"
+	// FieldContentNonce holds the string denoting the content_nonce field in the database.
+	FieldContentNonce = "content_nonce"
+	// FieldContentKeyVersion holds the string denoting the content_key_version field in the database.
+	FieldContentKeyVersion = "content_key_version"
 	// FieldTimestamp holds the string denoting the timestamp field in the database.
 	FieldTimestamp = "timestamp"
 	// FieldToolCalls holds the string denoting the tool_calls field in the database.
 	FieldToolCalls = "tool_calls"
+	// FieldToolCallsCiphertext holds the string denoting the tool_calls_ciphertext field in the database.
+	FieldToolCallsCiphertext = "tool_calls_ciphertext"
+	// FieldToolCallsNonce holds the string denoting the tool_calls_nonce field in the database.
+	FieldToolCallsNonce = "tool_calls_nonce"
+	// FieldToolCallsKeyVersion holds the string denoting the tool_calls_key_version field in the database.
+	FieldToolCallsKeyVersion = "tool_calls_key_version"
 	// FieldAuthor holds the string denoting the author field in the database.
 	FieldAuthor = "author"
 	// EdgeSession holds the string denoting the session edge name in mutations.
@@ -42,8 +54,14 @@ var Columns = []string{
 	FieldID,
 	FieldRole,
 	FieldContent,
+	FieldContentCiphertext,
+	FieldContentNonce,
+	FieldContentKeyVersion,
 	FieldTimestamp,
 	FieldToolCalls,
+	FieldToolCallsCiphertext,
+	FieldToolCallsNonce,
+	FieldToolCallsKeyVersion,
 	FieldAuthor,
 }
 
@@ -95,9 +113,19 @@ func ByContent(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldContent, opts...).ToFunc()
 }
 
+// ByContentKeyVersion orders the results by the content_key_version field.
+func ByContentKeyVersion(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldContentKeyVersion, opts...).ToFunc()
+}
+
 // ByTimestamp orders the results by the timestamp field.
 func ByTimestamp(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldTimestamp, opts...).ToFunc()
+}
+
+// ByToolCallsKeyVersion orders the results by the tool_calls_key_version field.
+func ByToolCallsKeyVersion(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldToolCallsKeyVersion, opts...).ToFunc()
 }
 
 // ByAuthor orders the results by the author field.

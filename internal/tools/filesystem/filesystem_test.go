@@ -1,11 +1,14 @@
 package filesystem
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/langoai/lango/internal/agent"
+	"github.com/langoai/lango/internal/ctxkeys"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -71,6 +74,78 @@ func TestListDir(t *testing.T) {
 	files, err := tool.ListDir(tmpDir)
 	require.NoError(t, err)
 	assert.Len(t, files, 3)
+}
+
+func TestBuildTools_FsListKeepsPathOptionalAndDefaultsToDot(t *testing.T) {
+	t.Parallel()
+
+	tool := New(Config{})
+	tools := BuildTools(tool)
+
+	var listTool *agent.Tool
+	for _, candidate := range tools {
+		if candidate.Name == "fs_list" {
+			listTool = candidate
+			break
+		}
+	}
+	require.NotNil(t, listTool)
+
+	required, ok := listTool.Parameters["required"].([]string)
+	if ok {
+		assert.NotContains(t, required, "path")
+	}
+
+	cwd := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(cwd, "visible.txt"), []byte("x"), 0644))
+	oldwd, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(cwd))
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+
+	got, err := listTool.Handler(context.Background(), map[string]interface{}{})
+	require.NoError(t, err)
+
+	entries, ok := got.([]FileInfo)
+	require.True(t, ok)
+	require.NotEmpty(t, entries)
+	assert.Contains(t, entries[0].Path, cwd)
+}
+
+func TestBuildTools_FsWriteAndFsEditRequireCanonicalInputs(t *testing.T) {
+	t.Parallel()
+
+	tool := New(Config{})
+	tools := BuildTools(tool)
+
+	var writeTool *agent.Tool
+	var editTool *agent.Tool
+	for _, candidate := range tools {
+		switch candidate.Name {
+		case "fs_write":
+			writeTool = candidate
+		case "fs_edit":
+			editTool = candidate
+		}
+	}
+	require.NotNil(t, writeTool)
+	require.NotNil(t, editTool)
+
+	writeResult, err := writeTool.Handler(context.Background(), map[string]interface{}{
+		"path": "tmp.txt",
+	})
+	require.Error(t, err)
+	assert.Nil(t, writeResult)
+	assert.ErrorContains(t, err, "missing content parameter")
+
+	editResult, err := editTool.Handler(context.Background(), map[string]interface{}{
+		"path":      "tmp.txt",
+		"startLine": float64(1),
+		"content":   "patched",
+	})
+	require.Error(t, err)
+	assert.Nil(t, editResult)
+	assert.ErrorContains(t, err, "missing endLine parameter")
 }
 
 func TestPathValidation(t *testing.T) {
@@ -175,9 +250,9 @@ func TestReadWithMeta(t *testing.T) {
 	require.NoError(t, os.WriteFile(testFile, []byte("line1\nline2\nline3\nline4\nline5"), 0644))
 
 	tests := []struct {
-		give       string
-		giveOffset int
-		giveLimit  int
+		give        string
+		giveOffset  int
+		giveLimit   int
 		wantContent string
 		wantTotal   int
 		wantOffset  int
@@ -242,6 +317,163 @@ func TestReadWithMeta(t *testing.T) {
 			assert.Equal(t, tt.wantLimit, result.Limit)
 			assert.Greater(t, result.Size, int64(0))
 		})
+	}
+}
+
+func TestExistsReturnsTrueFalseAndValidationErrors(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	allowedDir := filepath.Join(tmpDir, "allowed")
+	blockedDir := filepath.Join(allowedDir, "blocked")
+	require.NoError(t, os.MkdirAll(blockedDir, 0755))
+	existingFile := filepath.Join(allowedDir, "exists.txt")
+	require.NoError(t, os.WriteFile(existingFile, []byte("present"), 0644))
+	blockedFile := filepath.Join(blockedDir, "secret.txt")
+	require.NoError(t, os.WriteFile(blockedFile, []byte("secret"), 0644))
+
+	tool := New(Config{
+		AllowedPaths: []string{allowedDir},
+		BlockedPaths: []string{blockedDir},
+	})
+
+	exists, err := tool.Exists(existingFile)
+	require.NoError(t, err)
+	assert.True(t, exists)
+
+	exists, err = tool.Exists(filepath.Join(allowedDir, "missing.txt"))
+	require.NoError(t, err)
+	assert.False(t, exists)
+
+	exists, err = tool.Exists(blockedFile)
+	require.Error(t, err)
+	assert.False(t, exists)
+	assert.ErrorContains(t, err, "access denied: protected path")
+}
+
+func TestMkdirCreatesAllowedPathAndRejectsBlockedPath(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	allowedDir := filepath.Join(tmpDir, "allowed")
+	blockedDir := filepath.Join(allowedDir, "blocked")
+	require.NoError(t, os.MkdirAll(allowedDir, 0755))
+
+	tool := New(Config{
+		AllowedPaths: []string{allowedDir},
+		BlockedPaths: []string{blockedDir},
+	})
+
+	createdDir := filepath.Join(allowedDir, "nested", "leaf")
+	require.NoError(t, tool.Mkdir(createdDir))
+	info, err := os.Stat(createdDir)
+	require.NoError(t, err)
+	assert.True(t, info.IsDir())
+
+	err = tool.Mkdir(filepath.Join(blockedDir, "secret"))
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "access denied: protected path")
+	assert.NoDirExists(t, blockedDir)
+}
+
+func TestCopyCopiesAllowedFileAndRejectsMissingOrBlockedPaths(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	allowedDir := filepath.Join(tmpDir, "allowed")
+	blockedDir := filepath.Join(allowedDir, "blocked")
+	require.NoError(t, os.MkdirAll(allowedDir, 0755))
+	require.NoError(t, os.MkdirAll(blockedDir, 0755))
+	srcFile := filepath.Join(allowedDir, "src.txt")
+	require.NoError(t, os.WriteFile(srcFile, []byte("copy me"), 0644))
+
+	tool := New(Config{
+		AllowedPaths: []string{allowedDir},
+		BlockedPaths: []string{blockedDir},
+	})
+
+	dstFile := filepath.Join(allowedDir, "nested", "dst.txt")
+	require.NoError(t, tool.Copy(srcFile, dstFile))
+	got, err := os.ReadFile(dstFile)
+	require.NoError(t, err)
+	assert.Equal(t, "copy me", string(got))
+
+	err = tool.Copy(filepath.Join(allowedDir, "missing.txt"), filepath.Join(allowedDir, "missing-dst.txt"))
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "open source")
+
+	err = tool.Copy(srcFile, filepath.Join(blockedDir, "dst.txt"))
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "access denied: protected path")
+}
+
+func TestDeleteHandlesLocalRecursiveP2PRestrictedAndSymlinkRemoval(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	allowedDir := filepath.Join(tmpDir, "allowed")
+	require.NoError(t, os.MkdirAll(allowedDir, 0755))
+	tool := New(Config{AllowedPaths: []string{allowedDir}})
+
+	localDir := filepath.Join(allowedDir, "local-dir")
+	require.NoError(t, os.MkdirAll(localDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(localDir, "child.txt"), []byte("child"), 0644))
+	require.NoError(t, tool.Delete(context.Background(), localDir))
+	assert.NoDirExists(t, localDir)
+
+	p2pDir := filepath.Join(allowedDir, "p2p-dir")
+	p2pChild := filepath.Join(p2pDir, "child.txt")
+	require.NoError(t, os.MkdirAll(p2pDir, 0755))
+	require.NoError(t, os.WriteFile(p2pChild, []byte("child"), 0644))
+	err := tool.Delete(ctxkeys.WithP2PRequest(context.Background()), p2pDir)
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "delete (p2p restricted)")
+	assert.FileExists(t, p2pChild)
+
+	targetFile := filepath.Join(allowedDir, "target.txt")
+	linkPath := filepath.Join(allowedDir, "target-link.txt")
+	require.NoError(t, os.WriteFile(targetFile, []byte("target"), 0644))
+	requireSymlink(t, targetFile, linkPath)
+	require.NoError(t, tool.Delete(context.Background(), linkPath))
+	assert.NoFileExists(t, linkPath)
+	assert.FileExists(t, targetFile)
+}
+
+func TestPathAccessAllowsSymlinkInsideAllowedAndBlocksSymlinkEscape(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	allowedDir := filepath.Join(tmpDir, "allowed")
+	outsideDir := filepath.Join(tmpDir, "outside")
+	require.NoError(t, os.MkdirAll(allowedDir, 0755))
+	require.NoError(t, os.MkdirAll(outsideDir, 0755))
+
+	insideTarget := filepath.Join(allowedDir, "inside.txt")
+	insideLink := filepath.Join(allowedDir, "inside-link.txt")
+	require.NoError(t, os.WriteFile(insideTarget, []byte("inside"), 0644))
+	requireSymlink(t, insideTarget, insideLink)
+
+	outsideTarget := filepath.Join(outsideDir, "outside.txt")
+	escapeLink := filepath.Join(allowedDir, "escape-link.txt")
+	require.NoError(t, os.WriteFile(outsideTarget, []byte("outside"), 0644))
+	requireSymlink(t, outsideTarget, escapeLink)
+
+	tool := New(Config{AllowedPaths: []string{allowedDir}})
+
+	got, err := tool.Read(insideLink)
+	require.NoError(t, err)
+	assert.Equal(t, "inside", got)
+
+	_, err = tool.Read(escapeLink)
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "path not allowed")
+}
+
+func requireSymlink(t *testing.T, target, link string) {
+	t.Helper()
+
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlink not supported or permitted in this environment: %v", err)
 	}
 }
 

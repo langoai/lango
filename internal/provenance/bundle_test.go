@@ -179,8 +179,8 @@ func TestBundleService_ExportVerify_Ed25519(t *testing.T) {
 		return security.VerifyEd25519(pubkey, payload, signature)
 	}
 	verifiers := map[string]SignatureVerifyFunc{
-		AlgorithmSecp256k1Keccak256:    identity.VerifyMessageSignature,
-		security.AlgorithmEd25519: ed25519Verifier,
+		AlgorithmSecp256k1Keccak256: identity.VerifyMessageSignature,
+		security.AlgorithmEd25519:   ed25519Verifier,
 	}
 	bundleSvc := NewBundleService(cpStore, treeStore, attrStore, attrSvc, verifiers)
 

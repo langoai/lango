@@ -125,6 +125,14 @@ func (dd *DanglingDetector) scan() {
 			"age", now.Sub(entry.CreatedAt),
 		)
 
+		if now.Before(entry.ExpiresAt) {
+			dd.logger.Warnw("dangling escrow before expiry",
+				"escrowID", entry.ID,
+				"expiresAt", entry.ExpiresAt,
+			)
+			continue
+		}
+
 		if _, err := dd.engine.Expire(context.Background(), entry.ID); err != nil {
 			dd.logger.Warnw("expire dangling escrow", "escrowID", entry.ID, "error", err)
 			continue

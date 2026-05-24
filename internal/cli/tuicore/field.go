@@ -18,20 +18,25 @@ const (
 	InputSelect
 	InputPassword
 	InputSearchSelect // Searchable dropdown select
+	InputReadOnly     // Non-editable informational field
 )
 
 // Field represents a single configuration field in a form.
 type Field struct {
-	Key         string
-	Label       string
-	Description string // Help text shown below the focused field
-	Type        InputType
-	Value       string
-	Placeholder string
-	Options     []string // For InputSelect and InputSearchSelect
-	Checked     bool     // For InputBool
-	Width       int
-	Validate    func(string) error
+	Key          string
+	Label        string
+	Description  string // Help text shown below the focused field
+	Type         InputType
+	Value        string
+	InitialValue string
+	Placeholder  string
+	Options      []string // For InputSelect and InputSearchSelect
+	Checked      bool     // For InputBool
+	Width        int
+	Validate     func(string) error
+	Edited       bool
+	// PreserveAbsentIfUntouched keeps sparse semantics when a field only rendered an effective default.
+	PreserveAbsentIfUntouched bool
 
 	// VisibleWhen controls conditional visibility. When non-nil, the field is
 	// shown only when this function returns true. When nil the field is always visible.

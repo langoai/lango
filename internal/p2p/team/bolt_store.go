@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"go.uber.org/zap"
 	bolt "go.etcd.io/bbolt"
+	"go.uber.org/zap"
 )
 
 var teamsBucket = []byte("teams")

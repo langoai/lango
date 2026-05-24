@@ -1,6 +1,9 @@
 package config
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -27,6 +30,192 @@ func TestConfigClone_DeepCopy(t *testing.T) {
 func TestConfigClone_NilSafe(t *testing.T) {
 	var c *Config
 	assert.Nil(t, c.Clone())
+}
+
+func TestConfigClone_PreservesSparseOntologyGovernanceAbsence(t *testing.T) {
+	t.Parallel()
+
+	orig := &Config{
+		Ontology: OntologyConfig{
+			Governance: OntologyGovernanceConfig{},
+		},
+	}
+
+	clone := orig.Clone()
+	require.NotNil(t, clone)
+	assert.Empty(t, clone.Ontology.Governance.AdmissionMode)
+	assert.Equal(t, 0.0, clone.Ontology.Governance.LearningDefaultConfidence)
+	assert.Equal(t, 0.0, clone.Ontology.Governance.LibrarianDefaultConfidence)
+	assert.False(t, clone.Ontology.Governance.LearningDefaultConfidenceBackfillNeeded)
+	assert.False(t, clone.Ontology.Governance.LibrarianDefaultConfidenceBackfillNeeded)
+	assert.False(t, clone.Ontology.Governance.LearningDefaultConfidencePresent)
+	assert.False(t, clone.Ontology.Governance.LibrarianDefaultConfidencePresent)
+}
+
+func TestConfigClone_PreservesSparseAdmissionModeOffSemantics(t *testing.T) {
+	t.Parallel()
+
+	orig := &Config{
+		Ontology: OntologyConfig{
+			Governance: OntologyGovernanceConfig{
+				AdmissionMode: OntologyAdmissionModeOff,
+			},
+		},
+	}
+
+	clone := orig.Clone()
+	require.NotNil(t, clone)
+	assert.Equal(t, OntologyAdmissionModeOff, clone.Ontology.Governance.AdmissionMode)
+	assert.False(t, clone.Ontology.Governance.AdmissionModePresent)
+}
+
+func TestConfigClone_PreservesExplicitZeroAdmissionConfidenceMarkers(t *testing.T) {
+	t.Parallel()
+
+	orig := &Config{
+		Ontology: OntologyConfig{
+			Governance: OntologyGovernanceConfig{
+				AdmissionMode:                            OntologyAdmissionModeOff,
+				LearningDefaultConfidence:                0.0,
+				LearningDefaultConfidenceBackfillNeeded:  true,
+				LearningDefaultConfidencePresent:         true,
+				LibrarianDefaultConfidence:               0.0,
+				LibrarianDefaultConfidenceBackfillNeeded: true,
+				LibrarianDefaultConfidencePresent:        true,
+			},
+		},
+	}
+
+	clone := orig.Clone()
+	require.NotNil(t, clone)
+	assert.Equal(t, OntologyAdmissionModeOff, clone.Ontology.Governance.AdmissionMode)
+	assert.Equal(t, 0.0, clone.Ontology.Governance.LearningDefaultConfidence)
+	assert.Equal(t, 0.0, clone.Ontology.Governance.LibrarianDefaultConfidence)
+	assert.True(t, clone.Ontology.Governance.LearningDefaultConfidenceBackfillNeeded)
+	assert.True(t, clone.Ontology.Governance.LibrarianDefaultConfidenceBackfillNeeded)
+	assert.True(t, clone.Ontology.Governance.LearningDefaultConfidencePresent)
+	assert.True(t, clone.Ontology.Governance.LibrarianDefaultConfidencePresent)
+}
+
+func TestConfigClone_PreservesLoadedSparseAdmissionFallbackValues(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "lango.json")
+	content := `{
+		"logging": { "level": "info", "format": "console" },
+		"ontology": {
+			"governance": {}
+		}
+	}`
+	require.NoError(t, os.WriteFile(cfgPath, []byte(content), 0644))
+
+	result, err := Load(cfgPath)
+	require.NoError(t, err)
+
+	clone := result.Config.Clone()
+	require.NotNil(t, clone)
+	assert.Equal(t, OntologyAdmissionModeOff, clone.Ontology.Governance.AdmissionMode)
+	assert.InDelta(t, OntologyLearningDefaultConfidenceFallback, clone.Ontology.Governance.LearningDefaultConfidence, 0.001)
+	assert.InDelta(t, OntologyLibrarianDefaultConfidenceFallback, clone.Ontology.Governance.LibrarianDefaultConfidence, 0.001)
+	assert.False(t, clone.Ontology.Governance.AdmissionModePresent)
+	assert.False(t, clone.Ontology.Governance.LearningDefaultConfidencePresent)
+	assert.False(t, clone.Ontology.Governance.LibrarianDefaultConfidencePresent)
+}
+
+func TestOntologyGovernanceJSONMarshal_OmitsSparseConfidenceKeys(t *testing.T) {
+	t.Parallel()
+
+	var cfg Config
+	require.NoError(t, json.Unmarshal([]byte(`{"ontology":{"governance":{"admissionMode":"off"}}}`), &cfg))
+
+	data, err := json.Marshal(cfg)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), `"admissionMode":"off"`)
+	assert.NotContains(t, string(data), `learningDefaultConfidence`)
+	assert.NotContains(t, string(data), `librarianDefaultConfidence`)
+}
+
+func TestOntologyGovernanceJSONMarshal_OmitsSparseAdmissionModeKey(t *testing.T) {
+	t.Parallel()
+
+	var cfg Config
+	require.NoError(t, json.Unmarshal([]byte(`{"ontology":{"governance":{}}}`), &cfg))
+
+	data, err := json.Marshal(cfg)
+	require.NoError(t, err)
+	assert.NotContains(t, string(data), `"admissionMode"`)
+}
+
+func TestOntologyGovernanceJSONMarshal_PreservesExplicitOffAdmissionMode(t *testing.T) {
+	t.Parallel()
+
+	cfg := &Config{
+		Ontology: OntologyConfig{
+			Governance: OntologyGovernanceConfig{
+				AdmissionMode:        OntologyAdmissionModeOff,
+				AdmissionModePresent: true,
+			},
+		},
+	}
+
+	data, err := json.Marshal(cfg)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), `"admissionMode":"off"`)
+
+	var decoded Config
+	require.NoError(t, json.Unmarshal(data, &decoded))
+	assert.Equal(t, OntologyAdmissionModeOff, decoded.Ontology.Governance.AdmissionMode)
+	assert.True(t, decoded.Ontology.Governance.AdmissionModePresent)
+}
+
+func TestOntologyGovernanceJSONMarshal_PreservesExplicitZeroConfidenceKeys(t *testing.T) {
+	t.Parallel()
+
+	cfg := &Config{
+		Ontology: OntologyConfig{
+			Governance: OntologyGovernanceConfig{
+				AdmissionMode:                     OntologyAdmissionModeOff,
+				LearningDefaultConfidence:         0.0,
+				LearningDefaultConfidencePresent:  true,
+				LibrarianDefaultConfidence:        0.0,
+				LibrarianDefaultConfidencePresent: true,
+			},
+		},
+	}
+
+	data, err := json.Marshal(cfg)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), `"learningDefaultConfidence":0`)
+	assert.Contains(t, string(data), `"librarianDefaultConfidence":0`)
+}
+
+func TestOntologyGovernanceJSONMarshal_OmitsZeroValueSparseAdmissionKeys(t *testing.T) {
+	t.Parallel()
+
+	data, err := json.Marshal(OntologyGovernanceConfig{})
+	require.NoError(t, err)
+	assert.NotContains(t, string(data), `admissionMode`)
+	assert.NotContains(t, string(data), `learningDefaultConfidence`)
+	assert.NotContains(t, string(data), `librarianDefaultConfidence`)
+}
+
+func TestOntologyGovernanceJSONMarshal_PreservesDefaultConfigZeroConfidenceRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	cfg := DefaultConfig()
+	cfg.Ontology.Governance.LearningDefaultConfidence = 0.0
+	cfg.Ontology.Governance.LibrarianDefaultConfidence = 0.0
+
+	data, err := json.Marshal(cfg)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), `"learningDefaultConfidence":0`)
+	assert.Contains(t, string(data), `"librarianDefaultConfidence":0`)
+
+	var decoded Config
+	require.NoError(t, json.Unmarshal(data, &decoded))
+	assert.Equal(t, 0.0, decoded.Ontology.Governance.LearningDefaultConfidence)
+	assert.Equal(t, 0.0, decoded.Ontology.Governance.LibrarianDefaultConfidence)
 }
 
 func TestResolveEmbeddingProvider_ByProviderMapKey(t *testing.T) {

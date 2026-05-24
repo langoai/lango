@@ -17,6 +17,8 @@ import (
 
 var logger = logging.SubsystemSugar("channel.slack")
 
+const defaultSlackHTTPClientTimeout = 30 * time.Second
+
 // Config holds Slack channel configuration
 type Config struct {
 	BotToken           string // xoxb-...
@@ -90,9 +92,7 @@ func New(cfg Config) (*Channel, error) {
 	if cfg.APIURL != "" {
 		opts = append(opts, slack.OptionAPIURL(cfg.APIURL))
 	}
-	if cfg.HTTPClient != nil {
-		opts = append(opts, slack.OptionHTTPClient(cfg.HTTPClient))
-	}
+	opts = append(opts, slack.OptionHTTPClient(slackHTTPClient(cfg)))
 
 	var apiClient Client
 	var socketClient Socket
@@ -132,6 +132,13 @@ func New(cfg Config) (*Channel, error) {
 	ch.approval = NewApprovalProvider(apiClient, time.Duration(cfg.ApprovalTimeoutSec)*time.Second)
 
 	return ch, nil
+}
+
+func slackHTTPClient(cfg Config) *http.Client {
+	if cfg.HTTPClient != nil {
+		return cfg.HTTPClient
+	}
+	return &http.Client{Timeout: defaultSlackHTTPClientTimeout}
 }
 
 // SetHandler sets the message handler

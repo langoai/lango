@@ -27,6 +27,15 @@ func (Inquiry) Fields() []ent.Field {
 			NotEmpty(),
 		field.Text("question").
 			NotEmpty(),
+		field.Bytes("payload_ciphertext").
+			Optional().
+			Nillable(),
+		field.Bytes("payload_nonce").
+			Optional().
+			Nillable(),
+		field.Int("payload_key_version").
+			Optional().
+			Nillable(),
 		field.Text("context").
 			Optional().
 			Nillable(),

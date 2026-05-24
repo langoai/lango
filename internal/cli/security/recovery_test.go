@@ -1,6 +1,7 @@
 package security
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -58,4 +59,40 @@ func TestRecoveryRestoreCmd_NoEnvelope(t *testing.T) {
 	loaded, err := internalsecurity.LoadEnvelopeFile(tmpDir)
 	require.NoError(t, err)
 	assert.Nil(t, loaded, "LoadEnvelopeFile should return nil for missing file")
+}
+
+func TestConfirmWord_RejectsMismatchedWord(t *testing.T) {
+	var out bytes.Buffer
+
+	err := confirmWord(bytes.NewBufferString("wrong\n"), &out, []string{"alpha", "beta"}, 2)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "confirmation word 2 did not match")
+	assert.Contains(t, out.String(), "Enter word 2 to confirm: ")
+}
+
+func TestConfirmWord_RejectsEmptyEOF(t *testing.T) {
+	var out bytes.Buffer
+
+	err := confirmWord(bytes.NewBufferString(""), &out, []string{"alpha", "beta"}, 1)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "read confirmation word")
+	assert.Contains(t, err.Error(), "EOF")
+	assert.Contains(t, out.String(), "Enter word 1 to confirm: ")
+}
+
+func TestPickConfirmationIndexes_BoundaryAndDistinctness(t *testing.T) {
+	first, second := pickConfirmationIndexes(1)
+	assert.Equal(t, 1, first)
+	assert.Equal(t, 1, second)
+
+	for range 100 {
+		first, second = pickConfirmationIndexes(2)
+		assert.GreaterOrEqual(t, first, 1)
+		assert.LessOrEqual(t, first, 2)
+		assert.GreaterOrEqual(t, second, 1)
+		assert.LessOrEqual(t, second, 2)
+		assert.NotEqual(t, first, second)
+	}
 }

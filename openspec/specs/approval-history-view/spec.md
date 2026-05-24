@@ -1,9 +1,7 @@
 ## Purpose
 
 Capability spec for approval-history-view. See requirements below for scope and behavior contracts.
-
 ## Requirements
-
 ### Requirement: In-memory approval history store
 The system SHALL maintain an in-memory ring buffer (default 500 entries) recording every approval decision with timestamp, request ID, tool name, session key, summary, safety level, outcome (open set), and provider.
 
@@ -37,26 +35,60 @@ The approval middleware SHALL record every decision point to the HistoryStore: s
 ### Requirement: Approvals cockpit page
 The cockpit SHALL include an Approvals page with two sections: History (top) and Grants (bottom), accessible via sidebar and ctrl+6 keybinding.
 
-#### Scenario: History section display
-- **WHEN** the Approvals page is active and history entries exist
-- **THEN** a table showing Time, Tool, Summary, Outcome, Provider is rendered
+#### Scenario: Help advertises both section-toggle keys readably
+- **WHEN** the Approvals page help is rendered
+- **THEN** it SHALL advertise both `tab` and `/` as the section-toggle keys
+- **AND** the rendered help key label SHALL be `tab /`
 
-#### Scenario: Grants section display
-- **WHEN** the user switches to the Grants section via `/`
-- **THEN** a table showing Session, Tool, Granted time is rendered
+#### Scenario: Section toggle accepts Tab and slash
+- **WHEN** the operator is viewing the Approvals page
+- **AND** presses `tab` or `/`
+- **THEN** the page SHALL switch between the History and Grants sections
 
-#### Scenario: Grant revocation
-- **WHEN** user presses `r` in the grants section on a selected grant
-- **THEN** the grant is revoked from the GrantStore
+#### Scenario: Navigation help appears only when another row exists
+- **WHEN** the active Approvals section has two or more rows
+- **THEN** the help SHALL advertise `↑/k` and `↓/j`
 
-#### Scenario: Session grant revocation
-- **WHEN** user presses `R` in the grants section
-- **THEN** all grants for the selected session are revoked
+#### Scenario: Navigation help hides inert keys with zero or one row
+- **WHEN** the active Approvals section has zero or one row
+- **THEN** the help SHALL omit `↑/k` and `↓/j`
 
-#### Scenario: Empty state
-- **WHEN** no history and no grants exist
-- **THEN** the page displays "No approval history yet."
+#### Scenario: Revoke help appears only when grant rows exist
+- **WHEN** the Approvals page help is rendered for the Grants section with one or more grant rows
+- **THEN** it SHALL advertise `r` and `R`
 
-#### Scenario: Independent section cursors
-- **WHEN** user switches between history and grants sections
-- **THEN** each section preserves its cursor position independently
+#### Scenario: Revoke help hides inert actions in empty grants section
+- **WHEN** the Approvals page help is rendered for the Grants section with zero grant rows
+- **THEN** it SHALL omit `r` and `R`
+
+#### Scenario: Rendered approvals-page text stays plain and single-line
+- **WHEN** approval-history tool names, summaries, outcomes, providers, or active-grant session/tool labels contain ANSI/OSC escape sequences or embedded newlines
+- **THEN** the Approvals page SHALL strip those control sequences
+- **AND** it SHALL normalize the displayed text to a single line before rendering it
+
+### Requirement: Approvals page distinguishes unavailable from empty stores
+The cockpit Approvals page SHALL distinguish between an unavailable approval subsystem and a configured-but-empty approval history.
+
+#### Scenario: Nil stores render unavailable message
+- **WHEN** the Approvals page renders with both `HistoryStore` and `GrantStore` absent
+- **THEN** the page SHALL explain that approval history and grants are not configured
+
+#### Scenario: Empty configured stores render empty-history message
+- **WHEN** the Approvals page renders with configured stores but no history entries and no grants
+- **THEN** the page SHALL display `No approval history yet.`
+
+### Requirement: Approvals page distinguishes partial unavailable from empty section data
+The cockpit Approvals page SHALL distinguish a missing history store or missing grant store from a configured-but-empty section.
+
+#### Scenario: Missing history store renders section-level unavailable message
+- **WHEN** the Approvals page renders with no `HistoryStore` but a configured `GrantStore`
+- **THEN** the history section SHALL explain that approval history is not configured
+
+#### Scenario: Empty history section uses unified empty wording
+- **WHEN** the Approvals page renders with a configured but empty `HistoryStore`
+- **AND** a configured `GrantStore`
+- **THEN** the history section SHALL display `No approval history yet.`
+
+#### Scenario: Missing grant store renders section-level unavailable message
+- **WHEN** the Approvals page renders with no `GrantStore` but a configured `HistoryStore`
+- **THEN** the grants section SHALL explain that active grants are not configured

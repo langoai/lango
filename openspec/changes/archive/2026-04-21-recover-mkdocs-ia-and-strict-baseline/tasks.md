@@ -1,0 +1,3 @@
+- [x] Write the proposal, design, and task breakdown for the MkDocs IA recovery slice.
+- [x] Add delta specs for `mkdocs-documentation-site`, `security-docs-sync`, and `docs-only`.
+- [x] Sync the main specs, archive the change, and mark the archived tasks complete.

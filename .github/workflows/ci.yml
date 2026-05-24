@@ -32,7 +32,12 @@ jobs:
         if: matrix.goos == 'linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libsqlite3-dev
+          sudo apt-get install -y libsqlite3-dev ripgrep
+
+      - name: Install macOS dependencies
+        if: matrix.goos == 'darwin'
+        run: |
+          brew install ripgrep
 
       - name: Build
         run: CGO_ENABLED=1 go build ./...
@@ -58,7 +63,7 @@ jobs:
       - name: Install Linux dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libsqlite3-dev
+          sudo apt-get install -y libsqlite3-dev ripgrep
 
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v7
@@ -83,21 +88,3 @@ jobs:
 
       - name: Validate .goreleaser.yaml
         run: goreleaser check
-
-  docs-version-check:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Check ADK version consistency
-        run: |
-          adk_version=$(grep 'google.golang.org/adk' go.mod | awk '{print $2}')
-          echo "go.mod ADK version: $adk_version"
-          mismatches=$(grep -rEn "ADK v[0-9]+\.[0-9]+\.[0-9]+" docs/ | grep -v "ADK $adk_version" || true)
-          if [ -n "$mismatches" ]; then
-            echo "ERROR: docs reference ADK versions that don't match go.mod ($adk_version):"
-            echo "$mismatches"
-            exit 1
-          fi
-          echo "All ADK version references in docs match go.mod."

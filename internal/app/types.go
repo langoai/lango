@@ -8,8 +8,10 @@ import (
 	"github.com/langoai/lango/internal/adk"
 	"github.com/langoai/lango/internal/agentmemory"
 	"github.com/langoai/lango/internal/agentregistry"
+	"github.com/langoai/lango/internal/agentrt"
 	"github.com/langoai/lango/internal/approval"
 	"github.com/langoai/lango/internal/background"
+	"github.com/langoai/lango/internal/collabview"
 	"github.com/langoai/lango/internal/config"
 	cronpkg "github.com/langoai/lango/internal/cron"
 	"github.com/langoai/lango/internal/economy/budget"
@@ -17,8 +19,8 @@ import (
 	"github.com/langoai/lango/internal/economy/negotiation"
 	"github.com/langoai/lango/internal/economy/pricing"
 	"github.com/langoai/lango/internal/economy/risk"
-	"github.com/langoai/lango/internal/embedding"
 	"github.com/langoai/lango/internal/eventbus"
+	"github.com/langoai/lango/internal/extension"
 	"github.com/langoai/lango/internal/gatekeeper"
 	"github.com/langoai/lango/internal/gateway"
 	"github.com/langoai/lango/internal/graph"
@@ -28,6 +30,7 @@ import (
 	"github.com/langoai/lango/internal/lifecycle"
 	"github.com/langoai/lango/internal/mcp"
 	"github.com/langoai/lango/internal/memory"
+	"github.com/langoai/lango/internal/mission"
 	"github.com/langoai/lango/internal/observability"
 	"github.com/langoai/lango/internal/observability/health"
 	"github.com/langoai/lango/internal/observability/token"
@@ -35,7 +38,10 @@ import (
 	"github.com/langoai/lango/internal/p2p/agentpool"
 	"github.com/langoai/lango/internal/p2p/team"
 	"github.com/langoai/lango/internal/payment"
+	"github.com/langoai/lango/internal/postadjudicationstatus"
+	"github.com/langoai/lango/internal/proposal"
 	"github.com/langoai/lango/internal/provenance"
+	"github.com/langoai/lango/internal/receipts"
 	"github.com/langoai/lango/internal/runledger"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/session"
@@ -74,9 +80,10 @@ type App struct {
 	ApprovalHistory  *approval.HistoryStore
 
 	// Self-Learning Components
-	KnowledgeStore *knowledge.Store
-	LearningEngine *learning.Engine
-	SkillRegistry  *skill.Registry
+	KnowledgeStore            *knowledge.Store
+	LearningEngine            *learning.Engine
+	LearningSuggestionEmitter *learning.SuggestionEmitter
+	SkillRegistry             *skill.Registry
 
 	// Agent Memory Components (optional, per-agent persistent memory)
 	AgentMemoryStore agentmemory.Store
@@ -85,12 +92,25 @@ type App struct {
 	MemoryStore  *memory.Store
 	MemoryBuffer *memory.Buffer
 
-	// Embedding / RAG Components (optional)
-	EmbeddingBuffer *embedding.EmbeddingBuffer
-	RAGService      *embedding.RAGService
-
 	// Conversation Analysis Components (optional)
 	AnalysisBuffer *learning.AnalysisBuffer
+
+	// Compaction Components (optional, Phase 3 background hygiene)
+	CompactionBuffer *session.CompactionBuffer
+
+	// ExtensionRegistry holds the set of installed extension packs
+	// discovered at startup. nil when the subsystem is disabled or the
+	// extensions directory does not exist.
+	ExtensionRegistry *extension.Registry
+
+	// recallIndex is the session recall backend. It may be backed by the
+	// in-process Ent recall index or by broker-backed recall RPCs.
+	recallIndex recallBackend
+
+	// compactionSync is the indirect sync-point handle installed on the
+	// context adapter at build time. wireCompactionBuffer plugs the real
+	// buffer into it once it exists.
+	compactionSync *compactionSyncHolder
 
 	// Proactive Librarian Components (optional)
 	LibrarianInquiryStore    *librarian.InquiryStore
@@ -104,12 +124,14 @@ type App struct {
 	WalletProvider  wallet.WalletProvider
 	PaymentService  *payment.Service
 	X402Interceptor *x402pkg.Interceptor
+	ReceiptStore    *receipts.Store
 
 	// Cron Scheduling Components (optional)
 	CronScheduler *cronpkg.Scheduler
 
 	// Background Task Components (optional)
 	BackgroundManager *background.Manager
+	AgentRunStore     agentrt.AgentRunStore
 
 	// Workflow Engine Components (optional)
 	WorkflowEngine *workflow.Engine
@@ -132,12 +154,34 @@ type App struct {
 	Sanitizer *gatekeeper.Sanitizer
 
 	// Turn Runtime (shared execution + durable traces)
-	TurnRunner    *turnrunner.Runner
+	TurnRunner     *turnrunner.Runner
 	TurnTraceStore turntrace.Store
 
 	// RunLedger Components (optional, Task OS durable execution)
 	RunLedgerStore runledger.RunLedgerStore
 	RunLedgerPEV   *runledger.PEVEngine
+
+	// Mission Components (optional, durable mission lifecycle)
+	MissionStore   mission.Store
+	MissionService *mission.Service
+
+	// Proposal Components (optional, transient proactive proposal lifecycle)
+	ProposalRegistry *proposal.Registry
+	ProposalPreparer proposal.Preparer
+	ProposalService  *proposal.Service
+
+	// Loop projection readers (optional, narrow first-slice surfaces)
+	LoopMissionReader    LoopMissionReader
+	LoopProposalReader   LoopProposalReader
+	LoopInquiryReader    LoopInquiryReader
+	LoopDeadLetterReader LoopDeadLetterReader
+	LoopCronReader       LoopCronReader
+
+	// Collaboration readers (optional, narrow local coworking surfaces)
+	CollaborationMissionLinkReader CollaborationMissionLinkReader
+	CollaborationAgentRunReader    CollaborationAgentRunReader
+	CollaborationDelegationReader  CollaborationDelegationReader
+	CollaborationRuntimeReader     CollaborationRuntimeReader
 
 	// Provenance Components (optional)
 	ProvenanceCheckpoints *provenance.CheckpointService
@@ -175,6 +219,11 @@ type App struct {
 	// FeatureStatuses holds aggregated init diagnostics for context subsystems.
 	FeatureStatuses *StatusCollector
 
+	// Mission boundary hooks remain nil when durable mission storage is unavailable.
+	missionApprovalObserver toolchain.ApprovalObserver
+	missionBackgroundLinker background.MissionExecutionLinker
+	missionRunLedgerLinker  runledger.MissionExecutionLinker
+
 	// Channels
 	Channels []Channel
 
@@ -187,6 +236,50 @@ type App struct {
 
 	// wg tracks background goroutines for graceful shutdown
 	wg sync.WaitGroup
+}
+
+type LoopMissionReader interface {
+	ListMissionsBySession(ctx context.Context, sessionKey string, limit int) ([]*mission.Mission, error)
+}
+
+type LoopProposalReader interface {
+	ListBySession(sessionKey string) []proposal.Proposal
+}
+
+type LoopInquiryReader interface {
+	ListPendingInquiries(ctx context.Context, sessionKey string, limit int) ([]librarian.Inquiry, error)
+}
+
+type LoopDeadLetterReader interface {
+	ListCurrentDeadLetters(ctx context.Context) ([]postadjudicationstatus.DeadLetterBacklogEntry, error)
+}
+
+type LoopCronReader interface {
+	List(ctx context.Context) ([]cronpkg.Job, error)
+	ListHistory(ctx context.Context, jobID string, limit int) ([]cronpkg.HistoryEntry, error)
+}
+
+type CollaborationMissionExecutionLink = collabview.CollaborationMissionExecutionLink
+type CollaborationAgentRunView = collabview.CollaborationAgentRunView
+type CollaborationDelegationRecord = collabview.CollaborationDelegationRecord
+type CollaborationBudgetRecord = collabview.CollaborationBudgetRecord
+type CollaborationRecoveryRecord = collabview.CollaborationRecoveryRecord
+
+type CollaborationMissionLinkReader interface {
+	ListMissionExecutionLinks(ctx context.Context, missionID string) ([]collabview.CollaborationMissionExecutionLink, error)
+}
+
+type CollaborationAgentRunReader interface {
+	ListAgentRuns() []collabview.CollaborationAgentRunView
+}
+
+type CollaborationDelegationReader interface {
+	ListDelegationsForSession(ctx context.Context, sessionKey string) ([]collabview.CollaborationDelegationRecord, error)
+}
+
+type CollaborationRuntimeReader interface {
+	ListBudgetSignals(missionID string) []collabview.CollaborationBudgetRecord
+	ListRecoverySignals(missionID string) []collabview.CollaborationRecoveryRecord
 }
 
 // Channel represents a communication channel (Telegram, Discord, Slack)

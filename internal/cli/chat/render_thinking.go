@@ -20,27 +20,39 @@ var (
 // renderThinkingBlock renders a thinking/reasoning transcript item.
 // Active state shows a spinner; done state shows duration in a compact line.
 func renderThinkingBlock(content, state, duration string, width int) string {
+	if width < 10 {
+		width = 10
+	}
+
 	switch state {
 	case "active":
 		label := thinkingLabelStyle.Render("\U0001F4AD Thinking...")
+		line := " " + label
 		if content != "" {
-			maxPreview := max(width-lipgloss.Width(label)-4, 10)
-			preview := ansi.Truncate(content, maxPreview, "…")
-			label += "  " + thinkingPreviewStyle.Render(preview)
+			maxPreview := width - lipgloss.Width(line) - 2
+			if maxPreview < 1 {
+				maxPreview = 1
+			}
+			preview := ansi.Truncate(sanitizeDisplayText(content), maxPreview, "…")
+			line += "  " + thinkingPreviewStyle.Render(preview)
 		}
-		return fmt.Sprintf(" %s", label)
+		return ansi.Truncate(line, width, "…")
 
 	case "done":
 		label := thinkingDoneStyle.Render(fmt.Sprintf("\U0001F4AD Thinking (%s)", duration))
-		return fmt.Sprintf(" %s", label)
+		return ansi.Truncate(" "+label, width, "…")
 
 	default:
-		return fmt.Sprintf(" \U0001F4AD %s", content)
+		line := fmt.Sprintf(" \U0001F4AD %s", sanitizeDisplayText(content))
+		return ansi.Truncate(line, width, "…")
 	}
 }
 
 // renderPendingIndicator renders the submit-to-first-event waiting indicator.
-func renderPendingIndicator(elapsed string) string {
+func renderPendingIndicator(elapsed string, width int) string {
+	if width < 10 {
+		width = 10
+	}
 	label := pendingLabelStyle.Render(fmt.Sprintf("\u23F3 Working... (%s)", elapsed))
-	return fmt.Sprintf(" %s", label)
+	return ansi.Truncate(fmt.Sprintf(" %s", label), width, "…")
 }

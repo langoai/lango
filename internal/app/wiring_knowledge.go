@@ -11,17 +11,18 @@ import (
 	"github.com/langoai/lango/internal/adk"
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/config"
-	"github.com/langoai/lango/internal/embedding"
 	"github.com/langoai/lango/internal/eventbus"
+	"github.com/langoai/lango/internal/extension"
 	"github.com/langoai/lango/internal/knowledge"
 	"github.com/langoai/lango/internal/learning"
-	"github.com/langoai/lango/internal/retrieval"
 	"github.com/langoai/lango/internal/librarian"
 	"github.com/langoai/lango/internal/provider"
+	"github.com/langoai/lango/internal/retrieval"
 	"github.com/langoai/lango/internal/runledger"
 	"github.com/langoai/lango/internal/search"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/skill"
+	"github.com/langoai/lango/internal/storagebroker"
 	"github.com/langoai/lango/internal/supervisor"
 	"github.com/langoai/lango/internal/types"
 	"github.com/langoai/lango/skills"
@@ -36,7 +37,7 @@ type knowledgeComponents struct {
 
 // initKnowledge creates the self-learning components if enabled.
 // When gc is provided, a GraphEngine is used as the observer instead of the base Engine.
-func initKnowledge(cfg *config.Config, store session.Store, gc *graphComponents, bus *eventbus.Bus) (*knowledgeComponents, *types.FeatureStatus) {
+func initKnowledge(cfg *config.Config, store session.Store, gc *graphComponents, bus *eventbus.Bus, broker storagebroker.API) (*knowledgeComponents, *types.FeatureStatus) {
 	const featureName = "Knowledge"
 
 	if !cfg.Knowledge.Enabled {
@@ -59,6 +60,9 @@ func initKnowledge(cfg *config.Config, store session.Store, gc *graphComponents,
 
 	kStore := knowledge.NewStore(client, kLogger)
 	kStore.SetEventBus(bus)
+	if broker != nil {
+		kStore.SetPayloadProtector(storagebroker.NewPayloadProtector(broker))
+	}
 
 	engine := learning.NewEngine(kStore, kLogger)
 
@@ -189,10 +193,10 @@ func bulkIndexLearnings(ctx context.Context, db *sql.DB, idx *search.FTS5Index) 
 }
 
 // initSkills creates the file-based skill registry.
-func initSkills(cfg *config.Config, baseTools []*agent.Tool, bus *eventbus.Bus) *skill.Registry {
+func initSkills(cfg *config.Config, baseTools []*agent.Tool, bus *eventbus.Bus, extReg *extension.Registry) (*skill.Registry, error) {
 	if !cfg.Skill.Enabled {
 		logger().Info("skill system disabled")
-		return nil
+		return nil, nil
 	}
 
 	dir := cfg.Skill.SkillsDir
@@ -208,6 +212,19 @@ func initSkills(cfg *config.Config, baseTools []*agent.Tool, bus *eventbus.Bus) 
 
 	sLogger := logger()
 	store := skill.NewFileSkillStore(dir, sLogger)
+
+	// Restrict ext-<pack>/ skill loading to healthy packs from the extension
+	// registry. When extensions are disabled or no registry exists,
+	// AllowedExtPacks stays nil → all ext-packs are skipped (safe default).
+	if extReg != nil {
+		allowed := make(map[string]bool)
+		for _, p := range extReg.OKPacks() {
+			if p.Manifest != nil {
+				allowed[p.Manifest.Name] = true
+			}
+		}
+		store.AllowedExtPacks = allowed
+	}
 
 	// Deploy embedded default skills.
 	defaultFS, err := skills.DefaultFS()
@@ -227,6 +244,7 @@ func initSkills(cfg *config.Config, baseTools []*agent.Tool, bus *eventbus.Bus) 
 				workDir, _ = os.Getwd()
 			}
 			registry.SetOSIsolator(iso, workDir, cfg.DataRoot)
+			registry.SetProtectedPaths(resolvedProtectedPaths(cfg, nil))
 		}
 		registry.SetFailClosed(cfg.Sandbox.FailClosed)
 	}
@@ -236,11 +254,11 @@ func initSkills(cfg *config.Config, baseTools []*agent.Tool, bus *eventbus.Bus) 
 
 	ctx := context.Background()
 	if err := registry.LoadSkills(ctx); err != nil {
-		sLogger.Warnw("load skills error", "error", err)
+		return nil, fmt.Errorf("load skills: %w", err)
 	}
 
 	sLogger.Infow("skill system initialized", "dir", dir)
-	return registry
+	return registry, nil
 }
 
 // initConversationAnalysis creates the conversation analysis pipeline if both
@@ -413,9 +431,7 @@ func (a *runSummaryProviderAdapter) MaxJournalSeqForSession(
 }
 
 // initRetrievalCoordinator creates the agentic retrieval coordinator if enabled.
-// When ragService is available, a ContextSearchAgent is registered alongside
-// FactSearchAgent to provide semantic/vector expansion for factual layers.
-func initRetrievalCoordinator(cfg *config.Config, kStore *knowledge.Store, ec *embeddingComponents) *retrieval.RetrievalCoordinator {
+func initRetrievalCoordinator(cfg *config.Config, kStore *knowledge.Store) *retrieval.RetrievalCoordinator {
 	if !cfg.Retrieval.Enabled {
 		return nil
 	}
@@ -423,19 +439,6 @@ func initRetrievalCoordinator(cfg *config.Config, kStore *knowledge.Store, ec *e
 	agents := []retrieval.RetrievalAgent{
 		retrieval.NewFactSearchAgent(kStore),
 		retrieval.NewTemporalSearchAgent(kStore),
-	}
-
-	// Register context search agent when embedding/RAG is available and enabled.
-	if ec != nil && ec.ragService != nil && cfg.Embedding.RAG.Enabled {
-		ragOpts := embedding.RetrieveOptions{
-			Limit:      cfg.Embedding.RAG.MaxResults,
-			MaxDistance: cfg.Embedding.RAG.MaxDistance,
-		}
-		if ragOpts.Limit <= 0 {
-			ragOpts.Limit = 5
-		}
-		contextAgent := retrieval.NewContextSearchAgent(ec.ragService, ragOpts, logger())
-		agents = append(agents, contextAgent)
 	}
 
 	coordinator := retrieval.NewRetrievalCoordinator(agents, logger())

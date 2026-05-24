@@ -75,6 +75,47 @@ func TestRenderApprovalDialog_WithDiff(t *testing.T) {
 	assert.Contains(t, output, "+added line", "should contain added diff line")
 	assert.Contains(t, output, "-removed line", "should contain removed diff line")
 	assert.Contains(t, output, "@@hunk header@@", "should contain hunk header")
+	assert.Contains(t, output, "allow session", "diff dialog should use the unified session label")
+	assert.Contains(t, output, "d/Esc", "diff dialog should use the unified deny label")
+	assert.Contains(t, output, "split", "diff dialog should advertise split-mode toggle")
+	assert.NotContains(t, output, "scroll", "short diff should not advertise inert scroll help")
+}
+
+func TestRenderApprovalDialog_WithDiffAndNilStateDoesNotPanic(t *testing.T) {
+	vm := testVM()
+	vm.DiffContent = "+added line\n-removed line\n@@hunk header@@\nnormal line"
+
+	require.NotPanics(t, func() {
+		output := renderApprovalDialog(vm, nil, 80, 40)
+		assert.Contains(t, output, "+added line")
+		assert.Contains(t, output, "allow session")
+	})
+}
+
+func TestRenderApprovalDialog_WithLongDiffShowsScrollHelp(t *testing.T) {
+	var lines []string
+	for i := 0; i < 50; i++ {
+		lines = append(lines, fmt.Sprintf("+line-%d", i))
+	}
+	vm := testVM()
+	vm.DiffContent = strings.Join(lines, "\n")
+	state := &approvalState{}
+
+	output := renderApprovalDialog(vm, state, 80, 20)
+
+	assert.Contains(t, output, "scroll", "long diff should advertise scroll help")
+}
+
+func TestRenderApprovalDialog_ClampsScrollOffsetWhenDiffFits(t *testing.T) {
+	vm := testVM()
+	vm.DiffContent = "+added line\n-removed line\n@@hunk header@@\nnormal line"
+	state := &approvalState{scrollOffset: 5}
+
+	output := renderApprovalDialog(vm, state, 80, 40)
+
+	assert.Equal(t, 0, state.scrollOffset, "short diff should clamp scroll offset back to zero")
+	assert.Contains(t, output, "+added line")
+	assert.Contains(t, output, "normal line")
 }
 
 func TestRenderApprovalDialog_DiffScroll(t *testing.T) {
@@ -94,6 +135,19 @@ func TestRenderApprovalDialog_DiffScroll(t *testing.T) {
 
 	assert.NotEqual(t, outputNoScroll, outputScrolled,
 		"scrolled output should differ from non-scrolled output")
+}
+
+func TestRenderApprovalDialog_SanitizesDiffPreview(t *testing.T) {
+	vm := testVM()
+	vm.DiffContent = "+\x1b[31madded\x1b[0m line\n-\x1b[31mremoved\x1b[0m line"
+	state := &approvalState{}
+
+	output := renderApprovalDialog(vm, state, 80, 40)
+
+	assert.Contains(t, output, "+added line")
+	assert.Contains(t, output, "-removed line")
+	assert.NotContains(t, output, "\x1b[31m")
+	assert.NotContains(t, output, "\x1b[0m")
 }
 
 func TestRenderApprovalDialog_SplitMode(t *testing.T) {
@@ -116,6 +170,31 @@ func TestRenderApprovalDialog_EmptySummary(t *testing.T) {
 	assert.Contains(t, output, "Execute tool:", "should contain fallback summary text")
 }
 
+func TestRenderApprovalDialog_SanitizesSummary(t *testing.T) {
+	vm := testVM()
+	vm.Request.Summary = "\x1b[31mEdit\nconfig\t.yaml\x1b[0m"
+	state := &approvalState{}
+
+	output := renderApprovalDialog(vm, state, 80, 40)
+
+	assert.Contains(t, output, "Edit config .yaml")
+	assert.NotContains(t, output, "\x1b[31m")
+	assert.NotContains(t, output, "\x1b[0m")
+	assert.NotContains(t, output, "Edit\nconfig")
+}
+
+func TestRenderApprovalDialog_SanitizesToolName(t *testing.T) {
+	vm := testVM()
+	vm.Request.ToolName = "fs_\x1b[31medit\nops\x1b[0m"
+	state := &approvalState{}
+
+	output := renderApprovalDialog(vm, state, 80, 40)
+
+	assert.Contains(t, output, "fs_edit ops")
+	assert.NotContains(t, output, "\x1b[31m")
+	assert.NotContains(t, output, "\x1b[0m")
+}
+
 func TestRenderApprovalDialog_WithParams(t *testing.T) {
 	longValue := strings.Repeat("a", 200)
 	vm := testVM()
@@ -126,6 +205,66 @@ func TestRenderApprovalDialog_WithParams(t *testing.T) {
 
 	assert.Contains(t, output, "...", "long param values should be truncated with ellipsis")
 	assert.NotContains(t, output, longValue, "full long value should not appear untruncated")
+}
+
+func TestRenderApprovalDialog_ParamsRenderInStableKeyOrder(t *testing.T) {
+	vm := testVM()
+	vm.Request.Params = map[string]interface{}{
+		"zeta":  3,
+		"alpha": 1,
+		"beta":  2,
+	}
+	state := &approvalState{}
+
+	output := renderApprovalDialog(vm, state, 80, 40)
+	alphaIdx := strings.Index(output, "alpha: 1")
+	betaIdx := strings.Index(output, "beta: 2")
+	zetaIdx := strings.Index(output, "zeta: 3")
+
+	require.NotEqual(t, -1, alphaIdx)
+	require.NotEqual(t, -1, betaIdx)
+	require.NotEqual(t, -1, zetaIdx)
+	assert.Less(t, alphaIdx, betaIdx)
+	assert.Less(t, betaIdx, zetaIdx)
+}
+
+func TestRenderApprovalDialog_NestedParamsRenderDeterministically(t *testing.T) {
+	vm := testVM()
+	vm.Request.Params = map[string]interface{}{
+		"config": map[string]interface{}{
+			"zeta":  3,
+			"alpha": 1,
+		},
+	}
+	state := &approvalState{}
+
+	output := renderApprovalDialog(vm, state, 80, 40)
+	assert.Contains(t, output, `config: {"alpha":1,"zeta":3}`)
+}
+
+func TestRenderApprovalDialog_MultilineStringParamStaysSingleLine(t *testing.T) {
+	vm := testVM()
+	vm.Request.Params = map[string]interface{}{
+		"content": "line one\nline two\nline three",
+	}
+	state := &approvalState{}
+
+	output := renderApprovalDialog(vm, state, 80, 40)
+	assert.Contains(t, output, "content: line one line two line three")
+	assert.NotContains(t, output, "line one\nline two")
+}
+
+func TestRenderApprovalDialog_SanitizesParamKey(t *testing.T) {
+	vm := testVM()
+	vm.Request.Params = map[string]interface{}{
+		"path\x1b[31m\nops\x1b[0m": "/tmp/test.txt",
+	}
+	state := &approvalState{}
+
+	output := renderApprovalDialog(vm, state, 80, 40)
+	assert.Contains(t, output, "path ops: /tmp/test.txt")
+	assert.NotContains(t, output, "\x1b[31m")
+	assert.NotContains(t, output, "\x1b[0m")
 }
 
 func TestRenderApprovalDialog_EmptyParams(t *testing.T) {
@@ -154,6 +293,37 @@ func TestRenderApprovalDialog_ShowsRuleExplanation(t *testing.T) {
 	assert.Contains(t, output, "filesystem", "should contain explanation text")
 }
 
+func TestRenderApprovalDialog_SanitizesRiskText(t *testing.T) {
+	vm := testVM()
+	vm.Risk.Label = "\x1b[31mHigh\nrisk\x1b[0m"
+	vm.RuleExplanation = "\x1b[31mThis\nis\tdangerous\x1b[0m"
+	state := &approvalState{}
+
+	output := renderApprovalDialog(vm, state, 80, 40)
+
+	assert.Contains(t, output, "High risk")
+	assert.Contains(t, output, "Why: This is dangerous")
+	assert.NotContains(t, output, "\x1b[31m")
+	assert.NotContains(t, output, "\x1b[0m")
+}
+
+func TestRenderApprovalDialog_SanitizesRiskBadgeText(t *testing.T) {
+	vm := testVM()
+	vm.Risk.Level = "\x1b[31mhi\ngh\x1b[0m"
+	state := &approvalState{}
+
+	output := renderApprovalDialog(vm, state, 80, 40)
+
+	assert.Contains(t, output, "HI GH")
+	assert.NotContains(t, output, "\x1b[31m")
+	assert.NotContains(t, output, "\x1b[0m")
+}
+
+func TestRenderApprovalDialog_UsesSanitizedKnownRiskLevelForColor(t *testing.T) {
+	color := riskLevelColor(strings.ToLower(sanitizeDisplayText("\x1b[31mcritical\x1b[0m")))
+	assert.Equal(t, string(riskLevelColor("critical")), string(color))
+}
+
 func TestRenderApprovalDialog_EmptyExplanationSkipped(t *testing.T) {
 	vm := testVM()
 	vm.RuleExplanation = ""
@@ -175,8 +345,19 @@ func TestRenderApprovalDialog_ConfirmPendingMessage(t *testing.T) {
 
 	// Render with confirmPending.
 	stateConfirm := &approvalState{}
-	confirmOutput := renderApprovalDialog(vm, stateConfirm, 80, 40, true)
+	stateConfirm.confirmPending = true
+	stateConfirm.confirmAction = "a"
+	confirmOutput := renderApprovalDialog(vm, stateConfirm, 80, 40)
 	assert.Contains(t, confirmOutput, "Press 'a' again", "confirm pending should show re-press prompt")
+	assert.Contains(t, confirmOutput, "d/Esc denies", "confirm pending should keep the deny path visible")
+}
+
+func TestRenderApprovalDialog_ConfirmPendingSessionKey(t *testing.T) {
+	vm := testVM()
+	stateConfirm := &approvalState{confirmPending: true, confirmAction: "s"}
+	confirmOutput := renderApprovalDialog(vm, stateConfirm, 80, 40)
+	assert.Contains(t, confirmOutput, "Press 's' again", "session confirm should show the correct re-press key")
+	assert.Contains(t, confirmOutput, "d/Esc denies", "session confirm should keep the deny path visible")
 }
 
 // --- handleApprovalDialogKey tests ---

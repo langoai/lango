@@ -1,4 +1,4 @@
-## Wave 1: Foundation (parallel-safe)
+## Slice 1: Foundation (parallel-safe)
 
 - [x] 1.1 Create `internal/security/envelope.go` with `MasterKeyEnvelope`, `KEKSlot`, `KDFParams` types
 - [x] 1.2 Implement `GenerateMasterKey`, `DeriveKEK` (PBKDF2 dispatch), `DeriveDBKey`/`DeriveDBKeyHex` (HKDF), `WrapMasterKey`/`UnwrapMasterKey` (AES-256-GCM)
@@ -13,7 +13,7 @@
 - [x] 1.11 Write `internal/security/config_store_test.go`
 - [x] 1.12 Run `go build ./internal/security/... && go test ./internal/security/... -count=1`
 
-## Wave 2: Persistence & Provider (parallel-safe within wave)
+## Slice 2: Persistence & Provider (parallel-safe within slice)
 
 - [x] 2.1 Create `internal/security/envelope_file.go` — `StoreEnvelopeFile` (atomic write, 0600), `LoadEnvelopeFile`, `HasEnvelopeFile`, `EnvelopeFilePath`
 - [x] 2.2 Write `internal/security/envelope_file_test.go` — round trip, missing file returns nil, 0600 perm verification, corrupt JSON, unsupported version, atomic rename cleanup
@@ -25,7 +25,7 @@
 - [x] 2.8 Migrate `internal/session/ent_store.go` `GetSalt`/`SetSalt`/`GetChecksum`/`SetChecksum` to delegate to `SecurityConfigStore` via `LoadSaltNamed`/`StoreSaltNamed`/`LoadChecksumNamed`/`StoreChecksumNamed`
 - [x] 2.9 Run `go build ./... && go test ./internal/security/... ./internal/bootstrap/... ./internal/session/... -count=1`
 
-## Wave 3: Migration & Bootstrap (sequential)
+## Slice 3: Migration & Bootstrap (sequential)
 
 - [x] 3.1 Add `Options.LangoDir string` field to `internal/bootstrap/bootstrap.go` `Options` struct
 - [x] 3.2 Modify `phaseEnsureDataDir()` in `internal/bootstrap/phases.go` to honor `Options.LangoDir` (fallback to `~/.lango/`)
@@ -47,7 +47,7 @@
 - [x] 3.18 Write `internal/bootstrap/bootstrap_envelope_test.go` — `TestRun_FreshInstall_CreatesEnvelope`, `TestRun_ReturningUser_UnwrapsEnvelope`, `TestRun_WrongPassphrase_EnvelopeMode`
 - [x] 3.19 Run `go build ./... && go test ./... -count=1`
 
-## Wave 4: CLI (parallel-safe within wave)
+## Slice 4: CLI (parallel-safe within slice)
 
 - [x] 4.1 Create `internal/security/passphrase/acquire_noninteractive.go` with `AcquireNonInteractive(opts Options)` — keyring → keyfile only, no prompt, returns `ErrNoNonInteractiveSource` on failure
 - [x] 4.2 Write `internal/security/passphrase/acquire_noninteractive_test.go` — keyfile success, no-source error, non-prompting regression

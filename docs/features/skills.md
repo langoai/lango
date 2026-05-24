@@ -6,6 +6,14 @@ title: Skill System
 
 The Skill System extends Lango's capabilities through file-based skill definitions. Skills are Markdown files (`SKILL.md`) that define reusable behaviors, scripts, templates, and multi-step workflows -- without writing Go code.
 
+!!! note "Two independent skill systems"
+    Lango has **two skill subsystems** that share the term "skill" but serve different layers:
+
+    - **This page** — the **knowledge skill registry** (`skill.*` config, `~/.lango/skills`). Uses Lango's own type-tagged frontmatter (`instruction` / `composite` / `script` / `template`). Skills are loaded by the runtime and contribute to the knowledge layer.
+    - **ADK SkillToolset** — config: `agent.skillsDir`. Uses [agentskills.io](https://agentskills.io) frontmatter (`name`, `description`). The ADK agent gains three tools at runtime — `load_skill`, `list_skill_resources`, `load_skill_resource` — which it can call to discover and read Markdown-defined skill bundles. See `assets/skills/example-skill/` for a reference bundle.
+
+    The two systems are **independent**. Migration of existing `~/.lango/skills` Lango-format skills to agentskills.io format is deferred to a future change. For now, you can use both simultaneously (different directories, different purposes).
+
 ## Skill Types
 
 | Type | Description | Definition |
@@ -202,20 +210,17 @@ Import all skills from https://github.com/owner/repo/tree/main/skills
 
 Bulk import respects the `maxBulkImport` limit (default: 50) and runs with configurable concurrency (default: 5).
 
-## Default Skills
+## Embedded Scaffold
 
-Lango ships with **30 embedded default skills** that are deployed to `~/.lango/skills/` on first run. Existing skills are never overwritten, so user customizations are preserved.
+Lango no longer ships a bundle of built-in default skills. The current runtime embeds only a placeholder `SKILL.md` entry so the binary can keep the skill embed path wired without deploying a usable built-in skill by default.
 
-| Category | Skills |
-|---|---|
-| **Agent** | `agent-list`, `agent-status` |
-| **Config** | `config-create`, `config-delete`, `config-list`, `config-use`, `config-validate` |
-| **Cron** | `cron-add`, `cron-delete`, `cron-history`, `cron-list`, `cron-pause`, `cron-resume` |
-| **Graph** | `graph-clear`, `graph-query`, `graph-stats`, `graph-status` |
-| **Memory** | `memory-clear`, `memory-list`, `memory-status` |
-| **Security** | `secrets-list`, `security-status` |
-| **Server** | `serve`, `version`, `doctor` |
-| **Workflow** | `workflow-cancel`, `workflow-history`, `workflow-list`, `workflow-run`, `workflow-status` |
+That means the skills directory starts empty until you:
+
+- create your own skills,
+- import skills from GitHub or another URL, or
+- install extension packs that include skills.
+
+When real embedded skills are added in the future, the deploy path still preserves local customizations: existing skill directories are not overwritten.
 
 ## Storage
 
@@ -231,6 +236,7 @@ Skills are stored as Markdown files in the skills directory (default: `~/.lango/
 ```
 
 Resource directories (`scripts/`, `references/`, `assets/`) are automatically imported alongside the skill definition.
+Agent-facing skill resource reads are confined to the selected skill directory; lexical escapes and symlinks that resolve outside that directory are rejected.
 
 ## Configuration
 

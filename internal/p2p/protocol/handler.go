@@ -2,7 +2,6 @@ package protocol
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -70,15 +69,15 @@ type TeamHandler func(ctx context.Context, peerDID string, reqType RequestType, 
 
 // Handler processes A2A-over-P2P messages on libp2p streams.
 type Handler struct {
-	sessions       *handshake.SessionStore
-	firewall       *firewall.Firewall
-	executor       ToolExecutor
-	sandboxExec    ToolExecutor
-	cardFn         CardProvider
-	payGate        PayGateChecker
-	approvalFn     ToolApprovalFunc
-	securityEvents SecurityEventTracker
-	eventBus       *eventbus.Bus
+	sessions        *handshake.SessionStore
+	firewall        *firewall.Firewall
+	executor        ToolExecutor
+	sandboxExec     ToolExecutor
+	cardFn          CardProvider
+	payGate         PayGateChecker
+	approvalFn      ToolApprovalFunc
+	securityEvents  SecurityEventTracker
+	eventBus        *eventbus.Bus
 	negotiator      NegotiateHandler
 	teamHandler     TeamHandler
 	ontologyHandler OntologyHandler
@@ -381,9 +380,7 @@ func (h *Handler) handleToolInvoke(ctx context.Context, req *Request, peerDID st
 	}
 	if h.firewall != nil {
 		resultBytes, _ := json.Marshal(result)
-		hash := sha256.Sum256(resultBytes)
-		didHash := sha256.Sum256([]byte(h.localDID))
-		ar, _ := h.firewall.AttestResponse(hash[:], didHash[:])
+		ar, _ := h.firewall.AttestResponse(resultBytes, []byte(h.localDID))
 		if ar != nil {
 			resp.Attestation = &AttestationData{
 				Proof:        ar.Proof,
@@ -614,9 +611,7 @@ func (h *Handler) handleToolInvokePaid(ctx context.Context, req *Request, peerDI
 	}
 	if h.firewall != nil {
 		resultBytes, _ := json.Marshal(result)
-		hash := sha256.Sum256(resultBytes)
-		didHash := sha256.Sum256([]byte(h.localDID))
-		ar, _ := h.firewall.AttestResponse(hash[:], didHash[:])
+		ar, _ := h.firewall.AttestResponse(resultBytes, []byte(h.localDID))
 		if ar != nil {
 			paidResp.Attestation = &AttestationData{
 				Proof:        ar.Proof,
@@ -750,6 +745,9 @@ func SendRequest(ctx context.Context, s network.Stream, reqType RequestType, tok
 
 	if err := json.NewEncoder(s).Encode(req); err != nil {
 		return nil, fmt.Errorf("send request: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("request context: %w", err)
 	}
 
 	var resp Response

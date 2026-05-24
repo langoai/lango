@@ -1,0 +1,15 @@
+## 1. Focus-Aware Seeded Guidance
+
+- [x] 1.1 Update seeded-starter body copy for non-composer focus.
+- [x] 1.2 Update seeded-starter footer copy for non-composer focus.
+
+## 2. Verification
+
+- [x] 2.1 Add or update a workbench regression for focus-aware seeded guidance.
+- [x] 2.2 Run focused workbench and Mission Control page tests.
+- [x] 2.3 Run `go build ./...`.
+- [x] 2.4 Run `go test ./...`.
+
+## 3. Downstream Sync
+
+- [ ] 3.1 Validate and archive the OpenSpec change.

@@ -6,6 +6,7 @@ import (
 	"math/big"
 	"net/http"
 	"sync"
+	"time"
 
 	x402sdk "github.com/coinbase/x402/go"
 	x402http "github.com/coinbase/x402/go/http"
@@ -14,6 +15,8 @@ import (
 
 	"github.com/langoai/lango/internal/wallet"
 )
+
+const defaultX402HTTPClientTimeout = 30 * time.Second
 
 // Interceptor provides an X402-enabled HTTP client via the Coinbase SDK.
 // It lazily initializes the wrapped client and enforces spending limits
@@ -114,7 +117,7 @@ func (i *Interceptor) HTTPClient(ctx context.Context) (*http.Client, error) {
 	x402Client.Register(network, scheme)
 
 	httpX402 := x402http.Newx402HTTPClient(x402Client)
-	wrapped := x402http.WrapHTTPClientWithPayment(&http.Client{}, httpX402)
+	wrapped := x402http.WrapHTTPClientWithPayment(&http.Client{Timeout: defaultX402HTTPClientTimeout}, httpX402)
 
 	i.httpClient = wrapped
 	i.logger.Infow("X402 interceptor initialized",
@@ -128,6 +131,11 @@ func (i *Interceptor) HTTPClient(ctx context.Context) (*http.Client, error) {
 // IsEnabled returns whether the interceptor is active.
 func (i *Interceptor) IsEnabled() bool {
 	return i.config.Enabled
+}
+
+// ChainID returns the configured payment network chain ID.
+func (i *Interceptor) ChainID() int64 {
+	return i.config.ChainID
 }
 
 // SignerAddress returns the wallet address of the configured signer.

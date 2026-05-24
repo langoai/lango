@@ -7,12 +7,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
+	"github.com/langoai/lango/internal/ent/auditlog"
 	"github.com/langoai/lango/internal/ent/enttest"
 	entknowledge "github.com/langoai/lango/internal/ent/knowledge"
 	entlearning "github.com/langoai/lango/internal/ent/learning"
 	"github.com/langoai/lango/internal/eventbus"
+	"github.com/langoai/lango/internal/security"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -22,6 +25,22 @@ func newTestStore(t *testing.T) *Store {
 	t.Cleanup(func() { client.Close() })
 	logger := zap.NewNop().Sugar()
 	return NewStore(client, logger)
+}
+
+type stubPayloadProtector struct{}
+
+func (stubPayloadProtector) EncryptPayload(plaintext []byte) ([]byte, []byte, int, error) {
+	return append([]byte("enc:"), plaintext...), []byte("123456789012"), security.PayloadKeyVersionV1, nil
+}
+
+func (stubPayloadProtector) DecryptPayload(ciphertext []byte, nonce []byte, keyVersion int) ([]byte, error) {
+	if keyVersion != security.PayloadKeyVersionV1 {
+		return nil, fmt.Errorf("unexpected key version %d", keyVersion)
+	}
+	if string(nonce) != "123456789012" {
+		return nil, fmt.Errorf("unexpected nonce %q", string(nonce))
+	}
+	return []byte(strings.TrimPrefix(string(ciphertext), "enc:")), nil
 }
 
 func TestSaveAndGetKnowledge(t *testing.T) {
@@ -120,6 +139,212 @@ func TestSaveAndGetKnowledge(t *testing.T) {
 			t.Errorf("want source %q, got %q", "team-wiki", got.Source)
 		}
 	})
+
+	t.Run("source tagging round trip", func(t *testing.T) {
+		entry := KnowledgeEntry{
+			Key:         "tagged-knowledge",
+			Category:    "fact",
+			Content:     "Persist classification metadata",
+			Source:      "tool:save_knowledge",
+			SourceClass: "user-exportable",
+			AssetLabel:  "knowledge/note",
+		}
+		if err := store.SaveKnowledge(ctx, "session-1", entry); err != nil {
+			t.Fatalf("SaveKnowledge: %v", err)
+		}
+		got, err := store.GetKnowledge(ctx, "tagged-knowledge")
+		if err != nil {
+			t.Fatalf("GetKnowledge: %v", err)
+		}
+		if got.SourceClass != "user-exportable" {
+			t.Errorf("want source class %q, got %q", "user-exportable", got.SourceClass)
+		}
+		if got.AssetLabel != "knowledge/note" {
+			t.Errorf("want asset label %q, got %q", "knowledge/note", got.AssetLabel)
+		}
+	})
+
+	t.Run("classification change bumps version", func(t *testing.T) {
+		entry := KnowledgeEntry{
+			Key:         "classification-versioning",
+			Category:    "fact",
+			Content:     "Source metadata affects exportability",
+			Source:      "tool:save_knowledge",
+			SourceClass: "private-confidential",
+			AssetLabel:  "knowledge/draft",
+		}
+		if err := store.SaveKnowledge(ctx, "session-1", entry); err != nil {
+			t.Fatalf("SaveKnowledge (v1): %v", err)
+		}
+		entry.SourceClass = "user-exportable"
+		entry.AssetLabel = "knowledge/final"
+		if err := store.SaveKnowledge(ctx, "session-1", entry); err != nil {
+			t.Fatalf("SaveKnowledge (v2): %v", err)
+		}
+		got, err := store.GetKnowledge(ctx, "classification-versioning")
+		if err != nil {
+			t.Fatalf("GetKnowledge: %v", err)
+		}
+		if got.Version != 2 {
+			t.Fatalf("want version 2, got %d", got.Version)
+		}
+	})
+
+	t.Run("batch lookup returns latest entries in input order", func(t *testing.T) {
+		first := KnowledgeEntry{
+			Key:      "batch-first",
+			Category: "fact",
+			Content:  "first version",
+		}
+		second := KnowledgeEntry{
+			Key:         "batch-second",
+			Category:    "fact",
+			Content:     "second version",
+			SourceClass: "user-exportable",
+		}
+		if err := store.SaveKnowledge(ctx, "session-1", first); err != nil {
+			t.Fatalf("SaveKnowledge (first): %v", err)
+		}
+		if err := store.SaveKnowledge(ctx, "session-1", second); err != nil {
+			t.Fatalf("SaveKnowledge (second): %v", err)
+		}
+		first.Content = "first version updated"
+		if err := store.SaveKnowledge(ctx, "session-1", first); err != nil {
+			t.Fatalf("SaveKnowledge (first v2): %v", err)
+		}
+
+		got, err := store.GetKnowledgeByKeys(ctx, []string{"batch-second", "batch-first"})
+		if err != nil {
+			t.Fatalf("GetKnowledgeByKeys: %v", err)
+		}
+		if len(got) != 2 {
+			t.Fatalf("want 2 entries, got %d", len(got))
+		}
+		if got[0].Key != "batch-second" || got[1].Key != "batch-first" {
+			t.Fatalf("want input order preserved, got %q then %q", got[0].Key, got[1].Key)
+		}
+		if got[1].Version != 2 {
+			t.Fatalf("want latest version 2 for batch-first, got %d", got[1].Version)
+		}
+		if got[0].SourceClass != "user-exportable" {
+			t.Fatalf("want source class user-exportable, got %q", got[0].SourceClass)
+		}
+	})
+
+	t.Run("invalid source class is rejected", func(t *testing.T) {
+		entry := KnowledgeEntry{
+			Key:         "invalid-source-class",
+			Category:    "fact",
+			Content:     "should fail",
+			SourceClass: "top-secret",
+		}
+		if err := store.SaveKnowledge(ctx, "session-1", entry); err == nil {
+			t.Fatal("expected invalid source class error, got nil")
+		}
+	})
+}
+
+func TestKnowledgePayloadProtection_RoundTripAndProjection(t *testing.T) {
+	store := newTestStore(t)
+	store.SetPayloadProtector(stubPayloadProtector{})
+	ctx := context.Background()
+
+	entry := KnowledgeEntry{
+		Key:      "sensitive",
+		Category: "fact",
+		Content:  "email alice@example.com token SECRETSECRETSECRETSECRETSECRETSECRET",
+	}
+	if err := store.SaveKnowledge(ctx, "session-1", entry); err != nil {
+		t.Fatalf("SaveKnowledge: %v", err)
+	}
+
+	got, err := store.GetKnowledge(ctx, "sensitive")
+	if err != nil {
+		t.Fatalf("GetKnowledge: %v", err)
+	}
+	if got.Content != entry.Content {
+		t.Fatalf("want decrypted content %q, got %q", entry.Content, got.Content)
+	}
+
+	row, err := store.client.Knowledge.Query().
+		Where(entknowledge.Key("sensitive"), entknowledge.IsLatest(true)).
+		Only(ctx)
+	if err != nil {
+		t.Fatalf("query raw row: %v", err)
+	}
+	if row.ContentCiphertext == nil || row.ContentNonce == nil || row.ContentKeyVersion == nil {
+		t.Fatal("expected encrypted payload columns to be set")
+	}
+	if *row.ContentKeyVersion != security.PayloadKeyVersionV1 {
+		t.Fatalf("want key version %d, got %d", security.PayloadKeyVersionV1, *row.ContentKeyVersion)
+	}
+	if strings.Contains(row.Content, "alice@example.com") {
+		t.Fatalf("projection leaked email: %q", row.Content)
+	}
+	if strings.Contains(row.Content, "SECRETSECRETSECRETSECRETSECRETSECRET") {
+		t.Fatalf("projection leaked secret token: %q", row.Content)
+	}
+	if !strings.Contains(row.Content, "[email]") || !strings.Contains(row.Content, "[secret]") {
+		t.Fatalf("projection did not redact sensitive material: %q", row.Content)
+	}
+}
+
+func TestSaveKnowledge_PayloadProtectedDedupUsesPlaintextComparison(t *testing.T) {
+	store := newTestStore(t)
+	store.SetPayloadProtector(stubPayloadProtector{})
+	ctx := context.Background()
+
+	entry := KnowledgeEntry{
+		Key:         "encrypted-dedup",
+		Category:    "fact",
+		Content:     "dedup should compare plaintext content",
+		Source:      "tool:save_knowledge",
+		SourceClass: "private-confidential",
+		AssetLabel:  "knowledge/encrypted-dedup",
+	}
+	require.NoError(t, store.SaveKnowledge(ctx, "session-1", entry))
+	require.NoError(t, store.SaveKnowledge(ctx, "session-1", entry))
+
+	got, err := store.GetKnowledge(ctx, entry.Key)
+	require.NoError(t, err)
+	require.Equal(t, 1, got.Version)
+	require.Equal(t, entry.Content, got.Content)
+
+	rows, err := store.client.Knowledge.Query().Where(entknowledge.Key(entry.Key)).All(ctx)
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+}
+
+func TestLearningPayloadProtection_RoundTripAndProjection(t *testing.T) {
+	store := newTestStore(t)
+	store.SetPayloadProtector(stubPayloadProtector{})
+	ctx := context.Background()
+
+	entry := LearningEntry{
+		Trigger:      "timeout",
+		ErrorPattern: "email alice@example.com",
+		Diagnosis:    "token SECRETSECRETSECRETSECRETSECRETSECRET",
+		Fix:          "rotate 123456789",
+		Category:     entlearning.CategoryTimeout,
+	}
+	require.NoError(t, store.SaveLearning(ctx, "session-1", entry))
+
+	got, err := store.GetLearning(ctx, store.client.Learning.Query().OnlyX(ctx).ID)
+	require.NoError(t, err)
+	require.Equal(t, entry.ErrorPattern, got.ErrorPattern)
+	require.Equal(t, entry.Diagnosis, got.Diagnosis)
+	require.Equal(t, entry.Fix, got.Fix)
+
+	results, err := store.SearchLearningsScored(ctx, "timeout", "", 10)
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	require.Equal(t, entry.ErrorPattern, results[0].Entry.ErrorPattern)
+
+	row := store.client.Learning.Query().OnlyX(ctx)
+	require.NotNil(t, row.PayloadCiphertext)
+	require.NotContains(t, row.ErrorPattern, "alice@example.com")
+	require.NotContains(t, row.Diagnosis, "SECRETSECRETSECRETSECRETSECRETSECRET")
+	require.NotContains(t, row.Fix, "123456789")
 }
 
 func TestGetKnowledge_NotFound(t *testing.T) {
@@ -558,6 +783,70 @@ func TestSaveAuditLog(t *testing.T) {
 	})
 }
 
+func TestSaveAuditLog_ExportabilityDecisionAction(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	entry := AuditEntry{
+		Action: "exportability_decision",
+		Actor:  "agent-main",
+		Target: "artifact:artifact-1",
+		Details: map[string]interface{}{
+			"stage":       "final",
+			"state":       "blocked",
+			"policy_code": "blocked_private_source",
+		},
+	}
+	if err := store.SaveAuditLog(ctx, entry); err != nil {
+		t.Fatalf("SaveAuditLog(exportability_decision): %v", err)
+	}
+
+	count, err := store.client.AuditLog.Query().
+		Where(auditlog.ActionEQ(auditlog.ActionExportabilityDecision)).
+		Count(ctx)
+	if err != nil {
+		t.Fatalf("count exportability decision audit rows: %v", err)
+	}
+	if count == 0 {
+		t.Fatal("expected exportability decision audit row to be persisted")
+	}
+}
+
+func TestSaveAuditLog_ArtifactReleaseApprovalAction(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	entry := AuditEntry{
+		Action: "artifact_release_approval",
+		Actor:  "agent-main",
+		Target: "artifact:artifact-2",
+		Details: map[string]interface{}{
+			"decision":            "escalate",
+			"exportability_state": "needs-human-review",
+			"requested_scope":     "artifact-2",
+			"artifact_label":      "artifact-2",
+			"override_requested":  false,
+			"high_risk":           false,
+			"settlement_hint":     "review",
+			"fulfillment_ratio":   0.0,
+			"reason":              "Artifact release requires human escalation.",
+		},
+	}
+	if err := store.SaveAuditLog(ctx, entry); err != nil {
+		t.Fatalf("SaveAuditLog(artifact_release_approval): %v", err)
+	}
+
+	count, err := store.client.AuditLog.Query().
+		Where(auditlog.ActionEQ(auditlog.ActionArtifactReleaseApproval)).
+		Count(ctx)
+	if err != nil {
+		t.Fatalf("count artifact release approval audit rows: %v", err)
+	}
+	if count == 0 {
+		t.Fatal("expected artifact release approval audit row to be persisted")
+	}
+}
+
 func TestSaveAndSearchExternalRef(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
@@ -710,6 +999,27 @@ func TestDeleteLearningsWhere(t *testing.T) {
 		if err := store.SaveLearning(ctx, "sess-bulk", entry); err != nil {
 			t.Fatalf("SaveLearning %d: %v", i, err)
 		}
+	}
+
+	count, err := store.CountLearningsWhere(ctx, "general", 0.5, time.Time{})
+	if err != nil {
+		t.Fatalf("CountLearningsWhere: %v", err)
+	}
+	if count != 5 {
+		t.Errorf("want 5 counted, got %d", count)
+	}
+
+	count, err = store.CountLearningsWhere(ctx, "general", 0.4, time.Time{})
+	if err != nil {
+		t.Fatalf("CountLearningsWhere with max confidence: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("want 0 counted above max confidence, got %d", count)
+	}
+
+	_, err = store.CountLearningsWhere(ctx, "", 0, time.Time{})
+	if err == nil {
+		t.Fatal("expected CountLearningsWhere without criteria to fail")
 	}
 
 	n, err := store.DeleteLearningsWhere(ctx, "general", 0, time.Time{})

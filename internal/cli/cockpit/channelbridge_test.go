@@ -128,7 +128,7 @@ func TestNewChannelTracker_NilBus(t *testing.T) {
 
 func TestChannelTracker_SeedChannel(t *testing.T) {
 	tracker := NewChannelTracker(nil)
-	tracker.SeedChannel("telegram", true)
+	tracker.SeedChannel("tele\x1b[31mgram\nops", true)
 	tracker.SeedChannel("discord", false)
 
 	snap := tracker.Snapshot()
@@ -139,7 +139,7 @@ func TestChannelTracker_SeedChannel(t *testing.T) {
 	assert.False(t, snap[0].Connected)
 	assert.Equal(t, 0, snap[0].MessageCount)
 
-	assert.Equal(t, "telegram", snap[1].Name)
+	assert.Equal(t, "telegram ops", snap[1].Name)
 	assert.True(t, snap[1].Connected)
 	assert.Equal(t, 0, snap[1].MessageCount)
 }
@@ -166,20 +166,21 @@ func TestChannelTracker_MessageCounting(t *testing.T) {
 
 	now := time.Now()
 	bus.Publish(eventbus.ChannelMessageReceivedEvent{
-		Channel:   "telegram",
+		Channel:   "tele\x1b[31mgram\nops",
 		Timestamp: now,
 	})
 	bus.Publish(eventbus.ChannelMessageReceivedEvent{
-		Channel:   "telegram",
+		Channel:   "tele\x1b[31mgram\nops",
 		Timestamp: now.Add(time.Second),
 	})
 
 	snap := tracker.Snapshot()
 	require.Len(t, snap, 1)
-	assert.Equal(t, "telegram", snap[0].Name)
+	assert.Equal(t, "telegram ops", snap[0].Name)
 	assert.Equal(t, 2, snap[0].MessageCount)
 	assert.True(t, snap[0].Connected)
 	assert.Equal(t, now.Add(time.Second), snap[0].LastActivity)
+	assert.NotContains(t, snap[0].Name, "\x1b")
 }
 
 func TestChannelTracker_SentEventUpdatesLastActivity(t *testing.T) {

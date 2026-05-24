@@ -1,4 +1,4 @@
-name: Deploy Documentation
+name: Documentation
 
 on:
   push:
@@ -6,21 +6,31 @@ on:
       - main
     paths:
       - docs/**
-      - mkdocs.yml
+      - internal-docs/**
+      - zensical.toml
+      - .github/workflows/docs.yml
 
 permissions:
-  contents: write
+  contents: read
+  pages: write
+  id-token: write
 
 jobs:
   deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/configure-pages@v5
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: 3.x
-
-      - run: pip install mkdocs-material mkdocs-minify-plugin
-
-      - run: mkdocs gh-deploy --force
+      - run: pip install zensical
+      - run: zensical build --clean
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4

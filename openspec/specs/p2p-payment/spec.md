@@ -1,39 +1,14 @@
 ## Purpose
 
 Capability spec for p2p-payment. See requirements below for scope and behavior contracts.
-
 ## Requirements
-
 ### Requirement: p2p_pay Tool for Peer-to-Peer USDC Payment
 
-The system SHALL expose a `p2p_pay` agent tool (safety level: `Dangerous`) that sends a USDC payment on the Base blockchain to a connected peer identified by their DID. The tool SHALL require `peer_did` and `amount` parameters and MAY accept an optional `memo`. The tool SHALL NOT be available if the payment service is not initialized.
+The system SHALL expose a `p2p_pay` agent tool (safety level: `Dangerous`) that sends a USDC payment on the Base blockchain to a connected peer identified by their DID. The tool SHALL require `peer_did`, `transaction_receipt_id`, and `amount` parameters and MAY accept optional `submission_receipt_id` and `memo`. The tool SHALL NOT be available if the payment service is not initialized.
 
-#### Scenario: Successful payment to connected peer
-- **WHEN** `p2p_pay` is called with a valid `peer_did` and `amount` for a peer with an active session
-- **THEN** the tool SHALL submit a USDC transfer and return a receipt containing `txHash`, `from`, `to`, `peerDID`, `amount`, `currency`, `chainId`, `memo`, and `timestamp`
-
-#### Scenario: Payment rejected when no active session
-- **WHEN** `p2p_pay` is called with a `peer_did` for which no active session exists in the `SessionStore`
-- **THEN** the tool SHALL return an error containing "no active session for peer" and SHALL NOT submit any transaction
-
-#### Scenario: Missing required parameters rejected
-- **WHEN** `p2p_pay` is called without `peer_did` or without `amount`
-- **THEN** the tool SHALL return an error containing "peer_did and amount are required"
-
-#### Scenario: Both payment tools registered
-- **WHEN** the application initializes with `p2p.enabled=true` and valid payment components (wallet, limiter, service)
-- **THEN** the P2P tool list SHALL include both `p2p_pay` and `p2p_invoke_paid`
-
-#### Scenario: p2p_pay available without p2p_invoke_paid
-- **WHEN** `paymentComponents` has a service but nil limiter
-- **THEN** `buildP2PPaymentTool` SHALL return `p2p_pay` but `buildP2PPaidInvokeTool` SHALL return nil
-
-#### Scenario: Tool unavailable without payment service
-- **WHEN** the application is initialized with `payment.enabled=false`
-- **THEN** `buildP2PPaymentTool` SHALL return nil and `p2p_pay` SHALL NOT be registered with the agent
-- **AND** `buildP2PPaidInvokeTool` SHALL return nil and `p2p_invoke_paid` SHALL NOT be registered
-
----
+#### Scenario: Missing transaction receipt id rejected at the wrapper
+- **WHEN** `p2p_pay` is called without `transaction_receipt_id`
+- **THEN** the tool SHALL return an actionable missing-parameter error before receipt-backed payment evaluation begins
 
 ### Requirement: Recipient Address Derivation from DID
 
@@ -88,3 +63,4 @@ P2P payments SHALL be subject to the same `SpendingLimiter` constraints as all o
 #### Scenario: Payment exceeding per-transaction limit rejected
 - **WHEN** the requested amount exceeds `maxPerTx`
 - **THEN** `payment.Service.Send` SHALL return an error containing "exceeds per-transaction limit" and `p2p_pay` SHALL propagate it
+

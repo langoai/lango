@@ -284,4 +284,3 @@ func redactBundle(bundle *ProvenanceBundle, level RedactionLevel) *ProvenanceBun
 		return redactBundle(bundle, RedactionContent)
 	}
 }
-

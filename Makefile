@@ -6,17 +6,18 @@ VERSION      := $(shell git describe --tags --always --dirty 2>/dev/null || echo
 BUILD_TIME   := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 LDFLAGS      := -ldflags "-X main.Version=$(VERSION) -X main.BuildTime=$(BUILD_TIME)"
 
-# Go parameters (CGO required for sqlite3/sqlite-vec)
+# Go parameters
 GOCMD    := go
-GOTAGS   := -tags "fts5,vec"
-GOBUILD  := CGO_ENABLED=1 $(GOCMD) build $(GOTAGS)
+GOTAGS   :=
+GOBUILD  := $(GOCMD) build $(GOTAGS)
 GOCLEAN  := $(GOCMD) clean
-GOTEST   := CGO_ENABLED=1 $(GOCMD) test $(GOTAGS)
+GOTEST   := $(GOCMD) test $(GOTAGS)
 GOMOD    := $(GOCMD) mod
 
 # Docker
 REGISTRY     ?=
 COVERAGE_DIR := .coverage
+NON_GENERATED_PKGS := $(shell $(GOCMD) list ./... | grep -v '/internal/ent')
 
 # ─── Build & Install ─────────────────────────────────────────────────────────
 
@@ -26,11 +27,11 @@ build:
 
 ## build-linux: Cross-compile for Linux amd64
 build-linux:
-	CGO_ENABLED=1 GOOS=linux GOARCH=amd64 $(GOCMD) build $(LDFLAGS) -o bin/$(BINARY_NAME)-linux-amd64 ./cmd/lango
+	GOOS=linux GOARCH=amd64 $(GOCMD) build $(GOTAGS) $(LDFLAGS) -o bin/$(BINARY_NAME)-linux-amd64 ./cmd/lango
 
 ## build-darwin: Cross-compile for macOS arm64
 build-darwin:
-	CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 $(GOCMD) build $(LDFLAGS) -o bin/$(BINARY_NAME)-darwin-arm64 ./cmd/lango
+	GOOS=darwin GOARCH=arm64 $(GOCMD) build $(GOTAGS) $(LDFLAGS) -o bin/$(BINARY_NAME)-darwin-arm64 ./cmd/lango
 
 ## build-all: Build for all platforms
 build-all: build-linux build-darwin
@@ -89,6 +90,18 @@ coverage:
 	$(GOTEST) -race -coverprofile=$(COVERAGE_DIR)/coverage.out ./...
 	$(GOCMD) tool cover -html=$(COVERAGE_DIR)/coverage.out -o $(COVERAGE_DIR)/coverage.html
 	@echo "Coverage report: $(COVERAGE_DIR)/coverage.html"
+
+## coverage-non-generated: Report Go coverage excluding generated code
+coverage-non-generated:
+	@mkdir -p $(COVERAGE_DIR)
+	$(GOTEST) -covermode=atomic -coverprofile=$(COVERAGE_DIR)/non-generated.out $(NON_GENERATED_PKGS)
+	$(GOCMD) run ./cmd/lango-cover -profile $(COVERAGE_DIR)/non-generated.out -root . -top 10
+
+## coverage-gate: Fail when non-generated Go coverage is below 90%
+coverage-gate:
+	@mkdir -p $(COVERAGE_DIR)
+	$(GOTEST) -covermode=atomic -coverprofile=$(COVERAGE_DIR)/non-generated.out $(NON_GENERATED_PKGS)
+	$(GOCMD) run ./cmd/lango-cover -profile $(COVERAGE_DIR)/non-generated.out -root . -top 10 -threshold 90
 
 # ─── Code Quality ────────────────────────────────────────────────────────────
 
@@ -196,7 +209,8 @@ help:
 
 .PHONY: build build-linux build-darwin build-all install \
         dev run \
-        test test-short test-p2p test-security test-graph test-mcp test-economy bench coverage \
+        test test-short test-p2p test-security test-graph test-mcp test-economy bench \
+        coverage coverage-non-generated coverage-gate \
         fmt fmt-check vet lint generate check-abi ci \
         deps \
         codesign \

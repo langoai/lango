@@ -26,19 +26,19 @@ func (m *runLedgerModule) Provides() []appinit.Provides {
 	return []appinit.Provides{appinit.ProvidesRunLedger}
 }
 func (m *runLedgerModule) DependsOn() []appinit.Provides {
-	return []appinit.Provides{appinit.ProvidesSupervisor}
+	return []appinit.Provides{appinit.ProvidesSupervisor, appinit.ProvidesMission}
 }
 func (m *runLedgerModule) Enabled() bool { return m.cfg.RunLedger.Enabled }
 
-func (m *runLedgerModule) Init(_ context.Context, _ appinit.Resolver) (*appinit.ModuleResult, error) {
+func (m *runLedgerModule) Init(_ context.Context, r appinit.Resolver) (*appinit.ModuleResult, error) {
 	// Phase 2 uses an Ent-backed store when the shared app database is available.
 	// MemoryStore remains as a fallback for tests and non-bootstrapped contexts.
 	// Workspace-aware validation remains phase-gated: the PEV engine supports
 	// WithWorkspace(), but Phase 1 intentionally keeps runtime isolation disabled.
 	// Phase 4 activates workspace wiring as part of the execution-isolation rollout.
 	store := runledger.RunLedgerStore(runledger.NewMemoryStore())
-	if m.boot != nil && m.boot.DBClient != nil {
-		store = runledger.NewEntStore(m.boot.DBClient)
+	if m.boot != nil && m.boot.Storage != nil && m.boot.Storage.RunLedger() != nil {
+		store = m.boot.Storage.RunLedger()
 	}
 	validators := runledger.DefaultValidators()
 	pev := runledger.NewPEVEngine(store, validators)
@@ -48,7 +48,16 @@ func (m *runLedgerModule) Init(_ context.Context, _ appinit.Resolver) (*appinit.
 		pev.WithWorkspace(runledger.NewWorkspaceManager())
 	}
 
-	tools := runledger.BuildTools(store, pev)
+	var mv *missionValues
+	if r != nil {
+		mv, _ = r.Resolve(appinit.ProvidesMission).(*missionValues)
+	}
+	var missionLinker runledger.MissionExecutionLinker
+	if mv != nil {
+		missionLinker = mv.runLedgerLinker
+	}
+
+	tools := runledger.BuildTools(store, pev, missionLinker)
 
 	vals := &runLedgerValues{
 		store: store,

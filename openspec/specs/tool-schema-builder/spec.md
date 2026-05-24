@@ -1,7 +1,7 @@
 # tool-schema-builder Specification
 
 ## Purpose
-TBD - created by archiving change config-bootstrap-regression-fixes. Update Purpose after archive.
+Define the fluent, type-safe JSON Schema builder used for tool parameter schemas.
 ## Requirements
 ### Requirement: Type-safe JSON Schema builder
 The system SHALL provide a `SchemaBuilder` type that constructs JSON Schema objects in a type-safe, fluent manner. The builder SHALL support common JSON Schema types and constraints without requiring callers to manually assemble `map[string]interface{}` structures.
@@ -107,4 +107,3 @@ All builder methods SHALL return the builder instance to support fluent method c
 #### Scenario: Methods are chainable
 - **WHEN** `builder.Str("a", "desc").Int("b", "desc").Required("a").Build()` is called
 - **THEN** the chain SHALL compile and produce a valid schema containing both properties with `a` required
-

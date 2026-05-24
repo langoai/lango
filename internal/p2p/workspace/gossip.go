@@ -18,7 +18,7 @@ type MessageHandler func(msg Message)
 
 // WorkspaceGossip manages per-workspace GossipSub topics.
 type WorkspaceGossip struct {
-	ps      *pubsub.PubSub
+	ps      workspacePubSub
 	localID peer.ID
 	logger  *zap.SugaredLogger
 	handler MessageHandler
@@ -28,9 +28,52 @@ type WorkspaceGossip struct {
 }
 
 type topicState struct {
-	topic *pubsub.Topic
-	sub   *pubsub.Subscription
+	topic workspaceTopic
+	sub   workspaceSubscription
 	stop  context.CancelFunc
+}
+
+type workspacePubSub interface {
+	Join(topic string) (workspaceTopic, error)
+}
+
+type workspaceTopic interface {
+	Subscribe() (workspaceSubscription, error)
+	Publish(ctx context.Context, data []byte) error
+	Close() error
+}
+
+type workspaceSubscription interface {
+	Next(ctx context.Context) (*pubsub.Message, error)
+	Cancel()
+}
+
+type pubSubAdapter struct {
+	ps *pubsub.PubSub
+}
+
+func (p pubSubAdapter) Join(topic string) (workspaceTopic, error) {
+	joined, err := p.ps.Join(topic)
+	if err != nil {
+		return nil, err
+	}
+	return topicAdapter{topic: joined}, nil
+}
+
+type topicAdapter struct {
+	topic *pubsub.Topic
+}
+
+func (t topicAdapter) Subscribe() (workspaceSubscription, error) {
+	return t.topic.Subscribe()
+}
+
+func (t topicAdapter) Publish(ctx context.Context, data []byte) error {
+	return t.topic.Publish(ctx, data)
+}
+
+func (t topicAdapter) Close() error {
+	return t.topic.Close()
 }
 
 // GossipConfig configures the workspace gossip.
@@ -43,8 +86,12 @@ type GossipConfig struct {
 
 // NewWorkspaceGossip creates a new workspace gossip manager.
 func NewWorkspaceGossip(cfg GossipConfig) *WorkspaceGossip {
+	return newWorkspaceGossipWithPubSub(pubSubAdapter{ps: cfg.PubSub}, cfg)
+}
+
+func newWorkspaceGossipWithPubSub(ps workspacePubSub, cfg GossipConfig) *WorkspaceGossip {
 	return &WorkspaceGossip{
-		ps:      cfg.PubSub,
+		ps:      ps,
 		localID: cfg.LocalID,
 		handler: cfg.Handler,
 		logger:  cfg.Logger,
@@ -153,7 +200,7 @@ func (g *WorkspaceGossip) Stop() {
 	g.logger.Info("workspace gossip stopped")
 }
 
-func (g *WorkspaceGossip) readLoop(ctx context.Context, workspaceID string, sub *pubsub.Subscription) {
+func (g *WorkspaceGossip) readLoop(ctx context.Context, workspaceID string, sub workspaceSubscription) {
 	for {
 		raw, err := sub.Next(ctx)
 		if err != nil {

@@ -13,10 +13,10 @@ name: test-workflow
 description: A test workflow
 steps:
   - id: step1
-    agent: executor
+    agent: operator
     prompt: "Do something"
   - id: step2
-    agent: researcher
+    agent: librarian
     prompt: "Research {{step1.result}}"
     depends_on: [step1]
 `
@@ -92,7 +92,11 @@ func TestValidate_UnknownAgent(t *testing.T) {
 }
 
 func TestValidate_ValidAgents(t *testing.T) {
-	for _, agent := range []string{"executor", "researcher", "planner", "memory-manager"} {
+	for _, agent := range []string{
+		"operator", "navigator", "vault", "librarian",
+		"automator", "planner", "chronicler", "ontologist",
+		"executor", "researcher", "memory-manager",
+	} {
 		w := &Workflow{
 			Name:  "test",
 			Steps: []Step{{ID: "a", Agent: agent}},

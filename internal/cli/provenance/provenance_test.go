@@ -10,6 +10,7 @@ import (
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/ent/enttest"
+	"github.com/langoai/lango/internal/storage"
 )
 
 func disabledBootLoader(t *testing.T) func() (*bootstrap.Result, error) {
@@ -18,7 +19,10 @@ func disabledBootLoader(t *testing.T) func() (*bootstrap.Result, error) {
 	cfg := config.DefaultConfig()
 	cfg.Provenance.Enabled = false
 	return func() (*bootstrap.Result, error) {
-		return &bootstrap.Result{Config: cfg, DBClient: client}, nil
+		return &bootstrap.Result{
+			Config:  cfg,
+			Storage: storage.NewFacade(nil, nil, storage.WithEntClient(client)),
+		}, nil
 	}
 }
 

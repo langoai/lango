@@ -11,7 +11,6 @@ import (
 
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/p2p/discovery"
-	"github.com/langoai/lango/internal/toolparam"
 	"github.com/langoai/lango/internal/p2p/firewall"
 	"github.com/langoai/lango/internal/p2p/handshake"
 	"github.com/langoai/lango/internal/p2p/identity"
@@ -19,7 +18,11 @@ import (
 	"github.com/langoai/lango/internal/payment"
 	"github.com/langoai/lango/internal/payment/contracts"
 	"github.com/langoai/lango/internal/payment/eip3009"
+	"github.com/langoai/lango/internal/paymentgate"
+	"github.com/langoai/lango/internal/receipts"
 	"github.com/langoai/lango/internal/session"
+	"github.com/langoai/lango/internal/toolparam"
+	toolpayment "github.com/langoai/lango/internal/tools/payment"
 	"github.com/langoai/lango/internal/wallet"
 	"github.com/libp2p/go-libp2p/core/peer"
 	libp2pproto "github.com/libp2p/go-libp2p/core/protocol"
@@ -535,7 +538,7 @@ func buildP2PTools(pc *p2pComponents) []*agent.Tool {
 }
 
 // buildP2PPaymentTool creates the p2p_pay tool for peer-to-peer USDC payments.
-func buildP2PPaymentTool(p2pc *p2pComponents, pc *paymentComponents) []*agent.Tool {
+func buildP2PPaymentTool(p2pc *p2pComponents, pc *paymentComponents, receiptStore *receipts.Store, auditor toolpayment.PaymentExecutionAuditor) []*agent.Tool {
 	if pc == nil || pc.service == nil {
 		return nil
 	}
@@ -552,17 +555,24 @@ func buildP2PPaymentTool(p2pc *p2pComponents, pc *paymentComponents) []*agent.To
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
-					"peer_did": map[string]interface{}{"type": "string", "description": "The recipient peer's DID"},
-					"amount":   map[string]interface{}{"type": "string", "description": "Amount in USDC (e.g., '0.50')"},
-					"memo":     map[string]interface{}{"type": "string", "description": "Payment memo/reason"},
+					"peer_did":               map[string]interface{}{"type": "string", "description": "The recipient peer's DID"},
+					"transaction_receipt_id": map[string]interface{}{"type": "string", "description": "Linked transaction receipt identifier that must be approved for direct payment execution"},
+					"submission_receipt_id":  map[string]interface{}{"type": "string", "description": "Optional explicit submission receipt identifier. When omitted, the current canonical submission on the transaction receipt is used."},
+					"amount":                 map[string]interface{}{"type": "string", "description": "Amount in USDC (e.g., '0.50')"},
+					"memo":                   map[string]interface{}{"type": "string", "description": "Payment memo/reason"},
 				},
-				"required": []string{"peer_did", "amount"},
+				"required": []string{"peer_did", "transaction_receipt_id", "amount"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
 				peerDID, err := toolparam.RequireString(params, "peer_did")
 				if err != nil {
 					return nil, err
 				}
+				transactionReceiptID, err := toolparam.RequireString(params, "transaction_receipt_id")
+				if err != nil {
+					return nil, err
+				}
+				submissionReceiptID := toolparam.OptionalString(params, "submission_receipt_id", "")
 				amount, err := toolparam.RequireString(params, "amount")
 				if err != nil {
 					return nil, err
@@ -579,6 +589,26 @@ func buildP2PPaymentTool(p2pc *p2pComponents, pc *paymentComponents) []*agent.To
 				did, err := identity.ParseDID(peerDID)
 				if err != nil {
 					return nil, fmt.Errorf("parse peer DID: %w", err)
+				}
+
+				var gate toolpayment.PaymentExecutionGate
+				if receiptStore != nil {
+					gate = paymentgate.NewService(receiptStore)
+				} else {
+					gate = toolpayment.DenyAllPaymentExecutionGate{}
+				}
+
+				var trail toolpayment.PaymentExecutionTrail
+				if receiptStore != nil {
+					trail = receiptStore
+				}
+
+				allowed, denied, err := toolpayment.CheckDirectPaymentExecution(ctx, "p2p_pay", transactionReceiptID, submissionReceiptID, gate, trail, auditor)
+				if err != nil {
+					return nil, err
+				}
+				if !allowed {
+					return denied, nil
 				}
 
 				// Derive Ethereum address from compressed public key.
@@ -634,6 +664,25 @@ func authToMap(auth *eip3009.Authorization) map[string]interface{} {
 
 // paidInvokeDefaultDeadline is the EIP-3009 authorization validity window.
 const paidInvokeDefaultDeadline = 10 * time.Minute
+
+type p2pPaidInvokeRemoteAgent interface {
+	QueryPrice(context.Context, string) (*protocol.PriceQuoteResult, error)
+	InvokeTool(context.Context, string, map[string]interface{}) (map[string]interface{}, error)
+	InvokeToolPaid(context.Context, string, map[string]interface{}, map[string]interface{}) (*protocol.Response, error)
+}
+
+var newP2PPaidInvokeRemoteAgent = func(peerDID string, did *identity.DID, sess *handshake.Session, p2pc *p2pComponents) p2pPaidInvokeRemoteAgent {
+	return protocol.NewRemoteAgent(protocol.RemoteAgentConfig{
+		Name:         "peer-" + peerDID[:16],
+		DID:          peerDID,
+		PeerID:       did.PeerID,
+		SessionToken: sess.Token,
+		Host:         p2pc.node.Host(),
+		Logger:       logger(),
+	})
+}
+
+var newEIP3009Unsigned = eip3009.NewUnsigned
 
 // buildP2PPaidInvokeTool creates the p2p_invoke_paid tool that automates
 // buyer-side paid tool invocation: price query → spending check → EIP-3009
@@ -699,14 +748,7 @@ func buildP2PPaidInvokeTool(p2pc *p2pComponents, pc *paymentComponents) []*agent
 					toolParams = map[string]interface{}{}
 				}
 
-				remoteAgent := protocol.NewRemoteAgent(protocol.RemoteAgentConfig{
-					Name:         "peer-" + peerDID[:16],
-					DID:          peerDID,
-					PeerID:       did.PeerID,
-					SessionToken: sess.Token,
-					Host:         p2pc.node.Host(),
-					Logger:       logger(),
-				})
+				remoteAgent := newP2PPaidInvokeRemoteAgent(peerDID, did, sess, p2pc)
 
 				// 2. Query price.
 				quote, err := remoteAgent.QueryPrice(ctx, toolName)
@@ -762,12 +804,15 @@ func buildP2PPaidInvokeTool(p2pc *p2pComponents, pc *paymentComponents) []*agent
 				sellerAddr := common.HexToAddress(quote.SellerAddr)
 				deadline := time.Now().Add(paidInvokeDefaultDeadline)
 
-				unsigned := eip3009.NewUnsigned(
+				unsigned, err := newEIP3009Unsigned(
 					common.HexToAddress(buyerAddr),
 					sellerAddr,
 					amount,
 					deadline,
 				)
+				if err != nil {
+					return nil, fmt.Errorf("create EIP-3009 authorization: %w", err)
+				}
 
 				// 4d. Sign the authorization.
 				signed, err := eip3009.Sign(ctx, pc.wallet, unsigned, pc.chainID, usdcAddr)

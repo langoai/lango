@@ -6,7 +6,7 @@ Provides a CLI command for validating YAML workflow definition files without exe
 ## Requirements
 
 ### Requirement: Workflow validate command
-The system SHALL provide a `lango workflow validate <file> [--json]` command that parses and validates a YAML workflow definition file without executing it. The command SHALL check for valid YAML syntax, required fields (name, steps), step dependency references, and DAG acyclicity. The command SHALL use cfgLoader for configuration access.
+The system SHALL provide a `lango workflow validate <file> [--output table|json]` command that parses and validates a YAML workflow definition file without executing it. The command SHALL check for valid YAML syntax, required fields (name, steps), step dependency references, and DAG acyclicity.
 
 #### Scenario: Valid workflow file
 - **WHEN** user runs `lango workflow validate workflow.yaml` with a well-formed workflow
@@ -25,8 +25,18 @@ The system SHALL provide a `lango workflow validate <file> [--json]` command tha
 - **THEN** system returns error indicating the unknown dependency reference
 
 #### Scenario: Validate with JSON output
-- **WHEN** user runs `lango workflow validate workflow.yaml --json`
-- **THEN** system outputs a JSON object with fields: valid, name, stepCount, errors
+- **WHEN** user runs `lango workflow validate workflow.yaml --output json`
+- **THEN** system outputs a JSON object with fields: valid, file, name, steps, and optional schedule
+
+#### Scenario: Workflow validate rejects unknown output before parsing
+- **WHEN** user runs `lango workflow validate workflow.yaml --output yaml`
+- **THEN** the command SHALL return an actionable unknown-output-format error
+- **AND** it SHALL NOT parse the workflow file
+
+#### Scenario: Workflow validate output uses the command writer
+- **WHEN** `lango workflow validate` renders table or JSON output
+- **THEN** it SHALL write the full output through the Cobra command output writer
+- **AND** wrappers or tests that replace `cmd.OutOrStdout()` SHALL capture the command output
 
 ### Requirement: Workflow validate command registration
 The `validate` subcommand SHALL be registered under the existing `lango workflow` command group.

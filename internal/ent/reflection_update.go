@@ -55,6 +55,57 @@ func (_u *ReflectionUpdate) SetNillableContent(v *string) *ReflectionUpdate {
 	return _u
 }
 
+// SetContentCiphertext sets the "content_ciphertext" field.
+func (_u *ReflectionUpdate) SetContentCiphertext(v []byte) *ReflectionUpdate {
+	_u.mutation.SetContentCiphertext(v)
+	return _u
+}
+
+// ClearContentCiphertext clears the value of the "content_ciphertext" field.
+func (_u *ReflectionUpdate) ClearContentCiphertext() *ReflectionUpdate {
+	_u.mutation.ClearContentCiphertext()
+	return _u
+}
+
+// SetContentNonce sets the "content_nonce" field.
+func (_u *ReflectionUpdate) SetContentNonce(v []byte) *ReflectionUpdate {
+	_u.mutation.SetContentNonce(v)
+	return _u
+}
+
+// ClearContentNonce clears the value of the "content_nonce" field.
+func (_u *ReflectionUpdate) ClearContentNonce() *ReflectionUpdate {
+	_u.mutation.ClearContentNonce()
+	return _u
+}
+
+// SetContentKeyVersion sets the "content_key_version" field.
+func (_u *ReflectionUpdate) SetContentKeyVersion(v int) *ReflectionUpdate {
+	_u.mutation.ResetContentKeyVersion()
+	_u.mutation.SetContentKeyVersion(v)
+	return _u
+}
+
+// SetNillableContentKeyVersion sets the "content_key_version" field if the given value is not nil.
+func (_u *ReflectionUpdate) SetNillableContentKeyVersion(v *int) *ReflectionUpdate {
+	if v != nil {
+		_u.SetContentKeyVersion(*v)
+	}
+	return _u
+}
+
+// AddContentKeyVersion adds value to the "content_key_version" field.
+func (_u *ReflectionUpdate) AddContentKeyVersion(v int) *ReflectionUpdate {
+	_u.mutation.AddContentKeyVersion(v)
+	return _u
+}
+
+// ClearContentKeyVersion clears the value of the "content_key_version" field.
+func (_u *ReflectionUpdate) ClearContentKeyVersion() *ReflectionUpdate {
+	_u.mutation.ClearContentKeyVersion()
+	return _u
+}
+
 // SetTokenCount sets the "token_count" field.
 func (_u *ReflectionUpdate) SetTokenCount(v int) *ReflectionUpdate {
 	_u.mutation.ResetTokenCount()
@@ -162,6 +213,27 @@ func (_u *ReflectionUpdate) sqlSave(ctx context.Context) (_node int, err error) 
 	if value, ok := _u.mutation.Content(); ok {
 		_spec.SetField(reflection.FieldContent, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.ContentCiphertext(); ok {
+		_spec.SetField(reflection.FieldContentCiphertext, field.TypeBytes, value)
+	}
+	if _u.mutation.ContentCiphertextCleared() {
+		_spec.ClearField(reflection.FieldContentCiphertext, field.TypeBytes)
+	}
+	if value, ok := _u.mutation.ContentNonce(); ok {
+		_spec.SetField(reflection.FieldContentNonce, field.TypeBytes, value)
+	}
+	if _u.mutation.ContentNonceCleared() {
+		_spec.ClearField(reflection.FieldContentNonce, field.TypeBytes)
+	}
+	if value, ok := _u.mutation.ContentKeyVersion(); ok {
+		_spec.SetField(reflection.FieldContentKeyVersion, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedContentKeyVersion(); ok {
+		_spec.AddField(reflection.FieldContentKeyVersion, field.TypeInt, value)
+	}
+	if _u.mutation.ContentKeyVersionCleared() {
+		_spec.ClearField(reflection.FieldContentKeyVersion, field.TypeInt)
+	}
 	if value, ok := _u.mutation.TokenCount(); ok {
 		_spec.SetField(reflection.FieldTokenCount, field.TypeInt, value)
 	}
@@ -219,6 +291,57 @@ func (_u *ReflectionUpdateOne) SetNillableContent(v *string) *ReflectionUpdateOn
 	if v != nil {
 		_u.SetContent(*v)
 	}
+	return _u
+}
+
+// SetContentCiphertext sets the "content_ciphertext" field.
+func (_u *ReflectionUpdateOne) SetContentCiphertext(v []byte) *ReflectionUpdateOne {
+	_u.mutation.SetContentCiphertext(v)
+	return _u
+}
+
+// ClearContentCiphertext clears the value of the "content_ciphertext" field.
+func (_u *ReflectionUpdateOne) ClearContentCiphertext() *ReflectionUpdateOne {
+	_u.mutation.ClearContentCiphertext()
+	return _u
+}
+
+// SetContentNonce sets the "content_nonce" field.
+func (_u *ReflectionUpdateOne) SetContentNonce(v []byte) *ReflectionUpdateOne {
+	_u.mutation.SetContentNonce(v)
+	return _u
+}
+
+// ClearContentNonce clears the value of the "content_nonce" field.
+func (_u *ReflectionUpdateOne) ClearContentNonce() *ReflectionUpdateOne {
+	_u.mutation.ClearContentNonce()
+	return _u
+}
+
+// SetContentKeyVersion sets the "content_key_version" field.
+func (_u *ReflectionUpdateOne) SetContentKeyVersion(v int) *ReflectionUpdateOne {
+	_u.mutation.ResetContentKeyVersion()
+	_u.mutation.SetContentKeyVersion(v)
+	return _u
+}
+
+// SetNillableContentKeyVersion sets the "content_key_version" field if the given value is not nil.
+func (_u *ReflectionUpdateOne) SetNillableContentKeyVersion(v *int) *ReflectionUpdateOne {
+	if v != nil {
+		_u.SetContentKeyVersion(*v)
+	}
+	return _u
+}
+
+// AddContentKeyVersion adds value to the "content_key_version" field.
+func (_u *ReflectionUpdateOne) AddContentKeyVersion(v int) *ReflectionUpdateOne {
+	_u.mutation.AddContentKeyVersion(v)
+	return _u
+}
+
+// ClearContentKeyVersion clears the value of the "content_key_version" field.
+func (_u *ReflectionUpdateOne) ClearContentKeyVersion() *ReflectionUpdateOne {
+	_u.mutation.ClearContentKeyVersion()
 	return _u
 }
 
@@ -358,6 +481,27 @@ func (_u *ReflectionUpdateOne) sqlSave(ctx context.Context) (_node *Reflection, 
 	}
 	if value, ok := _u.mutation.Content(); ok {
 		_spec.SetField(reflection.FieldContent, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ContentCiphertext(); ok {
+		_spec.SetField(reflection.FieldContentCiphertext, field.TypeBytes, value)
+	}
+	if _u.mutation.ContentCiphertextCleared() {
+		_spec.ClearField(reflection.FieldContentCiphertext, field.TypeBytes)
+	}
+	if value, ok := _u.mutation.ContentNonce(); ok {
+		_spec.SetField(reflection.FieldContentNonce, field.TypeBytes, value)
+	}
+	if _u.mutation.ContentNonceCleared() {
+		_spec.ClearField(reflection.FieldContentNonce, field.TypeBytes)
+	}
+	if value, ok := _u.mutation.ContentKeyVersion(); ok {
+		_spec.SetField(reflection.FieldContentKeyVersion, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedContentKeyVersion(); ok {
+		_spec.AddField(reflection.FieldContentKeyVersion, field.TypeInt, value)
+	}
+	if _u.mutation.ContentKeyVersionCleared() {
+		_spec.ClearField(reflection.FieldContentKeyVersion, field.TypeInt)
 	}
 	if value, ok := _u.mutation.TokenCount(); ok {
 		_spec.SetField(reflection.FieldTokenCount, field.TypeInt, value)

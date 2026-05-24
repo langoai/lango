@@ -89,33 +89,74 @@ func TestTasksPage_ShortHelp(t *testing.T) {
 		give       string
 		actioner   TaskActioner
 		detailMode bool
+		height     int
+		tasks      []TaskInfo
+		cursor     int
 		wantCount  int
-		wantEsc    bool
 		wantCancel bool
+		wantRetry  bool
+		wantScroll bool
 	}{
 		{
-			give:      "nil actioner, no detail",
+			give:      "nil actioner, no detail, no tasks",
+			wantCount: 0,
+		},
+		{
+			give:      "nil actioner, no detail, multiple tasks",
+			tasks:     sampleTasksWithAllStatuses(),
 			wantCount: 3, // enter, up, down
 		},
 		{
-			give:       "nil actioner, detail mode",
+			give:       "nil actioner, detail mode without overflow",
 			detailMode: true,
-			wantCount:  4, // + esc
-			wantEsc:    true,
+			height:     40,
+			tasks: []TaskInfo{{
+				ID:            "task-1",
+				Prompt:        "short prompt",
+				Result:        "short result",
+				Status:        "done",
+				OriginChannel: "cli",
+				TokensUsed:    5,
+			}},
+			wantCount: 2, // enter, esc
 		},
 		{
-			give:       "with actioner",
+			give:       "nil actioner, detail mode with overflow",
+			detailMode: true,
+			height:     12,
+			tasks: []TaskInfo{{
+				ID:            "task-1",
+				Prompt:        strings.Repeat("prompt ", 40),
+				Result:        strings.Repeat("result ", 40),
+				Status:        "done",
+				OriginChannel: "cli",
+				TokensUsed:    5,
+			}},
+			wantCount:  4, // enter, up, down, esc
+			wantScroll: true,
+		},
+		{
+			give:       "with actioner on running task",
 			actioner:   &mockTaskActioner{},
-			wantCount:  5, // enter, up, down, cancel, retry
+			tasks:      sampleTasksWithAllStatuses(),
+			cursor:     0,
+			wantCount:  4,
 			wantCancel: true,
 		},
 		{
-			give:       "with actioner and detail",
-			actioner:   &mockTaskActioner{},
-			detailMode: true,
-			wantCount:  6,
-			wantEsc:    true,
-			wantCancel: true,
+			give:      "with actioner on failed task",
+			actioner:  &mockTaskActioner{},
+			tasks:     sampleTasksWithAllStatuses(),
+			cursor:    3,
+			wantCount: 4,
+			wantRetry: true,
+		},
+		{
+			give:      "with actioner on done task",
+			actioner:  &mockTaskActioner{},
+			tasks:     sampleTasksWithAllStatuses(),
+			cursor:    2,
+			wantCount: 3,
 		},
 	}
 
@@ -124,8 +165,94 @@ func TestTasksPage_ShortHelp(t *testing.T) {
 			t.Parallel()
 			p := NewTasksPage(nil, tt.actioner)
 			p.detailMode = tt.detailMode
+			p.height = tt.height
+			p.tasks = tt.tasks
+			p.cursor = tt.cursor
 			bindings := p.ShortHelp()
 			assert.Len(t, bindings, tt.wantCount)
+			hasCancel := false
+			hasRetry := false
+			for _, binding := range bindings {
+				if len(binding.Keys()) == 0 {
+					continue
+				}
+				switch binding.Keys()[0] {
+				case "c":
+					hasCancel = true
+				case "r":
+					hasRetry = true
+				}
+			}
+			assert.Equal(t, tt.wantCancel, hasCancel)
+			assert.Equal(t, tt.wantRetry, hasRetry)
+			if tt.detailMode {
+				assert.Equal(t, "close detail", bindings[0].Help().Desc)
+				if tt.wantScroll {
+					assert.Equal(t, "scroll up", bindings[1].Help().Desc)
+					assert.Equal(t, "scroll down", bindings[2].Help().Desc)
+					assert.Equal(t, "close detail", bindings[3].Help().Desc)
+				} else {
+					assert.Equal(t, "close detail", bindings[1].Help().Desc)
+				}
+			} else {
+				if tt.wantCount > 0 {
+					assert.Equal(t, "details", bindings[0].Help().Desc)
+				}
+				if tt.wantCount > 1 {
+					assert.Equal(t, "up", bindings[1].Help().Desc)
+					assert.Equal(t, "down", bindings[2].Help().Desc)
+				}
+			}
+		})
+	}
+}
+
+func TestTasksPage_ShortHelpHidesDetailScrollWhenNoOverflow(t *testing.T) {
+	t.Parallel()
+
+	p := NewTasksPage(nil, nil)
+	p.detailMode = true
+	p.height = 40
+	p.tasks = []TaskInfo{{
+		ID:            "task-1",
+		Prompt:        "short prompt",
+		Result:        "short result",
+		Error:         "",
+		Status:        "done",
+		OriginChannel: "cli",
+		TokensUsed:    5,
+	}}
+
+	bindings := p.ShortHelp()
+	require.Len(t, bindings, 2)
+	assert.Equal(t, "close detail", bindings[0].Help().Desc)
+	assert.Equal(t, "close detail", bindings[1].Help().Desc)
+}
+
+func TestTasksPage_ShortHelpHidesListNavigationWithoutAlternativeRow(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		tasks []TaskInfo
+	}{
+		{name: "no tasks"},
+		{name: "single task", tasks: []TaskInfo{{ID: "task-1", Status: "done"}}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			p := NewTasksPage(nil, nil)
+			p.tasks = tt.tasks
+
+			bindings := p.ShortHelp()
+			if len(tt.tasks) == 0 {
+				require.Len(t, bindings, 0)
+				return
+			}
+			require.Len(t, bindings, 1)
+			assert.Equal(t, "details", bindings[0].Help().Desc)
 		})
 	}
 }
@@ -135,7 +262,7 @@ func TestTasksPage_NilLister(t *testing.T) {
 
 	p := newTestTasksPage(nil, 80, 24)
 	view := p.View()
-	assert.Contains(t, view, "No background tasks")
+	assert.Contains(t, view, "Background task manager is not configured.")
 }
 
 func TestTasksPage_EmptyTasks(t *testing.T) {
@@ -146,6 +273,26 @@ func TestTasksPage_EmptyTasks(t *testing.T) {
 	p.Activate()
 	view := p.View()
 	assert.Contains(t, view, "No active tasks")
+}
+
+func TestTasksPage_RefreshDataClosesDetailModeWhenTasksDisappear(t *testing.T) {
+	t.Parallel()
+
+	lister := &mockTaskLister{tasks: []TaskInfo{
+		{ID: "task-1", Prompt: "Summarize", Status: "done"},
+	}}
+	p := newTestTasksPage(lister, 80, 24)
+	p.Activate()
+	p.detailMode = true
+	p.detailScroll = 3
+
+	lister.tasks = nil
+	p.refreshData()
+
+	assert.False(t, p.detailMode)
+	assert.Zero(t, p.detailScroll)
+	assert.Empty(t, p.ShortHelp())
+	assert.Contains(t, p.View(), "No active tasks")
 }
 
 func TestTasksPage_WithTasks(t *testing.T) {
@@ -393,8 +540,19 @@ func TestTasksPage_EscClosesDetail(t *testing.T) {
 func TestTasksPage_DetailScroll(t *testing.T) {
 	t.Parallel()
 
-	lister := &mockTaskLister{tasks: sampleTasks()}
-	p := newTestTasksPage(lister, 100, 40)
+	lister := &mockTaskLister{tasks: []TaskInfo{
+		{
+			ID:            "task-scroll",
+			Prompt:        strings.Repeat("prompt line content ", 40),
+			Status:        "running",
+			Elapsed:       time.Minute,
+			Result:        strings.Repeat("result line content ", 40),
+			Error:         strings.Repeat("error line content ", 20),
+			OriginChannel: "telegram",
+			TokensUsed:    1234,
+		},
+	}}
+	p := newTestTasksPage(lister, 80, 14)
 	p.Activate()
 	p.detailMode = true
 
@@ -420,6 +578,76 @@ func TestTasksPage_DetailScroll(t *testing.T) {
 	updated, _ = p.Update(tea.KeyMsg{Type: tea.KeyUp})
 	p = updated.(*TasksPage)
 	assert.Equal(t, 0, p.detailScroll, "scroll should not go below 0")
+}
+
+func TestTasksPage_DetailScrollIsBounded(t *testing.T) {
+	t.Parallel()
+
+	lister := &mockTaskLister{tasks: []TaskInfo{
+		{
+			ID:            "task-long",
+			Prompt:        strings.Repeat("prompt line content ", 40),
+			Status:        "running",
+			Elapsed:       time.Minute,
+			Result:        strings.Repeat("result line content ", 40),
+			Error:         strings.Repeat("error line content ", 20),
+			OriginChannel: "telegram",
+			TokensUsed:    1234,
+		},
+	}}
+	p := newTestTasksPage(lister, 80, 14)
+	p.Activate()
+	p.detailMode = true
+
+	maxScroll := p.detailMaxScroll(p.tasks[0])
+	require.Greater(t, maxScroll, 0)
+
+	for i := 0; i < maxScroll+10; i++ {
+		updated, _ := p.Update(tea.KeyMsg{Type: tea.KeyDown})
+		p = updated.(*TasksPage)
+	}
+
+	assert.Equal(t, maxScroll, p.detailScroll, "scroll should stop at the last meaningful offset")
+}
+
+func TestTasksPage_DetailScrollReclampsAfterRefreshShrink(t *testing.T) {
+	t.Parallel()
+
+	lister := &mockTaskLister{tasks: []TaskInfo{
+		{
+			ID:            "task-long",
+			Prompt:        strings.Repeat("prompt line content ", 40),
+			Status:        "running",
+			Elapsed:       time.Minute,
+			Result:        strings.Repeat("result line content ", 40),
+			Error:         strings.Repeat("error line content ", 20),
+			OriginChannel: "telegram",
+			TokensUsed:    1234,
+		},
+	}}
+	p := newTestTasksPage(lister, 80, 14)
+	p.Activate()
+	p.detailMode = true
+	p.detailScroll = p.detailMaxScroll(p.tasks[0])
+	require.Greater(t, p.detailScroll, 0)
+
+	lister.tasks = []TaskInfo{
+		{
+			ID:            "task-long",
+			Prompt:        "short prompt",
+			Status:        "running",
+			Elapsed:       time.Minute,
+			Result:        "short result",
+			Error:         "",
+			OriginChannel: "telegram",
+			TokensUsed:    12,
+		},
+	}
+
+	newMaxScroll := p.detailMaxScroll(lister.tasks[0])
+	require.Less(t, newMaxScroll, p.detailScroll)
+	p.refreshData()
+	assert.Equal(t, newMaxScroll, p.detailScroll, "scroll should reclamp to the new maximum after content shrink")
 }
 
 func TestTasksPage_DetailViewRender(t *testing.T) {
@@ -449,6 +677,35 @@ func TestTasksPage_DetailViewRender(t *testing.T) {
 	assert.Contains(t, view, "1,234")
 	assert.Contains(t, view, "Fix the payment bug")
 	assert.Contains(t, view, "Fixed the bug")
+}
+
+func TestTasksPage_SanitizesTableAndDetailText(t *testing.T) {
+	t.Parallel()
+
+	lister := &mockTaskLister{tasks: []TaskInfo{
+		{
+			ID:            "t\x1b[31m1\nx",
+			Prompt:        "Fix\x1b[31m payment\nbug now",
+			Status:        "run\x1b[31mning\n",
+			Elapsed:       30 * time.Second,
+			Result:        "Fixed\x1b[31m the\nbug",
+			Error:         "timeout\x1b[31m while\nretrying",
+			OriginChannel: "te\x1b[31mlegram\nops",
+			TokensUsed:    1234,
+		},
+	}}
+	p := newTestTasksPage(lister, 100, 40)
+	p.Activate()
+	p.detailMode = true
+
+	view := p.View()
+	assert.Contains(t, view, "t1 x")
+	assert.Contains(t, view, "Fix payment bug now")
+	assert.Contains(t, view, "running")
+	assert.Contains(t, view, "telegram ops")
+	assert.Contains(t, view, "Fixed the bug")
+	assert.Contains(t, view, "timeout while retrying")
+	assert.NotContains(t, view, "\x1b")
 }
 
 // --- Cancel/Retry action tests ---
@@ -579,7 +836,7 @@ func TestTasksPage_NilActionerNoPanic(t *testing.T) {
 func TestTasksPage_CancelErrorSetsStatusMsg(t *testing.T) {
 	t.Parallel()
 
-	actioner := &mockTaskActioner{cancelErr: errors.New("connection lost")}
+	actioner := &mockTaskActioner{cancelErr: errors.New("connection \x1b[31mlost\nnow")}
 	lister := &mockTaskLister{tasks: sampleTasksWithAllStatuses()}
 	p := newTestTasksPageWithActioner(lister, actioner, 100, 40)
 	p.Activate()
@@ -592,7 +849,8 @@ func TestTasksPage_CancelErrorSetsStatusMsg(t *testing.T) {
 	result := cmd()
 	updated, _ := p.Update(result)
 	p = updated.(*TasksPage)
-	assert.Contains(t, p.statusMsg, "Error: connection lost")
+	assert.Contains(t, p.statusMsg, "Task action failed: connection lost now")
+	assert.NotContains(t, p.statusMsg, "\x1b")
 }
 
 func TestTasksPage_StatusMessageDisplay(t *testing.T) {
@@ -632,19 +890,19 @@ func TestTasksPage_ActionResultMsg(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		give      string
-		msg       taskActionResultMsg
-		wantMsg   string
+		give    string
+		msg     taskActionResultMsg
+		wantMsg string
 	}{
 		{
 			give:    "success message",
-			msg:     taskActionResultMsg{msg: "Cancelled: t1"},
-			wantMsg: "Cancelled: t1",
+			msg:     taskActionResultMsg{msg: "Cancelled:\x1b[31m t1\nnow"},
+			wantMsg: "Cancelled: t1 now",
 		},
 		{
 			give:    "error message",
-			msg:     taskActionResultMsg{err: errors.New("fail")},
-			wantMsg: "Error: fail",
+			msg:     taskActionResultMsg{err: errors.New("fa\x1b[31mil\nhard")},
+			wantMsg: "Task action failed: fail hard",
 		},
 	}
 

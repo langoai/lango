@@ -23,8 +23,8 @@ func writeJSON(w http.ResponseWriter, v interface{}) {
 }
 
 // registerP2PRoutes mounts P2P status endpoints on the gateway router.
-// When OIDC is configured, endpoints require authentication.
-// When auth is nil (dev mode), endpoints are accessible without authentication.
+// The subtree is public only when gateway auth is disabled; otherwise the
+// RequireAuth middleware protects every /api/p2p route.
 func registerP2PRoutes(r chi.Router, app *App, p2pc *p2pComponents, auth *gateway.AuthManager) {
 	r.Route("/api/p2p", func(r chi.Router) {
 		r.Use(gateway.RequireAuth(auth))
@@ -172,26 +172,22 @@ func p2pIdentityHandler(p2pc *p2pComponents) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 
+		var did any
 		if p2pc.identity == nil {
-			writeJSON(w, map[string]interface{}{
-				"did":    nil,
+			writeJSON(w, map[string]any{
+				"did":    did,
 				"peerId": p2pc.node.PeerID().String(),
 			})
 			return
 		}
 
-		ctx := context.Background()
-		did, err := p2pc.identity.DID(ctx)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			writeJSON(w, map[string]string{
-				"error": err.Error(),
-			})
-			return
+		ctx := r.Context()
+		if resolvedDID, err := p2pc.identity.DID(ctx); err == nil && resolvedDID != nil && resolvedDID.ID != "" {
+			did = resolvedDID.ID
 		}
 
-		writeJSON(w, map[string]interface{}{
-			"did":    did.ID,
+		writeJSON(w, map[string]any{
+			"did":    did,
 			"peerId": p2pc.node.PeerID().String(),
 		})
 	}

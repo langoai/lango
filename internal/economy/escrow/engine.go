@@ -139,7 +139,7 @@ func (e *Engine) Fund(ctx context.Context, escrowID string) (*EscrowEntry, error
 		return nil, err
 	}
 
-	if err := e.checkExpiry(entry); err != nil {
+	if err := e.checkExpiry(ctx, entry); err != nil {
 		return nil, err
 	}
 
@@ -168,7 +168,7 @@ func (e *Engine) Activate(ctx context.Context, escrowID string) (*EscrowEntry, e
 		return nil, err
 	}
 
-	if err := e.checkExpiry(entry); err != nil {
+	if err := e.checkExpiry(ctx, entry); err != nil {
 		return nil, err
 	}
 
@@ -193,7 +193,7 @@ func (e *Engine) CompleteMilestone(ctx context.Context, escrowID, milestoneID, e
 		return nil, err
 	}
 
-	if err := e.checkExpiry(entry); err != nil {
+	if err := e.checkExpiry(ctx, entry); err != nil {
 		return nil, err
 	}
 
@@ -305,6 +305,71 @@ func (e *Engine) Refund(ctx context.Context, escrowID string) (*EscrowEntry, err
 	return entry, nil
 }
 
+// ResolveDispute resolves a disputed escrow in favor of either seller or buyer.
+func (e *Engine) ResolveDispute(ctx context.Context, escrowID string, sellerFavor bool) (*EscrowEntry, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	entry, err := e.store.Get(escrowID)
+	if err != nil {
+		return nil, err
+	}
+	if sellerFavor {
+		return e.resolveDisputeLocked(ctx, entry, StatusReleased)
+	}
+	return e.resolveDisputeLocked(ctx, entry, StatusRefunded)
+}
+
+// RecordDisputeResolution records an already-settled dispute result locally.
+func (e *Engine) RecordDisputeResolution(escrowID string, sellerFavor bool) (*EscrowEntry, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	entry, err := e.store.Get(escrowID)
+	if err != nil {
+		return nil, err
+	}
+
+	target := StatusRefunded
+	if sellerFavor {
+		target = StatusReleased
+	}
+	if err := validateTransition(entry.Status, target); err != nil {
+		return nil, err
+	}
+
+	entry.Status = target
+	if err := e.store.Update(entry); err != nil {
+		return nil, err
+	}
+	return entry, nil
+}
+
+func (e *Engine) resolveDisputeLocked(ctx context.Context, entry *EscrowEntry, target EscrowStatus) (*EscrowEntry, error) {
+	if err := validateTransition(entry.Status, target); err != nil {
+		return nil, err
+	}
+
+	switch target {
+	case StatusReleased:
+		if err := e.settler.Release(ctx, entry.SellerDID, entry.TotalAmount); err != nil {
+			return nil, fmt.Errorf("resolve dispute release: %w", err)
+		}
+	case StatusRefunded:
+		if err := e.settler.Refund(ctx, entry.BuyerDID, entry.TotalAmount); err != nil {
+			return nil, fmt.Errorf("resolve dispute refund: %w", err)
+		}
+	default:
+		return nil, ErrInvalidTransition
+	}
+
+	entry.Status = target
+	if err := e.store.Update(entry); err != nil {
+		return nil, err
+	}
+	return entry, nil
+}
+
 // Expire marks a timed-out escrow as expired and refunds if funded.
 func (e *Engine) Expire(ctx context.Context, escrowID string) (*EscrowEntry, error) {
 	e.mu.Lock()
@@ -319,15 +384,7 @@ func (e *Engine) Expire(ctx context.Context, escrowID string) (*EscrowEntry, err
 		return nil, err
 	}
 
-	// Refund if funds were locked.
-	if entry.Status == StatusFunded || entry.Status == StatusActive {
-		if err := e.settler.Refund(ctx, entry.BuyerDID, entry.TotalAmount); err != nil {
-			return nil, fmt.Errorf("expire refund: %w", err)
-		}
-	}
-
-	entry.Status = StatusExpired
-	if err := e.store.Update(entry); err != nil {
+	if err := e.expireEntry(ctx, entry); err != nil {
 		return nil, err
 	}
 	return entry, nil
@@ -349,11 +406,36 @@ func (e *Engine) ListByPeer(peerDID string) []*EscrowEntry {
 }
 
 // checkExpiry checks if an escrow has expired and transitions it if so.
-func (e *Engine) checkExpiry(entry *EscrowEntry) error {
-	if e.nowFunc().After(entry.ExpiresAt) && canTransition(entry.Status, StatusExpired) {
-		entry.Status = StatusExpired
-		_ = e.store.Update(entry)
+func (e *Engine) checkExpiry(ctx context.Context, entry *EscrowEntry) error {
+	if hasReachedExpiry(e.nowFunc(), entry.ExpiresAt) && canTransition(entry.Status, StatusExpired) {
+		if err := e.expireEntry(ctx, entry); err != nil {
+			return fmt.Errorf("expire escrow %q: %w: %w", entry.ID, ErrEscrowExpired, err)
+		}
 		return fmt.Errorf("escrow %q: %w", entry.ID, ErrEscrowExpired)
 	}
 	return nil
+}
+
+func (e *Engine) expireEntry(ctx context.Context, entry *EscrowEntry) error {
+	if !hasReachedExpiry(e.nowFunc(), entry.ExpiresAt) {
+		return fmt.Errorf("escrow %q expires at %s: %w", entry.ID, entry.ExpiresAt.Format(time.RFC3339), ErrEscrowExpired)
+	}
+
+	if entry.Status == StatusFunded || entry.Status == StatusActive {
+		if err := e.settler.Refund(ctx, entry.BuyerDID, entry.TotalAmount); err != nil {
+			return fmt.Errorf("expire refund: %w", err)
+		}
+	}
+
+	expired := *entry
+	expired.Status = StatusExpired
+	if err := e.store.Update(&expired); err != nil {
+		return fmt.Errorf("persist expired escrow: %w", err)
+	}
+	*entry = expired
+	return nil
+}
+
+func hasReachedExpiry(now, expiresAt time.Time) bool {
+	return !now.Before(expiresAt)
 }

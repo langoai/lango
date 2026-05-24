@@ -77,6 +77,11 @@ The `web_search` tool SHALL be registered with `SafetyLevel` Safe, Capability ca
 - **WHEN** `BuildTools()` is called
 - **THEN** the tool SHALL have `query` (string, required) and `limit` (integer, optional) parameters
 
+#### Scenario: Missing query parameter
+- **WHEN** the `web_search` tool handler is invoked without `query`
+- **THEN** it SHALL return an actionable missing-parameter error
+- **AND** SHALL reject the request before any HTTP search begins
+
 ### Requirement: Limit clamping
 The system SHALL clamp the `limit` parameter to a range of 1-20. If `limit` is 0 or negative, it SHALL default to 5. If `limit` exceeds 20, it SHALL be clamped to 20.
 

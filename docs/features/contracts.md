@@ -17,6 +17,7 @@ Before calling a contract, its ABI must be loaded. Use `contract_abi_load` to pr
 ## Read (View/Pure Calls)
 
 The `contract_read` tool calls view or pure functions on a smart contract. These calls are free (no gas cost) and do not change on-chain state.
+If `address`, `abi`, or `method` is missing, the wrapper fails immediately before ABI parsing or RPC access begins.
 
 ```
 contract_read(address, abi, method, args?, chainId?)
@@ -27,6 +28,7 @@ Returns the decoded return value from the contract method.
 ## Write (State-Changing Calls)
 
 The `contract_call` tool sends a state-changing transaction to a smart contract. These calls cost gas and may transfer ETH.
+If `address`, `abi`, or `method` is missing, the wrapper fails immediately before ABI parsing or transaction submission begins.
 
 ```
 contract_call(address, abi, method, args?, value?, chainId?)
@@ -41,6 +43,8 @@ Returns the transaction hash and gas used.
 | `contract_read` | Safe | Read data from a smart contract (view/pure call, no gas cost) |
 | `contract_call` | Dangerous | Send a state-changing transaction to a smart contract (costs gas) |
 | `contract_abi_load` | Safe | Pre-load and cache a contract ABI for faster subsequent calls |
+
+`contract_abi_load` requires `address` and `abi`; missing either input fails before cache mutation begins.
 
 ## Configuration
 

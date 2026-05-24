@@ -1,88 +1,52 @@
 ## Purpose
 
 Capability spec for cli-security-status. See requirements below for scope and behavior contracts.
-
 ## Requirements
+### Requirement: Security status output routing
+`lango security status` SHALL route human-readable and JSON output through the Cobra command writer instead of writing directly to process stdout. Status diagnostics and warnings SHALL route through the Cobra command error writer instead of process-global stderr.
+
+#### Scenario: Security status output uses the command writer
+- **WHEN** `lango security status` renders table or JSON output
+- **THEN** the command SHALL write the full output through the Cobra command output writer
+- **AND** wrappers or tests that replace `cmd.OutOrStdout()` SHALL capture the command output
+
+#### Scenario: Security status warning uses command error writer
+- **WHEN** the non-interactive status path emits a passphrase acquisition warning
+- **THEN** the warning SHALL be written through the Cobra command error writer
+- **AND** it SHALL NOT require intercepting process-global stderr
+
+#### Scenario: Security status rejects unknown output before bootstrap
+- **WHEN** `lango security status --output yaml` is run
+- **THEN** the command SHALL return an actionable unknown-output-format error
+- **AND** it SHALL NOT invoke bootstrap-dependent work
+
+### Requirement: Security inspection subcommands support explicit output formats
+`lango security keyring status`, `lango security kms status`, `lango security kms keys`, and `lango security secrets list` SHALL accept `--output table|json` and route table or JSON output through the Cobra command writer.
+
+#### Scenario: Keyring status JSON output uses the command writer
+- **WHEN** `lango security keyring status --output json` is run
+- **THEN** the command SHALL emit valid JSON through the Cobra command output writer
+
+#### Scenario: KMS status and key listing reject unknown output before bootstrap
+- **WHEN** `lango security kms status --output yaml` or `lango security kms keys --output yaml` is run
+- **THEN** the command SHALL return an actionable unknown-output-format error
+- **AND** it SHALL NOT invoke bootstrap-dependent work
+
+#### Scenario: Secrets list rejects unknown output before bootstrap
+- **WHEN** `lango security secrets list --output yaml` is run
+- **THEN** the command SHALL return an actionable unknown-output-format error
+- **AND** it SHALL NOT invoke bootstrap-dependent work
 
 ### Requirement: Security status command
+Security status reads SHALL use broker-backed storage diagnostics rather than opening the SQLite database directly from the CLI process. The status surface SHALL also report whether the first-slice exportability policy is enabled.
 
-The system SHALL provide a `lango security status` command that displays the current security configuration and state. The command SHALL show signer provider, encryption key count, stored secret count, interceptor status, PII redaction status, approval policy, DB encryption state, and envelope information (version, KEK slot count/types, recovery setup, pending flags). The command SHALL support `--json` for JSON output. The command default behavior SHALL be passphrase-free: it SHALL NOT trigger an interactive passphrase prompt. When DB access requires a passphrase that cannot be obtained non-interactively (via keyring or keyfile), the command SHALL gracefully degrade DB-dependent fields (e.g., encryption key count = 0, signer provider = "unavailable") without failing.
+#### Scenario: Status command reads through broker
+- **WHEN** the security status command needs database-backed counts or metadata
+- **THEN** it SHALL query the broker-backed storage layer instead of opening the database directly in the CLI process
 
-#### Scenario: Display security status with envelope fields
-
-- **WHEN** user runs `lango security status` with an envelope-based installation
-- **THEN** the command SHALL display the envelope version, number of KEK slots, slot types (passphrase, mnemonic), recovery setup status, and any pending flags (`PendingMigration`, `PendingRekey`)
-
-#### Scenario: Display security status with approval policy
-
-- **WHEN** user runs `lango security status`
-- **THEN** the command SHALL display "Approval Policy: <policy>" where policy is the `ApprovalPolicy` string value (defaulting to "dangerous" if empty)
-
-#### Scenario: JSON output with envelope and approval policy
-
-- **WHEN** user runs `lango security status --json`
-- **THEN** the JSON output SHALL include envelope fields (`envelope_version`, `kek_slots`, `recovery_setup`, `pending_migration`, `pending_rekey`) and `"approval_policy": "<policy>"`
-
-#### Scenario: Database unavailable (non-interactive)
-
-- **WHEN** the session database cannot be opened because no passphrase is available non-interactively
-- **THEN** the command displays all envelope fields and configuration fields
-- **AND** DB-dependent fields show zero counts or "unavailable"
-- **AND** the command exits with code 0 without failing
-
-#### Scenario: Passphrase-free default behavior
-
-- **WHEN** user runs `lango security status` in any environment
-- **THEN** the command SHALL NOT trigger an interactive passphrase prompt
-- **AND** it SHALL use `passphrase.AcquireNonInteractive()` (keyring/keyfile only)
-- **AND** if neither source provides a passphrase, it SHALL proceed with DB fields unavailable
-
-#### Scenario: Database unavailable (legacy behavior preserved)
-
-- **WHEN** the session database cannot be opened (any reason)
-- **THEN** the command displays status with zero counts for keys and secrets, without failing
-
-#### Scenario: Display PQ KEM status
-
-- **WHEN** user runs `lango security status` and PQ handshake is enabled
-- **THEN** the output SHALL include "PQ Handshake: enabled (X25519-MLKEM768)"
-
-#### Scenario: Display PQ KEM status when disabled
-
-- **WHEN** user runs `lango security status` and PQ handshake is not enabled
-- **THEN** the output SHALL include "PQ Handshake: disabled"
-
-#### Scenario: JSON output includes PQ KEM status
-
-- **WHEN** user runs `lango security status --json`
-- **THEN** the JSON output SHALL include `"pq_handshake_enabled": true/false` and `"pq_handshake_algorithm": "X25519-MLKEM768"` (when enabled)
-
-#### Scenario: Display PQ signing key status
-
-- **WHEN** user runs `lango security status` and PQ signing key is available
-- **THEN** the identity bundle section SHALL include "PQ Signing Key: available (ml-dsa-65)"
-
-#### Scenario: Display PQ signing key unavailable
-
-- **WHEN** user runs `lango security status` and PQ signing key is not available
-- **THEN** the identity bundle section SHALL include "PQ Signing Key: not available"
-
-#### Scenario: JSON output includes PQ signing key status
-
-- **WHEN** user runs `lango security status --json`
-- **THEN** the identity bundle section SHALL include `"pq_signing_key_available": true/false` and `"pq_signing_algorithm": "ml-dsa-65"` (when available)
-
-#### Scenario: Display KMS protection status
-- **WHEN** user runs `lango security status` and the envelope has a KMS KEK slot
-- **THEN** the output SHALL include "KMS Protection: enabled (<provider>)" showing the KMS provider name
-
-#### Scenario: Display KMS protection disabled
-- **WHEN** user runs `lango security status` and no KMS KEK slot exists
-- **THEN** the output SHALL include "KMS Protection: disabled"
-
-#### Scenario: JSON output includes KMS protection
-- **WHEN** user runs `lango security status --json`
-- **THEN** the JSON output SHALL include `"kms_protected": true/false` and `"kms_provider": "<provider>"` (when protected)
+#### Scenario: Exportability status reported
+- **WHEN** the user runs the security status command
+- **THEN** the output SHALL include whether exportability evaluation is enabled in the active config
 
 ### Requirement: Non-interactive mini-bootstrap for status
 
@@ -100,7 +64,17 @@ The system SHALL provide a `readDBStatusNonInteractive` helper that runs a minim
 
 #### Scenario: Keyring provider passed to non-interactive acquisition
 - **WHEN** `readDBStatusNonInteractive` acquires a passphrase
-- **THEN** it SHALL pass `keyring.DetectSecureProvider()` as the `KeyringProvider` option
+- **THEN** it SHALL pass the status secure-provider detector result as the `KeyringProvider` option
+
+#### Scenario: Broker startup is injectable for status reads
+- **WHEN** `readDBStatusNonInteractive` needs broker-backed DB counts
+- **THEN** it SHALL start the broker through a replaceable status broker starter
+- **AND** tests SHALL be able to verify the `DBStatusSummaryRequest` without launching a real broker process
+
+#### Scenario: Broker startup failure degrades
+- **WHEN** the status broker starter returns an error
+- **THEN** `readDBStatusNonInteractive` SHALL return a zero-valued `dbStatusResult`
+- **AND** it SHALL NOT panic or emit misleading DB counts
 
 #### Scenario: Active config loaded when DB available
 - **WHEN** `readDBStatusNonInteractive` successfully opens the DB with MK
@@ -117,6 +91,7 @@ The system SHALL provide a `readDBStatusNonInteractive` helper that runs a minim
 - **WHEN** `readDBStatusNonInteractive` is called and `AcquireNonInteractive` returns an error
 - **THEN** the helper returns a zero-valued `dbStatusResult` (all counts 0)
 - **AND** no DB open attempt is made
+- **AND** non-`ErrNoNonInteractiveSource` errors SHALL be capturable through the supplied warning writer
 
 ### Requirement: Read-only database open for status
 
@@ -133,3 +108,24 @@ The system SHALL provide an `OpenDatabaseReadOnly` function used by status comma
 
 - **WHEN** a write operation is attempted on the read-only client
 - **THEN** SQLite returns a "read-only database" error
+
+### Requirement: Status reflects brokered payload protection
+The security status surface MUST report brokered payload protection state rather than SQLCipher page-encryption state once the new protection model is active.
+
+#### Scenario: Payload protection status reporting
+- **WHEN** the user runs the security status command after payload protection is enabled
+- **THEN** the output reports broker/storage/payload-protection state
+- **AND** it does not imply that SQLCipher page encryption is active
+
+### Requirement: Status output field semantics stay stable
+The security status surface SHALL keep its signer-provider, DB status, and KMS fallback fields aligned with the actual runtime semantics.
+
+#### Scenario: KMS signer remains visible in status output
+- **WHEN** the security status command renders a KMS-backed signer configuration
+- **THEN** the output SHALL keep the active signer provider visible as the KMS provider name
+- **AND** SHALL surface the KMS provider, key ID, and fallback enabled/disabled state
+
+#### Scenario: Unavailable config read still preserves explicit DB status strings
+- **WHEN** the security status command renders JSON output for a state where DB-backed config could not be read non-interactively
+- **THEN** `signer_provider` SHALL be `unavailable`
+- **AND** `db_encryption` SHALL preserve the current runtime status string rather than a generic placeholder

@@ -1,9 +1,7 @@
 ## Purpose
 
 Capability spec for context-budget. See requirements below for scope and behavior contracts.
-
 ## Requirements
-
 ### Requirement: Model window registry
 The system SHALL provide a `LookupModelWindow(modelName string) int` function that returns the context window size in tokens for known models. The lookup SHALL match model name prefixes (e.g., "gemini-2.0" matches "gemini-2.0-flash-001"). If no match is found, the system SHALL return a configurable default (128k tokens).
 
@@ -56,20 +54,21 @@ The `ContextBudgetManager` SHALL compute per-section token budgets using the for
 - **AND** section budgets SHALL be proportionally small but positive
 
 ### Requirement: Graceful degradation on zero or negative available budget
-When `available <= 0` (model window too small or base prompt too large), the `ContextBudgetManager` SHALL return unlimited (0) budgets for all sections, effectively disabling budget enforcement. The system SHALL log a warning.
+When `available <= 0` (model window too small or base prompt too large), the `ContextBudgetManager` SHALL return unlimited (0) budgets for all sections, effectively disabling budget enforcement. The system SHALL log a warning. The `Degraded` flag SHALL NOT be used as an emergency compaction trigger — it indicates a configuration issue (base prompt too large for the model window) that session message compaction cannot resolve.
 
-#### Scenario: Negative available budget
-- **WHEN** model window is 4096, response reserve is 4096, base prompt is 2000 tokens
-- **THEN** available is -2000
-- **AND** all section budgets SHALL be 0 (unlimited)
-- **AND** a warning SHALL be logged
+#### Scenario: Zero available budget triggers degraded mode
+- **WHEN** the model window minus response reserve minus base prompt tokens is zero or negative
+- **THEN** the system SHALL return unlimited (0) budgets for all sections
+- **AND** SHALL set the `Degraded` flag to `true`
+- **AND** SHALL log a warning
 
-#### Scenario: Zero available budget
-- **WHEN** model window equals response reserve plus base prompt tokens exactly
-- **THEN** all section budgets SHALL be 0 (unlimited)
+#### Scenario: Degraded flag does not trigger compaction
+- **WHEN** `budgets.Degraded` is `true`
+- **THEN** the `ContextAwareModelAdapter` SHALL NOT invoke session message compaction
+- **AND** SHALL log a warning that the model window is too small for the current base prompt configuration
 
 ### Requirement: Budget-aware section assembly
-The `ContextAwareModelAdapter.GenerateContent()` SHALL compute per-section budgets from the `ContextBudgetManager` (if set) before parallel retrieval. Each section assembly SHALL receive its budget and truncate content to fit. When no budget manager is set, existing unbounded behavior SHALL be preserved.
+The `ContextAwareModelAdapter.GenerateContent()` SHALL compute per-section budgets from the `ContextBudgetManager` (if set) before parallel retrieval. Each section assembly SHALL receive its budget and truncate content to fit. When no budget manager is set, existing unbounded behavior SHALL be preserved. The tool catalog section SHALL be generated dynamically per turn from the injected `*toolcatalog.Catalog` (not from `basePrompt`), using mode-filtered listing when a session mode is active.
 
 #### Scenario: Budget manager set
 - **WHEN** `WithBudgetManager()` has been called with a valid budget manager
@@ -86,6 +85,11 @@ The `ContextAwareModelAdapter.GenerateContent()` SHALL compute per-section budge
 #### Scenario: Section exceeds budget
 - **WHEN** a section's content exceeds its allocated budget
 - **THEN** the section SHALL be truncated by dropping lower-priority items until within budget
+
+#### Scenario: Tool catalog generated dynamically
+- **WHEN** `GenerateContent()` executes with a `WithCatalog()` wired catalog
+- **THEN** the tool catalog section SHALL be regenerated from the catalog for this turn
+- **AND** the section SHALL reflect the session's active mode allowlist if a mode is set
 
 ### Requirement: Config surface for context budget
 The system SHALL provide a `ContextConfig` struct in `internal/config/types.go` with fields: `ModelWindow` (int), `ResponseReserve` (int), and `Allocation` (SectionAllocation with Knowledge, RAG, Memory, RunSummary, Headroom float64 fields). Default allocation SHALL be 0.30/0.25/0.25/0.10/0.10. `contextProfile` SHALL remain top-level and independent.
@@ -105,3 +109,9 @@ The system SHALL provide a `ContextConfig` struct in `internal/config/types.go` 
 
 ### Requirement: ContextBudgetManager orchestrator role
 `ContextBudgetManager` SHALL act as a budget orchestrator (not just a static allocator). In addition to computing initial per-section budgets via `SectionBudgets()`, it SHALL support dynamic redistribution via `ReallocateBudgets(measured SectionTokens)` where empty sections donate budget to non-empty sections. Headroom is never redistributed.
+
+#### Scenario: Empty sections donate to non-empty
+- **WHEN** `ReallocateBudgets` is called with a `SectionTokens` where one section is 0 (empty)
+- **THEN** the budget for that empty section SHALL be redistributed to non-empty sections
+- **AND** the headroom portion SHALL NOT participate in redistribution
+

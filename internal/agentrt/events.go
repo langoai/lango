@@ -14,7 +14,7 @@ func (e DelegationObservedEvent) EventName() string { return "agent.delegation.o
 
 // BudgetAlertEvent is published when a budget threshold is crossed.
 type BudgetAlertEvent struct {
-	Resource   string  // "turns" or "delegations"
+	Resource   string // "turns" or "delegations"
 	Used       int
 	Limit      int
 	Percentage float64

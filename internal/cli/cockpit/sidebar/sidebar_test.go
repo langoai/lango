@@ -193,3 +193,16 @@ func TestMouseClick_IgnoresNonRelease(t *testing.T) {
 	_, cmd := m.Update(msg)
 	assert.Nil(t, cmd, "non-release mouse action should not produce a command")
 }
+
+func TestSetDisabled_TogglesItemAndMovesCursor(t *testing.T) {
+	m := New(testItems())
+	m.SetActive("tools")
+	require.Equal(t, 2, m.cursor)
+
+	m.SetDisabled("tools", true)
+	assert.True(t, m.IsDisabled("tools"))
+	assert.NotEqual(t, 2, m.cursor, "cursor should move off a newly disabled active item")
+
+	m.SetDisabled("tools", false)
+	assert.False(t, m.IsDisabled("tools"))
+}

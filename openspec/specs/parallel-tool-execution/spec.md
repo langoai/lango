@@ -100,28 +100,16 @@ When an invocation contains a nil tool, the result at that index SHALL contain a
 - **THEN** `results[2].Error` SHALL be non-nil
 - **AND** results at other indices SHALL be computed normally
 
-### Types
+### Requirement: Public types are defined for parallel execution
+The parallel execution package SHALL define `ToolInvocation`, `ToolResult`, and `ParallelReadOnlyExecutor` types with the documented fields needed for execution and result reporting.
 
-```go
-type ToolInvocation struct {
-    Tool   *agent.Tool
-    Params map[string]any
-}
+#### Scenario: Parallel execution package exposes invocation and result types
+- **WHEN** callers integrate with the parallel execution package
+- **THEN** the package SHALL expose `ToolInvocation`, `ToolResult`, and `ParallelReadOnlyExecutor` with the documented execution fields
 
-type ToolResult struct {
-    ToolName string
-    Result   any
-    Error    error
-    Duration time.Duration
-}
+### Requirement: Public API exposes constructor and execution entry points
+The parallel execution package SHALL expose `NewParallelReadOnlyExecutor`, `IsEligible`, and `ExecuteParallel` as its public API entry points.
 
-type ParallelReadOnlyExecutor struct {
-    maxConcurrency int
-}
-```
-
-### Public API
-
-- `NewParallelReadOnlyExecutor(maxConcurrency int) *ParallelReadOnlyExecutor`
-- `IsEligible(t *agent.Tool) bool`
-- `(*ParallelReadOnlyExecutor).ExecuteParallel(ctx context.Context, invocations []ToolInvocation) []ToolResult`
+#### Scenario: Callers can construct and use the executor through public API
+- **WHEN** callers import the parallel execution package
+- **THEN** they SHALL be able to construct an executor, test eligibility, and execute invocations through the documented public API

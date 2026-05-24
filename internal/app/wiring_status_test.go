@@ -24,7 +24,7 @@ func TestStatusCollector_AddAndAll(t *testing.T) {
 
 func TestStatusCollector_SilentDisabledCount(t *testing.T) {
 	tests := []struct {
-		give     []types.FeatureStatus
+		give      []types.FeatureStatus
 		wantCount int
 	}{
 		{

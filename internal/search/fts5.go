@@ -7,6 +7,10 @@ import (
 	"strings"
 )
 
+type execer interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
 // SearchResult holds a single FTS5 search result.
 type SearchResult struct {
 	RowID string
@@ -36,6 +40,11 @@ func NewFTS5Index(db *sql.DB, tableName string, columns []string) *FTS5Index {
 		tableName: tableName,
 		columns:   columns,
 	}
+}
+
+// DB returns the underlying database handle.
+func (idx *FTS5Index) DB() *sql.DB {
+	return idx.db
 }
 
 // EnsureTable creates the FTS5 virtual table if it does not exist.
@@ -68,6 +77,12 @@ func (idx *FTS5Index) DropTable() error {
 // The rowid is a string identifier (typically the source entity's key).
 // values must match the column order from NewFTS5Index.
 func (idx *FTS5Index) Insert(ctx context.Context, rowid string, values []string) error {
+	return idx.InsertWithExec(ctx, idx.db, rowid, values)
+}
+
+// InsertWithExec adds a new record using the provided execer, allowing callers
+// to keep FTS updates inside a wider SQL transaction.
+func (idx *FTS5Index) InsertWithExec(ctx context.Context, ex execer, rowid string, values []string) error {
 	placeholders := make([]string, 0, len(idx.columns)+1)
 	args := make([]any, 0, len(idx.columns)+1)
 
@@ -85,7 +100,7 @@ func (idx *FTS5Index) Insert(ctx context.Context, rowid string, values []string)
 		strings.Join(placeholders, ", "),
 	)
 
-	_, err := idx.db.ExecContext(ctx, query, args...)
+	_, err := ex.ExecContext(ctx, query, args...)
 	if err != nil {
 		return fmt.Errorf("FTS5 insert into %s: %w", idx.tableName, err)
 	}
@@ -94,19 +109,29 @@ func (idx *FTS5Index) Insert(ctx context.Context, rowid string, values []string)
 
 // Update replaces an existing record by deleting and re-inserting.
 func (idx *FTS5Index) Update(ctx context.Context, rowid string, values []string) error {
-	if err := idx.Delete(ctx, rowid); err != nil {
+	return idx.UpdateWithExec(ctx, idx.db, rowid, values)
+}
+
+// UpdateWithExec replaces an existing record using the provided execer.
+func (idx *FTS5Index) UpdateWithExec(ctx context.Context, ex execer, rowid string, values []string) error {
+	if err := idx.DeleteWithExec(ctx, ex, rowid); err != nil {
 		return err
 	}
-	return idx.Insert(ctx, rowid, values)
+	return idx.InsertWithExec(ctx, ex, rowid, values)
 }
 
 // Delete removes a record by rowid.
 func (idx *FTS5Index) Delete(ctx context.Context, rowid string) error {
+	return idx.DeleteWithExec(ctx, idx.db, rowid)
+}
+
+// DeleteWithExec removes a record using the provided execer.
+func (idx *FTS5Index) DeleteWithExec(ctx context.Context, ex execer, rowid string) error {
 	query := fmt.Sprintf(
 		`DELETE FROM %s WHERE source_id = ?`,
 		idx.tableName,
 	)
-	_, err := idx.db.ExecContext(ctx, query, rowid)
+	_, err := ex.ExecContext(ctx, query, rowid)
 	if err != nil {
 		return fmt.Errorf("FTS5 delete from %s: %w", idx.tableName, err)
 	}

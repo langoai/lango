@@ -21,6 +21,19 @@ type mockSettler struct {
 	refunded   []*big.Int
 }
 
+type failAfterStore struct {
+	Store
+	failUpdate bool
+	updateErr  error
+}
+
+func (s *failAfterStore) Update(entry *EscrowEntry) error {
+	if s.failUpdate {
+		return s.updateErr
+	}
+	return s.Store.Update(entry)
+}
+
 func (m *mockSettler) Lock(_ context.Context, _ string, amount *big.Int) error {
 	if m.lockErr != nil {
 		return m.lockErr
@@ -256,6 +269,96 @@ func TestEngineActivate_InvalidTransition(t *testing.T) {
 	assert.ErrorIs(t, err, ErrInvalidTransition)
 }
 
+func TestEngineActivate_ExpiredFundedRefundsAndFailsClosed(t *testing.T) {
+	t.Parallel()
+
+	settler := &mockSettler{}
+	e := newTestEngine(settler)
+	ctx := context.Background()
+	funded := createFundedEscrow(t, e, settler)
+
+	e.nowFunc = func() time.Time { return funded.ExpiresAt.Add(time.Second) }
+
+	_, err := e.Activate(ctx, funded.ID)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrEscrowExpired)
+	assert.Len(t, settler.locked, 1)
+	require.Len(t, settler.refunded, 1)
+	assert.Equal(t, big.NewInt(1000), settler.refunded[0])
+
+	stored, getErr := e.Get(funded.ID)
+	require.NoError(t, getErr)
+	assert.Equal(t, StatusExpired, stored.Status)
+}
+
+func TestEngineActivate_ExpiredFundedRefundFailureDoesNotExpire(t *testing.T) {
+	t.Parallel()
+
+	refundErr := errors.New("refund failed")
+	settler := &mockSettler{refundErr: refundErr}
+	e := newTestEngine(settler)
+	ctx := context.Background()
+	funded := createFundedEscrow(t, e, settler)
+
+	e.nowFunc = func() time.Time { return funded.ExpiresAt.Add(time.Second) }
+
+	_, err := e.Activate(ctx, funded.ID)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrEscrowExpired)
+	assert.ErrorContains(t, err, refundErr.Error())
+	assert.Empty(t, settler.refunded)
+
+	stored, getErr := e.Get(funded.ID)
+	require.NoError(t, getErr)
+	assert.Equal(t, StatusFunded, stored.Status)
+}
+
+func TestEngineActivate_ExpiredFundedUpdateFailureIsReturned(t *testing.T) {
+	t.Parallel()
+
+	updateErr := errors.New("store unavailable")
+	store := &failAfterStore{Store: NewMemoryStore(), updateErr: updateErr}
+	settler := &mockSettler{}
+	cfg := DefaultEngineConfig()
+	e := NewEngine(store, settler, cfg)
+	e.nowFunc = func() time.Time { return time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC) }
+	ctx := context.Background()
+
+	funded := createFundedEscrow(t, e, settler)
+	store.failUpdate = true
+	e.nowFunc = func() time.Time { return funded.ExpiresAt.Add(time.Second) }
+
+	_, err := e.Activate(ctx, funded.ID)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrEscrowExpired)
+	assert.ErrorContains(t, err, updateErr.Error())
+	require.Len(t, settler.refunded, 1)
+
+	stored, getErr := e.Get(funded.ID)
+	require.NoError(t, getErr)
+	assert.Equal(t, StatusFunded, stored.Status)
+}
+
+func TestEngineActivate_ExpiresAtBoundaryExpires(t *testing.T) {
+	t.Parallel()
+
+	settler := &mockSettler{}
+	e := newTestEngine(settler)
+	ctx := context.Background()
+	funded := createFundedEscrow(t, e, settler)
+
+	e.nowFunc = func() time.Time { return funded.ExpiresAt }
+
+	_, err := e.Activate(ctx, funded.ID)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrEscrowExpired)
+	require.Len(t, settler.refunded, 1)
+
+	stored, getErr := e.Get(funded.ID)
+	require.NoError(t, getErr)
+	assert.Equal(t, StatusExpired, stored.Status)
+}
+
 func TestEngineCompleteMilestone(t *testing.T) {
 	t.Parallel()
 
@@ -318,6 +421,61 @@ func TestEngineCompleteMilestone_NotFound(t *testing.T) {
 
 	_, err := e.CompleteMilestone(ctx, active.ID, "nonexistent", "proof")
 	assert.ErrorIs(t, err, ErrMilestoneNotFound)
+}
+
+func TestEngineCompleteMilestone_ExpiredActiveRefundsAndDoesNotComplete(t *testing.T) {
+	t.Parallel()
+
+	settler := &mockSettler{}
+	e := newTestEngine(settler)
+	ctx := context.Background()
+	funded := createFundedEscrow(t, e, settler)
+	active, err := e.Activate(ctx, funded.ID)
+	require.NoError(t, err)
+	milestoneID := active.Milestones[0].ID
+
+	e.nowFunc = func() time.Time { return active.ExpiresAt.Add(time.Second) }
+
+	_, err = e.CompleteMilestone(ctx, active.ID, milestoneID, "proof")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrEscrowExpired)
+	require.Len(t, settler.refunded, 1)
+	assert.Equal(t, big.NewInt(1000), settler.refunded[0])
+
+	stored, getErr := e.Get(active.ID)
+	require.NoError(t, getErr)
+	assert.Equal(t, StatusExpired, stored.Status)
+	assert.Equal(t, MilestonePending, stored.Milestones[0].Status)
+	assert.Nil(t, stored.Milestones[0].CompletedAt)
+	assert.Empty(t, stored.Milestones[0].Evidence)
+}
+
+func TestEngineCompleteMilestone_ExpiredActiveRefundFailureDoesNotMutateState(t *testing.T) {
+	t.Parallel()
+
+	refundErr := errors.New("refund failed")
+	settler := &mockSettler{refundErr: refundErr}
+	e := newTestEngine(settler)
+	ctx := context.Background()
+	funded := createFundedEscrow(t, e, settler)
+	active, err := e.Activate(ctx, funded.ID)
+	require.NoError(t, err)
+	milestoneID := active.Milestones[0].ID
+
+	e.nowFunc = func() time.Time { return active.ExpiresAt.Add(time.Second) }
+
+	_, err = e.CompleteMilestone(ctx, active.ID, milestoneID, "proof")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrEscrowExpired)
+	assert.ErrorContains(t, err, refundErr.Error())
+	assert.Empty(t, settler.refunded)
+
+	stored, getErr := e.Get(active.ID)
+	require.NoError(t, getErr)
+	assert.Equal(t, StatusActive, stored.Status)
+	assert.Equal(t, MilestonePending, stored.Milestones[0].Status)
+	assert.Nil(t, stored.Milestones[0].CompletedAt)
+	assert.Empty(t, stored.Milestones[0].Evidence)
 }
 
 func TestEngineRelease(t *testing.T) {
@@ -384,6 +542,84 @@ func TestEngineRefund_InvalidTransition(t *testing.T) {
 	assert.ErrorIs(t, err, ErrInvalidTransition)
 }
 
+func TestEngineResolveDispute(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name             string
+		sellerFavor      bool
+		wantStatus       EscrowStatus
+		wantReleaseCount int
+		wantRefundCount  int
+	}{
+		{
+			name:             "seller favor releases funds",
+			sellerFavor:      true,
+			wantStatus:       StatusReleased,
+			wantReleaseCount: 1,
+		},
+		{
+			name:            "buyer favor refunds funds",
+			sellerFavor:     false,
+			wantStatus:      StatusRefunded,
+			wantRefundCount: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			settler := &mockSettler{}
+			e := newTestEngine(settler)
+			ctx := context.Background()
+			funded := createFundedEscrow(t, e, settler)
+			active, _ := e.Activate(ctx, funded.ID)
+			disputed, _ := e.Dispute(ctx, active.ID, "issue")
+
+			entry, err := e.ResolveDispute(ctx, disputed.ID, tt.sellerFavor)
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantStatus, entry.Status)
+			assert.Len(t, settler.released, tt.wantReleaseCount)
+			assert.Len(t, settler.refunded, tt.wantRefundCount)
+		})
+	}
+}
+
+func TestEngineResolveDisputeRejectsNonDisputedEscrow(t *testing.T) {
+	t.Parallel()
+
+	settler := &mockSettler{}
+	e := newTestEngine(settler)
+	ctx := context.Background()
+	funded := createFundedEscrow(t, e, settler)
+
+	entry, err := e.ResolveDispute(ctx, funded.ID, true)
+	require.Error(t, err)
+	assert.Nil(t, entry)
+	assert.ErrorIs(t, err, ErrInvalidTransition)
+	assert.Empty(t, settler.released)
+	assert.Empty(t, settler.refunded)
+}
+
+func TestEngineRecordDisputeResolutionUpdatesStateWithoutSettlement(t *testing.T) {
+	t.Parallel()
+
+	settler := &mockSettler{}
+	e := newTestEngine(settler)
+	ctx := context.Background()
+	funded := createFundedEscrow(t, e, settler)
+	active, _ := e.Activate(ctx, funded.ID)
+	disputed, _ := e.Dispute(ctx, active.ID, "already settled")
+
+	entry, err := e.RecordDisputeResolution(disputed.ID, true)
+	require.NoError(t, err)
+	assert.Equal(t, StatusReleased, entry.Status)
+	assert.Empty(t, settler.released)
+	assert.Empty(t, settler.refunded)
+}
+
 func TestEngineExpire(t *testing.T) {
 	t.Parallel()
 
@@ -392,11 +628,50 @@ func TestEngineExpire(t *testing.T) {
 	ctx := context.Background()
 	funded := createFundedEscrow(t, e, settler)
 	active, _ := e.Activate(ctx, funded.ID)
+	e.nowFunc = func() time.Time { return active.ExpiresAt.Add(time.Second) }
 
 	entry, err := e.Expire(ctx, active.ID)
 	require.NoError(t, err)
 	assert.Equal(t, StatusExpired, entry.Status)
 	assert.Len(t, settler.refunded, 1)
+}
+
+func TestEngineExpire_BeforeExpiresAtRejected(t *testing.T) {
+	t.Parallel()
+
+	settler := &mockSettler{}
+	e := newTestEngine(settler)
+	ctx := context.Background()
+	funded := createFundedEscrow(t, e, settler)
+	active, err := e.Activate(ctx, funded.ID)
+	require.NoError(t, err)
+
+	_, err = e.Expire(ctx, active.ID)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrEscrowExpired)
+	assert.Empty(t, settler.refunded)
+
+	stored, getErr := e.Get(active.ID)
+	require.NoError(t, getErr)
+	assert.Equal(t, StatusActive, stored.Status)
+}
+
+func TestEngineExpire_ExpiresAtBoundaryExpires(t *testing.T) {
+	t.Parallel()
+
+	settler := &mockSettler{}
+	e := newTestEngine(settler)
+	ctx := context.Background()
+	funded := createFundedEscrow(t, e, settler)
+	active, err := e.Activate(ctx, funded.ID)
+	require.NoError(t, err)
+
+	e.nowFunc = func() time.Time { return active.ExpiresAt }
+
+	expired, err := e.Expire(ctx, active.ID)
+	require.NoError(t, err)
+	assert.Equal(t, StatusExpired, expired.Status)
+	require.Len(t, settler.refunded, 1)
 }
 
 func TestEngineExpire_PendingNoRefund(t *testing.T) {
@@ -408,6 +683,7 @@ func TestEngineExpire_PendingNoRefund(t *testing.T) {
 		BuyerDID: "did:b", SellerDID: "did:s", Amount: big.NewInt(100),
 		Milestones: []MilestoneRequest{{Description: "t", Amount: big.NewInt(100)}},
 	})
+	e.nowFunc = func() time.Time { return entry.ExpiresAt.Add(time.Second) }
 
 	expired, err := e.Expire(ctx, entry.ID)
 	require.NoError(t, err)

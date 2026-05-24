@@ -27,6 +27,9 @@ import (
 	"github.com/langoai/lango/internal/ent/knowledge"
 	"github.com/langoai/lango/internal/ent/learning"
 	"github.com/langoai/lango/internal/ent/message"
+	"github.com/langoai/lango/internal/ent/mission"
+	"github.com/langoai/lango/internal/ent/missionexecutionlink"
+	"github.com/langoai/lango/internal/ent/missionstatehistory"
 	"github.com/langoai/lango/internal/ent/observation"
 	"github.com/langoai/lango/internal/ent/ontologyconflict"
 	"github.com/langoai/lango/internal/ent/ontologypredicate"
@@ -122,6 +125,9 @@ func checkColumn(t, c string) error {
 			knowledge.Table:             knowledge.ValidColumn,
 			learning.Table:              learning.ValidColumn,
 			message.Table:               message.ValidColumn,
+			mission.Table:               mission.ValidColumn,
+			missionexecutionlink.Table:  missionexecutionlink.ValidColumn,
+			missionstatehistory.Table:   missionstatehistory.ValidColumn,
 			observation.Table:           observation.ValidColumn,
 			ontologyconflict.Table:      ontologyconflict.ValidColumn,
 			ontologypredicate.Table:     ontologypredicate.ValidColumn,

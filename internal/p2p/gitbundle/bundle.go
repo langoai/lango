@@ -25,9 +25,17 @@ var ErrEmptyRepo = errors.New("empty repository")
 // ErrMissingPrerequisite indicates the bundle requires commits not present in the repo.
 var ErrMissingPrerequisite = errors.New("missing prerequisite commits")
 
+// gitCommand builds an exec.Cmd for git with C locale forced so stderr messages
+// remain English-parseable regardless of the host's locale settings.
+func gitCommand(ctx context.Context, args ...string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Env = append(os.Environ(), "LC_ALL=C", "LANG=C")
+	return cmd
+}
+
 // runGit executes a git command in the given repo directory and returns stdout.
 func runGit(ctx context.Context, repoPath string, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd := gitCommand(ctx, args...)
 	cmd.Dir = repoPath
 
 	var stdout, stderr bytes.Buffer
@@ -85,7 +93,7 @@ func (s *Service) CreateBundle(ctx context.Context, workspaceID string) ([]byte,
 	repoPath := s.store.RepoPath(workspaceID)
 
 	// Use git CLI for bundle creation since go-git doesn't support bundles natively.
-	cmd := exec.CommandContext(ctx, "git", "bundle", "create", "-", "--all")
+	cmd := gitCommand(ctx, "bundle", "create", "-", "--all")
 	cmd.Dir = repoPath
 
 	var stdout, stderr bytes.Buffer
@@ -138,7 +146,7 @@ func (s *Service) ApplyBundle(ctx context.Context, workspaceID string, bundle []
 	repoPath := s.store.RepoPath(workspaceID)
 
 	// Write bundle to a temp pipe via stdin.
-	cmd := exec.CommandContext(ctx, "git", "bundle", "unbundle", "-")
+	cmd := gitCommand(ctx, "bundle", "unbundle", "-")
 	cmd.Dir = repoPath
 	cmd.Stdin = bytes.NewReader(bundle)
 
@@ -351,7 +359,7 @@ func (s *Service) CreateIncrementalBundle(ctx context.Context, workspaceID, base
 	}
 
 	repoPath := s.store.RepoPath(workspaceID)
-	cmd := exec.CommandContext(ctx, "git", "bundle", "create", "-", baseCommit+"..HEAD")
+	cmd := gitCommand(ctx, "bundle", "create", "-", baseCommit+"..HEAD")
 	cmd.Dir = repoPath
 
 	var stdout, stderr bytes.Buffer
@@ -396,7 +404,7 @@ func (s *Service) VerifyBundle(ctx context.Context, workspaceID string, bundleDa
 	}
 	tmpFile.Close()
 
-	cmd := exec.CommandContext(ctx, "git", "bundle", "verify", tmpFile.Name())
+	cmd := gitCommand(ctx, "bundle", "verify", tmpFile.Name())
 	cmd.Dir = repoPath
 
 	var stderr bytes.Buffer

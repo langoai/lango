@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -19,6 +20,7 @@ import (
 	"github.com/langoai/lango/internal/approval"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/gatekeeper"
+	"github.com/langoai/lango/internal/gatewayaddr"
 	"github.com/langoai/lango/internal/logging"
 	"github.com/langoai/lango/internal/runledger"
 	"github.com/langoai/lango/internal/security"
@@ -625,7 +627,32 @@ func (s *Server) RegisterHandler(method string, handler RPCHandler) {
 
 // Start starts the gateway server
 func (s *Server) Start() error {
-	addr := fmt.Sprintf("%s:%d", s.config.Host, s.config.Port)
+	listener, err := s.listen()
+	if err != nil {
+		return err
+	}
+	return s.serve(listener)
+}
+
+// StartBackground binds the gateway synchronously, then serves it in a managed goroutine.
+func (s *Server) StartBackground(wg *sync.WaitGroup, onError func(error)) error {
+	listener, err := s.listen()
+	if err != nil {
+		return err
+	}
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := s.serve(listener); err != nil && onError != nil {
+			onError(err)
+		}
+	}()
+	return nil
+}
+
+func (s *Server) listen() (net.Listener, error) {
+	addr := gatewayaddr.ListenAddress(s.config.Host, s.config.Port)
 	s.httpServer = &http.Server{
 		Addr:         addr,
 		Handler:      s.router,
@@ -634,8 +661,26 @@ func (s *Server) Start() error {
 		IdleTimeout:  60 * time.Second,
 	}
 
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		return nil, err
+	}
 	logger().Infow("gateway server is listening", "address", addr, "http", s.config.HTTPEnabled, "ws", s.config.WebSocketEnabled)
-	err := s.httpServer.ListenAndServe()
+	return listener, nil
+}
+
+func (s *Server) serve(listener net.Listener) error {
+	if s.httpServer == nil {
+		s.httpServer = &http.Server{
+			Addr:         listener.Addr().String(),
+			Handler:      s.router,
+			ReadTimeout:  15 * time.Second,
+			WriteTimeout: 15 * time.Second,
+			IdleTimeout:  60 * time.Second,
+		}
+	}
+
+	err := s.httpServer.Serve(listener)
 	if errors.Is(err, http.ErrServerClosed) {
 		return nil
 	}
@@ -654,6 +699,9 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	}
 	s.clientsMu.Unlock()
 
+	if s.httpServer == nil {
+		return nil
+	}
 	return s.httpServer.Shutdown(ctx)
 }
 

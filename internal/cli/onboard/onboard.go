@@ -5,14 +5,27 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 
-	"github.com/langoai/lango/internal/bootstrap"
+	"github.com/langoai/lango/internal/cli/cliboot"
+	cliprompt "github.com/langoai/lango/internal/cli/prompt"
 	"github.com/langoai/lango/internal/cli/tui"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/configstore"
+	"github.com/langoai/lango/internal/storage"
+)
+
+const nonInteractiveOnboardError = "onboard requires an interactive terminal; " +
+	"use 'lango config create --preset <name>' or 'lango config import' for scripted setup"
+
+var (
+	requireInteractiveTerminal = cliprompt.RequireInteractiveInput
+	runOnboardFn               = runOnboard
+	runOnboardWizard           = runOnboardWizardProgram
+	onboardBootResult          = cliboot.BootResult
 )
 
 // NewCommand creates the onboard command.
@@ -48,7 +61,10 @@ See Also:
   lango config   - View/manage configuration profiles
   lango doctor   - Diagnose configuration issues`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runOnboard(profileName, preset)
+			if err := requireInteractiveTerminal(cmd.InOrStdin(), nonInteractiveOnboardError); err != nil {
+				return err
+			}
+			return runOnboardFn(cmd.OutOrStdout(), profileName, preset)
 		},
 	}
 
@@ -58,20 +74,20 @@ See Also:
 	return cmd
 }
 
-func runOnboard(profileName, preset string) error {
+func runOnboard(out io.Writer, profileName, preset string) error {
 	if preset != "" && !config.IsValidPreset(preset) {
 		return fmt.Errorf("unknown preset %q (valid: minimal, researcher, collaborator, full)", preset)
 	}
 
-	boot, err := bootstrap.Run(bootstrap.Options{})
+	boot, err := onboardBootResult()
 	if err != nil {
 		return fmt.Errorf("bootstrap: %w", err)
 	}
-	defer boot.DBClient.Close()
+	defer boot.Close()
 
 	ctx := context.Background()
 
-	initialCfg, isNew, err := loadOrDefault(ctx, boot.ConfigStore, profileName, preset)
+	initialCfg, explicitKeys, isNew, err := loadOrDefault(ctx, boot.Storage.ConfigProfiles(), profileName, preset)
 	if err != nil {
 		return fmt.Errorf("load profile %q: %w", profileName, err)
 	}
@@ -79,22 +95,16 @@ func runOnboard(profileName, preset string) error {
 	tui.SetProfile(profileName)
 
 	if preset != "" {
-		fmt.Printf("\n  Using preset: %s\n\n", preset)
+		fmt.Fprintf(out, "\n  Using preset: %s\n\n", preset)
 	}
 
-	p := tea.NewProgram(NewWizard(initialCfg))
-	model, err := p.Run()
+	wizard, err := runOnboardWizard(initialCfg)
 	if err != nil {
 		return fmt.Errorf("onboard wizard: %w", err)
 	}
 
-	wizard, ok := model.(*Wizard)
-	if !ok {
-		return fmt.Errorf("unexpected model type")
-	}
-
 	if wizard.Cancelled {
-		fmt.Println("\nOnboard cancelled.")
+		fmt.Fprintln(out, "\nOnboard cancelled.")
 		return nil
 	}
 
@@ -103,41 +113,58 @@ func runOnboard(profileName, preset string) error {
 	}
 
 	cfg := wizard.Config()
-	// Onboard wizard: all fields set during onboard are considered explicit.
-	if err := boot.ConfigStore.Save(ctx, profileName, cfg, nil); err != nil {
+	// Preserve explicit-key metadata loaded from an existing or preset-backed profile.
+	if err := boot.Storage.ConfigProfiles().Save(ctx, profileName, cfg, explicitKeys); err != nil {
 		return fmt.Errorf("save profile %q: %w", profileName, err)
 	}
 
 	if isNew {
-		if err := boot.ConfigStore.SetActive(ctx, profileName); err != nil {
+		if err := boot.Storage.ConfigProfiles().SetActive(ctx, profileName); err != nil {
 			return fmt.Errorf("activate profile %q: %w", profileName, err)
 		}
 	}
 
-	printNextSteps(profileName, cfg)
+	printNextSteps(out, profileName, cfg)
 
 	return nil
 }
 
-func loadOrDefault(ctx context.Context, store *configstore.Store, name, preset string) (*config.Config, bool, error) {
-	cfg, _, err := store.Load(ctx, name)
+func runOnboardWizardProgram(initialCfg *config.Config) (*Wizard, error) {
+	p := tea.NewProgram(NewWizard(initialCfg))
+	model, err := p.Run()
+	if err != nil {
+		return nil, err
+	}
+	wizard, ok := model.(*Wizard)
+	if !ok {
+		return nil, fmt.Errorf("unexpected model type")
+	}
+	return wizard, nil
+}
+
+func loadOrDefault(ctx context.Context, store storage.ConfigProfileStore, name, preset string) (*config.Config, map[string]bool, bool, error) {
+	cfg, explicitKeys, err := store.Load(ctx, name)
 	if err == nil {
-		return cfg, false, nil
+		return cfg, explicitKeys, false, nil
 	}
 	if errors.Is(err, configstore.ErrProfileNotFound) {
 		if preset != "" {
-			return config.PresetConfig(preset), true, nil
+			return config.PresetConfig(preset), config.PresetExplicitKeys(preset), true, nil
 		}
-		return config.DefaultConfig(), true, nil
+		return config.DefaultConfig(), nil, true, nil
 	}
-	return nil, false, err
+	return nil, nil, false, err
 }
 
-func printNextSteps(profileName string, cfg *config.Config) {
-	fmt.Printf("\n%s Configuration saved to encrypted profile %q\n", tui.CheckPass, profileName)
-	fmt.Println("  Storage: ~/.lango/lango.db")
+func printNextSteps(out io.Writer, profileName string, cfg *config.Config) {
+	fmt.Fprintf(out, "\n%s Configuration saved to encrypted profile %q\n", tui.CheckPass, profileName)
+	fmt.Fprintln(out, "  Storage: ~/.lango/lango.db")
 
-	fmt.Println("\n  Next: lango serve")
+	fmt.Fprintln(out, "\n  Next steps:")
+	fmt.Fprintln(out, "    lango           Open the default mission workbench")
+	fmt.Fprintln(out, "    lango serve     Start the gateway and live runtime")
+	fmt.Fprintln(out, "    lango doctor    Verify configuration and environment")
+	fmt.Fprintln(out, "    lango settings  Fine-tune the full configuration")
 
 	// Recommend features that are currently disabled.
 	type rec struct {
@@ -161,9 +188,9 @@ func printNextSteps(profileName string, cfg *config.Config) {
 	}
 
 	if len(disabled) > 0 {
-		fmt.Println("\n  Recommended features (enable in 'lango settings'):")
+		fmt.Fprintln(out, "\n  Recommended features (enable in 'lango settings'):")
 		for _, r := range disabled {
-			fmt.Printf("    %s %-22s %s\n",
+			fmt.Fprintf(out, "    %s %-22s %s\n",
 				tui.MutedStyle.Render("\u2022"),
 				r.name,
 				tui.MutedStyle.Render("\u2014 "+r.desc),
@@ -172,20 +199,20 @@ func printNextSteps(profileName string, cfg *config.Config) {
 	}
 
 	// Advanced features hint
-	fmt.Println("\n  Advanced features (when needed):")
-	fmt.Printf("    %s %-22s %s\n",
+	fmt.Fprintln(out, "\n  Advanced features (when needed):")
+	fmt.Fprintf(out, "    %s %-22s %s\n",
 		tui.MutedStyle.Render("\u2022"),
 		"P2P Network",
 		tui.MutedStyle.Render("\u2014 collaborate with other agents"),
 	)
-	fmt.Printf("    %s %-22s %s\n",
+	fmt.Fprintf(out, "    %s %-22s %s\n",
 		tui.MutedStyle.Render("\u2022"),
 		"Payment & Economy",
 		tui.MutedStyle.Render("\u2014 on-chain payments and budget management"),
 	)
 
-	fmt.Println("\n  Quick presets:")
-	fmt.Println("    lango config create <name> --preset researcher")
-	fmt.Println("    lango config create <name> --preset collaborator")
-	fmt.Println("    lango config create <name> --preset full")
+	fmt.Fprintln(out, "\n  Quick presets:")
+	fmt.Fprintln(out, "    lango config create <name> --preset researcher")
+	fmt.Fprintln(out, "    lango config create <name> --preset collaborator")
+	fmt.Fprintln(out, "    lango config create <name> --preset full")
 }

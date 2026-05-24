@@ -9,10 +9,29 @@ import (
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/approval"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/ctxkeys"
 	"github.com/langoai/lango/internal/logging"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/wallet"
 )
+
+// ApprovalRequest is the lower-layer observer view of one approval request.
+type ApprovalRequest struct {
+	Request approval.ApprovalRequest
+}
+
+// ApprovalResolution is the lower-layer observer view of one approval outcome.
+type ApprovalResolution struct {
+	Response approval.ApprovalResponse
+	Err      error
+}
+
+// ApprovalObserver receives approval lifecycle callbacks from middleware.
+// Implementations may be no-op until mission-native behavior lands.
+type ApprovalObserver interface {
+	OnApprovalRequested(ctx context.Context, req ApprovalRequest)
+	OnApprovalResolved(ctx context.Context, req ApprovalRequest, resolution ApprovalResolution)
+}
 
 // WithApproval returns a middleware that gates tool execution behind an approval flow.
 // Uses fail-closed: denies execution unless explicitly approved.
@@ -20,7 +39,7 @@ import (
 // The GrantStore tracks "always allow" grants to auto-approve repeat invocations within a session.
 // When limiter is non-nil, payment tools with an amount below the auto-approve threshold
 // are executed without explicit user confirmation.
-func WithApproval(ic config.InterceptorConfig, ap approval.Provider, gs *approval.GrantStore, limiter wallet.SpendingLimiter, history *approval.HistoryStore) Middleware {
+func WithApproval(ic config.InterceptorConfig, ap approval.Provider, gs *approval.GrantStore, limiter wallet.SpendingLimiter, history *approval.HistoryStore, observer ApprovalObserver) Middleware {
 	return func(tool *agent.Tool, next agent.ToolHandler) agent.ToolHandler {
 		if !NeedsApproval(tool, ic) {
 			return next
@@ -45,11 +64,11 @@ func WithApproval(ic config.InterceptorConfig, ap approval.Provider, gs *approva
 				logApprovalEvent("approval bypassed by session grant", sessionKey, "", tool.Name, "", paramsHash, "bypass", "session", "grant_store")
 				if history != nil {
 					history.Append(approval.HistoryEntry{
-						Timestamp:   time.Now(),
-						ToolName:    tool.Name,
-						SessionKey:  sessionKey,
-						Outcome:     "bypass",
-						Provider:    "grant_store",
+						Timestamp:  time.Now(),
+						ToolName:   tool.Name,
+						SessionKey: sessionKey,
+						Outcome:    "bypass",
+						Provider:   "grant_store",
 					})
 				}
 				return next(ctx, params)
@@ -64,13 +83,13 @@ func WithApproval(ic config.InterceptorConfig, ap approval.Provider, gs *approva
 						logApprovalEvent("approval bypassed by turn-local grant", sessionKey, entry.RequestID, tool.Name, entry.Summary, entry.ParamsHash, "bypass", "turn", entry.Provider)
 						if history != nil {
 							history.Append(approval.HistoryEntry{
-								Timestamp:   time.Now(),
-								RequestID:   entry.RequestID,
-								ToolName:    tool.Name,
-								SessionKey:  sessionKey,
-								Summary:     entry.Summary,
-								Outcome:     "bypass",
-								Provider:    entry.Provider,
+								Timestamp:  time.Now(),
+								RequestID:  entry.RequestID,
+								ToolName:   tool.Name,
+								SessionKey: sessionKey,
+								Summary:    entry.Summary,
+								Outcome:    "bypass",
+								Provider:   entry.Provider,
 							})
 						}
 						return next(ctx, params)
@@ -78,13 +97,13 @@ func WithApproval(ic config.InterceptorConfig, ap approval.Provider, gs *approva
 						logApprovalEvent("approval replay blocked", sessionKey, entry.RequestID, tool.Name, entry.Summary, entry.ParamsHash, "replay_blocked", "turn", entry.Provider)
 						if history != nil {
 							history.Append(approval.HistoryEntry{
-								Timestamp:   time.Now(),
-								RequestID:   entry.RequestID,
-								ToolName:    tool.Name,
-								SessionKey:  sessionKey,
-								Summary:     entry.Summary,
-								Outcome:     "replay_blocked",
-								Provider:    entry.Provider,
+								Timestamp:  time.Now(),
+								RequestID:  entry.RequestID,
+								ToolName:   tool.Name,
+								SessionKey: sessionKey,
+								Summary:    entry.Summary,
+								Outcome:    "replay_blocked",
+								Provider:   entry.Provider,
 							})
 						}
 						return nil, approval.FormatToolExecutionError(tool.Name, turnOutcomeError(entry.Outcome))
@@ -93,13 +112,13 @@ func WithApproval(ic config.InterceptorConfig, ap approval.Provider, gs *approva
 							logApprovalEvent("approval replay blocked", sessionKey, entry.RequestID, tool.Name, entry.Summary, entry.ParamsHash, "replay_blocked", "turn", entry.Provider)
 							if history != nil {
 								history.Append(approval.HistoryEntry{
-									Timestamp:   time.Now(),
-									RequestID:   entry.RequestID,
-									ToolName:    tool.Name,
-									SessionKey:  sessionKey,
-									Summary:     entry.Summary,
-									Outcome:     "replay_blocked",
-									Provider:    entry.Provider,
+									Timestamp:  time.Now(),
+									RequestID:  entry.RequestID,
+									ToolName:   tool.Name,
+									SessionKey: sessionKey,
+									Summary:    entry.Summary,
+									Outcome:    "replay_blocked",
+									Provider:   entry.Provider,
 								})
 							}
 							return nil, approval.FormatToolExecutionError(tool.Name, approval.ErrTimeout)
@@ -154,8 +173,15 @@ func WithApproval(ic config.InterceptorConfig, ap approval.Provider, gs *approva
 				Category:    tool.Capability.Category,
 				Activity:    string(tool.Capability.Activity),
 			}
+			populateApprovalMetadata(ctx, &req)
+			if observer != nil {
+				observer.OnApprovalRequested(ctx, ApprovalRequest{Request: req})
+			}
 			resp, err := ap.RequestApproval(ctx, req)
 			if err != nil {
+				if observer != nil {
+					observer.OnApprovalResolved(ctx, ApprovalRequest{Request: req}, ApprovalResolution{Err: err})
+				}
 				provider := approval.ProviderFromError(err)
 				outcome := approval.OutcomeFromError(err)
 				if outcome != "" && turnState != nil {
@@ -194,6 +220,9 @@ func WithApproval(ic config.InterceptorConfig, ap approval.Provider, gs *approva
 				return nil, fmt.Errorf("tool '%s' approval: %w", tool.Name, err)
 			}
 			if !resp.Approved {
+				if observer != nil {
+					observer.OnApprovalResolved(ctx, ApprovalRequest{Request: req}, ApprovalResolution{Response: resp})
+				}
 				if turnState != nil {
 					timeoutCount := 0
 					if existingEntryOK {
@@ -222,6 +251,9 @@ func WithApproval(ic config.InterceptorConfig, ap approval.Provider, gs *approva
 					})
 				}
 				return nil, approval.FormatToolExecutionError(tool.Name, approval.ErrDenied)
+			}
+			if observer != nil {
+				observer.OnApprovalResolved(ctx, ApprovalRequest{Request: req}, ApprovalResolution{Response: resp})
 			}
 
 			if turnState != nil {
@@ -260,6 +292,32 @@ func WithApproval(ic config.InterceptorConfig, ap approval.Provider, gs *approva
 
 			return next(ctx, params)
 		}
+	}
+}
+
+func populateApprovalMetadata(ctx context.Context, req *approval.ApprovalRequest) {
+	if req == nil || ctx == nil {
+		return
+	}
+	if missionID := ctxkeys.MissionIDFromContext(ctx); missionID != "" {
+		req.MissionID = missionID
+	}
+	if executionKind, executionRef := approvalExecutionFromContext(ctx); executionKind != "" && executionRef != "" {
+		req.ExecutionKind = executionKind
+		req.ExecutionRef = executionRef
+	}
+}
+
+func approvalExecutionFromContext(ctx context.Context) (string, string) {
+	rc := session.RunContextFromContext(ctx)
+	if rc == nil || rc.RunID == "" {
+		return "", ""
+	}
+	switch rc.SessionType {
+	case "background":
+		return "task_os_execution", rc.RunID
+	default:
+		return "", ""
 	}
 }
 

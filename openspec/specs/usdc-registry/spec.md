@@ -28,3 +28,7 @@ The system SHALL verify that a given address matches the canonical USDC address 
 
 ### Requirement: On-Chain Verification
 The system SHALL support on-chain verification of USDC contracts by checking symbol and decimals.
+
+#### Scenario: Canonical token passes on-chain verification
+- **WHEN** the system verifies a canonical USDC contract on a supported chain
+- **THEN** it SHALL confirm the expected symbol and decimals before accepting the contract as valid

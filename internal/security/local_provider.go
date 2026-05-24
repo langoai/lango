@@ -43,8 +43,8 @@ const (
 // source of the key.
 type LocalCryptoProvider struct {
 	mu          sync.RWMutex
-	keys        map[string][]byte // keyID -> key material
-	salt        []byte            // legacy PBKDF2 salt (empty in envelope mode)
+	keys        map[string][]byte  // keyID -> key material
+	salt        []byte             // legacy PBKDF2 salt (empty in envelope mode)
 	masterKey   []byte             // unwrapped MK (envelope mode)
 	envelope    *MasterKeyEnvelope // envelope reference (envelope mode)
 	initialized bool

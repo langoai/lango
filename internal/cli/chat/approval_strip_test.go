@@ -22,15 +22,17 @@ func makeApprovalVM(toolName, summary string) approval.ApprovalViewModel {
 
 func TestRenderApprovalStrip_NormalWidth(t *testing.T) {
 	vm := makeApprovalVM("fs_read", "Read config file")
-	output := renderApprovalStrip(vm, 80)
+	output := renderApprovalStrip(vm, &approvalState{}, 80)
 
 	assert.Contains(t, output, "fs_read")
 	assert.Contains(t, output, "[a]llow")
+	assert.Contains(t, output, "[s] allow session")
+	assert.Contains(t, output, "[d/Esc] deny")
 }
 
 func TestRenderApprovalStrip_NarrowWidth(t *testing.T) {
 	vm := makeApprovalVM("fs_read", "Read config file")
-	output := renderApprovalStrip(vm, 30)
+	output := renderApprovalStrip(vm, &approvalState{}, 30)
 
 	assert.LessOrEqual(t, lipgloss.Width(output), 30)
 }
@@ -39,14 +41,14 @@ func TestRenderApprovalStrip_VeryNarrow(t *testing.T) {
 	vm := makeApprovalVM("fs_read", "Read a very important config file")
 
 	assert.NotPanics(t, func() {
-		renderApprovalStrip(vm, 1)
+		renderApprovalStrip(vm, &approvalState{}, 1)
 	})
 }
 
 func TestRenderApprovalStrip_LongSummary(t *testing.T) {
 	longSummary := strings.Repeat("A long summary that should be truncated ", 3)
 	vm := makeApprovalVM("fs_read", longSummary)
-	output := renderApprovalStrip(vm, 60)
+	output := renderApprovalStrip(vm, &approvalState{}, 60)
 
 	// The output must fit within 60 columns.
 	assert.LessOrEqual(t, lipgloss.Width(output), 60)
@@ -54,7 +56,7 @@ func TestRenderApprovalStrip_LongSummary(t *testing.T) {
 
 func TestRenderApprovalStrip_EmptySummary(t *testing.T) {
 	vm := makeApprovalVM("fs_read", "")
-	output := renderApprovalStrip(vm, 80)
+	output := renderApprovalStrip(vm, &approvalState{}, 80)
 
 	// Empty summary triggers fallback "Execute tool:" text.
 	assert.Contains(t, output, "Execute tool:")
@@ -65,13 +67,13 @@ func TestRenderApprovalStrip_ZeroWidth(t *testing.T) {
 
 	// max(0,1)=1 guard should prevent panic.
 	assert.NotPanics(t, func() {
-		renderApprovalStrip(vm, 0)
+		renderApprovalStrip(vm, &approvalState{}, 0)
 	})
 }
 
 func TestRenderApprovalStrip_KoreanSummary(t *testing.T) {
 	vm := makeApprovalVM("fs_read", "설정 파일을 읽습니다. 이 파일은 매우 중요한 설정을 포함하고 있습니다.")
-	output := renderApprovalStrip(vm, 60)
+	output := renderApprovalStrip(vm, &approvalState{}, 60)
 
 	// Korean chars are double-width; output must still fit within 60.
 	assert.LessOrEqual(t, lipgloss.Width(output), 60)
@@ -81,7 +83,7 @@ func TestRenderApprovalStrip_CriticalShowsDestructive(t *testing.T) {
 	vm := makeApprovalVM("exec", "Run dangerous command")
 	vm.Risk = approval.RiskIndicator{Level: "critical", Label: "Executes arbitrary code"}
 
-	output := renderApprovalStrip(vm, 120)
+	output := renderApprovalStrip(vm, &approvalState{}, 120)
 
 	assert.Contains(t, output, "destructive", "critical risk should show destructive label")
 }
@@ -90,7 +92,7 @@ func TestRenderApprovalStrip_NonCriticalNoDestructive(t *testing.T) {
 	vm := makeApprovalVM("fs_read", "Read config file")
 	vm.Risk = approval.RiskIndicator{Level: "moderate", Label: "Reads file"}
 
-	output := renderApprovalStrip(vm, 120)
+	output := renderApprovalStrip(vm, &approvalState{}, 120)
 
 	assert.NotContains(t, output, "destructive", "non-critical risk should not show destructive label")
 }
@@ -99,13 +101,21 @@ func TestRenderApprovalStrip_ConfirmPendingMessage(t *testing.T) {
 	vm := makeApprovalVM("exec", "Run command")
 
 	// Normal render.
-	normalOutput := renderApprovalStrip(vm, 120)
+	normalOutput := renderApprovalStrip(vm, &approvalState{}, 120)
 	assert.Contains(t, normalOutput, "[a]llow", "normal should show allow key")
 	assert.NotContains(t, normalOutput, "Press 'a' again", "normal should not show confirm prompt")
 
 	// Confirm pending.
-	confirmOutput := renderApprovalStrip(vm, 120, true)
+	confirmOutput := renderApprovalStrip(vm, &approvalState{confirmPending: true, confirmAction: "a"}, 120)
 	assert.Contains(t, confirmOutput, "Press 'a' again", "confirm pending should show re-press prompt")
+	assert.Contains(t, confirmOutput, "d/Esc denies", "confirm pending should keep the deny path visible")
+}
+
+func TestRenderApprovalStrip_ConfirmPendingSessionKey(t *testing.T) {
+	vm := makeApprovalVM("exec", "Run command")
+	confirmOutput := renderApprovalStrip(vm, &approvalState{confirmPending: true, confirmAction: "s"}, 120)
+	assert.Contains(t, confirmOutput, "Press 's' again", "session confirm should show the correct re-press key")
+	assert.Contains(t, confirmOutput, "d/Esc denies", "session confirm should keep the deny path visible")
 }
 
 func TestRenderApprovalStrip_SingleLineOutput(t *testing.T) {
@@ -121,8 +131,27 @@ func TestRenderApprovalStrip_SingleLineOutput(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.give, func(t *testing.T) {
 			vm := makeApprovalVM("fs_read", "Read config file")
-			output := renderApprovalStrip(vm, tt.width)
+			output := renderApprovalStrip(vm, &approvalState{}, tt.width)
 			assert.Equal(t, 1, lipgloss.Height(output))
 		})
 	}
+}
+
+func TestRenderApprovalStrip_SanitizesSummary(t *testing.T) {
+	vm := makeApprovalVM("fs_read", "\x1b[31mRead\nconfig\tfile\x1b[0m")
+	output := renderApprovalStrip(vm, &approvalState{}, 120)
+
+	assert.Equal(t, 1, lipgloss.Height(output))
+	assert.Contains(t, output, "Read config file")
+	assert.NotContains(t, output, "\x1b[31m")
+	assert.NotContains(t, output, "\x1b[0m")
+}
+
+func TestRenderApprovalStrip_SanitizesToolName(t *testing.T) {
+	vm := makeApprovalVM("fs_\x1b[31mread\nops\x1b[0m", "Read config file")
+	output := renderApprovalStrip(vm, &approvalState{}, 120)
+
+	assert.Contains(t, output, "fs_read ops")
+	assert.NotContains(t, output, "\x1b[31m")
+	assert.NotContains(t, output, "\x1b[0m")
 }

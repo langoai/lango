@@ -6,6 +6,16 @@ Commands for managing P2P economy features including budget, risk, pricing, nego
 lango economy <subcommand>
 ```
 
+Top-level help examples use the current command surface:
+
+```bash
+lango economy budget status --task-id=task-1
+lango economy risk status
+lango economy pricing status
+lango economy negotiate status
+lango economy escrow show
+```
+
 !!! warning "Experimental Feature"
     The P2P economy system is experimental. Use with caution and verify all economic parameters before enabling in production.
 
@@ -13,7 +23,7 @@ lango economy <subcommand>
 
 ## lango economy budget status
 
-Show budget configuration and allocation status.
+Show budget configuration and allocation status. The command writes its output through the Cobra command output stream so wrappers and test harnesses can capture it directly.
 
 ```
 lango economy budget status [--task-id <id>]
@@ -52,7 +62,7 @@ Economy layer is disabled. Enable with economy.enabled=true
 
 ## lango economy risk status
 
-Show risk assessment configuration including escrow thresholds and trust score tiers.
+Show risk assessment configuration including escrow thresholds and trust score tiers. The command writes its output through the Cobra command output stream so wrappers and test harnesses can capture it directly.
 
 ```
 lango economy risk status
@@ -81,7 +91,7 @@ Economy layer is disabled.
 
 ## lango economy pricing status
 
-Show dynamic pricing configuration including discount rates and minimum price.
+Show dynamic pricing configuration including discount rates and minimum price. The command writes its output through the Cobra command output stream so wrappers and test harnesses can capture it directly.
 
 ```
 lango economy pricing status
@@ -110,7 +120,7 @@ Dynamic pricing is disabled.
 
 ## lango economy negotiate status
 
-Show negotiation protocol configuration including round limits and auto-negotiation settings.
+Show negotiation protocol configuration including round limits and auto-negotiation settings. The command writes its output through the Cobra command output stream so wrappers and test harnesses can capture it directly.
 
 ```
 lango economy negotiate status
@@ -140,7 +150,7 @@ Negotiation is disabled.
 
 ## lango economy escrow status
 
-Show escrow service configuration including timeout, milestone limits, and dispute settings.
+Show escrow service configuration including timeout, milestone limits, and dispute settings. The command writes its output through the Cobra command output stream so wrappers and test harnesses can capture it directly.
 
 ```
 lango economy escrow status
@@ -170,7 +180,7 @@ Escrow is disabled.
 
 ## lango economy escrow list
 
-Show escrow configuration summary including on-chain mode.
+Show escrow configuration summary including on-chain mode. The command writes its output through the Cobra command output stream so wrappers and test harnesses can capture it directly.
 
 ```
 lango economy escrow list
@@ -203,7 +213,7 @@ Economy layer is disabled. Enable with economy.enabled=true
 
 ## lango economy escrow show
 
-Show detailed on-chain escrow configuration including all contract addresses and settlement parameters.
+Show detailed on-chain escrow configuration including all contract addresses and settlement parameters. The command writes its output through the Cobra command output stream so wrappers and test harnesses can capture it directly.
 
 ```
 lango economy escrow show [--id <escrow-id>]
@@ -211,7 +221,7 @@ lango economy escrow show [--id <escrow-id>]
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--id` | string | `""` | Escrow ID to show (future use) |
+| `--id` | string | `""` | Optional escrow ID; prints the live-status runtime guidance for that escrow |
 
 **Example:**
 
@@ -232,11 +242,18 @@ Settlement:
   Max Retries:          3
 ```
 
+When you already have a live escrow ID and want runtime status instead of static config:
+
+```bash
+$ lango economy escrow show --id escrow-123
+Escrow ID "escrow-123": use 'lango serve' and the escrow_status agent tool for live data
+```
+
 ---
 
 ## lango economy escrow sentinel status
 
-Show Security Sentinel engine status.
+Show Security Sentinel engine status. The command writes its output through the Cobra command output stream so wrappers and test harnesses can capture it directly.
 
 ```
 lango economy escrow sentinel status
@@ -253,8 +270,7 @@ Sentinel Engine:
   Mode:    hub
 
 The sentinel engine runs within the application server.
-Use 'lango serve' to start and 'lango economy escrow sentinel alerts'
-(via agent tools) to view detected alerts.
+Use 'lango serve' to start the application server, then inspect detected alerts via the `sentinel_alerts` agent tool.
 ```
 
 When escrow is disabled:

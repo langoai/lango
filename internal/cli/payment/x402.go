@@ -1,9 +1,7 @@
 package payment
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 
@@ -11,17 +9,23 @@ import (
 )
 
 func newX402Cmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
-	var jsonOutput bool
+	var output string
 
 	cmd := &cobra.Command{
-		Use:   "x402",
-		Short: "Show X402 protocol configuration and auto-pay settings",
+		Use:           "x402",
+		Short:         "Show X402 protocol configuration and auto-pay settings",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			output, err := resolveOutput(cmd)
+			if err != nil {
+				return err
+			}
 			boot, err := bootLoader()
 			if err != nil {
 				return fmt.Errorf("bootstrap: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			cfg := boot.Config.Payment
 
@@ -46,10 +50,8 @@ func newX402Cmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 				MaxDaily:       cfg.Limits.MaxDaily,
 			}
 
-			if jsonOutput {
-				enc := json.NewEncoder(os.Stdout)
-				enc.SetIndent("", "  ")
-				return enc.Encode(out)
+			if output == "json" {
+				return printJSON(cmd.OutOrStdout(), out)
 			}
 
 			autoLabel := "disabled"
@@ -57,22 +59,22 @@ func newX402Cmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 				autoLabel = "enabled"
 			}
 
-			fmt.Println("X402 Protocol Configuration")
-			fmt.Printf("  Payment Enabled:     %v\n", out.PaymentEnabled)
-			fmt.Printf("  Auto-Intercept:      %s\n", autoLabel)
-			fmt.Printf("  Max Auto-Pay:        %s USDC\n", out.MaxAutoPayUSDC)
+			fmt.Fprintln(cmd.OutOrStdout(), "X402 Protocol Configuration")
+			fmt.Fprintf(cmd.OutOrStdout(), "  Payment Enabled:     %v\n", out.PaymentEnabled)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Auto-Intercept:      %s\n", autoLabel)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Max Auto-Pay:        %s USDC\n", out.MaxAutoPayUSDC)
 			if out.MaxPerTx != "" {
-				fmt.Printf("  Max Per Transaction: %s USDC\n", out.MaxPerTx)
+				fmt.Fprintf(cmd.OutOrStdout(), "  Max Per Transaction: %s USDC\n", out.MaxPerTx)
 			}
 			if out.MaxDaily != "" {
-				fmt.Printf("  Max Daily Spend:     %s USDC\n", out.MaxDaily)
+				fmt.Fprintf(cmd.OutOrStdout(), "  Max Daily Spend:     %s USDC\n", out.MaxDaily)
 			}
 
 			return nil
 		},
 	}
 
-	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
+	cmd.Flags().StringVar(&output, "output", "table", "Output format: table or json")
 
 	return cmd
 }

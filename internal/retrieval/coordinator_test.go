@@ -19,7 +19,7 @@ type mockAgent struct {
 	err      error
 }
 
-func (m *mockAgent) Name() string                    { return m.name }
+func (m *mockAgent) Name() string                     { return m.name }
 func (m *mockAgent) Layers() []knowledge.ContextLayer { return m.layers }
 func (m *mockAgent) Search(_ context.Context, _ string, _ int) ([]Finding, error) {
 	return m.findings, m.err
@@ -122,6 +122,67 @@ func TestRetrievalCoordinator_Retrieve_Dedup(t *testing.T) {
 				t.Errorf("want score %f, got %f", tt.wantScore, findings[0].Score)
 			}
 		})
+	}
+}
+
+func TestRetrievalCoordinator_Retrieve_PreallocationBehavior(t *testing.T) {
+	agent1 := &mockAgent{
+		name: "agent-1",
+		findings: []Finding{
+			{
+				Key:     "shared",
+				Content: "authoritative",
+				Score:   0.1,
+				Source:  "knowledge",
+				Layer:   knowledge.LayerUserKnowledge,
+				Agent:   "agent-1",
+			},
+			{
+				Key:     "unique-a",
+				Content: "unique high score",
+				Score:   0.9,
+				Layer:   knowledge.LayerUserKnowledge,
+				Agent:   "agent-1",
+			},
+		},
+	}
+	agent2 := &mockAgent{
+		name: "agent-2",
+		findings: []Finding{
+			{
+				Key:     "shared",
+				Content: "less authoritative",
+				Score:   9.0,
+				Source:  "conversation_analysis",
+				Layer:   knowledge.LayerUserKnowledge,
+				Agent:   "agent-2",
+			},
+			{
+				Key:     "unique-b",
+				Content: "unique medium score",
+				Score:   0.5,
+				Layer:   knowledge.LayerAgentLearnings,
+				Agent:   "agent-2",
+			},
+		},
+	}
+
+	coord := NewRetrievalCoordinator([]RetrievalAgent{agent1, agent2}, zap.NewNop().Sugar())
+	got, err := coord.Retrieve(context.Background(), "query", 0)
+	if err != nil {
+		t.Fatalf("Retrieve: %v", err)
+	}
+
+	if len(got) != 3 {
+		t.Fatalf("want 3 findings after merge, got %d: %#v", len(got), got)
+	}
+	for _, f := range got {
+		if f.Key == "shared" && f.Agent != "agent-1" {
+			t.Fatalf("shared finding should keep higher authority agent-1, got %q", f.Agent)
+		}
+	}
+	if got[0].Score < got[1].Score || got[1].Score < got[2].Score {
+		t.Fatalf("findings should remain sorted by score descending: %#v", got)
 	}
 }
 
@@ -401,5 +462,35 @@ func TestToRetrievalResult_Empty(t *testing.T) {
 	}
 	if len(result.Items) != 0 {
 		t.Errorf("Items: want empty, got %d layers", len(result.Items))
+	}
+}
+
+func BenchmarkRetrievalCoordinator_Retrieve_Aggregation(b *testing.B) {
+	findings := make([]Finding, 0, 200)
+	for i := 0; i < 200; i++ {
+		findings = append(findings, Finding{
+			Key:     fmt.Sprintf("key-%03d", i),
+			Content: "retrieval content for aggregation benchmark",
+			Score:   float64(i),
+			Layer:   knowledge.LayerUserKnowledge,
+			Agent:   "bench-agent",
+		})
+	}
+
+	agents := []RetrievalAgent{
+		&mockAgent{name: "a", findings: findings[:100]},
+		&mockAgent{name: "b", findings: findings[100:]},
+	}
+	coord := NewRetrievalCoordinator(agents, zap.NewNop().Sugar())
+
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		got, err := coord.Retrieve(context.Background(), "query", 0)
+		if err != nil {
+			b.Fatalf("Retrieve: %v", err)
+		}
+		if len(got) != 200 {
+			b.Fatalf("want 200 findings, got %d", len(got))
+		}
 	}
 }

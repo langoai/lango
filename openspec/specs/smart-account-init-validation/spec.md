@@ -1,7 +1,7 @@
 # smart-account-init-validation Specification
 
 ## Purpose
-TBD - created by archiving change tool-discovery-audit-bugfix. Update Purpose after archive.
+Define initialization-time validation and lifecycle registration requirements for the smart-account subsystem.
 ## Requirements
 ### Requirement: Smart account initialization
 The smart account subsystem SHALL validate config fields via SmartAccountConfig.Validate() before proceeding with component creation. initSmartAccount SHALL accept a *lifecycle.Registry parameter for registering lifecycle-managed components. The disabled category description SHALL list all required and recommended config fields.
@@ -21,4 +21,3 @@ The smart account subsystem SHALL validate config fields via SmartAccountConfig.
 #### Scenario: Disabled category message
 - **WHEN** smart account subsystem is disabled or initialization fails
 - **THEN** disabled category description includes required fields (smartAccount.enabled, payment.enabled, entryPointAddress, factoryAddress, bundlerURL) and recommended (economy.enabled)
-

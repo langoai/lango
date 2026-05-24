@@ -111,7 +111,7 @@ The system SHALL support Run, RunAsync, Resume, Cancel, Status, and ListRuns ope
 - **THEN** the engine SHALL return the current status of the workflow run including all step statuses
 
 ### Requirement: Step-level delivery
-Individual steps MAY specify deliver_to for intermediate result delivery to channels.
+The workflow system SHALL allow individual steps to specify `deliver_to` for intermediate result delivery to channels.
 
 #### Scenario: Step with delivery target
 - **WHEN** a step completes and has deliver_to ["slack"]
@@ -137,7 +137,7 @@ The workflow_run tool handler SHALL inject delivery channels into the parsed Wor
 - **THEN** the engine SHALL log a Warn-level message including the workflow name and a configuration hint
 
 ### Requirement: Workflow-level delivery
-The workflow MAY specify deliver_to for final result delivery when all steps complete.
+The workflow system SHALL allow a workflow to specify `deliver_to` for final result delivery when all steps complete.
 
 #### Scenario: Workflow completion delivery
 - **WHEN** all workflow steps complete and the workflow has deliver_to ["slack"]

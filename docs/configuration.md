@@ -73,6 +73,7 @@ LLM agent settings including model selection, prompt configuration, and timeouts
 | `agent.temperature` | `float64` | `0.7` | Sampling temperature (0.0 - 1.0) |
 | `agent.systemPromptPath` | `string` | | Path to a custom system prompt file |
 | `agent.promptsDir` | `string` | | Directory containing `.md` files for [system prompts](features/system-prompts.md) |
+| `agent.skillsDir` | `string` | | Directory containing ADK-compatible skill bundles ([agentskills.io](https://agentskills.io) frontmatter). Each skill is a subdirectory with `SKILL.md` plus optional `references/`, `assets/`, `scripts/`. Empty disables the ADK SkillToolset. **Distinct from `skill.skillsDir`** (knowledge module — see [Skill](#skill) section). Example bundle at `assets/skills/example-skill/`. |
 | `agent.requestTimeout` | `duration` | `5m` | Maximum duration for a single AI provider request |
 | `agent.toolTimeout` | `duration` | `2m` | Maximum duration for a single tool call |
 | `agent.multiAgent` | `bool` | `false` | Enable [multi-agent orchestration](features/multi-agent.md) |
@@ -144,7 +145,8 @@ Named AI provider configurations. Referenced by other sections via provider ID.
 {
   "logging": {
     "level": "info",
-    "format": "console"
+    "format": "console",
+    "outputPath": ""
   }
 }
 ```
@@ -153,6 +155,7 @@ Named AI provider configurations. Referenced by other sections via provider ID.
 |-----|------|---------|-------------|
 | `logging.level` | `string` | `info` | Log level: `debug`, `info`, `warn`, `error` |
 | `logging.format` | `string` | `console` | Output format: `console`, `json` |
+| `logging.outputPath` | `string` | empty | Optional log file path; empty uses stderr |
 
 ---
 
@@ -186,7 +189,58 @@ Session storage and lifecycle settings.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `security.signer.provider` | `string` | `local` | Signer provider (`local`) |
+| `security.signer.provider` | `string` | `local` | Signer provider: `local`, `rpc`, `aws-kms`, `gcp-kms`, `azure-kv`, `pkcs11` (`local` requires bootstrap-backed storage wiring; KMS backends also require the matching build tag and bootstrap-backed storage wiring) |
+
+### Cloud KMS
+
+Cloud KMS settings configure managed KMS and HSM providers used by signer and envelope workflows.
+
+> **Settings:** `lango settings` → Security
+
+```json
+{
+  "security": {
+    "signer": {
+      "provider": "aws-kms"
+    },
+    "kms": {
+      "region": "us-east-1",
+      "keyId": "arn:aws:kms:us-east-1:123456789012:key/example-key",
+      "endpoint": "",
+      "fallbackToLocal": true,
+      "timeoutPerOperation": "5s",
+      "maxRetries": 3,
+      "azure": {
+        "vaultUrl": "",
+        "keyVersion": ""
+      },
+      "pkcs11": {
+        "modulePath": "",
+        "slotId": 0,
+        "pin": "",
+        "keyLabel": ""
+      }
+    }
+  }
+}
+```
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `security.kms.region` | `string` | | Cloud region for KMS API calls |
+| `security.kms.keyId` | `string` | | KMS key identifier (ARN, resource name, alias, or HSM label depending on backend) |
+| `security.kms.endpoint` | `string` | | Optional custom KMS endpoint, primarily for testing |
+| `security.kms.fallbackToLocal` | `bool` | `true` | Auto-fallback to local CryptoProvider when KMS unavailable after profile config is loaded |
+| `security.kms.timeoutPerOperation` | `duration` | `5s` | Maximum duration for a single KMS API call |
+| `security.kms.maxRetries` | `int` | `3` | Retry attempts for transient KMS errors |
+| `security.kms.azure.vaultUrl` | `string` | | Azure Key Vault URL |
+| `security.kms.azure.keyVersion` | `string` | | Optional Azure Key Vault key version (empty = latest) |
+| `security.kms.pkcs11.modulePath` | `string` | | Path to the PKCS#11 shared library (`.so`, `.dylib`, or `.dll`) |
+| `security.kms.pkcs11.slotId` | `int` | `0` | PKCS#11 slot number |
+| `security.kms.pkcs11.pin` | `string` | | PKCS#11 user PIN; prefer `LANGO_PKCS11_PIN` for secret material |
+| `security.kms.pkcs11.keyLabel` | `string` | | Key label in the HSM |
+
+During encrypted profile bootstrap, profile settings are not available before profile config is loaded. If KMS is selected through `LANGO_KMS_PROVIDER`, set `LANGO_KMS_FALLBACK_TO_LOCAL=false` to fail closed on KMS provider initialization or unwrap failures instead of falling back to the local passphrase prompt.
 
 ### Interceptor
 
@@ -431,14 +485,41 @@ User-explicit overrides take precedence over profile defaults.
 
 ## Skill
 
+Lango has **two independent skill subsystems** that share the term "skill" but serve different layers:
+
+| Subsystem | Config | Format | Consumer |
+|-----------|--------|--------|----------|
+| **Knowledge skill registry** (this section) | `skill.*` | Lango's own [skill format](features/skills.md) with type-tagged frontmatter (instruction/composite/script/template) | Knowledge module / runtime |
+| **ADK SkillToolset** | `agent.skillsDir` (see [Agent](#agent) section) | [agentskills.io](https://agentskills.io) frontmatter (`name`, `description`) | ADK agent's `load_skill` / `list_skill_resources` / `load_skill_resource` tools |
+
+The two systems are intentionally separate. Migration of existing `~/.lango/skills` Lango-format skills to agentskills.io format is deferred to a future change.
+
+### Knowledge skill registry (`skill.*`)
+
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `skill.enabled` | `bool` | `false` | Enable the [skill system](features/skills.md) |
-| `skill.skillsDir` | `string` | `~/.lango/skills` | Directory for skill files |
+| `skill.skillsDir` | `string` | `~/.lango/skills` | Directory for Lango-format skill files |
 | `skill.allowImport` | `bool` | `false` | Allow importing skills from external sources |
 | `skill.maxBulkImport` | `int` | `50` | Maximum skills per bulk import |
 | `skill.importConcurrency` | `int` | `5` | Concurrent import workers |
 | `skill.importTimeout` | `duration` | `2m` | Timeout per skill import |
+
+---
+
+## Voice
+
+Voice infrastructure for channel adapters and TUI live mode. **Phase 1 ships the STT/TTS interface layer and Gemini-backed STT;** per-channel integration (Telegram/Discord/Slack download → STT → inject; outbound TTS → sendVoice) and real Gemini TTS are deferred to Phase 2. The configuration is therefore inert until Phase 2 lands — leaving `voice.enabled: false` is the correct default for current releases.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `voice.enabled` | `bool` | `false` | Global on/off for the voice subsystem |
+| `voice.defaultLanguage` | `string` | `""` | BCP-47 default language (e.g. `ko-KR`, `en-US`) |
+| `voice.sttModel` | `string` | `""` | Gemini model used for transcription (default: `gemini-2.5-flash`) |
+| `voice.ttsModel` | `string` | `""` | Gemini TTS-capable model. Empty disables TTS (Phase 1 stub returns `ErrTTSNotConfigured`) |
+| `voice.perChannel.<name>.enabled` | `bool` | `false` | Per-channel voice opt-in (keys: `telegram`, `discord`, `slack`) |
+| `voice.perChannel.<name>.voice` | `string` | `""` | Per-channel voice override (Phase 2) |
+| `voice.costGuard.maxAudioSecondsPerDay` | `int` | `0` | Daily cap on transcribed audio seconds (0 = no limit) |
 
 ---
 
@@ -709,22 +790,25 @@ Each remote agent entry:
 {
   "p2p": {
     "enabled": false,
-    "listenAddrs": ["/ip4/0.0.0.0/tcp/9000"],
+    "listenAddrs": [
+      "/ip4/0.0.0.0/tcp/9000",
+      "/ip4/0.0.0.0/udp/9000/quic-v1"
+    ],
     "bootstrapPeers": [],
     "keyDir": "~/.lango/p2p",
-    "enableRelay": false,
+    "enableRelay": true,
     "enableMdns": true,
     "maxPeers": 50,
     "handshakeTimeout": "30s",
-    "sessionTokenTtl": "1h",
+    "sessionTokenTtl": "24h0m0s",
     "autoApproveKnownPeers": false,
     "requireSignedChallenge": false,
     "firewallRules": [],
     "gossipInterval": "30s",
-    "zkHandshake": false,
-    "zkAttestation": false,
+    "zkHandshake": true,
+    "zkAttestation": true,
     "zkp": {
-      "proofCacheDir": "~/.lango/zkp",
+      "proofCacheDir": "~/.lango/p2p/zkp-cache",
       "provingScheme": "plonk",
       "srsMode": "unsafe",
       "srsPath": "",
@@ -733,7 +817,7 @@ Each remote agent entry:
     "toolIsolation": {
       "enabled": false,
       "timeoutPerTool": "30s",
-      "maxMemoryMB": 512,
+      "maxMemoryMB": 256,
       "container": {
         "enabled": false,
         "runtime": "auto",
@@ -751,21 +835,21 @@ Each remote agent entry:
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `p2p.enabled` | `bool` | `false` | Enable P2P networking |
-| `p2p.listenAddrs` | `[]string` | `["/ip4/0.0.0.0/tcp/9000"]` | Multiaddrs to listen on |
+| `p2p.listenAddrs` | `[]string` | `["/ip4/0.0.0.0/tcp/9000","/ip4/0.0.0.0/udp/9000/quic-v1"]` | Multiaddrs to listen on |
 | `p2p.bootstrapPeers` | `[]string` | `[]` | Initial peers for DHT bootstrapping |
 | `p2p.keyDir` | `string` | `~/.lango/p2p` | Directory for node key persistence |
 | `p2p.enableRelay` | `bool` | `true` | Act as relay for NAT traversal |
 | `p2p.enableMdns` | `bool` | `true` | Enable mDNS for LAN discovery |
 | `p2p.maxPeers` | `int` | `50` | Maximum connected peers |
 | `p2p.handshakeTimeout` | `duration` | `30s` | Maximum handshake duration |
-| `p2p.sessionTokenTtl` | `duration` | `1h` | Session token lifetime |
+| `p2p.sessionTokenTtl` | `duration` | `24h0m0s` | Session token lifetime |
 | `p2p.autoApproveKnownPeers` | `bool` | `false` | Skip approval for known peers |
 | `p2p.firewallRules` | `[]object` | `[]` | Static firewall ACL rules |
 | `p2p.gossipInterval` | `duration` | `30s` | Agent card gossip interval |
-| `p2p.zkHandshake` | `bool` | `false` | Enable ZK-enhanced handshake |
-| `p2p.zkAttestation` | `bool` | `false` | Enable ZK attestation on responses |
+| `p2p.zkHandshake` | `bool` | `true` | Enable ZK-enhanced handshake |
+| `p2p.zkAttestation` | `bool` | `true` | Enable ZK attestation on responses |
 | `p2p.requireSignedChallenge` | `bool` | `false` | Reject unsigned (v1.0) challenges; require v1.1 signed challenges |
-| `p2p.zkp.proofCacheDir` | `string` | `~/.lango/zkp` | ZKP circuit cache directory |
+| `p2p.zkp.proofCacheDir` | `string` | `~/.lango/p2p/zkp-cache` | ZKP circuit cache directory |
 | `p2p.zkp.provingScheme` | `string` | `plonk` | ZKP proving scheme: `plonk` or `groth16` |
 | `p2p.zkp.srsMode` | `string` | `unsafe` | SRS generation mode: `unsafe` (deterministic) or `file` (trusted ceremony) |
 | `p2p.zkp.srsPath` | `string` | | Path to SRS file (when `srsMode = "file"`) |
@@ -820,7 +904,7 @@ Each firewall rule entry:
 | `p2p.toolIsolation.timeoutPerTool` | `duration` | `30s` | Maximum duration for a single tool execution |
 | `p2p.toolIsolation.maxMemoryMB` | `int` | `256` | Soft memory limit per subprocess in megabytes |
 | `p2p.toolIsolation.container.enabled` | `bool` | `false` | Use container-based sandbox instead of subprocess |
-| `p2p.toolIsolation.container.runtime` | `string` | `auto` | Container runtime: `auto`, `docker`, `gvisor`, `native` |
+| `p2p.toolIsolation.container.runtime` | `string` | `auto` | Container runtime: `auto`, `docker`, `gvisor`, `native` (`gvisor` is currently a stub and explicit selection returns runtime unavailable) |
 | `p2p.toolIsolation.container.image` | `string` | `lango-sandbox:latest` | Docker image for sandbox container |
 | `p2p.toolIsolation.container.networkMode` | `string` | `none` | Docker network mode for sandbox containers |
 | `p2p.toolIsolation.container.readOnlyRootfs` | `bool` | `true` | Mount container root filesystem as read-only |

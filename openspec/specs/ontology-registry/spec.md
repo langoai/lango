@@ -1,9 +1,7 @@
 ## Purpose
 
 Capability spec for ontology-registry. See requirements below for scope and behavior contracts.
-
 ## Requirements
-
 ### Requirement: ObjectType registration and retrieval
 The system SHALL provide an `OntologyService` interface with methods to register, retrieve, list, and deprecate ObjectType definitions. Each ObjectType SHALL have a unique name, description, list of PropertyDef, optional parent type (Extends), SchemaStatus (active/deprecated), and version number. ObjectType data SHALL be persisted in SQLite via Ent ORM.
 
@@ -126,3 +124,17 @@ The system SHALL initialize the ontology subsystem in `wiring_ontology.go`, call
 - **WHEN** ontology initialization fails (e.g., DB error)
 - **THEN** the graph store continues to operate with hardcoded predicate validation
 - **AND** a warning is logged
+
+### Requirement: Shared predicate validity source
+The runtime SHALL use the ontology service predicate validator closure as the primary predicate-validity source for observe-only admission decisions and graph-store validation.
+
+#### Scenario: Graph admission and graph-store validation use the same validator closure
+- **WHEN** observe-only admission and graph-store validation both perform predicate checks
+- **THEN** the runtime SHALL obtain those checks from the same ontology service predicate validator closure
+- **AND** observe-only admission SHALL identify that closure with the stable validator-source value `ontology_registry`
+
+#### Scenario: Ontology init failure preserves existing graph validation behavior
+- **WHEN** ontology is disabled or ontology initialization fails
+- **THEN** graph-store validation SHALL continue to use the built-in hardcoded graph predicate validator
+- **AND** observe-only admission SHALL switch to the stable validator-source value `unavailable` rather than blocking current graph writes
+

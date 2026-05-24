@@ -25,6 +25,8 @@ type CryptoDecryptFunc func(
 	ctx context.Context, keyID string, ciphertext []byte,
 ) ([]byte, error)
 
+const defaultCryptoKeyID = "default"
+
 // RegisterOnChainFunc registers a session key on-chain.
 type RegisterOnChainFunc func(
 	ctx context.Context, sessionAddr common.Address, policy sa.SessionPolicy,
@@ -192,12 +194,15 @@ func (m *Manager) Create(
 	pubKeyBytes := SerializePublicKey(&privKey.PublicKey)
 	addr := AddressFromPublicKey(&privKey.PublicKey)
 
-	// Encrypt and store private key material.
-	keyID := uuid.New().String()
-	keyRef := keyID
+	sessionID := uuid.New().String()
+
+	// Store private key material. When encryption is configured, persist the
+	// encrypted bytes; otherwise keep hex-encoded key material for standalone
+	// in-memory managers that are constructed without a CryptoProvider.
+	privBytes := SerializePrivateKey(privKey)
+	keyRef := hex.EncodeToString(privBytes)
 	if m.encrypt != nil {
-		privBytes := SerializePrivateKey(privKey)
-		encrypted, encErr := m.encrypt(ctx, keyID, privBytes)
+		encrypted, encErr := m.encrypt(ctx, defaultCryptoKeyID, privBytes)
 		if encErr != nil {
 			return nil, fmt.Errorf("encrypt session key: %w", encErr)
 		}
@@ -206,7 +211,7 @@ func (m *Manager) Create(
 
 	now := time.Now()
 	sk := &sa.SessionKey{
-		ID:            uuid.New().String(),
+		ID:            sessionID,
 		PublicKey:     pubKeyBytes,
 		Address:       addr,
 		PrivateKeyRef: keyRef,
@@ -334,14 +339,14 @@ func (m *Manager) SignUserOp(
 		return nil, sa.ErrSessionExpired
 	}
 
-	// Decrypt private key material.
-	privKeyBytes := []byte(key.PrivateKeyRef)
+	// Decode private key material. With encryption enabled this is ciphertext;
+	// otherwise it is the plaintext private key bytes encoded by Create.
+	privKeyBytes, hexErr := hex.DecodeString(key.PrivateKeyRef)
+	if hexErr != nil {
+		return nil, fmt.Errorf("decode session key: %w", hexErr)
+	}
 	if m.decrypt != nil {
-		ciphertext, hexErr := hex.DecodeString(key.PrivateKeyRef)
-		if hexErr != nil {
-			return nil, fmt.Errorf("decode encrypted key: %w", hexErr)
-		}
-		decrypted, decErr := m.decrypt(ctx, key.ID, ciphertext)
+		decrypted, decErr := m.decrypt(ctx, defaultCryptoKeyID, privKeyBytes)
 		if decErr != nil {
 			return nil, fmt.Errorf("decrypt session key: %w", decErr)
 		}

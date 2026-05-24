@@ -16,6 +16,13 @@ Lango supports multi-channel communication, allowing your agent to interact with
 
 Each channel runs as an independent integration within the same Lango process. Messages from all channels are routed to the same agent, maintaining separate sessions per user/channel.
 
+!!! info "Voice support — Phase 1 (infrastructure only)"
+    The voice infrastructure layer is now shipped: `internal/voice/` exposes `SpeechToText` / `TextToSpeech` interfaces with a Gemini-backed STT implementation, plus `voice.*` config (default disabled — see [Voice configuration](../configuration.md#voice)).
+
+    **Per-channel voice round-trip is NOT yet wired.** Inbound (Telegram `getFile` → audio download → STT → text message inject) and outbound (`Synthesize` → `sendVoice` / file upload) integration is **Phase 2**, scheduled for a future change. The Gemini TTS implementation is also Phase 2 — Phase 1 returns `ErrTTSNotConfigured` as a graceful-degradation signal.
+
+    Until Phase 2 lands, channels behave as text-only regardless of `voice.enabled`. Setting `voice.enabled: true` does not yet activate any user-facing behavior.
+
 ## Setup
 
 The easiest way to configure channels is through the onboarding wizard:

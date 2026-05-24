@@ -1,6 +1,8 @@
 package cockpit
 
 import (
+	"time"
+
 	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
@@ -9,6 +11,8 @@ import (
 	"github.com/langoai/lango/internal/cli/chat"
 	"github.com/langoai/lango/internal/cli/cockpit/sidebar"
 	"github.com/langoai/lango/internal/cli/cockpit/theme"
+	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/provider"
 )
 
 // childModel is the minimal contract for the wrapped child.
@@ -21,21 +25,30 @@ type childModel interface {
 // Compile-time interface check.
 var _ childModel = (*chat.ChatModel)(nil)
 
+// MissionControlRefreshMsg tells the Mission Control page to rebuild its
+// projection from already-updated shared state without replaying runtime
+// messages into the shared chat model.
+type MissionControlRefreshMsg struct{}
+
 // Model is the root cockpit tea.Model.
 type Model struct {
-	child           childModel
-	pages           map[PageID]Page
-	activePage      PageID
-	sidebar         sidebar.Model
-	contextPanel    *ContextPanel
-	channelTracker  *ChannelTracker
-	runtimeTracker  *RuntimeTracker
-	keymap          keyMap
-	sidebarVisible  bool
-	sidebarFocused  bool
-	contextVisible  bool
-	width           int
-	height          int
+	child            childModel
+	cfg              *config.Config
+	pages            map[PageID]Page
+	activePage       PageID
+	sidebar          sidebar.Model
+	contextPanel     *ContextPanel
+	channelTracker   *ChannelTracker
+	runtimeTracker   *RuntimeTracker
+	keymap           keyMap
+	sidebarVisible   bool
+	sidebarFocused   bool
+	contextVisible   bool
+	width            int
+	height           int
+	pendingApprovals *PendingApprovalRegistry
+	learningBuffer   *LearningSuggestionBuffer
+	activityBuffer   *MissionActivityBuffer
 }
 
 // New creates a cockpit Model wrapping a ChatModel.
@@ -44,28 +57,101 @@ func New(deps Deps) *Model {
 		TurnRunner:        deps.TurnRunner,
 		Config:            deps.Config,
 		SessionKey:        deps.SessionKey,
+		SessionStore:      deps.SessionStore,
+		EventBus:          deps.EventBus,
 		BackgroundManager: deps.BackgroundManager,
+		RuntimeFeatures:   deps.RuntimeFeatures,
+		SharedPending:     deps.PendingApprovals,
+		OnUserSubmission: func(sessionKey, input string) {
+			if deps.ActivityBuffer != nil {
+				deps.ActivityBuffer.Append(newUserSubmissionActivity(sessionKey, input, time.Now()))
+			}
+		},
+		OnTurnSummary: func(sessionKey string, msg chat.TurnTokenUsageMsg) {
+			if deps.ActivityBuffer != nil {
+				deps.ActivityBuffer.Append(newTurnSummaryActivity(sessionKey, msg, time.Now()))
+			}
+		},
 	})
 
-	return &Model{
-		child:          chatModel,
-		pages:          make(map[PageID]Page),
-		activePage:     PageChat,
-		sidebar:        sidebar.New(AllPageMetas()),
-		contextPanel:   NewContextPanel(deps.MetricsCollector),
-		keymap:         defaultKeyMap(),
-		sidebarVisible: true,
+	m := &Model{
+		child:            chatModel,
+		cfg:              deps.Config,
+		pages:            make(map[PageID]Page),
+		activePage:       PageMissionControl,
+		sidebar:          sidebar.New(AllPageMetas()),
+		contextPanel:     NewContextPanel(deps.MetricsCollector),
+		keymap:           defaultKeyMap(),
+		sidebarVisible:   true,
+		pendingApprovals: deps.PendingApprovals,
+		learningBuffer:   deps.LearningBuffer,
+		activityBuffer:   deps.ActivityBuffer,
 	}
+	m.syncSidebarAvailability()
+	return m
+}
+
+// Pages exposes the currently registered cockpit pages for wiring tests and
+// diagnostics.
+func (m *Model) Pages() map[PageID]Page {
+	if m == nil {
+		return nil
+	}
+	return m.pages
+}
+
+// Sidebar exposes the current sidebar model for wiring tests and diagnostics.
+func (m *Model) Sidebar() sidebar.Model {
+	if m == nil {
+		return sidebar.Model{}
+	}
+	return m.sidebar
 }
 
 // RegisterPage adds a page to the cockpit.
 func (m *Model) RegisterPage(id PageID, page Page) {
 	m.pages[id] = page
+	m.syncSidebarAvailability()
+}
+
+func (m *Model) syncSidebarAvailability() {
+	if m == nil {
+		return
+	}
+	alwaysAvailable := map[PageID]bool{
+		PageMissionControl: true,
+		PageChat:           true,
+	}
+	for _, id := range []PageID{
+		PageMissionControl,
+		PageChat,
+		PageSettings,
+		PageTools,
+		PageStatus,
+		PageSessions,
+		PageTasks,
+		PageDeadLetters,
+		PageApprovals,
+	} {
+		_, registered := m.pages[id]
+		m.sidebar.SetDisabled(id.String(), !alwaysAvailable[id] && !registered)
+	}
 }
 
 // SetProgram delegates to the wrapped child.
 func (m *Model) SetProgram(p *tea.Program) {
 	m.child.SetProgram(p)
+}
+
+// ChatModel returns the shared cockpit chat model when the root child is the
+// production chat implementation. Tests may replace the child with a mock, in
+// which case this returns nil.
+func (m *Model) ChatModel() *chat.ChatModel {
+	if m == nil {
+		return nil
+	}
+	chatModel, _ := m.child.(*chat.ChatModel)
+	return chatModel
 }
 
 // SetChannelTracker sets the channel tracker for live channel status updates.
@@ -82,7 +168,14 @@ func (m *Model) SetRuntimeTracker(tracker *RuntimeTracker) {
 
 // Init implements tea.Model.
 func (m *Model) Init() tea.Cmd {
-	return m.child.Init()
+	cmds := []tea.Cmd{m.child.Init()}
+	m.sidebar.SetActive(m.activePage.String())
+	if m.activePage != PageChat {
+		if page, ok := m.pages[m.activePage]; ok {
+			cmds = append(cmds, page.Activate())
+		}
+	}
+	return tea.Batch(cmds...)
 }
 
 // Update implements tea.Model.
@@ -141,21 +234,28 @@ func (m *Model) handleContextTick(msg contextTickMsg) (*Model, tea.Cmd) {
 // (Settings, Status, etc.) is active. Otherwise traffic arriving while the
 // user browses non-chat pages is lost.
 func (m *Model) handleChannelMessage(msg chat.ChannelMessageMsg) (*Model, tea.Cmd) {
+	if m.activityBuffer != nil {
+		m.activityBuffer.Append(newChannelMessageActivity(msg))
+	}
 	up, cmd := m.child.Update(msg)
 	m.child = up.(childModel)
-	return m, cmd
+	return m, tea.Batch(cmd, m.refreshMissionControlIfActive())
 }
 
-// handleApprovalRequest switches to the chat page and forwards to the chat child.
-// Approval requests must always reach the chat model AND switch to the chat
-// page so the user can see and respond to the prompt. Without the page switch,
-// approvals raised by background tasks retried from the Tasks page would
-// remain invisible and time out.
+// handleApprovalRequest registers the latest pending approval and forwards the
+// request to the chat child for approval-state transitions and rendering when
+// the chat surface is visible.
 func (m *Model) handleApprovalRequest(msg chat.ApprovalRequestMsg) (*Model, tea.Cmd) {
-	switchCmd := m.switchPage(PageChat)
+	if m.pendingApprovals != nil {
+		m.pendingApprovals.Register(msg)
+	}
+	var switchCmd tea.Cmd
+	if m.activePage != PageMissionControl {
+		switchCmd = m.switchPage(PageChat)
+	}
 	up, childCmd := m.child.Update(msg)
 	m.child = up.(childModel)
-	return m, tea.Batch(switchCmd, childCmd)
+	return m, tea.Batch(switchCmd, childCmd, m.refreshMissionControlIfActive())
 }
 
 // markTurnStarted calls runtimeTracker.StartTurn() on the first content event
@@ -173,6 +273,9 @@ func (m *Model) markTurnStarted() {
 // update the active-agent label (no counter bump), so the context panel shows
 // the correct agent during the final phase.
 func (m *Model) handleDelegation(msg chat.DelegationMsg) (*Model, tea.Cmd) {
+	if m.activityBuffer != nil {
+		m.activityBuffer.Append(newDelegationActivity(msg, time.Now()))
+	}
 	if m.runtimeTracker != nil {
 		if msg.To == "lango-orchestrator" {
 			m.runtimeTracker.SetActiveAgent(msg.To)
@@ -185,21 +288,27 @@ func (m *Model) handleDelegation(msg chat.DelegationMsg) (*Model, tea.Cmd) {
 	}
 	up, cmd := m.child.Update(msg)
 	m.child = up.(childModel)
-	return m, cmd
+	return m, tea.Batch(cmd, m.refreshMissionControlIfActive())
 }
 
 // handleBudgetWarning always forwards to the chat child from any page.
 func (m *Model) handleBudgetWarning(msg chat.BudgetWarningMsg) (*Model, tea.Cmd) {
+	if m.activityBuffer != nil {
+		m.activityBuffer.Append(newBudgetWarningActivity(msg, time.Now()))
+	}
 	up, cmd := m.child.Update(msg)
 	m.child = up.(childModel)
-	return m, cmd
+	return m, tea.Batch(cmd, m.refreshMissionControlIfActive())
 }
 
 // handleRecovery always forwards to the chat child from any page.
 func (m *Model) handleRecovery(msg chat.RecoveryMsg) (*Model, tea.Cmd) {
+	if m.activityBuffer != nil {
+		m.activityBuffer.Append(newRecoveryActivity(msg, time.Now()))
+	}
 	up, cmd := m.child.Update(msg)
 	m.child = up.(childModel)
-	return m, cmd
+	return m, tea.Batch(cmd, m.refreshMissionControlIfActive())
 }
 
 // handleDone forwards DoneMsg to the chat child FIRST so the assistant response
@@ -207,6 +316,11 @@ func (m *Model) handleRecovery(msg chat.RecoveryMsg) (*Model, tea.Cmd) {
 // and finally resets the turn.
 func (m *Model) handleDone(msg chat.DoneMsg) (*Model, tea.Cmd) {
 	var cmds []tea.Cmd
+	if m.activityBuffer != nil {
+		if item, ok := newAssistantSummaryActivity("", msg, time.Now()); ok {
+			m.activityBuffer.Append(item)
+		}
+	}
 	// 1. Forward DoneMsg to chat child first (appends assistant response).
 	up, cmd := m.child.Update(msg)
 	m.child = up.(childModel)
@@ -217,11 +331,16 @@ func (m *Model) handleDone(msg chat.DoneMsg) (*Model, tea.Cmd) {
 	if m.runtimeTracker != nil {
 		snap := m.runtimeTracker.FlushTurnTokens()
 		if snap.TotalTokens > 0 {
+			var costUSD float64
+			if m.cfg != nil {
+				costUSD = provider.EstimateCostUSD(m.cfg.Agent.Model, int(snap.InputTokens), int(snap.OutputTokens))
+			}
 			up2, cmd2 := m.child.Update(chat.TurnTokenUsageMsg{
-				InputTokens:  snap.InputTokens,
-				OutputTokens: snap.OutputTokens,
-				TotalTokens:  snap.TotalTokens,
-				CacheTokens:  snap.CacheTokens,
+				InputTokens:      snap.InputTokens,
+				OutputTokens:     snap.OutputTokens,
+				TotalTokens:      snap.TotalTokens,
+				CacheTokens:      snap.CacheTokens,
+				EstimatedCostUSD: costUSD,
 			})
 			m.child = up2.(childModel)
 			if cmd2 != nil {
@@ -232,6 +351,9 @@ func (m *Model) handleDone(msg chat.DoneMsg) (*Model, tea.Cmd) {
 		if m.contextPanel != nil {
 			m.contextPanel.SetRuntimeStatus(runtimeStatus{IsRunning: false})
 		}
+	}
+	if missionCmd := m.refreshMissionControlIfActive(); missionCmd != nil {
+		cmds = append(cmds, missionCmd)
 	}
 	return m, tea.Batch(cmds...)
 }
@@ -434,6 +556,23 @@ func (m *Model) forwardToActive(msg tea.Msg) (*Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m *Model) forwardToMissionControlIfActive(msg tea.Msg) tea.Cmd {
+	if m.activePage != PageMissionControl {
+		return nil
+	}
+	page, ok := m.pages[PageMissionControl]
+	if !ok {
+		return nil
+	}
+	up, cmd := page.Update(msg)
+	m.pages[PageMissionControl] = up.(Page)
+	return cmd
+}
+
+func (m *Model) refreshMissionControlIfActive() tea.Cmd {
+	return m.forwardToMissionControlIfActive(MissionControlRefreshMsg{})
+}
+
 func (m *Model) sidebarWidth() int {
 	if !m.sidebarVisible {
 		return 0
@@ -451,6 +590,12 @@ func (m *Model) contextPanelWidth() int {
 func (m *Model) switchPage(target PageID) tea.Cmd {
 	if target == m.activePage {
 		return nil
+	}
+	if target != PageChat {
+		if _, ok := m.pages[target]; !ok {
+			m.sidebar.SetActive(m.activePage.String())
+			return nil
+		}
 	}
 	// Deactivate old page.
 	if m.activePage != PageChat {

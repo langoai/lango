@@ -1,9 +1,7 @@
 ## Purpose
 
 Type-safe parameter extraction and response building for tool handlers, eliminating unsafe `map[string]interface{}` casts across `internal/app/tools_*.go` files.
-
 ## Requirements
-
 ### Requirement: Type-safe required parameter extraction
 The `toolparam.RequireString` function SHALL extract a string parameter from `map[string]interface{}` and return `ErrMissingParam` when the key is absent or the value is empty.
 
@@ -69,3 +67,13 @@ All 12 `internal/app/tools_*.go` files SHALL use `toolparam.RequireString` for r
 #### Scenario: Consistent error format
 - **WHEN** any tool handler receives a missing required parameter
 - **THEN** the error message follows the format `"missing <paramName> parameter"`
+
+### Requirement: Required integer extraction returns actionable missing-parameter errors
+
+The shared tool parameter helper layer SHALL support required integer extraction with the same actionable missing-parameter error shape used by required string and float extraction.
+
+#### Scenario: Missing required integer parameter returns ErrMissingParam
+- **WHEN** a tool wrapper requests a required integer parameter and the key is absent or not numeric
+- **THEN** the helper SHALL return `ErrMissingParam`
+- **AND** the error message SHALL follow `missing <paramName> parameter`
+

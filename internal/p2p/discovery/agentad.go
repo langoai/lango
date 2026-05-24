@@ -13,12 +13,12 @@ import (
 
 // AgentAd is a structured service advertisement (Context Flyer).
 type AgentAd struct {
-	DID           string            `json:"did"`
-	Name          string            `json:"name"`
-	Description   string            `json:"description"`
-	Tags          []string          `json:"tags"`
-	Capabilities  []string          `json:"capabilities,omitempty"`
-	Pricing       *PricingInfo      `json:"pricing,omitempty"`
+	DID            string            `json:"did"`
+	Name           string            `json:"name"`
+	Description    string            `json:"description"`
+	Tags           []string          `json:"tags"`
+	Capabilities   []string          `json:"capabilities,omitempty"`
+	Pricing        *PricingInfo      `json:"pricing,omitempty"`
 	ZKCredentials  []ZKCredential    `json:"zkCredentials,omitempty"`
 	OntologyDigest *OntologyDigest   `json:"ontologyDigest,omitempty"`
 	Multiaddrs     []string          `json:"multiaddrs,omitempty"`

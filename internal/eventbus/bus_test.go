@@ -178,6 +178,9 @@ func TestAllEventTypesHaveDistinctNames(t *testing.T) {
 		MemoryGraphEvent{},
 		ChannelMessageReceivedEvent{},
 		ChannelMessageSentEvent{},
+		CompactionCompletedEvent{},
+		CompactionSlowEvent{},
+		LearningSuggestionEvent{},
 	}
 
 	seen := make(map[string]bool, len(events))
@@ -249,4 +252,69 @@ func TestMemoryGraphEventRoundTrip(t *testing.T) {
 	assert.Equal(t, "Alice", got.Triples[0].Subject)
 	assert.Equal(t, "sess-42", got.SessionKey)
 	assert.Equal(t, "observation", got.Type)
+}
+
+func TestCompactionCompletedEventRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	bus := New()
+
+	var got CompactionCompletedEvent
+	SubscribeTyped(bus, func(e CompactionCompletedEvent) {
+		got = e
+	})
+
+	bus.Publish(CompactionCompletedEvent{
+		SessionKey:      "sess-1",
+		UpToIndex:       20,
+		SummaryTokens:   120,
+		ReclaimedTokens: 4200,
+	})
+
+	assert.Equal(t, "sess-1", got.SessionKey)
+	assert.Equal(t, 20, got.UpToIndex)
+	assert.Equal(t, 4200, got.ReclaimedTokens)
+	assert.Equal(t, EventCompactionCompleted, got.EventName())
+}
+
+func TestCompactionSlowEventRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	bus := New()
+
+	var got CompactionSlowEvent
+	SubscribeTyped(bus, func(e CompactionSlowEvent) {
+		got = e
+	})
+
+	bus.Publish(CompactionSlowEvent{
+		SessionKey: "sess-2",
+	})
+
+	assert.Equal(t, "sess-2", got.SessionKey)
+	assert.Equal(t, EventCompactionSlow, got.EventName())
+}
+
+func TestLearningSuggestionEventRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	bus := New()
+
+	var got LearningSuggestionEvent
+	SubscribeTyped(bus, func(e LearningSuggestionEvent) {
+		got = e
+	})
+
+	bus.Publish(LearningSuggestionEvent{
+		SessionKey:   "sess-3",
+		SuggestionID: "sugg-1",
+		Pattern:      "timeout:fetch",
+		ProposedRule: "retry with 2x backoff",
+		Confidence:   0.62,
+	})
+
+	assert.Equal(t, "sess-3", got.SessionKey)
+	assert.Equal(t, "sugg-1", got.SuggestionID)
+	assert.InDelta(t, 0.62, got.Confidence, 0.001)
+	assert.Equal(t, EventLearningSuggestion, got.EventName())
 }

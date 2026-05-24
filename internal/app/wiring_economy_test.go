@@ -1,10 +1,15 @@
 package app
 
 import (
+	"context"
+	"math/big"
 	"testing"
 
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/economy/risk"
 	"github.com/langoai/lango/internal/eventbus"
+	"github.com/langoai/lango/internal/p2p/reputation"
+	"github.com/langoai/lango/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -24,12 +29,12 @@ func TestInitEconomy_DisabledReturnsNil(t *testing.T) {
 
 func TestInitEconomy_DisabledBranch_TableDriven(t *testing.T) {
 	tests := []struct {
-		give       string
-		giveOn     bool
-		giveP2P    *p2pComponents
-		givePC     *paymentComponents
-		giveBus    *eventbus.Bus
-		wantNil    bool
+		give    string
+		giveOn  bool
+		giveP2P *p2pComponents
+		givePC  *paymentComponents
+		giveBus *eventbus.Bus
+		wantNil bool
 	}{
 		{
 			give:    "disabled config returns nil",
@@ -120,6 +125,45 @@ func TestInitEconomy_EnabledWithP2PComponents(t *testing.T) {
 	assert.NotNil(t, result.riskEngine, "risk engine should use neutral fallback when reputation store is nil")
 }
 
+func TestInitEconomy_UsesEarnedTrustForPricingAndRisk(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	client := testutil.TestEntClient(t)
+	repStore := reputation.NewStore(client, testLog())
+	peerDID := "did:peer:earned"
+
+	for i := 0; i < 5; i++ {
+		require.NoError(t, repStore.RecordSuccess(ctx, peerDID))
+	}
+	require.NoError(t, repStore.RecordOperationalIncident(ctx, peerDID))
+
+	cfg := config.DefaultConfig()
+	cfg.Economy.Enabled = true
+	cfg.Economy.Pricing.Enabled = true
+
+	result := initEconomy(cfg, &p2pComponents{reputation: repStore}, nil, eventbus.New())
+	require.NotNil(t, result)
+	require.NotNil(t, result.pricingEngine)
+	require.NotNil(t, result.riskEngine)
+
+	result.pricingEngine.SetBasePrice("search", pricingTestUSDC(1))
+
+	quote, err := result.pricingEngine.Quote(ctx, "search", peerDID)
+	require.NoError(t, err)
+	require.False(t, quote.IsFree)
+	assert.Equal(t, int64(900000), quote.FinalPrice.Int64(), "earned trust should still qualify for the trust discount")
+
+	assessment, err := result.riskEngine.Assess(ctx, peerDID, pricingTestUSDC(1), risk.VerifiabilityMedium)
+	require.NoError(t, err)
+	assert.Equal(t, risk.StrategyDirectPay, assessment.Strategy, "temporary operational signals should not demote earned-trust strategy")
+	assert.Greater(t, assessment.TrustScore, 0.8)
+}
+
+func pricingTestUSDC(n int64) *big.Int {
+	return big.NewInt(n * 1_000_000)
+}
+
 // ---------------------------------------------------------------------------
 // selectSettler
 // ---------------------------------------------------------------------------
@@ -134,10 +178,10 @@ func TestSelectSettler_NilPaymentComponents_ReturnsNoopSettler(t *testing.T) {
 
 func TestSelectSettler_TableDriven(t *testing.T) {
 	tests := []struct {
-		give           string
-		giveOnChain    bool
-		givePC         *paymentComponents
-		wantNotNil     bool
+		give        string
+		giveOnChain bool
+		givePC      *paymentComponents
+		wantNotNil  bool
 	}{
 		{
 			give:        "nil payment components returns noop settler",

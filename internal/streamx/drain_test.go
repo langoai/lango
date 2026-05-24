@@ -25,11 +25,11 @@ func TestDrain(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		give     string
-		items    []int
-		giveErr  error
-		wantLen  int
-		wantErr  bool
+		give    string
+		items   []int
+		giveErr error
+		wantLen int
+		wantErr bool
 	}{
 		{
 			give:    "multiple items",

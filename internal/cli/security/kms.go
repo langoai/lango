@@ -3,15 +3,15 @@ package security
 import (
 	"context"
 	"crypto/rand"
-	"encoding/json"
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 
 	"github.com/langoai/lango/internal/bootstrap"
 	sec "github.com/langoai/lango/internal/security"
 )
+
+var newKMSProvider = sec.NewKMSProvider
 
 func newKMSCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 	cmd := &cobra.Command{
@@ -29,17 +29,23 @@ func newKMSCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 }
 
 func newKMSStatusCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
-	var jsonOutput bool
+	var output string
 
 	cmd := &cobra.Command{
-		Use:   "status",
-		Short: "Show KMS provider status",
+		Use:           "status",
+		Short:         "Show KMS provider status",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			output, err := resolveOutput(cmd)
+			if err != nil {
+				return err
+			}
 			boot, err := bootLoader()
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			cfg := boot.Config
 
@@ -64,7 +70,7 @@ func newKMSStatusCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comman
 
 			if isKMS {
 				// Try to create the provider to check connectivity.
-				kmsProvider, provErr := sec.NewKMSProvider(sec.KMSProviderName(provider), cfg.Security.KMS)
+				kmsProvider, provErr := newKMSProvider(sec.KMSProviderName(provider), cfg.Security.KMS)
 				if provErr != nil { //nolint:staticcheck // stubs always error; real impls use kms_* build tags
 					s.Status = fmt.Sprintf("error: %v", provErr)
 				} else {
@@ -77,26 +83,24 @@ func newKMSStatusCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comman
 				}
 			}
 
-			if jsonOutput {
-				enc := json.NewEncoder(os.Stdout)
-				enc.SetIndent("", "  ")
-				return enc.Encode(s)
+			if output == "json" {
+				return printJSON(cmd.OutOrStdout(), s)
 			}
 
-			fmt.Println("KMS Status")
-			fmt.Printf("  Provider:      %s\n", s.Provider)
-			fmt.Printf("  Key ID:        %s\n", s.KeyID)
+			fmt.Fprintln(cmd.OutOrStdout(), "KMS Status")
+			fmt.Fprintf(cmd.OutOrStdout(), "  Provider:      %s\n", s.Provider)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Key ID:        %s\n", s.KeyID)
 			if s.Region != "" {
-				fmt.Printf("  Region:        %s\n", s.Region)
+				fmt.Fprintf(cmd.OutOrStdout(), "  Region:        %s\n", s.Region)
 			}
-			fmt.Printf("  Fallback:      %s\n", s.Fallback)
-			fmt.Printf("  Status:        %s\n", s.Status)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Fallback:      %s\n", s.Fallback)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Status:        %s\n", s.Status)
 
 			return nil
 		},
 	}
 
-	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
+	cmd.Flags().StringVar(&output, "output", "table", "Output format: table or json")
 	return cmd
 }
 
@@ -109,7 +113,7 @@ func newKMSTestCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command 
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			cfg := boot.Config
 			provider := cfg.Security.Signer.Provider
@@ -117,7 +121,7 @@ func newKMSTestCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command 
 				return fmt.Errorf("current provider %q is not a KMS provider", provider)
 			}
 
-			kmsProvider, err := sec.NewKMSProvider(sec.KMSProviderName(provider), cfg.Security.KMS)
+			kmsProvider, err := newKMSProvider(sec.KMSProviderName(provider), cfg.Security.KMS)
 			if err != nil { //nolint:staticcheck // stubs always error; real impls use kms_* build tags
 				return fmt.Errorf("create KMS provider: %w", err)
 			}
@@ -131,21 +135,21 @@ func newKMSTestCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command 
 				return fmt.Errorf("generate test data: %w", err)
 			}
 
-			fmt.Printf("Testing KMS roundtrip with key %q...\n", keyID)
+			fmt.Fprintf(cmd.OutOrStdout(), "Testing KMS roundtrip with key %q...\n", keyID)
 
 			// Encrypt.
 			ciphertext, err := kmsProvider.Encrypt(ctx, keyID, testData)
 			if err != nil {
 				return fmt.Errorf("encrypt: %w", err)
 			}
-			fmt.Printf("  Encrypt: OK (%d bytes → %d bytes)\n", len(testData), len(ciphertext))
+			fmt.Fprintf(cmd.OutOrStdout(), "  Encrypt: OK (%d bytes → %d bytes)\n", len(testData), len(ciphertext))
 
 			// Decrypt.
 			plaintext, err := kmsProvider.Decrypt(ctx, keyID, ciphertext)
 			if err != nil {
 				return fmt.Errorf("decrypt: %w", err)
 			}
-			fmt.Printf("  Decrypt: OK (%d bytes)\n", len(plaintext))
+			fmt.Fprintf(cmd.OutOrStdout(), "  Decrypt: OK (%d bytes)\n", len(plaintext))
 
 			// Verify roundtrip.
 			if len(plaintext) != len(testData) {
@@ -157,46 +161,56 @@ func newKMSTestCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command 
 				}
 			}
 
-			fmt.Println("  Roundtrip: PASS")
+			fmt.Fprintln(cmd.OutOrStdout(), "  Roundtrip: PASS")
 			return nil
 		},
 	}
 }
 
 func newKMSKeysCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
-	var jsonOutput bool
+	var output string
 
 	cmd := &cobra.Command{
-		Use:   "keys",
-		Short: "List KMS keys registered in KeyRegistry",
+		Use:           "keys",
+		Short:         "List KMS keys registered in KeyRegistry",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			output, err := resolveOutput(cmd)
+			if err != nil {
+				return err
+			}
 			boot, err := bootLoader()
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			ctx := context.Background()
-			registry := sec.NewKeyRegistry(boot.DBClient)
+			var registry *sec.KeyRegistry
+			if boot.Storage != nil {
+				registry = boot.Storage.KeyRegistry()
+			}
+			if registry == nil {
+				return fmt.Errorf("key registry unavailable")
+			}
 			keys, err := registry.ListKeys(ctx)
 			if err != nil {
 				return fmt.Errorf("list keys: %w", err)
 			}
 
-			if jsonOutput {
-				enc := json.NewEncoder(os.Stdout)
-				enc.SetIndent("", "  ")
-				return enc.Encode(keys)
+			if output == "json" {
+				return printJSON(cmd.OutOrStdout(), keys)
 			}
 
 			if len(keys) == 0 {
-				fmt.Println("No keys registered.")
+				fmt.Fprintln(cmd.OutOrStdout(), "No keys registered.")
 				return nil
 			}
 
-			fmt.Printf("%-36s  %-20s  %-12s  %-40s\n", "ID", "NAME", "TYPE", "REMOTE KEY ID")
+			fmt.Fprintf(cmd.OutOrStdout(), "%-36s  %-20s  %-12s  %-40s\n", "ID", "NAME", "TYPE", "REMOTE KEY ID")
 			for _, k := range keys {
-				fmt.Printf("%-36s  %-20s  %-12s  %-40s\n",
+				fmt.Fprintf(cmd.OutOrStdout(), "%-36s  %-20s  %-12s  %-40s\n",
 					k.ID.String(), k.Name, k.Type, k.RemoteKeyID)
 			}
 
@@ -204,7 +218,7 @@ func newKMSKeysCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command 
 		},
 	}
 
-	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
+	cmd.Flags().StringVar(&output, "output", "table", "Output format: table or json")
 	return cmd
 }
 
@@ -235,7 +249,7 @@ This enables passphraseless bootstrap when KMS credentials are available.`,
 			if err != nil {
 				return fmt.Errorf("bootstrap: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			crypto, ok := boot.Crypto.(*sec.LocalCryptoProvider)
 			if !ok || crypto == nil {
@@ -254,7 +268,7 @@ This enables passphraseless bootstrap when KMS credentials are available.`,
 			}
 
 			// Create the KMS provider.
-			kmsProvider, err := sec.NewKMSProvider(sec.KMSProviderName(provider), boot.Config.Security.KMS)
+			kmsProvider, err := newKMSProvider(sec.KMSProviderName(provider), boot.Config.Security.KMS)
 			if err != nil { //nolint:staticcheck // stubs always error; real impls use kms_* build tags
 				return fmt.Errorf("create KMS provider: %w", err)
 			}
@@ -268,8 +282,8 @@ This enables passphraseless bootstrap when KMS credentials are available.`,
 				return fmt.Errorf("persist envelope: %w", err)
 			}
 
-			fmt.Printf("KMS slot added (provider=%s, keyID=%s)\n", provider, keyID)
-			fmt.Println("Next bootstrap can use KMS for passphraseless unlock.")
+			fmt.Fprintf(cmd.OutOrStdout(), "KMS slot added (provider=%s, keyID=%s)\n", provider, keyID)
+			fmt.Fprintln(cmd.OutOrStdout(), "Next bootstrap can use KMS for passphraseless unlock.")
 			return nil
 		},
 	}
@@ -291,7 +305,7 @@ func newKMSDetachCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comman
 			if err != nil {
 				return fmt.Errorf("bootstrap: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			crypto, ok := boot.Crypto.(*sec.LocalCryptoProvider)
 			if !ok || crypto == nil {
@@ -321,9 +335,9 @@ func newKMSDetachCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comman
 			} else if slotID != "" {
 				targetID = slotID
 			} else {
-				fmt.Println("Multiple KMS slots found. Specify --slot-id:")
+				fmt.Fprintln(cmd.OutOrStdout(), "Multiple KMS slots found. Specify --slot-id:")
 				for _, s := range kmsSlots {
-					fmt.Printf("  %s  provider=%s  keyID=%s  label=%s\n",
+					fmt.Fprintf(cmd.OutOrStdout(), "  %s  provider=%s  keyID=%s  label=%s\n",
 						s.ID, s.KMSProvider, s.KMSKeyID, s.Label)
 				}
 				return fmt.Errorf("--slot-id required when multiple KMS slots exist")
@@ -348,7 +362,7 @@ func newKMSDetachCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comman
 				return fmt.Errorf("persist envelope: %w", err)
 			}
 
-			fmt.Printf("KMS slot %s removed.\n", targetID)
+			fmt.Fprintf(cmd.OutOrStdout(), "KMS slot %s removed.\n", targetID)
 			return nil
 		},
 	}

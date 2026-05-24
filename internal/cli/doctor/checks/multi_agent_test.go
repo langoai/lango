@@ -10,6 +10,7 @@ import (
 
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/storage"
 	"github.com/langoai/lango/internal/testutil"
 	"github.com/langoai/lango/internal/turntrace"
 )
@@ -59,8 +60,8 @@ func TestMultiAgentCheck_RunWithBootstrap_ShowsFailuresAndLeaks(t *testing.T) {
 
 	check := &MultiAgentCheck{}
 	result := check.RunWithBootstrap(context.Background(), cfg, &bootstrap.Result{
-		Config:   cfg,
-		DBClient: client,
+		Config:  cfg,
+		Storage: storage.NewFacade(nil, nil, storage.WithEntClient(client)),
 	})
 
 	assert.Equal(t, StatusWarn, result.Status)

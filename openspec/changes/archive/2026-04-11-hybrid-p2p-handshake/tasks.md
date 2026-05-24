@@ -1,6 +1,6 @@
 ## Tasks
 
-### Wave 1 — KEM primitives
+### Slice 1 — KEM primitives
 
 - [x] Promote `cloudflare/circl` from indirect to direct dependency
 - [x] Create `internal/security/kem.go` — `AlgorithmX25519MLKEM768`, `KEMDecapsulator` type, `GenerateEphemeralKEM()`, `KEMEncapsulate()`
@@ -8,7 +8,7 @@
 - [x] Create `internal/security/derive_session.go` — `DeriveSessionKey()`
 - [x] Create `internal/security/derive_session_test.go` — determinism, wrong size rejection, different DIDs = different keys
 
-### Wave 2 — Handshake protocol v1.2
+### Slice 2 — Handshake protocol v1.2
 
 - [x] Add KEM fields to Challenge/ChallengeResponse structs (omitempty)
 - [x] Add `ProtocolIDv12` constant and `PreferredProtocols()` helper
@@ -23,14 +23,14 @@
 - [x] Add `StreamHandlerV12()` method
 - [x] Add handshake tests — KEM roundtrip, graceful degradation, key zeroing, transcript binding
 
-### Wave 3 — Wiring + config + CLI
+### Slice 3 — Wiring + config + CLI
 
 - [x] Add `EnablePQHandshake` to `P2PConfig`
 - [x] Wire `EnablePQKEM` in `wiring_p2p.go`, register v1.2 handler
 - [x] Update `tools_p2p.go` initiator to use `PreferredProtocols()`
 - [x] Add PQ KEM status to `cli/security/status.go`
 
-### Wave 4 — OpenSpec finalize
+### Slice 4 — OpenSpec finalize
 
 - [x] Verify change
 - [x] Sync delta specs

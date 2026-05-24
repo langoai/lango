@@ -1,35 +1,13 @@
 ## Purpose
 
 Capability spec for passphrase-acquisition. See requirements below for scope and behavior contracts.
-
 ## Requirements
-
 ### Requirement: Passphrase acquisition priority chain
 The system SHALL acquire a passphrase using the following priority: (1) hardware keyring (Touch ID / TPM), (2) keyfile at `~/.lango/keyfile`, (3) interactive terminal prompt, (4) stdin pipe. The system SHALL return an error if no source is available.
 
-#### Scenario: Keyfile exists with correct permissions
-- **WHEN** a keyfile exists at the configured path with 0600 permissions
-- **THEN** the passphrase is read from the file and `SourceKeyfile` is returned
-
-#### Scenario: Keyfile has wrong permissions
-- **WHEN** a keyfile exists but does not have 0600 permissions
-- **THEN** the keyfile is skipped and the next source is tried
-
-#### Scenario: Interactive terminal available
-- **WHEN** no keyfile is available and stdin is a terminal
-- **THEN** the user is prompted for a passphrase via hidden input and `SourceInteractive` is returned
-
-#### Scenario: New passphrase creation
-- **WHEN** `AllowCreation` is true and interactive terminal is used
-- **THEN** the user is prompted twice (entry + confirmation) and the passphrase must match
-
-#### Scenario: Stdin pipe
-- **WHEN** no keyfile is available and stdin is a pipe (not a terminal)
-- **THEN** one line is read from stdin and `SourceStdin` is returned
-
-#### Scenario: No source available
-- **WHEN** no keyfile exists, stdin is not a terminal, and stdin pipe is empty
-- **THEN** the system returns an error
+#### Scenario: Empty stdin pipe is treated as empty passphrase input
+- **WHEN** the stdin-pipe passphrase path reaches EOF without reading any passphrase bytes
+- **THEN** it SHALL return an empty-input passphrase error instead of a raw read failure
 
 ### Requirement: Log keyring read errors to stderr
 When `passphrase.Acquire()` attempts to read from the OS keyring and receives an error other than `ErrNotFound`, it SHALL write a warning to stderr in the format: `warning: keyring read failed: <error>`. The function SHALL still fall through to the next passphrase source (keyfile, interactive, stdin).
@@ -39,10 +17,54 @@ When `passphrase.Acquire()` attempts to read from the OS keyring and receives an
 - **THEN** stderr SHALL contain `warning: keyring read failed: <error detail>`
 - **AND** acquisition SHALL continue to the next source
 
+### Requirement: Passphrase acquisition stream seams
+
+The stdin-pipe and keyring-warning branches of passphrase acquisition SHALL be structured so they can be exercised with injected readers and writers in tests, without replacing process-global stdin or stderr. Public acquisition wrappers SHALL route their process stdio dependencies through package-level seams before delegating to lower-level helpers.
+
+#### Scenario: Public acquire wrapper supports injected stdin seam
+
+- **WHEN** `Acquire(...)` falls through to the stdin-pipe branch with terminal detection disabled
+- **THEN** it SHALL read the passphrase from the injected stdin seam
+- **AND** it SHALL NOT require replacing process-global `os.Stdin`
+
+#### Scenario: Public acquire wrapper supports injected stderr seam
+
+- **WHEN** `Acquire(...)` observes a keyring read error other than `ErrNotFound`
+- **THEN** it SHALL write the warning to the injected stderr seam
+- **AND** it SHALL NOT require intercepting process-global `os.Stderr`
+
+#### Scenario: Stdin pipe path supports injected reader
+
+- **WHEN** the stdin-pipe branch of acquisition is exercised in tests
+- **THEN** the implementation SHALL be able to read from an injected reader instead of requiring `os.Stdin` replacement
+
+#### Scenario: Keyring warning path supports injected writer
+
+- **WHEN** the keyring read branch returns a non-`ErrNotFound` error in tests
+- **THEN** the warning path SHALL be capturable via an injected writer instead of requiring `os.Stderr` interception
+
 #### Scenario: Keyring returns ErrNotFound
+
 - **WHEN** `KeyringProvider.Get()` returns `ErrNotFound`
 - **THEN** no warning SHALL be written to stderr
 - **AND** acquisition SHALL continue to the next source
+
+### Requirement: Interactive passphrase prompts use acquisition writer
+The interactive branch of passphrase acquisition SHALL write visible passphrase prompt text through the writer supplied to the acquisition stream seam.
+
+#### Scenario: Existing passphrase prompt uses injected writer
+- **WHEN** `acquireWithIO(...)` falls through to interactive acquisition with creation disabled
+- **THEN** the visible `Enter passphrase: ` prompt SHALL be written through the injected writer
+- **AND** no prompt text SHALL require process-global stdout capture
+
+#### Scenario: First-run passphrase confirmation uses injected writer
+- **WHEN** `acquireWithIO(...)` falls through to interactive acquisition with creation enabled
+- **THEN** both visible first-run passphrase prompt strings SHALL be written through the injected writer
+- **AND** no prompt text SHALL require process-global stdout capture
+
+#### Scenario: Hidden input behavior is preserved
+- **WHEN** interactive acquisition reads the passphrase
+- **THEN** hidden input SHALL continue to use the shared terminal password reader path
 
 ### Requirement: Keyring provider is nil when no secure hardware is available
 The passphrase acquisition flow SHALL receive a nil `KeyringProvider` when the bootstrap determines no secure hardware backend is available (`TierNone`). This effectively disables keyring auto-read, forcing keyfile or interactive/stdin acquisition.
@@ -80,31 +102,13 @@ The system SHALL read, write, and securely shred keyfiles with strict 0600 permi
 
 ### Requirement: Non-interactive passphrase acquisition
 
-The system SHALL provide a `passphrase.AcquireNonInteractive(opts Options)` function that acquires a passphrase only from keyring (Touch ID / TPM) or keyfile, without triggering any interactive terminal prompt or stdin pipe read. This function is used by commands that must work in non-interactive environments (e.g., `lango security status` default path).
+The system SHALL provide a `passphrase.AcquireNonInteractive(opts Options)` function that acquires a passphrase only from keyring (Touch ID / TPM) or keyfile, without triggering any interactive terminal prompt or stdin pipe read. This function is used by commands that must work in non-interactive environments (e.g., `lango security status` default path). Warning output emitted by the public wrapper SHALL use the package stderr seam.
 
-#### Scenario: Acquire from keyring succeeds
+#### Scenario: Public non-interactive wrapper supports injected stderr seam
 
-- **WHEN** `AcquireNonInteractive` is called with a non-nil `KeyringProvider` that has a stored passphrase
-- **THEN** the function returns the passphrase and `SourceKeyring`
-- **AND** no interactive prompt is shown (biometric OS-level prompt is permitted)
-
-#### Scenario: Fallback to keyfile when keyring has no value
-
-- **WHEN** `AcquireNonInteractive` is called and the keyring returns `ErrNotFound`
-- **AND** a keyfile exists at the configured path with 0600 permissions
-- **THEN** the function returns the passphrase read from the keyfile and `SourceKeyfile`
-
-#### Scenario: Error when neither source available
-
-- **WHEN** `AcquireNonInteractive` is called and neither keyring nor keyfile provides a passphrase
-- **THEN** the function returns an error without prompting for interactive input
-- **AND** the caller is expected to gracefully degrade (e.g., show zero counts in status)
-
-#### Scenario: Never reads stdin or tty
-
-- **WHEN** `AcquireNonInteractive` is called in any environment
-- **THEN** it SHALL NOT call `term.ReadPassword` (interactive prompt)
-- **AND** it SHALL NOT read from `os.Stdin` pipe
+- **WHEN** `AcquireNonInteractive(...)` observes a keyring read error other than `ErrNotFound`
+- **THEN** it SHALL write the warning to the injected stderr seam
+- **AND** it SHALL NOT require intercepting process-global `os.Stderr`
 
 ### Requirement: No recovery credential choice during bootstrap
 
@@ -121,3 +125,10 @@ The bootstrap credential acquisition phase SHALL NOT offer a mnemonic recovery c
 - **WHEN** bootstrap runs non-interactively (no tty, keyring/keyfile available)
 - **THEN** passphrase acquisition SHALL proceed via the normal priority chain
 - **AND** no behavior change from the previous non-interactive path
+
+### Requirement: Stdin-pipe acquisition uses shared raw line reader
+The non-interactive stdin-pipe passphrase acquisition path SHALL use the shared raw line reader before applying its passphrase-specific trimming and empty-input checks.
+
+#### Scenario: Passphrase stdin path delegates raw line reading
+- **WHEN** `ReadStdinPipeFromReader(...)` reads from injected stdin
+- **THEN** it SHALL obtain the raw line through the shared lower-level helper

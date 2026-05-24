@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/eventbus"
 	sandboxos "github.com/langoai/lango/internal/sandbox/os"
 )
 
@@ -156,6 +157,42 @@ func TestServerConnection_CreateTransport_Errors(t *testing.T) {
 	})
 }
 
+func TestServerConnection_Connect_InvalidTransportSetsFailedState(t *testing.T) {
+	t.Parallel()
+
+	conn := NewServerConnection("bad-transport",
+		config.MCPServerConfig{Transport: "grpc"},
+		config.MCPConfig{},
+	)
+
+	err := conn.Connect(context.Background())
+	require.ErrorIs(t, err, ErrConnectionFailed)
+	require.Contains(t, err.Error(), ErrInvalidTransport.Error())
+	require.Equal(t, StateFailed, conn.State())
+}
+
+func TestServerConnection_DisconnectWithoutSessionStopsConnection(t *testing.T) {
+	t.Parallel()
+
+	conn := NewServerConnection("test", config.MCPServerConfig{}, config.MCPConfig{})
+
+	require.NoError(t, conn.Disconnect(context.Background()))
+	require.Equal(t, StateStopped, conn.State())
+	require.Nil(t, conn.Session())
+	require.NoError(t, conn.Disconnect(context.Background()), "disconnect should be idempotent")
+}
+
+func TestServerConnection_StartHealthCheck_NoIntervalDoesNotStart(t *testing.T) {
+	t.Parallel()
+
+	conn := NewServerConnection("test", config.MCPServerConfig{}, config.MCPConfig{})
+
+	conn.StartHealthCheck(context.Background())
+	conn.healthCheck(context.Background())
+
+	require.Equal(t, StateDisconnected, conn.State())
+}
+
 func TestServerConnection_CreateTransport_Success(t *testing.T) {
 	t.Parallel()
 
@@ -202,6 +239,40 @@ func TestServerConnection_CreateTransport_Success(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotNil(t, transport)
 	})
+}
+
+func TestServerConnection_SetProtectedPathsAndEventBusAffectTransportPolicy(t *testing.T) {
+	t.Parallel()
+
+	bus := eventbus.New()
+	var decisions []eventbus.SandboxDecisionEvent
+	eventbus.SubscribeTyped(bus, func(event eventbus.SandboxDecisionEvent) {
+		decisions = append(decisions, event)
+	})
+
+	originalProtected := t.TempDir()
+	protected := []string{originalProtected}
+	iso := &recordingIsolator{name: "fake"}
+	conn := NewServerConnection("sandboxed",
+		config.MCPServerConfig{Transport: "stdio", Command: "echo"},
+		config.MCPConfig{},
+	)
+	conn.SetOSIsolator(iso, t.TempDir(), "")
+	conn.SetProtectedPaths(protected)
+	conn.SetEventBus(bus)
+	protected[0] = t.TempDir()
+
+	transport, err := conn.createTransport()
+	require.NoError(t, err)
+	require.NotNil(t, transport)
+	require.Len(t, iso.policies, 1)
+	require.Contains(t, iso.policies[0].Filesystem.DenyPaths, originalProtected)
+	require.NotContains(t, iso.policies[0].Filesystem.DenyPaths, protected[0])
+	require.Len(t, decisions, 1)
+	require.Equal(t, "mcp", decisions[0].Source)
+	require.Equal(t, "sandboxed", decisions[0].Command)
+	require.Equal(t, "applied", decisions[0].Decision)
+	require.Equal(t, "fake", decisions[0].Backend)
 }
 
 func TestServerManager_Empty(t *testing.T) {
@@ -345,6 +416,33 @@ func (m *mockIsolator) Apply(_ context.Context, _ *exec.Cmd, _ sandboxos.Policy)
 func (m *mockIsolator) Available() bool { return m.err == nil }
 func (m *mockIsolator) Name() string    { return "mock" }
 func (m *mockIsolator) Reason() string  { return "" }
+
+type recordingIsolator struct {
+	name     string
+	err      error
+	policies []sandboxos.Policy
+}
+
+func (r *recordingIsolator) Apply(_ context.Context, _ *exec.Cmd, policy sandboxos.Policy) error {
+	r.policies = append(r.policies, policy)
+	return r.err
+}
+
+func (r *recordingIsolator) Available() bool { return r.err == nil }
+
+func (r *recordingIsolator) Name() string {
+	if r.name != "" {
+		return r.name
+	}
+	return "recording"
+}
+
+func (r *recordingIsolator) Reason() string {
+	if r.err == nil {
+		return ""
+	}
+	return r.err.Error()
+}
 
 func TestServerConnection_FailClosed_NilIsolator_Stdio(t *testing.T) {
 	t.Parallel()

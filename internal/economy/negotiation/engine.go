@@ -30,6 +30,7 @@ type EventCallback func(sessionID string, phase Phase)
 // Engine manages negotiation sessions.
 type Engine struct {
 	mu       sync.RWMutex
+	eventMu  sync.Mutex
 	sessions map[string]*NegotiationSession
 	cfg      config.NegotiationConfig
 	pricing  PricingQuerier
@@ -59,13 +60,18 @@ func (e *Engine) SetPricing(fn PricingQuerier) {
 
 // SetEventCallback sets the callback for negotiation state changes.
 func (e *Engine) SetEventCallback(fn EventCallback) {
+	e.eventMu.Lock()
+	defer e.eventMu.Unlock()
+
 	e.onEvent = fn
 }
 
 // Propose starts a new negotiation session.
 func (e *Engine) Propose(ctx context.Context, initiatorDID, responderDID string, terms Terms) (*NegotiationSession, error) {
+	e.eventMu.Lock()
+	defer e.eventMu.Unlock()
+
 	e.mu.Lock()
-	defer e.mu.Unlock()
 
 	now := e.nowFunc()
 	sessionID := uuid.New().String()
@@ -93,21 +99,30 @@ func (e *Engine) Propose(ctx context.Context, initiatorDID, responderDID string,
 	}
 
 	e.sessions[sessionID] = session
+	e.mu.Unlock()
+
 	e.fireEvent(sessionID, PhaseProposed)
 	return session, nil
 }
 
 // Counter submits a counter-offer to an existing session.
 func (e *Engine) Counter(ctx context.Context, sessionID, senderDID string, terms Terms, reason string) (*NegotiationSession, error) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
+	e.eventMu.Lock()
+	defer e.eventMu.Unlock()
 
-	session, err := e.getAndValidate(sessionID, senderDID)
+	e.mu.Lock()
+
+	session, expired, err := e.getAndValidate(sessionID, senderDID)
 	if err != nil {
+		e.mu.Unlock()
+		if expired {
+			e.fireEvent(sessionID, PhaseExpired)
+		}
 		return nil, fmt.Errorf("counter %q: %w", sessionID, err)
 	}
 
 	if !session.CanCounter() {
+		e.mu.Unlock()
 		return nil, fmt.Errorf("counter %q: %w", sessionID, ErrMaxRoundsReached)
 	}
 
@@ -127,17 +142,25 @@ func (e *Engine) Counter(ctx context.Context, sessionID, senderDID string, terms
 	session.Proposals = append(session.Proposals, proposal)
 	session.UpdatedAt = now
 
+	e.mu.Unlock()
+
 	e.fireEvent(sessionID, PhaseCountered)
 	return session, nil
 }
 
 // Accept accepts the current terms.
 func (e *Engine) Accept(ctx context.Context, sessionID, senderDID string) (*NegotiationSession, error) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
+	e.eventMu.Lock()
+	defer e.eventMu.Unlock()
 
-	session, err := e.getAndValidate(sessionID, senderDID)
+	e.mu.Lock()
+
+	session, expired, err := e.getAndValidate(sessionID, senderDID)
 	if err != nil {
+		e.mu.Unlock()
+		if expired {
+			e.fireEvent(sessionID, PhaseExpired)
+		}
 		return nil, fmt.Errorf("accept %q: %w", sessionID, err)
 	}
 
@@ -154,17 +177,25 @@ func (e *Engine) Accept(ctx context.Context, sessionID, senderDID string) (*Nego
 	session.Proposals = append(session.Proposals, proposal)
 	session.UpdatedAt = now
 
+	e.mu.Unlock()
+
 	e.fireEvent(sessionID, PhaseAccepted)
 	return session, nil
 }
 
 // Reject rejects and terminates the negotiation.
 func (e *Engine) Reject(ctx context.Context, sessionID, senderDID string, reason string) (*NegotiationSession, error) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
+	e.eventMu.Lock()
+	defer e.eventMu.Unlock()
 
-	session, err := e.getAndValidate(sessionID, senderDID)
+	e.mu.Lock()
+
+	session, expired, err := e.getAndValidate(sessionID, senderDID)
 	if err != nil {
+		e.mu.Unlock()
+		if expired {
+			e.fireEvent(sessionID, PhaseExpired)
+		}
 		return nil, fmt.Errorf("reject %q: %w", sessionID, err)
 	}
 
@@ -182,28 +213,37 @@ func (e *Engine) Reject(ctx context.Context, sessionID, senderDID string, reason
 	session.Proposals = append(session.Proposals, proposal)
 	session.UpdatedAt = now
 
+	e.mu.Unlock()
+
 	e.fireEvent(sessionID, PhaseRejected)
 	return session, nil
 }
 
 // Cancel terminates a session by its initiator.
 func (e *Engine) Cancel(ctx context.Context, sessionID, senderDID string) (*NegotiationSession, error) {
+	e.eventMu.Lock()
+	defer e.eventMu.Unlock()
+
 	e.mu.Lock()
-	defer e.mu.Unlock()
 
 	session, ok := e.sessions[sessionID]
 	if !ok {
+		e.mu.Unlock()
 		return nil, fmt.Errorf("cancel %q: %w", sessionID, ErrSessionNotFound)
 	}
 	if session.IsTerminal() {
+		e.mu.Unlock()
 		return nil, fmt.Errorf("cancel %q: %w", sessionID, ErrSessionTerminal)
 	}
 	if session.InitiatorDID != senderDID {
+		e.mu.Unlock()
 		return nil, fmt.Errorf("cancel %q: %w", sessionID, ErrInvalidSender)
 	}
 
 	session.Phase = PhaseCancelled
 	session.UpdatedAt = e.nowFunc()
+
+	e.mu.Unlock()
 
 	e.fireEvent(sessionID, PhaseCancelled)
 	return session, nil
@@ -249,8 +289,10 @@ func (e *Engine) ListByPeer(peerDID string) []*NegotiationSession {
 
 // CheckExpiry expires timed-out sessions and returns their IDs.
 func (e *Engine) CheckExpiry() []string {
+	e.eventMu.Lock()
+	defer e.eventMu.Unlock()
+
 	e.mu.Lock()
-	defer e.mu.Unlock()
 
 	now := e.nowFunc()
 	var expired []string
@@ -261,9 +303,10 @@ func (e *Engine) CheckExpiry() []string {
 			expired = append(expired, s.ID)
 		}
 	}
+	e.mu.Unlock()
 
 	for _, id := range expired {
-		e.fireEventLocked(id, PhaseExpired)
+		e.fireEvent(id, PhaseExpired)
 	}
 
 	return expired
@@ -347,27 +390,26 @@ func (e *Engine) AutoRespond(ctx context.Context, sessionID string) (*Negotiatio
 
 // getAndValidate returns the session and validates it for action.
 // Caller must hold e.mu.
-func (e *Engine) getAndValidate(sessionID, senderDID string) (*NegotiationSession, error) {
+func (e *Engine) getAndValidate(sessionID, senderDID string) (*NegotiationSession, bool, error) {
 	session, ok := e.sessions[sessionID]
 	if !ok {
-		return nil, ErrSessionNotFound
+		return nil, false, ErrSessionNotFound
 	}
 	if session.IsTerminal() {
-		return nil, ErrSessionTerminal
+		return nil, false, ErrSessionTerminal
 	}
 	if e.nowFunc().After(session.ExpiresAt) {
 		session.Phase = PhaseExpired
 		session.UpdatedAt = e.nowFunc()
-		e.fireEventLocked(sessionID, PhaseExpired)
-		return nil, ErrSessionExpired
+		return nil, true, ErrSessionExpired
 	}
 	if !isParticipant(session, senderDID) {
-		return nil, ErrInvalidSender
+		return nil, false, ErrInvalidSender
 	}
 	if !isValidTurn(session, senderDID) {
-		return nil, ErrNotYourTurn
+		return nil, false, ErrNotYourTurn
 	}
-	return session, nil
+	return session, false, nil
 }
 
 // isParticipant checks that the sender is one of the participants.
@@ -384,15 +426,9 @@ func isValidTurn(session *NegotiationSession, senderDID string) bool {
 	return last.SenderDID != senderDID
 }
 
-// fireEvent calls the event callback if set. Caller must NOT hold e.mu write lock.
+// fireEvent calls the event callback if set. Caller must hold e.eventMu and
+// must NOT hold e.mu so callbacks can safely read session state through Get.
 func (e *Engine) fireEvent(sessionID string, phase Phase) {
-	if e.onEvent != nil {
-		e.onEvent(sessionID, phase)
-	}
-}
-
-// fireEventLocked calls the event callback if set. Safe to call while holding e.mu.
-func (e *Engine) fireEventLocked(sessionID string, phase Phase) {
 	if e.onEvent != nil {
 		e.onEvent(sessionID, phase)
 	}

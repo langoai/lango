@@ -1,59 +1,61 @@
 package learning
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
+	"io"
 	"text/tabwriter"
 	"time"
 
-	"entgo.io/ent/dialect/sql"
-
 	"github.com/langoai/lango/internal/bootstrap"
-	"github.com/langoai/lango/internal/ent"
-	entlearning "github.com/langoai/lango/internal/ent/learning"
+	"github.com/langoai/lango/internal/storage"
 	"github.com/langoai/lango/internal/toolchain"
 	"github.com/spf13/cobra"
 )
 
 func newHistoryCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 	var (
-		jsonOutput bool
-		limit      int
+		output string
+		limit  int
 	)
 
 	cmd := &cobra.Command{
-		Use:   "history",
-		Short: "Show recent learning entries and corrections",
+		Use:           "history",
+		Short:         "Show recent learning entries and corrections",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			output, err := resolveOutput(cmd)
+			if err != nil {
+				return err
+			}
 			boot, err := bootLoader()
 			if err != nil {
 				return fmt.Errorf("bootstrap: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
-			entries, err := boot.DBClient.Learning.Query().
-				Order(entlearning.ByCreatedAt(sql.OrderDesc())).
-				Limit(limit).
-				All(cmd.Context())
+			if boot.Storage == nil {
+				return fmt.Errorf("learning storage unavailable")
+			}
+			entries, err := boot.Storage.LearningHistory(cmd.Context(), limit)
 			if err != nil {
 				return fmt.Errorf("query learnings: %w", err)
 			}
 
-			if jsonOutput {
-				return printHistoryJSON(entries)
+			if output == "json" {
+				return printHistoryJSON(cmd.OutOrStdout(), entries)
 			}
-			return printHistoryTable(entries)
+			return printHistoryTable(cmd.OutOrStdout(), entries)
 		},
 	}
 
-	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
+	cmd.Flags().StringVar(&output, "output", "table", "Output format: table or json")
 	cmd.Flags().IntVar(&limit, "limit", 20, "Maximum number of entries to show")
 
 	return cmd
 }
 
-func printHistoryJSON(entries []*ent.Learning) error {
+func printHistoryJSON(writer io.Writer, entries []storage.LearningHistoryRecord) error {
 	type entry struct {
 		ID         string  `json:"id"`
 		Trigger    string  `json:"trigger"`
@@ -67,9 +69,9 @@ func printHistoryJSON(entries []*ent.Learning) error {
 	out := make([]entry, 0, len(entries))
 	for _, e := range entries {
 		out = append(out, entry{
-			ID:         e.ID.String(),
+			ID:         e.ID,
 			Trigger:    e.Trigger,
-			Category:   string(e.Category),
+			Category:   e.Category,
 			Diagnosis:  e.Diagnosis,
 			Fix:        e.Fix,
 			Confidence: e.Confidence,
@@ -77,22 +79,20 @@ func printHistoryJSON(entries []*ent.Learning) error {
 		})
 	}
 
-	enc := json.NewEncoder(os.Stdout)
-	enc.SetIndent("", "  ")
-	return enc.Encode(out)
+	return printJSON(writer, out)
 }
 
-func printHistoryTable(entries []*ent.Learning) error {
+func printHistoryTable(writer io.Writer, entries []storage.LearningHistoryRecord) error {
 	if len(entries) == 0 {
-		fmt.Println("No learning entries found.")
+		fmt.Fprintln(writer, "No learning entries found.")
 		return nil
 	}
 
-	w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+	w := tabwriter.NewWriter(writer, 0, 4, 2, ' ', 0)
 	fmt.Fprintln(w, "ID\tCATEGORY\tTRIGGER\tCONFIDENCE\tCREATED")
 	for _, e := range entries {
 		fmt.Fprintf(w, "%s\t%s\t%s\t%.2f\t%s\n",
-			e.ID.String()[:8],
+			e.ID[:8],
 			e.Category,
 			toolchain.Truncate(e.Trigger, 37),
 			e.Confidence,

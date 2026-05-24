@@ -90,7 +90,7 @@ func BuildTools(cp security.CryptoProvider, keys *security.KeyRegistry, refs *se
 				SearchHints:     []string{"keys", "list"},
 			},
 			Parameters: agent.Schema().Build(),
-			Handler:     ct.Keys,
+			Handler:    ct.Keys,
 		},
 	}
 }

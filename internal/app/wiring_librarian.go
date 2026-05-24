@@ -5,6 +5,7 @@ import (
 	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/librarian"
 	"github.com/langoai/lango/internal/session"
+	"github.com/langoai/lango/internal/storagebroker"
 	"github.com/langoai/lango/internal/supervisor"
 	"github.com/langoai/lango/internal/types"
 )
@@ -25,6 +26,7 @@ func initLibrarian(
 	mc *memoryComponents,
 	gc *graphComponents,
 	bus *eventbus.Bus,
+	broker storagebroker.API,
 ) (*librarianComponents, *types.FeatureStatus) {
 	const featureName = "Librarian"
 
@@ -63,6 +65,9 @@ func initLibrarian(
 	lLogger := logger()
 
 	inquiryStore := librarian.NewInquiryStore(client, lLogger)
+	if broker != nil {
+		inquiryStore.SetPayloadProtector(storagebroker.NewPayloadProtector(broker))
+	}
 
 	// Create LLM proxy.
 	provider := cfg.Librarian.Provider

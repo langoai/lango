@@ -6,6 +6,8 @@ title: Learning System
 
 Lango includes a self-learning system that observes tool execution, extracts knowledge from conversations, and builds a knowledge graph of error-fix relationships. Over time, the agent becomes better at handling recurring situations.
 
+Learning payload fields (`error_pattern`, `diagnosis`, `fix`) are stored as broker-protected bundles. Plaintext columns and FTS rows keep only redacted projections for search and inspection.
+
 ## Architecture
 
 ```

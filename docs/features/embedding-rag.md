@@ -18,13 +18,13 @@ Lango supports vector embeddings for semantic search and Retrieval-Augmented Gen
 
 ### Interactive Setup
 
-The easiest way to configure embedding is through the onboarding wizard:
+Configure embedding interactively through the full settings editor:
 
 ```bash
-lango onboard
+lango settings
 ```
 
-Select **Embedding & RAG** from the setup menu.
+The 5-step `lango onboard` wizard only covers initial provider, agent, channel, and basic security bootstrap.
 
 ### Config File
 

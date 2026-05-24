@@ -1,6 +1,7 @@
 package logging
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"testing"
@@ -27,6 +28,23 @@ func TestInit_ConsoleFormat(t *testing.T) {
 		Format: "console",
 	})
 	require.NoError(t, err)
+}
+
+func TestInit_DefaultOutputUsesWriterSeam(t *testing.T) {
+	restoreLoggingGlobals(t)
+
+	var buf bytes.Buffer
+	defaultLogWriter = &buf
+
+	err := Init(LogConfig{
+		Level:  "info",
+		Format: "json",
+	})
+	require.NoError(t, err)
+
+	Logger().Info("default-writer-seam")
+	require.NoError(t, Sync())
+	assert.Contains(t, buf.String(), "default-writer-seam")
 }
 
 func TestInit_OutputToFile(t *testing.T) {
@@ -160,4 +178,18 @@ func TestCommonSubsystemLoggers(t *testing.T) {
 			assert.NotNil(t, logger)
 		})
 	}
+}
+
+func restoreLoggingGlobals(t *testing.T) {
+	t.Helper()
+
+	origRoot := rootLogger
+	origSugar := sugarLogger
+	origDefaultWriter := defaultLogWriter
+
+	t.Cleanup(func() {
+		rootLogger = origRoot
+		sugarLogger = origSugar
+		defaultLogWriter = origDefaultWriter
+	})
 }

@@ -20,6 +20,10 @@ The system SHALL provide a `SignatureScheme` struct in `internal/security` conta
 
 The system SHALL define canonical algorithm identifier constants: `AlgorithmSecp256k1Keccak256 = "secp256k1-keccak256"` and `AlgorithmEd25519 = "ed25519"` in `internal/security`. These are the single source of truth for algorithm identifiers across the codebase.
 
+#### Scenario: Canonical algorithm identifiers are exposed from security
+- **WHEN** callers import signature algorithm identifiers from `internal/security`
+- **THEN** they SHALL receive the canonical `secp256k1-keccak256` and `ed25519` identifier constants from that package
+
 ### Requirement: Secp256k1Keccak256 verification
 
 The `VerifySecp256k1Keccak256(publicKey, message, signature []byte) error` function SHALL hash the message with Keccak256, recover the public key from the 65-byte ECDSA signature, and compare with the claimed compressed public key.

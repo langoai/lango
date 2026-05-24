@@ -23,8 +23,8 @@ var _ RetrievalAgent = (*TemporalSearchAgent)(nil)
 const maxAgeHours = 168 // 1 week
 
 // TemporalSearchAgent retrieves recently-updated knowledge entries and scores
-// them by recency. It complements FactSearchAgent (keyword) and ContextSearchAgent
-// (vector) by surfacing items based on freshness rather than textual relevance.
+// them by recency. It complements FactSearchAgent (keyword) by surfacing items
+// based on freshness rather than textual relevance.
 //
 // v1 scope: LayerUserKnowledge only. Learnings lack version chains and are excluded.
 type TemporalSearchAgent struct {

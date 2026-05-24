@@ -345,7 +345,7 @@ func (f *fakeGraphStore) AddTriple(_ context.Context, t graph.Triple) error {
 	return nil
 }
 func (f *fakeGraphStore) AddTriples(_ context.Context, _ []graph.Triple) error { return nil }
-func (f *fakeGraphStore) RemoveTriple(_ context.Context, _ graph.Triple) error  { return nil }
+func (f *fakeGraphStore) RemoveTriple(_ context.Context, _ graph.Triple) error { return nil }
 func (f *fakeGraphStore) QueryBySubject(_ context.Context, _ string) ([]graph.Triple, error) {
 	return nil, nil
 }
@@ -358,8 +358,8 @@ func (f *fakeGraphStore) QueryBySubjectPredicate(_ context.Context, _, _ string)
 func (f *fakeGraphStore) Traverse(_ context.Context, _ string, _ int, _ []string) ([]graph.Triple, error) {
 	return nil, nil
 }
-func (f *fakeGraphStore) Count(_ context.Context) (int, error)                { return 0, nil }
+func (f *fakeGraphStore) Count(_ context.Context) (int, error)                     { return 0, nil }
 func (f *fakeGraphStore) PredicateStats(_ context.Context) (map[string]int, error) { return nil, nil }
-func (f *fakeGraphStore) AllTriples(_ context.Context) ([]graph.Triple, error) { return nil, nil }
-func (f *fakeGraphStore) ClearAll(_ context.Context) error                     { return nil }
-func (f *fakeGraphStore) Close() error                                         { return nil }
+func (f *fakeGraphStore) AllTriples(_ context.Context) ([]graph.Triple, error)     { return nil, nil }
+func (f *fakeGraphStore) ClearAll(_ context.Context) error                         { return nil }
+func (f *fakeGraphStore) Close() error                                             { return nil }

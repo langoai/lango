@@ -2,25 +2,31 @@
 package configcmd
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
+	"os"
 	"reflect"
 	"sort"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/spf13/cobra"
 
+	"github.com/langoai/lango/internal/cli/clihttp"
 	"github.com/langoai/lango/internal/config"
 )
 
 // NewGetCmd creates the "config get <dot.path>" command.
 func NewGetCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
-	var outputFmt string
-
+	showSecrets := false
 	cmd := &cobra.Command{
-		Use:   "get <dot.path>",
-		Short: "Read a configuration value by dot-notation path",
+		Use:           "get <dot.path>",
+		Short:         "Read a configuration value by dot-notation path",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		Long: `Read a configuration value using dot-notation (e.g. agent.provider, p2p.enabled).
 
 This is a read-only operation. Use "lango config set" to modify values.
@@ -29,9 +35,14 @@ Examples:
   lango config get agent.provider
   lango config get p2p.enabled
   lango config get economy.budget.defaultMax
-  lango config get agent --output json`,
+  lango config get agent --output json
+  lango config get providers.openai.apiKey --show-secrets`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			outputFmt, err := resolvePlainOrJSONOutput(cmd)
+			if err != nil {
+				return err
+			}
 			cfg, err := cfgLoader()
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
@@ -41,26 +52,46 @@ Examples:
 			if err != nil {
 				return err
 			}
+			if !showSecrets {
+				val = redactConfigGetValue(args[0], val, outputFmt)
+			}
 
-			return printValue(val, outputFmt)
+			return printValue(cmd.OutOrStdout(), val, outputFmt)
 		},
 	}
 
-	cmd.Flags().StringVarP(&outputFmt, "output", "o", "plain", "Output format (plain, json)")
+	cmd.Flags().StringP("output", "o", "plain", "Output format (plain, json)")
+	cmd.Flags().BoolVar(&showSecrets, "show-secrets", false, "Show raw sensitive values")
 	return cmd
+}
+
+func resolvePlainOrJSONOutput(cmd *cobra.Command) (string, error) {
+	flag, _ := cmd.Flags().GetString("output")
+	switch normalized := strings.ToLower(strings.TrimSpace(flag)); normalized {
+	case "", "plain":
+		return "plain", nil
+	case "json":
+		return "json", nil
+	default:
+		return "", fmt.Errorf("unknown output format %q (expected: plain or json)", strings.TrimSpace(flag))
+	}
 }
 
 // NewSetCmd creates the "config set <dot.path> <value>" command.
 // The passphrase is implicitly verified via bootstrap (caller must bootstrap first).
-// cfgLoader returns (config, cleanup, error). cleanup closes bootstrap resources
-// and is called via defer in RunE so resources are released on all code paths.
+// cfgLoader returns (config, explicitKeys, cleanup, error). cleanup closes
+// bootstrap resources and is called via defer in RunE so resources are released
+// on all code paths.
 func NewSetCmd(
-	cfgLoader func() (*config.Config, func(), error),
-	cfgSaver func(*config.Config) error,
+	cfgLoader func() (*config.Config, map[string]bool, func(), error),
+	cfgSaver func(*config.Config, map[string]bool) error,
 ) *cobra.Command {
+	var fromEnv string
 	cmd := &cobra.Command{
-		Use:   "set <dot.path> <value>",
-		Short: "Set a configuration value (requires passphrase verification)",
+		Use:           "set <dot.path> [value]",
+		Short:         "Set a configuration value (requires passphrase verification)",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		Long: `Set a configuration value using dot-notation.
 
 This command requires passphrase verification because it modifies the encrypted
@@ -70,10 +101,23 @@ passphrase interactively, preventing unauthorized config changes.
 Examples:
   lango config set agent.provider openai
   lango config set p2p.enabled true
-  lango config set economy.budget.defaultMax 20.00`,
-		Args: cobra.ExactArgs(2),
+  lango config set economy.budget.defaultMax 20.00
+  lango config set providers.openai.apiKey --from-env OPENAI_API_KEY`,
+		Args: configSetArgs(&fromEnv),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, cleanup, err := cfgLoader()
+			value := ""
+			if cmd.Flags().Changed("from-env") {
+				envName := strings.TrimSpace(fromEnv)
+				envValue, ok := os.LookupEnv(envName)
+				if !ok {
+					return fmt.Errorf("environment variable %q is not set", envName)
+				}
+				value = envValue
+			} else {
+				value = args[1]
+			}
+
+			cfg, explicitKeys, cleanup, err := cfgLoader()
 			if cleanup != nil {
 				defer cleanup()
 			}
@@ -81,20 +125,316 @@ Examples:
 				return fmt.Errorf("load config: %w", err)
 			}
 
-			if err := setConfigPath(cfg, args[0], args[1]); err != nil {
+			if err := setConfigPath(cfg, args[0], value); err != nil {
 				return err
 			}
 
-			if err := cfgSaver(cfg); err != nil {
+			explicitKeys = explicitKeysForSetPath(explicitKeys, args[0])
+			if err := cfgSaver(cfg, explicitKeys); err != nil {
 				return fmt.Errorf("save config: %w", err)
 			}
 
-			fmt.Printf("Set %s = %s\n", args[0], args[1])
-			return nil
+			displayValue := configSetDisplayValue(args[0], value)
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Set %s = %s\n", args[0], displayValue)
+			return err
 		},
 	}
 
+	cmd.Flags().StringVar(&fromEnv, "from-env", "", "Read value from environment variable")
 	return cmd
+}
+
+func configSetArgs(fromEnv *string) cobra.PositionalArgs {
+	return func(cmd *cobra.Command, args []string) error {
+		if !cmd.Flags().Changed("from-env") {
+			return cobra.ExactArgs(2)(cmd, args)
+		}
+		if strings.TrimSpace(*fromEnv) == "" {
+			return fmt.Errorf("--from-env requires an environment variable name")
+		}
+		if len(args) == 2 {
+			return fmt.Errorf("--from-env cannot be combined with a value argument")
+		}
+		if len(args) != 1 {
+			return fmt.Errorf("accepts 1 arg with --from-env: <dot.path>")
+		}
+		return nil
+	}
+}
+
+func configSetDisplayValue(path, value string) string {
+	if configSetPathIsSensitive(path) {
+		return "<redacted>"
+	}
+	return value
+}
+
+func redactConfigGetValue(path string, value interface{}, outputFmt string) interface{} {
+	pathSegments := splitConfigPath(path)
+	if configPathSegmentsAreSensitive(pathSegments) {
+		return "<redacted>"
+	}
+	if outputFmt == "json" {
+		if normalized, ok := configGetJSONCompatibleValue(value); ok {
+			return redactConfigGetGenericValue(pathSegments, normalized)
+		}
+	}
+	if reflect.ValueOf(value).Kind() == reflect.Invalid {
+		return value
+	}
+	if isConfigGetScalarValue(reflect.ValueOf(value)) {
+		return value
+	}
+	return redactConfigGetReflectValue(pathSegments, reflect.ValueOf(value))
+}
+
+func isConfigGetScalarValue(value reflect.Value) bool {
+	for value.Kind() == reflect.Interface || value.Kind() == reflect.Ptr {
+		if value.IsNil() {
+			return true
+		}
+		value = value.Elem()
+	}
+	switch value.Kind() {
+	case reflect.Struct, reflect.Map, reflect.Slice, reflect.Array:
+		return false
+	default:
+		return true
+	}
+}
+
+func configGetJSONCompatibleValue(value interface{}) (interface{}, bool) {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return nil, false
+	}
+
+	var decoded interface{}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	if err := decoder.Decode(&decoded); err != nil {
+		return nil, false
+	}
+	return decoded, true
+}
+
+func redactConfigGetGenericValue(path []string, value interface{}) interface{} {
+	if configPathSegmentsAreSensitive(path) {
+		return "<redacted>"
+	}
+
+	switch typed := value.(type) {
+	case map[string]interface{}:
+		out := make(map[string]interface{}, len(typed))
+		for key, nested := range typed {
+			fieldPath := appendConfigPathSegment(path, key)
+			out[key] = redactConfigGetGenericValue(fieldPath, nested)
+		}
+		return out
+	case []interface{}:
+		out := make([]interface{}, len(typed))
+		for i, nested := range typed {
+			out[i] = redactConfigGetGenericValue(path, nested)
+		}
+		return out
+	default:
+		return value
+	}
+}
+
+func redactConfigGetReflectValue(path []string, value reflect.Value) interface{} {
+	if !value.IsValid() {
+		return nil
+	}
+	if value.Kind() == reflect.Interface {
+		if value.IsNil() {
+			return nil
+		}
+		return redactConfigGetReflectValue(path, value.Elem())
+	}
+	if configPathSegmentsAreSensitive(path) {
+		return "<redacted>"
+	}
+
+	switch value.Kind() {
+	case reflect.Ptr:
+		if value.IsNil() {
+			return nil
+		}
+		if value.CanInterface() {
+			if _, ok := value.Interface().(json.Marshaler); ok {
+				return value.Interface()
+			}
+		}
+		return redactConfigGetReflectValue(path, value.Elem())
+	case reflect.Struct:
+		if value.CanInterface() {
+			if _, ok := value.Interface().(json.Marshaler); ok {
+				return value.Interface()
+			}
+		}
+		return redactConfigGetStruct(path, value)
+	case reflect.Map:
+		return redactConfigGetMap(path, value)
+	case reflect.Slice, reflect.Array:
+		return redactConfigGetSlice(path, value)
+	default:
+		return value.Interface()
+	}
+}
+
+func redactConfigGetStruct(path []string, value reflect.Value) map[string]interface{} {
+	typ := value.Type()
+	out := make(map[string]interface{})
+	for i := 0; i < value.NumField(); i++ {
+		field := typ.Field(i)
+		if field.PkgPath != "" {
+			continue
+		}
+		name := configFieldPathName(field)
+		if name == "" {
+			continue
+		}
+		fieldPath := appendConfigPathSegment(path, name)
+		out[name] = redactConfigGetReflectValue(fieldPath, value.Field(i))
+	}
+	return out
+}
+
+func redactConfigGetMap(path []string, value reflect.Value) map[string]interface{} {
+	out := make(map[string]interface{}, value.Len())
+	for _, key := range value.MapKeys() {
+		keyText := fmt.Sprintf("%v", key.Interface())
+		fieldPath := appendConfigPathSegment(path, keyText)
+		out[keyText] = redactConfigGetReflectValue(fieldPath, value.MapIndex(key))
+	}
+	return out
+}
+
+func redactConfigGetSlice(path []string, value reflect.Value) []interface{} {
+	out := make([]interface{}, value.Len())
+	for i := 0; i < value.Len(); i++ {
+		out[i] = redactConfigGetReflectValue(path, value.Index(i))
+	}
+	return out
+}
+
+func splitConfigPath(path string) []string {
+	if path == "" {
+		return nil
+	}
+	return strings.Split(path, ".")
+}
+
+func appendConfigPathSegment(path []string, segment string) []string {
+	out := make([]string, 0, len(path)+1)
+	out = append(out, path...)
+	out = append(out, segment)
+	return out
+}
+
+func configFieldPathName(field reflect.StructField) string {
+	tag := field.Tag.Get("mapstructure")
+	if tag == "-" {
+		return ""
+	}
+	if tag != "" {
+		name := strings.Split(tag, ",")[0]
+		if name != "" {
+			return name
+		}
+	}
+	jsonTag := field.Tag.Get("json")
+	if jsonTag == "-" {
+		return ""
+	}
+	if jsonTag != "" {
+		name := strings.Split(jsonTag, ",")[0]
+		if name != "" {
+			return name
+		}
+	}
+	return field.Name
+}
+
+func configSetPathIsSensitive(path string) bool {
+	return configPathSegmentsAreSensitive(splitConfigPath(path))
+}
+
+func configPathSegmentsAreSensitive(path []string) bool {
+	for _, segment := range path {
+		if configSetSegmentIsSensitive(normalizeConfigPathSegment(segment)) {
+			return true
+		}
+	}
+	return false
+}
+
+func configSetSegmentIsSensitive(segment string) bool {
+	switch {
+	case strings.HasSuffix(segment, "apikey"):
+		return true
+	case strings.Contains(segment, "authorization"):
+		return true
+	case strings.Contains(segment, "secret"):
+		return true
+	case strings.Contains(segment, "password"):
+		return true
+	case strings.Contains(segment, "webhookurl"):
+		return true
+	case segment == "pin":
+		return true
+	case segment == "credential":
+		return true
+	case segment == "credentials":
+		return true
+	case strings.HasSuffix(segment, "credential"):
+		return true
+	case strings.HasSuffix(segment, "credentials"):
+		return true
+	case strings.HasSuffix(segment, "token"):
+		return true
+	case strings.HasSuffix(segment, "privatekey"):
+		return true
+	case strings.HasSuffix(segment, "accesskey"):
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizeConfigPathSegment(segment string) string {
+	var builder strings.Builder
+	builder.Grow(len(segment))
+	for _, r := range segment {
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
+			continue
+		}
+		builder.WriteRune(unicode.ToLower(r))
+	}
+	return builder.String()
+}
+
+func explicitKeysForSetPath(existing map[string]bool, path string) map[string]bool {
+	isContextRelated := false
+	for _, key := range config.ContextRelatedKeys() {
+		if key == path {
+			isContextRelated = true
+			break
+		}
+	}
+	if existing == nil && !isContextRelated {
+		return nil
+	}
+
+	out := make(map[string]bool, len(existing)+1)
+	for key, value := range existing {
+		out[key] = value
+	}
+	if isContextRelated {
+		out[path] = true
+	}
+	return out
 }
 
 // NewKeysCmd creates the "config keys [prefix]" command.
@@ -122,7 +462,7 @@ Examples:
 
 			for _, k := range keys {
 				if prefix == "" || strings.HasPrefix(k, prefix) {
-					fmt.Println(k)
+					fmt.Fprintln(cmd.OutOrStdout(), k)
 				}
 			}
 
@@ -135,6 +475,7 @@ Examples:
 func resolveConfigPath(cfg *config.Config, path string) (interface{}, error) {
 	parts := strings.Split(path, ".")
 	v := reflect.ValueOf(cfg).Elem()
+	prefixParts := make([]string, 0, len(parts))
 
 	for _, part := range parts {
 		if v.Kind() == reflect.Ptr {
@@ -155,14 +496,20 @@ func resolveConfigPath(cfg *config.Config, path string) (interface{}, error) {
 		}
 
 		if v.Kind() != reflect.Struct {
-			return nil, fmt.Errorf("config path %q: %q is not a struct (kind: %s)", path, part, v.Kind())
+			return nil, nonStructConfigPathError(
+				path,
+				part,
+				v.Kind().String(),
+				strings.Join(prefixParts, "."),
+			)
 		}
 
 		idx := findFieldByTag(v.Type(), part)
 		if idx < 0 {
-			return nil, fmt.Errorf("config path %q: field %q not found", path, part)
+			return nil, unknownConfigFieldError(path, part, strings.Join(prefixParts, "."))
 		}
 		v = v.Field(idx)
+		prefixParts = append(prefixParts, part)
 	}
 
 	return v.Interface(), nil
@@ -172,35 +519,250 @@ func resolveConfigPath(cfg *config.Config, path string) (interface{}, error) {
 func setConfigPath(cfg *config.Config, path, rawVal string) error {
 	parts := strings.Split(path, ".")
 	v := reflect.ValueOf(cfg).Elem()
+	return setConfigValue(v, parts, rawVal, path, nil)
+}
 
-	for i, part := range parts {
-		if v.Kind() == reflect.Ptr {
-			if v.IsNil() {
-				v.Set(reflect.New(v.Type().Elem()))
-			}
-			v = v.Elem()
-		}
-
-		if v.Kind() != reflect.Struct {
-			return fmt.Errorf("config path %q: %q is not a struct", path, part)
-		}
-
-		idx := findFieldByTag(v.Type(), part)
-		if idx < 0 {
-			return fmt.Errorf("config path %q: field %q not found", path, part)
-		}
-
-		if i < len(parts)-1 {
-			v = v.Field(idx)
-			continue
-		}
-
-		// Last segment — set the value.
-		field := v.Field(idx)
-		return setField(field, rawVal, path)
+func setConfigValue(
+	v reflect.Value,
+	parts []string,
+	rawVal string,
+	fullPath string,
+	prefixParts []string,
+) error {
+	if len(parts) == 0 {
+		return fmt.Errorf("config path %q: empty path", fullPath)
 	}
 
-	return fmt.Errorf("config path %q: empty path", path)
+	for v.Kind() == reflect.Ptr {
+		if v.IsNil() {
+			v.Set(reflect.New(v.Type().Elem()))
+		}
+		v = v.Elem()
+	}
+
+	part := parts[0]
+	switch v.Kind() {
+	case reflect.Struct:
+		idx := findFieldByTag(v.Type(), part)
+		if idx < 0 {
+			return unknownConfigFieldError(fullPath, part, strings.Join(prefixParts, "."))
+		}
+
+		field := v.Field(idx)
+		if len(parts) == 1 {
+			return setField(field, rawVal, fullPath)
+		}
+		return setConfigValue(field, parts[1:], rawVal, fullPath, append(prefixParts, part))
+	case reflect.Map:
+		return setMapConfigValue(v, parts, rawVal, fullPath, prefixParts)
+	default:
+		return nonStructConfigPathError(
+			fullPath,
+			part,
+			"",
+			strings.Join(prefixParts, "."),
+		)
+	}
+}
+
+func setMapConfigValue(
+	v reflect.Value,
+	parts []string,
+	rawVal string,
+	fullPath string,
+	prefixParts []string,
+) error {
+	if v.Type().Key().Kind() != reflect.String {
+		return fmt.Errorf(
+			"config path %q: unsupported map key type %s",
+			fullPath,
+			v.Type().Key(),
+		)
+	}
+	if v.IsNil() {
+		v.Set(reflect.MakeMap(v.Type()))
+	}
+
+	key := reflect.ValueOf(parts[0]).Convert(v.Type().Key())
+	elemType := v.Type().Elem()
+	if len(parts) == 1 {
+		if elemType.Kind() != reflect.String {
+			return fmt.Errorf(
+				"config path %q: unsupported map value type %s",
+				fullPath,
+				elemType,
+			)
+		}
+		elem := reflect.New(elemType).Elem()
+		elem.SetString(rawVal)
+		v.SetMapIndex(key, elem)
+		return nil
+	}
+
+	elem := reflect.New(elemType).Elem()
+	if current := v.MapIndex(key); current.IsValid() {
+		elem.Set(current)
+	}
+
+	if err := setConfigValue(
+		elem,
+		parts[1:],
+		rawVal,
+		fullPath,
+		append(prefixParts, parts[0]),
+	); err != nil {
+		return err
+	}
+	v.SetMapIndex(key, elem)
+	return nil
+}
+
+func unknownConfigFieldError(path, field, validPrefix string) error {
+	return configPathDiscoveryError(
+		fmt.Sprintf("config path %q: field %q not found", path, field),
+		validPrefix,
+		suggestConfigKeys(path, validPrefix),
+	)
+}
+
+func nonStructConfigPathError(path, field, kind, leafPath string) error {
+	message := fmt.Sprintf("config path %q: %q is not a struct", path, field)
+	if kind != "" {
+		message += fmt.Sprintf(" (kind: %s)", kind)
+	}
+	return configPathDiscoveryError(
+		message,
+		parentConfigPrefix(leafPath),
+		[]string{leafPath},
+	)
+}
+
+func configPathDiscoveryError(message, validPrefix string, suggestions []string) error {
+	parts := []string{message}
+	if suggestions = uniqueNonEmptyStrings(suggestions); len(suggestions) > 0 {
+		parts = append(parts, "did you mean: "+strings.Join(suggestions, ", "))
+	}
+
+	hint := "lango config keys"
+	if validPrefix != "" {
+		hint += " " + validPrefix
+	}
+	parts = append(parts, "list keys: "+hint)
+
+	return fmt.Errorf("%s", strings.Join(parts, "; "))
+}
+
+func parentConfigPrefix(path string) string {
+	if idx := strings.LastIndex(path, "."); idx > 0 {
+		return path[:idx]
+	}
+	return ""
+}
+
+func uniqueNonEmptyStrings(values []string) []string {
+	seen := make(map[string]bool, len(values))
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		if value == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		out = append(out, value)
+	}
+	return out
+}
+
+func suggestConfigKeys(path, validPrefix string) []string {
+	keys := collectKeys(reflect.TypeOf(config.Config{}), "")
+	samePrefix := make([]string, 0, len(keys))
+	if validPrefix != "" {
+		prefix := validPrefix + "."
+		for _, key := range keys {
+			if strings.HasPrefix(key, prefix) {
+				samePrefix = append(samePrefix, key)
+			}
+		}
+	}
+	if len(samePrefix) > 0 {
+		return nearestConfigKeys(path, samePrefix)
+	}
+	return nearestConfigKeys(path, keys)
+}
+
+func nearestConfigKeys(path string, keys []string) []string {
+	type candidate struct {
+		key      string
+		distance int
+	}
+
+	candidates := make([]candidate, 0, len(keys))
+	for _, key := range keys {
+		distance := editDistance(path, key)
+		if distance <= 3 {
+			candidates = append(candidates, candidate{key: key, distance: distance})
+		}
+	}
+	sort.Slice(candidates, func(i, j int) bool {
+		if candidates[i].distance != candidates[j].distance {
+			return candidates[i].distance < candidates[j].distance
+		}
+		return candidates[i].key < candidates[j].key
+	})
+
+	limit := len(candidates)
+	if limit > 3 {
+		limit = 3
+	}
+	out := make([]string, 0, limit)
+	for i := 0; i < limit; i++ {
+		out = append(out, candidates[i].key)
+	}
+	return out
+}
+
+func editDistance(a, b string) int {
+	if a == b {
+		return 0
+	}
+	if a == "" {
+		return len(b)
+	}
+	if b == "" {
+		return len(a)
+	}
+
+	prev := make([]int, len(b)+1)
+	curr := make([]int, len(b)+1)
+	for j := range prev {
+		prev[j] = j
+	}
+
+	for i := 1; i <= len(a); i++ {
+		curr[0] = i
+		for j := 1; j <= len(b); j++ {
+			cost := 0
+			if a[i-1] != b[j-1] {
+				cost = 1
+			}
+			curr[j] = minInt(
+				prev[j]+1,
+				curr[j-1]+1,
+				prev[j-1]+cost,
+			)
+		}
+		prev, curr = curr, prev
+	}
+	return prev[len(b)]
+}
+
+func minInt(first int, rest ...int) int {
+	minimum := first
+	for _, value := range rest {
+		if value < minimum {
+			minimum = value
+		}
+	}
+	return minimum
 }
 
 // setField sets a reflect.Value from a raw string based on its type.
@@ -281,11 +843,15 @@ func collectKeys(t reflect.Type, prefix string) []string {
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()
 	}
+
+	var keys []string
+	if t.Kind() == reflect.Map {
+		return collectMapKeys(t, prefix)
+	}
 	if t.Kind() != reflect.Struct {
 		return nil
 	}
 
-	var keys []string
 	for i := 0; i < t.NumField(); i++ {
 		f := t.Field(i)
 		tag := f.Tag.Get("mapstructure")
@@ -303,34 +869,115 @@ func collectKeys(t reflect.Type, prefix string) []string {
 			ft = ft.Elem()
 		}
 
-		if ft.Kind() == reflect.Struct && ft.String() != "time.Duration" {
-			// Skip map types (providers, servers, etc.)
-			if f.Type.Kind() == reflect.Map {
-				keys = append(keys, fullKey+".<name>.*")
-				continue
-			}
+		switch {
+		case ft.Kind() == reflect.Map:
+			keys = append(keys, fullKey)
+			keys = append(keys, collectMapKeys(ft, fullKey)...)
+		case ft.Kind() == reflect.Struct && ft.String() != "time.Duration":
 			keys = append(keys, collectKeys(ft, fullKey)...)
-		} else {
+		default:
 			keys = append(keys, fullKey)
 		}
 	}
 	return keys
 }
 
+func collectMapKeys(t reflect.Type, prefix string) []string {
+	if t.Key().Kind() != reflect.String {
+		return nil
+	}
+
+	elem := t.Elem()
+	if elem.Kind() == reflect.Ptr {
+		elem = elem.Elem()
+	}
+
+	switch {
+	case elem.Kind() == reflect.Struct && elem.String() != "time.Duration":
+		return collectSettableConfigKeys(elem, joinConfigKey(prefix, "<name>"))
+	case elem.Kind() == reflect.Map:
+		return collectMapKeys(elem, joinConfigKey(prefix, "<name>"))
+	default:
+		return []string{joinConfigKey(prefix, "<key>")}
+	}
+}
+
+func collectSettableConfigKeys(t reflect.Type, prefix string) []string {
+	if t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+	if t.Kind() == reflect.Map {
+		return collectMapKeys(t, prefix)
+	}
+	if t.Kind() != reflect.Struct {
+		if configSetFieldTypeIsSupported(t) {
+			return []string{prefix}
+		}
+		return nil
+	}
+
+	var keys []string
+	for i := 0; i < t.NumField(); i++ {
+		f := t.Field(i)
+		tag := f.Tag.Get("mapstructure")
+		if tag == "" || tag == "-" {
+			continue
+		}
+
+		fullKey := joinConfigKey(prefix, tag)
+		ft := f.Type
+		if ft.Kind() == reflect.Ptr {
+			ft = ft.Elem()
+		}
+
+		switch {
+		case ft.Kind() == reflect.Map:
+			keys = append(keys, collectMapKeys(ft, fullKey)...)
+		case ft.Kind() == reflect.Struct && ft.String() != "time.Duration":
+			keys = append(keys, collectSettableConfigKeys(ft, fullKey)...)
+		case configSetFieldTypeIsSupported(ft):
+			keys = append(keys, fullKey)
+		}
+	}
+	return keys
+}
+
+func configSetFieldTypeIsSupported(t reflect.Type) bool {
+	if t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+	if t.String() == "time.Duration" {
+		return false
+	}
+	switch t.Kind() {
+	case reflect.String, reflect.Bool, reflect.Int, reflect.Int64, reflect.Uint64, reflect.Float64:
+		return true
+	case reflect.Slice:
+		return t.Elem().Kind() == reflect.String
+	default:
+		return false
+	}
+}
+
+func joinConfigKey(prefix, segment string) string {
+	if prefix == "" {
+		return segment
+	}
+	return prefix + "." + segment
+}
+
 // printValue formats and prints a value.
-func printValue(val interface{}, format string) error {
+func printValue(w io.Writer, val interface{}, format string) error {
 	if format == "json" {
-		data, err := json.MarshalIndent(val, "", "  ")
-		if err != nil {
+		if err := clihttp.PrintJSON(w, val); err != nil {
 			return fmt.Errorf("marshal value: %w", err)
 		}
-		fmt.Println(string(data))
 		return nil
 	}
 
 	// plain format
-	fmt.Println(formatPlain(val))
-	return nil
+	_, err := fmt.Fprintln(w, formatPlain(val))
+	return err
 }
 
 // formatPlain converts a value to a human-readable string.

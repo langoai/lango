@@ -9,9 +9,18 @@ import (
 
 // validAgents is the set of recognized agent names.
 var validAgents = map[string]bool{
+	"operator":   true,
+	"navigator":  true,
+	"vault":      true,
+	"librarian":  true,
+	"automator":  true,
+	"planner":    true,
+	"chronicler": true,
+	"ontologist": true,
+
+	// Legacy aliases kept for backward compatibility with older workflow files.
 	"executor":       true,
 	"researcher":     true,
-	"planner":        true,
 	"memory-manager": true,
 }
 

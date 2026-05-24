@@ -9,19 +9,50 @@ The system SHALL include RunLedger diagnostics in the `lango doctor` command out
 - **WHEN** user runs `lango doctor --help`
 - **THEN** the long description SHALL include RunLedger configuration diagnostics among the check families
 
+#### Scenario: Doctor output uses the command writer
+- **WHEN** `lango doctor` renders table or JSON output
+- **THEN** it SHALL write the full output through the Cobra command output writer
+- **AND** wrappers or tests that replace `cmd.OutOrStdout()` SHALL capture the command output
+
+#### Scenario: Doctor JSON output remains decodable
+- **WHEN** `lango doctor --output json` renders output
+- **THEN** the output SHALL be valid pretty-printed JSON that can be decoded directly by wrappers without stripping extra framing text
+
+#### Scenario: Doctor rejects unknown output before bootstrap
+- **WHEN** `lango doctor --output yaml` is run
+- **THEN** the command SHALL return an actionable unknown-output-format error
+- **AND** it SHALL NOT invoke bootstrap
+
+#### Scenario: Doctor output text stays plain and single-line
+- **WHEN** doctor check names, messages, details, fix actions, or structured trace metadata contain ANSI/OSC escape sequences or embedded newlines before rendering
+- **THEN** the doctor command SHALL strip those control sequences
+- **AND** it SHALL normalize both TUI and JSON output text to a single line before display or serialization
+
 ### Requirement: Verify all providers
-The command SHALL verify the status of every provider defined in the `providers` configuration map.
+The command SHALL verify the status of every provider defined in the `providers` configuration map. When `agent.provider` is set, it SHALL reference an existing provider entry; otherwise the AI provider check SHALL fail with an actionable message.
 
 #### Scenario: Multiple providers configured
 - **WHEN** `lango.json` contains both "openai" and "anthropic" in `providers`
 - **THEN** the doctor output includes checks for both "OpenAI" and "Anthropic"
 
+#### Scenario: Agent provider missing from providers map
+- **WHEN** `agent.provider` is set to "anthropic"
+- **AND** the `providers` configuration map has no "anthropic" entry
+- **THEN** the AI provider check SHALL fail
+- **AND** the failure message SHALL identify the missing `agent.provider` reference
+
 ### Requirement: Configuration File Check
-The system SHALL verify that an encrypted configuration profile exists and is valid, instead of checking for a JSON file.
+The system SHALL verify that an encrypted configuration profile exists and is valid, instead of checking for a JSON file. When doctor bootstrap fails before a configuration can be loaded, the doctor output SHALL include a dedicated failing bootstrap diagnostic that preserves the original bootstrap error.
 
 #### Scenario: Valid encrypted profile
 - **WHEN** an active encrypted profile is loaded successfully via bootstrap
 - **THEN** check passes with message "Encrypted configuration profile valid"
+
+#### Scenario: Bootstrap failure is surfaced
+- **WHEN** bootstrap fails while `lango doctor` is loading the encrypted profile
+- **THEN** doctor output SHALL include a failing "Bootstrap" diagnostic
+- **AND** the diagnostic details SHALL include the original bootstrap error
+- **AND** doctor SHALL continue running the remaining checks in best-effort mode
 
 #### Scenario: No active profile loaded
 - **WHEN** bootstrap fails to load an active profile but `lango.db` exists
@@ -33,14 +64,23 @@ The system SHALL verify that an encrypted configuration profile exists and is va
 - **AND** the fix action guides the user to run `lango onboard`
 
 ### Requirement: Legacy API Key Verification
-The system SHALL verify the legacy API key configuration ONLY IF no modern providers are configured.
+The system SHALL verify the legacy API key configuration ONLY IF no modern providers are configured and `agent.provider` is empty.
 
 #### Scenario: API key configured via environment (fallback)
 - **WHEN** no providers configured AND GOOGLE_API_KEY environment variable is set
+- **AND** `agent.provider` is empty
 - **THEN** check passes with warning "Implicit Gemini config found"
+
+#### Scenario: Agent provider missing does not use legacy API key fallback
+- **WHEN** no providers are configured
+- **AND** `agent.provider` is set to "anthropic"
+- **AND** GOOGLE_API_KEY environment variable is set
+- **THEN** the AI provider check SHALL fail
+- **AND** the failure message SHALL identify the missing `agent.provider` reference
 
 #### Scenario: API key missing
 - **WHEN** no providers configured AND no API key found
+- **AND** `agent.provider` is empty
 - **THEN** check fails with message "No AI providers configured"
 
 ### Requirement: Channel Token Validation
@@ -70,7 +110,7 @@ The system SHALL verify that the session database is accessible. The fallback da
 - **THEN** the check SHALL use `~/.lango/lango.db` as the fallback path
 
 ### Requirement: Server Port Check
-The system SHALL verify that the configured server port is available.
+The system SHALL verify that the configured server port is available using the same bracket-safe listen-address formatting as the gateway server, and SHALL distinguish occupied-port failures from bind-address configuration failures.
 
 #### Scenario: Port available
 - **WHEN** configured port (default 18789) is not in use
@@ -79,6 +119,16 @@ The system SHALL verify that the configured server port is available.
 #### Scenario: Port in use
 - **WHEN** configured port is already bound by another process
 - **THEN** check fails with "Port 18789 in use" and process information if available
+
+#### Scenario: Invalid bind host
+- **WHEN** configured `server.host` cannot be used as a local bind address
+- **THEN** check fails with "Server bind address unavailable"
+- **AND** the diagnostic details preserve the original listen error
+
+#### Scenario: IPv6 host port available
+- **WHEN** configured `server.host` is an IPv6 literal and the configured port is not in use
+- **THEN** the server port check SHALL use a bracket-safe listen address
+- **AND** the check SHALL pass instead of failing due to malformed address formatting
 
 ### Requirement: Auto-Fix Mode
 The system SHALL support a `--fix` flag that attempts to automatically repair common issues.
@@ -461,4 +511,3 @@ The doctor command SHALL include a `RunLedgerCheck` that validates RunLedger-spe
 #### Scenario: No profile set and nothing enabled
 - **WHEN** `contextProfile` is not set AND no context subsystems are enabled
 - **THEN** doctor check reports StatusSkip or StatusWarn suggesting user set a context profile
-

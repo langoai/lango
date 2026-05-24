@@ -16,9 +16,9 @@ import (
 	"github.com/langoai/lango/internal/economy/pricing"
 	"github.com/langoai/lango/internal/economy/risk"
 	"github.com/langoai/lango/internal/eventbus"
-	"github.com/langoai/lango/internal/types"
 	p2pproto "github.com/langoai/lango/internal/p2p/protocol"
 	"github.com/langoai/lango/internal/payment"
+	"github.com/langoai/lango/internal/types"
 )
 
 // economyComponents holds optional economy layer components.
@@ -56,8 +56,9 @@ func initEconomy(cfg *config.Config, p2pc *p2pComponents, pc *paymentComponents,
 	var reputationFn types.ReputationQuerier
 	if p2pc != nil && p2pc.reputation != nil {
 		rep := p2pc.reputation
+		minTrust := cfg.P2P.MinTrustScore
 		reputationFn = func(ctx context.Context, peerDID string) (float64, error) {
-			return rep.GetScore(ctx, peerDID)
+			return runtimeEconomyTrustScore(ctx, rep, peerDID, minTrust)
 		}
 	} else {
 		reputationFn = func(_ context.Context, _ string) (float64, error) {
@@ -111,6 +112,7 @@ func initEconomy(cfg *config.Config, p2pc *p2pComponents, pc *paymentComponents,
 			// If P2P is active, adapt pricing engine into paygate PricingFunc.
 			if p2pc != nil && p2pc.payGate != nil {
 				p2pc.pricingFn = pricingEngine.AdaptToPricingFunc()
+				p2pc.payGate.SetPricingFunc(p2pc.pricingFn)
 				logger().Info("economy: pricing engine wired to paygate")
 			}
 			logger().Info("economy: pricing engine initialized")
@@ -392,4 +394,3 @@ func handleNegotiateProtocol(ctx context.Context, ne *negotiation.Engine, localD
 		return nil, negotiation.ErrSessionNotFound
 	}
 }
-

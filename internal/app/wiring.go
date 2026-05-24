@@ -14,8 +14,8 @@ import (
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/deadline"
-	"github.com/langoai/lango/internal/embedding"
 	"github.com/langoai/lango/internal/eventbus"
+	"github.com/langoai/lango/internal/extension"
 	"github.com/langoai/lango/internal/gateway"
 	"github.com/langoai/lango/internal/knowledge"
 	"github.com/langoai/lango/internal/orchestration"
@@ -25,6 +25,7 @@ import (
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/skill"
+	"github.com/langoai/lango/internal/storagebroker"
 	"github.com/langoai/lango/internal/supervisor"
 	"github.com/langoai/lango/internal/toolcatalog"
 	"github.com/langoai/lango/internal/toolchain"
@@ -104,12 +105,17 @@ func initSessionStore(cfg *config.Config, boot *bootstrap.Result) (session.Store
 	if cfg.Session.TTL > 0 {
 		storeOpts = append(storeOpts, session.WithTTL(cfg.Session.TTL))
 	}
+	if boot != nil && boot.Broker != nil {
+		storeOpts = append(storeOpts, session.WithPayloadProtector(storagebroker.NewPayloadProtector(boot.Broker)))
+	}
 
 	logger().Info("initializing session store...")
 
-	// Reuse the ent client opened during bootstrap.
-	if boot != nil && boot.DBClient != nil {
-		return session.NewEntStoreWithClient(boot.DBClient, storeOpts...), nil
+	if boot != nil && boot.Storage != nil {
+		store, err := boot.Storage.OpenSessionStore(storeOpts...)
+		if err == nil && store != nil {
+			return store, nil
+		}
 	}
 
 	// Fallback: open a fresh connection (e.g., for tests).
@@ -131,17 +137,23 @@ func initSecurity(cfg *config.Config, store session.Store, boot *bootstrap.Resul
 	switch cfg.Security.Signer.Provider {
 	case "local":
 		// Reuse the crypto provider initialized during bootstrap.
-		if boot != nil && boot.Crypto != nil && boot.DBClient != nil {
-			keys := security.NewKeyRegistry(boot.DBClient)
-			secrets := security.NewSecretsStore(boot.DBClient, keys, boot.Crypto)
-
-			ctx := context.Background()
-			if _, err := keys.RegisterKey(ctx, "default", "local", security.KeyTypeEncryption); err != nil {
-				return nil, nil, nil, fmt.Errorf("register default key: %w", err)
+		if boot != nil && boot.Crypto != nil {
+			var keys *security.KeyRegistry
+			var secrets *security.SecretsStore
+			if boot.Storage != nil {
+				keys = boot.Storage.KeyRegistry()
+				secrets = boot.Storage.SecretsStore(boot.Crypto)
 			}
+			if keys != nil && secrets != nil {
 
-			logger().Info("security initialized (local provider, from bootstrap)")
-			return boot.Crypto, keys, secrets, nil
+				ctx := context.Background()
+				if _, err := keys.RegisterKey(ctx, "default", "local", security.KeyTypeEncryption); err != nil {
+					return nil, nil, nil, fmt.Errorf("register default key: %w", err)
+				}
+
+				logger().Info("security initialized (local provider, from bootstrap)")
+				return boot.Crypto, keys, secrets, nil
+			}
 		}
 
 		// Fallback: standalone initialization (should not happen in normal flow).
@@ -164,15 +176,21 @@ func initSecurity(cfg *config.Config, store session.Store, boot *bootstrap.Resul
 
 	case "aws-kms", "gcp-kms", "azure-kv", "pkcs11":
 		kmsProvider, err := security.NewKMSProvider(security.KMSProviderName(cfg.Security.Signer.Provider), cfg.Security.KMS) //nolint:staticcheck // stubs always error; real impls use build tags
-		if err != nil {                                                                                                      //nolint:staticcheck // SA4023: always true on stub platforms, real KMS impls may succeed
+		if err != nil {                                                                                                       //nolint:staticcheck // SA4023: always true on stub platforms, real KMS impls may succeed
 			return nil, nil, nil, fmt.Errorf("KMS provider %q: %w", cfg.Security.Signer.Provider, err)
 		}
 
-		if boot == nil || boot.DBClient == nil {
+		if boot == nil {
 			return nil, nil, nil, fmt.Errorf("KMS security provider requires bootstrap")
 		}
 
-		keys := security.NewKeyRegistry(boot.DBClient)
+		var keys *security.KeyRegistry
+		if boot.Storage != nil {
+			keys = boot.Storage.KeyRegistry()
+		}
+		if keys == nil {
+			return nil, nil, nil, fmt.Errorf("KMS security provider requires key registry")
+		}
 		ctx := context.Background()
 		if _, err := keys.RegisterKey(ctx, "kms-default", cfg.Security.KMS.KeyID, security.KeyTypeEncryption); err != nil {
 			return nil, nil, nil, fmt.Errorf("register KMS key: %w", err)
@@ -193,7 +211,13 @@ func initSecurity(cfg *config.Config, store session.Store, boot *bootstrap.Resul
 				"keyID", cfg.Security.KMS.KeyID)
 		}
 
-		secrets := security.NewSecretsStore(boot.DBClient, keys, finalProvider)
+		var secrets *security.SecretsStore
+		if boot.Storage != nil {
+			secrets = boot.Storage.SecretsStore(finalProvider)
+		}
+		if secrets == nil {
+			return nil, nil, nil, fmt.Errorf("KMS security provider requires secrets store")
+		}
 		return finalProvider, keys, secrets, nil
 
 	default:
@@ -249,23 +273,25 @@ func initAuth(cfg *config.Config, store session.Store) *gateway.AuthManager {
 
 // agentDeps groups the dependencies needed by initAgent to reduce parameter sprawl.
 type agentDeps struct {
-	sv           *supervisor.Supervisor
-	cfg          *config.Config
-	store        session.Store
-	tools        []*agent.Tool
-	kc           *knowledgeComponents
-	mc           *memoryComponents
-	ec           *embeddingComponents
-	gc           *graphComponents
-	scanner      *agent.SecretScanner
-	sr           *skill.Registry
-	lc           *librarianComponents
-	catalog      *toolcatalog.Catalog
-	p2pc         *p2pComponents
-	eventBus     *eventbus.Bus
-	rls          runledger.RunLedgerStore
-	prov         *provenanceValues
-	hookRegistry *toolchain.HookRegistry
+	sv             *supervisor.Supervisor
+	cfg            *config.Config
+	store          session.Store
+	tools          []*agent.Tool
+	kc             *knowledgeComponents
+	mc             *memoryComponents
+	gc             *graphComponents
+	scanner        *agent.SecretScanner
+	sr             *skill.Registry
+	lc             *librarianComponents
+	catalog        *toolcatalog.Catalog
+	p2pc           *p2pComponents
+	eventBus       *eventbus.Bus
+	rls            runledger.RunLedgerStore
+	prov           *provenanceValues
+	hookRegistry   *toolchain.HookRegistry
+	compactionSync *compactionSyncHolder
+	recallIndex    recallBackend
+	extReg         *extension.Registry
 }
 
 // initAgent creates the ADK agent with the given tools and provider proxy.
@@ -276,7 +302,6 @@ func initAgent(ctx context.Context, deps *agentDeps) (*adk.Agent, error) {
 	tools := deps.tools
 	kc := deps.kc
 	mc := deps.mc
-	ec := deps.ec
 	gc := deps.gc
 	scanner := deps.scanner
 	sr := deps.sr
@@ -322,10 +347,16 @@ func initAgent(ctx context.Context, deps *agentDeps) (*adk.Agent, error) {
 		builder.Add(buildAutomationPromptSection(cfg))
 	}
 
-	// Add dynamic tool catalog guide so the LLM knows what tool categories are available.
-	if deps.catalog != nil {
-		builder.Add(buildToolCatalogSection(deps.catalog))
+	// Extension-contributed prompt sections (from pack manifests).
+	if deps.extReg != nil {
+		for _, s := range extensionPromptSections(deps.extReg) {
+			builder.Add(s)
+		}
 	}
+
+	// Tool catalog section is generated dynamically per turn by
+	// ContextAwareModelAdapter (see WithCatalog). It is no longer baked into
+	// basePrompt so that session modes can narrow the visible tool set.
 
 	systemPrompt := builder.Build()
 
@@ -362,8 +393,28 @@ func initAgent(ctx context.Context, deps *agentDeps) (*adk.Agent, error) {
 
 		ctxAdapter := adk.NewContextAwareModelAdapter(modelAdapter, retriever, builder, logger())
 		ctxAdapter.WithRuntimeAdapter(runtimeAdapter)
+		if deps.catalog != nil {
+			ctxAdapter.WithCatalog(&catalogSourceAdapter{catalog: deps.catalog, cfg: cfg})
+		}
+		ctxAdapter.WithModeResolver(&modeResolverAdapter{cfg: cfg})
+
+		// Wire session compactor for emergency context compaction.
+		if entStore, ok := store.(*session.EntStore); ok {
+			ctxAdapter.WithSessionCompactor(entStore)
+		}
 		if deps.rls != nil && cfg.RunLedger.Enabled && cfg.RunLedger.AuthoritativeRead {
 			ctxAdapter.WithRunSummaryProvider(&runSummaryProviderAdapter{store: deps.rls})
+		}
+
+		// Wire in background-compaction sync-point guard. The holder is
+		// filled in after CompactionBuffer is constructed (wireCompactionBuffer).
+		if deps.compactionSync != nil {
+			syncTimeout := cfg.Context.Compaction.ResolveCompaction().SyncTimeout
+			ctxAdapter.WithCompactionSync(deps.compactionSync, syncTimeout)
+		}
+
+		if deps.recallIndex != nil {
+			ctxAdapter.WithRecallProvider(newRecallProviderAdapter(deps.recallIndex, cfg.Context.Recall))
 		}
 
 		// Wire in context budget manager.
@@ -388,26 +439,17 @@ func initAgent(ctx context.Context, deps *agentDeps) (*adk.Agent, error) {
 			}
 		}
 
-		// Wire in RAG if available and enabled
-		if ec != nil && cfg.Embedding.RAG.Enabled {
-			ragOpts := embedding.RetrieveOptions{
-				Limit:       cfg.Embedding.RAG.MaxResults,
-				Collections: cfg.Embedding.RAG.Collections,
-				MaxDistance: cfg.Embedding.RAG.MaxDistance,
+		// Wire in graph-enhanced retrieved context if graph store is available.
+		if gc != nil && gc.ragService != nil {
+			retrievedLimit := cfg.Embedding.RAG.MaxResults
+			if retrievedLimit <= 0 {
+				retrievedLimit = 5
 			}
-			if ragOpts.Limit <= 0 {
-				ragOpts.Limit = 5
-			}
-			ctxAdapter.WithRAG(ec.ragService, ragOpts)
-
-			// Wire in Graph RAG if graph store is available.
-			if gc != nil && gc.ragService != nil {
-				ctxAdapter.WithGraphRAG(gc.ragService)
-			}
+			ctxAdapter.WithGraphRAG(gc.ragService, retrievedLimit)
 		}
 
 		// Wire in agentic retrieval coordinator if enabled.
-		if coordinator := initRetrievalCoordinator(cfg, kc.store, ec); coordinator != nil {
+		if coordinator := initRetrievalCoordinator(cfg, kc.store); coordinator != nil {
 			ctxAdapter.WithCoordinator(coordinator)
 		}
 
@@ -421,8 +463,20 @@ func initAgent(ctx context.Context, deps *agentDeps) (*adk.Agent, error) {
 		// OM without knowledge system — create minimal context-aware adapter
 		ctxAdapter := adk.NewContextAwareModelAdapter(modelAdapter, nil, builder, logger())
 		ctxAdapter.WithMemory(mc.store)
+		if deps.catalog != nil {
+			ctxAdapter.WithCatalog(&catalogSourceAdapter{catalog: deps.catalog, cfg: cfg})
+		}
+		ctxAdapter.WithModeResolver(&modeResolverAdapter{cfg: cfg})
+		if entStore, ok := store.(*session.EntStore); ok {
+			ctxAdapter.WithSessionCompactor(entStore)
+		}
 		if deps.rls != nil && cfg.RunLedger.Enabled && cfg.RunLedger.AuthoritativeRead {
 			ctxAdapter.WithRunSummaryProvider(&runSummaryProviderAdapter{store: deps.rls})
+		}
+
+		if deps.compactionSync != nil {
+			syncTimeout := cfg.Context.Compaction.ResolveCompaction().SyncTimeout
+			ctxAdapter.WithCompactionSync(deps.compactionSync, syncTimeout)
 		}
 
 		// Apply memory context limits from config.
@@ -439,22 +493,13 @@ func initAgent(ctx context.Context, deps *agentDeps) (*adk.Agent, error) {
 			ctxAdapter.WithMemoryTokenBudget(cfg.ObservationalMemory.MemoryTokenBudget)
 		}
 
-		// Wire in RAG if available and enabled
-		if ec != nil && cfg.Embedding.RAG.Enabled {
-			ragOpts := embedding.RetrieveOptions{
-				Limit:       cfg.Embedding.RAG.MaxResults,
-				Collections: cfg.Embedding.RAG.Collections,
-				MaxDistance: cfg.Embedding.RAG.MaxDistance,
+		// Wire in graph-enhanced retrieved context if graph store is available.
+		if gc != nil && gc.ragService != nil {
+			retrievedLimit := cfg.Embedding.RAG.MaxResults
+			if retrievedLimit <= 0 {
+				retrievedLimit = 5
 			}
-			if ragOpts.Limit <= 0 {
-				ragOpts.Limit = 5
-			}
-			ctxAdapter.WithRAG(ec.ragService, ragOpts)
-
-			// Wire in Graph RAG if graph store is available.
-			if gc != nil && gc.ragService != nil {
-				ctxAdapter.WithGraphRAG(gc.ragService)
-			}
+			ctxAdapter.WithGraphRAG(gc.ragService, retrievedLimit)
 		}
 
 		// Wire event bus for context injection observability.
@@ -488,6 +533,22 @@ func initAgent(ctx context.Context, deps *agentDeps) (*adk.Agent, error) {
 		})
 		llm = adk.NewPIIRedactingModelAdapter(llm, redactor, scanner)
 		logger().Info("PII redaction interceptor enabled")
+	}
+
+	// Optionally build a skill toolset from configured skills directory.
+	// Both multi-agent and single-agent branches reuse this toolset.
+	var skillToolset adk_tool.Toolset
+	if cfg.Agent.SkillsDir != "" {
+		ts, err := adk.BuildSkillToolset(ctx, cfg.Agent.SkillsDir)
+		if err != nil {
+			logger().Warnw("skill toolset disabled",
+				"skillsDir", cfg.Agent.SkillsDir,
+				"error", err,
+			)
+		} else if ts != nil {
+			skillToolset = ts
+			logger().Infow("skill toolset registered", "skillsDir", cfg.Agent.SkillsDir)
+		}
 	}
 
 	// Multi-agent orchestration mode.
@@ -546,6 +607,10 @@ func initAgent(ctx context.Context, deps *agentDeps) (*adk.Agent, error) {
 			logger().Info("P2P dynamic agent provider wired to orchestrator")
 		}
 
+		if skillToolset != nil {
+			orchCfg.Toolsets = []adk_tool.Toolset{skillToolset}
+		}
+
 		agentTree, err := orchestration.BuildAgentTree(orchCfg)
 		if err != nil {
 			return nil, fmt.Errorf("build agent tree: %w", err)
@@ -566,6 +631,9 @@ func initAgent(ctx context.Context, deps *agentDeps) (*adk.Agent, error) {
 	logger().Info("initializing agent runtime (ADK)...")
 	agentOpts := buildAgentOptions(cfg, kc)
 	agentOpts = append(agentOpts, buildProvenanceAgentOptions(deps.prov, deps.hookRegistry)...)
+	if skillToolset != nil {
+		agentOpts = append(agentOpts, adk.WithToolsets(skillToolset))
+	}
 	adkAgent, err := adk.NewAgent(ctx, adkTools, llm, systemPrompt, store, agentOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("adk agent: %w", err)
@@ -660,6 +728,14 @@ func buildProvenanceAgentOptions(pv *provenanceValues, hookRegistry *toolchain.H
 
 	childHook := func(ev session.SessionLifecycleEvent) {
 		ctx := context.Background()
+
+		logger().Infow("child session lifecycle",
+			"type", ev.Type,
+			"child", ev.ChildKey,
+			"parent", ev.ParentKey,
+			"agent", ev.AgentName,
+		)
+
 		switch ev.Type {
 		case "fork":
 			if _, err := pv.sessionTree.RegisterSession(ctx, ev.ChildKey, ev.ParentKey, ev.AgentName, ""); err != nil {
@@ -704,33 +780,53 @@ func initGateway(cfg *config.Config, adkAgent *adk.Agent, store session.Store, a
 	}, adkAgent, nil, store, auth)
 }
 
-// buildToolCatalogSection creates a dynamic prompt section listing visible tool
-// categories with their tool names, so the LLM can discover available tools.
-// Tools marked as ExposureDeferred are excluded from the listing; a summary note
-// tells the LLM how many additional tools are available via builtin_search.
-func buildToolCatalogSection(catalog *toolcatalog.Catalog) *prompt.StaticSection {
-	// Only include tools that are visible (Default or AlwaysVisible exposure).
-	visible := catalog.ListVisibleTools("")
-	if len(visible) == 0 {
-		return prompt.NewStaticSection(prompt.SectionToolCatalog, 410, "", "")
+// catalogSourceAdapter implements adk.CatalogSource for runtime generation of
+// the per-turn tool catalog prompt section. When a mode is active and its
+// allowlist is non-empty, the section lists only mode-filtered tools.
+type catalogSourceAdapter struct {
+	catalog *toolcatalog.Catalog
+	cfg     *config.Config
+}
+
+func (a *catalogSourceAdapter) BuildToolCatalogSection(modeName string) string {
+	if a.catalog == nil {
+		return ""
 	}
 
-	// Group visible tools by category.
+	var visible []toolcatalog.ToolSchema
+	if modeName != "" && a.cfg != nil {
+		if mode, ok := a.cfg.LookupMode(modeName); ok && len(mode.Tools) > 0 {
+			visible = a.catalog.ListVisibleToolsForMode(mode.Tools)
+		} else {
+			visible = a.catalog.ListVisibleTools("")
+		}
+	} else {
+		visible = a.catalog.ListVisibleTools("")
+	}
+
+	if len(visible) == 0 {
+		return ""
+	}
+
 	catTools := make(map[string][]string)
 	for _, ts := range visible {
 		catTools[ts.Category] = append(catTools[ts.Category], ts.Name)
 	}
 
 	var b strings.Builder
-	b.WriteString("You have access to the following tool categories:\n\n")
+	if modeName != "" {
+		fmt.Fprintf(&b, "## Tools Available in `%s` Mode\n\n", modeName)
+	} else {
+		b.WriteString("## Available Tool Categories\n\n")
+	}
+	b.WriteString("You have access to the following tools:\n\n")
 
-	categories := catalog.ListCategories()
+	categories := a.catalog.ListCategories()
 	for _, cat := range categories {
 		names, ok := catTools[cat.Name]
 		if !ok {
 			continue
 		}
-		// Show up to 8 tool names per category to keep the prompt manageable.
 		display := names
 		suffix := ""
 		if len(display) > 8 {
@@ -742,25 +838,42 @@ func buildToolCatalogSection(catalog *toolcatalog.Catalog) *prompt.StaticSection
 			strings.Join(display, ", "), suffix)
 	}
 
-	// Note disabled categories.
-	var disabled []string
-	for _, cat := range categories {
-		if !cat.Enabled && cat.ConfigKey != "" {
-			disabled = append(disabled, fmt.Sprintf("%s (%s)", cat.Name, cat.ConfigKey))
+	if modeName == "" {
+		var disabled []string
+		for _, cat := range categories {
+			if !cat.Enabled && cat.ConfigKey != "" {
+				disabled = append(disabled, fmt.Sprintf("%s (%s)", cat.Name, cat.ConfigKey))
+			}
 		}
-	}
-	if len(disabled) > 0 {
-		fmt.Fprintf(&b, "\nDisabled categories (enable via config): %s\n", strings.Join(disabled, ", "))
+		if len(disabled) > 0 {
+			fmt.Fprintf(&b, "\nDisabled categories (enable via config): %s\n", strings.Join(disabled, ", "))
+		}
+		b.WriteString("\nUse builtin_health to diagnose tool registration, or builtin_list to discover all tools.")
+		if deferred := a.catalog.DeferredToolCount(); deferred > 0 {
+			fmt.Fprintf(&b, "\nAdditional %d specialized tools available via builtin_search.", deferred)
+		}
+	} else {
+		b.WriteString("\nOnly tools in this mode's allowlist are available; calls to other tools will fail.")
 	}
 
-	b.WriteString("\nUse builtin_health to diagnose tool registration, or builtin_list to discover all tools.")
+	return b.String()
+}
 
-	// Inform the LLM about deferred tools available via search.
-	if deferred := catalog.DeferredToolCount(); deferred > 0 {
-		fmt.Fprintf(&b, "\nAdditional %d specialized tools available via builtin_search.", deferred)
+// modeResolverAdapter implements adk.ModeResolver, looking up SystemHint
+// from the user config.
+type modeResolverAdapter struct {
+	cfg *config.Config
+}
+
+func (a *modeResolverAdapter) LookupModeHint(modeName string) string {
+	if a == nil || a.cfg == nil || modeName == "" {
+		return ""
 	}
-
-	return prompt.NewStaticSection(prompt.SectionToolCatalog, 410, "Available Tool Categories", b.String())
+	mode, ok := a.cfg.LookupMode(modeName)
+	if !ok {
+		return ""
+	}
+	return mode.SystemHint
 }
 
 // buildAutomationPromptSection creates a dynamic prompt section describing

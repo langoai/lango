@@ -38,6 +38,11 @@ func (r *Registry) SetOSIsolator(iso sandboxos.OSIsolator, workspacePath, dataRo
 	r.executor.SetOSIsolator(iso, workspacePath, dataRoot)
 }
 
+// SetProtectedPaths forwards the resolved runtime denylist to the executor.
+func (r *Registry) SetProtectedPaths(paths []string) {
+	r.executor.SetProtectedPaths(paths)
+}
+
 // SetFailClosed controls whether skill script execution is blocked when
 // no sandbox is available.
 func (r *Registry) SetFailClosed(fc bool) {
@@ -249,6 +254,10 @@ func (r *Registry) skillToTool(sk SkillEntry) *agent.Tool {
 			Activity:    agent.ActivityRead,
 			ReadOnly:    true,
 			SearchHints: skillSearchHints(skillEntry),
+			// Instruction skills are deferred — they appear via list_skills/view_skill,
+			// not as standalone tools in the system prompt. Keeps token cost flat
+			// regardless of how many instruction skills are active.
+			Exposure: agent.ExposureDeferred,
 		}
 		return tool
 	}

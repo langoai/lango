@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 
 	"github.com/langoai/lango/internal/config"
-	"github.com/langoai/lango/internal/embedding"
 	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/graph"
+	"github.com/langoai/lango/internal/knowledge"
 	"github.com/langoai/lango/internal/memory"
 	"github.com/langoai/lango/internal/supervisor"
 	"github.com/langoai/lango/internal/types"
@@ -23,9 +23,10 @@ type predicateValidatable interface {
 
 // graphComponents holds optional graph store components.
 type graphComponents struct {
-	store      graph.Store
-	buffer     *graph.GraphBuffer
-	ragService *graph.GraphRAGService
+	store           graph.Store
+	buffer          *graph.GraphBuffer
+	ragService      *graph.GraphRAGService
+	admissionPolicy *graph.AdmissionPolicy
 }
 
 // initGraphStore creates the graph store if enabled.
@@ -66,6 +67,98 @@ func initGraphStore(cfg *config.Config) (*graphComponents, *types.FeatureStatus)
 	}, &types.FeatureStatus{Name: featureName, Enabled: true, Healthy: true}
 }
 
+func publishAdmissionObservation(bus *eventbus.Bus, result graph.AdmissionObserveResult) {
+	if bus == nil {
+		return
+	}
+	if result.Event != nil {
+		bus.Publish(*result.Event)
+	}
+	if result.UnmappedEvent != nil {
+		bus.Publish(*result.UnmappedEvent)
+	}
+}
+
+func observeAdmissionBatch(policy *graph.AdmissionPolicy, bus *eventbus.Bus, batch graph.AdmissionBatch) ([]graph.Triple, bool) {
+	if policy == nil {
+		return batch.Triples, false
+	}
+
+	result := policy.ObserveBatch(batch)
+	publishAdmissionObservation(bus, result)
+	return result.Forwarded, result.Event != nil || result.UnmappedEvent != nil
+}
+
+func observeExtractedTriples(policy *graph.AdmissionPolicy, bus *eventbus.Bus, evt eventbus.TriplesExtractedEvent) ([]graph.Triple, bool) {
+	graphTriples := make([]graph.Triple, len(evt.Triples))
+	for i, t := range evt.Triples {
+		graphTriples[i] = graph.Triple{
+			Subject:     t.Subject,
+			Predicate:   t.Predicate,
+			Object:      t.Object,
+			SubjectType: t.SubjectType,
+			ObjectType:  t.ObjectType,
+			Metadata:    t.Metadata,
+		}
+	}
+
+	return observeAdmissionBatch(policy, bus, graph.AdmissionBatch{
+		SourceKind: graph.AdmissionSourceKindEventBus,
+		Source:     graph.AdmissionSource(evt.Source),
+		Triples:    graphTriples,
+	})
+}
+
+func observeContentSavedTriples(policy *graph.AdmissionPolicy, bus *eventbus.Bus, triples []graph.Triple) ([]graph.Triple, bool) {
+	return observeAdmissionBatch(policy, bus, graph.AdmissionBatch{
+		SourceKind: graph.AdmissionSourceKindSynthetic,
+		Source:     graph.AdmissionSourceContentSavedExtractor,
+		Triples:    triples,
+	})
+}
+
+func injectGraphPredicateValidator(store graph.Store, ontologyValidator graph.PredicateValidatorFunc) {
+	if ontologyValidator == nil {
+		return
+	}
+	if pv, ok := store.(predicateValidatable); ok {
+		pv.SetPredicateValidator(ontologyValidator)
+		logger().Info("ontology predicate validator injected into graph store")
+	}
+}
+
+func contentSavedDroppedUnknownObserver(policy *graph.AdmissionPolicy, bus *eventbus.Bus) func(graph.DroppedUnknownPredicateEvent) {
+	return func(evt graph.DroppedUnknownPredicateEvent) {
+		if policy == nil || bus == nil {
+			return
+		}
+
+		bus.Publish(eventbus.GraphExtractorDroppedUnknownEvent{
+			Source:    evt.Source,
+			SourceID:  evt.SourceID,
+			Subject:   evt.Subject,
+			Predicate: evt.Predicate,
+			Object:    evt.Object,
+		})
+	}
+}
+
+func runtimeGraphWriteFailureBaselineEnabled(policy *graph.AdmissionPolicy) bool {
+	return policy != nil
+}
+
+func runtimeGraphTripleCallback(buffer *graph.GraphBuffer, emitWriteFailureBaseline bool) func([]graph.Triple) {
+	return func(triples []graph.Triple) {
+		if buffer == nil {
+			return
+		}
+		buffer.Enqueue(graph.GraphRequest{
+			Triples:                  triples,
+			EmitWriteFailureBaseline: emitWriteFailureBaseline,
+		})
+	}
+}
+
 // wireGraphCallbacks subscribes to content.saved and triples.extracted events to feed the graph buffer.
 // It also creates the Entity Extractor pipeline and Memory GraphHooks.
 func wireGraphCallbacks(gc *graphComponents, kc *knowledgeComponents, mc *memoryComponents, sv *supervisor.Supervisor, cfg *config.Config, bus *eventbus.Bus, ontologyValidator graph.PredicateValidatorFunc) {
@@ -74,12 +167,7 @@ func wireGraphCallbacks(gc *graphComponents, kc *knowledgeComponents, mc *memory
 	}
 
 	// Inject predicate validator if the store implementation supports it.
-	if ontologyValidator != nil {
-		if pv, ok := gc.store.(predicateValidatable); ok {
-			pv.SetPredicateValidator(ontologyValidator)
-			logger().Info("ontology predicate validator injected into graph store")
-		}
-	}
+	injectGraphPredicateValidator(gc.store, ontologyValidator)
 
 	// Create Entity Extractor for async triple extraction from content.
 	var extractor *graph.Extractor
@@ -92,6 +180,7 @@ func wireGraphCallbacks(gc *graphComponents, kc *knowledgeComponents, mc *memory
 		if ontologyValidator != nil {
 			opts = append(opts, graph.WithPredicateValidator(ontologyValidator))
 		}
+		opts = append(opts, graph.WithDroppedUnknownObserver(contentSavedDroppedUnknownObserver(gc.admissionPolicy, bus)))
 		extractor = graph.NewExtractor(generator, logger(), opts...)
 		logger().Info("graph entity extractor initialized")
 	}
@@ -116,6 +205,7 @@ func wireGraphCallbacks(gc *graphComponents, kc *knowledgeComponents, mc *memory
 						Metadata:    evt.Metadata,
 					},
 				},
+				EmitWriteFailureBaseline: runtimeGraphWriteFailureBaselineEnabled(gc.admissionPolicy),
 			})
 
 			// Async entity extraction via LLM.
@@ -127,8 +217,12 @@ func wireGraphCallbacks(gc *graphComponents, kc *knowledgeComponents, mc *memory
 						logger().Debugw("entity extraction error", "id", evt.ID, "error", err)
 						return
 					}
+					triples, emitWriteFailureBaseline := observeContentSavedTriples(gc.admissionPolicy, bus, triples)
 					if len(triples) > 0 {
-						gc.buffer.Enqueue(graph.GraphRequest{Triples: triples})
+						gc.buffer.Enqueue(graph.GraphRequest{
+							Triples:                  triples,
+							EmitWriteFailureBaseline: emitWriteFailureBaseline,
+						})
 					}
 				}()
 			}
@@ -136,35 +230,27 @@ func wireGraphCallbacks(gc *graphComponents, kc *knowledgeComponents, mc *memory
 
 		// Subscribe to triples.extracted events to enqueue graph triples.
 		eventbus.SubscribeTyped(bus, func(evt eventbus.TriplesExtractedEvent) {
-			graphTriples := make([]graph.Triple, len(evt.Triples))
-			for i, t := range evt.Triples {
-				graphTriples[i] = graph.Triple{
-					Subject:     t.Subject,
-					Predicate:   t.Predicate,
-					Object:      t.Object,
-					SubjectType: t.SubjectType,
-					ObjectType:  t.ObjectType,
-					Metadata:    t.Metadata,
-				}
-			}
-			gc.buffer.Enqueue(graph.GraphRequest{Triples: graphTriples})
+			graphTriples, emitWriteFailureBaseline := observeExtractedTriples(gc.admissionPolicy, bus, evt)
+			gc.buffer.Enqueue(graph.GraphRequest{
+				Triples:                  graphTriples,
+				EmitWriteFailureBaseline: emitWriteFailureBaseline,
+			})
 		})
 	}
 
 	// Wire Memory GraphHooks for temporal/session triples.
 	if mc != nil {
-		tripleCallback := func(triples []graph.Triple) {
-			gc.buffer.Enqueue(graph.GraphRequest{Triples: triples})
-		}
+		tripleCallback := runtimeGraphTripleCallback(gc.buffer, runtimeGraphWriteFailureBaselineEnabled(gc.admissionPolicy))
 		hooks := memory.NewGraphHooks(tripleCallback, logger())
 		mc.store.SetGraphHooks(hooks)
 		logger().Info("memory graph hooks wired")
 	}
 }
 
-// initGraphRAG creates the Graph RAG service if both graph store and vector RAG are available.
-func initGraphRAG(cfg *config.Config, gc *graphComponents, ec *embeddingComponents) {
-	if gc == nil || ec == nil || ec.ragService == nil {
+// initGraphRAG creates the Graph RAG service when both graph store and
+// knowledge search are available.
+func initGraphRAG(cfg *config.Config, gc *graphComponents, kc *knowledgeComponents) {
+	if gc == nil || kc == nil || kc.store == nil {
 		return
 	}
 
@@ -177,39 +263,55 @@ func initGraphRAG(cfg *config.Config, gc *graphComponents, ec *embeddingComponen
 		maxExpand = 10
 	}
 
-	// Create a VectorRetriever adapter from embedding.RAGService.
-	adapter := &ragServiceAdapter{inner: ec.ragService}
+	adapter := &knowledgeContentRetriever{store: kc.store}
 
 	gc.ragService = graph.NewGraphRAGService(adapter, gc.store, maxDepth, maxExpand, logger())
 	logger().Info("graph RAG hybrid retrieval initialized")
 }
 
-// ragServiceAdapter adapts embedding.RAGService to graph.VectorRetriever interface.
-type ragServiceAdapter struct {
-	inner *embedding.RAGService
+type contentSearchSource interface {
+	SearchKnowledgeScored(ctx context.Context, query string, category string, limit int) ([]knowledge.ScoredKnowledgeEntry, error)
 }
 
-func (a *ragServiceAdapter) Retrieve(ctx context.Context, query string, opts graph.VectorRetrieveOptions) ([]graph.VectorResult, error) {
-	embOpts := embedding.RetrieveOptions{
-		Collections: opts.Collections,
-		Limit:       opts.Limit,
-		SessionKey:  opts.SessionKey,
-		MaxDistance: opts.MaxDistance,
+type knowledgeContentRetriever struct {
+	store contentSearchSource
+}
+
+func (r *knowledgeContentRetriever) Retrieve(ctx context.Context, query string, opts graph.ContentRetrieveOptions) ([]graph.ContentResult, error) {
+	if r.store == nil || query == "" {
+		return nil, nil
+	}
+	if len(opts.Collections) > 0 {
+		allowed := false
+		for _, collection := range opts.Collections {
+			if collection == "knowledge" {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			return nil, nil
+		}
 	}
 
-	results, err := a.inner.Retrieve(ctx, query, embOpts)
+	limit := opts.Limit
+	if limit <= 0 {
+		limit = 5
+	}
+
+	results, err := r.store.SearchKnowledgeScored(ctx, query, "", limit)
 	if err != nil {
 		return nil, err
 	}
 
-	graphResults := make([]graph.VectorResult, len(results))
-	for i, r := range results {
-		graphResults[i] = graph.VectorResult{
-			Collection: r.Collection,
-			SourceID:   r.SourceID,
-			Content:    r.Content,
-			Distance:   r.Distance,
-		}
+	graphResults := make([]graph.ContentResult, 0, len(results))
+	for _, item := range results {
+		graphResults = append(graphResults, graph.ContentResult{
+			Collection: "knowledge",
+			SourceID:   item.Entry.Key,
+			Content:    item.Entry.Content,
+			Score:      float32(item.Score),
+		})
 	}
 	return graphResults, nil
 }

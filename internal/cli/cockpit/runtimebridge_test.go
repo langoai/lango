@@ -16,12 +16,12 @@ import (
 
 func TestRuntimeTracker_TokenAccumulation(t *testing.T) {
 	tests := []struct {
-		give           string
-		giveEvents     []eventbus.TokenUsageEvent
-		wantInput      int64
-		wantOutput     int64
-		wantTotal      int64
-		wantCache      int64
+		give       string
+		giveEvents []eventbus.TokenUsageEvent
+		wantInput  int64
+		wantOutput int64
+		wantTotal  int64
+		wantCache  int64
 	}{
 		{
 			give: "single event",
@@ -198,29 +198,29 @@ func TestRuntimeTracker_RecoverySessionFilter(t *testing.T) {
 func TestRuntimeTracker_RecordDelegation(t *testing.T) {
 	tracker := NewRuntimeTracker(nil, nil, "sess-1")
 	tracker.StartTurn()
-	tracker.RecordDelegation("agent-b")
+	tracker.RecordDelegation("agent-\x1b[31mb\nops")
 
 	snap := tracker.Snapshot()
 	assert.Equal(t, 1, snap.DelegationCount)
-	assert.Equal(t, "agent-b", snap.ActiveAgent)
+	assert.Equal(t, "agent-b ops", snap.ActiveAgent)
 	assert.True(t, snap.IsRunning)
 
 	// Second delegation increments count and updates active agent.
-	tracker.RecordDelegation("agent-c")
+	tracker.RecordDelegation("agent-\x1b[31mc\nops")
 
 	snap = tracker.Snapshot()
 	assert.Equal(t, 2, snap.DelegationCount)
-	assert.Equal(t, "agent-c", snap.ActiveAgent)
+	assert.Equal(t, "agent-c ops", snap.ActiveAgent)
 }
 
 func TestRuntimeTracker_SetActiveAgent(t *testing.T) {
 	tracker := NewRuntimeTracker(nil, nil, "sess-1")
 	tracker.StartTurn()
 	tracker.RecordDelegation("operator")
-	tracker.SetActiveAgent("lango-orchestrator")
+	tracker.SetActiveAgent("lango-\x1b[31morchestrator\nops")
 
 	snap := tracker.Snapshot()
-	assert.Equal(t, "lango-orchestrator", snap.ActiveAgent)
+	assert.Equal(t, "lango-orchestrator ops", snap.ActiveAgent)
 	assert.Equal(t, 1, snap.DelegationCount, "SetActiveAgent should not increment counter")
 }
 

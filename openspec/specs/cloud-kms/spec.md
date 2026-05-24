@@ -122,9 +122,31 @@ The system SHALL provide `lango security kms status`, `lango security kms test`,
 - **WHEN** `lango security kms test` is run
 - **THEN** the system performs an encrypt/decrypt roundtrip and reports success or failure
 
+### Requirement: KMS test output routing
+`lango security kms test` SHALL write all non-error output through the Cobra command output stream so wrappers and test harnesses can capture roundtrip progress and success output without intercepting process-global stdout.
+
+#### Scenario: KMS roundtrip progress writes to command output
+- **WHEN** `lango security kms test` is run
+- **THEN** the command writes the roundtrip progress and success lines to the Cobra command output stream
+
 #### Scenario: KMS keys listing
 - **WHEN** `lango security kms keys` is run
 - **THEN** all keys from KeyRegistry are displayed with ID, name, type, and remote key ID
+
+### Requirement: KMS keys output routing
+`lango security kms keys` SHALL write all non-error output through the Cobra command output stream so wrappers and test harnesses can capture empty-state, table, and JSON output without intercepting process-global stdout.
+
+#### Scenario: Empty KMS key registry writes to command output
+- **WHEN** `lango security kms keys` is run and the KeyRegistry is empty
+- **THEN** the command writes `No keys registered.` to the Cobra command output stream
+
+#### Scenario: Tabular KMS key listing writes to command output
+- **WHEN** `lango security kms keys` is run with registered keys and `--output json` is not set
+- **THEN** the command writes the tabular listing to the Cobra command output stream
+
+#### Scenario: JSON KMS key listing writes to command output
+- **WHEN** `lango security kms keys --output json` is run
+- **THEN** the command writes the JSON payload to the Cobra command output stream
 
 ### Requirement: KMS KEK Slot Wrapping
 
@@ -141,9 +163,20 @@ The system SHALL support using any CryptoProvider (AWS KMS, GCP KMS, Azure KV, P
 - **AND** the provider SHALL NOT be wrapped in `CompositeCryptoProvider`
 
 #### Scenario: CompositeCryptoProvider not used for MK unwrap
-- **WHEN** KMS is unavailable during MK unwrap
+- **WHEN** KMS is unavailable during MK unwrap and the active bootstrap KMS config allows local fallback
 - **THEN** the system SHALL NOT fall back to `LocalCryptoProvider.Decrypt` on the same slot
 - **AND** SHALL instead fall through to the next credential path (mnemonic or passphrase)
+
+#### Scenario: KMS bootstrap fails closed when local fallback is disabled
+- **WHEN** the envelope has a hardware slot, KMS bootstrap config is present, and active `KMSConfig.FallbackToLocal` is false
+- **AND** KMS provider initialization or MK unwrap fails
+- **THEN** bootstrap SHALL return an error before passphrase acquisition
+- **AND** the error SHALL preserve the original KMS failure context
+
+#### Scenario: KMS bootstrap may fall back when local fallback is enabled
+- **WHEN** the envelope has a hardware slot, KMS bootstrap config is present, and active `KMSConfig.FallbackToLocal` is true
+- **AND** KMS provider initialization or MK unwrap fails
+- **THEN** bootstrap MAY warn and continue to the next credential path
 
 ### Requirement: KMS CLI wrap and detach commands
 
@@ -164,6 +197,21 @@ The system SHALL provide `lango security kms wrap` and `lango security kms detac
 #### Scenario: Detach guard preserves minimum slots
 - **WHEN** `lango security kms detach` would leave zero passphrase/mnemonic slots
 - **THEN** the command SHALL refuse and display an error
+
+### Requirement: KMS wrap and detach output routing
+`lango security kms wrap` and `lango security kms detach` SHALL write all non-error output through the Cobra command output stream so wrappers and test harnesses can capture success confirmations and multi-slot guidance without intercepting process-global stdout.
+
+#### Scenario: Wrap success writes to command output
+- **WHEN** `lango security kms wrap --provider aws-kms --key-id <arn>` succeeds
+- **THEN** the command writes the wrap success confirmation to the Cobra command output stream
+
+#### Scenario: Detach success writes to command output
+- **WHEN** `lango security kms detach` removes a KMS slot
+- **THEN** the command writes the detach success confirmation to the Cobra command output stream
+
+#### Scenario: Detach multi-slot guidance writes to command output
+- **WHEN** `lango security kms detach` requires `--slot-id` because multiple hardware slots exist
+- **THEN** the command writes the slot listing and guidance to the Cobra command output stream
 
 ### Requirement: KMS Config Structure
 The system SHALL define `KMSConfig` with fields: Region, KeyID, Endpoint, FallbackToLocal, TimeoutPerOperation, MaxRetries, Azure (AzureKVConfig), PKCS11 (PKCS11Config). Defaults: FallbackToLocal=true, TimeoutPerOperation=5s, MaxRetries=3.

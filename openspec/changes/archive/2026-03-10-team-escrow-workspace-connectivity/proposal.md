@@ -23,7 +23,7 @@ Wire all subsystems through the existing EventBus pattern with event-driven brid
 
 ## Scope
 
-- 10 work units across 3 implementation waves
+- 10 work units across 3 implementation slices
 - ~1500 LOC total (bridges, tools, handlers, tests)
 - No new dependencies or breaking changes
 - All bridges use existing EventBus SubscribeTyped pattern

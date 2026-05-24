@@ -2,9 +2,7 @@ package memory
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"os"
 	"text/tabwriter"
 	"time"
 
@@ -20,13 +18,19 @@ func newListCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 	var (
 		sessionKey string
 		memType    string
-		jsonOutput bool
+		output     string
 	)
 
 	cmd := &cobra.Command{
-		Use:   "list",
-		Short: "List observations and reflections for a session",
+		Use:           "list",
+		Short:         "List observations and reflections for a session",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			output, err := resolveOutput(cmd)
+			if err != nil {
+				return err
+			}
 			cfg, err := cfgLoader()
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
@@ -49,7 +53,7 @@ func newListCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 				Content   string    `json:"content"`
 			}
 
-			var entries []entry
+			entries := make([]entry, 0)
 
 			if memType == "" || memType == "observations" {
 				obs, err := memStore.ListObservations(ctx, sessionKey)
@@ -83,18 +87,16 @@ func newListCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 				}
 			}
 
-			if jsonOutput {
-				enc := json.NewEncoder(os.Stdout)
-				enc.SetIndent("", "  ")
-				return enc.Encode(entries)
+			if output == "json" {
+				return printJSON(cmd.OutOrStdout(), entries)
 			}
 
 			if len(entries) == 0 {
-				fmt.Println("No entries found.")
+				fmt.Fprintln(cmd.OutOrStdout(), "No entries found.")
 				return nil
 			}
 
-			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
 			fmt.Fprintln(w, "ID\tTYPE\tTOKENS\tCREATED\tCONTENT")
 			for _, e := range entries {
 				content := e.Content
@@ -113,7 +115,7 @@ func newListCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 
 	cmd.Flags().StringVar(&sessionKey, "session", "", "Session key (required)")
 	cmd.Flags().StringVar(&memType, "type", "", "Filter by type: observations, reflections")
-	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
+	cmd.Flags().StringVar(&output, "output", "table", "Output format: table or json")
 	_ = cmd.MarkFlagRequired("session")
 
 	return cmd

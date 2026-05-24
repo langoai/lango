@@ -3,9 +3,7 @@
 ## Purpose
 
 BIP39 24-word recovery mnemonic support for the Master Key envelope. Allows users to regain access to all encrypted data if they lose their passphrase, by deriving a separate KEK from the mnemonic and storing it as an additional envelope slot.
-
 ## Requirements
-
 ### Requirement: Recovery mnemonic generation
 
 The system SHALL generate 24-word BIP39 recovery mnemonics using the `github.com/tyler-smith/go-bip39` library. The mnemonic SHALL derive a KEK via the same `DeriveKEK(secret, slot)` dispatch used by passphrase slots; the slot's `Domain` field (e.g. `"mnemonic"`) provides cryptographic separation from passphrase KEKs, and each slot has its own unique PBKDF2 salt.
@@ -39,6 +37,13 @@ The system SHALL provide `lango security recovery setup` command that generates 
 - **AND** no slot is added
 - **AND** the user is prompted to retry or cancel
 
+### Requirement: Recovery setup output routing
+`lango security recovery setup` SHALL write its mnemonic banner, written-down confirmation prompt, confirmation-word prompt, and success message through the Cobra command output stream so wrappers and test harnesses can capture non-error output without intercepting process-global stdout.
+
+#### Scenario: Recovery setup output writes to command output
+- **WHEN** the user runs `lango security recovery setup`
+- **THEN** the mnemonic banner, written-down confirmation prompt, confirmation-word prompt, and success confirmation write to the Cobra command output stream
+
 ### Requirement: Mnemonic-based recovery
 
 The system SHALL provide `lango security recovery restore` command that accepts a mnemonic, unwraps the MK from the matching mnemonic slot, and prompts the user for a new passphrase. The new passphrase replaces the existing passphrase slot via envelope re-wrap.
@@ -57,6 +62,17 @@ The system SHALL provide `lango security recovery restore` command that accepts 
 - **WHEN** the user enters an invalid or wrong mnemonic
 - **THEN** `UnwrapFromMnemonic` returns an error wrapping `ErrUnwrapFailed`
 - **AND** the command reports the failure without modifying the envelope
+
+### Requirement: Recovery restore output routing
+`lango security recovery restore` SHALL write its success confirmation through the Cobra command output stream so wrappers and test harnesses can capture completion output without intercepting process-global stdout.
+
+#### Scenario: Recovery restore success writes to command output
+- **WHEN** the user runs `lango security recovery restore` and enters the correct mnemonic
+- **THEN** the success confirmation writes to the Cobra command output stream
+
+#### Scenario: Recovery restore warning output writes to command error stream
+- **WHEN** `lango security recovery restore` emits keyfile or keyring update notices or warnings
+- **THEN** those messages SHALL write to the Cobra command error stream
 
 ### Requirement: Mnemonic is never persisted
 
@@ -90,7 +106,51 @@ Mnemonic recovery SHALL NOT be offered as an automatic prompt during bootstrap. 
 - **WHEN** the user runs `lango security recovery restore` and no envelope file exists
 - **THEN** the command SHALL return an error: `"envelope not found — recovery requires local encryption mode"`
 
-#### Scenario: Non-interactive restore fails gracefully
+### Requirement: Recovery restore requires interactive terminal
+`lango security recovery restore` SHALL require an interactive command input stream before prompting for the mnemonic or replacement passphrase.
 
-- **WHEN** `lango security recovery restore` is run in a non-interactive environment
+#### Scenario: Non-interactive restore fails before prompting
+- **WHEN** `lango security recovery restore` is run with a non-interactive command input stream
 - **THEN** it SHALL return an error requiring an interactive terminal
+- **AND** it SHALL NOT prompt for the mnemonic or replacement passphrase
+
+#### Scenario: Recovery restore guard uses command input
+- **WHEN** `lango security recovery restore` reaches its interactive guard
+- **THEN** the guard SHALL validate the command input stream instead of reading process-global stdin directly
+
+### Requirement: Recovery setup guard uses command input stream
+`lango security recovery setup` SHALL validate the Cobra command input stream before prompting for the current passphrase or mnemonic confirmation.
+
+#### Scenario: Recovery setup guard uses command input
+- **WHEN** `lango security recovery setup` reaches its interactive guard
+- **THEN** the guard SHALL validate the command input stream instead of reading process-global stdin directly
+
+### Requirement: Recovery confirmation-word prompt uses shared prompt helper
+`lango security recovery setup` SHALL route its confirmation-word prompt through the shared visible line-entry prompt helper using Cobra command input/output streams.
+
+#### Scenario: Recovery confirmation-word accepts matching final line without trailing newline
+- **WHEN** the operator enters the correct confirmation word and the input stream ends immediately after that line without a trailing newline
+- **THEN** `lango security recovery setup` SHALL accept the confirmation word instead of surfacing a read error
+
+### Requirement: Recovery written-down confirmation treats EOF as denial
+`lango security recovery setup` SHALL treat EOF on the written-down confirmation prompt as a clean setup abort.
+
+#### Scenario: Recovery setup EOF aborts before word checks
+- **WHEN** the written-down confirmation prompt reaches EOF before approval
+- **THEN** the command SHALL abort setup
+- **AND** it SHALL not proceed to the confirmation-word prompts
+
+### Requirement: Recovery passphrase prompts use command output streams
+Recovery commands that prompt for passphrases or recovery mnemonic input SHALL write visible hidden-input prompt text through the Cobra command output stream instead of process-global stdout.
+
+#### Scenario: Recovery setup authorization prompt uses command output
+- **WHEN** `lango security recovery setup` prompts for the current passphrase to authorize setup
+- **THEN** the visible hidden-input prompt SHALL be written through the Cobra command output stream
+
+#### Scenario: Recovery restore prompts use command output
+- **WHEN** `lango security recovery restore` prompts for the recovery mnemonic, new passphrase, and confirmation
+- **THEN** each visible hidden-input prompt SHALL be written through the Cobra command output stream
+
+#### Scenario: Recovery warning output remains on command error stream
+- **WHEN** recovery restore emits keyfile or keyring update notices or warnings
+- **THEN** those messages SHALL continue to write through the Cobra command error stream

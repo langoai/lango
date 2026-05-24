@@ -14,15 +14,17 @@ import (
 // as app.go Phase B4 (steps B4a–B4e) and verifies the invocation order.
 //
 // Production order (outermost → innermost):
-//   ExecPolicy → Approval → Principal → Hooks → OutputManager → Learning → Handler
+//
+//	ExecPolicy → Approval → Principal → Hooks → OutputManager → Learning → Handler
 //
 // This is built by successive ChainAll calls in app.go:
-//   B4a: WithLearning       (innermost — applied first)
-//   B4b: WithOutputManager
-//   B4c: WithHooks
-//   B4c2: WithPrincipal
-//   B4d: WithApproval
-//   B4e: WithPolicy         (outermost — applied last)
+//
+//	B4a: WithLearning       (innermost — applied first)
+//	B4b: WithOutputManager
+//	B4c: WithHooks
+//	B4c2: WithPrincipal
+//	B4d: WithApproval
+//	B4e: WithPolicy         (outermost — applied last)
 func TestMiddlewareChain_ProductionOrder(t *testing.T) {
 	t.Parallel()
 

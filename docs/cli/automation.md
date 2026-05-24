@@ -7,6 +7,7 @@ Commands for managing cron jobs, and workflow pipelines. See the [Automation](..
 ## Cron Commands
 
 Manage scheduled cron jobs that execute agent prompts on a recurring or one-time basis. Cron must be enabled in configuration (`cron.enabled = true`).
+All human-readable `lango cron` output is routed through the Cobra command writer, so wrappers and tests can capture it by replacing `cmd.OutOrStdout()`.
 
 ```
 lango cron <subcommand>
@@ -72,6 +73,8 @@ $ lango cron add \
 ### lango cron list
 
 List all registered cron jobs with their status and schedule.
+
+This is a read-only inspection path; it does not mutate scheduler state.
 
 ```
 lango cron list
@@ -206,7 +209,7 @@ lango workflow <subcommand>
 
 ### lango workflow run
 
-Execute a workflow from a YAML definition file. If the workflow has a schedule, it registers with the server instead of executing immediately.
+Execute a workflow from a YAML definition file. Validation, schedule-not-implemented guidance, and direct execution status output are written through the Cobra command output stream so wrappers and test harnesses can capture them directly.
 
 ```
 lango workflow run <file.flow.yaml> [--schedule <cron>]
@@ -241,7 +244,7 @@ Analysis complete. Key findings: ...
 Report generated and sent to #reports channel.
 ```
 
-If the workflow includes a schedule or you override with `--schedule`, it registers for recurring execution:
+If the workflow includes a schedule or you override with `--schedule`, the CLI validates the workflow and registers an enabled cron job. The cron job prompt asks runtime automation to invoke the `workflow_run` tool with the selected workflow file path; execution still happens later through the cron runtime.
 
 ```bash
 $ lango workflow run ./report.flow.yaml --schedule "0 8 * * MON"
@@ -249,15 +252,20 @@ Workflow: Weekly Report
 Steps:    3
 Schedule: 0 8 * * MON
 
-Workflow has a schedule. Register it with the running server:
-  POST /api/workflow/register with the YAML content
+Workflow has a schedule.
+Scheduled workflow registered as cron job (id: 2b7c4f5e-...)
+  Name: workflow:Weekly Report
+  Schedule: cron 0 8 * * MON
 ```
+
+If direct execution is requested but the live runtime is unavailable or the workflow engine is disabled, the validated workflow summary is still emitted and the CLI explains why inline instead of failing with a silent stdout bypass.
+When direct execution does succeed, the same command stream carries the execution banner, final status, and per-step output.
 
 ---
 
 ### lango workflow list
 
-List workflow runs.
+List workflow runs. The table output is written through the Cobra command output stream so wrappers and test harnesses can capture it directly.
 
 ```
 lango workflow list [--limit N]
@@ -281,7 +289,7 @@ i9j0k1l2  Weekly Summary        failed     1/4    2026-02-19 08:00:00
 
 ### lango workflow status
 
-Show detailed status for a specific workflow run, including per-step progress.
+Show detailed status for a specific workflow run, including per-step progress. The detail output is written through the Cobra command output stream so wrappers and test harnesses can capture it directly.
 
 ```
 lango workflow status <run-id>
@@ -301,16 +309,16 @@ Status:    running
 Progress:  2/3 steps
 
 Steps:
-  fetch-data            completed     agent=researcher
+  fetch-data            completed     agent=librarian
   analyze               completed     agent=planner
-  generate-report       running       agent=executor
+  generate-report       running       agent=operator
 ```
 
 ---
 
 ### lango workflow cancel
 
-Cancel a running workflow.
+Cancel a running workflow. The cancellation confirmation is written through the Cobra command output stream so wrappers and test harnesses can capture it directly.
 
 ```
 lango workflow cancel <run-id>
@@ -331,7 +339,7 @@ Workflow run e5f6g7h8 cancelled.
 
 ### lango workflow history
 
-Show workflow execution history across all workflows.
+Show workflow execution history across all workflows. The table output is written through the Cobra command output stream so wrappers and test harnesses can capture it directly.
 
 ```
 lango workflow history [--limit N]
@@ -357,9 +365,10 @@ m3n4o5p6  Daily Report Pipeline completed  3/3
 ### lango workflow validate
 
 Validate a workflow YAML file without executing it. Checks syntax, step dependencies, and DAG structure for cycles.
+Both table and JSON modes write through the Cobra command output stream so wrappers and test harnesses can capture validation output directly.
 
 ```
-lango workflow validate <file.flow.yaml> [--json]
+lango workflow validate <file.flow.yaml> [--output table|json]
 ```
 
 | Argument | Required | Description |
@@ -368,7 +377,7 @@ lango workflow validate <file.flow.yaml> [--json]
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--json` | bool | `false` | Output results as JSON |
+| `--output` | string | `table` | Output format (`table` or `json`) |
 
 **Examples:**
 
@@ -379,7 +388,7 @@ Workflow "./daily-report.flow.yaml" is valid.
   Steps:    3
   Schedule: 0 9 * * *
 
-$ lango workflow validate ./daily-report.flow.yaml --json
+$ lango workflow validate ./daily-report.flow.yaml --output json
 {
   "valid": true,
   "file": "./daily-report.flow.yaml",

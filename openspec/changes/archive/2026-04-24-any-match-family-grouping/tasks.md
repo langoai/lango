@@ -1,0 +1,19 @@
+# Tasks
+
+## 1. Read Model
+
+- [x] 1.1 Extend `internal/postadjudicationstatus` with `any_match_families`.
+- [x] 1.2 Add `any_match_family` list filtering.
+- [x] 1.3 Keep the grouping current-submission-trail-only and deduplicated.
+
+## 2. Meta Tools
+
+- [x] 2.1 Extend `list_dead_lettered_post_adjudication_executions` with `any_match_family`.
+- [x] 2.2 Keep the page response shape unchanged while exposing `any_match_families`.
+
+## 3. Docs and OpenSpec
+
+- [x] 3.1 Update `docs/architecture/dead-letter-browsing-status-observation.md`.
+- [x] 3.2 Update `docs/architecture/p2p-knowledge-exchange-track.md`.
+- [x] 3.3 Sync main specs under `openspec/specs/`.
+- [x] 3.4 Archive the completed change under `openspec/changes/archive/2026-04-24-any-match-family-grouping`.

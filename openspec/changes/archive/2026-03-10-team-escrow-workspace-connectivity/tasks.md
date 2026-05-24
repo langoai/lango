@@ -1,6 +1,6 @@
 # Tasks: P2P Team-Escrow-Workspace Connectivity
 
-## Wave 1: Independent Units
+## Slice 1: Independent Units
 
 - [x] **1.1** Add TeamFormedEvent publishing to FormTeam() after t.Activate()
 - [x] **1.2** Add TeamTaskDelegatedEvent publishing to DelegateTask() before wg.Wait()
@@ -21,7 +21,7 @@
 - [x] **8.2** Add SendTeamTask() to P2PRemoteAgent
 - [x] **8.3** Add SendTeamDisband() to P2PRemoteAgent
 
-## Wave 2: Event-Driven Bridges
+## Slice 2: Event-Driven Bridges
 
 - [x] **4.1** Create bridge_team_escrow.go with wireTeamEscrowBridge()
 - [x] **4.2** Implement TeamFormedEvent → escrow creation with per-worker milestones
@@ -36,7 +36,7 @@
 - [x] **6.3** Implement TeamTaskCompletedEvent → record contribution
 - [x] **6.4** Implement TeamDisbandedEvent → cleanup
 
-## Wave 3: Integration
+## Slice 3: Integration
 
 - [x] **7.1** Register team tools in app.go after P2P tools
 - [x] **7.2** Wire team-escrow bridge in app.go after economy init

@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -90,6 +91,37 @@ func TestRenderRecoveryBlock_ContainsIcon(t *testing.T) {
 func TestRenderRecoveryBlock_DirectAnswer(t *testing.T) {
 	got := renderRecoveryBlock("direct_answer", "budget_exceeded", 1, 0, 80)
 	assert.Contains(t, got, "Direct Answer")
+}
+
+func TestRenderRecoveryBlock_NarrowWidth(t *testing.T) {
+	got := renderRecoveryBlock("retry", "rate_limit", 1, 2*time.Second, 20)
+	assert.LessOrEqual(t, lipgloss.Width(got), 20)
+	assert.Contains(t, got, "…")
+}
+
+func TestRenderRecoveryBlock_SingleLineCauseClass(t *testing.T) {
+	got := renderRecoveryBlock("retry", "rate\n limit\t burst", 1, 0, 80)
+	assert.NotContains(t, got, "\n")
+	assert.Contains(t, got, "rate limit burst")
+}
+
+func TestRenderRecoveryBlock_SanitizesCauseClass(t *testing.T) {
+	got := renderRecoveryBlock("retry", "\x1b[31mrate\nlimit\x1b[0m", 1, 0, 80)
+	assert.Contains(t, got, "rate limit")
+	assert.NotContains(t, got, "\x1b[31m")
+	assert.NotContains(t, got, "\x1b[0m")
+}
+
+func TestRenderRecoveryBlock_SanitizesKnownAction(t *testing.T) {
+	got := renderRecoveryBlock("\x1b[31mre\ntry\x1b[0m", "rate_limit", 1, 0, 80)
+	assert.Contains(t, got, "Retry")
+	assert.NotContains(t, got, "\x1b[31m")
+	assert.NotContains(t, got, "\x1b[0m")
+}
+
+func TestSanitizeActionKey(t *testing.T) {
+	assert.Equal(t, "retry", sanitizeActionKey("\x1b[31mre\ntry\x1b[0m"))
+	assert.Equal(t, "retry_with_hint", sanitizeActionKey("retry_with_hint"))
 }
 
 func TestRecoveryActionDisplayName(t *testing.T) {

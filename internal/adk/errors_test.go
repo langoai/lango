@@ -112,75 +112,75 @@ func TestClassifyError(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		give string
-		err  error
-		want ErrorCode
+		give  string
+		err   error
+		want  ErrorCode
 		cause string
 	}{
 		{
-			give: "nil error",
-			err:  nil,
-			want: ErrInternal,
+			give:  "nil error",
+			err:   nil,
+			want:  ErrInternal,
 			cause: CauseInternalRuntimeError,
 		},
 		{
-			give: "deadline exceeded",
-			err:  context.DeadlineExceeded,
-			want: ErrTimeout,
+			give:  "deadline exceeded",
+			err:   context.DeadlineExceeded,
+			want:  ErrTimeout,
 			cause: CauseTimeoutHard,
 		},
 		{
-			give: "wrapped deadline",
-			err:  fmt.Errorf("agent: %w", context.DeadlineExceeded),
-			want: ErrTimeout,
+			give:  "wrapped deadline",
+			err:   fmt.Errorf("agent: %w", context.DeadlineExceeded),
+			want:  ErrTimeout,
 			cause: CauseTimeoutHard,
 		},
 		{
-			give: "context canceled",
-			err:  context.Canceled,
-			want: ErrTimeout,
+			give:  "context canceled",
+			err:   context.Canceled,
+			want:  ErrTimeout,
 			cause: CauseTimeoutHard,
 		},
 		{
-			give: "turn limit",
-			err:  fmt.Errorf("agent exceeded maximum turn limit (25)"),
-			want: ErrTurnLimit,
+			give:  "turn limit",
+			err:   fmt.Errorf("agent exceeded maximum turn limit (25)"),
+			want:  ErrTurnLimit,
 			cause: CauseTurnLimitExceeded,
 		},
 		{
-			give: "tool error",
-			err:  fmt.Errorf("tool execution failed"),
-			want: ErrToolError,
+			give:  "tool error",
+			err:   fmt.Errorf("tool execution failed"),
+			want:  ErrToolError,
 			cause: CauseUnknownToolError,
 		},
 		{
-			give: "model error 429",
-			err:  fmt.Errorf("429 rate limit exceeded"),
-			want: ErrModelError,
+			give:  "model error 429",
+			err:   fmt.Errorf("429 rate limit exceeded"),
+			want:  ErrModelError,
 			cause: CauseProviderRateLimit,
 		},
 		{
-			give: "thought_signature error",
-			err:  fmt.Errorf("invalid thought_signature in request"),
-			want: ErrModelError,
+			give:  "thought_signature error",
+			err:   fmt.Errorf("invalid thought_signature in request"),
+			want:  ErrModelError,
 			cause: CauseThoughtSignatureMissing,
 		},
 		{
-			give: "thoughtSignature camelCase error",
-			err:  fmt.Errorf("field thoughtSignature is not valid"),
-			want: ErrModelError,
+			give:  "thoughtSignature camelCase error",
+			err:   fmt.Errorf("field thoughtSignature is not valid"),
+			want:  ErrModelError,
 			cause: CauseThoughtSignatureMissing,
 		},
 		{
-			give: "thought_signature in functionCall parts (Gemini API error)",
-			err:  fmt.Errorf("Error 400, Message: Function call is missing a thought_signature in functionCall parts"),
-			want: ErrModelError,
+			give:  "thought_signature in functionCall parts (Gemini API error)",
+			err:   fmt.Errorf("Error 400, Message: Function call is missing a thought_signature in functionCall parts"),
+			want:  ErrModelError,
 			cause: CauseThoughtSignatureMissing,
 		},
 		{
-			give: "tool churn",
-			err:  fmt.Errorf(`tool "browser_search" called 5 times consecutively, forcing stop`),
-			want: ErrToolChurn,
+			give:  "tool churn",
+			err:   fmt.Errorf(`tool "browser_search" called 5 times consecutively, forcing stop`),
+			want:  ErrToolChurn,
 			cause: CauseRepeatedCallSignature,
 		},
 		{
@@ -232,9 +232,9 @@ func TestClassifyError(t *testing.T) {
 			cause: CauseProviderConnection,
 		},
 		{
-			give: "generic error",
-			err:  fmt.Errorf("something unknown"),
-			want: ErrInternal,
+			give:  "generic error",
+			err:   fmt.Errorf("something unknown"),
+			want:  ErrInternal,
 			cause: CauseInternalRuntimeError,
 		},
 	}
@@ -316,4 +316,36 @@ func TestAgentError_ErrorsAs(t *testing.T) {
 	require.True(t, errors.As(wrapped, &agentErr))
 	assert.Equal(t, ErrTimeout, agentErr.Code)
 	assert.Equal(t, "partial result", agentErr.Partial)
+}
+
+func TestRecoveryActionFor(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		give       string
+		causeClass string
+		want       RecoveryAction
+	}{
+		{give: "rate limit", causeClass: CauseProviderRateLimit, want: RecoveryRetry},
+		{give: "transient", causeClass: CauseProviderTransient, want: RecoveryRetry},
+		{give: "connection", causeClass: CauseProviderConnection, want: RecoveryRetry},
+		{give: "auth", causeClass: CauseProviderAuth, want: RecoveryAbortWithHint},
+		{give: "approval denied", causeClass: CauseApprovalDenied, want: 0},
+		{give: "approval timeout", causeClass: CauseApprovalTimeout, want: 0},
+		{give: "tool not found", causeClass: CauseToolNotFound, want: 0},
+		{give: "turn limit", causeClass: CauseTurnLimitExceeded, want: 0},
+		{give: "internal error", causeClass: CauseInternalRuntimeError, want: 0},
+		{give: "tool churn", causeClass: CauseRepeatedCallSignature, want: 0},
+		{give: "idle timeout", causeClass: CauseTimeoutIdle, want: 0},
+		{give: "hard timeout", causeClass: CauseTimeoutHard, want: 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.give, func(t *testing.T) {
+			t.Parallel()
+			fc := FailureClassification{CauseClass: tt.causeClass}
+			got := RecoveryActionFor(fc)
+			assert.Equal(t, tt.want, got)
+		})
+	}
 }

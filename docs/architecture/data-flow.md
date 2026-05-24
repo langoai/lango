@@ -199,7 +199,7 @@ graph LR
 - Checks turn count and token thresholds.
 - Runs `ConversationAnalyzer` for pattern extraction and `SessionLearner` for knowledge generation.
 
-**LibrarianProactiveBuffer** (`internal/librarian/buffer.go`)
+**LibrarianProactiveBuffer** (`internal/librarian/proactive_buffer.go`)
 
 - Triggered by `OnTurnComplete` gateway callback.
 - Runs `ObservationAnalyzer` to identify knowledge gaps.

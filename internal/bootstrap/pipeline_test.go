@@ -1,8 +1,10 @@
 package bootstrap
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"io"
 	"os"
 	"testing"
 
@@ -10,7 +12,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/keyring"
 	"github.com/langoai/lango/internal/security"
+	"github.com/langoai/lango/internal/security/passphrase"
 )
 
 func TestPipeline_ExecutesInOrder(t *testing.T) {
@@ -279,6 +283,22 @@ func (m *mockCryptoProvider) Decrypt(ctx context.Context, keyID string, cipherte
 	return m.local.Decrypt(ctx, keyID, ciphertext)
 }
 
+type failingKMSProvider struct {
+	err error
+}
+
+func (p failingKMSProvider) Sign(context.Context, string, []byte) ([]byte, error) {
+	return nil, p.err
+}
+
+func (p failingKMSProvider) Encrypt(context.Context, string, []byte) ([]byte, error) {
+	return nil, p.err
+}
+
+func (p failingKMSProvider) Decrypt(context.Context, string, []byte) ([]byte, error) {
+	return nil, p.err
+}
+
 func TestPhaseAcquireCredential_KMSUnwrap(t *testing.T) {
 	// Create envelope with a KMS slot.
 	env, mk, err := security.NewEnvelope("test-passphrase-1234")
@@ -331,6 +351,387 @@ func TestPhaseAcquireCredential_KMSFallback(t *testing.T) {
 	assert.False(t, env.HasSlotType(security.KEKSlotHardware))
 }
 
+func TestPhaseAcquireCredential_KMSProviderInitFailureFailsClosedWhenFallbackDisabled(t *testing.T) {
+	origAcquire := acquirePassphrase
+	origKMSProvider := newBootstrapKMSProvider
+	origErrWriter := bootstrapErrWriter
+	t.Cleanup(func() {
+		acquirePassphrase = origAcquire
+		newBootstrapKMSProvider = origKMSProvider
+		bootstrapErrWriter = origErrWriter
+	})
+
+	env, mk, err := security.NewEnvelope("test-passphrase-1234")
+	require.NoError(t, err)
+	defer security.ZeroBytes(mk)
+
+	kms := newMockCryptoProvider(t)
+	require.NoError(t, env.AddKMSSlot(context.Background(), "test-kms", mk, kms, "aws-kms", "test-key-1"))
+
+	acquireCalled := false
+	acquirePassphrase = func(opts passphrase.Options) (string, passphrase.Source, error) {
+		acquireCalled = true
+		return "fallback-passphrase", passphrase.SourceKeyfile, nil
+	}
+	newBootstrapKMSProvider = func(security.KMSProviderName, config.KMSConfig) (security.CryptoProvider, error) {
+		return nil, errors.New("kms init unavailable")
+	}
+	var errBuf bytes.Buffer
+	bootstrapErrWriter = &errBuf
+
+	state := &State{
+		Options: Options{
+			SkipSecureDetection: true,
+			DBPath:              t.TempDir() + "/missing.db",
+			KMSConfig: &config.KMSConfig{
+				KeyID:           "test-key-1",
+				FallbackToLocal: false,
+			},
+			KMSProviderName: "aws-kms",
+		},
+		Envelope: env,
+	}
+
+	err = phaseAcquireCredential().Run(context.Background(), state)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "KMS provider init failed")
+	assert.Contains(t, err.Error(), "fallbackToLocal is disabled")
+	assert.Contains(t, err.Error(), "kms init unavailable")
+	assert.False(t, acquireCalled)
+	assert.Empty(t, errBuf.String())
+}
+
+func TestPhaseAcquireCredential_KMSUnwrapFailureFailsClosedWhenFallbackDisabled(t *testing.T) {
+	origAcquire := acquirePassphrase
+	origKMSProvider := newBootstrapKMSProvider
+	origErrWriter := bootstrapErrWriter
+	t.Cleanup(func() {
+		acquirePassphrase = origAcquire
+		newBootstrapKMSProvider = origKMSProvider
+		bootstrapErrWriter = origErrWriter
+	})
+
+	env, mk, err := security.NewEnvelope("test-passphrase-1234")
+	require.NoError(t, err)
+	defer security.ZeroBytes(mk)
+
+	kms := newMockCryptoProvider(t)
+	require.NoError(t, env.AddKMSSlot(context.Background(), "test-kms", mk, kms, "aws-kms", "test-key-1"))
+
+	acquireCalled := false
+	acquirePassphrase = func(opts passphrase.Options) (string, passphrase.Source, error) {
+		acquireCalled = true
+		return "fallback-passphrase", passphrase.SourceKeyfile, nil
+	}
+	newBootstrapKMSProvider = func(security.KMSProviderName, config.KMSConfig) (security.CryptoProvider, error) {
+		return failingKMSProvider{err: errors.New("kms decrypt unavailable")}, nil
+	}
+	var errBuf bytes.Buffer
+	bootstrapErrWriter = &errBuf
+
+	state := &State{
+		Options: Options{
+			SkipSecureDetection: true,
+			DBPath:              t.TempDir() + "/missing.db",
+			KMSConfig: &config.KMSConfig{
+				KeyID:           "test-key-1",
+				FallbackToLocal: false,
+			},
+			KMSProviderName: "aws-kms",
+		},
+		Envelope: env,
+	}
+
+	err = phaseAcquireCredential().Run(context.Background(), state)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "KMS unwrap failed")
+	assert.Contains(t, err.Error(), "fallbackToLocal is disabled")
+	assert.Contains(t, err.Error(), "kms decrypt unavailable")
+	assert.False(t, acquireCalled)
+	assert.Empty(t, errBuf.String())
+}
+
+func TestPhaseAcquireCredential_KMSProviderInitFailureFallsBackWhenFallbackEnabled(t *testing.T) {
+	origAcquire := acquirePassphrase
+	origKMSProvider := newBootstrapKMSProvider
+	origErrWriter := bootstrapErrWriter
+	t.Cleanup(func() {
+		acquirePassphrase = origAcquire
+		newBootstrapKMSProvider = origKMSProvider
+		bootstrapErrWriter = origErrWriter
+	})
+
+	env, mk, err := security.NewEnvelope("test-passphrase-1234")
+	require.NoError(t, err)
+	defer security.ZeroBytes(mk)
+
+	kms := newMockCryptoProvider(t)
+	require.NoError(t, env.AddKMSSlot(context.Background(), "test-kms", mk, kms, "aws-kms", "test-key-1"))
+
+	acquireCalled := false
+	acquirePassphrase = func(opts passphrase.Options) (string, passphrase.Source, error) {
+		acquireCalled = true
+		return "fallback-passphrase", passphrase.SourceKeyfile, nil
+	}
+	newBootstrapKMSProvider = func(security.KMSProviderName, config.KMSConfig) (security.CryptoProvider, error) {
+		return nil, errors.New("kms init unavailable")
+	}
+	var errBuf bytes.Buffer
+	bootstrapErrWriter = &errBuf
+
+	state := &State{
+		Options: Options{
+			SkipSecureDetection: true,
+			DBPath:              t.TempDir() + "/missing.db",
+			KMSConfig: &config.KMSConfig{
+				KeyID:           "test-key-1",
+				FallbackToLocal: true,
+			},
+			KMSProviderName: "aws-kms",
+		},
+		Envelope: env,
+	}
+
+	err = phaseAcquireCredential().Run(context.Background(), state)
+	require.NoError(t, err)
+	assert.True(t, acquireCalled)
+	assert.Equal(t, "fallback-passphrase", state.Passphrase)
+	assert.Contains(t, errBuf.String(), "KMS provider init failed")
+	assert.Contains(t, errBuf.String(), "falling back to passphrase")
+}
+
+func TestPhaseAcquireCredential_KMSUnwrapFailureFallsBackWhenFallbackEnabled(t *testing.T) {
+	origAcquire := acquirePassphrase
+	origKMSProvider := newBootstrapKMSProvider
+	origErrWriter := bootstrapErrWriter
+	t.Cleanup(func() {
+		acquirePassphrase = origAcquire
+		newBootstrapKMSProvider = origKMSProvider
+		bootstrapErrWriter = origErrWriter
+	})
+
+	env, mk, err := security.NewEnvelope("test-passphrase-1234")
+	require.NoError(t, err)
+	defer security.ZeroBytes(mk)
+
+	kms := newMockCryptoProvider(t)
+	require.NoError(t, env.AddKMSSlot(context.Background(), "test-kms", mk, kms, "aws-kms", "test-key-1"))
+
+	acquireCalled := false
+	acquirePassphrase = func(opts passphrase.Options) (string, passphrase.Source, error) {
+		acquireCalled = true
+		return "fallback-passphrase", passphrase.SourceKeyfile, nil
+	}
+	newBootstrapKMSProvider = func(security.KMSProviderName, config.KMSConfig) (security.CryptoProvider, error) {
+		return failingKMSProvider{err: errors.New("kms decrypt unavailable")}, nil
+	}
+	var errBuf bytes.Buffer
+	bootstrapErrWriter = &errBuf
+
+	state := &State{
+		Options: Options{
+			SkipSecureDetection: true,
+			DBPath:              t.TempDir() + "/missing.db",
+			KMSConfig: &config.KMSConfig{
+				KeyID:           "test-key-1",
+				FallbackToLocal: true,
+			},
+			KMSProviderName: "aws-kms",
+		},
+		Envelope: env,
+	}
+
+	err = phaseAcquireCredential().Run(context.Background(), state)
+	require.NoError(t, err)
+	assert.True(t, acquireCalled)
+	assert.Equal(t, "fallback-passphrase", state.Passphrase)
+	assert.Contains(t, errBuf.String(), "falling back to passphrase")
+}
+
+type stubSecureProvider struct {
+	setErr error
+	sets   int
+}
+
+func (s *stubSecureProvider) Get(service, key string) (string, error) { return "", keyring.ErrNotFound }
+func (s *stubSecureProvider) Set(service, key, value string) error {
+	s.sets++
+	return s.setErr
+}
+func (s *stubSecureProvider) Delete(service, key string) error { return nil }
+
+func TestPhaseAcquireCredential_StoresPassphraseWhenConfirmed(t *testing.T) {
+	origAcquire := acquirePassphrase
+	origConfirm := confirmStorePass
+	origErrWriter := bootstrapErrWriter
+	t.Cleanup(func() {
+		acquirePassphrase = origAcquire
+		confirmStorePass = origConfirm
+		bootstrapErrWriter = origErrWriter
+	})
+
+	acquirePassphrase = func(opts passphrase.Options) (string, passphrase.Source, error) {
+		return "test-passphrase", passphrase.SourceInteractive, nil
+	}
+	var promptMsg string
+	confirmStorePass = func(msg string) (bool, error) {
+		promptMsg = msg
+		return true, nil
+	}
+	var errBuf bytes.Buffer
+	bootstrapErrWriter = &errBuf
+
+	provider := &stubSecureProvider{}
+	state := &State{
+		Options:        Options{SkipSecureDetection: true, DBPath: t.TempDir() + "/missing.db"},
+		SecureProvider: provider,
+		SecurityTier:   keyring.TierBiometric,
+	}
+
+	err := phaseAcquireCredential().Run(context.Background(), state)
+	require.NoError(t, err)
+	assert.Equal(t, "Secure storage available (biometric). Store passphrase?", promptMsg)
+	assert.Equal(t, 1, provider.sets)
+	assert.Contains(t, errBuf.String(), "Passphrase saved. Next launch will load it automatically.")
+}
+
+func TestConfirmStorePassphrase_UsesBootstrapPromptStreams(t *testing.T) {
+	origInput := bootstrapConfirmInput
+	origOutput := bootstrapConfirmOutput
+	t.Cleanup(func() {
+		bootstrapConfirmInput = origInput
+		bootstrapConfirmOutput = origOutput
+	})
+
+	bootstrapConfirmInput = bytes.NewBufferString("yes\n")
+	var out bytes.Buffer
+	bootstrapConfirmOutput = &out
+
+	ok, err := confirmStorePassphrase("Store passphrase?")
+	require.NoError(t, err)
+	assert.True(t, ok)
+	assert.Equal(t, "Store passphrase? [y/N]: ", out.String())
+}
+
+func TestConfirmStorePassphrase_DeniesOnEOF(t *testing.T) {
+	origInput := bootstrapConfirmInput
+	origOutput := bootstrapConfirmOutput
+	t.Cleanup(func() {
+		bootstrapConfirmInput = origInput
+		bootstrapConfirmOutput = origOutput
+	})
+
+	bootstrapConfirmInput = bytes.NewBuffer(nil)
+	bootstrapConfirmOutput = io.Discard
+
+	ok, err := confirmStorePassphrase("Store passphrase?")
+	require.NoError(t, err)
+	assert.False(t, ok)
+}
+
+func TestPhaseAcquireCredential_EntitlementWarningOnStoreFailure(t *testing.T) {
+	origAcquire := acquirePassphrase
+	origConfirm := confirmStorePass
+	origErrWriter := bootstrapErrWriter
+	t.Cleanup(func() {
+		acquirePassphrase = origAcquire
+		confirmStorePass = origConfirm
+		bootstrapErrWriter = origErrWriter
+	})
+
+	acquirePassphrase = func(opts passphrase.Options) (string, passphrase.Source, error) {
+		return "test-passphrase", passphrase.SourceInteractive, nil
+	}
+	confirmStorePass = func(msg string) (bool, error) { return true, nil }
+	var errBuf bytes.Buffer
+	bootstrapErrWriter = &errBuf
+
+	state := &State{
+		Options:        Options{SkipSecureDetection: true, DBPath: t.TempDir() + "/missing.db"},
+		SecureProvider: &stubSecureProvider{setErr: keyring.ErrEntitlement},
+		SecurityTier:   keyring.TierBiometric,
+	}
+
+	err := phaseAcquireCredential().Run(context.Background(), state)
+	require.NoError(t, err)
+	assert.Contains(t, errBuf.String(), "warning: biometric storage unavailable (binary not codesigned)")
+	assert.Contains(t, errBuf.String(), "Tip: codesign the binary for Touch ID support: make codesign")
+}
+
+func TestPhaseAcquireCredential_GenericStoreFailureWarning(t *testing.T) {
+	origAcquire := acquirePassphrase
+	origConfirm := confirmStorePass
+	origErrWriter := bootstrapErrWriter
+	t.Cleanup(func() {
+		acquirePassphrase = origAcquire
+		confirmStorePass = origConfirm
+		bootstrapErrWriter = origErrWriter
+	})
+
+	acquirePassphrase = func(opts passphrase.Options) (string, passphrase.Source, error) {
+		return "test-passphrase", passphrase.SourceInteractive, nil
+	}
+	confirmStorePass = func(msg string) (bool, error) { return true, nil }
+	var errBuf bytes.Buffer
+	bootstrapErrWriter = &errBuf
+
+	state := &State{
+		Options:        Options{SkipSecureDetection: true, DBPath: t.TempDir() + "/missing.db"},
+		SecureProvider: &stubSecureProvider{setErr: errors.New("boom")},
+		SecurityTier:   keyring.TierBiometric,
+	}
+
+	err := phaseAcquireCredential().Run(context.Background(), state)
+	require.NoError(t, err)
+	assert.Contains(t, errBuf.String(), "warning: store passphrase failed: boom")
+}
+
+func TestPhaseMigrateEnvelope_LegacyModeWritesUpgradeBannerToBootstrapErrWriter(t *testing.T) {
+	origWriter := bootstrapErrWriter
+	t.Cleanup(func() { bootstrapErrWriter = origWriter })
+
+	var errBuf bytes.Buffer
+	bootstrapErrWriter = &errBuf
+
+	state := &State{
+		LegacyMode: true,
+		Broker:     nil,
+		RawDB:      nil,
+		Client:     nil,
+		LangoDir:   t.TempDir(),
+		Passphrase: "test-passphrase",
+		Salt:       []byte("salt"),
+		Checksum:   []byte("checksum"),
+	}
+
+	err := phaseMigrateEnvelope().Run(context.Background(), state)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "legacy migration")
+	assert.Contains(t, errBuf.String(), "Upgrading encryption format (one-time migration)...")
+}
+
+func TestPhaseInitCrypto_ShredKeyfileWarningUsesBootstrapErrWriter(t *testing.T) {
+	origWriter := bootstrapErrWriter
+	t.Cleanup(func() { bootstrapErrWriter = origWriter })
+
+	var errBuf bytes.Buffer
+	bootstrapErrWriter = &errBuf
+
+	state := &State{
+		Options: Options{
+			KeyfilePath: t.TempDir(),
+		},
+		Passphrase: "test-passphrase",
+		PassSource: passphrase.SourceKeyfile,
+		FirstRun:   false,
+		Salt:       []byte("0123456789abcdef"),
+	}
+
+	err := phaseInitCrypto().Run(context.Background(), state)
+	require.NoError(t, err)
+	assert.Contains(t, errBuf.String(), "warning: shred keyfile:")
+}
+
 func TestKMSConfigFromEnv(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -359,6 +760,32 @@ func TestKMSConfigFromEnv(t *testing.T) {
 			},
 		},
 		{
+			name: "aws-kms fallback disabled",
+			env: map[string]string{
+				"LANGO_KMS_PROVIDER":          "aws-kms",
+				"LANGO_KMS_KEY_ID":            "arn:aws:kms:us-east-1:123:key/abc",
+				"LANGO_KMS_FALLBACK_TO_LOCAL": "false",
+			},
+			wantProvider: "aws-kms",
+			check: func(t *testing.T, cfg *config.KMSConfig) {
+				assert.Equal(t, "arn:aws:kms:us-east-1:123:key/abc", cfg.KeyID)
+				assert.False(t, cfg.FallbackToLocal)
+			},
+		},
+		{
+			name: "invalid fallback bool keeps default enabled",
+			env: map[string]string{
+				"LANGO_KMS_PROVIDER":          "aws-kms",
+				"LANGO_KMS_KEY_ID":            "arn:aws:kms:us-east-1:123:key/abc",
+				"LANGO_KMS_FALLBACK_TO_LOCAL": "not-a-bool",
+			},
+			wantProvider: "aws-kms",
+			check: func(t *testing.T, cfg *config.KMSConfig) {
+				assert.Equal(t, "arn:aws:kms:us-east-1:123:key/abc", cfg.KeyID)
+				assert.True(t, cfg.FallbackToLocal)
+			},
+		},
+		{
 			name: "azure-kv",
 			env: map[string]string{
 				"LANGO_KMS_PROVIDER":          "azure-kv",
@@ -376,11 +803,11 @@ func TestKMSConfigFromEnv(t *testing.T) {
 		{
 			name: "pkcs11",
 			env: map[string]string{
-				"LANGO_KMS_PROVIDER":          "pkcs11",
-				"LANGO_KMS_PKCS11_MODULE":     "/usr/lib/pkcs11.so",
-				"LANGO_KMS_PKCS11_SLOT_ID":    "2",
-				"LANGO_KMS_PKCS11_KEY_LABEL":  "mk-key",
-				"LANGO_PKCS11_PIN":            "1234",
+				"LANGO_KMS_PROVIDER":         "pkcs11",
+				"LANGO_KMS_PKCS11_MODULE":    "/usr/lib/pkcs11.so",
+				"LANGO_KMS_PKCS11_SLOT_ID":   "2",
+				"LANGO_KMS_PKCS11_KEY_LABEL": "mk-key",
+				"LANGO_PKCS11_PIN":           "1234",
 			},
 			wantProvider: "pkcs11",
 			check: func(t *testing.T, cfg *config.KMSConfig) {
@@ -400,7 +827,7 @@ func TestKMSConfigFromEnv(t *testing.T) {
 				"LANGO_KMS_ENDPOINT", "LANGO_KMS_AZURE_VAULT_URL",
 				"LANGO_KMS_AZURE_KEY_VERSION", "LANGO_KMS_PKCS11_MODULE",
 				"LANGO_KMS_PKCS11_SLOT_ID", "LANGO_KMS_PKCS11_KEY_LABEL",
-				"LANGO_PKCS11_PIN",
+				"LANGO_KMS_FALLBACK_TO_LOCAL", "LANGO_PKCS11_PIN",
 			} {
 				t.Setenv(key, "")
 				os.Unsetenv(key)

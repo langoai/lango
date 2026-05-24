@@ -10,8 +10,14 @@ import (
 	"github.com/langoai/lango/internal/toolparam"
 )
 
+// MissionExecutionLinker links newly submitted background executions to a mission.
+// Implementations may be no-op until mission-native write paths are enabled.
+type MissionExecutionLinker interface {
+	LinkBackgroundTask(ctx context.Context, taskID string, origin Origin, prompt string) error
+}
+
 // BuildTools creates tools for managing background tasks.
-func BuildTools(mgr *Manager, defaultDeliverTo []string) []*agent.Tool {
+func BuildTools(mgr *Manager, defaultDeliverTo []string, linker MissionExecutionLinker) []*agent.Tool {
 	return []*agent.Tool{
 		{
 			Name:        "bg_submit",
@@ -53,6 +59,22 @@ func BuildTools(mgr *Manager, defaultDeliverTo []string) []*agent.Tool {
 				})
 				if err != nil {
 					return nil, fmt.Errorf("submit background task: %w", err)
+				}
+				if linker != nil {
+					if linkErr := linker.LinkBackgroundTask(ctx, taskID, Origin{
+						Channel: channel,
+						Session: sessionKey,
+					}, prompt); linkErr != nil {
+						if cancelErr := mgr.Cancel(taskID); cancelErr != nil {
+							return nil, fmt.Errorf(
+								"submit background task: mission link failed for %q: %w (cancel failed: %v)",
+								taskID,
+								linkErr,
+								cancelErr,
+							)
+						}
+						return nil, fmt.Errorf("submit background task: mission link failed for %q: %w", taskID, linkErr)
+					}
 				}
 				return map[string]interface{}{
 					"status":  "submitted",

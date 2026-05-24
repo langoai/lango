@@ -8,7 +8,7 @@ import (
 // AgentStreamFanIn merges multiple child agent output streams into a single
 // tagged stream, emitting progress events for child lifecycle via ProgressBus.
 type AgentStreamFanIn struct {
-	parent   string                   // parent agent/session ID
+	parent   string                    // parent agent/session ID
 	children map[string]Stream[string] // childID -> output stream
 	bus      *ProgressBus
 }

@@ -20,6 +20,26 @@ The settings editor SHALL provide menu-based navigation with a two-level hierarc
 - **WHEN** user selects "Save & Exit" from Level 1
 - **THEN** the configuration SHALL be saved as an encrypted profile
 
+### Requirement: Settings command output routing
+`lango settings` SHALL write its cancel message and post-save guidance through the Cobra command output stream so wrappers and test harnesses can capture non-TUI completion output without intercepting process-global stdout.
+
+#### Scenario: Settings post-save guidance writes to command output
+- **WHEN** settings saves successfully
+- **THEN** the post-save guidance writes to the Cobra command output stream
+
+### Requirement: Settings command requires an interactive terminal
+The `lango settings` command SHALL fail before bootstrap or TUI startup when the command input stream is not an interactive terminal.
+
+#### Scenario: Non-interactive settings fails with scripted guidance
+- **WHEN** `lango settings` is invoked while the command input stream is not an interactive terminal
+- **THEN** the command SHALL return an error that says settings requires an interactive terminal
+- **AND** the error SHALL guide scripted configuration toward `lango config import` or `lango config set`
+- **AND** the command SHALL NOT start the settings editor or save a profile
+
+#### Scenario: Settings guard uses command input stream
+- **WHEN** `lango settings` is executed with an injected command input stream
+- **THEN** the interactive guard SHALL validate that command input stream instead of reading process-global stdin directly
+
 #### Scenario: Esc at Welcome screen quits
 - **WHEN** user presses Esc at the Welcome screen (StepWelcome)
 - **THEN** the TUI SHALL quit
@@ -184,11 +204,11 @@ The ConfigState.UpdateConfigFromForm SHALL map the new PII form keys to their co
 - **THEN** config Presidio.Enabled SHALL be true
 
 ### Requirement: Security form signer provider options
-The Security form's signer provider dropdown SHALL include options for all supported providers: local, rpc, enclave, aws-kms, gcp-kms, azure-kv, pkcs11.
+The Security form's signer provider dropdown SHALL include options for all supported providers: local, rpc, aws-kms, gcp-kms, azure-kv, pkcs11.
 
-#### Scenario: KMS providers available in signer dropdown
+#### Scenario: Removed enclave provider is absent from signer dropdown
 - **WHEN** user opens the Security form
-- **THEN** the signer provider dropdown SHALL include "aws-kms", "gcp-kms", "azure-kv", and "pkcs11" as options
+- **THEN** the signer provider dropdown SHALL NOT include "enclave"
 
 ### Requirement: P2P Network settings form
 The settings TUI SHALL provide a "P2P Network" form with 14 fields covering core P2P networking: enabled, listen addresses, bootstrap peers, relay, mDNS, max peers, handshake timeout, session token TTL, auto-approve known peers, gossip interval, ZK handshake, ZK attestation, require signed challenge, and min trust score.
@@ -229,13 +249,12 @@ The settings TUI SHALL provide a "P2P Owner Protection" form with fields for own
 ### Requirement: P2P Sandbox settings form
 The settings TUI SHALL provide a "P2P Sandbox" form with fields for tool isolation (enabled, timeout, max memory) and container sandbox (enabled, runtime, image, network mode, read-only rootfs, CPU quota, pool size, pool idle timeout). Container-specific fields SHALL only be visible when Container Sandbox is enabled.
 
-#### Scenario: User configures container sandbox
-- **WHEN** user enables container sandbox and selects "docker" runtime
-- **THEN** the config's `p2p.toolIsolation.container.enabled` SHALL be true and `runtime` SHALL be "docker"
-
-#### Scenario: Container read-only rootfs defaults to true
-- **WHEN** the config's `readOnlyRootfs` is nil
-- **THEN** the form SHALL display the checkbox as checked (default true)
+#### Scenario: Container runtime description stays truth-aligned
+- **WHEN** user opens the "P2P Sandbox" form
+- **THEN** the container runtime field SHALL describe `auto` as detection-based
+- **AND** SHALL describe `docker` as the preferred real container runtime
+- **AND** SHALL describe `gvisor` as the current stub instead of implying that it is already the strongest available implementation
+- **AND** SHALL describe `native` as the local fallback path
 
 ### Requirement: Security Keyring settings form
 The settings TUI SHALL provide a "Security Keyring" form with a single field for OS keyring enabled/disabled.
@@ -245,15 +264,13 @@ The settings TUI SHALL provide a "Security Keyring" form with a single field for
 - **THEN** the config's `security.keyring.enabled` SHALL be set to true
 
 ### Requirement: Security DB Encryption settings form
-The settings TUI SHALL provide a "Security DB Encryption" form with fields for SQLCipher encryption enabled and cipher page size.
+The settings TUI SHALL provide a read-only "Security DB Encryption" notice form that shows deprecated legacy SQLCipher config values without presenting them as active editable runtime settings.
 
-#### Scenario: User enables DB encryption
-- **WHEN** user checks "SQLCipher Encryption" and sets page size to 4096
-- **THEN** the config SHALL have `security.dbEncryption.enabled` true and `cipherPageSize` 4096
-
-#### Scenario: Cipher page size validation
-- **WHEN** user enters 0 or a negative number for cipher page size
-- **THEN** the form SHALL display a validation error "must be a positive integer"
+#### Scenario: Deprecated DB encryption settings are shown read-only
+- **WHEN** user opens the "Security DB Encryption" form
+- **THEN** the form SHALL show read-only status rows for the legacy SQLCipher flag and cipher page size
+- **AND** it SHALL include an explicit runtime note that SQLCipher page encryption is unsupported and broker-managed payload protection is active
+- **AND** saving or updating the form SHALL NOT mutate `security.dbEncryption.*` runtime config values
 
 ### Requirement: Security KMS settings form
 The settings TUI SHALL provide a "Security KMS" form with conditional field visibility based on the selected backend. Cloud KMS fields (region, endpoint) appear for aws-kms/gcp-kms/azure-kv. Azure-specific fields appear for azure-kv. PKCS#11 fields appear for pkcs11. Common fields (key ID, fallback, timeout, retries) appear for all non-local backends.
@@ -280,7 +297,7 @@ The sections SHALL be, in order:
 4. **Payment & Account** — Payment, Smart Account (advanced), SA Session Keys (advanced), SA Paymaster (advanced), SA Modules (advanced)
 5. **P2P & Economy** — P2P Network (advanced), P2P Workspace (advanced), P2P ZKP (advanced), P2P Pricing (advanced), P2P Owner Protection (advanced), P2P Sandbox (advanced), Economy (advanced), Economy Risk (advanced), Economy Negotiation (advanced), Economy Escrow (advanced), On-Chain Escrow (advanced), Economy Pricing (advanced)
 6. **Integrations** — MCP Settings, MCP Server List (advanced), Observability (advanced), Alerting (advanced)
-7. **Security** — Security, Auth (advanced), Security DB Encryption (advanced), Security KMS (advanced), OS Sandbox (advanced)
+7. **Security** — Security, Auth (advanced), Legacy DB Encryption (advanced), Security KMS (advanced), OS Sandbox (advanced)
 8. *(untitled)* — Save & Exit, Cancel
 
 #### Scenario: Level 1 section list displayed
@@ -771,3 +788,33 @@ The settings TUI SHALL provide an "OS Sandbox" category under the Security secti
 #### Scenario: OS Sandbox category is always enabled
 - **WHEN** `categoryIsEnabled("os_sandbox")` is called
 - **THEN** it SHALL return true regardless of other config settings
+
+### Requirement: Runtime admission settings
+The settings surface SHALL expose runtime admission configuration under `ontology.governance.admissionMode`, `ontology.governance.learningDefaultConfidence`, and `ontology.governance.librarianDefaultConfidence`, with values `off` and `observe` for admission mode plus fallback confidence defaults of `0.60` for the learning producer group and `0.50` for the librarian producer group.
+
+These fields SHALL use the existing `ontology.governance.*` config namespace for storage compatibility, but they SHALL always remain directly visible on the runtime admission settings surface rather than inheriting governance-enabled gating semantics.
+
+#### Scenario: Runtime admission config is editable
+- **WHEN** an operator edits runtime admission settings
+- **THEN** the runtime admission mode SHALL be configurable as `off` or `observe`
+- **AND** the learning producer group and librarian producer group SHALL each expose a fallback confidence default
+
+#### Scenario: Runtime admission settings are not hidden behind governance-only gating
+- **WHEN** the runtime admission settings surface is rendered
+- **THEN** the runtime admission mode and both fallback confidence defaults SHALL remain directly editable within that settings surface
+- **AND** the runtime SHALL NOT require a separate governance-enabled toggle before showing those fields
+
+#### Scenario: No extra producer groups are implied
+- **WHEN** the runtime admission settings surface is rendered
+- **THEN** it SHALL scope fallback confidence defaults only to the learning producer group and the librarian producer group
+- **AND** it SHALL NOT imply additional first-slice producer groups
+
+### Requirement: Logging settings copy matches default stderr output
+
+The Logging settings form SHALL describe an empty `logging.outputPath` as using the default stderr logging stream. It SHALL NOT describe an empty logging output path as stdout.
+
+#### Scenario: Logging output path field describes stderr fallback
+
+- **WHEN** the Logging settings form is rendered
+- **THEN** the `log_output_path` placeholder and description SHALL communicate that an empty value uses stderr
+- **AND** they SHALL NOT say an empty value uses stdout

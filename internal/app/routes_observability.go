@@ -1,22 +1,21 @@
 package app
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strconv"
 	"time"
 
-	"entgo.io/ent/dialect/sql"
 	"github.com/go-chi/chi/v5"
-	"github.com/langoai/lango/internal/ent"
-	"github.com/langoai/lango/internal/ent/auditlog"
 	"github.com/langoai/lango/internal/observability"
 	"github.com/langoai/lango/internal/observability/health"
 	"github.com/langoai/lango/internal/observability/token"
+	"github.com/langoai/lango/internal/storage"
 )
 
 // registerObservabilityRoutes adds observability HTTP endpoints to the router.
-func registerObservabilityRoutes(r chi.Router, collector *observability.MetricsCollector, hr *health.Registry, store *token.EntTokenStore, dbClient *ent.Client, promExporter *observability.PrometheusExporter) {
+func registerObservabilityRoutes(r chi.Router, collector *observability.MetricsCollector, hr *health.Registry, store *token.EntTokenStore, alertsReader func(context.Context, time.Time) ([]storage.AlertRecord, error), promExporter *observability.PrometheusExporter) {
 	if collector == nil {
 		return
 	}
@@ -155,7 +154,7 @@ func registerObservabilityRoutes(r chi.Router, collector *observability.MetricsC
 	}
 
 	// Alerts endpoint — queries audit DB for action="alert"
-	if dbClient != nil {
+	if alertsReader != nil {
 		r.Get("/alerts", func(w http.ResponseWriter, r *http.Request) {
 			daysStr := r.URL.Query().Get("days")
 			days := 7
@@ -165,13 +164,7 @@ func registerObservabilityRoutes(r chi.Router, collector *observability.MetricsC
 
 			from := time.Now().AddDate(0, 0, -days)
 
-			logs, err := dbClient.AuditLog.Query().
-				Where(
-					auditlog.ActionEQ(auditlog.Action("alert")),
-					auditlog.TimestampGTE(from),
-				).
-				Order(auditlog.ByTimestamp(sql.OrderDesc())).
-				All(r.Context())
+			logs, err := alertsReader(r.Context(), from)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
@@ -180,8 +173,8 @@ func registerObservabilityRoutes(r chi.Router, collector *observability.MetricsC
 			items := make([]map[string]interface{}, len(logs))
 			for i, l := range logs {
 				items[i] = map[string]interface{}{
-					"id":        l.ID.String(),
-					"type":      l.Target,
+					"id":        l.ID,
+					"type":      l.Type,
 					"actor":     l.Actor,
 					"details":   l.Details,
 					"timestamp": l.Timestamp.Format(time.RFC3339),

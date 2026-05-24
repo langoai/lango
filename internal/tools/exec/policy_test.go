@@ -55,7 +55,7 @@ func TestPolicyEvaluator_Evaluate(t *testing.T) {
 	pe := newTestEvaluator(t)
 
 	tests := []struct {
-		give       string
+		give        string
 		wantVerdict Verdict
 		wantReason  ReasonCode
 	}{

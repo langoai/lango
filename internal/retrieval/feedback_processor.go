@@ -49,7 +49,7 @@ func (p *FeedbackProcessor) handleContextInjected(evt eventbus.ContextInjectedEv
 		"query_length", len(evt.Query),
 		"knowledge_items", len(evt.Items),
 		"knowledge_tokens", evt.KnowledgeTokens,
-		"rag_tokens", evt.RAGTokens,
+		"retrieved_tokens", evt.RetrievedTokens,
 		"memory_tokens", evt.MemoryTokens,
 		"run_summary_tokens", evt.RunSummaryTokens,
 		"total_tokens", evt.TotalTokens,

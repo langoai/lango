@@ -189,6 +189,42 @@ func (f MessageFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, err
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.MessageMutation", m)
 }
 
+// The MissionFunc type is an adapter to allow the use of ordinary
+// function as Mission mutator.
+type MissionFunc func(context.Context, *ent.MissionMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f MissionFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.MissionMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.MissionMutation", m)
+}
+
+// The MissionExecutionLinkFunc type is an adapter to allow the use of ordinary
+// function as MissionExecutionLink mutator.
+type MissionExecutionLinkFunc func(context.Context, *ent.MissionExecutionLinkMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f MissionExecutionLinkFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.MissionExecutionLinkMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.MissionExecutionLinkMutation", m)
+}
+
+// The MissionStateHistoryFunc type is an adapter to allow the use of ordinary
+// function as MissionStateHistory mutator.
+type MissionStateHistoryFunc func(context.Context, *ent.MissionStateHistoryMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f MissionStateHistoryFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.MissionStateHistoryMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.MissionStateHistoryMutation", m)
+}
+
 // The ObservationFunc type is an adapter to allow the use of ordinary
 // function as Observation mutator.
 type ObservationFunc func(context.Context, *ent.ObservationMutation) (ent.Value, error)

@@ -21,6 +21,9 @@ import (
 	"github.com/langoai/lango/internal/ent/knowledge"
 	"github.com/langoai/lango/internal/ent/learning"
 	"github.com/langoai/lango/internal/ent/message"
+	"github.com/langoai/lango/internal/ent/mission"
+	"github.com/langoai/lango/internal/ent/missionexecutionlink"
+	"github.com/langoai/lango/internal/ent/missionstatehistory"
 	"github.com/langoai/lango/internal/ent/observation"
 	"github.com/langoai/lango/internal/ent/ontologyconflict"
 	"github.com/langoai/lango/internal/ent/ontologypredicate"
@@ -81,19 +84,19 @@ func init() {
 	// agentmemory.ContentValidator is a validator for the "content" field. It is called by the builders before save.
 	agentmemory.ContentValidator = agentmemoryDescContent.Validators[0].(func(string) error)
 	// agentmemoryDescConfidence is the schema descriptor for confidence field.
-	agentmemoryDescConfidence := agentmemoryFields[6].Descriptor()
+	agentmemoryDescConfidence := agentmemoryFields[9].Descriptor()
 	// agentmemory.DefaultConfidence holds the default value on creation for the confidence field.
 	agentmemory.DefaultConfidence = agentmemoryDescConfidence.Default.(float64)
 	// agentmemoryDescUseCount is the schema descriptor for use_count field.
-	agentmemoryDescUseCount := agentmemoryFields[7].Descriptor()
+	agentmemoryDescUseCount := agentmemoryFields[10].Descriptor()
 	// agentmemory.DefaultUseCount holds the default value on creation for the use_count field.
 	agentmemory.DefaultUseCount = agentmemoryDescUseCount.Default.(int)
 	// agentmemoryDescCreatedAt is the schema descriptor for created_at field.
-	agentmemoryDescCreatedAt := agentmemoryFields[9].Descriptor()
+	agentmemoryDescCreatedAt := agentmemoryFields[12].Descriptor()
 	// agentmemory.DefaultCreatedAt holds the default value on creation for the created_at field.
 	agentmemory.DefaultCreatedAt = agentmemoryDescCreatedAt.Default.(func() time.Time)
 	// agentmemoryDescUpdatedAt is the schema descriptor for updated_at field.
-	agentmemoryDescUpdatedAt := agentmemoryFields[10].Descriptor()
+	agentmemoryDescUpdatedAt := agentmemoryFields[13].Descriptor()
 	// agentmemory.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	agentmemory.DefaultUpdatedAt = agentmemoryDescUpdatedAt.Default.(func() time.Time)
 	// agentmemory.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
@@ -333,7 +336,7 @@ func init() {
 	// inquiry.QuestionValidator is a validator for the "question" field. It is called by the builders before save.
 	inquiry.QuestionValidator = inquiryDescQuestion.Validators[0].(func(string) error)
 	// inquiryDescCreatedAt is the schema descriptor for created_at field.
-	inquiryDescCreatedAt := inquiryFields[10].Descriptor()
+	inquiryDescCreatedAt := inquiryFields[13].Descriptor()
 	// inquiry.DefaultCreatedAt holds the default value on creation for the created_at field.
 	inquiry.DefaultCreatedAt = inquiryDescCreatedAt.Default.(func() time.Time)
 	// inquiryDescID is the schema descriptor for id field.
@@ -369,27 +372,27 @@ func init() {
 	// knowledge.ContentValidator is a validator for the "content" field. It is called by the builders before save.
 	knowledge.ContentValidator = knowledgeDescContent.Validators[0].(func(string) error)
 	// knowledgeDescVersion is the schema descriptor for version field.
-	knowledgeDescVersion := knowledgeFields[6].Descriptor()
+	knowledgeDescVersion := knowledgeFields[11].Descriptor()
 	// knowledge.DefaultVersion holds the default value on creation for the version field.
 	knowledge.DefaultVersion = knowledgeDescVersion.Default.(int)
 	// knowledgeDescIsLatest is the schema descriptor for is_latest field.
-	knowledgeDescIsLatest := knowledgeFields[7].Descriptor()
+	knowledgeDescIsLatest := knowledgeFields[12].Descriptor()
 	// knowledge.DefaultIsLatest holds the default value on creation for the is_latest field.
 	knowledge.DefaultIsLatest = knowledgeDescIsLatest.Default.(bool)
 	// knowledgeDescUseCount is the schema descriptor for use_count field.
-	knowledgeDescUseCount := knowledgeFields[8].Descriptor()
+	knowledgeDescUseCount := knowledgeFields[13].Descriptor()
 	// knowledge.DefaultUseCount holds the default value on creation for the use_count field.
 	knowledge.DefaultUseCount = knowledgeDescUseCount.Default.(int)
 	// knowledgeDescRelevanceScore is the schema descriptor for relevance_score field.
-	knowledgeDescRelevanceScore := knowledgeFields[9].Descriptor()
+	knowledgeDescRelevanceScore := knowledgeFields[14].Descriptor()
 	// knowledge.DefaultRelevanceScore holds the default value on creation for the relevance_score field.
 	knowledge.DefaultRelevanceScore = knowledgeDescRelevanceScore.Default.(float64)
 	// knowledgeDescCreatedAt is the schema descriptor for created_at field.
-	knowledgeDescCreatedAt := knowledgeFields[10].Descriptor()
+	knowledgeDescCreatedAt := knowledgeFields[15].Descriptor()
 	// knowledge.DefaultCreatedAt holds the default value on creation for the created_at field.
 	knowledge.DefaultCreatedAt = knowledgeDescCreatedAt.Default.(func() time.Time)
 	// knowledgeDescUpdatedAt is the schema descriptor for updated_at field.
-	knowledgeDescUpdatedAt := knowledgeFields[11].Descriptor()
+	knowledgeDescUpdatedAt := knowledgeFields[16].Descriptor()
 	// knowledge.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	knowledge.DefaultUpdatedAt = knowledgeDescUpdatedAt.Default.(func() time.Time)
 	// knowledge.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
@@ -405,23 +408,23 @@ func init() {
 	// learning.TriggerValidator is a validator for the "trigger" field. It is called by the builders before save.
 	learning.TriggerValidator = learningDescTrigger.Validators[0].(func(string) error)
 	// learningDescOccurrenceCount is the schema descriptor for occurrence_count field.
-	learningDescOccurrenceCount := learningFields[7].Descriptor()
+	learningDescOccurrenceCount := learningFields[10].Descriptor()
 	// learning.DefaultOccurrenceCount holds the default value on creation for the occurrence_count field.
 	learning.DefaultOccurrenceCount = learningDescOccurrenceCount.Default.(int)
 	// learningDescSuccessCount is the schema descriptor for success_count field.
-	learningDescSuccessCount := learningFields[8].Descriptor()
+	learningDescSuccessCount := learningFields[11].Descriptor()
 	// learning.DefaultSuccessCount holds the default value on creation for the success_count field.
 	learning.DefaultSuccessCount = learningDescSuccessCount.Default.(int)
 	// learningDescConfidence is the schema descriptor for confidence field.
-	learningDescConfidence := learningFields[9].Descriptor()
+	learningDescConfidence := learningFields[12].Descriptor()
 	// learning.DefaultConfidence holds the default value on creation for the confidence field.
 	learning.DefaultConfidence = learningDescConfidence.Default.(float64)
 	// learningDescCreatedAt is the schema descriptor for created_at field.
-	learningDescCreatedAt := learningFields[10].Descriptor()
+	learningDescCreatedAt := learningFields[13].Descriptor()
 	// learning.DefaultCreatedAt holds the default value on creation for the created_at field.
 	learning.DefaultCreatedAt = learningDescCreatedAt.Default.(func() time.Time)
 	// learningDescUpdatedAt is the schema descriptor for updated_at field.
-	learningDescUpdatedAt := learningFields[11].Descriptor()
+	learningDescUpdatedAt := learningFields[14].Descriptor()
 	// learning.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	learning.DefaultUpdatedAt = learningDescUpdatedAt.Default.(func() time.Time)
 	// learning.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
@@ -437,13 +440,69 @@ func init() {
 	// message.RoleValidator is a validator for the "role" field. It is called by the builders before save.
 	message.RoleValidator = messageDescRole.Validators[0].(func(string) error)
 	// messageDescTimestamp is the schema descriptor for timestamp field.
-	messageDescTimestamp := messageFields[2].Descriptor()
+	messageDescTimestamp := messageFields[5].Descriptor()
 	// message.DefaultTimestamp holds the default value on creation for the timestamp field.
 	message.DefaultTimestamp = messageDescTimestamp.Default.(func() time.Time)
 	// messageDescAuthor is the schema descriptor for author field.
-	messageDescAuthor := messageFields[4].Descriptor()
+	messageDescAuthor := messageFields[10].Descriptor()
 	// message.DefaultAuthor holds the default value on creation for the author field.
 	message.DefaultAuthor = messageDescAuthor.Default.(string)
+	missionFields := schema.Mission{}.Fields()
+	_ = missionFields
+	// missionDescSessionKey is the schema descriptor for session_key field.
+	missionDescSessionKey := missionFields[1].Descriptor()
+	// mission.SessionKeyValidator is a validator for the "session_key" field. It is called by the builders before save.
+	mission.SessionKeyValidator = missionDescSessionKey.Validators[0].(func(string) error)
+	// missionDescTitle is the schema descriptor for title field.
+	missionDescTitle := missionFields[2].Descriptor()
+	// mission.TitleValidator is a validator for the "title" field. It is called by the builders before save.
+	mission.TitleValidator = missionDescTitle.Validators[0].(func(string) error)
+	// missionDescSourceKind is the schema descriptor for source_kind field.
+	missionDescSourceKind := missionFields[5].Descriptor()
+	// mission.SourceKindValidator is a validator for the "source_kind" field. It is called by the builders before save.
+	mission.SourceKindValidator = missionDescSourceKind.Validators[0].(func(string) error)
+	// missionDescCreatedAt is the schema descriptor for created_at field.
+	missionDescCreatedAt := missionFields[10].Descriptor()
+	// mission.DefaultCreatedAt holds the default value on creation for the created_at field.
+	mission.DefaultCreatedAt = missionDescCreatedAt.Default.(func() time.Time)
+	// missionDescUpdatedAt is the schema descriptor for updated_at field.
+	missionDescUpdatedAt := missionFields[11].Descriptor()
+	// mission.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	mission.DefaultUpdatedAt = missionDescUpdatedAt.Default.(func() time.Time)
+	// mission.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	mission.UpdateDefaultUpdatedAt = missionDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// missionDescID is the schema descriptor for id field.
+	missionDescID := missionFields[0].Descriptor()
+	// mission.DefaultID holds the default value on creation for the id field.
+	mission.DefaultID = missionDescID.Default.(func() uuid.UUID)
+	missionexecutionlinkFields := schema.MissionExecutionLink{}.Fields()
+	_ = missionexecutionlinkFields
+	// missionexecutionlinkDescExecutionRef is the schema descriptor for execution_ref field.
+	missionexecutionlinkDescExecutionRef := missionexecutionlinkFields[3].Descriptor()
+	// missionexecutionlink.ExecutionRefValidator is a validator for the "execution_ref" field. It is called by the builders before save.
+	missionexecutionlink.ExecutionRefValidator = missionexecutionlinkDescExecutionRef.Validators[0].(func(string) error)
+	// missionexecutionlinkDescCreatedAt is the schema descriptor for created_at field.
+	missionexecutionlinkDescCreatedAt := missionexecutionlinkFields[5].Descriptor()
+	// missionexecutionlink.DefaultCreatedAt holds the default value on creation for the created_at field.
+	missionexecutionlink.DefaultCreatedAt = missionexecutionlinkDescCreatedAt.Default.(func() time.Time)
+	// missionexecutionlinkDescID is the schema descriptor for id field.
+	missionexecutionlinkDescID := missionexecutionlinkFields[0].Descriptor()
+	// missionexecutionlink.DefaultID holds the default value on creation for the id field.
+	missionexecutionlink.DefaultID = missionexecutionlinkDescID.Default.(func() uuid.UUID)
+	missionstatehistoryFields := schema.MissionStateHistory{}.Fields()
+	_ = missionstatehistoryFields
+	// missionstatehistoryDescActorKind is the schema descriptor for actor_kind field.
+	missionstatehistoryDescActorKind := missionstatehistoryFields[6].Descriptor()
+	// missionstatehistory.ActorKindValidator is a validator for the "actor_kind" field. It is called by the builders before save.
+	missionstatehistory.ActorKindValidator = missionstatehistoryDescActorKind.Validators[0].(func(string) error)
+	// missionstatehistoryDescCreatedAt is the schema descriptor for created_at field.
+	missionstatehistoryDescCreatedAt := missionstatehistoryFields[13].Descriptor()
+	// missionstatehistory.DefaultCreatedAt holds the default value on creation for the created_at field.
+	missionstatehistory.DefaultCreatedAt = missionstatehistoryDescCreatedAt.Default.(func() time.Time)
+	// missionstatehistoryDescID is the schema descriptor for id field.
+	missionstatehistoryDescID := missionstatehistoryFields[0].Descriptor()
+	// missionstatehistory.DefaultID holds the default value on creation for the id field.
+	missionstatehistory.DefaultID = missionstatehistoryDescID.Default.(func() uuid.UUID)
 	observationFields := schema.Observation{}.Fields()
 	_ = observationFields
 	// observationDescSessionKey is the schema descriptor for session_key field.
@@ -455,19 +514,19 @@ func init() {
 	// observation.ContentValidator is a validator for the "content" field. It is called by the builders before save.
 	observation.ContentValidator = observationDescContent.Validators[0].(func(string) error)
 	// observationDescTokenCount is the schema descriptor for token_count field.
-	observationDescTokenCount := observationFields[3].Descriptor()
+	observationDescTokenCount := observationFields[6].Descriptor()
 	// observation.DefaultTokenCount holds the default value on creation for the token_count field.
 	observation.DefaultTokenCount = observationDescTokenCount.Default.(int)
 	// observationDescSourceStartIndex is the schema descriptor for source_start_index field.
-	observationDescSourceStartIndex := observationFields[4].Descriptor()
+	observationDescSourceStartIndex := observationFields[7].Descriptor()
 	// observation.DefaultSourceStartIndex holds the default value on creation for the source_start_index field.
 	observation.DefaultSourceStartIndex = observationDescSourceStartIndex.Default.(int)
 	// observationDescSourceEndIndex is the schema descriptor for source_end_index field.
-	observationDescSourceEndIndex := observationFields[5].Descriptor()
+	observationDescSourceEndIndex := observationFields[8].Descriptor()
 	// observation.DefaultSourceEndIndex holds the default value on creation for the source_end_index field.
 	observation.DefaultSourceEndIndex = observationDescSourceEndIndex.Default.(int)
 	// observationDescCreatedAt is the schema descriptor for created_at field.
-	observationDescCreatedAt := observationFields[6].Descriptor()
+	observationDescCreatedAt := observationFields[9].Descriptor()
 	// observation.DefaultCreatedAt holds the default value on creation for the created_at field.
 	observation.DefaultCreatedAt = observationDescCreatedAt.Default.(func() time.Time)
 	// observationDescID is the schema descriptor for id field.
@@ -685,15 +744,15 @@ func init() {
 	// reflection.ContentValidator is a validator for the "content" field. It is called by the builders before save.
 	reflection.ContentValidator = reflectionDescContent.Validators[0].(func(string) error)
 	// reflectionDescTokenCount is the schema descriptor for token_count field.
-	reflectionDescTokenCount := reflectionFields[3].Descriptor()
+	reflectionDescTokenCount := reflectionFields[6].Descriptor()
 	// reflection.DefaultTokenCount holds the default value on creation for the token_count field.
 	reflection.DefaultTokenCount = reflectionDescTokenCount.Default.(int)
 	// reflectionDescGeneration is the schema descriptor for generation field.
-	reflectionDescGeneration := reflectionFields[4].Descriptor()
+	reflectionDescGeneration := reflectionFields[7].Descriptor()
 	// reflection.DefaultGeneration holds the default value on creation for the generation field.
 	reflection.DefaultGeneration = reflectionDescGeneration.Default.(int)
 	// reflectionDescCreatedAt is the schema descriptor for created_at field.
-	reflectionDescCreatedAt := reflectionFields[5].Descriptor()
+	reflectionDescCreatedAt := reflectionFields[8].Descriptor()
 	// reflection.DefaultCreatedAt holds the default value on creation for the created_at field.
 	reflection.DefaultCreatedAt = reflectionDescCreatedAt.Default.(func() time.Time)
 	// reflectionDescID is the schema descriptor for id field.

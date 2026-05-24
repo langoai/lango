@@ -14,6 +14,14 @@ The system MUST support a `p2p.toolIsolation.container` configuration block with
 ### Requirement: ContainerRuntime interface
 The system MUST define a `ContainerRuntime` interface with `Run(ctx, ContainerConfig)`, `Cleanup(ctx, id)`, `IsAvailable(ctx)`, and `Name()` methods.
 
+#### Scenario: ContainerRuntime exposes required lifecycle methods
+- **WHEN** a runtime participates in container sandboxing
+- **THEN** it MUST provide `Run`, `Cleanup`, `IsAvailable`, and `Name`
+
+#### Scenario: ContainerRuntime exposes required lifecycle methods
+- **WHEN** a runtime implementation participates in container sandboxing
+- **THEN** it MUST provide `Run`, `Cleanup`, `IsAvailable`, and `Name`
+
 ### Requirement: Error types
 The system MUST define sentinel errors: `ErrRuntimeUnavailable`, `ErrContainerTimeout`, `ErrContainerOOM`.
 
@@ -43,8 +51,26 @@ The system MUST implement `ContainerRuntime` using Docker Go SDK with container 
 ### Requirement: NativeRuntime fallback
 The system MUST provide a `NativeRuntime` that wraps `SubprocessExecutor` as a `ContainerRuntime` implementation. It MUST always report `IsAvailable() = true`.
 
+#### Scenario: NativeRuntime always reports available
+- **WHEN** `IsAvailable()` is called on `NativeRuntime`
+- **THEN** it MUST return `true`
+
+#### Scenario: NativeRuntime always reports available
+- **WHEN** `IsAvailable()` is called on `NativeRuntime`
+- **THEN** it MUST return `true`
+
 ### Requirement: GVisorRuntime stub
 The system MUST provide a `GVisorRuntime` stub that always reports `IsAvailable() = false` and returns `ErrRuntimeUnavailable` on `Run`.
+
+#### Scenario: GVisorRuntime remains unavailable
+- **WHEN** `IsAvailable()` or `Run()` is called on `GVisorRuntime`
+- **THEN** `IsAvailable()` MUST return `false`
+- **AND** `Run()` MUST return `ErrRuntimeUnavailable`
+
+#### Scenario: GVisorRuntime remains unavailable
+- **WHEN** `IsAvailable()` or `Run()` is called on `GVisorRuntime`
+- **THEN** `IsAvailable()` MUST return `false`
+- **AND** `Run()` MUST return `ErrRuntimeUnavailable`
 
 ### Requirement: ContainerExecutor runtime probe
 `NewContainerExecutor` MUST probe runtimes in order: Docker → gVisor → Native. The first available runtime is used.
@@ -63,6 +89,14 @@ The system MUST provide a `GVisorRuntime` stub that always reports `IsAvailable(
 
 ### Requirement: Protocol version
 `ExecutionRequest` MUST include an optional `version` field (default 0) for forward compatibility.
+
+#### Scenario: ExecutionRequest defaults protocol version
+- **WHEN** an execution request omits the `version` field
+- **THEN** the protocol MUST treat the version as `0`
+
+#### Scenario: ExecutionRequest defaults protocol version
+- **WHEN** an execution request omits the `version` field
+- **THEN** the protocol MUST treat the version as `0`
 
 ### Requirement: App wiring
 The P2P sandbox executor SHALL only be wired when `cfg.P2P.ToolIsolation.Enabled` is true. When P2P is enabled but `toolIsolation.enabled` is false, the system SHALL log a startup warning explaining that inbound `tool_invoke` requests will be rejected, and the handler SHALL reject such requests with `ErrNoSandboxExecutor`. When `toolIsolation.enabled` is true and `container.enabled` is true, the app MUST attempt to create a `ContainerExecutor`. On failure, it MUST check `requireContainer`: if true, it MUST NOT fall back to `SubprocessExecutor` and MUST leave the sandbox executor nil. If `requireContainer` is false, it MUST fall back to `SubprocessExecutor` with a warning log.
@@ -88,6 +122,16 @@ The P2P sandbox executor SHALL only be wired when `cfg.P2P.ToolIsolation.Enabled
 ### Requirement: Container pool
 When `poolSize > 0`, the system MUST maintain a pool of pre-warmed containers with `Acquire`/`Release` lifecycle and idle timeout cleanup.
 
+#### Scenario: Pool maintains pre-warmed containers
+- **WHEN** `poolSize` is greater than zero
+- **THEN** the executor MUST maintain reusable pre-warmed containers
+- **AND** idle timeout cleanup MUST reclaim unused ones
+
+#### Scenario: Pool keeps reusable pre-warmed containers
+- **WHEN** `poolSize` is greater than zero
+- **THEN** the executor MUST maintain reusable pre-warmed containers
+- **AND** idle timeout cleanup MUST reclaim unused ones
+
 ### Requirement: CLI sandbox commands
 The system MUST provide `lango p2p sandbox status`, `lango p2p sandbox test`, and `lango p2p sandbox cleanup` commands.
 
@@ -104,9 +148,24 @@ The system MUST provide `lango p2p sandbox status`, `lango p2p sandbox test`, an
 - **THEN** orphaned containers with label `lango.sandbox=true` are removed
 
 ### Requirement: Sandbox Docker image
-A `build/sandbox/Dockerfile` MUST define a minimal Debian-based image with the lango binary, running as non-root `sandbox` user with `--sandbox-worker` entrypoint.
+A `build/sandbox/Dockerfile` MUST define a minimal Debian-based image with the lango binary, running as non-root `sandbox` user with `--sandbox-worker` entrypoint. The sandbox worker entrypoint SHALL expose testable exit-code-returning execution while preserving process exit-code semantics when launched as a binary.
 
+#### Scenario: Sandbox image runs as non-root worker
+- **WHEN** the sandbox image is built from `build/sandbox/Dockerfile`
+- **THEN** it MUST run as the non-root `sandbox` user
+- **AND** use the sandbox worker entrypoint
 
+#### Scenario: Sandbox worker preserves protocol exit codes
+- **WHEN** the sandbox worker receives malformed input or an unregistered tool
+- **THEN** worker execution SHALL return exit code `1` and write a JSON error result
+
+#### Scenario: Sandbox worker tool errors stay JSON-level errors
+- **WHEN** a registered worker tool returns an error
+- **THEN** worker execution SHALL return exit code `0` and write a JSON error result
+
+#### Scenario: Sandbox worker success writes JSON output
+- **WHEN** a registered worker tool succeeds
+- **THEN** worker execution SHALL return exit code `0` and write a JSON output result
 
 ### Requirement: Fail-closed container enforcement
 The `ContainerExecutor` MUST support a `requireContainer` mode. When enabled and the runtime resolves to `NativeRuntime` in auto mode, the executor MUST return an error wrapping `ErrRuntimeUnavailable` instead of silently falling back.
@@ -128,5 +187,23 @@ The `ContainerExecutor` MUST support a `requireContainer` mode. When enabled and
 ### Requirement: ContainerExecutor runtime probe
 `NewContainerExecutor` MUST check the `requireContainer` config field after the probe chain. If true and only `NativeRuntime` is available, it MUST return an error instead of proceeding.
 
+#### Scenario: requireContainer blocks native-only probe result
+- **WHEN** `requireContainer` is true and the probe chain resolves only to `NativeRuntime`
+- **THEN** `NewContainerExecutor` MUST return an error instead of proceeding
+
+#### Scenario: requireContainer blocks native-only probe result
+- **WHEN** `requireContainer` is true and the probe chain resolves only to `NativeRuntime`
+- **THEN** `NewContainerExecutor` MUST return an error instead of proceeding
+
 ### Requirement: Container sandbox configuration
 The `p2p.toolIsolation.container` configuration block MUST include a `requireContainer` boolean field (default: `true` for new installations).
+
+#### Scenario: requireContainer exists in container config
+- **WHEN** container sandbox configuration is loaded for a new installation
+- **THEN** the config MUST include `requireContainer`
+- **AND** its default value MUST be `true`
+
+#### Scenario: requireContainer is part of container config
+- **WHEN** container sandbox configuration is loaded for a new installation
+- **THEN** the config MUST include `requireContainer`
+- **AND** its default value MUST be `true`

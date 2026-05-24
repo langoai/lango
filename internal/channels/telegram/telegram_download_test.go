@@ -1,10 +1,14 @@
 package telegram
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/stretchr/testify/assert"
@@ -35,6 +39,41 @@ func (t *redirectTransport) RoundTrip(req *http.Request) (*http.Response, error)
 	req.URL.Host = t.targetURL
 	return http.DefaultTransport.RoundTrip(req)
 }
+
+type inspectTransport struct {
+	t *testing.T
+}
+
+func (t *inspectTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	t.t.Helper()
+
+	assert.Equal(t.t, http.MethodGet, req.Method)
+	assert.Contains(t.t, req.URL.Path, "documents/test-file.pdf")
+
+	deadline, ok := req.Context().Deadline()
+	if !ok {
+		t.t.Fatal("download request missing deadline")
+	}
+	remaining := time.Until(deadline)
+	assert.LessOrEqual(t.t, remaining, downloadTimeout)
+	assert.Greater(t.t, remaining, 25*time.Second)
+
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(strings.NewReader("image-bytes")),
+		Header:     make(http.Header),
+	}, nil
+}
+
+type errReadCloser struct {
+	err error
+}
+
+func (e *errReadCloser) Read(_ []byte) (int, error) {
+	return 0, e.err
+}
+
+func (e *errReadCloser) Close() error { return nil }
 
 func TestDownloadFile(t *testing.T) {
 	t.Parallel()
@@ -72,6 +111,24 @@ func TestDownloadFile(t *testing.T) {
 				// write nothing
 			}),
 			wantErr: "download file: empty response body",
+		},
+		{
+			give:       "read body error",
+			giveFileID: "file-read-error",
+			giveHandler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				hj, ok := w.(http.Hijacker)
+				if !ok {
+					t.Fatal("test server does not support hijacking")
+				}
+				conn, buf, err := hj.Hijack()
+				require.NoError(t, err)
+				defer conn.Close()
+				_, err = buf.WriteString("HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\n")
+				require.NoError(t, err)
+				require.NoError(t, buf.Flush())
+			}),
+			wantErr: "read file body",
 		},
 		{
 			give:       "GetFile API error",
@@ -136,4 +193,76 @@ func TestDownloadFile(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDownloadFile_PreservesReadBodyCause(t *testing.T) {
+	t.Parallel()
+
+	mockBot := &downloadMockBot{
+		GetFileFunc: func(config tgbotapi.FileConfig) (tgbotapi.File, error) {
+			return tgbotapi.File{
+				FileID:   config.FileID,
+				FilePath: "documents/test-file.pdf",
+			}, nil
+		},
+	}
+
+	readErr := errors.New("stream interrupted")
+	ch := &Channel{
+		config: Config{
+			BotToken: "TEST_TOKEN",
+			HTTPClient: &http.Client{
+				Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+					return &http.Response{
+						StatusCode: http.StatusOK,
+						Body:       &errReadCloser{err: readErr},
+						Header:     make(http.Header),
+					}, nil
+				}),
+			},
+		},
+		bot:      mockBot,
+		stopChan: make(chan struct{}),
+	}
+
+	data, err := ch.DownloadFile("file-read-cause")
+	require.Error(t, err)
+	assert.Nil(t, data)
+	assert.Contains(t, err.Error(), "read file body")
+	assert.Contains(t, err.Error(), "stream interrupted")
+	assert.NotContains(t, err.Error(), "empty response body")
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+func TestDownloadFile_UsesGETAndTimeoutContext(t *testing.T) {
+	t.Parallel()
+
+	mockBot := &downloadMockBot{
+		GetFileFunc: func(config tgbotapi.FileConfig) (tgbotapi.File, error) {
+			return tgbotapi.File{
+				FileID:   config.FileID,
+				FilePath: "documents/test-file.pdf",
+			}, nil
+		},
+	}
+
+	ch := &Channel{
+		config: Config{
+			BotToken: "TEST_TOKEN",
+			HTTPClient: &http.Client{
+				Transport: &inspectTransport{t: t},
+			},
+		},
+		bot:      mockBot,
+		stopChan: make(chan struct{}),
+	}
+
+	data, err := ch.DownloadFile("file-ctx")
+	require.NoError(t, err)
+	assert.Equal(t, []byte("image-bytes"), data)
 }

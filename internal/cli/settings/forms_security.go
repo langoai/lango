@@ -125,7 +125,7 @@ func NewSecurityForm(cfg *config.Config) *tuicore.FormModel {
 	signerField := &tuicore.Field{
 		Key: "signer_provider", Label: "Signer Provider", Type: tuicore.InputSelect,
 		Value:       cfg.Security.Signer.Provider,
-		Options:     []string{"local", "rpc", "enclave", "aws-kms", "gcp-kms", "azure-kv", "pkcs11"},
+		Options:     []string{"local", "rpc", "aws-kms", "gcp-kms", "azure-kv", "pkcs11"},
 		Description: "Cryptographic signer backend for message signing and verification",
 	}
 	form.AddField(signerField)
@@ -150,28 +150,34 @@ func NewSecurityForm(cfg *config.Config) *tuicore.FormModel {
 	return &form
 }
 
-// NewDBEncryptionForm creates the Security DB Encryption configuration form.
+// NewDBEncryptionForm creates the deprecated Security DB Encryption notice form.
 func NewDBEncryptionForm(cfg *config.Config) *tuicore.FormModel {
-	form := tuicore.NewFormModel("Security DB Encryption Configuration")
+	form := tuicore.NewFormModel("Legacy DB Encryption (Deprecated)")
 
-	form.AddField(&tuicore.Field{
-		Key: "db_encryption_enabled", Label: "SQLCipher Encryption", Type: tuicore.InputBool,
-		Checked:     cfg.Security.DBEncryption.Enabled,
-		Description: "Encrypt the SQLite database at rest using SQLCipher",
-	})
+	flagStatus := "disabled"
+	if cfg.Security.DBEncryption.Enabled {
+		flagStatus = "enabled in config (ignored by runtime)"
+	}
+	form.AddField(tuicore.ReadOnlyInput(
+		"db_encryption_flag_status",
+		"Legacy SQLCipher Flag",
+		flagStatus,
+		"Deprecated compatibility field. The current runtime ignores SQLCipher database encryption settings.",
+	))
 
-	form.AddField(&tuicore.Field{
-		Key: "db_cipher_page_size", Label: "Cipher Page Size", Type: tuicore.InputInt,
-		Value:       strconv.Itoa(cfg.Security.DBEncryption.CipherPageSize),
-		Placeholder: "4096",
-		Description: "SQLCipher page size; must match database creation settings (default: 4096)",
-		Validate: func(s string) error {
-			if i, err := strconv.Atoi(s); err != nil || i <= 0 {
-				return fmt.Errorf("must be a positive integer")
-			}
-			return nil
-		},
-	})
+	form.AddField(tuicore.ReadOnlyInput(
+		"db_cipher_page_size_status",
+		"Cipher Page Size",
+		strconv.Itoa(cfg.Security.DBEncryption.CipherPageSize),
+		"Deprecated legacy SQLCipher page size. Retained only for parsing older configs and shown here for visibility.",
+	))
+
+	form.AddField(tuicore.ReadOnlyInput(
+		"db_encryption_runtime_note",
+		"Runtime Behavior",
+		"Broker-managed payload protection is active; SQLCipher page encryption is unsupported.",
+		"Use `lango security status` for current DB status and `lango security change-passphrase` for supported key rotation.",
+	))
 
 	return &form
 }
@@ -228,7 +234,7 @@ func NewKMSForm(cfg *config.Config) *tuicore.FormModel {
 	form.AddField(&tuicore.Field{
 		Key: "kms_fallback_to_local", Label: "Fallback to Local", Type: tuicore.InputBool,
 		Checked:     cfg.Security.KMS.FallbackToLocal,
-		Description: "Fall back to local key signing if cloud KMS is unavailable",
+		Description: "After profile config is loaded, fall back to local signing, encryption, and decryption if KMS is unavailable. For fail-closed encrypted profile bootstrap KMS unwrap before profile config is loaded, set LANGO_KMS_FALLBACK_TO_LOCAL=false with LANGO_KMS_PROVIDER.",
 		VisibleWhen: isAnyKMS,
 	})
 

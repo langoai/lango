@@ -43,7 +43,7 @@ func (c *ProvidersCheck) Run(ctx context.Context, cfg *config.Config) Result {
 
 	// 2. Check that agent.provider references a valid entry in the providers map
 	if cfg.Agent.Provider != "" {
-		if _, exists := cfg.Providers[cfg.Agent.Provider]; !exists && len(cfg.Providers) > 0 {
+		if _, exists := cfg.Providers[cfg.Agent.Provider]; !exists {
 			issues = append(issues, fmt.Sprintf("agent.provider %q not found in providers map", cfg.Agent.Provider))
 		}
 	}

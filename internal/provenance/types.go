@@ -145,16 +145,16 @@ func (r RedactionLevel) Valid() bool {
 
 // ProvenanceBundle is the portable container for provenance data.
 type ProvenanceBundle struct {
-	Version            string             `json:"version"`
-	Checkpoints        []Checkpoint       `json:"checkpoints"`
-	SessionTree        []SessionNode      `json:"session_tree,omitempty"`
-	Attributions       []Attribution      `json:"attributions,omitempty"`
-	Report             *AttributionReport `json:"report,omitempty"`
-	SignerDID              string             `json:"signer_did,omitempty"`
-	SignatureAlgorithm     string             `json:"signature_algorithm,omitempty"`
-	Signature              []byte             `json:"signature,omitempty"`
-	PQSignerPublicKey      []byte             `json:"pq_signer_public_key,omitempty"` // embedded ML-DSA-65 pubkey for rotation-safe verification
-	PQSignatureAlgorithm   string             `json:"pq_signature_algorithm,omitempty"`
-	PQSignature            []byte             `json:"pq_signature,omitempty"`
-	RedactionLevel         RedactionLevel     `json:"redaction_level"`
+	Version              string             `json:"version"`
+	Checkpoints          []Checkpoint       `json:"checkpoints"`
+	SessionTree          []SessionNode      `json:"session_tree,omitempty"`
+	Attributions         []Attribution      `json:"attributions,omitempty"`
+	Report               *AttributionReport `json:"report,omitempty"`
+	SignerDID            string             `json:"signer_did,omitempty"`
+	SignatureAlgorithm   string             `json:"signature_algorithm,omitempty"`
+	Signature            []byte             `json:"signature,omitempty"`
+	PQSignerPublicKey    []byte             `json:"pq_signer_public_key,omitempty"` // embedded ML-DSA-65 pubkey for rotation-safe verification
+	PQSignatureAlgorithm string             `json:"pq_signature_algorithm,omitempty"`
+	PQSignature          []byte             `json:"pq_signature,omitempty"`
+	RedactionLevel       RedactionLevel     `json:"redaction_level"`
 }

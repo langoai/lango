@@ -1,0 +1,153 @@
+package background
+
+import (
+	"context"
+	"errors"
+	"testing"
+	"time"
+
+	"github.com/langoai/lango/internal/agent"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/langoai/lango/internal/ctxkeys"
+)
+
+type stubMissionLinker struct {
+	taskID    string
+	origin    Origin
+	prompt    string
+	calls     int
+	missionID string
+	err       error
+}
+
+func (s *stubMissionLinker) LinkBackgroundTask(ctx context.Context, taskID string, origin Origin, prompt string) error {
+	s.calls++
+	s.taskID = taskID
+	s.origin = origin
+	s.prompt = prompt
+	s.missionID = ctxkeys.MissionIDFromContext(ctx)
+	return s.err
+}
+
+func TestBuildTools_SubmitInvokesMissionLinker(t *testing.T) {
+	t.Parallel()
+
+	mgr := NewManager(&mockRunner{result: "done"}, nil, 2, time.Minute, testLogger())
+	linker := &stubMissionLinker{}
+	tools := BuildTools(mgr, []string{"telegram:default"}, linker)
+
+	var submitToolFound bool
+	for _, tool := range tools {
+		if tool.Name != "bg_submit" {
+			continue
+		}
+		submitToolFound = true
+		ctx := ctxkeys.WithMissionID(context.Background(), "mission-bg-1")
+		result, err := tool.Handler(ctx, map[string]interface{}{
+			"prompt": "ship mission",
+		})
+		require.NoError(t, err)
+		payload := result.(map[string]interface{})
+		require.NotEmpty(t, payload["task_id"])
+		assert.Equal(t, 1, linker.calls)
+		assert.Equal(t, payload["task_id"], linker.taskID)
+		assert.Equal(t, "ship mission", linker.prompt)
+		assert.Equal(t, "telegram:default", linker.origin.Channel)
+		assert.Equal(t, "mission-bg-1", linker.missionID)
+		break
+	}
+
+	require.True(t, submitToolFound)
+}
+
+func TestBuildTools_SubmitPropagatesMissionLinkFailure(t *testing.T) {
+	t.Parallel()
+
+	mgr := NewManager(&mockRunner{result: "done"}, nil, 2, time.Minute, testLogger())
+	linker := &stubMissionLinker{err: errors.New("link failed")}
+	tools := BuildTools(mgr, []string{"telegram:default"}, linker)
+
+	for _, tool := range tools {
+		if tool.Name != "bg_submit" {
+			continue
+		}
+		ctx := ctxkeys.WithMissionID(context.Background(), "mission-bg-fail")
+		result, err := tool.Handler(ctx, map[string]interface{}{
+			"prompt": "ship mission",
+		})
+		require.Error(t, err)
+		assert.Nil(t, result)
+		assert.Contains(t, err.Error(), "mission link failed")
+		require.Len(t, mgr.List(), 1)
+		assert.Equal(t, Cancelled, mgr.List()[0].Status)
+		return
+	}
+
+	t.Fatal("bg_submit tool not found")
+}
+
+func TestBuildTools_RequireCanonicalInputs(t *testing.T) {
+	t.Parallel()
+
+	mgr := NewManager(&mockRunner{result: "done"}, nil, 2, time.Minute, testLogger())
+	tools := BuildTools(mgr, nil, nil)
+
+	testCases := []struct {
+		name    string
+		tool    string
+		params  map[string]interface{}
+		wantErr string
+	}{
+		{
+			name:    "submit requires prompt",
+			tool:    "bg_submit",
+			params:  map[string]interface{}{},
+			wantErr: "missing prompt parameter",
+		},
+		{
+			name:    "status requires task id",
+			tool:    "bg_status",
+			params:  map[string]interface{}{},
+			wantErr: "missing task_id parameter",
+		},
+		{
+			name:    "result requires task id",
+			tool:    "bg_result",
+			params:  map[string]interface{}{},
+			wantErr: "missing task_id parameter",
+		},
+		{
+			name:    "cancel requires task id",
+			tool:    "bg_cancel",
+			params:  map[string]interface{}{},
+			wantErr: "missing task_id parameter",
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			result, err := findBackgroundTool(t, tools, tc.tool).Handler(context.Background(), tc.params)
+			require.Error(t, err)
+			assert.Nil(t, result)
+			assert.EqualError(t, err, tc.wantErr)
+		})
+	}
+}
+
+func findBackgroundTool(t *testing.T, tools []*agent.Tool, name string) *agent.Tool {
+	t.Helper()
+
+	for _, tool := range tools {
+		if tool.Name == name {
+			return tool
+		}
+	}
+
+	t.Fatalf("tool %q not found", name)
+	return nil
+}

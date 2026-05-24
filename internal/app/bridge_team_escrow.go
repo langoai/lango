@@ -170,4 +170,3 @@ func wireTeamEscrowBridge(bus *eventbus.Bus, escrowEngine *escrow.Engine, coord 
 
 	log.Info("team-escrow bridge wired")
 }
-

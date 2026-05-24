@@ -115,8 +115,8 @@ func TestFactSearchAgent_Search(t *testing.T) {
 			},
 		},
 		{
-			give: "empty results",
-			source: &mockFactSearchSource{},
+			give:      "empty results",
+			source:    &mockFactSearchSource{},
 			wantCount: 0,
 		},
 		{

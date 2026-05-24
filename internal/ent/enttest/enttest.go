@@ -6,6 +6,8 @@ import (
 	"context"
 
 	"github.com/langoai/lango/internal/ent"
+	"github.com/langoai/lango/internal/storeutil/schemaexec"
+
 	// required by schema hooks.
 	_ "github.com/langoai/lango/internal/ent/runtime"
 
@@ -72,12 +74,13 @@ func NewClient(t TestingT, opts ...Option) *ent.Client {
 	return c
 }
 func migrateSchema(t TestingT, c *ent.Client, o *options) {
-	tables, err := schema.CopyTables(migrate.Tables)
-	if err != nil {
-		t.Error(err)
-		t.FailNow()
-	}
-	if err := migrate.Create(context.Background(), c.Schema, tables, o.migrateOpts...); err != nil {
+	if err := schemaexec.RunExclusive(func() error {
+		tables, err := schema.CopyTables(migrate.Tables)
+		if err != nil {
+			return err
+		}
+		return migrate.Create(context.Background(), c.Schema, tables, o.migrateOpts...)
+	}); err != nil {
 		t.Error(err)
 		t.FailNow()
 	}

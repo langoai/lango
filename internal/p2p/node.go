@@ -88,8 +88,15 @@ func NewNode(cfg ConfigReader, logger *zap.SugaredLogger, secrets *security.Secr
 
 // Start bootstraps the Kademlia DHT and optionally starts mDNS discovery.
 // The WaitGroup is incremented so callers can wait for graceful shutdown.
-func (n *Node) Start(wg *sync.WaitGroup) error {
-	ctx, cancel := context.WithCancel(context.Background())
+func (n *Node) Start(parent context.Context, wg *sync.WaitGroup) error {
+	if parent == nil {
+		parent = context.Background()
+	}
+	ctx, cancel := context.WithCancel(parent)
+	if err := ctx.Err(); err != nil {
+		cancel()
+		return err
+	}
 	n.cancel = cancel
 
 	// Bootstrap the DHT.
@@ -315,7 +322,6 @@ func migrateKeyToSecrets(secrets *security.SecretsStore, keyData []byte, keyPath
 
 	return nil
 }
-
 
 // expandHome replaces a leading ~ with the user's home directory.
 func expandHome(path string) string {

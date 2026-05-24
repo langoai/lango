@@ -5,12 +5,17 @@ Capability spec for bg-cli-wiring. See requirements below for scope and behavior
 ## Requirements
 
 ### Requirement: bg command is registered in main.go
-The `lango bg` command SHALL be registered in `cmd/lango/main.go` with GroupID "infra", using a stub manager provider that returns an error when invoked outside a running server.
+The `lango bg` command SHALL be registered in `cmd/lango/main.go` with GroupID "auto", using a gateway-backed client for root CLI execution while preserving in-process manager adapters for embedded callers.
 
 #### Scenario: bg command appears in help
 - **WHEN** user runs `lango --help`
-- **THEN** the `bg` command SHALL appear under the "Infrastructure" group
+- **THEN** the `bg` command SHALL appear under the "Automation" group
 
-#### Scenario: bg subcommand returns server-required error
-- **WHEN** user runs `lango bg list` without a running server
-- **THEN** the command SHALL return an error containing "bg commands require a running server"
+#### Scenario: Root CLI background command uses gateway management
+- **WHEN** the user runs a root `lango bg` subcommand
+- **THEN** the command SHALL use the configured gateway background management API instead of returning the standalone in-memory boundary stub
+- **AND** the command SHALL still explain gateway connection failures as failures to reach the running Lango gateway
+
+#### Scenario: In-process background command behavior remains available
+- **WHEN** `internal/cli/bg.NewBgCmd` is constructed with a real in-process background client
+- **THEN** `list`, `status`, `cancel`, and `result` SHALL continue to operate on that in-process manager

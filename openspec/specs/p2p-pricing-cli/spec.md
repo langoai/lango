@@ -16,7 +16,7 @@ The system SHALL provide a `lango p2p pricing` CLI command that displays P2P too
 - **THEN** system displays the price for that specific tool (or default per-query price if no override)
 
 #### Scenario: Show pricing as JSON
-- **WHEN** user runs `lango p2p pricing --json`
+- **WHEN** user runs `lango p2p pricing --output json`
 - **THEN** system outputs full pricing config as JSON to stdout
 
 ### Requirement: CLI pricing registered as subcommand

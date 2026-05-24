@@ -333,9 +333,18 @@ func buildEscrowTools(ee *escrow.Engine) []*agent.Tool {
 				"required": []string{"buyerDid", "sellerDid", "amount", "milestones"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				buyerDID := toolparam.OptionalString(params, "buyerDid", "")
-				sellerDID := toolparam.OptionalString(params, "sellerDid", "")
-				amtStr := toolparam.OptionalString(params, "amount", "")
+				buyerDID, err := toolparam.RequireString(params, "buyerDid")
+				if err != nil {
+					return nil, err
+				}
+				sellerDID, err := toolparam.RequireString(params, "sellerDid")
+				if err != nil {
+					return nil, err
+				}
+				amtStr, err := toolparam.RequireString(params, "amount")
+				if err != nil {
+					return nil, err
+				}
 				reasonStr := toolparam.OptionalString(params, "reason", "")
 
 				totalAmount, err := wallet.ParseUSDC(amtStr)
@@ -344,6 +353,9 @@ func buildEscrowTools(ee *escrow.Engine) []*agent.Tool {
 				}
 
 				rawMilestones, _ := params["milestones"].([]interface{})
+				if len(rawMilestones) == 0 {
+					return nil, &toolparam.ErrMissingParam{Name: "milestones"}
+				}
 				var milestones []escrow.MilestoneRequest
 				for _, rm := range rawMilestones {
 					m, ok := rm.(map[string]interface{})
@@ -397,8 +409,14 @@ func buildEscrowTools(ee *escrow.Engine) []*agent.Tool {
 				"required": []string{"escrowId", "milestoneId"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				escrowID := toolparam.OptionalString(params, "escrowId", "")
-				milestoneID := toolparam.OptionalString(params, "milestoneId", "")
+				escrowID, err := toolparam.RequireString(params, "escrowId")
+				if err != nil {
+					return nil, err
+				}
+				milestoneID, err := toolparam.RequireString(params, "milestoneId")
+				if err != nil {
+					return nil, err
+				}
 				evidence := toolparam.OptionalString(params, "evidence", "")
 				entry, err := ee.CompleteMilestone(ctx, escrowID, milestoneID, evidence)
 				if err != nil {
@@ -429,7 +447,10 @@ func buildEscrowTools(ee *escrow.Engine) []*agent.Tool {
 				"required": []string{"escrowId"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				escrowID := toolparam.OptionalString(params, "escrowId", "")
+				escrowID, err := toolparam.RequireString(params, "escrowId")
+				if err != nil {
+					return nil, err
+				}
 				entry, err := ee.Get(escrowID)
 				if err != nil {
 					return nil, err
@@ -469,7 +490,10 @@ func buildEscrowTools(ee *escrow.Engine) []*agent.Tool {
 				"required": []string{"escrowId"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				escrowID := toolparam.OptionalString(params, "escrowId", "")
+				escrowID, err := toolparam.RequireString(params, "escrowId")
+				if err != nil {
+					return nil, err
+				}
 				entry, err := ee.Release(ctx, escrowID)
 				if err != nil {
 					return nil, err
@@ -497,8 +521,14 @@ func buildEscrowTools(ee *escrow.Engine) []*agent.Tool {
 				"required": []string{"escrowId", "note"},
 			},
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-				escrowID := toolparam.OptionalString(params, "escrowId", "")
-				note := toolparam.OptionalString(params, "note", "")
+				escrowID, err := toolparam.RequireString(params, "escrowId")
+				if err != nil {
+					return nil, err
+				}
+				note, err := toolparam.RequireString(params, "note")
+				if err != nil {
+					return nil, err
+				}
 				entry, err := ee.Dispute(ctx, escrowID, note)
 				if err != nil {
 					return nil, err

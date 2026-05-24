@@ -29,6 +29,15 @@ func (Learning) Fields() []ent.Field {
 			Optional(),
 		field.Text("fix").
 			Optional(),
+		field.Bytes("payload_ciphertext").
+			Optional().
+			Nillable(),
+		field.Bytes("payload_nonce").
+			Optional().
+			Nillable(),
+		field.Int("payload_key_version").
+			Optional().
+			Nillable(),
 		field.Enum("category").
 			Values("tool_error", "provider_error", "user_correction", "timeout", "permission", "general"),
 		field.JSON("tags", []string{}).

@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -55,7 +56,7 @@ func TestRenderDelegationBlock(t *testing.T) {
 			giveTo:      "librarian",
 			giveReason:  "some reason",
 			giveWidth:   20,
-			wantContain: []string{"operator", "librarian"},
+			wantContain: []string{"\U0001F500", "\u2026"},
 		},
 	}
 
@@ -81,4 +82,24 @@ func TestRenderDelegationBlock_ZeroWidth(t *testing.T) {
 func TestRenderDelegationBlock_ContainsIcon(t *testing.T) {
 	got := renderDelegationBlock("from", "to", "", 80)
 	assert.Contains(t, got, "\U0001F500", "should contain shuffle icon")
+}
+
+func TestRenderDelegationBlock_WidthSafe(t *testing.T) {
+	got := renderDelegationBlock("very-long-operator-name", "very-long-librarian-name", "reason", 20)
+	assert.LessOrEqual(t, lipgloss.Width(got), 20)
+	assert.Contains(t, got, "\u2026")
+}
+
+func TestRenderDelegationBlock_SingleLineReason(t *testing.T) {
+	got := renderDelegationBlock("from", "to", "line one\nline two\nline three", 80)
+	assert.NotContains(t, got, "\n")
+	assert.Contains(t, got, "line one line two line three")
+}
+
+func TestRenderDelegationBlock_SanitizesActorNames(t *testing.T) {
+	got := renderDelegationBlock("\x1b[31mop\nerator\x1b[0m", "\x1b[31mli\nbrarian\x1b[0m", "reason", 120)
+	assert.Contains(t, got, "op erator")
+	assert.Contains(t, got, "li brarian")
+	assert.NotContains(t, got, "\x1b[31m")
+	assert.NotContains(t, got, "\x1b[0m")
 }

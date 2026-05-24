@@ -49,3 +49,8 @@ func SelectInput(key, label, value string, options []string, desc string) *Field
 func SearchSelectInput(key, label, value string, options []string, desc string) *Field {
 	return &Field{Key: key, Label: label, Type: InputSearchSelect, Value: value, Options: options, Description: desc}
 }
+
+// ReadOnlyInput creates a non-editable informational field.
+func ReadOnlyInput(key, label, value, desc string) *Field {
+	return &Field{Key: key, Label: label, Type: InputReadOnly, Value: value, Description: desc}
+}

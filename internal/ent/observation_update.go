@@ -55,6 +55,57 @@ func (_u *ObservationUpdate) SetNillableContent(v *string) *ObservationUpdate {
 	return _u
 }
 
+// SetContentCiphertext sets the "content_ciphertext" field.
+func (_u *ObservationUpdate) SetContentCiphertext(v []byte) *ObservationUpdate {
+	_u.mutation.SetContentCiphertext(v)
+	return _u
+}
+
+// ClearContentCiphertext clears the value of the "content_ciphertext" field.
+func (_u *ObservationUpdate) ClearContentCiphertext() *ObservationUpdate {
+	_u.mutation.ClearContentCiphertext()
+	return _u
+}
+
+// SetContentNonce sets the "content_nonce" field.
+func (_u *ObservationUpdate) SetContentNonce(v []byte) *ObservationUpdate {
+	_u.mutation.SetContentNonce(v)
+	return _u
+}
+
+// ClearContentNonce clears the value of the "content_nonce" field.
+func (_u *ObservationUpdate) ClearContentNonce() *ObservationUpdate {
+	_u.mutation.ClearContentNonce()
+	return _u
+}
+
+// SetContentKeyVersion sets the "content_key_version" field.
+func (_u *ObservationUpdate) SetContentKeyVersion(v int) *ObservationUpdate {
+	_u.mutation.ResetContentKeyVersion()
+	_u.mutation.SetContentKeyVersion(v)
+	return _u
+}
+
+// SetNillableContentKeyVersion sets the "content_key_version" field if the given value is not nil.
+func (_u *ObservationUpdate) SetNillableContentKeyVersion(v *int) *ObservationUpdate {
+	if v != nil {
+		_u.SetContentKeyVersion(*v)
+	}
+	return _u
+}
+
+// AddContentKeyVersion adds value to the "content_key_version" field.
+func (_u *ObservationUpdate) AddContentKeyVersion(v int) *ObservationUpdate {
+	_u.mutation.AddContentKeyVersion(v)
+	return _u
+}
+
+// ClearContentKeyVersion clears the value of the "content_key_version" field.
+func (_u *ObservationUpdate) ClearContentKeyVersion() *ObservationUpdate {
+	_u.mutation.ClearContentKeyVersion()
+	return _u
+}
+
 // SetTokenCount sets the "token_count" field.
 func (_u *ObservationUpdate) SetTokenCount(v int) *ObservationUpdate {
 	_u.mutation.ResetTokenCount()
@@ -183,6 +234,27 @@ func (_u *ObservationUpdate) sqlSave(ctx context.Context) (_node int, err error)
 	if value, ok := _u.mutation.Content(); ok {
 		_spec.SetField(observation.FieldContent, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.ContentCiphertext(); ok {
+		_spec.SetField(observation.FieldContentCiphertext, field.TypeBytes, value)
+	}
+	if _u.mutation.ContentCiphertextCleared() {
+		_spec.ClearField(observation.FieldContentCiphertext, field.TypeBytes)
+	}
+	if value, ok := _u.mutation.ContentNonce(); ok {
+		_spec.SetField(observation.FieldContentNonce, field.TypeBytes, value)
+	}
+	if _u.mutation.ContentNonceCleared() {
+		_spec.ClearField(observation.FieldContentNonce, field.TypeBytes)
+	}
+	if value, ok := _u.mutation.ContentKeyVersion(); ok {
+		_spec.SetField(observation.FieldContentKeyVersion, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedContentKeyVersion(); ok {
+		_spec.AddField(observation.FieldContentKeyVersion, field.TypeInt, value)
+	}
+	if _u.mutation.ContentKeyVersionCleared() {
+		_spec.ClearField(observation.FieldContentKeyVersion, field.TypeInt)
+	}
 	if value, ok := _u.mutation.TokenCount(); ok {
 		_spec.SetField(observation.FieldTokenCount, field.TypeInt, value)
 	}
@@ -246,6 +318,57 @@ func (_u *ObservationUpdateOne) SetNillableContent(v *string) *ObservationUpdate
 	if v != nil {
 		_u.SetContent(*v)
 	}
+	return _u
+}
+
+// SetContentCiphertext sets the "content_ciphertext" field.
+func (_u *ObservationUpdateOne) SetContentCiphertext(v []byte) *ObservationUpdateOne {
+	_u.mutation.SetContentCiphertext(v)
+	return _u
+}
+
+// ClearContentCiphertext clears the value of the "content_ciphertext" field.
+func (_u *ObservationUpdateOne) ClearContentCiphertext() *ObservationUpdateOne {
+	_u.mutation.ClearContentCiphertext()
+	return _u
+}
+
+// SetContentNonce sets the "content_nonce" field.
+func (_u *ObservationUpdateOne) SetContentNonce(v []byte) *ObservationUpdateOne {
+	_u.mutation.SetContentNonce(v)
+	return _u
+}
+
+// ClearContentNonce clears the value of the "content_nonce" field.
+func (_u *ObservationUpdateOne) ClearContentNonce() *ObservationUpdateOne {
+	_u.mutation.ClearContentNonce()
+	return _u
+}
+
+// SetContentKeyVersion sets the "content_key_version" field.
+func (_u *ObservationUpdateOne) SetContentKeyVersion(v int) *ObservationUpdateOne {
+	_u.mutation.ResetContentKeyVersion()
+	_u.mutation.SetContentKeyVersion(v)
+	return _u
+}
+
+// SetNillableContentKeyVersion sets the "content_key_version" field if the given value is not nil.
+func (_u *ObservationUpdateOne) SetNillableContentKeyVersion(v *int) *ObservationUpdateOne {
+	if v != nil {
+		_u.SetContentKeyVersion(*v)
+	}
+	return _u
+}
+
+// AddContentKeyVersion adds value to the "content_key_version" field.
+func (_u *ObservationUpdateOne) AddContentKeyVersion(v int) *ObservationUpdateOne {
+	_u.mutation.AddContentKeyVersion(v)
+	return _u
+}
+
+// ClearContentKeyVersion clears the value of the "content_key_version" field.
+func (_u *ObservationUpdateOne) ClearContentKeyVersion() *ObservationUpdateOne {
+	_u.mutation.ClearContentKeyVersion()
 	return _u
 }
 
@@ -406,6 +529,27 @@ func (_u *ObservationUpdateOne) sqlSave(ctx context.Context) (_node *Observation
 	}
 	if value, ok := _u.mutation.Content(); ok {
 		_spec.SetField(observation.FieldContent, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ContentCiphertext(); ok {
+		_spec.SetField(observation.FieldContentCiphertext, field.TypeBytes, value)
+	}
+	if _u.mutation.ContentCiphertextCleared() {
+		_spec.ClearField(observation.FieldContentCiphertext, field.TypeBytes)
+	}
+	if value, ok := _u.mutation.ContentNonce(); ok {
+		_spec.SetField(observation.FieldContentNonce, field.TypeBytes, value)
+	}
+	if _u.mutation.ContentNonceCleared() {
+		_spec.ClearField(observation.FieldContentNonce, field.TypeBytes)
+	}
+	if value, ok := _u.mutation.ContentKeyVersion(); ok {
+		_spec.SetField(observation.FieldContentKeyVersion, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedContentKeyVersion(); ok {
+		_spec.AddField(observation.FieldContentKeyVersion, field.TypeInt, value)
+	}
+	if _u.mutation.ContentKeyVersionCleared() {
+		_spec.ClearField(observation.FieldContentKeyVersion, field.TypeInt)
 	}
 	if value, ok := _u.mutation.TokenCount(); ok {
 		_spec.SetField(observation.FieldTokenCount, field.TypeInt, value)

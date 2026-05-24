@@ -1,7 +1,9 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -73,6 +75,9 @@ func DefaultConfig() *Config {
 					Language:       "en",
 				},
 			},
+			Exportability: ExportabilityConfig{
+				Enabled: true,
+			},
 			DBEncryption: DBEncryptionConfig{
 				Enabled:        false,
 				CipherPageSize: 4096,
@@ -140,6 +145,11 @@ func DefaultConfig() *Config {
 			DefaultTimeout:     10 * time.Minute,
 			StateDir:           "~/.lango/workflows/",
 		},
+		Replay: ReplayConfig{
+			AllowedActors:        []string{},
+			ReleaseAllowedActors: []string{},
+			RefundAllowedActors:  []string{},
+		},
 		Context: ContextConfig{
 			Allocation: ContextAllocationConfig{
 				Knowledge:  0.30,
@@ -148,6 +158,30 @@ func DefaultConfig() *Config {
 				RunSummary: 0.10,
 				Headroom:   0.10,
 			},
+			Compaction: ContextCompactionConfig{
+				Enabled:     boolPtr(true),
+				Threshold:   0.5,
+				SyncTimeout: 2 * time.Second,
+				WorkerCount: 1,
+			},
+			Recall: ContextRecallConfig{
+				Enabled: boolPtr(true),
+				TopN:    3,
+				MinRank: 0.2,
+			},
+		},
+		Learning: LearningConfig{
+			Suggestions: LearningSuggestionsConfig{
+				Enabled:     boolPtr(true),
+				Threshold:   0.5,
+				RateLimit:   10,
+				DedupWindow: time.Hour,
+			},
+		},
+		Extensions: ExtensionsConfig{
+			Enabled:          boolPtr(true),
+			Dir:              DefaultExtensionsDir,
+			EnforceIntegrity: false,
 		},
 		RunLedger: RunLedgerConfig{
 			Enabled:            false,
@@ -223,6 +257,11 @@ func DefaultConfig() *Config {
 			ACL: OntologyACLConfig{
 				P2PPermission: "read",
 			},
+			Governance: OntologyGovernanceConfig{
+				AdmissionMode:              OntologyAdmissionModeOff,
+				LearningDefaultConfidence:  OntologyLearningDefaultConfidenceFallback,
+				LibrarianDefaultConfidence: OntologyLibrarianDefaultConfidenceFallback,
+			},
 		},
 		Alerting: AlertingConfig{
 			Enabled:         false,
@@ -251,7 +290,7 @@ func DefaultConfig() *Config {
 				MaxCredentialAge: "24h",
 			},
 			MaxSafetyLevel: "moderate",
-			ToolIsolation:  ToolIsolationConfig{
+			ToolIsolation: ToolIsolationConfig{
 				Enabled:        false,
 				TimeoutPerTool: 30 * time.Second,
 				MaxMemoryMB:    256,
@@ -336,6 +375,71 @@ type LoadResult struct {
 	AutoEnabled  AutoEnabledSet  `json:"autoEnabled,omitempty"`
 }
 
+func (cfg *Config) UnmarshalJSON(data []byte) error {
+	type alias Config
+	var decoded alias
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*cfg = Config(decoded)
+
+	var raw struct {
+		Ontology struct {
+			Governance map[string]json.RawMessage `json:"governance"`
+		} `json:"ontology"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	if len(raw.Ontology.Governance) == 0 {
+		cfg.Ontology.Governance.AdmissionModePresent = false
+		cfg.Ontology.Governance.LearningDefaultConfidenceBackfillNeeded = true
+		cfg.Ontology.Governance.LibrarianDefaultConfidenceBackfillNeeded = true
+		cfg.Ontology.Governance.LearningDefaultConfidencePresent = false
+		cfg.Ontology.Governance.LibrarianDefaultConfidencePresent = false
+		if cfg.Ontology.Governance.AdmissionMode == "" {
+			cfg.Ontology.Governance.AdmissionMode = OntologyAdmissionModeOff
+		}
+		if cfg.Ontology.Governance.LearningDefaultConfidence == 0 {
+			cfg.Ontology.Governance.LearningDefaultConfidence = OntologyLearningDefaultConfidenceFallback
+		}
+		if cfg.Ontology.Governance.LibrarianDefaultConfidence == 0 {
+			cfg.Ontology.Governance.LibrarianDefaultConfidence = OntologyLibrarianDefaultConfidenceFallback
+		}
+		return nil
+	}
+
+	cfg.Ontology.Governance.LearningDefaultConfidenceBackfillNeeded = raw.Ontology.Governance["learningDefaultConfidence"] == nil || isJSONNull(raw.Ontology.Governance["learningDefaultConfidence"])
+	cfg.Ontology.Governance.LibrarianDefaultConfidenceBackfillNeeded = raw.Ontology.Governance["librarianDefaultConfidence"] == nil || isJSONNull(raw.Ontology.Governance["librarianDefaultConfidence"])
+	cfg.Ontology.Governance.LearningDefaultConfidencePresent = !cfg.Ontology.Governance.LearningDefaultConfidenceBackfillNeeded
+	cfg.Ontology.Governance.LibrarianDefaultConfidencePresent = !cfg.Ontology.Governance.LibrarianDefaultConfidenceBackfillNeeded
+
+	if rawMode, ok := raw.Ontology.Governance["admissionMode"]; ok {
+		var mode string
+		if err := json.Unmarshal(rawMode, &mode); err == nil {
+			if mode == "" {
+				cfg.Ontology.Governance.AdmissionMode = OntologyAdmissionModeOff
+				cfg.Ontology.Governance.AdmissionModePresent = false
+			} else {
+				cfg.Ontology.Governance.AdmissionModePresent = true
+			}
+		}
+	} else if cfg.Ontology.Governance.AdmissionMode == "" {
+		cfg.Ontology.Governance.AdmissionMode = OntologyAdmissionModeOff
+		cfg.Ontology.Governance.AdmissionModePresent = false
+	}
+
+	if cfg.Ontology.Governance.LearningDefaultConfidenceBackfillNeeded && cfg.Ontology.Governance.LearningDefaultConfidence == 0 {
+		cfg.Ontology.Governance.LearningDefaultConfidence = OntologyLearningDefaultConfidenceFallback
+	}
+	if cfg.Ontology.Governance.LibrarianDefaultConfidenceBackfillNeeded && cfg.Ontology.Governance.LibrarianDefaultConfidence == 0 {
+		cfg.Ontology.Governance.LibrarianDefaultConfidence = OntologyLibrarianDefaultConfidenceFallback
+	}
+
+	return nil
+}
+
 // Load reads configuration from file and environment.
 // Returns LoadResult with the Config, explicitly-set keys, and auto-enable metadata.
 func Load(configPath string) (*LoadResult, error) {
@@ -370,6 +474,11 @@ func Load(configPath string) (*LoadResult, error) {
 	if err := v.Unmarshal(cfg); err != nil {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
 	}
+	cfg.Ontology.Governance.LearningDefaultConfidenceBackfillNeeded = !v.InConfig("ontology.governance.learningDefaultConfidence")
+	cfg.Ontology.Governance.LibrarianDefaultConfidenceBackfillNeeded = !v.InConfig("ontology.governance.librarianDefaultConfidence")
+	cfg.Ontology.Governance.LearningDefaultConfidencePresent = v.InConfig("ontology.governance.learningDefaultConfidence")
+	cfg.Ontology.Governance.LibrarianDefaultConfidencePresent = v.InConfig("ontology.governance.librarianDefaultConfidence")
+	cfg.Ontology.Governance.AdmissionModePresent = v.InConfig("ontology.governance.admissionMode") && cfg.Ontology.Governance.AdmissionMode != ""
 
 	// Detect which context-related keys the user explicitly set in their config file.
 	explicitKeys := collectExplicitKeys(configPath, contextRelatedKeys)
@@ -399,10 +508,31 @@ func PostLoad(cfg *Config) error {
 	cfg.MigrateEmbeddingProvider()
 	substituteEnvVars(cfg)
 	NormalizePaths(cfg)
+	backfillLegacyOntologyAdmissionDefaults(cfg)
 	if err := ValidateDataPaths(cfg); err != nil {
 		return err
 	}
 	return Validate(cfg)
+}
+
+func backfillLegacyOntologyAdmissionDefaults(cfg *Config) {
+	if cfg == nil {
+		return
+	}
+
+	if cfg.Ontology.Governance.AdmissionMode == "" {
+		cfg.Ontology.Governance.AdmissionMode = OntologyAdmissionModeOff
+	}
+	if !cfg.Ontology.Governance.LearningDefaultConfidencePresent && cfg.Ontology.Governance.LearningDefaultConfidence == 0 {
+		cfg.Ontology.Governance.LearningDefaultConfidence = OntologyLearningDefaultConfidenceFallback
+	}
+	if !cfg.Ontology.Governance.LibrarianDefaultConfidencePresent && cfg.Ontology.Governance.LibrarianDefaultConfidence == 0 {
+		cfg.Ontology.Governance.LibrarianDefaultConfidence = OntologyLibrarianDefaultConfidenceFallback
+	}
+}
+
+func isJSONNull(raw json.RawMessage) bool {
+	return strings.TrimSpace(string(raw)) == "null"
 }
 
 // substituteEnvVars replaces ${VAR} patterns with environment variable values
@@ -515,7 +645,7 @@ func Validate(cfg *Config) error {
 	// Validate security config
 	if cfg.Security.Signer.Provider != "" {
 		if !ValidSignerProviders[cfg.Security.Signer.Provider] {
-			errs = append(errs, fmt.Sprintf("invalid security.signer.provider: %q (must be local, rpc, enclave, aws-kms, gcp-kms, azure-kv, or pkcs11)", cfg.Security.Signer.Provider))
+			errs = append(errs, fmt.Sprintf("invalid security.signer.provider: %q (must be local, rpc, aws-kms, gcp-kms, azure-kv, or pkcs11)", cfg.Security.Signer.Provider))
 		}
 		if cfg.Security.Signer.Provider == "rpc" && cfg.Security.Signer.RPCUrl == "" {
 			errs = append(errs, "security.signer.rpcUrl is required when provider is 'rpc'")
@@ -543,6 +673,30 @@ func Validate(cfg *Config) error {
 	// Validate graph config
 	if cfg.Graph.Enabled && cfg.Graph.Backend != "bolt" {
 		errs = append(errs, fmt.Sprintf("graph.backend %q is not supported (must be \"bolt\")", cfg.Graph.Backend))
+	}
+
+	switch cfg.Ontology.Governance.AdmissionMode {
+	case "", OntologyAdmissionModeOff, OntologyAdmissionModeObserve:
+	default:
+		errs = append(errs, fmt.Sprintf("ontology.governance.admissionMode %q is invalid (must be off, observe)", cfg.Ontology.Governance.AdmissionMode))
+	}
+
+	if math.IsNaN(cfg.Ontology.Governance.LearningDefaultConfidence) ||
+		math.IsInf(cfg.Ontology.Governance.LearningDefaultConfidence, 0) {
+		errs = append(errs, fmt.Sprintf("ontology.governance.learningDefaultConfidence %v is invalid (must be finite)", cfg.Ontology.Governance.LearningDefaultConfidence))
+	} else if cfg.Ontology.Governance.AdmissionMode == OntologyAdmissionModeObserve &&
+		(cfg.Ontology.Governance.LearningDefaultConfidence < 0.0 ||
+			cfg.Ontology.Governance.LearningDefaultConfidence > 1.0) {
+		errs = append(errs, fmt.Sprintf("ontology.governance.learningDefaultConfidence %v is invalid (must be within 0.0-1.0)", cfg.Ontology.Governance.LearningDefaultConfidence))
+	}
+
+	if math.IsNaN(cfg.Ontology.Governance.LibrarianDefaultConfidence) ||
+		math.IsInf(cfg.Ontology.Governance.LibrarianDefaultConfidence, 0) {
+		errs = append(errs, fmt.Sprintf("ontology.governance.librarianDefaultConfidence %v is invalid (must be finite)", cfg.Ontology.Governance.LibrarianDefaultConfidence))
+	} else if cfg.Ontology.Governance.AdmissionMode == OntologyAdmissionModeObserve &&
+		(cfg.Ontology.Governance.LibrarianDefaultConfidence < 0.0 ||
+			cfg.Ontology.Governance.LibrarianDefaultConfidence > 1.0) {
+		errs = append(errs, fmt.Sprintf("ontology.governance.librarianDefaultConfidence %v is invalid (must be within 0.0-1.0)", cfg.Ontology.Governance.LibrarianDefaultConfidence))
 	}
 
 	// Validate sandbox backend.

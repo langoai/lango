@@ -333,7 +333,7 @@ func TestDropOrphanedFunctionResponses(t *testing.T) {
 			give: "orphan response removed when FunctionCall dropped",
 			contents: []*genai.Content{
 				{
-					Role: "user",
+					Role:  "user",
 					Parts: []*genai.Part{{Text: "hello"}},
 				},
 				{
@@ -379,11 +379,11 @@ func TestDropOrphanedFunctionResponses(t *testing.T) {
 			give: "all responses orphaned removes content block",
 			contents: []*genai.Content{
 				{
-					Role: "user",
+					Role:  "user",
 					Parts: []*genai.Part{{Text: "hello"}},
 				},
 				{
-					Role: "model",
+					Role:  "model",
 					Parts: []*genai.Part{{Text: "thinking..."}},
 				},
 				{

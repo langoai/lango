@@ -16,6 +16,13 @@ type ApprovalRequest struct {
 	Summary    string // Human-readable description of what the tool will do
 	CreatedAt  time.Time
 
+	// Mission/execution attribution fields are optional and populated only when
+	// the calling runtime can deterministically identify the bound mission or
+	// execution. Providers may ignore them.
+	MissionID     string `json:",omitempty"`
+	ExecutionKind string `json:",omitempty"`
+	ExecutionRef  string `json:",omitempty"`
+
 	// Tier classification fields (optional, populated by approval middleware).
 	SafetyLevel string `json:",omitempty"` // "safe", "moderate", "dangerous"
 	Category    string `json:",omitempty"` // tool capability category (e.g. "filesystem", "automation")

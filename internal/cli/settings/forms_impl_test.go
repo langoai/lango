@@ -1,7 +1,10 @@
 package settings
 
 import (
+	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -814,14 +817,19 @@ func TestNewP2PSandboxForm_AllFields(t *testing.T) {
 	if f := fieldByKey(form, "container_runtime"); f.Type != tuicore.InputSelect {
 		t.Errorf("container_runtime: want InputSelect, got %d", f.Type)
 	}
+	if f := fieldByKey(form, "container_runtime"); f.Description != "Container runtime: auto=detect best available, docker=preferred real container runtime, gvisor=current stub, native=local fallback" {
+		t.Errorf("container_runtime description mismatch: %q", f.Description)
+	}
 }
 
 func TestNewDBEncryptionForm_AllFields(t *testing.T) {
 	cfg := defaultTestConfig()
+	cfg.Security.DBEncryption.Enabled = true
+	cfg.Security.DBEncryption.CipherPageSize = 8192
 	form := NewDBEncryptionForm(cfg)
 
 	wantKeys := []string{
-		"db_encryption_enabled", "db_cipher_page_size",
+		"db_encryption_flag_status", "db_cipher_page_size_status", "db_encryption_runtime_note",
 	}
 
 	if len(form.Fields) != len(wantKeys) {
@@ -832,6 +840,60 @@ func TestNewDBEncryptionForm_AllFields(t *testing.T) {
 		if f := fieldByKey(form, key); f == nil {
 			t.Errorf("missing field %q", key)
 		}
+	}
+
+	for _, key := range wantKeys {
+		if f := fieldByKey(form, key); f.Type != tuicore.InputReadOnly {
+			t.Errorf("%s: want InputReadOnly, got %d", key, f.Type)
+		}
+	}
+	if f := fieldByKey(form, "db_encryption_flag_status"); f.Value != "enabled in config (ignored by runtime)" {
+		t.Errorf("db_encryption_flag_status: unexpected value %q", f.Value)
+	}
+	if f := fieldByKey(form, "db_cipher_page_size_status"); f.Value != "8192" {
+		t.Errorf("db_cipher_page_size_status: unexpected value %q", f.Value)
+	}
+	if f := fieldByKey(form, "db_encryption_runtime_note"); f.Value != "Broker-managed payload protection is active; SQLCipher page encryption is unsupported." {
+		t.Errorf("db_encryption_runtime_note: unexpected value %q", f.Value)
+	}
+}
+
+func TestUpdateConfigFromForm_IgnoresDeprecatedDBEncryptionFields(t *testing.T) {
+	state := tuicore.NewConfigState()
+	state.Current.Security.DBEncryption.Enabled = true
+	state.Current.Security.DBEncryption.CipherPageSize = 4096
+
+	cfg := defaultTestConfig()
+	cfg.Security.DBEncryption.Enabled = false
+	cfg.Security.DBEncryption.CipherPageSize = 8192
+	form := NewDBEncryptionForm(cfg)
+
+	state.UpdateConfigFromForm(form)
+
+	if !state.Current.Security.DBEncryption.Enabled {
+		t.Fatal("DBEncryption.Enabled: read-only notice form must preserve existing config state")
+	}
+	if state.Current.Security.DBEncryption.CipherPageSize != 4096 {
+		t.Fatalf("DBEncryption.CipherPageSize: want 4096, got %d", state.Current.Security.DBEncryption.CipherPageSize)
+	}
+}
+
+func TestUpdateConfigFromForm_IgnoresFormerDeprecatedDBEncryptionKeys(t *testing.T) {
+	state := tuicore.NewConfigState()
+	state.Current.Security.DBEncryption.Enabled = false
+	state.Current.Security.DBEncryption.CipherPageSize = 4096
+
+	form := tuicore.NewFormModel("test")
+	form.AddField(&tuicore.Field{Key: "db_encryption_enabled", Type: tuicore.InputBool, Checked: true})
+	form.AddField(&tuicore.Field{Key: "db_cipher_page_size", Type: tuicore.InputInt, Value: "8192"})
+
+	state.UpdateConfigFromForm(&form)
+
+	if state.Current.Security.DBEncryption.Enabled {
+		t.Fatal("DBEncryption.Enabled: former deprecated settings form keys must not mutate runtime config")
+	}
+	if state.Current.Security.DBEncryption.CipherPageSize != 4096 {
+		t.Fatalf("DBEncryption.CipherPageSize: want 4096, got %d", state.Current.Security.DBEncryption.CipherPageSize)
 	}
 }
 
@@ -860,6 +922,22 @@ func TestNewKMSForm_AllFields(t *testing.T) {
 
 	if f := fieldByKey(form, "kms_pkcs11_pin"); f.Type != tuicore.InputPassword {
 		t.Errorf("kms_pkcs11_pin: want InputPassword, got %d", f.Type)
+	}
+
+	fallback := fieldByKey(form, "kms_fallback_to_local")
+	description := strings.ToLower(fallback.Description)
+	for _, want := range []string{
+		"signing",
+		"encryption",
+		"decryption",
+		"after profile config is loaded",
+		"bootstrap kms unwrap",
+		"lango_kms_fallback_to_local=false",
+		"before profile config is loaded",
+	} {
+		if !strings.Contains(description, want) {
+			t.Errorf("kms_fallback_to_local description missing %q in %q", want, fallback.Description)
+		}
 	}
 }
 
@@ -1037,6 +1115,15 @@ func TestNewLoggingForm_AllFields(t *testing.T) {
 	}
 	if f := fieldByKey(form, "log_format"); f.Type != tuicore.InputSelect {
 		t.Errorf("log_format: want InputSelect, got %d", f.Type)
+	}
+	if f := fieldByKey(form, "log_output_path"); f != nil {
+		copy := strings.ToLower(f.Placeholder + " " + f.Description)
+		if !strings.Contains(copy, "stderr") {
+			t.Errorf("log_output_path copy should mention stderr fallback, got placeholder=%q description=%q", f.Placeholder, f.Description)
+		}
+		if strings.Contains(copy, "empty = stdout") || strings.Contains(copy, "empty for stdout") {
+			t.Errorf("log_output_path copy should not describe empty value as stdout, got placeholder=%q description=%q", f.Placeholder, f.Description)
+		}
 	}
 }
 
@@ -1346,6 +1433,86 @@ func TestCreateFormForCategory_OntologyAndAlerting(t *testing.T) {
 	})
 }
 
+func TestCreateFormForCategory_MapsAllSetupFlowCategories(t *testing.T) {
+	cfg := defaultTestConfig()
+	tests := []struct {
+		category string
+		title    string
+	}{
+		{category: "agent", title: "Agent Configuration"},
+		{category: "channels", title: "Channels Configuration"},
+		{category: "tools", title: "Tools Configuration"},
+		{category: "server", title: "Server Configuration"},
+		{category: "session", title: "Session Configuration"},
+		{category: "logging", title: "Logging Configuration"},
+		{category: "gatekeeper", title: "Gatekeeper Configuration"},
+		{category: "output_manager", title: "Output Manager Configuration"},
+		{category: "security", title: "Security Configuration"},
+		{category: "knowledge", title: "Knowledge Configuration"},
+		{category: "skill", title: "Skill Configuration"},
+		{category: "observational_memory", title: "Observational Memory"},
+		{category: "embedding", title: "Embedding & RAG Configuration"},
+		{category: "graph", title: "Graph Store Configuration"},
+		{category: "multi_agent", title: "Multi-Agent Configuration"},
+		{category: "a2a", title: "A2A Protocol Configuration"},
+		{category: "payment", title: "Payment Configuration"},
+		{category: "cron", title: "Cron Scheduler Configuration"},
+		{category: "background", title: "Background Tasks Configuration"},
+		{category: "workflow", title: "Workflow Engine Configuration"},
+		{category: "runledger", title: "RunLedger Configuration"},
+		{category: "provenance", title: "Provenance Configuration"},
+		{category: "smartaccount", title: "Smart Account Configuration"},
+		{category: "smartaccount_session", title: "SA Session Keys Configuration"},
+		{category: "smartaccount_paymaster", title: "SA Paymaster Configuration"},
+		{category: "smartaccount_modules", title: "SA Modules Configuration"},
+		{category: "mcp", title: "MCP Servers Configuration"},
+		{category: "hooks", title: "Hooks Configuration"},
+		{category: "agent_memory", title: "Agent Memory Configuration"},
+		{category: "librarian", title: "Librarian Configuration"},
+		{category: "context_profile", title: "Context Profile"},
+		{category: "retrieval", title: "Retrieval Configuration"},
+		{category: "auto_adjust", title: "Auto-Adjust Configuration"},
+		{category: "context_budget", title: "Context Budget Configuration"},
+		{category: "economy", title: "Economy Configuration"},
+		{category: "economy_risk", title: "Economy Risk Configuration"},
+		{category: "economy_negotiation", title: "Economy Negotiation Configuration"},
+		{category: "economy_escrow", title: "Economy Escrow Configuration"},
+		{category: "economy_escrow_onchain", title: "On-Chain Escrow Configuration"},
+		{category: "economy_pricing", title: "Economy Pricing Configuration"},
+		{category: "observability", title: "Observability Configuration"},
+		{category: "p2p", title: "P2P Network Configuration"},
+		{category: "p2p_zkp", title: "P2P ZKP Configuration"},
+		{category: "p2p_pricing", title: "P2P Pricing Configuration"},
+		{category: "p2p_owner", title: "P2P Owner Protection"},
+		{category: "p2p_sandbox", title: "P2P Sandbox Configuration"},
+		{category: "p2p_workspace", title: "P2P Workspace Configuration"},
+		{category: "security_db", title: "Legacy DB Encryption (Deprecated)"},
+		{category: "security_kms", title: "Security KMS Configuration"},
+		{category: "os_sandbox", title: "OS Sandbox Configuration"},
+		{category: "ontology", title: "Ontology Configuration"},
+		{category: "alerting", title: "Alerting Configuration"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.category, func(t *testing.T) {
+			form := createFormForCategory(tt.category, cfg)
+			if form == nil {
+				t.Fatalf("createFormForCategory(%q) returned nil", tt.category)
+			}
+			if form.Title != tt.title {
+				t.Fatalf("title: want %q, got %q", tt.title, form.Title)
+			}
+			if len(form.Fields) == 0 {
+				t.Fatalf("expected %q form to expose editable fields", tt.category)
+			}
+		})
+	}
+
+	if form := createFormForCategory("does_not_exist", cfg); form != nil {
+		t.Fatalf("unknown category returned %q form", form.Title)
+	}
+}
+
 func TestUpdateConfigFromForm_OntologyFields(t *testing.T) {
 	state := tuicore.NewConfigState()
 	form := tuicore.NewFormModel("test")
@@ -1397,6 +1564,329 @@ func TestUpdateConfigFromForm_OntologyFields(t *testing.T) {
 	}
 	if o.Exchange.MaxTypesPerImport != 20 {
 		t.Errorf("MaxTypesPerImport: want 20, got %d", o.Exchange.MaxTypesPerImport)
+	}
+}
+
+func TestUpdateConfigFromForm_OntologyAdmissionObserveFields(t *testing.T) {
+	state := tuicore.NewConfigStateWith(config.DefaultConfig())
+	form := tuicore.NewFormModel("test")
+	form.AddField(&tuicore.Field{Key: "ontology_gov_admission_mode", Type: tuicore.InputSelect, Value: "observe"})
+	form.AddField(&tuicore.Field{Key: "ontology_gov_learning_conf", Type: tuicore.InputText, Value: "0.65"})
+	form.AddField(&tuicore.Field{Key: "ontology_gov_librarian_conf", Type: tuicore.InputText, Value: "0.55"})
+
+	state.UpdateConfigFromForm(&form)
+
+	if state.Current.Ontology.Governance.AdmissionMode != "observe" {
+		t.Errorf("AdmissionMode: want %q, got %q", "observe", state.Current.Ontology.Governance.AdmissionMode)
+	}
+	if state.Current.Ontology.Governance.LearningDefaultConfidence != 0.65 {
+		t.Errorf("LearningDefaultConfidence: want %.2f, got %.2f", 0.65, state.Current.Ontology.Governance.LearningDefaultConfidence)
+	}
+	if state.Current.Ontology.Governance.LibrarianDefaultConfidence != 0.55 {
+		t.Errorf("LibrarianDefaultConfidence: want %.2f, got %.2f", 0.55, state.Current.Ontology.Governance.LibrarianDefaultConfidence)
+	}
+}
+
+func TestNewOntologyForm_AdmissionFieldsVisibleWithoutGovernanceEnabled(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Ontology.Enabled = true
+	cfg.Ontology.Governance.Enabled = false
+
+	form := NewOntologyForm(cfg)
+	visible := map[string]bool{}
+	for _, field := range form.VisibleFields() {
+		visible[field.Key] = true
+	}
+
+	if !visible["ontology_gov_admission_mode"] {
+		t.Error("ontology_gov_admission_mode should remain visible when governance is disabled")
+	}
+	if !visible["ontology_gov_learning_conf"] {
+		t.Error("ontology_gov_learning_conf should remain visible when governance is disabled")
+	}
+	if !visible["ontology_gov_librarian_conf"] {
+		t.Error("ontology_gov_librarian_conf should remain visible when governance is disabled")
+	}
+}
+
+func TestNewOntologyForm_AdmissionFieldsVisibleWithoutOntologyEnabled(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Ontology.Enabled = false
+	cfg.Ontology.Governance.Enabled = false
+
+	form := NewOntologyForm(cfg)
+	visible := map[string]bool{}
+	for _, field := range form.VisibleFields() {
+		visible[field.Key] = true
+	}
+
+	if !visible["ontology_gov_admission_mode"] {
+		t.Error("ontology_gov_admission_mode should remain visible when ontology is disabled")
+	}
+	if !visible["ontology_gov_learning_conf"] {
+		t.Error("ontology_gov_learning_conf should remain visible when ontology is disabled")
+	}
+	if !visible["ontology_gov_librarian_conf"] {
+		t.Error("ontology_gov_librarian_conf should remain visible when ontology is disabled")
+	}
+}
+
+func TestNewOntologyForm_LegacyAdmissionConfidenceDefaultsRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "lango.json")
+	content := `{
+		"logging": { "level": "info", "format": "console" },
+		"ontology": {
+			"governance": {}
+		}
+	}`
+	if err := os.WriteFile(cfgPath, []byte(content), 0644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	result, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+
+	form := NewOntologyForm(result.Config)
+	learning := fieldByKey(form, "ontology_gov_learning_conf")
+	if learning == nil {
+		t.Fatal("missing ontology_gov_learning_conf field")
+	}
+	librarian := fieldByKey(form, "ontology_gov_librarian_conf")
+	if librarian == nil {
+		t.Fatal("missing ontology_gov_librarian_conf field")
+	}
+
+	if learning.Value != "0.6" {
+		t.Errorf("ontology_gov_learning_conf: want %q, got %q", "0.6", learning.Value)
+	}
+	if librarian.Value != "0.5" {
+		t.Errorf("ontology_gov_librarian_conf: want %q, got %q", "0.5", librarian.Value)
+	}
+
+	state := tuicore.NewConfigStateWith(result.Config)
+	state.UpdateConfigFromForm(form)
+
+	if state.Current.Ontology.Governance.LearningDefaultConfidence != 0.60 {
+		t.Errorf("LearningDefaultConfidence: want %.2f, got %.2f", 0.60, state.Current.Ontology.Governance.LearningDefaultConfidence)
+	}
+	if state.Current.Ontology.Governance.LibrarianDefaultConfidence != 0.50 {
+		t.Errorf("LibrarianDefaultConfidence: want %.2f, got %.2f", 0.50, state.Current.Ontology.Governance.LibrarianDefaultConfidence)
+	}
+}
+
+func TestNewOntologyForm_SparseInMemoryAdmissionConfidenceDefaults(t *testing.T) {
+	cfg := &config.Config{}
+
+	form := NewOntologyForm(cfg)
+	learning := fieldByKey(form, "ontology_gov_learning_conf")
+	if learning == nil {
+		t.Fatal("missing ontology_gov_learning_conf field")
+	}
+	librarian := fieldByKey(form, "ontology_gov_librarian_conf")
+	if librarian == nil {
+		t.Fatal("missing ontology_gov_librarian_conf field")
+	}
+
+	if learning.Value != "0.6" {
+		t.Errorf("ontology_gov_learning_conf: want %q, got %q", "0.6", learning.Value)
+	}
+	if librarian.Value != "0.5" {
+		t.Errorf("ontology_gov_librarian_conf: want %q, got %q", "0.5", librarian.Value)
+	}
+}
+
+func TestNewOntologyForm_ExplicitZeroOffModeConfidenceRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "lango.json")
+	content := `{
+		"logging": { "level": "info", "format": "console" },
+		"ontology": {
+			"governance": {
+				"admissionMode": "off",
+				"learningDefaultConfidence": 0.0,
+				"librarianDefaultConfidence": 0.0
+			}
+		}
+	}`
+	if err := os.WriteFile(cfgPath, []byte(content), 0644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	result, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+
+	form := NewOntologyForm(result.Config)
+	learning := fieldByKey(form, "ontology_gov_learning_conf")
+	if learning == nil {
+		t.Fatal("missing ontology_gov_learning_conf field")
+	}
+	librarian := fieldByKey(form, "ontology_gov_librarian_conf")
+	if librarian == nil {
+		t.Fatal("missing ontology_gov_librarian_conf field")
+	}
+
+	if learning.Value != "0" {
+		t.Errorf("ontology_gov_learning_conf: want %q, got %q", "0", learning.Value)
+	}
+	if librarian.Value != "0" {
+		t.Errorf("ontology_gov_librarian_conf: want %q, got %q", "0", librarian.Value)
+	}
+
+	state := tuicore.NewConfigStateWith(result.Config)
+	state.UpdateConfigFromForm(form)
+
+	if state.Current.Ontology.Governance.LearningDefaultConfidence != 0.0 {
+		t.Errorf("LearningDefaultConfidence: want %.2f, got %.2f", 0.0, state.Current.Ontology.Governance.LearningDefaultConfidence)
+	}
+	if state.Current.Ontology.Governance.LibrarianDefaultConfidence != 0.0 {
+		t.Errorf("LibrarianDefaultConfidence: want %.2f, got %.2f", 0.0, state.Current.Ontology.Governance.LibrarianDefaultConfidence)
+	}
+}
+
+func TestNewOntologyForm_PreservesExactAdmissionConfidenceRoundTrip(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Ontology.Governance.LearningDefaultConfidence = 0.555
+	cfg.Ontology.Governance.LibrarianDefaultConfidence = 0.555
+	cfg.Ontology.Governance.LearningDefaultConfidencePresent = true
+	cfg.Ontology.Governance.LibrarianDefaultConfidencePresent = true
+
+	form := NewOntologyForm(cfg)
+	learning := fieldByKey(form, "ontology_gov_learning_conf")
+	if learning == nil {
+		t.Fatal("missing ontology_gov_learning_conf field")
+	}
+	librarian := fieldByKey(form, "ontology_gov_librarian_conf")
+	if librarian == nil {
+		t.Fatal("missing ontology_gov_librarian_conf field")
+	}
+
+	if learning.Value != "0.555" {
+		t.Errorf("ontology_gov_learning_conf: want %q, got %q", "0.555", learning.Value)
+	}
+	if librarian.Value != "0.555" {
+		t.Errorf("ontology_gov_librarian_conf: want %q, got %q", "0.555", librarian.Value)
+	}
+
+	state := tuicore.NewConfigStateWith(cfg)
+	state.UpdateConfigFromForm(form)
+
+	if state.Current.Ontology.Governance.LearningDefaultConfidence != 0.555 {
+		t.Errorf("LearningDefaultConfidence: want %.3f, got %.3f", 0.555, state.Current.Ontology.Governance.LearningDefaultConfidence)
+	}
+	if state.Current.Ontology.Governance.LibrarianDefaultConfidence != 0.555 {
+		t.Errorf("LibrarianDefaultConfidence: want %.3f, got %.3f", 0.555, state.Current.Ontology.Governance.LibrarianDefaultConfidence)
+	}
+}
+
+func TestNewOntologyForm_UnrelatedSavePreservesSparseAdmissionConfidenceSemantics(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "lango.json")
+	content := `{
+		"logging": { "level": "info", "format": "console" },
+		"ontology": {
+			"governance": {}
+		}
+	}`
+	if err := os.WriteFile(cfgPath, []byte(content), 0644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	result, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if result.Config.Ontology.Governance.LearningDefaultConfidencePresent {
+		t.Fatal("learning confidence should start absent for legacy config")
+	}
+	if result.Config.Ontology.Governance.LibrarianDefaultConfidencePresent {
+		t.Fatal("librarian confidence should start absent for legacy config")
+	}
+	if result.Config.Ontology.Governance.AdmissionModePresent {
+		t.Fatal("admission mode should start absent for legacy config")
+	}
+
+	form := NewOntologyForm(result.Config)
+	aclEnabled := fieldByKey(form, "ontology_acl_enabled")
+	if aclEnabled == nil {
+		t.Fatal("missing ontology_acl_enabled field")
+	}
+	aclEnabled.Checked = true
+	aclEnabled.Edited = true
+
+	state := tuicore.NewConfigStateWith(result.Config)
+	state.UpdateConfigFromForm(form)
+
+	if state.Current.Ontology.Governance.LearningDefaultConfidencePresent {
+		t.Error("learning confidence presence should remain false after unrelated save")
+	}
+	if state.Current.Ontology.Governance.LibrarianDefaultConfidencePresent {
+		t.Error("librarian confidence presence should remain false after unrelated save")
+	}
+	if state.Current.Ontology.Governance.AdmissionModePresent {
+		t.Error("admission mode presence should remain false after unrelated save")
+	}
+	if state.Current.Ontology.Governance.LearningDefaultConfidence != 0.60 {
+		t.Errorf("LearningDefaultConfidence: want %.2f, got %.2f", 0.60, state.Current.Ontology.Governance.LearningDefaultConfidence)
+	}
+	if state.Current.Ontology.Governance.LibrarianDefaultConfidence != 0.50 {
+		t.Errorf("LibrarianDefaultConfidence: want %.2f, got %.2f", 0.50, state.Current.Ontology.Governance.LibrarianDefaultConfidence)
+	}
+}
+
+func TestNewOntologyForm_EditBackToFallbackPreservesSparseAdmissionConfidenceSemantics(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "lango.json")
+	content := `{
+		"logging": { "level": "info", "format": "console" },
+		"ontology": {
+			"governance": {
+				"admissionMode": "off"
+			}
+		}
+	}`
+	if err := os.WriteFile(cfgPath, []byte(content), 0644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	result, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+
+	form := NewOntologyForm(result.Config)
+	learning := fieldByKey(form, "ontology_gov_learning_conf")
+	if learning == nil {
+		t.Fatal("missing ontology_gov_learning_conf field")
+	}
+	librarian := fieldByKey(form, "ontology_gov_librarian_conf")
+	if librarian == nil {
+		t.Fatal("missing ontology_gov_librarian_conf field")
+	}
+
+	learning.Value = "0.60"
+	learning.Edited = true
+	librarian.Value = "0.50"
+	librarian.Edited = true
+
+	state := tuicore.NewConfigStateWith(result.Config)
+	state.UpdateConfigFromForm(form)
+
+	if state.Current.Ontology.Governance.LearningDefaultConfidencePresent {
+		t.Error("learning confidence presence should remain false after editing back to fallback")
+	}
+	if state.Current.Ontology.Governance.LibrarianDefaultConfidencePresent {
+		t.Error("librarian confidence presence should remain false after editing back to fallback")
+	}
+	if state.Current.Ontology.Governance.LearningDefaultConfidence != 0.60 {
+		t.Errorf("LearningDefaultConfidence: want %.2f, got %.2f", 0.60, state.Current.Ontology.Governance.LearningDefaultConfidence)
+	}
+	if state.Current.Ontology.Governance.LibrarianDefaultConfidence != 0.50 {
+		t.Errorf("LibrarianDefaultConfidence: want %.2f, got %.2f", 0.50, state.Current.Ontology.Governance.LibrarianDefaultConfidence)
 	}
 }
 

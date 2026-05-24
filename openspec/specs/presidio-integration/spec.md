@@ -1,7 +1,7 @@
 # presidio-integration Specification
 
 ## Purpose
-TBD - created by archiving change pii-redaction-enhancement. Update Purpose after archive.
+Define Microsoft Presidio integration for supplemental PII detection, scoring, and category mapping.
 ## Requirements
 ### Requirement: Presidio HTTP client
 PresidioDetector SHALL call the Microsoft Presidio analyzer's POST /analyze endpoint to detect PII entities.
@@ -54,4 +54,3 @@ PresidioDetector SHALL provide a HealthCheck(ctx) error method that verifies the
 #### Scenario: Unhealthy service
 - **WHEN** Presidio /health returns non-200
 - **THEN** HealthCheck SHALL return an error
-

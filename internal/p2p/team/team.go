@@ -12,13 +12,13 @@ import (
 
 // Sentinel errors for team operations.
 var (
-	ErrTeamFull       = errors.New("team is at maximum capacity")
-	ErrBudgetExceeded = errors.New("team budget exceeded")
-	ErrAlreadyMember  = errors.New("agent is already a team member")
-	ErrNotMember      = errors.New("agent is not a team member")
-	ErrTeamDisbanded  = errors.New("team has been disbanded")
-	ErrConflict          = errors.New("conflicting results from team members")
-	ErrTeamShuttingDown  = errors.New("team is shutting down")
+	ErrTeamFull         = errors.New("team is at maximum capacity")
+	ErrBudgetExceeded   = errors.New("team budget exceeded")
+	ErrAlreadyMember    = errors.New("agent is already a team member")
+	ErrNotMember        = errors.New("agent is not a team member")
+	ErrTeamDisbanded    = errors.New("team has been disbanded")
+	ErrConflict         = errors.New("conflicting results from team members")
+	ErrTeamShuttingDown = errors.New("team is shutting down")
 )
 
 // MemberStatus represents the operational state of a team member.
@@ -45,8 +45,8 @@ const (
 type TeamStatus string
 
 const (
-	StatusForming   TeamStatus = "forming"
-	StatusActive    TeamStatus = "active"
+	StatusForming      TeamStatus = "forming"
+	StatusActive       TeamStatus = "active"
 	StatusCompleted    TeamStatus = "completed"
 	StatusShuttingDown TeamStatus = "shutting_down"
 	StatusDisbanded    TeamStatus = "disbanded"

@@ -9,10 +9,57 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/langoai/lango/internal/bootstrap"
-	"github.com/langoai/lango/internal/cli/prompt"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/session"
 )
+
+var executeMigratePassphrase = func(cmd *cobra.Command, bootLoader func() (*bootstrap.Result, error)) error {
+	boot, err := bootLoader()
+	if err != nil {
+		return fmt.Errorf("load config: %w", err)
+	}
+	defer boot.Close()
+
+	if boot.Config.Security.Signer.Provider != "local" {
+		return fmt.Errorf("this command is only available when using 'local' security provider")
+	}
+
+	if err := securityRequireInteractiveInput(
+		cmd.InOrStdin(),
+		"this command requires an interactive terminal",
+	); err != nil {
+		return err
+	}
+
+	fmt.Fprintln(cmd.OutOrStdout(), "This process will re-encrypt all your stored secrets with a new passphrase.")
+	fmt.Fprintln(cmd.OutOrStdout(), "Warning: If this process is interrupted, your data may be corrupted.")
+	fmt.Fprintln(cmd.OutOrStdout(), "Ensure you have a backup of your data directory.")
+	fmt.Fprintln(cmd.OutOrStdout())
+
+	if boot.Storage == nil {
+		return fmt.Errorf("bootstrap session storage unavailable")
+	}
+	store, err := boot.Storage.OpenSessionStore()
+	if err != nil {
+		return fmt.Errorf("open session store: %w", err)
+	}
+	entStore, ok := store.(*session.EntStore)
+	if !ok {
+		return fmt.Errorf("bootstrap session store is not Ent-backed")
+	}
+
+	newPass, err := securityPassphraseConfirm(
+		cmd.OutOrStdout(),
+		"Enter NEW passphrase: ",
+		"Confirm NEW passphrase: ",
+	)
+	if err != nil {
+		return err
+	}
+
+	ctx := context.Background()
+	return migrateSecrets(ctx, entStore, boot.Crypto, newPass, cmd.OutOrStdout())
+}
 
 // NewSecurityCmd creates the security command with lazy bootstrap loading.
 func NewSecurityCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
@@ -41,40 +88,12 @@ func newMigratePassphraseCmd(bootLoader func() (*bootstrap.Result, error)) *cobr
 		Deprecated: "use `lango security change-passphrase` instead (re-wraps Master Key without re-encrypting data)",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			fmt.Fprintln(cmd.ErrOrStderr(), "WARN: migrate-passphrase is deprecated. Use `lango security change-passphrase` instead.")
-			boot, err := bootLoader()
-			if err != nil {
-				return fmt.Errorf("load config: %w", err)
-			}
-			defer boot.DBClient.Close()
-
-			if boot.Config.Security.Signer.Provider != "local" {
-				return fmt.Errorf("this command is only available when using 'local' security provider")
-			}
-
-			if !prompt.IsInteractive() {
-				return fmt.Errorf("this command requires an interactive terminal")
-			}
-
-			fmt.Println("This process will re-encrypt all your stored secrets with a new passphrase.")
-			fmt.Println("Warning: If this process is interrupted, your data may be corrupted.")
-			fmt.Println("Ensure you have a backup of your data directory.")
-			fmt.Println()
-
-			store := session.NewEntStoreWithClient(boot.DBClient)
-
-			// Current passphrase already verified by bootstrap
-			newPass, err := prompt.PassphraseConfirm("Enter NEW passphrase: ", "Confirm NEW passphrase: ")
-			if err != nil {
-				return err
-			}
-
-			ctx := context.Background()
-			return migrateSecrets(ctx, store, boot.Crypto, newPass)
+			return executeMigratePassphrase(cmd, bootLoader)
 		},
 	}
 }
 
-func migrateSecrets(ctx context.Context, store *session.EntStore, oldCrypto security.CryptoProvider, newPass string) error {
+func migrateSecrets(ctx context.Context, store *session.EntStore, oldCrypto security.CryptoProvider, newPass string, out io.Writer) error {
 	// Generate new random salt
 	newSalt := make([]byte, security.SaltSize)
 	if _, err := io.ReadFull(rand.Reader, newSalt); err != nil {
@@ -100,11 +119,11 @@ func migrateSecrets(ctx context.Context, store *session.EntStore, oldCrypto secu
 	newChecksum := newProvider.CalculateChecksum(newPass, newSalt)
 
 	// Execute migration in store
-	fmt.Println("Migrating secrets...")
+	fmt.Fprintln(out, "Migrating secrets...")
 	if err := store.MigrateSecrets(ctx, reencryptFn, newSalt, newChecksum); err != nil {
 		return fmt.Errorf("migration failed: %w", err)
 	}
 
-	fmt.Println("Migration completed successfully!")
+	fmt.Fprintln(out, "Migration completed successfully!")
 	return nil
 }

@@ -11,14 +11,15 @@ lango learning <subcommand>
 ## lango learning status
 
 Show the learning and knowledge system configuration, including knowledge store settings, error correction, graph learning, and embedding/RAG status.
+The command writes through the Cobra command output stream so wrappers and test harnesses can capture table or JSON output directly.
 
 ```
-lango learning status [--json]
+lango learning status [--output table|json]
 ```
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--json` | bool | `false` | Output as JSON |
+| `--output` | string | `table` | Output format (`table` or `json`) |
 
 **Example:**
 
@@ -63,22 +64,23 @@ Embedding & RAG
 ## lango learning history
 
 Show recent learning entries stored by the learning engine.
+The command writes through the Cobra command output stream so wrappers and test harnesses can capture table or JSON output directly.
 
 ```
-lango learning history [--limit N] [--json]
+lango learning history [--limit N] [--output table|json]
 ```
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--limit` | int | `20` | Maximum number of entries to show |
-| `--json` | bool | `false` | Output as JSON |
+| `--output` | string | `table` | Output format (`table` or `json`) |
 
 **Example:**
 
 ```bash
 $ lango learning history
-TRIGGER                    CATEGORY         CONFIDENCE  FIX
-tool:exec_shell            tool_error       0.85        Use absolute path for command
-tool:browser_navigate      timeout          0.72        Increase page load timeout to 30s
-conversation:go-style      user_correction  0.90        Use fmt.Errorf with %w for error wrapping
+ID        CATEGORY         TRIGGER                    CONFIDENCE  CREATED
+a1b2c3d4  tool_error       tool:exec_shell            0.85        2026-05-14 10:00:00
+e5f6g7h8  timeout          tool:browser_navigate      0.72        2026-05-14 09:55:00
+i9j0k1l2  user_correction  conversation:go-style      0.90        2026-05-14 09:50:00
 ```

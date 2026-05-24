@@ -8,11 +8,16 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/langoai/lango/internal/cli/cockpit/theme"
 	"github.com/langoai/lango/internal/cli/tui"
 	"github.com/langoai/lango/internal/observability"
 )
+
+func sanitizeContextPanelText(text string) string {
+	return strings.Join(strings.Fields(ansi.Strip(text)), " ")
+}
 
 // contextTickMsg triggers a periodic refresh of the context panel.
 type contextTickMsg time.Time
@@ -35,12 +40,12 @@ type channelStatus struct {
 // in a right-side panel. It is NOT a Page — it uses Start()/Stop() lifecycle
 // managed by the cockpit toggle (Ctrl+P).
 type ContextPanel struct {
-	collector       *observability.MetricsCollector
-	snapshot        observability.SystemSnapshot
-	tickActive      bool
-	visible         bool
-	width           int
-	height          int
+	collector          *observability.MetricsCollector
+	snapshot           observability.SystemSnapshot
+	tickActive         bool
+	visible            bool
+	width              int
+	height             int
 	sortedTools        []toolEntry     // cached sorted tool stats
 	sortedToolsDirty   bool            // true when snapshot updated, cleared after sort
 	cachedToolCountSum int64           // cached sum of all tool invocation counts
@@ -108,8 +113,8 @@ var (
 				Background(theme.Surface0)
 
 	// Pre-allocated styles for renderRuntimeStatus.
-	cpSuccessIconStyle     = lipgloss.NewStyle().Foreground(theme.Success)
-	cpActiveAgentStyle     = lipgloss.NewStyle().Foreground(theme.TextPrimary)
+	cpSuccessIconStyle = lipgloss.NewStyle().Foreground(theme.Success)
+	cpActiveAgentStyle = lipgloss.NewStyle().Foreground(theme.TextPrimary)
 
 	// Pre-allocated styles for renderChannelStatus.
 	cpChannelNameStyle  = lipgloss.NewStyle().Foreground(theme.TextPrimary)
@@ -190,12 +195,16 @@ func (p *ContextPanel) SetChannelStatuses(statuses []channelStatus) {
 		p.channelStatuses = make([]channelStatus, len(statuses))
 	}
 	copy(p.channelStatuses, statuses)
+	for i := range p.channelStatuses {
+		p.channelStatuses[i].Name = sanitizeContextPanelText(p.channelStatuses[i].Name)
+	}
 }
 
 // SetRuntimeStatus updates the runtime status display data.
 // Rendering is handled by Unit 3A; this setter allows the cockpit
 // to push snapshots from RuntimeTracker.
 func (p *ContextPanel) SetRuntimeStatus(status runtimeStatus) {
+	status.ActiveAgent = sanitizeContextPanelText(status.ActiveAgent)
 	p.runtimeStat = status
 }
 
@@ -207,6 +216,12 @@ func (p *ContextPanel) renderTokenUsage(width int, divider string) string {
 	b.WriteByte('\n')
 	b.WriteString(divider)
 	b.WriteByte('\n')
+
+	if p.collector == nil {
+		b.WriteString(cpMutedStyle.Render("Metrics collector is not configured"))
+		b.WriteByte('\n')
+		return b.String()
+	}
 
 	t := p.snapshot.TokenUsageTotal
 	rows := []struct {
@@ -236,6 +251,12 @@ func (p *ContextPanel) renderToolStats(width int, divider string) string {
 	b.WriteString(divider)
 	b.WriteByte('\n')
 
+	if p.collector == nil {
+		b.WriteString(cpMutedStyle.Render("Metrics collector is not configured"))
+		b.WriteByte('\n')
+		return b.String()
+	}
+
 	if len(p.snapshot.ToolBreakdown) == 0 {
 		b.WriteString(cpMutedStyle.Render("No tool executions"))
 		b.WriteByte('\n')
@@ -247,7 +268,7 @@ func (p *ContextPanel) renderToolStats(width int, divider string) string {
 		entries := make([]toolEntry, 0, len(p.snapshot.ToolBreakdown))
 		var sum int64
 		for name, tm := range p.snapshot.ToolBreakdown {
-			entries = append(entries, toolEntry{name: name, count: tm.Count})
+			entries = append(entries, toolEntry{name: sanitizeContextPanelText(name), count: tm.Count})
 			sum += tm.Count
 		}
 		p.cachedToolCountSum = sum
@@ -282,6 +303,12 @@ func (p *ContextPanel) renderSystem(_ int, divider string) string {
 	b.WriteString(divider)
 	b.WriteByte('\n')
 
+	if p.collector == nil {
+		b.WriteString(cpMutedStyle.Render("Metrics collector is not configured"))
+		b.WriteByte('\n')
+		return b.String()
+	}
+
 	uptime := tui.FormatDuration(p.snapshot.Uptime)
 	b.WriteString(cpLabelStyle.Render("Uptime:  "))
 	b.WriteString(cpValueStyle.Render(uptime))
@@ -305,7 +332,7 @@ func (p *ContextPanel) renderRuntimeStatus(_ int, divider string) string {
 	statusIcon := cpSuccessIconStyle.Render("●")
 	label := "Running"
 	if p.runtimeStat.ActiveAgent != "" {
-		label += "  " + cpActiveAgentStyle.Render(p.runtimeStat.ActiveAgent)
+		label += "  " + cpActiveAgentStyle.Render(sanitizeContextPanelText(p.runtimeStat.ActiveAgent))
 	}
 	fmt.Fprintf(&b, "  %s %s", statusIcon, cpLabelStyle.Render(label))
 	b.WriteByte('\n')
@@ -346,7 +373,7 @@ func (p *ContextPanel) renderChannelStatus(_ int, divider string) string {
 			statusIcon = cpErrorIconStyle.Render("○")
 		}
 
-		name := cpChannelNameStyle.Render(ch.Name)
+		name := cpChannelNameStyle.Render(sanitizeContextPanelText(ch.Name))
 		count := cpChannelCountStyle.Render(fmt.Sprintf("%d msgs", ch.MessageCount))
 
 		fmt.Fprintf(&b, "  %s %s  %s", statusIcon, name, count)

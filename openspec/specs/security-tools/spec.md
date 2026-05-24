@@ -18,6 +18,17 @@ The app SHALL register crypto tool with encrypt/decrypt/sign/hash/keys operation
 - **WHEN** agent runtime is initialized
 - **THEN** crypto tool is available with operations: encrypt, decrypt, sign, hash, keys
 
+### Requirement: Crypto and secrets handlers reject missing required inputs
+The crypto and secrets tool handlers SHALL reject missing required inputs before key lookup, secret-store access, or cryptographic execution begins.
+
+#### Scenario: Crypto tool missing required input
+- **WHEN** `crypto_encrypt`, `crypto_decrypt`, `crypto_sign`, or `crypto_hash` is invoked without its required `data` or `ciphertext`
+- **THEN** the handler SHALL return an actionable validation error before downstream cryptographic work begins
+
+#### Scenario: Secrets tool missing required input
+- **WHEN** `secrets_store`, `secrets_get`, or `secrets_delete` is invoked without its required `name` or `value`
+- **THEN** the handler SHALL return an actionable validation error before secret-store lookup or mutation begins
+
 ### Requirement: Secrets get requires approval
 The secrets.get operation SHALL require user approval via ApprovalMiddleware.
 

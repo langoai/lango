@@ -12,16 +12,33 @@ import (
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/payment"
 	"github.com/langoai/lango/internal/security"
-	"github.com/langoai/lango/internal/session"
+	"github.com/langoai/lango/internal/storage"
 	"github.com/langoai/lango/internal/wallet"
 )
 
 // paymentDeps holds lazily-initialized payment dependencies.
 type paymentDeps struct {
 	service *payment.Service
-	limiter *wallet.EntSpendingLimiter
+	limiter wallet.SpendingLimiter
 	config  *config.PaymentConfig
 	cleanup func()
+}
+
+var paymentDepsLoader = initPaymentDeps
+var paymentHistoryLoader = func(ctx context.Context, boot *bootstrap.Result, limit int) ([]storage.PaymentHistoryRecord, error) {
+	if boot == nil || boot.Storage == nil {
+		return nil, fmt.Errorf("payment history unavailable")
+	}
+	return boot.Storage.PaymentHistory(ctx, limit)
+}
+var paymentUsageLoader = func(ctx context.Context, boot *bootstrap.Result) (storage.PaymentUsageSummary, error) {
+	if boot == nil || boot.Storage == nil {
+		return storage.PaymentUsageSummary{}, fmt.Errorf("payment usage unavailable")
+	}
+	return boot.Storage.PaymentUsage(ctx)
+}
+var paymentSendExecutor = func(ctx context.Context, deps *paymentDeps, req payment.PaymentRequest) (*payment.PaymentReceipt, error) {
+	return deps.service.Send(ctx, req)
 }
 
 // NewPaymentCmd creates the payment command with lazy bootstrap loading.
@@ -53,14 +70,18 @@ func initPaymentDeps(boot *bootstrap.Result) (*paymentDeps, error) {
 
 	// Build secrets store for wallet key management.
 	ctx := context.Background()
-	registry := security.NewKeyRegistry(boot.DBClient)
+	if boot.Storage == nil {
+		return nil, fmt.Errorf("payment storage unavailable")
+	}
+	registry := boot.Storage.KeyRegistry()
+	secrets := boot.Storage.SecretsStore(boot.Crypto)
+	txStore := boot.Storage.PaymentTxStore()
+	if registry == nil || secrets == nil || txStore == nil {
+		return nil, fmt.Errorf("payment secrets store unavailable")
+	}
 	if _, err := registry.RegisterKey(ctx, "default", "local", security.KeyTypeEncryption); err != nil {
 		return nil, fmt.Errorf("register default key: %w", err)
 	}
-	secrets := security.NewSecretsStore(boot.DBClient, registry, boot.Crypto)
-
-	// Get ent client for payment records.
-	client := session.NewEntStoreWithClient(boot.DBClient).Client()
 
 	// Create RPC client for blockchain interaction.
 	rpcClient, err := ethclient.Dial(cfg.Payment.Network.RPCURL)
@@ -84,7 +105,7 @@ func initPaymentDeps(boot *bootstrap.Result) (*paymentDeps, error) {
 	}
 
 	// Create spending limiter.
-	limiter, err := wallet.NewEntSpendingLimiter(client,
+	limiter, err := boot.Storage.NewSpendingLimiter(
 		cfg.Payment.Limits.MaxPerTx,
 		cfg.Payment.Limits.MaxDaily,
 		cfg.Payment.Limits.AutoApproveBelow,
@@ -101,7 +122,7 @@ func initPaymentDeps(boot *bootstrap.Result) (*paymentDeps, error) {
 	)
 
 	// Create payment service.
-	svc := payment.NewService(wp, limiter, builder, client, rpcClient, cfg.Payment.Network.ChainID)
+	svc := payment.NewService(wp, limiter, builder, txStore, rpcClient, cfg.Payment.Network.ChainID)
 
 	return &paymentDeps{
 		service: svc,

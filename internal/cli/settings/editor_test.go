@@ -6,6 +6,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/langoai/lango/internal/config"
 )
 
 func TestEditor_EscAtWelcome_Quits(t *testing.T) {
@@ -231,4 +233,345 @@ func TestEditor_CtrlC_AlwaysQuits(t *testing.T) {
 			assert.NotNil(t, cmd, "ctrl+c should return quit cmd")
 		})
 	}
+}
+
+func TestCategoryIsEnabled_ReflectsConfigState(t *testing.T) {
+	t.Parallel()
+
+	falseValue := false
+	trueValue := true
+	tests := []struct {
+		name      string
+		category  string
+		configure func(*config.Config)
+		want      bool
+	}{
+		{
+			name:     "channels enabled when any channel is enabled",
+			category: "channels",
+			configure: func(cfg *config.Config) {
+				cfg.Channels.Slack.Enabled = true
+			},
+			want: true,
+		},
+		{
+			name:     "embedding requires provider",
+			category: "embedding",
+			configure: func(cfg *config.Config) {
+				cfg.Embedding.Provider = "openai"
+			},
+			want: true,
+		},
+		{
+			name:     "context profile off is disabled",
+			category: "context_profile",
+			configure: func(cfg *config.Config) {
+				cfg.ContextProfile = "off"
+			},
+		},
+		{
+			name:     "context budget enabled by model window",
+			category: "context_budget",
+			configure: func(cfg *config.Config) {
+				cfg.Context.ModelWindow = 128000
+			},
+			want: true,
+		},
+		{
+			name:     "smart account child category follows parent",
+			category: "smartaccount_paymaster",
+			configure: func(cfg *config.Config) {
+				cfg.SmartAccount.Enabled = true
+			},
+			want: true,
+		},
+		{
+			name:     "p2p child category follows parent",
+			category: "p2p_workspace",
+			configure: func(cfg *config.Config) {
+				cfg.P2P.Enabled = true
+			},
+			want: true,
+		},
+		{
+			name:     "economy child category follows parent",
+			category: "economy_escrow",
+			configure: func(cfg *config.Config) {
+				cfg.Economy.Enabled = true
+			},
+			want: true,
+		},
+		{
+			name:     "alerting requires observability and alerting",
+			category: "alerting",
+			configure: func(cfg *config.Config) {
+				cfg.Observability.Enabled = true
+				cfg.Alerting.Enabled = true
+			},
+			want: true,
+		},
+		{
+			name:     "alerting disabled without observability",
+			category: "alerting",
+			configure: func(cfg *config.Config) {
+				cfg.Alerting.Enabled = true
+			},
+		},
+		{
+			name:     "gatekeeper nil defaults enabled",
+			category: "gatekeeper",
+			configure: func(cfg *config.Config) {
+				cfg.Gatekeeper.Enabled = nil
+			},
+			want: true,
+		},
+		{
+			name:     "gatekeeper explicit false disables",
+			category: "gatekeeper",
+			configure: func(cfg *config.Config) {
+				cfg.Gatekeeper.Enabled = &falseValue
+			},
+		},
+		{
+			name:     "output manager explicit true enables",
+			category: "output_manager",
+			configure: func(cfg *config.Config) {
+				cfg.Tools.OutputManager.Enabled = &trueValue
+			},
+			want: true,
+		},
+		{
+			name:     "unknown category disabled",
+			category: "does_not_exist",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := &config.Config{}
+			if tt.configure != nil {
+				tt.configure(cfg)
+			}
+
+			assert.Equal(t, tt.want, categoryIsEnabled(cfg, tt.category))
+		})
+	}
+}
+
+func TestEditor_HandleMenuSelectionOpensListAndFormSurfaces(t *testing.T) {
+	e := NewEditorWithConfig(&config.Config{
+		Providers: map[string]config.ProviderConfig{
+			"anthropic": {Type: "anthropic"},
+		},
+		Auth: config.AuthConfig{
+			Providers: map[string]config.OIDCProviderConfig{
+				"corp": {IssuerURL: "https://issuer.example"},
+			},
+		},
+		MCP: config.MCPConfig{
+			Servers: map[string]config.MCPServerConfig{
+				"filesystem": {Transport: "stdio"},
+			},
+		},
+	})
+
+	e.handleMenuSelection("providers")
+	require.Equal(t, StepProvidersList, e.step)
+	require.Len(t, e.providersList.Providers, 1)
+	assert.Equal(t, "anthropic", e.providersList.Providers[0].ID)
+
+	e.handleMenuSelection("auth")
+	require.Equal(t, StepAuthProvidersList, e.step)
+	require.Len(t, e.authProvidersList.Providers, 1)
+	assert.Equal(t, "corp", e.authProvidersList.Providers[0].ID)
+
+	e.handleMenuSelection("mcp_servers")
+	require.Equal(t, StepMCPServersList, e.step)
+	require.Len(t, e.mcpServersList.Servers, 1)
+	assert.Equal(t, "filesystem", e.mcpServersList.Servers[0].Name)
+
+	e.handleMenuSelection("agent")
+	require.Equal(t, StepForm, e.step)
+	require.NotNil(t, e.activeForm)
+	assert.Equal(t, "Agent Configuration", e.activeForm.Title)
+	assert.True(t, e.activeForm.Focus)
+}
+
+func TestEditor_ProvidersListDeleteSelectAndExit(t *testing.T) {
+	cfg := &config.Config{
+		Providers: map[string]config.ProviderConfig{
+			"anthropic": {Type: "anthropic"},
+			"openai":    {Type: "openai"},
+		},
+	}
+	e := NewEditorWithConfig(cfg)
+	e.step = StepProvidersList
+	e.providersList = NewProvidersListModel(e.state.Current)
+
+	model, cmd := e.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	e = model.(*Editor)
+	require.Nil(t, cmd)
+	assert.NotContains(t, e.state.Current.Providers, "anthropic")
+	assert.True(t, e.state.IsDirty("providers"))
+	assert.Empty(t, e.providersList.Deleted)
+
+	e.providersList.Cursor = len(e.providersList.Providers)
+	model, cmd = e.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	e = model.(*Editor)
+	require.Nil(t, cmd)
+	require.Equal(t, StepForm, e.step)
+	require.NotNil(t, e.activeForm)
+	assert.Empty(t, e.activeProviderID)
+	assert.Contains(t, e.activeForm.Title, "Provider")
+
+	model, cmd = e.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	e = model.(*Editor)
+	require.Nil(t, cmd)
+	assert.Equal(t, StepProvidersList, e.step)
+	assert.Nil(t, e.activeForm)
+
+	model, cmd = e.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	e = model.(*Editor)
+	require.Nil(t, cmd)
+	assert.Equal(t, StepMenu, e.step)
+}
+
+func TestEditor_AuthAndMCPListSelectionsOpenTypedForms(t *testing.T) {
+	e := NewEditorWithConfig(&config.Config{
+		Auth: config.AuthConfig{
+			Providers: map[string]config.OIDCProviderConfig{
+				"corp": {IssuerURL: "https://issuer.example"},
+			},
+		},
+		MCP: config.MCPConfig{
+			Servers: map[string]config.MCPServerConfig{
+				"filesystem": {Transport: "stdio"},
+			},
+		},
+	})
+
+	e.step = StepAuthProvidersList
+	e.authProvidersList = NewAuthProvidersListModel(e.state.Current)
+	model, cmd := e.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	e = model.(*Editor)
+	require.Nil(t, cmd)
+	require.Equal(t, StepForm, e.step)
+	require.NotNil(t, e.activeForm)
+	assert.Equal(t, "corp", e.activeAuthProviderID)
+	assert.True(t, e.isAuthProviderForm())
+
+	model, cmd = e.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	e = model.(*Editor)
+	require.Nil(t, cmd)
+	require.Equal(t, StepAuthProvidersList, e.step)
+
+	e.step = StepMCPServersList
+	e.mcpServersList = NewMCPServersListModel(e.state.Current)
+	model, cmd = e.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	e = model.(*Editor)
+	require.Nil(t, cmd)
+	require.Equal(t, StepForm, e.step)
+	require.NotNil(t, e.activeForm)
+	assert.Equal(t, "filesystem", e.activeMCPServerName)
+	assert.True(t, e.isMCPServerForm())
+}
+
+func TestEditor_ViewRendersStepSpecificContent(t *testing.T) {
+	e := NewEditor()
+
+	assert.Contains(t, e.View(), "categories")
+
+	e.step = StepProvidersList
+	e.providersList = NewProvidersListModel(e.state.Current)
+	assert.Contains(t, e.View(), "Providers")
+
+	e.step = StepAuthProvidersList
+	e.authProvidersList = NewAuthProvidersListModel(e.state.Current)
+	assert.Contains(t, e.View(), "Auth Providers")
+
+	e.step = StepMCPServersList
+	e.mcpServersList = NewMCPServersListModel(e.state.Current)
+	assert.Contains(t, e.View(), "MCP Servers")
+}
+
+func TestEditor_DependencyNavigationPushesAndPopsForms(t *testing.T) {
+	e := NewEditorWithConfig(&config.Config{})
+
+	e.handleMenuSelection("p2p")
+	require.Equal(t, StepForm, e.step)
+	require.NotNil(t, e.activeForm)
+	require.NotNil(t, e.depPanel)
+	require.True(t, e.panelFocus)
+	assert.Equal(t, "p2p", e.depPanel.CategoryID)
+
+	e.jumpToDependency("security")
+	require.Len(t, e.navStack, 1)
+	assert.Equal(t, "p2p", e.navStack[0])
+	require.NotNil(t, e.activeForm)
+	assert.True(t, e.activeForm.Focus)
+
+	e.popNavStack()
+	assert.Empty(t, e.navStack)
+	require.NotNil(t, e.activeForm)
+	require.NotNil(t, e.depPanel)
+	assert.Equal(t, "p2p", e.depPanel.CategoryID)
+	assert.True(t, e.activeForm.Focus)
+}
+
+func TestEditor_DependencyPanelKeyHandlingAndSetupFlow(t *testing.T) {
+	e := NewEditorWithConfig(&config.Config{})
+	e.handleMenuSelection("smartaccount")
+	require.Equal(t, StepForm, e.step)
+	require.NotNil(t, e.depPanel)
+	require.True(t, e.panelFocus)
+
+	model, cmd := e.Update(tea.KeyMsg{Type: tea.KeyDown})
+	e = model.(*Editor)
+	require.Nil(t, cmd)
+	assert.True(t, e.panelFocus)
+	assert.Equal(t, "security", e.depPanel.SelectedCategoryID())
+
+	model, cmd = e.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	e = model.(*Editor)
+	require.Nil(t, cmd)
+	assert.Equal(t, StepForm, e.step)
+	assert.Equal(t, []string{"smartaccount"}, e.navStack)
+	require.NotNil(t, e.activeForm)
+
+	model, cmd = e.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	e = model.(*Editor)
+	require.Nil(t, cmd)
+	assert.Equal(t, StepForm, e.step)
+	assert.Empty(t, e.navStack)
+	require.NotNil(t, e.depPanel)
+	assert.Equal(t, "smartaccount", e.depPanel.CategoryID)
+
+	model, cmd = e.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	e = model.(*Editor)
+	require.Nil(t, cmd)
+	assert.Equal(t, StepSetupFlow, e.step)
+	require.NotNil(t, e.setupFlow)
+	assert.Equal(t, "smartaccount", e.setupFlow.TargetID())
+	assert.Nil(t, e.depPanel)
+	assert.False(t, e.panelFocus)
+}
+
+func TestEditor_CompleteSetupFlowRestoresTargetForm(t *testing.T) {
+	e := NewEditorWithConfig(&config.Config{})
+	e.handleMenuSelection("smartaccount")
+	require.NotNil(t, e.depPanel)
+
+	e.startSetupFlow()
+	require.Equal(t, StepSetupFlow, e.step)
+	require.NotNil(t, e.setupFlow)
+
+	e.completeSetupFlow()
+	assert.Equal(t, StepForm, e.step)
+	assert.Nil(t, e.setupFlow)
+	require.NotNil(t, e.activeForm)
+	assert.True(t, e.activeForm.Focus)
+	require.NotNil(t, e.depPanel)
+	assert.Equal(t, "smartaccount", e.depPanel.CategoryID)
 }

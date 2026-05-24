@@ -146,3 +146,110 @@ func TestMergedServers_ProfilePriority(t *testing.T) {
 	assert.Contains(t, merged, "profile-srv")
 	assert.Equal(t, "profile-cmd", merged["profile-srv"].Command)
 }
+
+func TestMergedServersStrict_IgnoresMissingScopedFiles(t *testing.T) {
+	tmp := t.TempDir()
+	origWD, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(tmp))
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+	t.Setenv("HOME", filepath.Join(tmp, "home"))
+
+	cfg := &config.MCPConfig{
+		Servers: map[string]config.MCPServerConfig{
+			"profile-srv": {
+				Transport: "stdio",
+				Command:   "profile-cmd",
+			},
+		},
+	}
+
+	merged, err := MergedServersStrict(cfg)
+
+	require.NoError(t, err)
+	require.Contains(t, merged, "profile-srv")
+	assert.Equal(t, "profile-cmd", merged["profile-srv"].Command)
+}
+
+func TestMergedServersStrict_InvalidUserConfigReturnsScopeAndPath(t *testing.T) {
+	tmp := t.TempDir()
+	home := filepath.Join(tmp, "home")
+	userDir := filepath.Join(home, ".lango")
+	require.NoError(t, os.MkdirAll(userDir, 0700))
+	userPath := filepath.Join(userDir, "mcp.json")
+	require.NoError(t, os.WriteFile(userPath, []byte(`{bad json`), 0644))
+	t.Setenv("HOME", home)
+
+	_, err := MergedServersStrict(&config.MCPConfig{})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "user")
+	assert.Contains(t, err.Error(), userPath)
+}
+
+func TestMergedServersStrict_InvalidProjectConfigReturnsScopeAndPath(t *testing.T) {
+	tmp := t.TempDir()
+	origWD, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(tmp))
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+	t.Setenv("HOME", filepath.Join(tmp, "home"))
+	projectPath := filepath.Join(tmp, ".lango-mcp.json")
+	require.NoError(t, os.WriteFile(projectPath, []byte(`{bad json`), 0644))
+
+	_, err = MergedServersStrict(&config.MCPConfig{})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "project")
+	assert.Contains(t, err.Error(), ".lango-mcp.json")
+}
+
+func TestMergedServersStrict_InvalidProjectServerConfigReturnsScopeAndPath(t *testing.T) {
+	tmp := t.TempDir()
+	origWD, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(tmp))
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+	t.Setenv("HOME", filepath.Join(tmp, "home"))
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, ".lango-mcp.json"), []byte(`{
+		"mcpServers": {
+			"remote-api": {
+				"transport": "http"
+			}
+		}
+	}`), 0644))
+
+	_, err = MergedServersStrict(&config.MCPConfig{})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "project")
+	assert.Contains(t, err.Error(), ".lango-mcp.json")
+	assert.Contains(t, err.Error(), "remote-api")
+	assert.Contains(t, err.Error(), "url is required")
+}
+
+func TestMergedServersStrict_InvalidSafetyLevelReturnsScopeAndPath(t *testing.T) {
+	tmp := t.TempDir()
+	origWD, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(tmp))
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+	t.Setenv("HOME", filepath.Join(tmp, "home"))
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, ".lango-mcp.json"), []byte(`{
+		"mcpServers": {
+			"filesystem": {
+				"transport": "stdio",
+				"command": "npx",
+				"safetyLevel": "trusted"
+			}
+		}
+	}`), 0644))
+
+	_, err = MergedServersStrict(&config.MCPConfig{})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "project")
+	assert.Contains(t, err.Error(), ".lango-mcp.json")
+	assert.Contains(t, err.Error(), "filesystem")
+	assert.Contains(t, err.Error(), "safetyLevel")
+}

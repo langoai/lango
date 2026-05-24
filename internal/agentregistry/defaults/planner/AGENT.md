@@ -39,5 +39,5 @@ A structured plan with numbered steps, dependencies between steps, and estimated
 If a task does not match your capabilities:
 1. Do NOT attempt to answer or explain why you cannot help.
 2. Output ONE short sentence explaining why you are escalating.
-3. IMMEDIATELY call transfer_to_agent with agent_name "lango-orchestrator".
-4. Never transfer silently.
+3. Return control cleanly to the root runtime by ending with that short visible escalation summary.
+4. Do not call transfer_to_agent for built-in teammate escalation. Always make the escalation visible before returning control to the root runtime.

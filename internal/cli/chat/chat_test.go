@@ -5,23 +5,97 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
+	"github.com/langoai/lango/internal/adk"
 	"github.com/langoai/lango/internal/approval"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/ctxkeys"
+	"github.com/langoai/lango/internal/eventbus"
+	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/turnrunner"
 )
 
+type submitCaptureExecutor struct {
+	ctx       context.Context
+	sessionID string
+	input     string
+}
+
+func (s *submitCaptureExecutor) RunStreamingDetailed(
+	ctx context.Context,
+	sessionID, input string,
+	_ adk.ChunkCallback,
+	_ ...adk.RunOption,
+) (adk.RunReport, error) {
+	s.ctx = ctx
+	s.sessionID = sessionID
+	s.input = input
+	return adk.RunReport{Response: "ok"}, nil
+}
+
+type submitTestSessionStore struct{}
+
+func (submitTestSessionStore) Create(*session.Session) error               { return nil }
+func (submitTestSessionStore) Get(string) (*session.Session, error)        { return nil, nil }
+func (submitTestSessionStore) Update(*session.Session) error               { return nil }
+func (submitTestSessionStore) Delete(string) error                         { return nil }
+func (submitTestSessionStore) AppendMessage(string, session.Message) error { return nil }
+func (submitTestSessionStore) AnnotateTimeout(string, string) error        { return nil }
+func (submitTestSessionStore) End(string) error                            { return nil }
+func (submitTestSessionStore) Close() error                                { return nil }
+func (submitTestSessionStore) ListSessions(context.Context) ([]session.SessionSummary, error) {
+	return nil, nil
+}
+func (submitTestSessionStore) GetSalt(string) ([]byte, error) { return nil, nil }
+func (submitTestSessionStore) SetSalt(string, []byte) error   { return nil }
+
+type modeTestSessionStore struct {
+	sessions map[string]*session.Session
+}
+
+func newModeTestSessionStore() *modeTestSessionStore {
+	return &modeTestSessionStore{sessions: make(map[string]*session.Session)}
+}
+
+func (s *modeTestSessionStore) Create(sess *session.Session) error {
+	s.sessions[sess.Key] = sess
+	return nil
+}
+
+func (s *modeTestSessionStore) Get(key string) (*session.Session, error) {
+	return s.sessions[key], nil
+}
+
+func (s *modeTestSessionStore) Update(sess *session.Session) error {
+	s.sessions[sess.Key] = sess
+	return nil
+}
+
+func (s *modeTestSessionStore) Delete(key string) error {
+	delete(s.sessions, key)
+	return nil
+}
+
+func (s *modeTestSessionStore) AppendMessage(string, session.Message) error { return nil }
+func (s *modeTestSessionStore) AnnotateTimeout(string, string) error        { return nil }
+func (s *modeTestSessionStore) End(string) error                            { return nil }
+func (s *modeTestSessionStore) Close() error                                { return nil }
+func (s *modeTestSessionStore) ListSessions(context.Context) ([]session.SessionSummary, error) {
+	return nil, nil
+}
+func (s *modeTestSessionStore) GetSalt(string) ([]byte, error) { return nil, nil }
+func (s *modeTestSessionStore) SetSalt(string, []byte) error   { return nil }
+
 func newTestModel() *ChatModel {
 	m := &ChatModel{
-		cfg: &config.Config{
-			Agent: config.AgentConfig{
-				Provider: "openai",
-				Model:    "gpt-test",
-			},
-		},
+		cfg:        readyRemoteConfig(),
 		sessionKey: "test-session",
 		input:      newInputModel(),
 		chatView:   newChatViewModel(80, 24),
@@ -34,6 +108,221 @@ func newTestModel() *ChatModel {
 	}
 	m.recalcLayout()
 	return m
+}
+
+func incompleteSetupConfig() *config.Config {
+	return config.DefaultConfig()
+}
+
+func readyRemoteConfig() *config.Config {
+	return &config.Config{
+		Agent: config.AgentConfig{
+			Provider: "openai",
+			Model:    "gpt-test",
+		},
+		Providers: map[string]config.ProviderConfig{
+			"openai": {Type: "openai", APIKey: "sk-test"},
+		},
+	}
+}
+
+func readyOllamaConfig() *config.Config {
+	return &config.Config{
+		Agent: config.AgentConfig{
+			Provider: "local-ollama",
+			Model:    "llama3.1",
+		},
+		Providers: map[string]config.ProviderConfig{
+			"local-ollama": {Type: "ollama"},
+		},
+	}
+}
+
+func newTestModelWithSharedPending(shared PendingApprovalStore) *ChatModel {
+	m := newTestModel()
+	m.sharedPending = shared
+	return m
+}
+
+func runStatusCommandText(t *testing.T, m *ChatModel) string {
+	t.Helper()
+	cmd := cmdStatus(m, "")
+	require.NotNil(t, cmd)
+	msg := cmd()
+	sys, ok := msg.(SystemMsg)
+	require.True(t, ok, "expected SystemMsg, got %T", msg)
+	return sys.Text
+}
+
+func TestChatModelNilAccessorsReturnSafeDefaults(t *testing.T) {
+	var m *ChatModel
+
+	assert.Empty(t, m.ComposerValue())
+	assert.Empty(t, m.ComposerPlaceholder())
+	assert.False(t, m.CanStartTurnFromComposer())
+	assert.False(t, m.HasPendingApproval())
+	assert.False(t, m.IsStreamingTurn())
+	assert.False(t, m.CanHandlePendingApprovalKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}}))
+	assert.Nil(t, m.HandleComposerEditingKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}}))
+	assert.Nil(t, m.HandlePendingApprovalKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}}))
+}
+
+func TestComposerAccessorsAndStartEligibilityFollowState(t *testing.T) {
+	m := newTestModel()
+
+	assert.Equal(t, defaultComposerPlaceholder, m.ComposerPlaceholder())
+	m.SetComposerValue("  inspect this  ")
+	assert.Equal(t, "  inspect this  ", m.ComposerValue())
+	assert.True(t, m.CanStartTurnFromComposer())
+
+	m.state = stateFailed
+	assert.True(t, m.CanStartTurnFromComposer())
+
+	m.state = stateStreaming
+	assert.False(t, m.CanStartTurnFromComposer())
+	assert.True(t, m.IsStreamingTurn())
+
+	m.state = stateApproving
+	assert.False(t, m.CanStartTurnFromComposer())
+	assert.False(t, m.IsStreamingTurn())
+
+	m.state = stateIdle
+	m.SetComposerValue(" \n\t ")
+	assert.False(t, m.CanStartTurnFromComposer())
+}
+
+func TestHandleComposerEditingKeyBypassesChatStateGating(t *testing.T) {
+	m := newTestModel()
+	m.state = stateApproving
+	m.SetComposerValue("")
+
+	cmd := m.HandleComposerEditingKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+
+	assert.NotNil(t, cmd)
+	assert.Equal(t, "x", m.ComposerValue())
+}
+
+func TestSetSessionModeCreatesMissingSessionAndPublishesEvent(t *testing.T) {
+	store := newModeTestSessionStore()
+	bus := eventbus.New()
+	var events []eventbus.ModeChangedEvent
+	eventbus.SubscribeTyped(bus, func(e eventbus.ModeChangedEvent) {
+		events = append(events, e)
+	})
+	m := newTestModel()
+	m.sessionStore = store
+	m.eventBus = bus
+
+	require.NoError(t, m.setSessionMode("debug"))
+
+	require.NotNil(t, store.sessions["test-session"])
+	assert.Equal(t, "debug", store.sessions["test-session"].Mode())
+	assert.Equal(t, "debug", m.currentModeName())
+	require.Len(t, events, 1)
+	assert.Equal(t, eventbus.ModeChangedEvent{
+		SessionKey: "test-session",
+		OldMode:    "",
+		NewMode:    "debug",
+	}, events[0])
+}
+
+func TestSetSessionModeUpdatesExistingSessionAndCanClearMode(t *testing.T) {
+	store := newModeTestSessionStore()
+	sess := &session.Session{Key: "test-session"}
+	sess.SetMode("research")
+	store.sessions["test-session"] = sess
+	bus := eventbus.New()
+	var events []eventbus.ModeChangedEvent
+	eventbus.SubscribeTyped(bus, func(e eventbus.ModeChangedEvent) {
+		events = append(events, e)
+	})
+	m := newTestModel()
+	m.sessionStore = store
+	m.eventBus = bus
+
+	require.NoError(t, m.setSessionMode(""))
+
+	assert.Empty(t, store.sessions["test-session"].Mode())
+	assert.Empty(t, m.currentModeName())
+	require.Len(t, events, 1)
+	assert.Equal(t, "research", events[0].OldMode)
+	assert.Empty(t, events[0].NewMode)
+}
+
+func TestModeCommandReportsUnavailableSessionStore(t *testing.T) {
+	m := newTestModel()
+
+	cmd := cmdMode(m, "debug")
+	require.NotNil(t, cmd)
+	msg, ok := cmd().(SystemMsg)
+	require.True(t, ok)
+
+	assert.Contains(t, msg.Text, "Failed to set mode")
+	assert.Contains(t, msg.Text, "session store not available")
+}
+
+func TestCanHandlePendingApprovalKeyDistinguishesInlineAndFullscreenKeys(t *testing.T) {
+	tests := []struct {
+		name      string
+		viewTier  approval.DisplayTier
+		key       tea.KeyMsg
+		wantAllow bool
+	}{
+		{name: "inline approve", key: tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}}, wantAllow: true},
+		{name: "inline always allow", key: tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}}, wantAllow: true},
+		{name: "inline deny", key: tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}}, wantAllow: true},
+		{name: "inline escape", key: tea.KeyMsg{Type: tea.KeyEsc}, wantAllow: true},
+		{name: "inline ignores scroll", key: tea.KeyMsg{Type: tea.KeyUp}, wantAllow: false},
+		{name: "fullscreen up", viewTier: approval.TierFullscreen, key: tea.KeyMsg{Type: tea.KeyUp}, wantAllow: true},
+		{name: "fullscreen vim up", viewTier: approval.TierFullscreen, key: tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}}, wantAllow: true},
+		{name: "fullscreen down", viewTier: approval.TierFullscreen, key: tea.KeyMsg{Type: tea.KeyDown}, wantAllow: true},
+		{name: "fullscreen vim down", viewTier: approval.TierFullscreen, key: tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}}, wantAllow: true},
+		{name: "fullscreen toggle diff", viewTier: approval.TierFullscreen, key: tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'t'}}, wantAllow: true},
+		{name: "fullscreen ignores other text", viewTier: approval.TierFullscreen, key: tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}}, wantAllow: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := newTestModel()
+			m.approval.pending = &ApprovalRequestMsg{
+				Request: approval.ApprovalRequest{ID: "apr-1", ToolName: "exec"},
+				ViewModel: approval.ApprovalViewModel{
+					Tier: tt.viewTier,
+				},
+				Response: make(chan approval.ApprovalResponse, 1),
+			}
+
+			assert.Equal(t, tt.wantAllow, m.CanHandlePendingApprovalKey(tt.key))
+		})
+	}
+}
+
+func TestHandlePendingApprovalKeyTransitionsIntoApprovalFlow(t *testing.T) {
+	respCh := make(chan approval.ApprovalResponse, 1)
+	m := newTestModel()
+	m.state = stateStreaming
+	m.approval.pending = &ApprovalRequestMsg{
+		Request:  approval.ApprovalRequest{ID: "apr-1", ToolName: "browser_search"},
+		Response: respCh,
+	}
+
+	cmd := m.HandlePendingApprovalKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	for _, msg := range collectImmediateMsgs(cmd) {
+		updated, _ := m.Update(msg)
+		m = updated.(*ChatModel)
+	}
+
+	assert.Equal(t, stateStreaming, m.state)
+	assert.False(t, m.HasPendingApproval())
+	var resp approval.ApprovalResponse
+	select {
+	case resp = <-respCh:
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("expected pending approval response")
+	}
+	assert.True(t, resp.Approved)
+	assert.False(t, resp.AlwaysAllow)
+	assert.Equal(t, "tui", resp.Provider)
 }
 
 func TestDoneMsg_StreamSuccess(t *testing.T) {
@@ -56,6 +345,35 @@ func TestDoneMsg_StreamSuccess(t *testing.T) {
 	if m.state != stateIdle {
 		t.Fatalf("want stateIdle, got %v", m.state)
 	}
+}
+
+func TestStatusCommandReportsActiveMCPRuntime(t *testing.T) {
+	m := newTestModel()
+	m.cfg.MCP.Enabled = true
+	m.runtimeFeatures = RuntimeFeatures{
+		MCPActive:      true,
+		MCPServerCount: 2,
+		MCPToolCount:   5,
+	}
+
+	out := ansi.Strip(runStatusCommandText(t, m))
+
+	assert.Contains(t, out, "MCP")
+	assert.Contains(t, out, "active in TUI mode")
+	assert.Contains(t, out, "2 servers")
+	assert.Contains(t, out, "5 tools")
+	assert.NotContains(t, out, "MCP configured but not active in TUI mode")
+}
+
+func TestStatusCommandKeepsConfiguredOnlyMCPDistinct(t *testing.T) {
+	m := newTestModel()
+	m.cfg.MCP.Enabled = true
+
+	out := ansi.Strip(runStatusCommandText(t, m))
+
+	assert.Contains(t, out, "MCP")
+	assert.Contains(t, out, "configured but no active MCP runtime")
+	assert.NotContains(t, out, "active in TUI mode")
 }
 
 func TestDoneMsg_NonStreamingResponseText(t *testing.T) {
@@ -104,6 +422,20 @@ func TestDoneMsg_DuplicateFailureStatusSkipped(t *testing.T) {
 	m.Update(DoneMsg{Result: turnrunner.Result{
 		Outcome:      "model_error",
 		ResponseText: "same text",
+	}})
+
+	if len(m.chatView.entries) != 1 {
+		t.Fatalf("want only assistant entry, got %d", len(m.chatView.entries))
+	}
+}
+
+func TestDoneMsg_DuplicateFailureStatusSkippedAfterSanitization(t *testing.T) {
+	m := newTestModel()
+	m.chatView.appendChunk("\x1b[31msame text\x1b[0m")
+
+	m.Update(DoneMsg{Result: turnrunner.Result{
+		Outcome:      "model_error",
+		ResponseText: "\x1b[31msame text\x1b[0m",
 	}})
 
 	if len(m.chatView.entries) != 1 {
@@ -217,6 +549,141 @@ func TestRenderBars_MinimalWidth(t *testing.T) {
 	if renderTurnStrip(stateStreaming, 20) == "" {
 		t.Fatal("turn strip should render at narrow width")
 	}
+}
+
+func TestSetupReadiness_RenderPartsShowsSetupRequiredState(t *testing.T) {
+	m := New(Deps{
+		Config:     incompleteSetupConfig(),
+		SessionKey: "setup-test",
+	})
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
+	m = updated.(*ChatModel)
+
+	parts := m.RenderParts()
+	out := ansi.Strip(strings.Join([]string{
+		parts.Header,
+		parts.TurnStrip,
+		parts.Footer,
+	}, "\n"))
+
+	assert.Contains(t, out, "Setup Required")
+	assert.Contains(t, out, "lango onboard")
+	assert.Contains(t, out, "lango settings")
+	assert.Contains(t, out, "lango doctor")
+	assert.NotContains(t, out, "Ready")
+	assert.NotContains(t, out, "Enter send")
+}
+
+func TestSetupReadiness_BlocksNormalSubmissionAndKeepsDraft(t *testing.T) {
+	executor := &submitCaptureExecutor{}
+	runner := turnrunner.New(turnrunner.Config{}, executor, submitTestSessionStore{}, nil)
+	m := New(Deps{
+		TurnRunner: runner,
+		Config:     incompleteSetupConfig(),
+		SessionKey: "test-session",
+	})
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
+	m = updated.(*ChatModel)
+	m.SetComposerValue("explain this code")
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(*ChatModel)
+	for _, msg := range collectImmediateMsgs(cmd) {
+		updated, _ = m.Update(msg)
+		m = updated.(*ChatModel)
+	}
+
+	assert.Empty(t, executor.input)
+	assert.Equal(t, "explain this code", m.ComposerValue())
+	assert.Equal(t, stateIdle, m.state)
+	require.NotEmpty(t, m.chatView.entries)
+	last := m.chatView.entries[len(m.chatView.entries)-1]
+	assert.Equal(t, itemStatus, last.kind)
+	assert.Contains(t, last.content, "lango onboard")
+	assert.Contains(t, last.content, "lango settings")
+	assert.Contains(t, last.content, "lango doctor")
+}
+
+func TestSetupReadiness_SlashCommandsStillDispatchBeforeSetup(t *testing.T) {
+	executor := &submitCaptureExecutor{}
+	runner := turnrunner.New(turnrunner.Config{}, executor, submitTestSessionStore{}, nil)
+	m := New(Deps{
+		TurnRunner: runner,
+		Config:     incompleteSetupConfig(),
+		SessionKey: "test-session",
+	})
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
+	m = updated.(*ChatModel)
+	m.SetComposerValue("/help")
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(*ChatModel)
+	for _, msg := range collectImmediateMsgs(cmd) {
+		updated, _ = m.Update(msg)
+		m = updated.(*ChatModel)
+	}
+
+	assert.Empty(t, executor.input)
+	require.NotEmpty(t, m.chatView.entries)
+	last := m.chatView.entries[len(m.chatView.entries)-1]
+	assert.Equal(t, itemSystem, last.kind)
+	assert.Contains(t, last.content, "Commands")
+}
+
+func TestSetupReadiness_ReadyRemoteProviderSubmitsNormally(t *testing.T) {
+	executor := &submitCaptureExecutor{}
+	runner := turnrunner.New(turnrunner.Config{}, executor, submitTestSessionStore{}, nil)
+	m := New(Deps{
+		TurnRunner: runner,
+		Config:     readyRemoteConfig(),
+		SessionKey: "test-session",
+	})
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
+	m = updated.(*ChatModel)
+	m.SetComposerValue("ready remote")
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(*ChatModel)
+	for _, msg := range collectImmediateMsgs(cmd) {
+		updated, _ = m.Update(msg)
+		m = updated.(*ChatModel)
+	}
+
+	assert.Equal(t, "ready remote", executor.input)
+}
+
+func TestSetupReadiness_ReadyOllamaProviderSubmitsNormally(t *testing.T) {
+	executor := &submitCaptureExecutor{}
+	runner := turnrunner.New(turnrunner.Config{}, executor, submitTestSessionStore{}, nil)
+	m := New(Deps{
+		TurnRunner: runner,
+		Config:     readyOllamaConfig(),
+		SessionKey: "test-session",
+	})
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
+	m = updated.(*ChatModel)
+	m.SetComposerValue("ready ollama")
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(*ChatModel)
+	for _, msg := range collectImmediateMsgs(cmd) {
+		updated, _ = m.Update(msg)
+		m = updated.(*ChatModel)
+	}
+
+	assert.Equal(t, "ready ollama", executor.input)
+}
+
+func TestHelpCommandMentionsFailedStateDoublePressQuit(t *testing.T) {
+	m := newTestModel()
+	cmd := cmdHelp(m, "")
+	require.NotNil(t, cmd)
+
+	msg := cmd()
+	sys, ok := msg.(SystemMsg)
+	require.True(t, ok)
+	assert.Contains(t, sys.Text, "double-press to quit when idle or failed")
+	assert.Contains(t, sys.Text, "Scroll transcript")
 }
 
 func TestCPRFullSequenceDiscarded(t *testing.T) {
@@ -475,6 +942,467 @@ func TestDoublePress_DenyResetsConfirm(t *testing.T) {
 	if m.approval.pending != nil {
 		t.Fatal("deny should consume the approval")
 	}
+}
+
+func TestApprovalRequestMarksLatestToolRowAwaitingApproval(t *testing.T) {
+	m := newTestModel()
+	m.chatView.appendToolStart("call1", "exec", map[string]any{"path": "/tmp/x"})
+
+	m.Update(ApprovalRequestMsg{
+		Request: approval.ApprovalRequest{ToolName: "exec"},
+		ViewModel: approval.ApprovalViewModel{
+			Risk: approval.RiskIndicator{Level: "critical", Label: "Executes arbitrary code"},
+		},
+		Response: make(chan approval.ApprovalResponse, 1),
+	})
+
+	require.Len(t, m.chatView.entries, 2)
+	assert.Equal(t, string(toolStateAwaitingApproval), m.chatView.entries[0].meta["state"])
+}
+
+func TestApprovalDeniedMarksToolRowCanceled(t *testing.T) {
+	m := newTestModel()
+	respCh := make(chan approval.ApprovalResponse, 1)
+	m.chatView.appendToolStart("call1", "exec", map[string]any{"path": "/tmp/x"})
+	m.state = stateApproving
+	m.approval.pending = &ApprovalRequestMsg{
+		Request: approval.ApprovalRequest{
+			ToolName: "exec",
+		},
+		Response: respCh,
+	}
+	m.chatView.transitionLatestToolState("exec", []ToolItemState{toolStateRunning}, toolStateAwaitingApproval)
+
+	dKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}}
+	m.Update(dKey)
+
+	require.Len(t, m.chatView.entries, 2)
+	assert.Equal(t, string(toolStateCanceled), m.chatView.entries[0].meta["state"])
+}
+
+func TestApprovalGrantRestoresToolRowRunning(t *testing.T) {
+	m := newTestModel()
+	respCh := make(chan approval.ApprovalResponse, 1)
+	m.chatView.appendToolStart("call1", "browser_search", map[string]any{"q": "hello"})
+	m.state = stateApproving
+	m.approval.pending = &ApprovalRequestMsg{
+		Request: approval.ApprovalRequest{
+			ToolName: "browser_search",
+		},
+		Response: respCh,
+	}
+	m.chatView.transitionLatestToolState("browser_search", []ToolItemState{toolStateRunning}, toolStateAwaitingApproval)
+
+	aKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}}
+	m.Update(aKey)
+
+	require.Len(t, m.chatView.entries, 2)
+	assert.Equal(t, string(toolStateRunning), m.chatView.entries[0].meta["state"])
+}
+
+func TestRedirect_DuringStreamingQueuesAndCancels(t *testing.T) {
+	m := newTestModel()
+	m.state = stateStreaming
+	cancelled := false
+	m.cancelFn = func() { cancelled = true }
+	m.chatView.appendChunk("partial response")
+
+	// Directly set the field and call handleStreamingKey to simulate
+	// Enter with content, bypassing textarea's own Enter→newline behavior.
+	m.input.textarea.SetValue("new question")
+	m.handleStreamingKey(tea.KeyMsg{Type: tea.KeyEnter})
+
+	if m.pendingRedirectInput != "new question" {
+		t.Fatalf("want pendingRedirectInput='new question', got %q", m.pendingRedirectInput)
+	}
+	if !cancelled {
+		t.Fatal("cancelFn should have been called")
+	}
+}
+
+func TestRedirect_EmptyInputDuringStreamingIgnored(t *testing.T) {
+	m := newTestModel()
+	m.state = stateStreaming
+	cancelled := false
+	m.cancelFn = func() { cancelled = true }
+
+	m.input.textarea.SetValue("")
+	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+
+	if m.pendingRedirectInput != "" {
+		t.Fatalf("want empty pendingRedirectInput, got %q", m.pendingRedirectInput)
+	}
+	if cancelled {
+		t.Fatal("cancelFn should not be called for empty input")
+	}
+}
+
+func TestRedirect_DoneMsgConsumesAndResubmits(t *testing.T) {
+	m := newTestModel()
+	m.pendingRedirectInput = "follow-up question"
+
+	// DoneMsg short-circuit path modifies m in place (pointer receiver).
+	m.Update(DoneMsg{Result: turnrunner.Result{Outcome: "timeout"}})
+
+	if m.pendingRedirectInput != "" {
+		t.Fatalf("pendingRedirectInput should be cleared, got %q", m.pendingRedirectInput)
+	}
+	// The user input should appear as a user entry in the chatView.
+	var found bool
+	for _, e := range m.chatView.entries {
+		if e.kind == itemUser && e.content == "follow-up question" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		kinds := make([]string, len(m.chatView.entries))
+		for i, e := range m.chatView.entries {
+			kinds[i] = fmt.Sprintf("%s:content=%q", e.kind, e.content)
+		}
+		t.Fatalf("redirect input should be appended as user entry, got entries: %v", kinds)
+	}
+	if m.state != stateStreaming {
+		t.Fatalf("want stateStreaming after redirect, got %v", m.state)
+	}
+}
+
+func TestRedirect_DoneMsgWithoutRedirectPreservesExistingBehavior(t *testing.T) {
+	m := newTestModel()
+	m.chatView.appendChunk("partial")
+
+	m.Update(DoneMsg{Result: turnrunner.Result{
+		Outcome:     "timeout",
+		UserMessage: "Request timed out",
+	}})
+
+	if m.state != stateFailed {
+		t.Fatalf("want stateFailed without redirect, got %v", m.state)
+	}
+}
+
+func TestApprovalSharedRenderUsesRegistry(t *testing.T) {
+	shared := &stubSharedPendingStore{
+		latest: &ApprovalRequestMsg{
+			Request: approval.ApprovalRequest{
+				ID:       "apr-1",
+				ToolName: "exec",
+				Summary:  "Run command",
+			},
+			ViewModel: approval.ApprovalViewModel{
+				Risk: approval.RiskIndicator{Level: "moderate", Label: "Runs command"},
+			},
+			Response: make(chan approval.ApprovalResponse, 1),
+		},
+	}
+	m := newTestModelWithSharedPending(shared)
+	m.state = stateApproving
+
+	view := m.View()
+	if !strings.Contains(view, "Tool Approval Required") {
+		t.Fatal("shared pending approval should be rendered")
+	}
+}
+
+func TestCockpitApprovalSharedResolveUsesRegistry(t *testing.T) {
+	shared := &stubSharedPendingStore{
+		latest: &ApprovalRequestMsg{
+			Request: approval.ApprovalRequest{
+				ID:       "apr-1",
+				ToolName: "browser_search",
+				Summary:  "Reads data",
+			},
+			ViewModel: approval.ApprovalViewModel{
+				Risk: approval.RiskIndicator{Level: "moderate", Label: "Reads data"},
+			},
+			Response: make(chan approval.ApprovalResponse, 1),
+		},
+		resolveOK: true,
+	}
+	m := newTestModelWithSharedPending(shared)
+	m.state = stateApproving
+
+	aKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}}
+	m.Update(aKey)
+
+	if shared.resolveCount != 1 {
+		t.Fatalf("want shared registry resolve count 1, got %d", shared.resolveCount)
+	}
+	if shared.lastResolvedID != "apr-1" {
+		t.Fatalf("want resolve id apr-1, got %q", shared.lastResolvedID)
+	}
+	if m.state != stateStreaming {
+		t.Fatalf("want stateStreaming after shared approval, got %v", m.state)
+	}
+	last := m.chatView.entries[len(m.chatView.entries)-1]
+	assert.Contains(t, last.content, "Reads data")
+	assert.Contains(t, last.content, "[apr-1]")
+}
+
+func TestCockpitApprovalSharedResolveKeepsApprovingForNextPending(t *testing.T) {
+	shared := &stubSharedPendingStore{
+		latest: &ApprovalRequestMsg{
+			Request: approval.ApprovalRequest{
+				ID:       "apr-1",
+				ToolName: "browser_search",
+				Summary:  "Reads data",
+			},
+			ViewModel: approval.ApprovalViewModel{
+				Risk: approval.RiskIndicator{Level: "moderate", Label: "Reads data"},
+			},
+			Response: make(chan approval.ApprovalResponse, 1),
+		},
+		next: &ApprovalRequestMsg{
+			Request: approval.ApprovalRequest{
+				ID:       "apr-2",
+				ToolName: "fs_write",
+				Summary:  "Writes data",
+			},
+			ViewModel: approval.ApprovalViewModel{
+				Risk: approval.RiskIndicator{Level: "high", Label: "Writes data"},
+			},
+			Response: make(chan approval.ApprovalResponse, 1),
+		},
+		resolveOK: true,
+	}
+	m := newTestModelWithSharedPending(shared)
+	m.state = stateApproving
+
+	aKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}}
+	m.Update(aKey)
+
+	if shared.resolveCount != 1 {
+		t.Fatalf("want shared registry resolve count 1, got %d", shared.resolveCount)
+	}
+	if m.state != stateApproving {
+		t.Fatalf("want stateApproving when another pending request is promoted, got %v", m.state)
+	}
+	if pending := m.currentPendingApproval(); pending == nil || pending.Request.ID != "apr-2" {
+		t.Fatalf("want next pending approval apr-2, got %#v", pending)
+	}
+}
+
+func TestCockpitApprovalSharedResolveFailureDoesNotAppendFalseSuccess(t *testing.T) {
+	shared := &stubSharedPendingStore{
+		latest: &ApprovalRequestMsg{
+			Request: approval.ApprovalRequest{
+				ID:       "apr-1",
+				ToolName: "browser_search",
+				Summary:  "Reads data",
+			},
+			ViewModel: approval.ApprovalViewModel{
+				Risk: approval.RiskIndicator{Level: "moderate", Label: "Reads data"},
+			},
+			Response: make(chan approval.ApprovalResponse, 1),
+		},
+		resolveOK: false,
+	}
+	m := newTestModelWithSharedPending(shared)
+	m.state = stateApproving
+
+	before := len(m.chatView.entries)
+	aKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}}
+	m.Update(aKey)
+
+	if m.state != stateApproving {
+		t.Fatalf("want stateApproving after shared resolve failure, got %v", m.state)
+	}
+	if shared.resolveCount != 1 {
+		t.Fatalf("want shared registry resolve count 1, got %d", shared.resolveCount)
+	}
+	if m.currentPendingApproval() == nil {
+		t.Fatal("pending approval should remain after shared resolve failure")
+	}
+	if len(m.chatView.entries) != before+1 {
+		t.Fatalf("want one new error status entry, got %d new entries", len(m.chatView.entries)-before)
+	}
+	last := m.chatView.entries[len(m.chatView.entries)-1]
+	if last.kind != itemStatus {
+		t.Fatalf("want status entry on resolve failure, got %q", last.kind)
+	}
+	for _, entry := range m.chatView.entries {
+		if entry.kind == itemApproval && strings.Contains(entry.content, "Approved") {
+			t.Fatalf("unexpected approval success event after resolve failure: %q", entry.content)
+		}
+	}
+}
+
+func TestApprovalRequestEventIncludesRequestID(t *testing.T) {
+	m := newTestModel()
+
+	m.Update(ApprovalRequestMsg{
+		Request: approval.ApprovalRequest{ID: "apr-42", ToolName: "exec", Summary: "Run command"},
+		ViewModel: approval.ApprovalViewModel{
+			Risk: approval.RiskIndicator{Level: "critical", Label: "Executes arbitrary code"},
+		},
+		Response: make(chan approval.ApprovalResponse, 1),
+	})
+
+	last := m.chatView.entries[len(m.chatView.entries)-1]
+	assert.Equal(t, itemApproval, last.kind)
+	assert.Contains(t, last.content, "Run command")
+	assert.Contains(t, last.content, "[apr-42]")
+}
+
+func TestCockpitActivityUserSubmissionCallback(t *testing.T) {
+	var gotSession string
+	var gotInput string
+	m := newTestModel()
+	m.onUserSubmission = func(sessionKey, input string) {
+		gotSession = sessionKey
+		gotInput = input
+	}
+
+	m.input.textarea.SetValue("ship it")
+	m.handleIdleKey(tea.KeyMsg{Type: tea.KeyEnter})
+
+	if gotSession != "test-session" {
+		t.Fatalf("want session test-session, got %q", gotSession)
+	}
+	if gotInput != "ship it" {
+		t.Fatalf("want input ship it, got %q", gotInput)
+	}
+}
+
+func TestCockpitActivityTurnSummaryCallback(t *testing.T) {
+	var gotSession string
+	var got TurnTokenUsageMsg
+	m := newTestModel()
+	m.onTurnSummary = func(sessionKey string, msg TurnTokenUsageMsg) {
+		gotSession = sessionKey
+		got = msg
+	}
+
+	m.Update(TurnTokenUsageMsg{
+		InputTokens:      12,
+		OutputTokens:     18,
+		TotalTokens:      30,
+		CacheTokens:      4,
+		EstimatedCostUSD: 0.42,
+	})
+
+	if gotSession != "test-session" {
+		t.Fatalf("want session test-session, got %q", gotSession)
+	}
+	if got.TotalTokens != 30 {
+		t.Fatalf("want total tokens 30, got %d", got.TotalTokens)
+	}
+}
+
+func TestSubmitComposerWithParentUsesProvidedMissionContext(t *testing.T) {
+	executor := &submitCaptureExecutor{}
+	runner := turnrunner.New(turnrunner.Config{}, executor, submitTestSessionStore{}, nil)
+	m := New(Deps{
+		TurnRunner: runner,
+		Config:     readyRemoteConfig(),
+		SessionKey: "test-session",
+	})
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	m = updated.(*ChatModel)
+	m.SetComposerValue("start mission")
+
+	cmd := m.SubmitComposerWithParent(ctxkeys.WithMissionID(context.Background(), "mission-123"))
+	for _, msg := range collectImmediateMsgs(cmd) {
+		updated, _ = m.Update(msg)
+		m = updated.(*ChatModel)
+	}
+
+	if executor.input != "start mission" {
+		t.Fatalf("want captured input start mission, got %q", executor.input)
+	}
+	if got := ctxkeys.MissionIDFromContext(executor.ctx); got != "mission-123" {
+		t.Fatalf("want mission id mission-123, got %q", got)
+	}
+}
+
+func TestComposerEnterDoesNotImplicitlyBindMission(t *testing.T) {
+	executor := &submitCaptureExecutor{}
+	runner := turnrunner.New(turnrunner.Config{}, executor, submitTestSessionStore{}, nil)
+	m := New(Deps{
+		TurnRunner: runner,
+		Config:     readyRemoteConfig(),
+		SessionKey: "test-session",
+	})
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	m = updated.(*ChatModel)
+	m.SetComposerValue("plain chat")
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(*ChatModel)
+	for _, msg := range collectImmediateMsgs(cmd) {
+		updated, _ = m.Update(msg)
+		m = updated.(*ChatModel)
+	}
+
+	if executor.input != "plain chat" {
+		t.Fatalf("want captured input plain chat, got %q", executor.input)
+	}
+	if got := ctxkeys.MissionIDFromContext(executor.ctx); got != "" {
+		t.Fatalf("want no mission binding for normal chat submit, got %q", got)
+	}
+}
+
+type stubSharedPendingStore struct {
+	latest         *ApprovalRequestMsg
+	next           *ApprovalRequestMsg
+	resolveCount   int
+	lastResolvedID string
+	lastResponse   approval.ApprovalResponse
+	resolveOK      bool
+}
+
+func (s *stubSharedPendingStore) Latest() *ApprovalRequestMsg {
+	return s.latest
+}
+
+func (s *stubSharedPendingStore) HasPending() bool {
+	return s.latest != nil
+}
+
+func (s *stubSharedPendingStore) Resolve(id string, resp approval.ApprovalResponse) bool {
+	s.resolveCount++
+	s.lastResolvedID = id
+	s.lastResponse = resp
+	if s.resolveOK {
+		s.latest = s.next
+		s.next = nil
+	}
+	return s.resolveOK
+}
+
+func (s *stubSharedPendingStore) Register(_ ApprovalRequestMsg) {}
+
+func collectImmediateMsgs(cmd tea.Cmd) []tea.Msg {
+	if cmd == nil {
+		return nil
+	}
+
+	ch := make(chan tea.Msg, 1)
+	go func() {
+		ch <- cmd()
+	}()
+
+	select {
+	case msg := <-ch:
+		switch msg := msg.(type) {
+		case nil:
+			return nil
+		case tea.BatchMsg:
+			var out []tea.Msg
+			for _, child := range msg {
+				out = append(out, collectImmediateMsgs(child)...)
+			}
+			return out
+		default:
+			return []tea.Msg{msg}
+		}
+	case <-time.After(25 * time.Millisecond):
+		return nil
+	}
+}
+
+func (s *stubSharedPendingStore) CurrentTime() time.Time {
+	return time.Now()
 }
 
 func TestCPRTimeoutFlushesEsc(t *testing.T) {

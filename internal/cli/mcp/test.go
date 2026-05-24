@@ -24,7 +24,10 @@ func newTestCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 				return fmt.Errorf("load config: %w", err)
 			}
 
-			merged := mcplib.MergedServers(&cfg.MCP)
+			merged, err := mcplib.MergedServersStrict(&cfg.MCP)
+			if err != nil {
+				return err
+			}
 			srv, ok := merged[name]
 			if !ok {
 				return fmt.Errorf("server %q not found", name)
@@ -35,44 +38,44 @@ func newTestCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 				transport = "stdio"
 			}
 
-			fmt.Printf("Testing %q...\n", name)
-			fmt.Printf("  Transport:  %s", transport)
+			fmt.Fprintf(cmd.OutOrStdout(), "Testing %q...\n", name)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Transport:  %s", transport)
 			if transport == "stdio" {
-				fmt.Printf(" (%s", srv.Command)
+				fmt.Fprintf(cmd.OutOrStdout(), " (%s", srv.Command)
 				for _, a := range srv.Args {
-					fmt.Printf(" %s", a)
+					fmt.Fprintf(cmd.OutOrStdout(), " %s", a)
 				}
-				fmt.Print(")")
+				fmt.Fprint(cmd.OutOrStdout(), ")")
 			} else {
-				fmt.Printf(" (%s)", srv.URL)
+				fmt.Fprintf(cmd.OutOrStdout(), " (%s)", srv.URL)
 			}
-			fmt.Println()
+			fmt.Fprintln(cmd.OutOrStdout())
 
 			// Test connection
 			conn := mcplib.NewServerConnection(name, srv, cfg.MCP)
 
 			start := time.Now()
 			if err := conn.Connect(context.Background()); err != nil {
-				fmt.Printf("  Handshake:  FAILED (%v)\n", err)
+				fmt.Fprintf(cmd.OutOrStdout(), "  Handshake:  FAILED (%v)\n", err)
 				return nil
 			}
 			handshake := time.Since(start)
-			fmt.Printf("  Handshake:  OK (%s)\n", handshake.Truncate(time.Millisecond))
+			fmt.Fprintf(cmd.OutOrStdout(), "  Handshake:  OK (%s)\n", handshake.Truncate(time.Millisecond))
 
 			defer func() { _ = conn.Disconnect(context.Background()) }()
 
 			// List tools
 			tools := conn.Tools()
-			fmt.Printf("  Tools:      %d available\n", len(tools))
+			fmt.Fprintf(cmd.OutOrStdout(), "  Tools:      %d available\n", len(tools))
 
 			// Ping
 			session := conn.Session()
 			if session != nil {
 				pingStart := time.Now()
 				if err := session.Ping(context.Background(), nil); err != nil {
-					fmt.Printf("  Ping:       FAILED (%v)\n", err)
+					fmt.Fprintf(cmd.OutOrStdout(), "  Ping:       FAILED (%v)\n", err)
 				} else {
-					fmt.Printf("  Ping:       OK (%s)\n", time.Since(pingStart).Truncate(time.Millisecond))
+					fmt.Fprintf(cmd.OutOrStdout(), "  Ping:       OK (%s)\n", time.Since(pingStart).Truncate(time.Millisecond))
 				}
 			}
 

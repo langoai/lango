@@ -2,9 +2,13 @@ package checks
 
 import (
 	"context"
+	"net"
+	"strconv"
 	"testing"
 
 	"github.com/langoai/lango/internal/config"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestConfigCheck_Run_ValidConfig(t *testing.T) {
@@ -82,6 +86,38 @@ func TestProvidersCheck_Run_ProviderInMap(t *testing.T) {
 	}
 }
 
+func TestProvidersCheck_Run_AgentProviderMissingFromEmptyProvidersMap(t *testing.T) {
+	cfg := &config.Config{
+		Agent: config.AgentConfig{
+			Provider: "anthropic",
+		},
+		Providers: map[string]config.ProviderConfig{},
+	}
+
+	check := &ProvidersCheck{}
+	result := check.Run(context.Background(), cfg)
+
+	require.Equal(t, StatusFail, result.Status)
+	assert.Contains(t, result.Message, `agent.provider "anthropic" not found in providers map`)
+}
+
+func TestProvidersCheck_Run_AgentProviderMissingDoesNotUseLegacyAPIKeyFallback(t *testing.T) {
+	t.Setenv("GOOGLE_API_KEY", "test-key")
+
+	cfg := &config.Config{
+		Agent: config.AgentConfig{
+			Provider: "anthropic",
+		},
+		Providers: map[string]config.ProviderConfig{},
+	}
+
+	check := &ProvidersCheck{}
+	result := check.Run(context.Background(), cfg)
+
+	require.Equal(t, StatusFail, result.Status)
+	assert.Contains(t, result.Message, `agent.provider "anthropic" not found in providers map`)
+}
+
 func TestProvidersCheck_Run_MissingKey(t *testing.T) {
 	cfg := &config.Config{
 		Providers: map[string]config.ProviderConfig{
@@ -121,19 +157,94 @@ func TestChannelCheck_Run_TelegramEnabledNoToken(t *testing.T) {
 }
 
 func TestNetworkCheck_Run_PortAvailable(t *testing.T) {
+	port := freeTCPPort(t)
 	cfg := &config.Config{
 		Server: config.ServerConfig{
 			Host: "127.0.0.1",
-			Port: 19999, // Use a high port unlikely to be in use
+			Port: port,
 		},
 	}
 
 	check := &NetworkCheck{}
 	result := check.Run(context.Background(), cfg)
 
-	if result.Status != StatusPass {
-		t.Errorf("expected StatusPass, got %v: %s", result.Status, result.Message)
+	assert.Equal(t, StatusPass, result.Status, result.Message)
+	assert.Equal(t, "Port "+strconv.Itoa(port)+" available", result.Message)
+	assert.Equal(t, "127.0.0.1:"+strconv.Itoa(port), result.Details)
+}
+
+func TestNetworkCheck_Run_PortInUseReportsConflict(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer listener.Close()
+
+	_, portText, err := net.SplitHostPort(listener.Addr().String())
+	require.NoError(t, err)
+	port, err := strconv.Atoi(portText)
+	require.NoError(t, err)
+
+	cfg := &config.Config{
+		Server: config.ServerConfig{
+			Host: "127.0.0.1",
+			Port: port,
+		},
 	}
+
+	check := &NetworkCheck{}
+	result := check.Run(context.Background(), cfg)
+
+	assert.Equal(t, StatusFail, result.Status)
+	assert.Equal(t, "Port "+portText+" in use", result.Message)
+	assert.NotEmpty(t, result.Details)
+}
+
+func TestNetworkCheck_Run_InvalidBindHostReportsAddressFailure(t *testing.T) {
+	cfg := &config.Config{
+		Server: config.ServerConfig{
+			Host: "[::1",
+			Port: 18789,
+		},
+	}
+
+	check := &NetworkCheck{}
+	result := check.Run(context.Background(), cfg)
+
+	assert.Equal(t, StatusFail, result.Status)
+	assert.Equal(t, "Server bind address unavailable", result.Message)
+	assert.NotEmpty(t, result.Details)
+	assert.NotContains(t, result.Message, "in use")
+}
+
+func TestNetworkCheck_Run_IPv6HostAvailable(t *testing.T) {
+	port := freeIPv6Port(t)
+	cfg := &config.Config{
+		Server: config.ServerConfig{
+			Host: "::1",
+			Port: port,
+		},
+	}
+
+	check := &NetworkCheck{}
+	result := check.Run(context.Background(), cfg)
+
+	assert.Equal(t, StatusPass, result.Status, result.Message)
+	assert.Equal(t, "[::1]:"+strconv.Itoa(port), result.Details)
+}
+
+func TestNetworkCheck_Run_BracketedIPv6HostAvailable(t *testing.T) {
+	port := freeIPv6Port(t)
+	cfg := &config.Config{
+		Server: config.ServerConfig{
+			Host: "[::1]",
+			Port: port,
+		},
+	}
+
+	check := &NetworkCheck{}
+	result := check.Run(context.Background(), cfg)
+
+	assert.Equal(t, StatusPass, result.Status, result.Message)
+	assert.Equal(t, "[::1]:"+strconv.Itoa(port), result.Details)
 }
 
 func TestDatabaseCheck_Run_DirectoryNotExist(t *testing.T) {
@@ -154,19 +265,49 @@ func TestDatabaseCheck_Run_DirectoryNotExist(t *testing.T) {
 	}
 }
 
-func TestSecurityCheck_Run_EnclaveProvider(t *testing.T) {
+func freeIPv6Port(t *testing.T) int {
+	t.Helper()
+
+	listener, err := net.Listen("tcp", "[::1]:0")
+	if err != nil {
+		t.Skipf("IPv6 loopback is unavailable: %v", err)
+	}
+	defer listener.Close()
+
+	_, portText, err := net.SplitHostPort(listener.Addr().String())
+	require.NoError(t, err)
+	port, err := strconv.Atoi(portText)
+	require.NoError(t, err)
+	return port
+}
+
+func freeTCPPort(t *testing.T) int {
+	t.Helper()
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer listener.Close()
+
+	_, portText, err := net.SplitHostPort(listener.Addr().String())
+	require.NoError(t, err)
+	port, err := strconv.Atoi(portText)
+	require.NoError(t, err)
+	return port
+}
+
+func TestSecurityCheck_Run_KMSProvider(t *testing.T) {
 	cfg := &config.Config{
 		Session: config.SessionConfig{
 			DatabasePath: "", // skip DB checks
 		},
 	}
-	cfg.Security.Signer.Provider = "enclave"
+	cfg.Security.Signer.Provider = "aws-kms"
 
 	check := &SecurityCheck{}
 	result := check.Run(context.Background(), cfg)
 
 	if result.Status == StatusFail {
-		t.Errorf("enclave provider should not return Fail, got: %s", result.Message)
+		t.Errorf("KMS provider should not return Fail, got: %s", result.Message)
 	}
 }
 

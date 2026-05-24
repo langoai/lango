@@ -31,8 +31,8 @@ type SearchResult struct {
 	Description string  `json:"description"`
 	Category    string  `json:"category"`
 	Score       float64 `json:"score"`
-	MatchField  string  `json:"match_field"`            // which field matched best
-	Activity    string  `json:"activity,omitempty"`      // activity kind (read, write, execute, etc.)
+	MatchField  string  `json:"match_field"`        // which field matched best
+	Activity    string  `json:"activity,omitempty"` // activity kind (read, write, execute, etc.)
 }
 
 // NewSearchIndex builds a SearchIndex from the catalog's searchable entries.
@@ -149,14 +149,14 @@ func (idx *SearchIndex) scoreEntry(se *searchEntry, tokens []string) (float64, s
 }
 
 const (
-	weightExactName    = 10.0
-	weightPrefixName   = 8.0
-	weightExactAlias   = 7.0
-	weightPrefixAlias  = 5.0
-	weightSearchHint   = 4.0
-	weightCategory     = 3.0
-	weightDescription  = 2.0
-	weightActivity     = 1.0
+	weightExactName   = 10.0
+	weightPrefixName  = 8.0
+	weightExactAlias  = 7.0
+	weightPrefixAlias = 5.0
+	weightSearchHint  = 4.0
+	weightCategory    = 3.0
+	weightDescription = 2.0
+	weightActivity    = 1.0
 )
 
 // scoreToken returns the highest score a single token achieves against an entry,

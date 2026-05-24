@@ -1,18 +1,26 @@
 package cockpit
 
 import (
+	"context"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/langoai/lango/internal/adk"
 	"github.com/langoai/lango/internal/approval"
 	"github.com/langoai/lango/internal/cli/chat"
 	"github.com/langoai/lango/internal/cli/cockpit/sidebar"
 	"github.com/langoai/lango/internal/cli/cockpit/theme"
+	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/ctxkeys"
+	"github.com/langoai/lango/internal/mission"
 	"github.com/langoai/lango/internal/observability"
+	"github.com/langoai/lango/internal/session"
+	"github.com/langoai/lango/internal/turnrunner"
 )
 
 // mockChild implements childModel for testing without real ChatModel.
@@ -22,10 +30,13 @@ type mockChild struct {
 	viewContent string
 }
 
-func (m *mockChild) Init() tea.Cmd                           { return nil }
-func (m *mockChild) Update(msg tea.Msg) (tea.Model, tea.Cmd) { m.updates = append(m.updates, msg); return m, nil }
-func (m *mockChild) View() string                            { return m.viewContent }
-func (m *mockChild) SetProgram(_ *tea.Program)               { m.programSet = true }
+func (m *mockChild) Init() tea.Cmd { return nil }
+func (m *mockChild) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	m.updates = append(m.updates, msg)
+	return m, nil
+}
+func (m *mockChild) View() string              { return m.viewContent }
+func (m *mockChild) SetProgram(_ *tea.Program) { m.programSet = true }
 
 // mockPage implements Page for testing page routing.
 type mockPage struct {
@@ -41,11 +52,56 @@ func (p *mockPage) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	p.updates = append(p.updates, msg)
 	return p, nil
 }
-func (p *mockPage) View() string              { return p.viewContent }
-func (p *mockPage) Title() string             { return p.title }
-func (p *mockPage) ShortHelp() []key.Binding  { return nil }
-func (p *mockPage) Activate() tea.Cmd         { p.activated = true; return nil }
-func (p *mockPage) Deactivate()               { p.deactivated = true }
+func (p *mockPage) View() string             { return p.viewContent }
+func (p *mockPage) Title() string            { return p.title }
+func (p *mockPage) ShortHelp() []key.Binding { return nil }
+func (p *mockPage) Activate() tea.Cmd        { p.activated = true; return nil }
+func (p *mockPage) Deactivate()              { p.deactivated = true }
+
+type captureTurnExecutor struct {
+	ctx   context.Context
+	input string
+}
+
+func (c *captureTurnExecutor) RunStreamingDetailed(
+	ctx context.Context,
+	_, input string,
+	_ adk.ChunkCallback,
+	_ ...adk.RunOption,
+) (adk.RunReport, error) {
+	c.ctx = ctx
+	c.input = input
+	return adk.RunReport{Response: "ok"}, nil
+}
+
+type cockpitTestSessionStore struct{}
+
+func (cockpitTestSessionStore) Create(*session.Session) error               { return nil }
+func (cockpitTestSessionStore) Get(string) (*session.Session, error)        { return nil, nil }
+func (cockpitTestSessionStore) Update(*session.Session) error               { return nil }
+func (cockpitTestSessionStore) Delete(string) error                         { return nil }
+func (cockpitTestSessionStore) AppendMessage(string, session.Message) error { return nil }
+func (cockpitTestSessionStore) AnnotateTimeout(string, string) error        { return nil }
+func (cockpitTestSessionStore) End(string) error                            { return nil }
+func (cockpitTestSessionStore) Close() error                                { return nil }
+func (cockpitTestSessionStore) ListSessions(context.Context) ([]session.SessionSummary, error) {
+	return nil, nil
+}
+func (cockpitTestSessionStore) GetSalt(string) ([]byte, error) { return nil, nil }
+func (cockpitTestSessionStore) SetSalt(string, []byte) error   { return nil }
+
+type cockpitMissionServiceStub struct {
+	startCalls int
+}
+
+func (s *cockpitMissionServiceStub) StartMission(context.Context, mission.StartMissionInput) (*mission.Mission, error) {
+	s.startCalls++
+	return &mission.Mission{}, nil
+}
+
+func (s *cockpitMissionServiceStub) AcceptProposal(context.Context, mission.AcceptProposalInput) (*mission.Mission, error) {
+	return &mission.Mission{}, nil
+}
 
 func newTestModel(mock *mockChild) *Model {
 	return &Model{
@@ -74,6 +130,14 @@ func newTestModelWithCollector(mock *mockChild) *Model {
 		width:          120,
 		height:         40,
 	}
+}
+
+func newDefaultTestModel(mock *mockChild) *Model {
+	m := New(Deps{})
+	m.child = mock
+	m.width = 120
+	m.height = 40
+	return m
 }
 
 func ctrlB() tea.KeyMsg {
@@ -158,6 +222,32 @@ func TestSetProgram_Delegation(t *testing.T) {
 	assert.True(t, mock.programSet)
 }
 
+func TestNew_DefaultPageIsMissionControl(t *testing.T) {
+	m := New(Deps{})
+	assert.Equal(t, PageMissionControl, m.activePage)
+}
+
+func TestNew_DisablesUnregisteredOptionalSidebarPages(t *testing.T) {
+	m := New(Deps{})
+
+	assert.False(t, m.sidebar.IsDisabled(PageMissionControl.String()))
+	assert.False(t, m.sidebar.IsDisabled(PageChat.String()))
+	assert.True(t, m.sidebar.IsDisabled(PageTools.String()))
+	assert.True(t, m.sidebar.IsDisabled(PageSessions.String()))
+}
+
+func TestNew_ChatModelAccessorReturnsSharedRootChat(t *testing.T) {
+	m := New(Deps{})
+	require.NotNil(t, m.ChatModel())
+	assert.Same(t, m.child, m.ChatModel())
+}
+
+func TestChatModelAccessorReturnsNilForMockChild(t *testing.T) {
+	mock := &mockChild{}
+	m := newTestModel(mock)
+	assert.Nil(t, m.ChatModel())
+}
+
 // --- New Change-2 tests ---
 
 func TestPageRouting_SwitchToTools(t *testing.T) {
@@ -229,6 +319,42 @@ func TestPageSelectedMsg_SwitchesPage(t *testing.T) {
 	assert.Equal(t, PageTools, m.activePage)
 	assert.True(t, toolsPage.activated)
 	assert.False(t, m.sidebarFocused, "focus should return to content")
+}
+
+func TestRegisterPage_EnablesSidebarItem(t *testing.T) {
+	mock := &mockChild{}
+	m := newDefaultTestModel(mock)
+
+	assert.True(t, m.sidebar.IsDisabled(PageTools.String()))
+
+	m.RegisterPage(PageTools, &mockPage{title: "Tools"})
+
+	assert.False(t, m.sidebar.IsDisabled(PageTools.String()))
+}
+
+func TestPageSelectedMsg_SwitchesToDeadLettersPage(t *testing.T) {
+	mock := &mockChild{}
+	m := newTestModel(mock)
+	deadLettersPage := &mockPage{title: "Dead Letters"}
+	m.RegisterPage(PageDeadLetters, deadLettersPage)
+
+	m.Update(sidebar.PageSelectedMsg{ID: "dead-letters"})
+	assert.Equal(t, PageDeadLetters, m.activePage)
+	assert.True(t, deadLettersPage.activated)
+	assert.False(t, m.sidebarFocused, "focus should return to content")
+}
+
+func TestPageSelectedMsg_UnregisteredOptionalPageKeepsCurrentPage(t *testing.T) {
+	mock := &mockChild{}
+	m := newTestModel(mock)
+	toolsPage := &mockPage{title: "Tools"}
+	m.RegisterPage(PageTools, toolsPage)
+	m.switchPage(PageTools)
+
+	m.Update(sidebar.PageSelectedMsg{ID: "sessions"})
+
+	assert.Equal(t, PageTools, m.activePage)
+	assert.False(t, toolsPage.deactivated, "current page should remain active")
 }
 
 func TestViewDispatchesToActivePage(t *testing.T) {
@@ -326,6 +452,27 @@ func TestApprovalRequestMsg_SwitchesToChatAndForwards(t *testing.T) {
 	require.Len(t, mock.updates, 1, "ApprovalRequestMsg must reach chat child")
 	// Tools page should NOT receive the message.
 	assert.Empty(t, toolsPage.updates)
+}
+
+func TestApprovalRequestMsg_MissionControlRemainsVisibleAndUsesSharedOwner(t *testing.T) {
+	mock := &mockChild{}
+	registry := NewPendingApprovalRegistry()
+	m := newDefaultTestModel(mock)
+	m.pendingApprovals = registry
+	m.RegisterPage(PageMissionControl, &mockPage{title: "Mission Control"})
+
+	msg := chat.ApprovalRequestMsg{
+		Request:  approval.ApprovalRequest{ID: "apr-1", ToolName: "exec"},
+		Response: make(chan approval.ApprovalResponse, 1),
+	}
+	m.Update(msg)
+
+	assert.Equal(t, PageMissionControl, m.activePage, "Mission Control should remain active for approval visibility")
+	require.True(t, registry.HasPending(), "shared pending owner should record the approval")
+	require.NotNil(t, registry.Latest())
+	assert.Equal(t, "apr-1", registry.Latest().Request.ID)
+	require.Len(t, mock.updates, 1, "chat child should still receive the approval request")
+	assert.Equal(t, msg, mock.updates[0])
 }
 
 func TestApprovalRequestMsg_AlreadyOnChat(t *testing.T) {
@@ -630,16 +777,113 @@ func TestCtrlP_ResizePropagatesAllPages(t *testing.T) {
 func TestSidebarClick_UnregisteredPage_NoOp(t *testing.T) {
 	mock := &mockChild{}
 	m := newTestModel(mock)
-	// Do NOT register PageTools — it remains unregistered.
+	toolsPage := &mockPage{title: "Tools"}
+	m.RegisterPage(PageTools, toolsPage)
+	m.switchPage(PageTools)
 
-	// Simulate sidebar click selecting "tools".
-	m.Update(sidebar.PageSelectedMsg{ID: "tools"})
+	// Simulate sidebar click selecting an optional page that is not registered.
+	m.Update(sidebar.PageSelectedMsg{ID: "sessions"})
 
-	// activePage should change (switchPage sets it), but no crash.
 	assert.Equal(t, PageTools, m.activePage,
-		"activePage should update even for unregistered page")
+		"activePage should remain on the registered page when target is unavailable")
+	assert.False(t, toolsPage.deactivated,
+		"current page should not be deactivated when the target page is unavailable")
 
-	// Child should NOT have received any messages (no Activate forwarded).
 	assert.Empty(t, mock.updates,
 		"no messages should reach child for an unregistered page switch")
+}
+
+func TestMissionControlIntegration_DetailPagesRemainReachable(t *testing.T) {
+	mock := &mockChild{}
+	m := newDefaultTestModel(mock)
+	m.RegisterPage(PageMissionControl, &mockPage{title: "Mission Control"})
+	m.RegisterPage(PageSettings, &mockPage{title: "Settings"})
+	m.RegisterPage(PageTools, &mockPage{title: "Tools"})
+	m.RegisterPage(PageStatus, &mockPage{title: "Status"})
+	m.RegisterPage(PageSessions, &mockPage{title: "Sessions"})
+	m.RegisterPage(PageTasks, &mockPage{title: "Tasks"})
+	m.RegisterPage(PageApprovals, &mockPage{title: "Approvals"})
+
+	assert.Equal(t, PageMissionControl, m.activePage)
+
+	m.switchPage(PageChat)
+	assert.Equal(t, PageChat, m.activePage)
+
+	m.switchPage(PageSettings)
+	assert.Equal(t, PageSettings, m.activePage)
+
+	m.switchPage(PageTools)
+	assert.Equal(t, PageTools, m.activePage)
+
+	m.switchPage(PageStatus)
+	assert.Equal(t, PageStatus, m.activePage)
+
+	m.switchPage(PageTasks)
+	assert.Equal(t, PageTasks, m.activePage)
+
+	m.switchPage(PageApprovals)
+	assert.Equal(t, PageApprovals, m.activePage)
+
+	m.Update(sidebar.PageSelectedMsg{ID: "sessions"})
+	assert.Equal(t, PageSessions, m.activePage)
+
+	m.Update(sidebar.PageSelectedMsg{ID: "mission-control"})
+	assert.Equal(t, PageMissionControl, m.activePage)
+}
+
+func TestChatPageSubmitDoesNotCreateMission(t *testing.T) {
+	executor := &captureTurnExecutor{}
+	runner := turnrunner.New(turnrunner.Config{}, executor, cockpitTestSessionStore{}, nil)
+	svc := &cockpitMissionServiceStub{}
+	m := New(Deps{
+		TurnRunner:     runner,
+		Config:         &config.Config{Agent: config.AgentConfig{Provider: "openai", Model: "gpt-5"}},
+		SessionKey:     "sess-1",
+		SessionStore:   cockpitTestSessionStore{},
+		MissionService: svc,
+	})
+	m.activePage = PageChat
+	m.ChatModel().SetComposerValue("plain chat")
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(*Model)
+	require.NotNil(t, cmd)
+
+	for _, msg := range collectCockpitImmediateMsgs(cmd) {
+		updated, _ = m.Update(msg)
+		m = updated.(*Model)
+	}
+
+	assert.Equal(t, 0, svc.startCalls)
+	assert.Equal(t, "plain chat", executor.input)
+	assert.Equal(t, "", ctxkeys.MissionIDFromContext(executor.ctx))
+}
+
+func collectCockpitImmediateMsgs(cmd tea.Cmd) []tea.Msg {
+	if cmd == nil {
+		return nil
+	}
+
+	ch := make(chan tea.Msg, 1)
+	go func() {
+		ch <- cmd()
+	}()
+
+	select {
+	case msg := <-ch:
+		switch msg := msg.(type) {
+		case nil:
+			return nil
+		case tea.BatchMsg:
+			var out []tea.Msg
+			for _, child := range msg {
+				out = append(out, collectCockpitImmediateMsgs(child)...)
+			}
+			return out
+		default:
+			return []tea.Msg{msg}
+		}
+	case <-time.After(25 * time.Millisecond):
+		return nil
+	}
 }

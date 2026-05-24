@@ -37,8 +37,8 @@ func TestRetentionCleaner_Name(t *testing.T) {
 
 func TestRetentionCleaner_StartStop(t *testing.T) {
 	c := NewRetentionCleaner(nil, RetentionConfig{CleanupInterval: time.Hour})
-	err := c.Start(context.TODO(), nil)
+	err := c.Start(context.Background(), nil)
 	assert.NoError(t, err)
-	err = c.Stop(context.TODO())
+	err = c.Stop(context.Background())
 	assert.NoError(t, err)
 }

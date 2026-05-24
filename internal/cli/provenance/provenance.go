@@ -33,7 +33,7 @@ func newStatusCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			cfg := boot.Config.Provenance
 			svcs := loadServices(boot)
@@ -43,7 +43,7 @@ func newStatusCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 			cmd.Printf("  Auto on Policy:       %v\n", cfg.Checkpoints.AutoOnPolicy)
 			cmd.Printf("  Max per Session:      %d\n", cfg.Checkpoints.MaxPerSession)
 			cmd.Printf("  Retention Days:       %d\n", cfg.Checkpoints.RetentionDays)
-			if boot.DBClient != nil {
+			if boot.Storage != nil {
 				nodes, err := svcs.treeStore.ListAll(cmd.Context(), 1)
 				if err == nil {
 					cmd.Printf("  Session Tree Store:   persistent (%d sample node(s))\n", len(nodes))

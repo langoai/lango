@@ -99,6 +99,57 @@ func (_u *AgentMemoryUpdate) SetNillableContent(v *string) *AgentMemoryUpdate {
 	return _u
 }
 
+// SetContentCiphertext sets the "content_ciphertext" field.
+func (_u *AgentMemoryUpdate) SetContentCiphertext(v []byte) *AgentMemoryUpdate {
+	_u.mutation.SetContentCiphertext(v)
+	return _u
+}
+
+// ClearContentCiphertext clears the value of the "content_ciphertext" field.
+func (_u *AgentMemoryUpdate) ClearContentCiphertext() *AgentMemoryUpdate {
+	_u.mutation.ClearContentCiphertext()
+	return _u
+}
+
+// SetContentNonce sets the "content_nonce" field.
+func (_u *AgentMemoryUpdate) SetContentNonce(v []byte) *AgentMemoryUpdate {
+	_u.mutation.SetContentNonce(v)
+	return _u
+}
+
+// ClearContentNonce clears the value of the "content_nonce" field.
+func (_u *AgentMemoryUpdate) ClearContentNonce() *AgentMemoryUpdate {
+	_u.mutation.ClearContentNonce()
+	return _u
+}
+
+// SetContentKeyVersion sets the "content_key_version" field.
+func (_u *AgentMemoryUpdate) SetContentKeyVersion(v int) *AgentMemoryUpdate {
+	_u.mutation.ResetContentKeyVersion()
+	_u.mutation.SetContentKeyVersion(v)
+	return _u
+}
+
+// SetNillableContentKeyVersion sets the "content_key_version" field if the given value is not nil.
+func (_u *AgentMemoryUpdate) SetNillableContentKeyVersion(v *int) *AgentMemoryUpdate {
+	if v != nil {
+		_u.SetContentKeyVersion(*v)
+	}
+	return _u
+}
+
+// AddContentKeyVersion adds value to the "content_key_version" field.
+func (_u *AgentMemoryUpdate) AddContentKeyVersion(v int) *AgentMemoryUpdate {
+	_u.mutation.AddContentKeyVersion(v)
+	return _u
+}
+
+// ClearContentKeyVersion clears the value of the "content_key_version" field.
+func (_u *AgentMemoryUpdate) ClearContentKeyVersion() *AgentMemoryUpdate {
+	_u.mutation.ClearContentKeyVersion()
+	return _u
+}
+
 // SetConfidence sets the "confidence" field.
 func (_u *AgentMemoryUpdate) SetConfidence(v float64) *AgentMemoryUpdate {
 	_u.mutation.ResetConfidence()
@@ -263,6 +314,27 @@ func (_u *AgentMemoryUpdate) sqlSave(ctx context.Context) (_node int, err error)
 	if value, ok := _u.mutation.Content(); ok {
 		_spec.SetField(agentmemory.FieldContent, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.ContentCiphertext(); ok {
+		_spec.SetField(agentmemory.FieldContentCiphertext, field.TypeBytes, value)
+	}
+	if _u.mutation.ContentCiphertextCleared() {
+		_spec.ClearField(agentmemory.FieldContentCiphertext, field.TypeBytes)
+	}
+	if value, ok := _u.mutation.ContentNonce(); ok {
+		_spec.SetField(agentmemory.FieldContentNonce, field.TypeBytes, value)
+	}
+	if _u.mutation.ContentNonceCleared() {
+		_spec.ClearField(agentmemory.FieldContentNonce, field.TypeBytes)
+	}
+	if value, ok := _u.mutation.ContentKeyVersion(); ok {
+		_spec.SetField(agentmemory.FieldContentKeyVersion, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedContentKeyVersion(); ok {
+		_spec.AddField(agentmemory.FieldContentKeyVersion, field.TypeInt, value)
+	}
+	if _u.mutation.ContentKeyVersionCleared() {
+		_spec.ClearField(agentmemory.FieldContentKeyVersion, field.TypeInt)
+	}
 	if value, ok := _u.mutation.Confidence(); ok {
 		_spec.SetField(agentmemory.FieldConfidence, field.TypeFloat64, value)
 	}
@@ -376,6 +448,57 @@ func (_u *AgentMemoryUpdateOne) SetNillableContent(v *string) *AgentMemoryUpdate
 	if v != nil {
 		_u.SetContent(*v)
 	}
+	return _u
+}
+
+// SetContentCiphertext sets the "content_ciphertext" field.
+func (_u *AgentMemoryUpdateOne) SetContentCiphertext(v []byte) *AgentMemoryUpdateOne {
+	_u.mutation.SetContentCiphertext(v)
+	return _u
+}
+
+// ClearContentCiphertext clears the value of the "content_ciphertext" field.
+func (_u *AgentMemoryUpdateOne) ClearContentCiphertext() *AgentMemoryUpdateOne {
+	_u.mutation.ClearContentCiphertext()
+	return _u
+}
+
+// SetContentNonce sets the "content_nonce" field.
+func (_u *AgentMemoryUpdateOne) SetContentNonce(v []byte) *AgentMemoryUpdateOne {
+	_u.mutation.SetContentNonce(v)
+	return _u
+}
+
+// ClearContentNonce clears the value of the "content_nonce" field.
+func (_u *AgentMemoryUpdateOne) ClearContentNonce() *AgentMemoryUpdateOne {
+	_u.mutation.ClearContentNonce()
+	return _u
+}
+
+// SetContentKeyVersion sets the "content_key_version" field.
+func (_u *AgentMemoryUpdateOne) SetContentKeyVersion(v int) *AgentMemoryUpdateOne {
+	_u.mutation.ResetContentKeyVersion()
+	_u.mutation.SetContentKeyVersion(v)
+	return _u
+}
+
+// SetNillableContentKeyVersion sets the "content_key_version" field if the given value is not nil.
+func (_u *AgentMemoryUpdateOne) SetNillableContentKeyVersion(v *int) *AgentMemoryUpdateOne {
+	if v != nil {
+		_u.SetContentKeyVersion(*v)
+	}
+	return _u
+}
+
+// AddContentKeyVersion adds value to the "content_key_version" field.
+func (_u *AgentMemoryUpdateOne) AddContentKeyVersion(v int) *AgentMemoryUpdateOne {
+	_u.mutation.AddContentKeyVersion(v)
+	return _u
+}
+
+// ClearContentKeyVersion clears the value of the "content_key_version" field.
+func (_u *AgentMemoryUpdateOne) ClearContentKeyVersion() *AgentMemoryUpdateOne {
+	_u.mutation.ClearContentKeyVersion()
 	return _u
 }
 
@@ -572,6 +695,27 @@ func (_u *AgentMemoryUpdateOne) sqlSave(ctx context.Context) (_node *AgentMemory
 	}
 	if value, ok := _u.mutation.Content(); ok {
 		_spec.SetField(agentmemory.FieldContent, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ContentCiphertext(); ok {
+		_spec.SetField(agentmemory.FieldContentCiphertext, field.TypeBytes, value)
+	}
+	if _u.mutation.ContentCiphertextCleared() {
+		_spec.ClearField(agentmemory.FieldContentCiphertext, field.TypeBytes)
+	}
+	if value, ok := _u.mutation.ContentNonce(); ok {
+		_spec.SetField(agentmemory.FieldContentNonce, field.TypeBytes, value)
+	}
+	if _u.mutation.ContentNonceCleared() {
+		_spec.ClearField(agentmemory.FieldContentNonce, field.TypeBytes)
+	}
+	if value, ok := _u.mutation.ContentKeyVersion(); ok {
+		_spec.SetField(agentmemory.FieldContentKeyVersion, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedContentKeyVersion(); ok {
+		_spec.AddField(agentmemory.FieldContentKeyVersion, field.TypeInt, value)
+	}
+	if _u.mutation.ContentKeyVersionCleared() {
+		_spec.ClearField(agentmemory.FieldContentKeyVersion, field.TypeInt)
 	}
 	if value, ok := _u.mutation.Confidence(); ok {
 		_spec.SetField(agentmemory.FieldConfidence, field.TypeFloat64, value)

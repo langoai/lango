@@ -32,6 +32,15 @@ func (AgentMemory) Fields() []ent.Field {
 			NotEmpty(),
 		field.Text("content").
 			NotEmpty(),
+		field.Bytes("content_ciphertext").
+			Optional().
+			Nillable(),
+		field.Bytes("content_nonce").
+			Optional().
+			Nillable(),
+		field.Int("content_key_version").
+			Optional().
+			Nillable(),
 		field.Float("confidence").
 			Default(0.5),
 		field.Int("use_count").

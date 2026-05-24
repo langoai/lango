@@ -14,22 +14,38 @@ import (
 type ToolItemState string
 
 const (
-	toolStateRunning         ToolItemState = "running"
-	toolStateSuccess         ToolItemState = "success"
-	toolStateError           ToolItemState = "error"
-	toolStateCanceled        ToolItemState = "canceled"
+	toolStateRunning          ToolItemState = "running"
+	toolStateSuccess          ToolItemState = "success"
+	toolStateError            ToolItemState = "error"
+	toolStateCanceled         ToolItemState = "canceled"
 	toolStateAwaitingApproval ToolItemState = "awaiting_approval"
 )
 
 // Pre-allocated styles for tool block rendering.
 var (
-	toolLabelStyle      = lipgloss.NewStyle().Bold(true)
-	toolDetailStyle     = lipgloss.NewStyle()
-	toolOutputStyle     = lipgloss.NewStyle().Foreground(tui.Muted).PaddingLeft(4)
+	toolLabelStyle  = lipgloss.NewStyle().Bold(true)
+	toolDetailStyle = lipgloss.NewStyle()
+	toolOutputStyle = lipgloss.NewStyle().Foreground(tui.Muted).PaddingLeft(4)
 )
 
+func formatParamPreview(params map[string]any) string {
+	if len(params) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(params))
+	for _, k := range sortedParamKeys(params) {
+		parts = append(parts, fmt.Sprintf("%s=%s", sanitizeParamKey(k), formatParamValue(params[k])))
+	}
+	return strings.Join(parts, "  ")
+}
+
 // renderToolBlock renders a tool transcript item with state-specific icon and styling.
-func renderToolBlock(toolName string, state ToolItemState, duration, output string, width int) string {
+func renderToolBlock(toolName string, state ToolItemState, duration, preview, output string, width int) string {
+	if width < 10 {
+		width = 10
+	}
+	toolName = sanitizeDisplayText(toolName)
+
 	icon, color := toolStateVisual(state)
 
 	label := toolLabelStyle.Foreground(color).Render(fmt.Sprintf("%s %s", icon, toolName))
@@ -48,18 +64,24 @@ func renderToolBlock(toolName string, state ToolItemState, duration, output stri
 		detail = toolDetailStyle.Foreground(tui.Warning).Render("awaiting approval")
 	}
 
-	line := fmt.Sprintf(" %s  %s", label, detail)
+	line := ansi.Truncate(fmt.Sprintf(" %s  %s", label, detail), width, "…")
+
+	if preview != "" && (state == toolStateRunning || state == toolStateSuccess || state == toolStateError || state == toolStateCanceled || state == toolStateAwaitingApproval) {
+		maxPreview := width - 4
+		if maxPreview < 1 {
+			maxPreview = 1
+		}
+		preview = ansi.Truncate(sanitizeDisplayText(preview), maxPreview, "…")
+		line += "\n" + ansi.Truncate(toolOutputStyle.Render(preview), width, "…")
+	}
 
 	if output != "" && (state == toolStateSuccess || state == toolStateError) {
-		output = strings.ReplaceAll(output, "\n", " ")
 		maxOutput := width - 4
-		if maxOutput < 20 {
-			maxOutput = 20
+		if maxOutput < 1 {
+			maxOutput = 1
 		}
-		if lipgloss.Width(output) > maxOutput {
-			output = ansi.Truncate(output, maxOutput, "…")
-		}
-		outputLine := toolOutputStyle.Render(output)
+		output = ansi.Truncate(sanitizeDisplayText(output), maxOutput, "…")
+		outputLine := ansi.Truncate(toolOutputStyle.Render(output), width, "…")
 		line += "\n" + outputLine
 	}
 

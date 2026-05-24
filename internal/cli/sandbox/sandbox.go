@@ -14,13 +14,13 @@ import (
 	"strings"
 	"time"
 
-	"entgo.io/ent/dialect/sql"
 	"github.com/spf13/cobra"
 
 	"github.com/langoai/lango/internal/bootstrap"
+	"github.com/langoai/lango/internal/cli/clihttp"
 	"github.com/langoai/lango/internal/config"
-	"github.com/langoai/lango/internal/ent/auditlog"
 	sandboxos "github.com/langoai/lango/internal/sandbox/os"
+	"github.com/langoai/lango/internal/storage"
 )
 
 // BootLoader is the optional dependency that opens the encrypted application
@@ -36,7 +36,7 @@ type BootLoader func() (*bootstrap.Result, error)
 // the DB on the way out) — used by `sandbox test` which does not need the
 // audit DB, and as the graceful-degradation fallback for `sandbox status`
 // when `bootLoader` is unavailable. bootLoader runs the full bootstrap and
-// returns the result with an open DBClient — used by `sandbox status` to
+// returns the result with initialized bootstrap storage — used by `sandbox status` to
 // query the sandbox decision audit trail.
 //
 // `sandbox status` prefers bootLoader so that one bootstrap pass serves both
@@ -81,11 +81,15 @@ type networkIsolator interface {
 // newStatusCmd creates `lango sandbox status`.
 func newStatusCmd(cfgLoader func() (*config.Config, error), bootLoader BootLoader) *cobra.Command {
 	var sessionPrefix string
+	var output string
 	cmd := &cobra.Command{
 		Use:   "status",
 		Short: "Show sandbox configuration and platform capabilities",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			w := cmd.OutOrStdout()
+			if err := validateStatusOutput(output); err != nil {
+				return err
+			}
 
 			// Try bootLoader first so a single bootstrap pass serves both
 			// the config rendering AND the Recent Decisions audit query
@@ -102,11 +106,7 @@ func newStatusCmd(cfgLoader func() (*config.Config, error), bootLoader BootLoade
 				if b, err := bootLoader(); err == nil && b != nil && b.Config != nil {
 					boot = b
 					cfg = b.Config
-					defer func() {
-						if boot.DBClient != nil {
-							_ = boot.DBClient.Close()
-						}
-					}()
+					defer func() { _ = boot.Close() }()
 				}
 			}
 			if cfg == nil {
@@ -120,125 +120,322 @@ func newStatusCmd(cfgLoader func() (*config.Config, error), bootLoader BootLoade
 				cfg = c
 			}
 
-			// Sandbox configuration.
-			workspacePath := cfg.Sandbox.WorkspacePath
-			if workspacePath == "" {
-				workspacePath, _ = os.Getwd()
-			}
-
-			// Resolve backend.
-			mode, _ := sandboxos.ParseBackendMode(cfg.Sandbox.Backend)
-			candidates := sandboxos.PlatformBackendCandidates()
-			var isolator sandboxos.OSIsolator
-			var info sandboxos.BackendInfo
-			// backend=none is an explicit opt-out: runtime skips fail-closed,
-			// so status reflects "no isolation" instead of building an isolator.
-			optedOut := cfg.Sandbox.Enabled && mode == sandboxos.BackendNone
-			if cfg.Sandbox.Enabled && !optedOut {
-				isolator, info = sandboxos.SelectBackend(mode, candidates)
-			}
-			status := sandboxos.NewSandboxStatus(cfg.Sandbox.Enabled, cfg.Sandbox.FailClosed, isolator)
-
-			fmt.Fprintln(w, "Sandbox Configuration:")
-			fmt.Fprintf(w, "  Enabled:        %v\n", status.Enabled)
-			if status.Enabled {
-				if optedOut {
-					fmt.Fprintf(w, "  Backend:        none (explicit opt-out — fail-closed not applied)\n")
-				} else {
-					failMode := "fail-open (warning + unsandboxed execution)"
-					if status.FailClosed {
-						failMode = "fail-closed (execution rejected)"
-					}
-					fmt.Fprintf(w, "  Fail-Closed:    %s\n", failMode)
-					backendLabel := mode.String()
-					if mode == sandboxos.BackendAuto && info.Name != "" {
-						backendLabel = fmt.Sprintf("auto (resolved: %s)", info.Name)
-					}
-					fmt.Fprintf(w, "  Backend:        %s\n", backendLabel)
-				}
-			}
-			fmt.Fprintf(w, "  Network Mode:   %s\n", cfg.Sandbox.NetworkMode)
-			fmt.Fprintf(w, "  Workspace:      %s\n", workspacePath)
-
-			// Active isolation.
-			fmt.Fprintln(w)
-			fmt.Fprintln(w, "Active Isolation:")
-			fmt.Fprintf(w, "  Isolator:       %s\n", status.Isolator.Name())
-			if !status.Isolator.Available() {
-				fmt.Fprintf(w, "  Available:      false\n")
-				fmt.Fprintf(w, "  Reason:         %s\n", status.Isolator.Reason())
-			} else {
-				fmt.Fprintf(w, "  Available:      true\n")
-				// Surface partial degradation (e.g. bwrap network isolation
-				// probe failed). Only shown when actually degraded — a fully
-				// functional isolator omits this line to keep output clean.
-				if ni, ok := status.Isolator.(networkIsolator); ok && !ni.NetworkIsolationAvailable() {
-					fmt.Fprintf(w, "  Network Iso:    unavailable (%s)\n", ni.NetworkIsolationReason())
-				}
-			}
-
-			// Platform capabilities.
-			caps := status.Capabilities
-			fmt.Fprintln(w)
-			fmt.Fprintln(w, "Platform Capabilities:")
-			fmt.Fprintf(w, "  Platform:       %s\n", caps.Platform)
-			fmt.Fprintf(w, "  Kernel:         %s\n", caps.KernelVersion)
-			fmt.Fprintf(w, "  Seatbelt:       %s\n", capabilityReasonStatus(caps.HasSeatbelt, caps.SeatbeltReason, caps.Platform, "darwin"))
-			fmt.Fprintf(w, "  Landlock:       %s\n", capabilityReasonStatus(caps.HasLandlock, caps.LandlockReason, caps.Platform, "linux"))
-			fmt.Fprintf(w, "  seccomp:        %s\n", capabilityReasonStatus(caps.HasSeccomp, caps.SeccompReason, caps.Platform, "linux"))
-
-			// Backend availability.
-			fmt.Fprintln(w)
-			fmt.Fprintln(w, "Backend Availability:")
-			for _, bi := range sandboxos.ListBackends(candidates) {
-				state := "available"
-				if !bi.Available {
-					state = fmt.Sprintf("unavailable (%s)", bi.Reason)
-				}
-				fmt.Fprintf(w, "  %-14s  %s\n", bi.Name+":", state)
-			}
-
-			// Platform-specific warnings.
-			if runtime.GOOS == "linux" && len(cfg.Sandbox.AllowedNetworkIPs) > 0 {
-				fmt.Fprintln(w)
-				fmt.Fprintln(w, "WARNING: allowedNetworkIPs is macOS-only; Linux isolation is not yet enforced")
-			}
-
-			// Recent Sandbox Decisions (graceful — skip if audit DB unavailable).
-			// boot.DBClient may still be nil in degraded bootstrap modes; the
-			// helper handles that case silently.
-			renderRecentDecisions(cmd.Context(), w, boot, sessionPrefix)
-
-			return nil
+			snapshot := buildStatusSnapshot(cmd.Context(), cfg, boot, sessionPrefix)
+			return renderStatusSnapshot(w, snapshot, output)
 		},
 	}
 	cmd.Flags().StringVar(&sessionPrefix, "session", "",
 		"Filter Recent Sandbox Decisions by session key prefix (default: show global)")
+	cmd.Flags().StringVar(&output, "output", "table", "Output format: table, json, or plain")
 	return cmd
+}
+
+type statusSnapshot struct {
+	SessionPrefix        string                     `json:"-"`
+	Configuration        statusConfiguration        `json:"configuration"`
+	ActiveIsolation      statusActiveIsolation      `json:"active_isolation"`
+	PlatformCapabilities statusPlatformCapabilities `json:"platform_capabilities"`
+	BackendAvailability  []statusBackend            `json:"backend_availability"`
+	RecentDecisions      []statusDecision           `json:"recent_decisions"`
+	Warnings             statusWarnings             `json:"warnings"`
+}
+
+type statusConfiguration struct {
+	Enabled        bool   `json:"enabled"`
+	FailClosed     bool   `json:"fail_closed"`
+	FailMode       string `json:"fail_mode,omitempty"`
+	Backend        string `json:"backend"`
+	BackendLabel   string `json:"backend_label"`
+	NetworkMode    string `json:"network_mode"`
+	Workspace      string `json:"workspace"`
+	ExplicitOptOut bool   `json:"explicit_opt_out"`
+}
+
+type statusActiveIsolation struct {
+	Isolator                    string `json:"isolator"`
+	Available                   bool   `json:"available"`
+	Reason                      string `json:"reason,omitempty"`
+	NetworkIsolationUnavailable bool   `json:"network_isolation_unavailable,omitempty"`
+	NetworkIsolationReason      string `json:"network_isolation_reason,omitempty"`
+}
+
+type statusPlatformCapabilities struct {
+	Platform    string `json:"platform"`
+	Kernel      string `json:"kernel"`
+	Seatbelt    string `json:"seatbelt"`
+	Landlock    string `json:"landlock"`
+	Seccomp     string `json:"seccomp"`
+	HasSeatbelt bool   `json:"has_seatbelt"`
+	HasLandlock bool   `json:"has_landlock"`
+	LandlockABI int    `json:"landlock_abi"`
+	HasSeccomp  bool   `json:"has_seccomp"`
+}
+
+type statusBackend struct {
+	Name      string `json:"name"`
+	Mode      string `json:"mode"`
+	Available bool   `json:"available"`
+	Reason    string `json:"reason,omitempty"`
+}
+
+type statusDecision struct {
+	Timestamp        string `json:"timestamp"`
+	SessionKeyPrefix string `json:"session_key_prefix"`
+	Decision         string `json:"decision"`
+	Backend          string `json:"backend"`
+	Target           string `json:"target"`
+	Reason           string `json:"reason,omitempty"`
+}
+
+type statusWarnings struct {
+	AllowedNetworkIPsMacOSOnly bool `json:"allowed_network_ips_macos_only"`
+}
+
+func validateStatusOutput(output string) error {
+	switch strings.ToLower(strings.TrimSpace(output)) {
+	case "table", "json", "plain":
+		return nil
+	default:
+		return fmt.Errorf("unsupported output format %q (expected table, json, or plain)", output)
+	}
+}
+
+func buildStatusSnapshot(ctx context.Context, cfg *config.Config, boot *bootstrap.Result, sessionPrefix string) statusSnapshot {
+	workspacePath := cfg.Sandbox.WorkspacePath
+	if workspacePath == "" {
+		workspacePath, _ = os.Getwd()
+	}
+
+	mode, _ := sandboxos.ParseBackendMode(cfg.Sandbox.Backend)
+	candidates := sandboxos.PlatformBackendCandidates()
+	var isolator sandboxos.OSIsolator
+	var info sandboxos.BackendInfo
+	optedOut := cfg.Sandbox.Enabled && mode == sandboxos.BackendNone
+	if cfg.Sandbox.Enabled && !optedOut {
+		isolator, info = sandboxos.SelectBackend(mode, candidates)
+	}
+	status := sandboxos.NewSandboxStatus(cfg.Sandbox.Enabled, cfg.Sandbox.FailClosed, isolator)
+
+	failMode := ""
+	if status.Enabled && !optedOut {
+		failMode = "fail-open (warning + unsandboxed execution)"
+		if status.FailClosed {
+			failMode = "fail-closed (execution rejected)"
+		}
+	}
+
+	backendLabel := mode.String()
+	if optedOut {
+		backendLabel = "none (explicit opt-out - fail-closed not applied)"
+	} else if mode == sandboxos.BackendAuto && info.Name != "" {
+		backendLabel = fmt.Sprintf("auto (resolved: %s)", info.Name)
+	}
+
+	active := statusActiveIsolation{
+		Isolator:  status.Isolator.Name(),
+		Available: status.Isolator.Available(),
+	}
+	if !active.Available {
+		active.Reason = status.Isolator.Reason()
+	} else if ni, ok := status.Isolator.(networkIsolator); ok && !ni.NetworkIsolationAvailable() {
+		active.NetworkIsolationUnavailable = true
+		active.NetworkIsolationReason = ni.NetworkIsolationReason()
+	}
+
+	caps := status.Capabilities
+	backends := make([]statusBackend, 0, len(candidates))
+	for _, bi := range sandboxos.ListBackends(candidates) {
+		backends = append(backends, statusBackend{
+			Name:      bi.Name,
+			Mode:      bi.Mode.String(),
+			Available: bi.Available,
+			Reason:    bi.Reason,
+		})
+	}
+
+	return statusSnapshot{
+		SessionPrefix: sessionPrefix,
+		Configuration: statusConfiguration{
+			Enabled:        status.Enabled,
+			FailClosed:     status.FailClosed,
+			FailMode:       failMode,
+			Backend:        mode.String(),
+			BackendLabel:   backendLabel,
+			NetworkMode:    cfg.Sandbox.NetworkMode,
+			Workspace:      workspacePath,
+			ExplicitOptOut: optedOut,
+		},
+		ActiveIsolation: active,
+		PlatformCapabilities: statusPlatformCapabilities{
+			Platform:    caps.Platform,
+			Kernel:      caps.KernelVersion,
+			Seatbelt:    capabilityReasonStatus(caps.HasSeatbelt, caps.SeatbeltReason, caps.Platform, "darwin"),
+			Landlock:    capabilityReasonStatus(caps.HasLandlock, caps.LandlockReason, caps.Platform, "linux"),
+			Seccomp:     capabilityReasonStatus(caps.HasSeccomp, caps.SeccompReason, caps.Platform, "linux"),
+			HasSeatbelt: caps.HasSeatbelt,
+			HasLandlock: caps.HasLandlock,
+			LandlockABI: caps.LandlockABI,
+			HasSeccomp:  caps.HasSeccomp,
+		},
+		BackendAvailability: backends,
+		RecentDecisions:     collectRecentDecisions(ctx, boot, sessionPrefix),
+		Warnings: statusWarnings{
+			AllowedNetworkIPsMacOSOnly: runtime.GOOS == "linux" && len(cfg.Sandbox.AllowedNetworkIPs) > 0,
+		},
+	}
+}
+
+func renderStatusSnapshot(w io.Writer, snapshot statusSnapshot, output string) error {
+	switch strings.ToLower(strings.TrimSpace(output)) {
+	case "json":
+		return clihttp.PrintJSON(w, snapshot)
+	case "plain":
+		renderStatusPlain(w, snapshot)
+		return nil
+	default:
+		renderStatusTable(w, snapshot)
+		return nil
+	}
+}
+
+func renderStatusTable(w io.Writer, snapshot statusSnapshot) {
+	cfg := snapshot.Configuration
+	fmt.Fprintln(w, "Sandbox Configuration:")
+	fmt.Fprintf(w, "  Enabled:        %v\n", cfg.Enabled)
+	if cfg.Enabled {
+		if cfg.ExplicitOptOut {
+			fmt.Fprintf(w, "  Backend:        none (explicit opt-out — fail-closed not applied)\n")
+		} else {
+			fmt.Fprintf(w, "  Fail-Closed:    %s\n", cfg.FailMode)
+			fmt.Fprintf(w, "  Backend:        %s\n", cfg.BackendLabel)
+		}
+	}
+	fmt.Fprintf(w, "  Network Mode:   %s\n", cfg.NetworkMode)
+	fmt.Fprintf(w, "  Workspace:      %s\n", cfg.Workspace)
+
+	active := snapshot.ActiveIsolation
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Active Isolation:")
+	fmt.Fprintf(w, "  Isolator:       %s\n", active.Isolator)
+	if !active.Available {
+		fmt.Fprintf(w, "  Available:      false\n")
+		fmt.Fprintf(w, "  Reason:         %s\n", active.Reason)
+	} else {
+		fmt.Fprintf(w, "  Available:      true\n")
+		if active.NetworkIsolationUnavailable {
+			fmt.Fprintf(w, "  Network Iso:    unavailable (%s)\n", active.NetworkIsolationReason)
+		}
+	}
+
+	caps := snapshot.PlatformCapabilities
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Platform Capabilities:")
+	fmt.Fprintf(w, "  Platform:       %s\n", caps.Platform)
+	fmt.Fprintf(w, "  Kernel:         %s\n", caps.Kernel)
+	fmt.Fprintf(w, "  Seatbelt:       %s\n", caps.Seatbelt)
+	fmt.Fprintf(w, "  Landlock:       %s\n", caps.Landlock)
+	fmt.Fprintf(w, "  seccomp:        %s\n", caps.Seccomp)
+
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Backend Availability:")
+	for _, bi := range snapshot.BackendAvailability {
+		state := "available"
+		if !bi.Available {
+			state = fmt.Sprintf("unavailable (%s)", bi.Reason)
+		}
+		fmt.Fprintf(w, "  %-14s  %s\n", bi.Name+":", state)
+	}
+
+	if snapshot.Warnings.AllowedNetworkIPsMacOSOnly {
+		fmt.Fprintln(w)
+		fmt.Fprintln(w, "WARNING: allowedNetworkIPs is macOS-only; Linux isolation is not yet enforced")
+	}
+
+	renderDecisionLines(w, snapshot.RecentDecisions, snapshot.SessionPrefix)
+}
+
+func renderStatusPlain(w io.Writer, snapshot statusSnapshot) {
+	cfg := snapshot.Configuration
+	fmt.Fprintf(w, "enabled=%v\n", cfg.Enabled)
+	fmt.Fprintf(w, "fail_closed=%v\n", cfg.FailClosed)
+	if cfg.FailMode != "" {
+		fmt.Fprintf(w, "fail_mode=%s\n", cfg.FailMode)
+	}
+	fmt.Fprintf(w, "backend=%s\n", cfg.BackendLabel)
+	fmt.Fprintf(w, "network_mode=%s\n", cfg.NetworkMode)
+	fmt.Fprintf(w, "workspace=%s\n", cfg.Workspace)
+	fmt.Fprintf(w, "isolator=%s\n", snapshot.ActiveIsolation.Isolator)
+	fmt.Fprintf(w, "available=%v\n", snapshot.ActiveIsolation.Available)
+	if snapshot.ActiveIsolation.Reason != "" {
+		fmt.Fprintf(w, "reason=%s\n", snapshot.ActiveIsolation.Reason)
+	}
+	fmt.Fprintf(w, "platform=%s\n", snapshot.PlatformCapabilities.Platform)
+	fmt.Fprintf(w, "kernel=%s\n", snapshot.PlatformCapabilities.Kernel)
+	for _, backend := range snapshot.BackendAvailability {
+		state := "available"
+		if !backend.Available {
+			state = "unavailable"
+		}
+		fmt.Fprintf(w, "backend_availability=%s:%s", backend.Name, state)
+		if backend.Reason != "" {
+			fmt.Fprintf(w, ":%s", backend.Reason)
+		}
+		fmt.Fprintln(w)
+	}
+	if snapshot.Warnings.AllowedNetworkIPsMacOSOnly {
+		fmt.Fprintln(w, "warning=allowedNetworkIPs is macOS-only; Linux isolation is not yet enforced")
+	}
 }
 
 // renderRecentDecisions queries the audit log for the most recent
 // SandboxDecisionEvent records and prints them to w. It is best-effort:
-// any failure (missing DB client, schema unavailable, query error) is
+// any failure (missing storage, schema unavailable, query error) is
 // silently ignored so the diagnostic remains usable as a sandbox-layer
 // inspection tool that does not depend on audit availability.
 //
-// The caller owns the *bootstrap.Result and its DBClient lifecycle; this
-// helper does not close the client.
+// The caller owns the *bootstrap.Result lifecycle; this helper does not close it.
 func renderRecentDecisions(ctx context.Context, w io.Writer, boot *bootstrap.Result, sessionPrefix string) {
-	if boot == nil || boot.DBClient == nil {
-		return
+	renderDecisionLines(w, collectRecentDecisions(ctx, boot, sessionPrefix), sessionPrefix)
+}
+
+func collectRecentDecisions(ctx context.Context, boot *bootstrap.Result, sessionPrefix string) []statusDecision {
+	if boot == nil || boot.Storage == nil {
+		return []statusDecision{}
 	}
 
-	q := boot.DBClient.AuditLog.Query().
-		Where(auditlog.ActionEQ(auditlog.ActionSandboxDecision)).
-		Order(auditlog.ByTimestamp(sql.OrderDesc())).
-		Limit(10)
-	if sessionPrefix != "" {
-		q = q.Where(auditlog.SessionKeyHasPrefix(sessionPrefix))
+	var records []storage.SandboxDecisionRecord
+	decisions, err := boot.Storage.RecentSandboxDecisions(ctx, sessionPrefix, 10)
+	if err == nil {
+		records = decisions
 	}
-	decisions, err := q.All(ctx)
-	if err != nil || len(decisions) == 0 {
+	if err != nil || len(records) == 0 {
+		return []statusDecision{}
+	}
+
+	out := make([]statusDecision, 0, len(records))
+	for _, d := range records {
+		out = append(out, statusDecisionFromRecord(d))
+	}
+	return out
+}
+
+func statusDecisionFromRecord(d storage.SandboxDecisionRecord) statusDecision {
+	backend := d.Backend
+	if d.Decision != "applied" || backend == "" {
+		backend = "-"
+	}
+	return statusDecision{
+		Timestamp:        d.Timestamp.Format("2006-01-02 15:04:05"),
+		SessionKeyPrefix: truncateSessionKey(d.SessionKey, 8),
+		Decision:         d.Decision,
+		Backend:          backend,
+		Target:           d.Target,
+		Reason:           d.Reason,
+	}
+}
+
+func renderDecisionLines(w io.Writer, decisions []statusDecision, sessionPrefix string) {
+	if len(decisions) == 0 {
 		return
 	}
 
@@ -249,39 +446,15 @@ func renderRecentDecisions(ctx context.Context, w io.Writer, boot *bootstrap.Res
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, title)
 	for _, d := range decisions {
-		var decision, backend, reason string
-		if v, ok := d.Details["decision"].(string); ok {
-			decision = v
-		}
-		if v, ok := d.Details["backend"].(string); ok {
-			backend = v
-		}
-		if v, ok := d.Details["reason"].(string); ok {
-			reason = v
-		}
-		sessShort := truncateSessionKey(d.SessionKey, 8)
-		fmt.Fprintln(w, formatDecisionLine(d.Timestamp, sessShort, decision, backend, d.Target, reason))
+		fmt.Fprintln(w, formatDecisionLineFromStatus(d))
 	}
 }
 
-// formatDecisionLine renders one Recent Sandbox Decisions row. Extracted as
-// a pure function so the backend-column rule can be unit-tested directly
-// without spinning up an ent.Client + audit fixture.
-//
-// The backend column SHALL show "-" for any non-"applied" decision because
-// excluded / skipped / rejected verdicts mean the command did NOT actually
-// run inside a sandbox backend. Echoing the published Backend value (which
-// every publish site stamps from the wired isolator regardless of decision)
-// would falsely suggest the command was sandboxed.
-func formatDecisionLine(ts time.Time, sessShort, decision, backend, target, reason string) string {
-	if decision != "applied" || backend == "" {
-		backend = "-"
-	}
+func formatDecisionLineFromStatus(d statusDecision) string {
 	line := fmt.Sprintf("  %s  [%s] %-9s %-9s %s",
-		ts.Format("2006-01-02 15:04:05"),
-		sessShort, decision, backend, target)
-	if reason != "" {
-		line += fmt.Sprintf(" (%s)", reason)
+		d.Timestamp, d.SessionKeyPrefix, d.Decision, d.Backend, d.Target)
+	if d.Reason != "" {
+		line += fmt.Sprintf(" (%s)", d.Reason)
 	}
 	return line
 }
@@ -300,6 +473,14 @@ func truncateSessionKey(key string, width int) string {
 
 // newTestCmd creates `lango sandbox test`.
 func newTestCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
+	return newTestCmdWithBackendResolver(cfgLoader, sandboxos.PlatformBackendCandidates, sandboxos.SelectBackend)
+}
+
+func newTestCmdWithBackendResolver(
+	cfgLoader func() (*config.Config, error),
+	candidatesFunc func() []sandboxos.BackendCandidate,
+	selectBackend func(sandboxos.BackendMode, []sandboxos.BackendCandidate) (sandboxos.OSIsolator, sandboxos.BackendInfo),
+) *cobra.Command {
 	return &cobra.Command{
 		Use:   "test",
 		Short: "Run OS sandbox smoke tests",
@@ -318,7 +499,7 @@ func newTestCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 				fmt.Fprintln(w, "Sandbox backend explicitly set to none — no isolation to test")
 				return nil
 			}
-			isolator, info := sandboxos.SelectBackend(mode, sandboxos.PlatformBackendCandidates())
+			isolator, info := selectBackend(mode, candidatesFunc())
 			if !isolator.Available() {
 				fmt.Fprintf(w, "Sandbox backend %s not available: %s\n", info.Mode.String(), isolator.Reason())
 				return nil

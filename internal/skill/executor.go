@@ -12,6 +12,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/langoai/lango/internal/agentrt"
 	"github.com/langoai/lango/internal/eventbus"
 	sandboxos "github.com/langoai/lango/internal/sandbox/os"
 	"github.com/langoai/lango/internal/session"
@@ -28,12 +29,13 @@ var _dangerousPatterns = []*regexp.Regexp{
 
 // Executor safely executes skills.
 type Executor struct {
-	logger        *zap.SugaredLogger
-	isolator      sandboxos.OSIsolator // OS-level sandbox (nil = disabled)
-	workspacePath string               // Workspace root for sandbox write policy
-	dataRoot      string               // Lango control-plane root, masked from sandboxed children
-	failClosed    bool                 // reject execution when sandbox unavailable
-	bus           *eventbus.Bus        // event bus for SandboxDecisionEvent (optional)
+	logger         *zap.SugaredLogger
+	isolator       sandboxos.OSIsolator // OS-level sandbox (nil = disabled)
+	workspacePath  string               // Workspace root for sandbox write policy
+	dataRoot       string               // Lango control-plane root, masked from sandboxed children
+	protectedPaths []string
+	failClosed     bool          // reject execution when sandbox unavailable
+	bus            *eventbus.Bus // event bus for SandboxDecisionEvent (optional)
 }
 
 // NewExecutor creates a new skill executor.
@@ -73,6 +75,12 @@ func (e *Executor) SetOSIsolator(iso sandboxos.OSIsolator, workspacePath, dataRo
 	e.isolator = iso
 	e.workspacePath = workspacePath
 	e.dataRoot = dataRoot
+}
+
+// SetProtectedPaths configures the resolved runtime denylist passed to sandbox
+// policy builders.
+func (e *Executor) SetProtectedPaths(paths []string) {
+	e.protectedPaths = append([]string(nil), paths...)
 }
 
 // SetFailClosed controls whether the executor blocks script execution when
@@ -199,7 +207,7 @@ func (e *Executor) executeScript(ctx context.Context, skill SkillEntry) (interfa
 	// The nil-isolator branch was already decided and published above.
 	// Here we only need to apply the sandbox when an isolator is present.
 	if e.isolator != nil {
-		policy := sandboxos.DefaultToolPolicy(e.workspacePath, e.dataRoot)
+		policy := sandboxos.DefaultToolPolicyWithProtectedPaths(e.workspacePath, e.dataRoot, e.protectedPaths)
 		if applyErr := e.isolator.Apply(ctx, cmd, policy); applyErr != nil {
 			if e.failClosed {
 				e.publishSandboxDecision(ctx, skill.Name, "rejected", applyErr.Error())
@@ -250,6 +258,27 @@ func (e *Executor) executeFork(skill SkillEntry, params map[string]interface{}) 
 		paramSection = strings.Join(parts, "\n")
 	} else {
 		paramSection = "  (none)"
+	}
+
+	builtin := false
+	if _, ok := agentrt.BuiltinTeammateTypes()[agentName]; ok {
+		builtin = true
+	}
+
+	if builtin {
+		result := fmt.Sprintf(`[Fork Skill Result]
+This task should be delegated to the '%s' built-in teammate.
+
+Instruction: %s
+
+Parameters:
+%s
+
+Advisory tool restrictions: %s
+(Note: tool restrictions are enforced only when using agent_spawn)
+
+Please use agent_spawn with agent "%s".`, agentName, instruction, paramSection, advisoryTools, agentName)
+		return result, nil
 	}
 
 	result := fmt.Sprintf(`[Fork Skill Result]

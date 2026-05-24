@@ -177,6 +177,16 @@ func TestDefaultConfig_Alerting(t *testing.T) {
 	assert.Equal(t, 5, cfg.Alerting.RecoveryRetries)
 }
 
+func TestDefaultConfig_Replay(t *testing.T) {
+	t.Parallel()
+
+	cfg := DefaultConfig()
+
+	assert.Empty(t, cfg.Replay.AllowedActors)
+	assert.Empty(t, cfg.Replay.ReleaseAllowedActors)
+	assert.Empty(t, cfg.Replay.RefundAllowedActors)
+}
+
 func TestValidate_ValidLogLevels(t *testing.T) {
 	t.Parallel()
 
@@ -247,7 +257,7 @@ func TestValidate_PortBoundaries(t *testing.T) {
 func TestValidate_SecuritySignerProviders(t *testing.T) {
 	t.Parallel()
 
-	validProviders := []string{"local", "rpc", "enclave", "aws-kms", "gcp-kms", "azure-kv", "pkcs11"}
+	validProviders := []string{"local", "rpc", "aws-kms", "gcp-kms", "azure-kv", "pkcs11"}
 	for _, p := range validProviders {
 		t.Run(p, func(t *testing.T) {
 			t.Parallel()
@@ -273,11 +283,17 @@ func TestValidate_SecuritySignerProviders(t *testing.T) {
 func TestValidate_InvalidSignerProvider(t *testing.T) {
 	t.Parallel()
 
-	cfg := DefaultConfig()
-	cfg.Security.Signer.Provider = "bogus"
-	err := Validate(cfg)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "invalid security.signer.provider")
+	for _, provider := range []string{"bogus", "enclave"} {
+		t.Run(provider, func(t *testing.T) {
+			t.Parallel()
+			cfg := DefaultConfig()
+			cfg.Security.Signer.Provider = provider
+			err := Validate(cfg)
+			assert.Error(t, err)
+			assert.Contains(t, err.Error(), "invalid security.signer.provider")
+			assert.Contains(t, err.Error(), "must be local, rpc, aws-kms, gcp-kms, azure-kv, or pkcs11")
+		})
+	}
 }
 
 func TestValidate_GraphBackend(t *testing.T) {

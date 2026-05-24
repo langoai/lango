@@ -58,6 +58,7 @@ type P2PConfig struct {
 	OwnerProtection OwnerProtectionConfig `mapstructure:"ownerProtection" json:"ownerProtection"`
 
 	// MinTrustScore is the minimum reputation to accept requests (0.0 to 1.0, default 0.3).
+	// This is the admission gate and is separate from post-pay payment trust thresholds.
 	MinTrustScore float64 `mapstructure:"minTrustScore" json:"minTrustScore"`
 
 	// ToolIsolation configures process isolation for remote tool invocations.
@@ -166,6 +167,7 @@ type P2PPricingConfig struct {
 	ToolPrices map[string]string `mapstructure:"toolPrices" json:"toolPrices,omitempty"`
 
 	// TrustThresholds configures trust-based payment tier thresholds.
+	// These thresholds are separate from MinTrustScore admission checks.
 	TrustThresholds TrustThresholds `mapstructure:"trustThresholds" json:"trustThresholds"`
 
 	// Settlement configures on-chain settlement behavior.

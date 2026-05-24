@@ -3,6 +3,8 @@ package app
 import (
 	"context"
 	"crypto/ecdsa"
+	"crypto/ed25519"
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"math/big"
@@ -19,8 +21,10 @@ import (
 	"github.com/langoai/lango/internal/p2p/handshake"
 	"github.com/langoai/lango/internal/p2p/identity"
 	"github.com/langoai/lango/internal/p2p/provenanceproto"
+	"github.com/langoai/lango/internal/p2p/reputation"
 	provenancepkg "github.com/langoai/lango/internal/provenance"
 	"github.com/langoai/lango/internal/security"
+	"github.com/langoai/lango/internal/testutil"
 	"github.com/libp2p/go-libp2p"
 	libp2pcrypto "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/host"
@@ -163,13 +167,144 @@ func TestP2PReputationHandler_NilReputationSystem(t *testing.T) {
 	assert.Contains(t, resp["error"], "not available")
 }
 
+func TestP2PReputationHandler_ReturnsKnownPeerDetails(t *testing.T) {
+	ctx := context.Background()
+	peerDID := "did:lango:p2p-route-known-peer"
+	repStore := reputation.NewStore(testutil.TestEntClient(t), testLog())
+	require.NoError(t, repStore.RecordSuccess(ctx, peerDID))
+	require.NoError(t, repStore.RecordTimeout(ctx, peerDID))
+
+	handler := p2pReputationHandler(&p2pComponents{reputation: repStore})
+	req := httptest.NewRequest("GET", "/api/p2p/reputation?peer_did="+peerDID, nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]interface{}
+	err := json.NewDecoder(w.Body).Decode(&resp)
+	require.NoError(t, err)
+	assert.Equal(t, peerDID, resp["peerDid"])
+	assert.Equal(t, float64(1), resp["successfulExchanges"])
+	assert.Equal(t, float64(1), resp["timeoutCount"])
+	assert.NotEmpty(t, resp["firstSeen"])
+	assert.NotEmpty(t, resp["lastInteraction"])
+}
+
+func TestP2PReputationHandler_ReturnsDefaultForUnknownPeer(t *testing.T) {
+	peerDID := "did:lango:p2p-route-unknown-peer"
+	repStore := reputation.NewStore(testutil.TestEntClient(t), testLog())
+
+	handler := p2pReputationHandler(&p2pComponents{reputation: repStore})
+	req := httptest.NewRequest("GET", "/api/p2p/reputation?peer_did="+peerDID, nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]interface{}
+	err := json.NewDecoder(w.Body).Decode(&resp)
+	require.NoError(t, err)
+	assert.Equal(t, peerDID, resp["peerDid"])
+	assert.Equal(t, 0.0, resp["trustScore"])
+	assert.Equal(t, "no reputation record found", resp["message"])
+}
+
 // --- p2pIdentityHandler ---
 
-func TestP2PIdentityHandler_NilIdentity(t *testing.T) {
-	// When identity is nil but node is also nil, handler will panic at node.PeerID().
-	// We test only the nil identity path by providing a minimal node.
-	// Since creating a real node requires libp2p, this test documents the expected behavior.
-	t.Skip("requires libp2p node; tested via integration tests")
+func TestP2PIdentityHandler_IncludesDIDWhenIdentityAvailable(t *testing.T) {
+	_, p2pc, _, localDID, _, cleanup := setupProvenanceRouteRuntime(t)
+	defer cleanup()
+
+	handler := p2pIdentityHandler(p2pc)
+	req := httptest.NewRequest("GET", "/api/p2p/identity", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]interface{}
+	err := json.NewDecoder(w.Body).Decode(&resp)
+	require.NoError(t, err)
+
+	did, ok := resp["did"].(string)
+	require.True(t, ok)
+	assert.Equal(t, localDID, did)
+	assert.Equal(t, p2pc.node.PeerID().String(), resp["peerId"])
+}
+
+func TestP2PIdentityHandler_IncludesBundleBackedV2DID(t *testing.T) {
+	_, p2pc, _, _, _, cleanup := setupProvenanceRouteRuntime(t)
+	defer cleanup()
+
+	settlementWallet, _ := newRouteTestWallet(t)
+	settlementPub, err := settlementWallet.PublicKey(context.Background())
+	require.NoError(t, err)
+
+	_, signingKey, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+
+	bundleProvider, err := identity.NewBundleProvider(identity.BundleProviderConfig{
+		SigningKey:    signingKey,
+		SettlementPub: settlementPub,
+		LangoDir:      t.TempDir(),
+		Logger:        testLog(),
+	})
+	require.NoError(t, err)
+
+	p2pc.identity = bundleProvider
+
+	handler := p2pIdentityHandler(p2pc)
+	req := httptest.NewRequest("GET", "/api/p2p/identity", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]interface{}
+	err = json.NewDecoder(w.Body).Decode(&resp)
+	require.NoError(t, err)
+
+	did, ok := resp["did"].(string)
+	require.True(t, ok)
+
+	bundleDID, err := bundleProvider.DID(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, bundleDID.ID, did)
+	assert.Equal(t, 2, bundleDID.Version)
+	assert.Equal(t, p2pc.node.PeerID().String(), resp["peerId"])
+}
+
+func TestP2PIdentityHandler_ReturnsNullWhenDIDUnavailable(t *testing.T) {
+	_, p2pc, _, _, _, cleanup := setupProvenanceRouteRuntime(t)
+	defer cleanup()
+
+	p2pc.identity = failingIdentityProvider{err: context.DeadlineExceeded}
+
+	handler := p2pIdentityHandler(p2pc)
+	req := httptest.NewRequest("GET", "/api/p2p/identity", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]interface{}
+	err := json.NewDecoder(w.Body).Decode(&resp)
+	require.NoError(t, err)
+	assert.Nil(t, resp["did"])
+	assert.Equal(t, p2pc.node.PeerID().String(), resp["peerId"])
+}
+
+type failingIdentityProvider struct {
+	err error
+}
+
+func (p failingIdentityProvider) DID(context.Context) (*identity.DID, error) {
+	return nil, p.err
+}
+
+func (p failingIdentityProvider) VerifyDID(*identity.DID, peer.ID) error {
+	return nil
 }
 
 type routeTestWallet struct {
@@ -198,7 +333,7 @@ func (w *routeTestWallet) PublicKey(context.Context) ([]byte, error) {
 	return ethcrypto.CompressPubkey(&w.key.PublicKey), nil
 }
 
-func setupProvenanceRouteRuntime(t *testing.T) (*App, *p2pComponents, host.Host, string, func()) {
+func setupProvenanceRouteRuntime(t *testing.T) (*App, *p2pComponents, host.Host, string, string, func()) {
 	t.Helper()
 
 	cfg := config.DefaultConfig()
@@ -268,11 +403,11 @@ func setupProvenanceRouteRuntime(t *testing.T) (*App, *p2pComponents, host.Host,
 		_ = localDID
 	}
 
-	return app, p2pc, serverHost, serverDID.ID, cleanup
+	return app, p2pc, serverHost, localDID, serverDID.ID, cleanup
 }
 
 func TestP2PProvenancePushHandler_InvalidRedaction(t *testing.T) {
-	app, p2pc, _, _, cleanup := setupProvenanceRouteRuntime(t)
+	app, p2pc, _, _, _, cleanup := setupProvenanceRouteRuntime(t)
 	defer cleanup()
 
 	router := chi.NewRouter()
@@ -289,7 +424,7 @@ func TestP2PProvenancePushHandler_InvalidRedaction(t *testing.T) {
 }
 
 func TestP2PProvenanceFetchHandler_InvalidRedaction(t *testing.T) {
-	app, p2pc, _, _, cleanup := setupProvenanceRouteRuntime(t)
+	app, p2pc, _, _, _, cleanup := setupProvenanceRouteRuntime(t)
 	defer cleanup()
 
 	router := chi.NewRouter()
@@ -306,7 +441,7 @@ func TestP2PProvenanceFetchHandler_InvalidRedaction(t *testing.T) {
 }
 
 func TestP2PProvenancePushHandler_RequiresActiveSession(t *testing.T) {
-	app, p2pc, _, _, cleanup := setupProvenanceRouteRuntime(t)
+	app, p2pc, _, _, _, cleanup := setupProvenanceRouteRuntime(t)
 	defer cleanup()
 
 	router := chi.NewRouter()
@@ -323,7 +458,7 @@ func TestP2PProvenancePushHandler_RequiresActiveSession(t *testing.T) {
 }
 
 func TestP2PProvenancePushAndFetchHandlers(t *testing.T) {
-	app, p2pc, serverHost, serverPeerDID, cleanup := setupProvenanceRouteRuntime(t)
+	app, p2pc, serverHost, _, serverPeerDID, cleanup := setupProvenanceRouteRuntime(t)
 	defer cleanup()
 
 	remoteWallet, remoteSignerDID := newRouteTestWallet(t)
@@ -383,7 +518,7 @@ func TestP2PProvenancePushAndFetchHandlers(t *testing.T) {
 }
 
 func TestP2PProvenanceFetchHandler_TamperedBundle(t *testing.T) {
-	app, p2pc, serverHost, serverPeerDID, cleanup := setupProvenanceRouteRuntime(t)
+	app, p2pc, serverHost, _, serverPeerDID, cleanup := setupProvenanceRouteRuntime(t)
 	defer cleanup()
 
 	handler := provenanceproto.NewHandler(provenanceproto.HandlerConfig{
@@ -407,4 +542,164 @@ func TestP2PProvenanceFetchHandler_TamperedBundle(t *testing.T) {
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 	assert.Contains(t, w.Body.String(), "import provenance bundle")
+}
+
+func TestDecodeProvenanceRequest_DefaultsContentRedaction(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/api/p2p/provenance/push",
+		strings.NewReader(`{"peerDid":"did:lango:peer","sessionKey":"sess-1"}`))
+	w := httptest.NewRecorder()
+
+	got, ok := decodeProvenanceRequest(w, req)
+
+	require.True(t, ok)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "did:lango:peer", got.PeerDID)
+	assert.Equal(t, "sess-1", got.SessionKey)
+	assert.Equal(t, string(provenancepkg.RedactionContent), got.Redaction)
+}
+
+func TestDecodeProvenanceRequest_RejectsMalformedJSON(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/api/p2p/provenance/push",
+		strings.NewReader(`{"peerDid":`))
+	w := httptest.NewRecorder()
+
+	got, ok := decodeProvenanceRequest(w, req)
+
+	require.False(t, ok)
+	assert.Nil(t, got)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "decode request")
+}
+
+func TestDecodeProvenanceRequest_RequiresPeerAndSession(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/api/p2p/provenance/push",
+		strings.NewReader(`{"peerDid":"did:lango:peer"}`))
+	w := httptest.NewRecorder()
+
+	got, ok := decodeProvenanceRequest(w, req)
+
+	require.False(t, ok)
+	assert.Nil(t, got)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "peerDid and sessionKey are required")
+}
+
+func TestResolveProvenancePeer_RequiresRuntime(t *testing.T) {
+	w := httptest.NewRecorder()
+
+	token, target, ok := resolveProvenancePeer(w, "did:lango:peer", nil)
+
+	require.False(t, ok)
+	assert.Empty(t, token)
+	assert.Nil(t, target)
+	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
+	assert.Contains(t, w.Body.String(), "P2P runtime is not available")
+}
+
+func TestResolveProvenancePeer_RejectsInvalidPeerDIDWithActiveSession(t *testing.T) {
+	sessions, err := handshake.NewSessionStore(time.Hour)
+	require.NoError(t, err)
+	_, err = sessions.Create("not-a-did", true)
+	require.NoError(t, err)
+	w := httptest.NewRecorder()
+
+	token, target, ok := resolveProvenancePeer(w, "not-a-did", &p2pComponents{
+		node:     &p2pnet.Node{},
+		sessions: sessions,
+	})
+
+	require.False(t, ok)
+	assert.Empty(t, token)
+	assert.Nil(t, target)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "parse peer DID")
+}
+
+func TestResolveProvenancePeer_ReturnsSessionTokenAndTarget(t *testing.T) {
+	sessions, err := handshake.NewSessionStore(time.Hour)
+	require.NoError(t, err)
+	_, peerDID := newRouteTestWallet(t)
+	sess, err := sessions.Create(peerDID, true)
+	require.NoError(t, err)
+	w := httptest.NewRecorder()
+
+	token, target, ok := resolveProvenancePeer(w, peerDID, &p2pComponents{
+		node:     &p2pnet.Node{},
+		sessions: sessions,
+	})
+
+	require.True(t, ok)
+	assert.Equal(t, sess.Token, token)
+	require.NotNil(t, target)
+	assert.Equal(t, peerDID, target.ID)
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestProvenanceSigner_RequiresDependencies(t *testing.T) {
+	w := httptest.NewRecorder()
+
+	did, signer, ok := provenanceSigner(w, context.Background(), nil, nil)
+
+	require.False(t, ok)
+	assert.Empty(t, did)
+	assert.Nil(t, signer)
+	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
+	assert.Contains(t, w.Body.String(), "local signed provenance export requires wallet identity")
+}
+
+func TestProvenanceSigner_PropagatesPublicKeyError(t *testing.T) {
+	app := &App{
+		WalletProvider:   routeTestWalletPublicKeyError{},
+		ProvenanceBundle: &provenancepkg.BundleService{},
+	}
+	w := httptest.NewRecorder()
+
+	did, signer, ok := provenanceSigner(w, context.Background(), app, &p2pComponents{
+		identity: failingIdentityProvider{},
+	})
+
+	require.False(t, ok)
+	assert.Empty(t, did)
+	assert.Nil(t, signer)
+	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
+	assert.Contains(t, w.Body.String(), "resolve wallet public key")
+}
+
+func TestProvenanceSigner_ReturnsWalletDIDAndSigner(t *testing.T) {
+	walletProvider, wantDID := newRouteTestWallet(t)
+	app := &App{
+		WalletProvider:   walletProvider,
+		ProvenanceBundle: &provenancepkg.BundleService{},
+	}
+	w := httptest.NewRecorder()
+
+	gotDID, signer, ok := provenanceSigner(w, context.Background(), app, &p2pComponents{
+		identity: failingIdentityProvider{},
+	})
+
+	require.True(t, ok)
+	assert.Equal(t, wantDID, gotDID)
+	require.NotNil(t, signer)
+	assert.Equal(t, security.AlgorithmSecp256k1Keccak256, signer.Algorithm())
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+type routeTestWalletPublicKeyError struct{}
+
+func (routeTestWalletPublicKeyError) Address(context.Context) (string, error) { return "0x0", nil }
+
+func (routeTestWalletPublicKeyError) Balance(context.Context) (*big.Int, error) {
+	return big.NewInt(0), nil
+}
+
+func (routeTestWalletPublicKeyError) SignTransaction(context.Context, []byte) ([]byte, error) {
+	return nil, nil
+}
+
+func (routeTestWalletPublicKeyError) SignMessage(context.Context, []byte) ([]byte, error) {
+	return nil, nil
+}
+
+func (routeTestWalletPublicKeyError) PublicKey(context.Context) ([]byte, error) {
+	return nil, assert.AnError
 }

@@ -26,6 +26,11 @@ type MetricsCollector struct {
 	policyObserves int64
 	policyByReason map[string]int64
 
+	graphAdmission               map[string]*GraphAdmissionBatchMetric
+	graphAdmissionUnmappedSource map[string]int64
+	graphExtractorDroppedUnknown map[string]int64
+	graphWriteFailureBatches     int64
+
 	// MaxSessions caps the session map size; 0 means DefaultMaxSessions.
 	MaxSessions int
 }
@@ -33,12 +38,15 @@ type MetricsCollector struct {
 // NewCollector creates a new MetricsCollector.
 func NewCollector() *MetricsCollector {
 	return &MetricsCollector{
-		startedAt:      time.Now(),
-		sessions:       make(map[string]*SessionMetric),
-		agents:         make(map[string]*AgentMetric),
-		tools:          make(map[string]*ToolMetric),
-		policyByReason: make(map[string]int64),
-		MaxSessions:    DefaultMaxSessions,
+		startedAt:                    time.Now(),
+		sessions:                     make(map[string]*SessionMetric),
+		agents:                       make(map[string]*AgentMetric),
+		tools:                        make(map[string]*ToolMetric),
+		policyByReason:               make(map[string]int64),
+		graphAdmission:               make(map[string]*GraphAdmissionBatchMetric),
+		graphAdmissionUnmappedSource: make(map[string]int64),
+		graphExtractorDroppedUnknown: make(map[string]int64),
+		MaxSessions:                  DefaultMaxSessions,
 	}
 }
 
@@ -123,6 +131,53 @@ func (c *MetricsCollector) RecordPolicyDecision(verdict, reason string) {
 	}
 }
 
+// RecordGraphAdmissionBatch records one observe-only admission batch metric.
+func (c *MetricsCollector) RecordGraphAdmissionBatch(metric GraphAdmissionBatchMetric) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	key := graphAdmissionMetricKey(metric.Source, metric.ProducerGroup, metric.ValidatorSource)
+	aggregated, ok := c.graphAdmission[key]
+	if !ok {
+		group := cloneStringPointer(metric.ProducerGroup)
+		aggregated = &GraphAdmissionBatchMetric{
+			Source:          metric.Source,
+			ProducerGroup:   group,
+			ValidatorSource: metric.ValidatorSource,
+		}
+		c.graphAdmission[key] = aggregated
+	}
+
+	aggregated.BatchCount += metric.BatchCount
+	aggregated.KnownCount += metric.KnownCount
+	aggregated.UnknownCount += metric.UnknownCount
+	aggregated.UnvalidatedCount += metric.UnvalidatedCount
+}
+
+// RecordGraphAdmissionUnmappedSource records one unmapped-source batch count.
+func (c *MetricsCollector) RecordGraphAdmissionUnmappedSource(rawSource string, batchCount int64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.graphAdmissionUnmappedSource[rawSource] += batchCount
+}
+
+// RecordGraphExtractorDroppedUnknown records dropped-unknown baseline counts.
+func (c *MetricsCollector) RecordGraphExtractorDroppedUnknown(source string, droppedCount int64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.graphExtractorDroppedUnknown[source] += droppedCount
+}
+
+// RecordGraphWriteFailure records aggregate graph write-failure baseline counts.
+func (c *MetricsCollector) RecordGraphWriteFailure(batchCount int64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.graphWriteFailureBatches += batchCount
+}
+
 // evictOldestSession removes the least-recently-updated session when
 // the session map reaches MaxSessions capacity. Must be called with mu held.
 func (c *MetricsCollector) evictOldestSession() {
@@ -156,14 +211,41 @@ func (c *MetricsCollector) Snapshot() SystemSnapshot {
 		byReason[k] = v
 	}
 
+	graphAdmission := make(map[string]GraphAdmissionBatchMetric, len(c.graphAdmission))
+	for k, v := range c.graphAdmission {
+		graphAdmission[k] = GraphAdmissionBatchMetric{
+			Source:           v.Source,
+			ProducerGroup:    cloneStringPointer(v.ProducerGroup),
+			ValidatorSource:  v.ValidatorSource,
+			BatchCount:       v.BatchCount,
+			KnownCount:       v.KnownCount,
+			UnknownCount:     v.UnknownCount,
+			UnvalidatedCount: v.UnvalidatedCount,
+		}
+	}
+
+	graphAdmissionUnmappedSource := make(map[string]int64, len(c.graphAdmissionUnmappedSource))
+	for k, v := range c.graphAdmissionUnmappedSource {
+		graphAdmissionUnmappedSource[k] = v
+	}
+
+	graphExtractorDroppedUnknown := make(map[string]int64, len(c.graphExtractorDroppedUnknown))
+	for k, v := range c.graphExtractorDroppedUnknown {
+		graphExtractorDroppedUnknown[k] = v
+	}
+
 	snap := SystemSnapshot{
-		StartedAt:        c.startedAt,
-		Uptime:           time.Since(c.startedAt),
-		TokenUsageTotal:  c.totalTokens,
-		ToolExecutions:   c.toolExecs,
-		ToolBreakdown:    make(map[string]ToolMetric, len(c.tools)),
-		AgentBreakdown:   make(map[string]AgentMetric, len(c.agents)),
-		SessionBreakdown: make(map[string]SessionMetric, len(c.sessions)),
+		StartedAt:                     c.startedAt,
+		Uptime:                        time.Since(c.startedAt),
+		TokenUsageTotal:               c.totalTokens,
+		ToolExecutions:                c.toolExecs,
+		ToolBreakdown:                 make(map[string]ToolMetric, len(c.tools)),
+		AgentBreakdown:                make(map[string]AgentMetric, len(c.agents)),
+		SessionBreakdown:              make(map[string]SessionMetric, len(c.sessions)),
+		GraphAdmission:                graphAdmission,
+		GraphAdmissionUnmappedSources: graphAdmissionUnmappedSource,
+		GraphExtractorDroppedUnknown:  graphExtractorDroppedUnknown,
+		GraphWriteFailureBatches:      c.graphWriteFailureBatches,
 		Policy: PolicyMetrics{
 			Blocks:   c.policyBlocks,
 			Observes: c.policyObserves,
@@ -229,4 +311,24 @@ func (c *MetricsCollector) Reset() {
 	c.policyBlocks = 0
 	c.policyObserves = 0
 	c.policyByReason = make(map[string]int64)
+	c.graphAdmission = make(map[string]*GraphAdmissionBatchMetric)
+	c.graphAdmissionUnmappedSource = make(map[string]int64)
+	c.graphExtractorDroppedUnknown = make(map[string]int64)
+	c.graphWriteFailureBatches = 0
+}
+
+func graphAdmissionMetricKey(source string, producerGroup *string, validatorSource string) string {
+	group := ""
+	if producerGroup != nil {
+		group = *producerGroup
+	}
+	return source + "|" + group + "|" + validatorSource
+}
+
+func cloneStringPointer(value *string) *string {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
 }

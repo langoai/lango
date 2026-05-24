@@ -75,7 +75,7 @@ The `Activator` SHALL match edited file paths against skill `Paths` globs using 
 - **THEN** the skill SHALL be returned by `CheckPaths`
 
 #### Scenario: Directory glob match
-- **WHEN** a skill has `Paths: ["cmd/*.go"]` and the edited path is `cmd/main.go`
+- **WHEN** a skill has `Paths: ["cmd/*.go"]` and the edited path is `cmd/lango/main.go`
 - **THEN** the skill SHALL be returned by `CheckPaths`
 
 #### Scenario: No match

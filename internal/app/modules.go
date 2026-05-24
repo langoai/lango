@@ -4,8 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -21,26 +19,32 @@ import (
 	cronpkg "github.com/langoai/lango/internal/cron"
 	"github.com/langoai/lango/internal/economy"
 	"github.com/langoai/lango/internal/economy/escrow/sentinel"
-	"github.com/langoai/lango/internal/embedding"
 	"github.com/langoai/lango/internal/eventbus"
+	"github.com/langoai/lango/internal/extension"
 	"github.com/langoai/lango/internal/gatekeeper"
 	"github.com/langoai/lango/internal/graph"
 	"github.com/langoai/lango/internal/librarian"
 	"github.com/langoai/lango/internal/lifecycle"
 	"github.com/langoai/lango/internal/memory"
+	"github.com/langoai/lango/internal/observability/token"
 	"github.com/langoai/lango/internal/ontology"
 	"github.com/langoai/lango/internal/p2p/gitbundle"
 	"github.com/langoai/lango/internal/p2p/ontologybridge"
+	"github.com/langoai/lango/internal/p2p/reputation"
 	"github.com/langoai/lango/internal/p2p/team"
-	toolcrypto "github.com/langoai/lango/internal/tools/crypto"
-	toolpayment "github.com/langoai/lango/internal/tools/payment"
-	toolsecrets "github.com/langoai/lango/internal/tools/secrets"
+	"github.com/langoai/lango/internal/receipts"
+	"github.com/langoai/lango/internal/runledger"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/session"
+	"github.com/langoai/lango/internal/storage"
+	"github.com/langoai/lango/internal/storagebroker"
 	"github.com/langoai/lango/internal/supervisor"
 	"github.com/langoai/lango/internal/tools/browser"
+	toolcrypto "github.com/langoai/lango/internal/tools/crypto"
 	execpkg "github.com/langoai/lango/internal/tools/exec"
 	"github.com/langoai/lango/internal/tools/filesystem"
+	toolpayment "github.com/langoai/lango/internal/tools/payment"
+	toolsecrets "github.com/langoai/lango/internal/tools/secrets"
 	"github.com/langoai/lango/internal/workflow"
 	x402pkg "github.com/langoai/lango/internal/x402"
 )
@@ -49,25 +53,25 @@ import (
 
 // foundationValues holds the outputs of the foundation module.
 type foundationValues struct {
-	Supervisor *supervisor.Supervisor
-	Store      session.Store
-	Crypto     security.CryptoProvider
-	Keys       *security.KeyRegistry
-	Secrets    *security.SecretsStore
-	BrowserSM  *browser.SessionManager
-	Refs       *security.RefStore
-	Scanner    *agent.SecretScanner
-	Sanitizer  *gatekeeper.Sanitizer
-	CmdGuard   *execpkg.CommandGuard
-	FsConfig   filesystem.Config
-	AutoAvail  map[string]bool
+	Supervisor   *supervisor.Supervisor
+	Store        session.Store
+	ReceiptStore *receipts.Store
+	Crypto       security.CryptoProvider
+	Keys         *security.KeyRegistry
+	Secrets      *security.SecretsStore
+	BrowserSM    *browser.SessionManager
+	Refs         *security.RefStore
+	Scanner      *agent.SecretScanner
+	Sanitizer    *gatekeeper.Sanitizer
+	CmdGuard     *execpkg.CommandGuard
+	FsConfig     filesystem.Config
+	AutoAvail    map[string]bool
 }
 
 // intelligenceValues holds the outputs of the intelligence module.
 type intelligenceValues struct {
 	KC               *knowledgeComponents
 	MC               *memoryComponents
-	EC               *embeddingComponents
 	GC               *graphComponents
 	LC               *librarianComponents
 	AB               interface{} // *learning.AnalysisBuffer
@@ -82,6 +86,7 @@ type intelligenceValues struct {
 type automationValues struct {
 	CronScheduler     interface{}
 	BackgroundManager interface{}
+	AgentRunStore     interface{}
 	WorkflowEngine    interface{}
 }
 
@@ -118,6 +123,7 @@ func (m *foundationModule) Init(ctx context.Context, r appinit.Resolver) (*appin
 	if err != nil {
 		return nil, fmt.Errorf("create session store: %w", err)
 	}
+	receiptStore := receipts.NewStore()
 
 	crypto, keys, secrets, err := initSecurity(cfg, store, m.boot)
 	if err != nil {
@@ -125,15 +131,11 @@ func (m *foundationModule) Init(ctx context.Context, r appinit.Resolver) (*appin
 	}
 
 	// Base tools: exec, filesystem, browser.
-	var blockedPaths []string
-	if home, err := os.UserHomeDir(); err == nil {
-		blockedPaths = append(blockedPaths,
-			filepath.Join(home, ".lango")+string(os.PathSeparator))
-	}
+	protectedPaths := resolvedProtectedPaths(cfg, m.boot)
 	fsConfig := filesystem.Config{
 		MaxReadSize:  cfg.Tools.Filesystem.MaxReadSize,
 		AllowedPaths: cfg.Tools.Filesystem.AllowedPaths,
-		BlockedPaths: blockedPaths,
+		BlockedPaths: protectedPaths,
 	}
 
 	var browserSM *browser.SessionManager
@@ -155,8 +157,6 @@ func (m *foundationModule) Init(ctx context.Context, r appinit.Resolver) (*appin
 		"background": cfg.Background.Enabled,
 		"workflow":   cfg.Workflow.Enabled,
 	}
-	protectedPaths := []string{cfg.DataRoot}
-	protectedPaths = append(protectedPaths, cfg.Tools.Exec.AdditionalProtectedPaths...)
 	cmdGuard := execpkg.NewCommandGuard(protectedPaths)
 
 	baseTools := buildTools(sv, fsConfig, browserSM, automationAvailable, cmdGuard)
@@ -188,18 +188,19 @@ func (m *foundationModule) Init(ctx context.Context, r appinit.Resolver) (*appin
 		CatalogEntries: entries,
 		Values: map[appinit.Provides]interface{}{
 			appinit.ProvidesSupervisor: &foundationValues{
-				Supervisor: sv,
-				Store:      store,
-				Crypto:     crypto,
-				Keys:       keys,
-				Secrets:    secrets,
-				BrowserSM:  browserSM,
-				Refs:       refs,
-				Scanner:    scanner,
-				Sanitizer:  san,
-				CmdGuard:   cmdGuard,
-				FsConfig:   fsConfig,
-				AutoAvail:  automationAvailable,
+				Supervisor:   sv,
+				Store:        store,
+				ReceiptStore: receiptStore,
+				Crypto:       crypto,
+				Keys:         keys,
+				Secrets:      secrets,
+				BrowserSM:    browserSM,
+				Refs:         refs,
+				Scanner:      scanner,
+				Sanitizer:    san,
+				CmdGuard:     cmdGuard,
+				FsConfig:     fsConfig,
+				AutoAvail:    automationAvailable,
 			},
 			appinit.ProvidesSessionStore: store,
 			appinit.ProvidesSecurity:     crypto,
@@ -257,20 +258,30 @@ func buildFoundationCatalogEntries(cfg *config.Config, base, crypto, secrets []*
 // ─── Intelligence Module ───
 
 type intelligenceModule struct {
-	cfg   *config.Config
-	boot  *bootstrap.Result
-	rawDB *sql.DB
-	bus   *eventbus.Bus
+	cfg          *config.Config
+	boot         *bootstrap.Result
+	bus          *eventbus.Bus
+	extReg       *extension.Registry
+	receiptStore *receipts.Store
 }
 
 func (m *intelligenceModule) Name() string { return "intelligence" }
 func (m *intelligenceModule) Provides() []appinit.Provides {
-	return []appinit.Provides{appinit.ProvidesKnowledge, appinit.ProvidesMemory, appinit.ProvidesEmbedding, appinit.ProvidesGraph, appinit.ProvidesLibrarian, appinit.ProvidesSkills}
+	return []appinit.Provides{appinit.ProvidesKnowledge, appinit.ProvidesMemory, appinit.ProvidesGraph, appinit.ProvidesLibrarian, appinit.ProvidesSkills}
 }
 func (m *intelligenceModule) DependsOn() []appinit.Provides {
-	return []appinit.Provides{appinit.ProvidesSessionStore, appinit.ProvidesSupervisor}
+	return []appinit.Provides{appinit.ProvidesSessionStore, appinit.ProvidesSupervisor, appinit.ProvidesEconomy, appinit.ProvidesAutomation}
 }
 func (m *intelligenceModule) Enabled() bool { return true } // always enabled — subsystems check their own config
+
+func newGraphAdmissionPolicy(cfg *config.Config, ontologyValidator graph.PredicateValidatorFunc) *graph.AdmissionPolicy {
+	if cfg == nil || cfg.Ontology.Governance.AdmissionMode != config.OntologyAdmissionModeObserve {
+		return nil
+	}
+	return graph.NewAdmissionPolicy(graph.AdmissionPolicyConfig{
+		Validator: ontologyValidator,
+	}, logger())
+}
 
 func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*appinit.ModuleResult, error) {
 	cfg := m.cfg
@@ -284,13 +295,24 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 
 	// Graph Store (before knowledge).
 	gc, gcStatus := initGraphStore(cfg)
+	if gc != nil && gc.buffer != nil {
+		gc.buffer.SetEventBus(m.bus)
+	}
 
 	// Ontology Registry (after graph store).
 	var graphStoreForOntology graph.Store
+	var ontologyDeps *storage.OntologyDeps
+	var rawDB *sql.DB
 	if gc != nil {
 		graphStoreForOntology = gc.store
 	}
-	ontologyResult, err := initOntology(ctx, m.boot.DBClient, cfg, graphStoreForOntology)
+	if m.boot != nil && m.boot.Storage != nil {
+		ontologyDeps = m.boot.Storage.OntologyDeps()
+	}
+	if entStore, ok := store.(*session.EntStore); ok {
+		rawDB = entStore.DB()
+	}
+	ontologyResult, err := initOntology(ctx, ontologyDeps, cfg, graphStoreForOntology)
 	if err != nil {
 		logger().Warnw("ontology init failed, continuing without ontology", "error", err)
 	}
@@ -303,25 +325,68 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 			ConfigKey: "ontology.enabled", Enabled: true, Tools: ontologyTools,
 		})
 	}
+	if gc != nil {
+		var admissionValidator graph.PredicateValidatorFunc
+		if ontologyResult != nil && ontologyResult.Service != nil && cfg.Ontology.Enabled {
+			admissionValidator = ontologyResult.Service.PredicateValidator()
+		}
+		gc.admissionPolicy = newGraphAdmissionPolicy(cfg, admissionValidator)
+	}
 
 	// Skills — resolve base tools from foundation for skill init.
 	var baseToolSlice []*agent.Tool
 	if bt := r.Resolve(appinit.ProvidesBaseTools); bt != nil {
 		baseToolSlice, _ = bt.([]*agent.Tool)
 	}
-	skillReg := initSkills(cfg, baseToolSlice, m.bus)
+	skillReg, err := initSkills(cfg, baseToolSlice, m.bus, m.extReg)
+	if err != nil {
+		return nil, err
+	}
 	if skillReg != nil {
 		tools = append(tools, skillReg.LoadedSkills()...)
 	}
 
 	// Knowledge.
-	kc, kcStatus := initKnowledge(cfg, store, gc, m.bus)
+	var brokerAPI storagebroker.API
+	if m.boot != nil {
+		brokerAPI = m.boot.Broker
+	}
+	kc, kcStatus := initKnowledge(cfg, store, gc, m.bus, brokerAPI)
 	fts5Available := false
 	if kc != nil {
 		// FTS5 search index.
-		fts5Available = initFTS5(ctx, m.rawDB, kc.store)
+		fts5Available = initFTS5(ctx, rawDB, kc.store)
 
-		metaTools := buildMetaTools(kc.store, kc.engine, skillReg, cfg.Skill)
+		receiptStore := fv.ReceiptStore
+		if receiptStore == nil {
+			receiptStore = receipts.NewStore()
+		}
+		m.receiptStore = receiptStore
+		var escrowRuntime escrowExecutionRuntime
+		if econc, ok := r.Resolve(appinit.ProvidesEconomy).(*economyComponents); ok && econc != nil {
+			escrowRuntime = econc.escrowEngine
+		}
+		var settlementRuntime settlementExecutionRuntime
+		var partialSettlementRuntime partialSettlementExecutionRuntime
+		var escrowDisputeHoldRuntime escrowDisputeHoldExecutionRuntime
+		var escrowReleaseRuntime escrowReleaseExecutionRuntime
+		var escrowRefundRuntime escrowRefundExecutionRuntime
+		if pcv, ok := r.Resolve(appinit.ProvidesPayment).(*paymentComponents); ok && pcv != nil && pcv.service != nil {
+			settlementRuntime = paymentSettlementRuntime{service: pcv.service}
+			partialSettlementRuntime = paymentPartialSettlementRuntime{service: pcv.service}
+		}
+		var adjudicationBackgroundDispatcher adjudicateEscrowDisputeBackgroundDispatcher
+		if av, ok := r.Resolve(appinit.ProvidesAutomation).(*automationValues); ok && av != nil {
+			if bg, ok := av.BackgroundManager.(*background.Manager); ok && bg != nil {
+				adjudicationBackgroundDispatcher = bg
+			}
+		}
+		if econc, ok := r.Resolve(appinit.ProvidesEconomy).(*economyComponents); ok && econc != nil && econc.escrowEngine != nil {
+			escrowDisputeHoldRuntime = engineEscrowDisputeHoldRuntime{engine: econc.escrowEngine}
+			escrowReleaseRuntime = engineEscrowReleaseRuntime{engine: econc.escrowEngine}
+			escrowRefundRuntime = engineEscrowRefundRuntime{engine: econc.escrowEngine}
+		}
+		metaTools := buildMetaToolsWithRuntimes(kc.store, kc.engine, skillReg, cfg.Skill, cfg, receiptStore, escrowRuntime, settlementRuntime, partialSettlementRuntime, escrowDisputeHoldRuntime, escrowReleaseRuntime, escrowRefundRuntime, adjudicationBackgroundDispatcher)
 		tools = append(tools, metaTools...)
 		entries = append(entries, appinit.CatalogEntry{Category: "meta", Description: "Knowledge, learning, and skill management", ConfigKey: "knowledge.enabled", Enabled: true, Tools: metaTools})
 	} else {
@@ -331,9 +396,6 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 	// Observational Memory.
 	mc, mcStatus := initMemory(cfg, store, sv, m.bus)
 
-	// Embedding / RAG.
-	ec, ecStatus := initEmbedding(cfg, m.rawDB, kc, mc, m.bus)
-
 	// Graph callbacks.
 	if gc != nil {
 		var ontologyValidator graph.PredicateValidatorFunc
@@ -341,14 +403,14 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 			ontologyValidator = ontologyResult.Service.PredicateValidator()
 		}
 		wireGraphCallbacks(gc, kc, mc, sv, cfg, m.bus, ontologyValidator)
-		initGraphRAG(cfg, gc, ec)
+		initGraphRAG(cfg, gc, kc)
 	}
 
 	// Conversation Analysis.
 	ab := initConversationAnalysis(cfg, sv, store, kc, gc, m.bus)
 
 	// Librarian.
-	lc, lcStatus := initLibrarian(cfg, sv, store, kc, mc, gc, m.bus)
+	lc, lcStatus := initLibrarian(cfg, sv, store, kc, mc, gc, m.bus, brokerAPI)
 
 	// Enrich knowledge status with FTS5 and budget info.
 	if kcStatus != nil && kcStatus.Enabled && kcStatus.Healthy {
@@ -372,7 +434,6 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 	sc.Add(gcStatus)
 	sc.Add(kcStatus)
 	sc.Add(mcStatus)
-	sc.Add(ecStatus)
 	sc.Add(lcStatus)
 	if n := sc.SilentDisabledCount(); n > 0 {
 		logger().Infow("some features disabled due to missing dependencies", "count", n)
@@ -387,15 +448,6 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 		entries = append(entries, appinit.CatalogEntry{Category: "graph", Description: "Knowledge graph (disabled)", ConfigKey: "graph.enabled", Enabled: false})
 	}
 
-	// RAG tools.
-	if ec != nil && ec.ragService != nil {
-		rt := embedding.BuildRAGTools(ec.ragService)
-		tools = append(tools, rt...)
-		entries = append(entries, appinit.CatalogEntry{Category: "rag", Description: "Retrieval-augmented generation", ConfigKey: "embedding.rag.enabled", Enabled: true, Tools: rt})
-	} else {
-		entries = append(entries, appinit.CatalogEntry{Category: "rag", Description: "RAG retrieval (disabled)", ConfigKey: "embedding.provider", Enabled: false})
-	}
-
 	// Memory tools.
 	if mc != nil {
 		mt := memory.BuildObservationTools(mc.store)
@@ -408,7 +460,14 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 	// Agent Memory.
 	var amStore agentmemory.Store
 	if cfg.AgentMemory.Enabled {
-		amStore = agentmemory.NewEntStore(m.boot.DBClient)
+		if m.boot != nil && m.boot.Storage != nil {
+			amStore = m.boot.Storage.AgentMemory()
+		}
+		if brokerAPI != nil {
+			if entStore, ok := amStore.(*agentmemory.EntStore); ok {
+				entStore.SetPayloadProtector(storagebroker.NewPayloadProtector(brokerAPI))
+			}
+		}
 		amTools := agentmemory.BuildTools(amStore)
 		tools = append(tools, amTools...)
 		entries = append(entries, appinit.CatalogEntry{Category: "agent_memory", Description: "Per-agent persistent memory", ConfigKey: "agentMemory.enabled", Enabled: true, Tools: amTools})
@@ -430,12 +489,6 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 	if mc != nil && mc.buffer != nil {
 		components = append(components, lifecycle.ComponentEntry{
 			Component: lifecycle.NewSimpleComponent("memory-buffer", mc.buffer),
-			Priority:  lifecycle.PriorityBuffer,
-		})
-	}
-	if ec != nil && ec.buffer != nil {
-		components = append(components, lifecycle.ComponentEntry{
-			Component: lifecycle.NewSimpleComponent("embedding-buffer", ec.buffer),
 			Priority:  lifecycle.PriorityBuffer,
 		})
 	}
@@ -476,7 +529,7 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 		CatalogEntries: entries,
 		Values: map[appinit.Provides]interface{}{
 			appinit.ProvidesKnowledge: &intelligenceValues{
-				KC: kc, MC: mc, EC: ec, GC: gc, LC: lc, AB: ab,
+				KC: kc, MC: mc, GC: gc, LC: lc, AB: ab,
 				Observer:         observer,
 				SkillRegistry:    skillReg,
 				AgentMemoryStore: amStore,
@@ -485,7 +538,6 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 			},
 			appinit.ProvidesGraph:     gc,
 			appinit.ProvidesMemory:    mc,
-			appinit.ProvidesEmbedding: ec,
 			appinit.ProvidesLibrarian: lc,
 			appinit.ProvidesSkills:    skillReg,
 		},
@@ -497,6 +549,39 @@ func (m *intelligenceModule) Init(ctx context.Context, r appinit.Resolver) (*app
 type automationModule struct {
 	cfg *config.Config
 	app *App // needed for AgentRunner interface at runtime
+	bus *eventbus.Bus
+}
+
+type missionAwareSubmitter struct {
+	base   agentrt.AgentRunSubmitter
+	linker background.MissionExecutionLinker
+}
+
+type submitCanceler interface {
+	Cancel(string) error
+}
+
+func (s *missionAwareSubmitter) Submit(ctx context.Context, prompt string, origin background.Origin) (string, error) {
+	taskID, err := s.base.Submit(ctx, prompt, origin)
+	if err != nil {
+		return "", err
+	}
+	if s.linker != nil {
+		if linkErr := s.linker.LinkBackgroundTask(ctx, taskID, origin, prompt); linkErr != nil {
+			if canceler, ok := s.base.(submitCanceler); ok {
+				if cancelErr := canceler.Cancel(taskID); cancelErr != nil {
+					return "", fmt.Errorf(
+						"attach spawned child execution to mission: %w (cancel submitted task %q: %v)",
+						linkErr,
+						taskID,
+						cancelErr,
+					)
+				}
+			}
+			return "", fmt.Errorf("attach spawned child execution to mission: %w", linkErr)
+		}
+	}
+	return taskID, nil
 }
 
 func (m *automationModule) Name() string { return "automation" }
@@ -504,10 +589,22 @@ func (m *automationModule) Provides() []appinit.Provides {
 	return []appinit.Provides{appinit.ProvidesAutomation}
 }
 func (m *automationModule) DependsOn() []appinit.Provides {
-	return []appinit.Provides{appinit.ProvidesSessionStore, appinit.ProvidesRunLedger}
+	return []appinit.Provides{appinit.ProvidesSessionStore, appinit.ProvidesRunLedger, appinit.ProvidesMission}
 }
 func (m *automationModule) Enabled() bool {
 	return m.cfg.Cron.Enabled || m.cfg.Background.Enabled || m.cfg.Workflow.Enabled
+}
+
+func newAutomationAgentRunStore(
+	cfg *config.Config,
+	rlv *runLedgerValues,
+	bus *eventbus.Bus,
+) agentrt.AgentRunStore {
+	base := agentrt.NewInMemoryAgentRunStore()
+	if rlv != nil && rlv.store != nil && cfg.RunLedger.Enabled && cfg.RunLedger.WriteThrough {
+		return agentrt.NewRunLedgerMirrorStore(base, rlv.store, bus)
+	}
+	return base
 }
 
 func (m *automationModule) Init(ctx context.Context, r appinit.Resolver) (*appinit.ModuleResult, error) {
@@ -515,6 +612,12 @@ func (m *automationModule) Init(ctx context.Context, r appinit.Resolver) (*appin
 	fv := r.Resolve(appinit.ProvidesSupervisor).(*foundationValues)
 	store := fv.Store
 	rlv, _ := r.Resolve(appinit.ProvidesRunLedger).(*runLedgerValues)
+	mv, _ := r.Resolve(appinit.ProvidesMission).(*missionValues)
+
+	var missionLinker background.MissionExecutionLinker
+	if mv != nil {
+		missionLinker = mv.backgroundLinker
+	}
 
 	var tools []*agent.Tool
 	var entries []appinit.CatalogEntry
@@ -536,9 +639,9 @@ func (m *automationModule) Init(ctx context.Context, r appinit.Resolver) (*appin
 		logger().Info("cron tools registered")
 	}
 
-	bg := initBackground(cfg, m.app)
+	bg := initBackground(cfg, m.app, fv.ReceiptStore)
 	if bg != nil {
-		bgTools := background.BuildTools(bg, cfg.Background.DefaultDeliverTo)
+		bgTools := background.BuildTools(bg, cfg.Background.DefaultDeliverTo, missionLinker)
 		tools = append(tools, bgTools...)
 		entries = append(entries, appinit.CatalogEntry{Category: "background", Description: "Background task execution", ConfigKey: "background.enabled", Enabled: true, Tools: bgTools})
 		bm := bg // capture for closure
@@ -569,18 +672,50 @@ func (m *automationModule) Init(ctx context.Context, r appinit.Resolver) (*appin
 	}
 
 	// Agent lifecycle tools (always available when automation module is active).
-	agentRunStore := agentrt.NewInMemoryAgentRunStore()
+	agentRunStore := newAutomationAgentRunStore(cfg, rlv, m.bus)
 	agentRunProjection := agentrt.NewAgentRunProjection(agentRunStore)
+	capabilityRuntime := agentrt.NewCapabilityRuntime(
+		agentRunStore,
+		&agentrt.CapabilityPolicy{},
+		func(toolName string) agent.SafetyLevel {
+			if m.app != nil && m.app.ToolCatalog != nil {
+				if level, found := m.app.ToolCatalog.GetToolSafetyLevel(toolName); found {
+					return level
+				}
+			}
+			return agent.SafetyLevelDangerous
+		},
+	)
 	controlPlane := &agentrt.AgentControlPlane{
-		RunStore:   agentRunStore,
-		Projection: agentRunProjection,
+		RunStore:          agentRunStore,
+		Projection:        agentRunProjection,
+		Submitter:         bg,
+		CapabilityRuntime: capabilityRuntime,
 	}
+	if bg != nil && missionLinker != nil {
+		controlPlane.Submitter = &missionAwareSubmitter{
+			base:   bg,
+			linker: missionLinker,
+		}
+	}
+	if bg != nil {
+		var projection = agentrt.NewBackgroundProjection(agentRunProjection, nil)
+		if rlv != nil && rlv.store != nil && cfg.RunLedger.Enabled && cfg.RunLedger.WriteThrough {
+			runLedgerProjection := runledger.NewBackgroundWriteThrough(
+				rlv.store,
+				runledger.RolloutConfig{Stage: runledger.StageWriteThrough},
+			).WithMaxHistory(cfg.RunLedger.MaxRunHistory)
+			projection = agentrt.NewBackgroundProjection(agentRunProjection, runLedgerProjection)
+		}
+		bg.WithProjection(projection)
+	}
+	automationCategoryConfigKey := "cron.enabled|background.enabled|workflow.enabled"
 	controlTools := agentrt.BuildControlTools(controlPlane)
 	tools = append(tools, controlTools...)
 	entries = append(entries, appinit.CatalogEntry{
 		Category:    "agent_control",
 		Description: "Agent lifecycle management (spawn, wait, stop)",
-		ConfigKey:   "agent.orchestration.mode",
+		ConfigKey:   automationCategoryConfigKey,
 		Enabled:     true,
 		Tools:       controlTools,
 	})
@@ -618,6 +753,7 @@ func (m *automationModule) Init(ctx context.Context, r appinit.Resolver) (*appin
 			appinit.ProvidesAutomation: &automationValues{
 				CronScheduler:     cron,
 				BackgroundManager: bg,
+				AgentRunStore:     agentRunStore,
 				WorkflowEngine:    wf,
 			},
 		},
@@ -652,13 +788,25 @@ func (m *networkModule) Init(ctx context.Context, r appinit.Resolver) (*appinit.
 	var entries []appinit.CatalogEntry
 	var components []lifecycle.ComponentEntry
 
-	pc := initPayment(cfg, fv.Store, fv.Secrets)
+	var storageFacade *storage.Facade
+	if m.boot != nil {
+		storageFacade = m.boot.Storage
+	}
+	pc := initPaymentWithStorage(cfg, fv.Secrets, storageFacade)
 	var p2pc *p2pComponents
 	var econc *economyComponents
 	var cc *contractComponents
 	var sacc *smartAccountComponents
 	var wsc *wsComponents
 	var x402Interceptor *x402pkg.Interceptor
+	var repStore *reputation.Store
+	if m.boot != nil && m.boot.Storage != nil {
+		repStore = m.boot.Storage.ReputationStore(logger())
+	}
+	var auditRecorder toolpayment.PaymentExecutionAuditor
+	if m.boot != nil && m.boot.Storage != nil {
+		auditRecorder = m.boot.Storage.AuditRecorder()
+	}
 
 	if pc != nil {
 		xc := initX402(cfg, fv.Secrets, pc.limiter)
@@ -666,19 +814,19 @@ func (m *networkModule) Init(ctx context.Context, r appinit.Resolver) (*appinit.
 			x402Interceptor = xc.interceptor
 		}
 
-		pt := toolpayment.BuildTools(pc.service, pc.limiter, pc.secrets, pc.chainID, x402Interceptor)
+		pt := toolpayment.BuildTools(pc.service, pc.limiter, pc.secrets, pc.chainID, x402Interceptor, fv.ReceiptStore, auditRecorder)
 		tools = append(tools, pt...)
 		entries = append(entries, appinit.CatalogEntry{Category: "payment", Description: "Blockchain payments (USDC on Base)", ConfigKey: "payment.enabled", Enabled: true, Tools: pt})
 
 		// P2P.
-		p2pc = initP2P(cfg, pc.wallet, pc, m.boot.DBClient, fv.Secrets, m.bus, m.boot.IdentityKey, m.boot.PQSigningKeySeed, m.boot.LangoDir)
+		p2pc = initP2P(cfg, pc.wallet, pc, repStore, fv.Secrets, m.bus, m.boot.IdentityKey, m.boot.PQSigningKeySeed, m.boot.LangoDir)
 		if p2pc != nil {
 			// P2P Node lifecycle.
 			if p2pc.node != nil {
 				node := p2pc.node
 				components = append(components, lifecycle.ComponentEntry{
 					Component: lifecycle.NewFuncComponent("p2p-node",
-						func(_ context.Context, wg *sync.WaitGroup) error { return node.Start(wg) },
+						func(ctx context.Context, wg *sync.WaitGroup) error { return node.Start(ctx, wg) },
 						func(_ context.Context) error { return node.Stop() },
 					),
 					Priority: lifecycle.PriorityNetwork,
@@ -698,7 +846,7 @@ func (m *networkModule) Init(ctx context.Context, r appinit.Resolver) (*appinit.
 			}
 
 			p2pTools := buildP2PTools(p2pc)
-			p2pTools = append(p2pTools, buildP2PPaymentTool(p2pc, pc)...)
+			p2pTools = append(p2pTools, buildP2PPaymentTool(p2pc, pc, fv.ReceiptStore, auditRecorder)...)
 			p2pTools = append(p2pTools, buildP2PPaidInvokeTool(p2pc, pc)...)
 			tools = append(tools, p2pTools...)
 			entries = append(entries, appinit.CatalogEntry{Category: "p2p", Description: "Peer-to-peer networking", ConfigKey: "p2p.enabled", Enabled: true, Tools: p2pTools})
@@ -831,6 +979,7 @@ func (m *networkModule) Init(ctx context.Context, r appinit.Resolver) (*appinit.
 			if econc != nil && econc.budgetEngine != nil {
 				wireTeamBudgetBridge(m.app.ctx, m.bus, econc.budgetEngine, p2pc.coordinator, logger())
 			}
+			wireTeamMetricsBridge(m.bus, &TeamMetrics{}, logger())
 			if p2pc.reputation != nil {
 				minRepScore := cfg.P2P.Team.MinReputationScore
 				if minRepScore <= 0 {
@@ -862,7 +1011,7 @@ func (m *networkModule) Init(ctx context.Context, r appinit.Resolver) (*appinit.
 		}
 
 		// Smart Account.
-		saResult := initSmartAccount(cfg, pc, econc, m.bus)
+		saResult := initSmartAccount(cfg, pc, econc, m.bus, fv.Crypto)
 		if saResult != nil {
 			sacc = saResult.components
 			components = append(components, saResult.lifecycle...)
@@ -882,6 +1031,31 @@ func (m *networkModule) Init(ctx context.Context, r appinit.Resolver) (*appinit.
 		}
 		if cfg.P2P.Workspace.Enabled {
 			entries = append(entries, appinit.CatalogEntry{Category: "workspace", Description: "P2P workspaces (disabled)", ConfigKey: "p2p.workspace.enabled", Enabled: false})
+		}
+		econc = initEconomy(cfg, nil, nil, m.bus)
+		if econc != nil {
+			econTools := economy.BuildTools(
+				econc.budgetEngine,
+				econc.riskEngine,
+				econc.negotiationEngine,
+				econc.escrowEngine,
+				econc.pricingEngine,
+			)
+			tools = append(tools, econTools...)
+			entries = append(entries, appinit.CatalogEntry{Category: "economy", Description: "P2P economy (budget, risk, pricing, negotiation, escrow)", ConfigKey: "economy.enabled", Enabled: true, Tools: econTools})
+
+			if econc.escrowEngine != nil && econc.escrowSettler != nil {
+				escrowTools := buildOnChainEscrowTools(econc.escrowEngine, econc.escrowSettler)
+				tools = append(tools, escrowTools...)
+				entries = append(entries, appinit.CatalogEntry{Category: "escrow", Description: "On-chain escrow management", ConfigKey: "economy.escrow.enabled", Enabled: true, Tools: escrowTools})
+			}
+			if econc.sentinelEngine != nil {
+				sentTools := sentinel.BuildTools(econc.sentinelEngine)
+				tools = append(tools, sentTools...)
+				entries = append(entries, appinit.CatalogEntry{Category: "sentinel", Description: "Security Sentinel anomaly detection", ConfigKey: "economy.escrow.enabled", Enabled: true, Tools: sentTools})
+			}
+		} else {
+			entries = append(entries, appinit.CatalogEntry{Category: "economy", Description: "P2P economy (disabled)", ConfigKey: "economy.enabled", Enabled: false})
 		}
 		entries = append(entries, appinit.CatalogEntry{Category: "smartaccount", Description: "ERC-7579 smart account management (disabled)", ConfigKey: "smartAccount.enabled", Enabled: false})
 	}
@@ -924,7 +1098,10 @@ func (m *extensionModule) Init(ctx context.Context, r appinit.Resolver) (*appini
 	var components []lifecycle.ComponentEntry
 
 	// MCP.
-	mcpc := initMCP(cfg, m.bus)
+	mcpc, err := initMCP(cfg, m.bus)
+	if err != nil {
+		return nil, err
+	}
 	if mcpc != nil {
 		tools = append(tools, mcpc.tools...)
 		entries = append(entries, appinit.CatalogEntry{Category: "mcp", Description: "MCP plugin tools (external servers)", ConfigKey: "mcp.enabled", Enabled: true, Tools: mcpc.tools})
@@ -945,7 +1122,11 @@ func (m *extensionModule) Init(ctx context.Context, r appinit.Resolver) (*appini
 	}
 
 	// Observability.
-	obsc := initObservability(cfg, m.boot.DBClient, m.bus)
+	var tokenStore *token.EntTokenStore
+	if m.boot != nil && m.boot.Storage != nil {
+		tokenStore = m.boot.Storage.TokenStore()
+	}
+	obsc := initObservability(cfg, tokenStore, m.bus)
 	if obsc == nil {
 		entries = append(entries, appinit.CatalogEntry{Category: "observability", Description: "Metrics & health (disabled)", ConfigKey: "observability.enabled", Enabled: false})
 	}

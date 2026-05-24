@@ -63,15 +63,15 @@ func TestRenderChannelBlock_EmptySender(t *testing.T) {
 }
 
 func TestRenderChannelBlock_NarrowWidth(t *testing.T) {
-	// width=20 should not panic
 	out := renderChannelBlock("some text here", "slack", "user", 20)
 	assert.NotEmpty(t, out)
+	assert.LessOrEqual(t, lipgloss.Width(out), 20)
 }
 
 func TestRenderChannelBlock_ZeroWidth(t *testing.T) {
-	// width=0 should not panic
 	out := renderChannelBlock("some text here", "discord", "user", 0)
 	assert.NotEmpty(t, out)
+	assert.LessOrEqual(t, lipgloss.Width(out), 10)
 }
 
 func TestRenderChannelBlock_LongText(t *testing.T) {
@@ -83,4 +83,36 @@ func TestRenderChannelBlock_LongText(t *testing.T) {
 func TestRenderChannelBlock_SingleLine(t *testing.T) {
 	out := renderChannelBlock("short message", "slack", "bob", 120)
 	assert.Equal(t, 1, lipgloss.Height(out), "channel block should be a single line")
+}
+
+func TestRenderChannelBlock_MultilinePayloadCollapsesWhitespace(t *testing.T) {
+	out := renderChannelBlock("line one\nline two\t line three", "telegram", "alice\nops", 120)
+	assert.Equal(t, 1, lipgloss.Height(out), "channel block should stay single-line")
+	assert.Contains(t, out, "@alice ops")
+	assert.Contains(t, out, "line one line two line three")
+}
+
+func TestRenderChannelBlock_LongSenderStaysWidthSafe(t *testing.T) {
+	out := renderChannelBlock("hello", "discord", strings.Repeat("operator", 8), 24)
+	assert.LessOrEqual(t, lipgloss.Width(out), 24)
+	assert.Contains(t, out, "…")
+}
+
+func TestRenderChannelBlock_StripsSenderEscapeSequences(t *testing.T) {
+	out := renderChannelBlock("hello world", "telegram", "\x1b[31malice\x1b[0m", 80)
+	assert.Contains(t, out, "@alice")
+	assert.NotContains(t, out, "\x1b[31m")
+	assert.NotContains(t, out, "\x1b[0m")
+}
+
+func TestRenderChannelBlock_SanitizesChannelBadgeText(t *testing.T) {
+	out := renderChannelBlock("hello world", "\x1b[31mtele\ngram\x1b[0m", "alice", 120)
+	assert.Contains(t, out, "tele gram")
+	assert.NotContains(t, out, "\x1b[31m")
+	assert.NotContains(t, out, "\x1b[0m")
+}
+
+func TestChannelColor_UsesSanitizedKnownChannelName(t *testing.T) {
+	got := channelColor(sanitizeDisplayText("\x1b[31mtelegram\x1b[0m"))
+	assert.Equal(t, lipgloss.Color("#0088cc"), got)
 }

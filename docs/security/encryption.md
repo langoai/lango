@@ -137,9 +137,11 @@ go build -tags kms_aws ./cmd/lango
 go build -tags kms_all ./cmd/lango
 ```
 
-Without a build tag, the provider returns a stub error at runtime.
+Without a build tag, the provider returns a stub error at runtime. Even with the matching build tag, the runtime still depends on bootstrap-backed storage wiring so the key registry and secrets store can be initialized around the KMS-backed provider.
 
 The **CompositeCryptoProvider** wraps any KMS backend with automatic local fallback when `kms.fallbackToLocal` is enabled. KMS calls include exponential backoff retry logic for transient errors (throttling, network timeouts) and a health checker with a 30-second probe cache.
+
+During encrypted profile bootstrap, Lango must acquire credentials before it can load profile configuration. If KMS is selected through `LANGO_KMS_PROVIDER`, set `LANGO_KMS_FALLBACK_TO_LOCAL=false` to fail closed on KMS provider initialization or unwrap failures instead of falling back to the local passphrase prompt. Leaving the variable unset, setting it to `true`, or providing an invalid boolean value preserves the default fallback-enabled behavior.
 
 Configure Cloud KMS:
 
@@ -239,6 +241,8 @@ Lango can store the master passphrase using hardware-backed security, eliminatin
 3. **Interactive prompt** (terminal input)
 4. **Stdin** (piped input for CI/CD)
 
+If the piped stdin source reaches EOF without any passphrase bytes, Lango treats that as an empty passphrase input instead of surfacing a low-level read error.
+
 **Supported Hardware Backends:**
 
 | Platform | Backend | Security Level |
@@ -259,41 +263,36 @@ lango security keyring clear    # Remove stored passphrase
 
 ## Database Encryption
 
-Lango supports transparent database encryption using SQLCipher PRAGMA-based encryption. When enabled, the entire application database (`~/.lango/lango.db`) is encrypted at rest.
+The current runtime no longer supports SQLCipher page-level database encryption. Instead, Lango uses **broker-managed payload protection**: sensitive content is encrypted with AES-256-GCM at the application layer while redacted plaintext projections remain available for FTS5 search and recall.
 
-**How it works:**
+**Current behavior:**
 
-1. After `sql.Open`, the bootstrap process issues `PRAGMA key` to unlock the database:
-    - **Envelope-based**: `PRAGMA key = "x'<HKDF(MK)>'"` (raw 256-bit key, no internal PBKDF2)
-    - **Legacy**: `PRAGMA key = '<passphrase>'` (passphrase mode)
-2. `PRAGMA cipher_page_size` is set according to configuration (default: 4096)
-3. All subsequent reads and writes are transparently encrypted/decrypted
+1. The SQLite database is opened with the default pure-Go runtime driver.
+2. Sensitive payloads are encrypted and decrypted through the storage broker using keys derived from the Master Key envelope.
+3. Searchable fields store **redacted projections**, not raw plaintext secrets.
+4. Session messages, learning payloads, inquiries, and agent memory use ciphertext for original values and keep only redacted projections in plaintext search columns.
+5. Projection length limits are applied without splitting UTF-8 characters, so multilingual content remains valid text after redaction and truncation.
+6. Production app and CLI paths consume these records through storage facade capabilities instead of generic raw Ent/SQL handles.
 
-Configure:
+Legacy compatibility:
+
+- `security.dbEncryption.*` is still parsed from older configs, but ignored by the runtime.
+- `lango security db-migrate` and `lango security db-decrypt` remain only as remediation signposts and return an unsupported message.
+- If the runtime sees a non-SQLite DB header, it treats it as a **legacy encrypted or unreadable DB** and fails fast with remediation guidance.
 
 ```json
 {
   "security": {
     "dbEncryption": {
-      "enabled": true,
+      "enabled": false,
       "cipherPageSize": 4096
     }
   }
 }
 ```
 
-**Migration commands:**
-
-```bash
-# Encrypt an existing plaintext database
-lango security db-migrate
-
-# Decrypt back to plaintext
-lango security db-decrypt
-```
-
-!!! note "Build Dependency"
-    Database encryption requires `libsqlcipher-dev` at build time. The `mattn/go-sqlite3` driver is retained for `sqlite-vec` compatibility, with PRAGMA-based encryption instead of a separate `go-sqlcipher` driver.
+!!! note "Legacy SQLCipher Databases"
+    If you still have an old SQLCipher-encrypted database, use an older build to export or decrypt it before upgrading. The current runtime does not attempt to unlock or migrate SQLCipher files in place.
 
 ## Key Registry
 
@@ -332,32 +331,17 @@ When blockchain payments are enabled, wallet private keys are managed through th
 }
 ```
 
-## Companion App Discovery
+## Companion Connectivity
 
 !!! warning "Experimental"
 
-    Companion app discovery is an experimental feature and may change in future releases.
+    Companion-backed RPC signing is still experimental and may change in future releases.
 
-Lango can auto-discover companion apps on the local network using mDNS:
+The current runtime does not ship automatic mDNS/Bonjour companion discovery.
+Instead, companion apps connect to the gateway's `/companion` WebSocket endpoint,
+and Lango routes approval or RPC crypto requests through currently connected companions.
 
-- **Service type:** `_lango-companion._tcp`
-- **Discovery:** Automatic on startup when RPC mode is configured
-- **Fallback:** Manual configuration via `security.signer.rpcUrl`
-
-If mDNS discovery fails, configure the companion URL explicitly:
-
-> **Settings:** `lango settings` → Security
-
-```json
-{
-  "security": {
-    "signer": {
-      "provider": "rpc",
-      "rpcUrl": "https://192.168.1.100:8443"
-    }
-  }
-}
-```
+If no companion is connected, companion-backed approval and RPC signing paths are unavailable until a companion connects to the gateway.
 
 ## CLI Commands
 

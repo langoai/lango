@@ -403,6 +403,8 @@ func (e *MasterKeyEnvelope) UnwrapFromKMS(
 	providerName string,
 	keyID string,
 ) ([]byte, string, error) {
+	var lastErr error
+
 	// Tier 1: exact match (provider + keyID).
 	for i := range e.Slots {
 		slot := &e.Slots[i]
@@ -414,10 +416,12 @@ func (e *MasterKeyEnvelope) UnwrapFromKMS(
 		}
 		mk, err := provider.Decrypt(ctx, slot.KMSKeyID, slot.WrappedMK)
 		if err != nil {
+			lastErr = err
 			continue
 		}
 		if len(mk) != KeySize {
 			ZeroBytes(mk)
+			lastErr = fmt.Errorf("decrypted master key has invalid length %d", len(mk))
 			continue
 		}
 		return mk, slot.ID, nil
@@ -434,14 +438,19 @@ func (e *MasterKeyEnvelope) UnwrapFromKMS(
 		}
 		mk, err := provider.Decrypt(ctx, slot.KMSKeyID, slot.WrappedMK)
 		if err != nil {
+			lastErr = err
 			continue
 		}
 		if len(mk) != KeySize {
 			ZeroBytes(mk)
+			lastErr = fmt.Errorf("decrypted master key has invalid length %d", len(mk))
 			continue
 		}
 		return mk, slot.ID, nil
 	}
 
+	if lastErr != nil {
+		return nil, "", fmt.Errorf("%w: %w", ErrKMSSlotUnavailable, lastErr)
+	}
 	return nil, "", ErrKMSSlotUnavailable
 }

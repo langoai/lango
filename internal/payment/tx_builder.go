@@ -47,6 +47,13 @@ func NewTxBuilder(client *ethclient.Client, chainID int64, usdcContract string) 
 // BuildTransferTx constructs an EIP-1559 ERC-20 transfer transaction.
 // Returns the sighash (transaction hash to sign) and the unsigned transaction.
 func (b *TxBuilder) BuildTransferTx(ctx context.Context, from common.Address, to common.Address, amount *big.Int) (*types.Transaction, error) {
+	if b == nil {
+		return nil, fmt.Errorf("transaction builder unavailable")
+	}
+	if b.client == nil {
+		return nil, fmt.Errorf("transaction RPC unavailable")
+	}
+
 	// Encode ERC-20 transfer(address,uint256) calldata
 	data := b.encodeTransferData(to, amount)
 

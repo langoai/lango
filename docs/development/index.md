@@ -47,8 +47,8 @@ Lango is organized into layered internal packages under `internal/`. Key modules
 
 ## Code Conventions
 
-- **Go version**: 1.25+ with CGO enabled (required for SQLCipher)
-- **Build tags**: `fts5,vec` for full-text search and vector embeddings
+- **Go version**: 1.25+; CGO is optional and only needed for legacy `vec` builds
+- **Build tags**: `vec` for legacy vector embeddings, `kms_*` for cloud/HSM providers
 - **ORM**: [Ent](https://entgo.io/) for database schema and queries
 - **CLI framework**: [Cobra](https://github.com/spf13/cobra) for command structure
 - **TUI framework**: [Bubble Tea](https://github.com/charmbracelet/bubbletea) for terminal UIs

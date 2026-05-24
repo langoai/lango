@@ -13,11 +13,11 @@ import (
 )
 
 const (
-	defaultTimeout    = 30 * time.Second
-	defaultMaxLength  = 5000
-	defaultMaxBody    = 5 * 1024 * 1024 // 5 MB max download
-	defaultUserAgent  = "Lango/1.0 (Web Fetch Tool)"
-	maxRedirects      = 5
+	defaultTimeout   = 30 * time.Second
+	defaultMaxLength = 5000
+	defaultMaxBody   = 5 * 1024 * 1024 // 5 MB max download
+	defaultUserAgent = "Lango/1.0 (Web Fetch Tool)"
+	maxRedirects     = 5
 
 	// ModeText extracts readable text from the HTML.
 	ModeText = "text"

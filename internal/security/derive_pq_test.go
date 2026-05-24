@@ -8,7 +8,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-
 func TestDerivePQSigningKeyDeterministic(t *testing.T) {
 	mk := make([]byte, 32)
 	for i := range mk {

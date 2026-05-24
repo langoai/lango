@@ -5,17 +5,27 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+
+	"github.com/langoai/lango/internal/cli/clihttp"
 )
 
-func newHistoryCmd() *cobra.Command {
+func newHistoryCmd(loadConfig configLoader) *cobra.Command {
 	var days int
 
 	cmd := &cobra.Command{
-		Use:   "history",
-		Short: "Historical token usage from database",
+		Use:           "history",
+		Short:         "Historical token usage from database",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			addr := getAddr(cmd)
-			format := getOutputFormat(cmd)
+			format, err := getOutputFormat(cmd)
+			if err != nil {
+				return err
+			}
+			addr, err := getAddr(cmd, loadConfig)
+			if err != nil {
+				return err
+			}
 
 			path := fmt.Sprintf("/metrics/history?days=%d", days)
 
@@ -35,24 +45,24 @@ func newHistoryCmd() *cobra.Command {
 					RecordCount  int   `json:"recordCount"`
 				} `json:"total"`
 			}
-			if err := fetchJSON(addr, path, &data); err != nil {
+			if err := clihttp.FetchJSON(addr, path, &data); err != nil {
 				return err
 			}
 
 			if format == "json" {
-				return printJSON(data)
+				return printJSON(cmd.OutOrStdout(), data)
 			}
 
-			fmt.Printf("Token usage history (last %d days)\n", days)
-			fmt.Printf("Records: %d | Total Input: %d | Total Output: %d\n\n",
+			fmt.Fprintf(cmd.OutOrStdout(), "Token usage history (last %d days)\n", days)
+			fmt.Fprintf(cmd.OutOrStdout(), "Records: %d | Total Input: %d | Total Output: %d\n\n",
 				data.Total.RecordCount, data.Total.InputTokens, data.Total.OutputTokens)
 
 			if len(data.Records) == 0 {
-				fmt.Println("No historical data available.")
+				fmt.Fprintln(cmd.OutOrStdout(), "No historical data available.")
 				return nil
 			}
 
-			w := newTabWriter()
+			w := newTabWriter(cmd.OutOrStdout())
 			fmt.Fprintln(w, "TIME\tPROVIDER\tMODEL\tINPUT\tOUTPUT")
 			for _, r := range data.Records {
 				fmt.Fprintf(w, "%s\t%s\t%s\t%d\t%d\n",

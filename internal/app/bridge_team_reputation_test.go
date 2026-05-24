@@ -186,7 +186,7 @@ func TestCoordinator_KickMember(t *testing.T) {
 	assert.Empty(t, teamIDs)
 }
 
-func TestTeamReputationBridge_WithRepStore_RecordTimeoutAndKick(t *testing.T) {
+func TestTeamReputationBridge_WithRepStore_RecordOperationalIncidentAndKickTemporarilyUnsafe(t *testing.T) {
 	t.Parallel()
 
 	client := testutil.TestEntClient(t)
@@ -209,10 +209,10 @@ func TestTeamReputationBridge_WithRepStore_RecordTimeoutAndKick(t *testing.T) {
 		leftEvents = append(leftEvents, ev)
 	})
 
-	// Use a high minScore so that a fresh peer (score 0.0) gets kicked.
 	initTeamReputationBridge(bus, coord, repStore, 0.5, testLog())
 
-	// Record a timeout — this will create the peer's reputation record with a low score.
+	// Record an unhealthy event. V2 semantics should treat this as a temporary
+	// operational safety signal rather than durable reputation damage.
 	bus.Publish(eventbus.TeamMemberUnhealthyEvent{
 		TeamID:      "t-rep-real",
 		MemberDID:   "did:worker1",
@@ -221,11 +221,16 @@ func TestTeamReputationBridge_WithRepStore_RecordTimeoutAndKick(t *testing.T) {
 
 	mu.Lock()
 	defer mu.Unlock()
-	// After RecordTimeout the score is 0 / (0 + 0 + 1.5 + 1) = 0.0, which is below 0.5.
-	require.Len(t, leftEvents, 1, "member should be kicked when score drops below threshold")
+	require.Len(t, leftEvents, 1, "member should be kicked when entry becomes temporarily unsafe")
 	assert.Equal(t, "t-rep-real", leftEvents[0].TeamID)
 	assert.Equal(t, "did:worker1", leftEvents[0].MemberDID)
-	assert.Contains(t, leftEvents[0].Reason, "reputation below threshold")
+	assert.Contains(t, leftEvents[0].Reason, "temporarily unsafe")
+
+	details, err := repStore.GetDetails(context.Background(), "did:worker1")
+	require.NoError(t, err)
+	require.NotNil(t, details)
+	assert.Equal(t, 0, details.DurableNegativeUnits)
+	assert.Equal(t, 1, details.TemporarySafetySignals)
 }
 
 func TestTeamReputationBridge_WithRepStore_RecordSuccess(t *testing.T) {

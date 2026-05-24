@@ -1,14 +1,45 @@
 package app
 
 import (
+	"context"
 	"path/filepath"
 	"testing"
 
+	"github.com/langoai/lango/internal/agent"
+	"github.com/langoai/lango/internal/agentrt"
+	"github.com/langoai/lango/internal/appinit"
+	"github.com/langoai/lango/internal/approval"
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/librarian"
+	"github.com/langoai/lango/internal/mission"
+	"github.com/langoai/lango/internal/proposal"
+	"github.com/langoai/lango/internal/receipts"
+	"github.com/langoai/lango/internal/runledger"
+	"github.com/langoai/lango/internal/storage"
+	"github.com/langoai/lango/internal/testutil"
+	"github.com/langoai/lango/internal/toolchain"
+	"github.com/langoai/lango/internal/turntrace"
+	"github.com/langoai/lango/internal/workflow"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+type staticResolver map[appinit.Provides]interface{}
+
+func (r staticResolver) Resolve(key appinit.Provides) interface{} {
+	return r[key]
+}
+
+type appTestApprovalProvider struct {
+	response approval.ApprovalResponse
+}
+
+func (p *appTestApprovalProvider) RequestApproval(_ context.Context, _ approval.ApprovalRequest) (approval.ApprovalResponse, error) {
+	return p.response, nil
+}
+
+func (p *appTestApprovalProvider) CanHandle(_ string) bool { return true }
 
 // testBoot creates a minimal bootstrap.Result for testing.
 func testBoot(t *testing.T, cfg *config.Config) *bootstrap.Result {
@@ -130,4 +161,276 @@ func TestNew_PhaseBRollback_AgentCreationFailure(t *testing.T) {
 
 	_, err := New(testBoot(t, cfg))
 	require.Error(t, err, "expected error when agent creation fails")
+}
+
+func TestPopulateAppFields_RunLedgerStoreStillAvailable(t *testing.T) {
+	t.Parallel()
+
+	app := &App{}
+	store := runledger.NewMemoryStore()
+
+	populateAppFields(app, staticResolver{
+		appinit.ProvidesRunLedger: &runLedgerValues{store: store},
+	})
+
+	assert.Same(t, store, app.RunLedgerStore)
+}
+
+func TestPopulateAppFields_AgentRunStoreFromAutomation(t *testing.T) {
+	t.Parallel()
+
+	app := &App{}
+	store := agentrt.NewInMemoryAgentRunStore()
+
+	populateAppFields(app, staticResolver{
+		appinit.ProvidesAutomation: &automationValues{AgentRunStore: store},
+	})
+
+	assert.Same(t, store, app.AgentRunStore)
+}
+
+func TestPopulateAppFields_AutomationAbsentLeavesAgentRunStoreNil(t *testing.T) {
+	t.Parallel()
+
+	app := &App{}
+
+	populateAppFields(app, staticResolver{})
+
+	assert.Nil(t, app.AgentRunStore)
+}
+
+func TestPopulateAppFields_MissionComponents(t *testing.T) {
+	t.Parallel()
+
+	client := testutil.TestEntClient(t)
+	store := mission.NewEntStore(client)
+	service := mission.NewService(store)
+	observer := &missionApprovalHooks{service: service}
+	bgLinker := &missionBackgroundLinkHooks{service: service}
+	runLinker := &missionRunLedgerLinkHooks{service: service}
+
+	app := &App{}
+	populateAppFields(app, staticResolver{
+		appinit.ProvidesMission: &missionValues{
+			store:            store,
+			service:          service,
+			approvalObserver: observer,
+			backgroundLinker: bgLinker,
+			runLedgerLinker:  runLinker,
+		},
+	})
+
+	assert.Same(t, store, app.MissionStore)
+	assert.Same(t, service, app.MissionService)
+	assert.Same(t, observer, app.missionApprovalObserver)
+	assert.Same(t, bgLinker, app.missionBackgroundLinker)
+	assert.Same(t, runLinker, app.missionRunLedgerLinker)
+}
+
+func TestPopulateAppFields_ProposalComponents(t *testing.T) {
+	t.Parallel()
+
+	registry := proposal.NewRegistry(nil)
+	preparer := proposal.NewDeterministicPreparer()
+	service := proposal.NewService(registry, preparer)
+
+	app := &App{}
+	populateAppFields(app, staticResolver{
+		appinit.ProvidesProposal: &proposalValues{
+			registry: registry,
+			preparer: preparer,
+			service:  service,
+		},
+	})
+
+	assert.Same(t, registry, app.ProposalRegistry)
+	assert.Same(t, preparer, app.ProposalPreparer)
+	assert.Same(t, service, app.ProposalService)
+	assert.Same(t, registry, app.LoopProposalReader)
+}
+
+func TestPopulateAppFields_LoopReadersFromMissionAndInquirySources(t *testing.T) {
+	t.Parallel()
+
+	client := testutil.TestEntClient(t)
+	missionStore := mission.NewEntStore(client)
+	proposalRegistry := proposal.NewRegistry(nil)
+
+	app := &App{}
+	populateAppFields(app, staticResolver{
+		appinit.ProvidesMission: &missionValues{
+			store:   missionStore,
+			service: mission.NewService(missionStore),
+		},
+		appinit.ProvidesProposal: &proposalValues{
+			registry: proposalRegistry,
+			preparer: proposal.NewDeterministicPreparer(),
+			service:  proposal.NewService(proposalRegistry, nil),
+		},
+		appinit.ProvidesKnowledge: &intelligenceValues{
+			LC: &librarianComponents{
+				inquiryStore: &librarian.InquiryStore{},
+			},
+		},
+	})
+
+	assert.Same(t, missionStore, app.LoopMissionReader)
+	assert.Same(t, proposalRegistry, app.LoopProposalReader)
+	assert.NotNil(t, app.LoopInquiryReader)
+}
+
+func TestWireLoopReaders_DeadLetterAndCronReadersWhenAvailable(t *testing.T) {
+	t.Parallel()
+
+	client := testutil.TestEntClient(t)
+	boot := &bootstrap.Result{
+		Storage: storage.NewFacade(nil, nil, storage.WithEntClient(client)),
+	}
+	app := &App{
+		ReceiptStore: receipts.NewStore(),
+	}
+
+	wireLoopReaders(app, boot)
+
+	require.NotNil(t, app.LoopDeadLetterReader)
+	require.NotNil(t, app.LoopCronReader)
+}
+
+func TestWireLoopReaders_UnsupportedSourcesRemainNil(t *testing.T) {
+	t.Parallel()
+
+	app := &App{}
+	wireLoopReaders(app, &bootstrap.Result{})
+
+	assert.Nil(t, app.LoopDeadLetterReader)
+	assert.Nil(t, app.LoopCronReader)
+}
+
+func TestPopulateAppFields_WorkflowDoesNotFabricateCronLoopReader(t *testing.T) {
+	t.Parallel()
+
+	app := &App{}
+	populateAppFields(app, staticResolver{
+		appinit.ProvidesAutomation: &automationValues{
+			WorkflowEngine: &workflow.Engine{},
+		},
+	})
+
+	assert.Nil(t, app.LoopCronReader)
+}
+
+func TestWireCollaborationReaders_PopulatesLocalReadersWhenAvailable(t *testing.T) {
+	t.Parallel()
+
+	client := testutil.TestEntClient(t)
+	app := &App{
+		MissionStore:               mission.NewEntStore(client),
+		AgentRunStore:              agentrt.NewInMemoryAgentRunStore(),
+		TurnTraceStore:             &turntrace.EntStore{},
+		CollaborationRuntimeReader: newCollaborationRuntimeBridge(nil),
+	}
+
+	wireCollaborationReaders(app)
+
+	require.NotNil(t, app.CollaborationMissionLinkReader)
+	require.NotNil(t, app.CollaborationAgentRunReader)
+	require.NotNil(t, app.CollaborationDelegationReader)
+	require.NotNil(t, app.CollaborationRuntimeReader)
+}
+
+func TestNew_CollaborationDoesNotImplyExternalTeamSurface(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Session.DatabasePath = filepath.Join(t.TempDir(), "test.db")
+	cfg.Agent.Provider = "google"
+	cfg.Providers = map[string]config.ProviderConfig{
+		"google": {
+			Type:   "gemini",
+			APIKey: "test-key",
+		},
+	}
+
+	client := testutil.TestEntClient(t)
+	boot := &bootstrap.Result{
+		Config:  cfg,
+		Storage: storage.NewFacade(nil, nil, storage.WithEntClient(client)),
+	}
+
+	app, err := New(boot)
+	require.NoError(t, err)
+	require.NotNil(t, app.CollaborationRuntimeReader)
+	assert.Nil(t, app.P2PTeamCoordinator)
+}
+
+func TestNew_MissionApprovalObserverWiredAtCompositionSite(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Session.DatabasePath = filepath.Join(t.TempDir(), "test.db")
+	cfg.Agent.Provider = "google"
+	cfg.Providers = map[string]config.ProviderConfig{
+		"google": {
+			Type:   "gemini",
+			APIKey: "test-key",
+		},
+	}
+	cfg.Security.Interceptor.ApprovalPolicy = config.ApprovalPolicyDangerous
+
+	client := testutil.TestEntClient(t)
+	boot := &bootstrap.Result{
+		Config:  cfg,
+		Storage: storage.NewFacade(nil, nil, storage.WithEntClient(client)),
+	}
+
+	app, err := New(boot)
+	require.NoError(t, err)
+	require.NotNil(t, app.MissionService)
+
+	obs, ok := app.missionApprovalObserver.(*missionApprovalHooks)
+	require.True(t, ok)
+	mw := toolchain.WithApproval(
+		cfg.Security.Interceptor,
+		&appTestApprovalProvider{response: approval.ApprovalResponse{Approved: true, Provider: "tui"}},
+		nil,
+		nil,
+		nil,
+		app.missionApprovalObserver,
+	)
+	tool := &agent.Tool{
+		Name:        "exec",
+		SafetyLevel: agent.SafetyLevelDangerous,
+		Handler: func(_ context.Context, _ map[string]interface{}) (interface{}, error) {
+			return "ok", nil
+		},
+	}
+	wrapped := toolchain.Chain(tool, mw)
+	_, err = wrapped.Handler(context.Background(), map[string]interface{}{"command": "pwd"})
+	require.NoError(t, err)
+	require.NotEmpty(t, obs.requests)
+	assert.Equal(t, "exec", obs.requests[len(obs.requests)-1])
+}
+
+func TestNew_ProposalServiceAvailableForLaterMutationUse(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Session.DatabasePath = filepath.Join(t.TempDir(), "test.db")
+	cfg.Agent.Provider = "google"
+	cfg.Providers = map[string]config.ProviderConfig{
+		"google": {
+			Type:   "gemini",
+			APIKey: "test-key",
+		},
+	}
+
+	client := testutil.TestEntClient(t)
+	boot := &bootstrap.Result{
+		Config:  cfg,
+		Storage: storage.NewFacade(nil, nil, storage.WithEntClient(client)),
+	}
+
+	app, err := New(boot)
+	require.NoError(t, err)
+	require.NotNil(t, app.ProposalRegistry)
+	require.NotNil(t, app.ProposalPreparer)
+	require.NotNil(t, app.ProposalService)
+	require.NotNil(t, app.LoopProposalReader)
+	require.NotNil(t, app.LoopMissionReader)
+	require.NotNil(t, app.LoopDeadLetterReader)
+	require.NotNil(t, app.LoopCronReader)
 }

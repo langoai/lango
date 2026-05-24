@@ -13,10 +13,10 @@ lango contract <subcommand>
 
 ## lango contract read
 
-Call a view/pure contract method (read-only, no gas required). Validates the ABI and method locally; live RPC queries require a running `lango serve` instance.
+Call a view/pure contract method (read-only, no gas required). Validates the ABI and method locally; live RPC queries require a running `lango serve` instance. The command writes the validation payload through the Cobra command output stream and the runtime note through the Cobra error stream so wrappers and test harnesses can capture them separately.
 
 ```
-lango contract read --address <addr> --abi <file> --method <name> [--args <csv>] [--chain-id <id>] [--output]
+lango contract read --address <addr> --abi <file> --method <name> [--args <csv>] [--chain-id <id>] [--output table|json]
 ```
 
 | Flag | Type | Default | Description |
@@ -26,7 +26,9 @@ lango contract read --address <addr> --abi <file> --method <name> [--args <csv>]
 | `--method` | string | *required* | Method name to call |
 | `--args` | string | `""` | Comma-separated method arguments |
 | `--chain-id` | int | from config | Chain ID override |
-| `--output` | bool | `false` | Output as JSON |
+| `--output` | string | `table` | Output format (`table` or `json`) |
+
+Unknown `--output` values fail fast with an actionable error before config loading or ABI parsing begins.
 
 **Example:**
 
@@ -50,10 +52,10 @@ Contract Read (validated)
 
 ## lango contract call
 
-Execute a state-changing transaction on a smart contract. Validates the ABI and method locally; live transactions require a running `lango serve` instance and wallet.
+Execute a state-changing transaction on a smart contract. Validates the ABI and method locally; live transactions require a running `lango serve` instance and wallet. The command writes the validation payload through the Cobra command output stream and the runtime note through the Cobra error stream so wrappers and test harnesses can capture them separately.
 
 ```
-lango contract call --address <addr> --abi <file> --method <name> [--args <csv>] [--value <eth>] [--chain-id <id>] [--output]
+lango contract call --address <addr> --abi <file> --method <name> [--args <csv>] [--value <eth>] [--chain-id <id>] [--output table|json]
 ```
 
 | Flag | Type | Default | Description |
@@ -64,7 +66,9 @@ lango contract call --address <addr> --abi <file> --method <name> [--args <csv>]
 | `--args` | string | `""` | Comma-separated method arguments |
 | `--value` | string | `""` | ETH value to send (e.g., `"0.01"`) |
 | `--chain-id` | int | from config | Chain ID override |
-| `--output` | bool | `false` | Output as JSON |
+| `--output` | string | `table` | Output format (`table` or `json`) |
+
+Unknown `--output` values fail fast with an actionable error before config loading or ABI parsing begins.
 
 **Example:**
 
@@ -91,10 +95,10 @@ Contract Call (validated)
 
 ## lango contract abi load
 
-Parse and validate a contract ABI from a local JSON file. Caches the parsed ABI for subsequent read/call commands.
+Parse and validate a contract ABI from a local JSON file. Caches the parsed ABI for subsequent read/call commands. The command writes text and JSON output through the Cobra command output stream so wrappers and test harnesses can capture it directly.
 
 ```
-lango contract abi load --address <addr> --file <path> [--chain-id <id>] [--output]
+lango contract abi load --address <addr> --file <path> [--chain-id <id>] [--output table|json]
 ```
 
 | Flag | Type | Default | Description |
@@ -102,7 +106,9 @@ lango contract abi load --address <addr> --file <path> [--chain-id <id>] [--outp
 | `--address` | string | *required* | Contract address (`0x...`) |
 | `--file` | string | *required* | Path to ABI JSON file |
 | `--chain-id` | int | from config | Chain ID override |
-| `--output` | bool | `false` | Output as JSON |
+| `--output` | string | `table` | Output format (`table` or `json`) |
+
+Unknown `--output` values fail fast with an actionable error before config loading or ABI parsing begins.
 
 **Example:**
 
@@ -119,7 +125,7 @@ ABI Loaded
 $ lango contract abi load \
     --address 0x036CbD53842c5426634e7929541eC2318f3dCF7e \
     --file ./erc20.json \
-    --output
+    --output json
 {
   "address": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
   "chainId": 84532,

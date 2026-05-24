@@ -18,6 +18,8 @@ import (
 	"github.com/langoai/lango/internal/approval"
 	"github.com/langoai/lango/internal/background"
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/eventbus"
+	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/turnrunner"
 )
 
@@ -26,11 +28,38 @@ type Deps struct {
 	TurnRunner        *turnrunner.Runner
 	Config            *config.Config
 	SessionKey        string
+	SessionStore      session.Store       // optional; used by /mode to persist the session's mode
+	EventBus          *eventbus.Bus       // optional; used by /mode to publish ModeChangedEvent
 	BackgroundManager *background.Manager // optional, nil when background tasks unavailable
+	RuntimeFeatures   RuntimeFeatures
+	SharedPending     PendingApprovalStore
+	OnUserSubmission  func(sessionKey, input string)
+	OnTurnSummary     func(sessionKey string, msg TurnTokenUsageMsg)
+}
+
+// RuntimeFeatures is a UI-facing snapshot of components that local chat may
+// initialize even when their lifecycle components are not started.
+type RuntimeFeatures struct {
+	MCPActive      bool
+	MCPServerCount int
+	MCPToolCount   int
+}
+
+// PendingApprovalStore abstracts shared pending approval ownership for cockpit
+// mode. Standalone chat leaves this nil and keeps local ownership.
+type PendingApprovalStore interface {
+	Latest() *ApprovalRequestMsg
+	HasPending() bool
+	Resolve(id string, resp approval.ApprovalResponse) bool
 }
 
 // cursorBlinkInterval is the period between cursor blink toggles.
 const cursorBlinkInterval = 400 * time.Millisecond
+
+const (
+	setupRequiredLabel    = "Setup Required"
+	setupRequiredGuidance = "Run lango onboard, lango settings, or lango doctor to finish setup."
+)
 
 // ChatParts holds the discrete rendered sections of the chat view.
 type ChatParts struct {
@@ -45,9 +74,11 @@ type ChatParts struct {
 
 // ChatModel is the root bubbletea model for the interactive TUI chat.
 type ChatModel struct {
-	turnRunner *turnrunner.Runner
-	cfg        *config.Config
-	sessionKey string
+	turnRunner   *turnrunner.Runner
+	cfg          *config.Config
+	sessionKey   string
+	sessionStore session.Store // optional; enables /mode to persist session mode
+	eventBus     *eventbus.Bus // optional; enables /mode to publish ModeChangedEvent
 
 	input    inputModel
 	chatView chatViewModel
@@ -64,32 +95,218 @@ type ChatModel struct {
 
 	program *tea.Program
 
-	bgManager *background.Manager
-	taskStrip taskStripModel
-	pending   pendingIndicator
+	bgManager       *background.Manager
+	runtimeFeatures RuntimeFeatures
+	taskStrip       taskStripModel
+	pending         pendingIndicator
 
 	lastCtrlC time.Time
 
+	pendingRedirectInput string // queued input to submit after cancelled turn completes
+
+	// Session cumulative usage (for /cost slash command).
+	sessionInputTokens  int64
+	sessionOutputTokens int64
+	sessionCostUSD      float64
+
+	// Per-turn token accumulation (plain chat path — mirrors cockpit's RuntimeTracker).
+	turnActive       bool
+	turnInputTokens  int64
+	turnOutputTokens int64
+	turnCacheTokens  int64
+	turnCostUSD      float64
+
 	cpr cprFilter
+
+	sharedPending    PendingApprovalStore
+	onUserSubmission func(sessionKey, input string)
+	onTurnSummary    func(sessionKey string, msg TurnTokenUsageMsg)
 }
 
 // New creates a new ChatModel with the given dependencies.
 func New(deps Deps) *ChatModel {
-	return &ChatModel{
-		turnRunner: deps.TurnRunner,
-		cfg:        deps.Config,
-		sessionKey: deps.SessionKey,
-		bgManager:  deps.BackgroundManager,
-		taskStrip:  newTaskStripModel(deps.BackgroundManager),
-		input:      newInputModel(),
-		chatView:   newChatViewModel(80, 20),
-		state:      stateIdle,
+	m := &ChatModel{
+		turnRunner:       deps.TurnRunner,
+		cfg:              deps.Config,
+		sessionKey:       deps.SessionKey,
+		sessionStore:     deps.SessionStore,
+		eventBus:         deps.EventBus,
+		bgManager:        deps.BackgroundManager,
+		runtimeFeatures:  deps.RuntimeFeatures,
+		taskStrip:        newTaskStripModel(deps.BackgroundManager),
+		input:            newInputModel(),
+		chatView:         newChatViewModel(80, 20),
+		state:            stateIdle,
+		sharedPending:    deps.SharedPending,
+		onUserSubmission: deps.OnUserSubmission,
+		onTurnSummary:    deps.OnTurnSummary,
 	}
+	m.subscribeContinuityEvents()
+	return m
+}
+
+// currentModeName returns the active session mode name, or "" if none is set
+// or the session store is unavailable.
+func (m *ChatModel) currentModeName() string {
+	if m.sessionStore == nil {
+		return ""
+	}
+	s, err := m.sessionStore.Get(m.sessionKey)
+	if err != nil || s == nil {
+		return ""
+	}
+	return s.Mode()
+}
+
+// setSessionMode persists the given mode name on the active session and
+// publishes a ModeChangedEvent so multi-channel subscribers can render the
+// transition in their native format. An empty name clears the mode.
+func (m *ChatModel) setSessionMode(name string) error {
+	if m.sessionStore == nil {
+		return fmt.Errorf("session store not available")
+	}
+	var oldMode string
+	s, err := m.sessionStore.Get(m.sessionKey)
+	if err != nil || s == nil {
+		// Create the session record on the fly so /mode can be set before the
+		// first turn (which would otherwise create the session lazily).
+		s = &session.Session{Key: m.sessionKey}
+		if createErr := m.sessionStore.Create(s); createErr != nil {
+			return fmt.Errorf("create session: %w", createErr)
+		}
+	} else {
+		oldMode = s.Mode()
+	}
+	s.SetMode(name)
+	if err := m.sessionStore.Update(s); err != nil {
+		return err
+	}
+	if m.eventBus != nil {
+		m.eventBus.Publish(eventbus.ModeChangedEvent{
+			SessionKey: m.sessionKey,
+			OldMode:    oldMode,
+			NewMode:    name,
+		})
+	}
+	return nil
 }
 
 // SetProgram stores a reference to the tea.Program for sending messages from callbacks.
+// SessionKey returns the current session key. After /clear this differs
+// from the initial key captured at construction time.
+func (m *ChatModel) SessionKey() string { return m.sessionKey }
+
 func (m *ChatModel) SetProgram(p *tea.Program) {
 	m.program = p
+}
+
+// ComposerValue returns the current composer contents.
+func (m *ChatModel) ComposerValue() string {
+	if m == nil {
+		return ""
+	}
+	return m.input.Value()
+}
+
+// ComposerPlaceholder returns the current composer placeholder copy.
+func (m *ChatModel) ComposerPlaceholder() string {
+	if m == nil {
+		return ""
+	}
+	return m.input.Placeholder()
+}
+
+// CanStartTurnFromComposer reports whether the current composer contents can
+// begin a new top-level turn immediately.
+func (m *ChatModel) CanStartTurnFromComposer() bool {
+	if m == nil {
+		return false
+	}
+	if m.state != stateIdle && m.state != stateFailed {
+		return false
+	}
+	return strings.TrimSpace(m.input.Value()) != ""
+}
+
+// SetComposerValue replaces the current composer contents.
+func (m *ChatModel) SetComposerValue(value string) {
+	if m == nil {
+		return
+	}
+	m.input.SetValue(value)
+}
+
+// HasPendingApproval reports whether chat currently has a live approval.
+func (m *ChatModel) HasPendingApproval() bool {
+	return m != nil && m.currentPendingApproval() != nil
+}
+
+// IsStreamingTurn reports whether the composer is currently attached to an
+// in-flight model turn.
+func (m *ChatModel) IsStreamingTurn() bool {
+	return m != nil && m.state == stateStreaming
+}
+
+// HandleComposerEditingKey applies a key directly to the composer input,
+// bypassing chat state gating. Mission Control uses this so typing intent can
+// move to the Composer lane while a live decision still exists.
+func (m *ChatModel) HandleComposerEditingKey(msg tea.KeyMsg) tea.Cmd {
+	if m == nil {
+		return nil
+	}
+	focusCmd := m.input.Focus()
+	var cmd tea.Cmd
+	m.input, cmd = m.input.Update(msg)
+	return tea.Batch(focusCmd, cmd)
+}
+
+// CanHandlePendingApprovalKey reports whether the current pending approval flow
+// consumes the given key as an approval interaction.
+func (m *ChatModel) CanHandlePendingApprovalKey(msg tea.KeyMsg) bool {
+	if m == nil || m.currentPendingApproval() == nil {
+		return false
+	}
+
+	switch {
+	case key.Matches(msg, key.NewBinding(key.WithKeys("a", "s", "d", "esc"))):
+		return true
+	}
+
+	pending := m.currentPendingApproval()
+	if pending == nil || pending.ViewModel.Tier != approval.TierFullscreen {
+		return false
+	}
+
+	switch {
+	case key.Matches(msg, key.NewBinding(key.WithKeys("up", "k"))):
+		return true
+	case key.Matches(msg, key.NewBinding(key.WithKeys("down", "j"))):
+		return true
+	case key.Matches(msg, key.NewBinding(key.WithKeys("t"))):
+		return true
+	default:
+		return false
+	}
+}
+
+// HandlePendingApprovalKey routes one approval key through the existing chat
+// approval flow when a pending approval is available.
+func (m *ChatModel) HandlePendingApprovalKey(msg tea.KeyMsg) tea.Cmd {
+	if !m.CanHandlePendingApprovalKey(msg) {
+		return nil
+	}
+	if m.state != stateApproving {
+		if cmd := m.transitionTo(stateApproving); cmd != nil {
+			return tea.Batch(cmd, m.handleApprovingKey(msg))
+		}
+	}
+	return m.handleApprovingKey(msg)
+}
+
+// SubmitComposerWithParent submits the current composer value through the
+// existing turn path while using the provided parent context for this turn.
+func (m *ChatModel) SubmitComposerWithParent(parent context.Context) tea.Cmd {
+	return m.submitCurrentInput(parent, false)
 }
 
 // Init implements tea.Model.
@@ -165,6 +382,24 @@ func (m *ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.chatView.finalizeThinking(msg.Summary, msg.Duration)
 		return m, nil
 
+	case CompactionCompletedTeaMsg:
+		return m.handleCompactionCompleted(msg)
+
+	case CompactionSlowTeaMsg:
+		return m.handleCompactionSlow(msg)
+
+	case LearningSuggestionTeaMsg:
+		return m.handleLearningSuggestion(msg)
+
+	case TokenUsageTeaMsg:
+		if m.turnActive {
+			m.turnInputTokens += msg.InputTokens
+			m.turnOutputTokens += msg.OutputTokens
+			m.turnCacheTokens += msg.CacheTokens
+			m.turnCostUSD += msg.EstimatedCostUSD
+		}
+		return m, nil
+
 	case TaskStripTickMsg:
 		m.taskStrip.refresh()
 		m.refreshView()
@@ -203,6 +438,27 @@ func (m *ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case DoneMsg:
 		m.dismissPending()
 		m.chatView.stopCursorBlink()
+
+		// Short-circuit: if a redirect is queued, skip error display and
+		// immediately submit the pending input as the next turn.
+		if m.pendingRedirectInput != "" {
+			redirect := m.pendingRedirectInput
+			m.pendingRedirectInput = ""
+			if m.chatView.streamBuf.Len() > 0 {
+				m.chatView.finalizeStream()
+			}
+			if m.onUserSubmission != nil {
+				m.onUserSubmission(m.sessionKey, redirect)
+			}
+			m.chatView.appendUser(redirect)
+			m.pending.Activate()
+			return m, tea.Batch(
+				m.transitionTo(stateStreaming),
+				m.submitCmd(context.Background(), redirect),
+				m.pending.TickCmd(),
+			)
+		}
+
 		if m.chatView.streamBuf.Len() > 0 {
 			m.chatView.finalizeStream()
 		} else if strings.TrimSpace(msg.Result.ResponseText) != "" {
@@ -212,14 +468,38 @@ func (m *ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		nextState := stateIdle
 		if msg.Result.Outcome != "success" {
 			nextState = stateFailed
-			text := strings.TrimSpace(msg.Result.UserMessage)
+			text := strings.TrimSpace(sanitizeMarkdownInput(msg.Result.UserMessage))
 			if text == "" {
-				text = strings.TrimSpace(msg.Result.ResponseText)
+				text = strings.TrimSpace(sanitizeMarkdownInput(msg.Result.ResponseText))
 			}
 			if text != "" && strings.TrimSpace(m.chatView.lastAssistantRaw()) != text {
 				m.chatView.appendStatus(text, "error")
 			}
 		}
+
+		// Flush per-turn token accumulation as TurnTokenUsageMsg (plain chat
+		// path — cockpit does this via its RuntimeTracker in handleDone).
+		if m.turnActive && (m.turnInputTokens > 0 || m.turnOutputTokens > 0) {
+			total := m.turnInputTokens + m.turnOutputTokens
+			inTok := m.turnInputTokens
+			outTok := m.turnOutputTokens
+			cacheTok := m.turnCacheTokens
+			costUSD := m.turnCostUSD
+			cmds = append(cmds, func() tea.Msg {
+				return TurnTokenUsageMsg{
+					InputTokens:      inTok,
+					OutputTokens:     outTok,
+					TotalTokens:      total,
+					CacheTokens:      cacheTok,
+					EstimatedCostUSD: costUSD,
+				}
+			})
+		}
+		m.turnActive = false
+		m.turnInputTokens = 0
+		m.turnOutputTokens = 0
+		m.turnCacheTokens = 0
+		m.turnCostUSD = 0
 
 		if cmd := m.transitionTo(nextState); cmd != nil {
 			cmds = append(cmds, cmd)
@@ -229,6 +509,13 @@ func (m *ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ErrorMsg:
 		m.dismissPending()
 		m.chatView.stopCursorBlink()
+		// Reset turn token accumulation on error to prevent leakage into next turn.
+		m.turnActive = false
+		m.turnInputTokens = 0
+		m.turnOutputTokens = 0
+		m.turnCacheTokens = 0
+		m.turnCostUSD = 0
+
 		if m.chatView.streamBuf.Len() > 0 {
 			m.chatView.finalizeStream()
 		}
@@ -256,8 +543,9 @@ func (m *ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case ApprovalRequestMsg:
 		m.dismissPending()
-		m.approval.Reset(&msg)
-		m.chatView.appendApprovalEvent(fmt.Sprintf("Approval requested for %s", msg.Request.ToolName), "requested")
+		m.resetApprovalOwner(&msg)
+		m.chatView.transitionLatestToolState(msg.Request.ToolName, []ToolItemState{toolStateRunning}, toolStateAwaitingApproval)
+		m.chatView.appendApprovalEvent(fmt.Sprintf("Approval requested for %s", msg.Request.ToolName), "requested", msg.Request.ID, msg.Request.Summary)
 		if cmd := m.transitionTo(stateApproving); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
@@ -281,7 +569,14 @@ func (m *ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case TurnTokenUsageMsg:
-		m.chatView.appendTokenSummary(msg.InputTokens, msg.OutputTokens, msg.TotalTokens, msg.CacheTokens)
+		m.chatView.appendTokenSummaryWithCost(msg.InputTokens, msg.OutputTokens, msg.TotalTokens, msg.CacheTokens, msg.EstimatedCostUSD)
+		// Track session cumulative totals for /cost summary.
+		m.sessionInputTokens += msg.InputTokens
+		m.sessionOutputTokens += msg.OutputTokens
+		m.sessionCostUSD += msg.EstimatedCostUSD
+		if m.onTurnSummary != nil {
+			m.onTurnSummary(m.sessionKey, msg)
+		}
 		return m, nil
 
 	case ChannelMessageMsg:
@@ -313,20 +608,23 @@ func (m *ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // View implements tea.Model.
 // RenderParts returns the discrete rendered sections of the chat view.
 func (m *ChatModel) RenderParts() ChatParts {
+	setupRequired := m.setupRequiredVisible()
 	parts := ChatParts{
-		Header:    renderHeader(m.cfg, truncateSessionKey(m.sessionKey), m.width),
-		TurnStrip: renderTurnStrip(m.state, m.width),
+		Header:    renderHeaderWithSetup(m.cfg, truncateSessionKey(m.sessionKey), m.width, setupRequired),
+		TurnStrip: renderTurnStripWithSetup(m.state, m.width, setupRequired),
 		Main:      m.chatView.View(),
 		TaskStrip: m.taskStrip.View(m.width),
-		Footer:    renderFooter(m.input, m.state, m.width),
+		Footer:    renderFooterWithSetup(m.input, m.state, m.width, setupRequired),
 	}
 
 	if m.pending.IsActive() {
-		parts.Pending = renderPendingIndicator(m.pending.Elapsed())
+		parts.Pending = renderPendingIndicator(m.pending.Elapsed(), m.width)
 	}
 
-	if m.state == stateApproving && m.approval.HasPending() {
-		parts.Approval = renderApproval(m.approval.pending, &m.approval, m.width, m.height)
+	if m.state == stateApproving {
+		if pending := m.currentPendingApproval(); pending != nil {
+			parts.Approval = renderApproval(pending, &m.approval, m.width, m.height)
+		}
 	}
 
 	return parts
@@ -386,7 +684,7 @@ func (m *ChatModel) taskStripTick() tea.Cmd {
 }
 
 func (m *ChatModel) inputAcceptsText() bool {
-	return m.state == stateIdle || m.state == stateFailed
+	return m.state == stateIdle || m.state == stateFailed || m.state == stateStreaming
 }
 
 func (m *ChatModel) transitionTo(state chatState) tea.Cmd {
@@ -434,41 +732,43 @@ func (m *ChatModel) handleIdleKey(msg tea.KeyMsg) tea.Cmd {
 		}
 
 	case key.Matches(msg, key.NewBinding(key.WithKeys("enter"))):
-		input := strings.TrimSpace(m.input.Value())
-		if input == "" {
-			return nil
-		}
-		m.input.Reset()
-
-		if handled, cmd := dispatchSlash(m, input); handled {
-			return cmd
-		}
-
-		m.chatView.appendUser(input)
-		// Set pending state before transition so recalcLayout accounts for the strip.
-		m.pending.Activate()
-		return tea.Batch(
-			m.transitionTo(stateStreaming),
-			m.submitCmd(input),
-			m.pending.TickCmd(),
-		)
+		return m.submitCurrentInput(context.Background(), m.focusedSetupGuardEnabled())
 	}
 
 	return nil
 }
 
 func (m *ChatModel) handleStreamingKey(msg tea.KeyMsg) tea.Cmd {
-	if key.Matches(msg, key.NewBinding(key.WithKeys("ctrl+c"))) {
+	switch {
+	case key.Matches(msg, key.NewBinding(key.WithKeys("ctrl+c"))):
 		if m.cancelFn != nil {
 			m.cancelFn()
 		}
 		return m.transitionTo(stateCancelling)
+
+	case key.Matches(msg, key.NewBinding(key.WithKeys("enter"))):
+		input := strings.TrimSpace(m.input.Value())
+		if input == "" {
+			return nil
+		}
+		m.pendingRedirectInput = input
+		m.input.Reset()
+		if m.cancelFn != nil {
+			m.cancelFn()
+		}
+		m.chatView.stopCursorBlink()
+		if m.chatView.streamBuf.Len() > 0 {
+			m.chatView.finalizeStream()
+		}
+		m.chatView.appendStatus("[interrupted]", "warning")
+		return nil
 	}
 	return nil
 }
 
 func (m *ChatModel) handleApprovingKey(msg tea.KeyMsg) tea.Cmd {
-	if !m.approval.HasPending() {
+	pending := m.currentPendingApproval()
+	if pending == nil {
 		return nil
 	}
 
@@ -477,16 +777,38 @@ func (m *ChatModel) handleApprovingKey(msg tea.KeyMsg) tea.Cmd {
 		m.approval.CancelConfirm()
 	}
 
-	req := m.approval.pending.Request
+	req := pending.Request
 	respond := func(approved, alwaysAllow bool, outcome string, eventText string) tea.Cmd {
 		resp := approval.ApprovalResponse{
 			Approved:    approved,
 			AlwaysAllow: alwaysAllow,
 			Provider:    "tui",
 		}
-		ch := m.approval.pending.Response
+		if m.sharedPending != nil {
+			if !m.sharedPending.Resolve(req.ID, resp) {
+				m.chatView.appendStatus(fmt.Sprintf("Approval resolution failed for %s", req.ToolName), "error")
+				return nil
+			}
+			if approved {
+				m.chatView.transitionLatestToolState(req.ToolName, []ToolItemState{toolStateAwaitingApproval}, toolStateRunning)
+			} else {
+				m.chatView.transitionLatestToolState(req.ToolName, []ToolItemState{toolStateAwaitingApproval}, toolStateCanceled)
+			}
+			m.approval.Clear()
+			m.chatView.appendApprovalEvent(eventText, outcome, req.ID, req.Summary)
+			if m.currentPendingApproval() != nil {
+				return m.transitionTo(stateApproving)
+			}
+			return m.transitionTo(stateStreaming)
+		}
+		ch := pending.Response
+		if approved {
+			m.chatView.transitionLatestToolState(req.ToolName, []ToolItemState{toolStateAwaitingApproval}, toolStateRunning)
+		} else {
+			m.chatView.transitionLatestToolState(req.ToolName, []ToolItemState{toolStateAwaitingApproval}, toolStateCanceled)
+		}
 		m.approval.Clear()
-		m.chatView.appendApprovalEvent(eventText, outcome)
+		m.chatView.appendApprovalEvent(eventText, outcome, req.ID, req.Summary)
 		return tea.Batch(
 			m.transitionTo(stateStreaming),
 			func() tea.Msg {
@@ -497,7 +819,7 @@ func (m *ChatModel) handleApprovingKey(msg tea.KeyMsg) tea.Cmd {
 	}
 
 	// Tier 2 dialog key dispatch (scroll, diff toggle).
-	if m.approval.pending.ViewModel.Tier == approval.TierFullscreen {
+	if pending.ViewModel.Tier == approval.TierFullscreen {
 		if cmd := handleApprovalDialogKey(msg, &m.approval); cmd != nil {
 			return cmd
 		}
@@ -528,14 +850,14 @@ func (m *ChatModel) handleApprovingKey(msg tea.KeyMsg) tea.Cmd {
 	switch {
 	case key.Matches(msg, key.NewBinding(key.WithKeys("a"))):
 		// Double-press guardrail for critical-risk tools.
-		if m.approval.pending.ViewModel.Risk.Level == "critical" {
+		if pending.ViewModel.Risk.Level == "critical" {
 			m.approval.StartConfirm("a")
 			return nil
 		}
 		return respond(true, false, "approved", fmt.Sprintf("Approved %s", req.ToolName))
 	case key.Matches(msg, key.NewBinding(key.WithKeys("s"))):
 		// Double-press guardrail for critical-risk session grants.
-		if m.approval.pending.ViewModel.Risk.Level == "critical" {
+		if pending.ViewModel.Risk.Level == "critical" {
 			m.approval.StartConfirm("s")
 			return nil
 		}
@@ -547,11 +869,38 @@ func (m *ChatModel) handleApprovingKey(msg tea.KeyMsg) tea.Cmd {
 	return nil
 }
 
+func (m *ChatModel) currentPendingApproval() *ApprovalRequestMsg {
+	if m.sharedPending != nil {
+		return m.sharedPending.Latest()
+	}
+	return m.approval.pending
+}
+
+func (m *ChatModel) resetApprovalOwner(msg *ApprovalRequestMsg) {
+	if m.sharedPending == nil {
+		m.approval.Reset(msg)
+		return
+	}
+	m.approval.Clear()
+	m.approval.scrollOffset = 0
+	m.approval.splitMode = false
+}
+
 // submitCmd creates a tea.Cmd that runs a turn via the TurnRunner.
-func (m *ChatModel) submitCmd(input string) tea.Cmd {
-	ctx, cancel := context.WithCancel(context.Background())
+func (m *ChatModel) submitCmd(parent context.Context, input string) tea.Cmd {
+	if parent == nil {
+		parent = context.Background()
+	}
+	ctx, cancel := context.WithCancel(parent)
 	m.runCtx = ctx
 	m.cancelFn = cancel
+
+	// Reset per-turn token accumulation (mirrors cockpit RuntimeTracker.StartTurn).
+	m.turnActive = true
+	m.turnInputTokens = 0
+	m.turnOutputTokens = 0
+	m.turnCacheTokens = 0
+	m.turnCostUSD = 0
 
 	program := m.program
 	return func() tea.Msg {
@@ -580,23 +929,55 @@ func (m *ChatModel) submitCmd(input string) tea.Cmd {
 	}
 }
 
+func (m *ChatModel) submitCurrentInput(parent context.Context, guardSetup bool) tea.Cmd {
+	input := strings.TrimSpace(m.input.Value())
+	if input == "" {
+		return nil
+	}
+
+	if handled, cmd := dispatchSlash(m, input); handled {
+		m.input.Reset()
+		return cmd
+	}
+
+	if guardSetup && !m.agentSetupReady() {
+		m.chatView.appendStatus(setupRequiredGuidance, "warning")
+		return func() tea.Msg { return nil }
+	}
+
+	m.input.Reset()
+	if m.onUserSubmission != nil {
+		m.onUserSubmission(m.sessionKey, input)
+	}
+	m.chatView.appendUser(input)
+	m.pending.Activate()
+	return tea.Batch(
+		m.transitionTo(stateStreaming),
+		m.submitCmd(parent, input),
+		m.pending.TickCmd(),
+	)
+}
+
 func (m *ChatModel) recalcLayout() {
 	m.input.SetWidth(m.width)
+	setupRequired := m.setupRequiredVisible()
 
 	fixedParts := []string{
-		renderHeader(m.cfg, truncateSessionKey(m.sessionKey), m.width),
-		renderTurnStrip(m.state, m.width),
+		renderHeaderWithSetup(m.cfg, truncateSessionKey(m.sessionKey), m.width, setupRequired),
+		renderTurnStripWithSetup(m.state, m.width, setupRequired),
 	}
 	if m.pending.IsActive() {
-		fixedParts = append(fixedParts, renderPendingIndicator(m.pending.Elapsed()))
+		fixedParts = append(fixedParts, renderPendingIndicator(m.pending.Elapsed(), m.width))
 	}
 	if ts := m.taskStrip.View(m.width); ts != "" {
 		fixedParts = append(fixedParts, ts)
 	}
-	if m.state == stateApproving && m.approval.HasPending() {
-		fixedParts = append(fixedParts, renderApproval(m.approval.pending, &m.approval, m.width, m.height))
+	if m.state == stateApproving {
+		if pending := m.currentPendingApproval(); pending != nil {
+			fixedParts = append(fixedParts, renderApproval(pending, &m.approval, m.width, m.height))
+		}
 	}
-	fixedParts = append(fixedParts, renderFooter(m.input, m.state, m.width))
+	fixedParts = append(fixedParts, renderFooterWithSetup(m.input, m.state, m.width, setupRequired))
 
 	fixedHeight := 0
 	for _, part := range fixedParts {
@@ -609,6 +990,33 @@ func (m *ChatModel) recalcLayout() {
 		chatHeight = 3
 	}
 	m.chatView.setSize(m.width, chatHeight)
+}
+
+func (m *ChatModel) agentSetupReady() bool {
+	if m == nil {
+		return false
+	}
+	return config.EvaluateAgentSetup(m.cfg).Ready()
+}
+
+func (m *ChatModel) setupRequiredVisible() bool {
+	if m == nil || !m.focusedSetupGuardEnabled() || m.agentSetupReady() {
+		return false
+	}
+	return m.state == stateIdle || m.state == stateFailed
+}
+
+func (m *ChatModel) focusedSetupGuardEnabled() bool {
+	return m != nil && m.onUserSubmission == nil && m.sharedPending == nil
+}
+
+func renderFooterWithSetup(input inputModel, state chatState, width int, setupRequired bool) string {
+	parts := make([]string, 0, 3)
+	if state != stateApproving {
+		parts = append(parts, input.View())
+	}
+	parts = append(parts, renderHelpBarWithSetup(state, width, setupRequired))
+	return strings.Join(parts, "\n")
 }
 
 func generateSessionKey() string {

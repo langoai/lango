@@ -73,7 +73,7 @@ func TestApprovalsPage_NilStores(t *testing.T) {
 
 	p := newTestApprovalsPage(nil, nil, 80, 24)
 	view := p.View()
-	assert.Contains(t, view, "No approval history yet.")
+	assert.Contains(t, view, "Approval history and grants are not configured.")
 }
 
 func TestApprovalsPage_EmptyStores(t *testing.T) {
@@ -105,6 +105,18 @@ func TestApprovalsPage_HistoryDisplay(t *testing.T) {
 	assert.Contains(t, view, "Approval History")
 }
 
+func TestApprovalsPage_HistorySectionUnavailable(t *testing.T) {
+	t.Parallel()
+
+	grants := sampleGrants()
+	p := newTestApprovalsPage(nil, grants, 120, 24)
+	p.Activate()
+	view := p.View()
+
+	assert.Contains(t, view, "Approval history is not configured")
+	assert.Contains(t, view, "Active Grants")
+}
+
 func TestApprovalsPage_GrantsDisplay(t *testing.T) {
 	t.Parallel()
 
@@ -123,7 +135,77 @@ func TestApprovalsPage_GrantsDisplay(t *testing.T) {
 	assert.Contains(t, view, "Active Grants")
 }
 
-func TestApprovalsPage_TabSwitchesSection(t *testing.T) {
+func TestApprovalsPage_SanitizesHistoryText(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 4, 5, 12, 0, 0, 0, time.UTC)
+	history := approval.NewHistoryStore(10)
+	history.Append(approval.HistoryEntry{
+		Timestamp: now.Add(-2 * time.Minute),
+		ToolName:  "fs_\x1b[31mwrite\nnow",
+		Summary:   "Write\x1b]8;;evil\amain.go\nplease",
+		Outcome:   "appr\x1b[31moved\n",
+		Provider:  "tu\x1b[31mi\n",
+	})
+
+	p := newTestApprovalsPage(history, nil, 120, 24)
+	p.Activate()
+	view := p.View()
+
+	assert.Contains(t, view, "fs_write now")
+	assert.Contains(t, view, "Writemain.go please")
+	assert.Contains(t, view, "approved")
+	assert.Contains(t, view, "tui")
+	assert.NotContains(t, view, "\x1b")
+}
+
+func TestApprovalsPage_SanitizesGrantText(t *testing.T) {
+	t.Parallel()
+
+	grants := approval.NewGrantStore()
+	grants.Grant("tt\x1b[31my\nlane", "fs_\x1b[31mwrite\nnow")
+
+	p := newTestApprovalsPage(nil, grants, 120, 24)
+	p.Activate()
+
+	updated, _ := p.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	p = updated.(*ApprovalsPage)
+	view := p.View()
+
+	assert.Contains(t, view, "tty lane")
+	assert.Contains(t, view, "fs_write now")
+	assert.NotContains(t, view, "\x1b")
+}
+
+func TestApprovalsPage_EmptyHistorySectionUsesUnifiedWording(t *testing.T) {
+	t.Parallel()
+
+	history := approval.NewHistoryStore(100)
+	grants := sampleGrants()
+	p := newTestApprovalsPage(history, grants, 120, 24)
+	p.Activate()
+
+	view := p.View()
+	assert.Contains(t, view, "No approval history yet.")
+	assert.Contains(t, view, "Active Grants")
+}
+
+func TestApprovalsPage_GrantsSectionUnavailable(t *testing.T) {
+	t.Parallel()
+
+	history := sampleHistory()
+	p := newTestApprovalsPage(history, nil, 120, 24)
+	p.Activate()
+
+	updated, _ := p.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	p = updated.(*ApprovalsPage)
+	view := p.View()
+
+	assert.Contains(t, view, "Active grants are not configured")
+	assert.Contains(t, view, "Approval History")
+}
+
+func TestApprovalsPage_SlashSwitchesSection(t *testing.T) {
 	t.Parallel()
 
 	history := sampleHistory()
@@ -139,7 +221,7 @@ func TestApprovalsPage_TabSwitchesSection(t *testing.T) {
 	p = updated.(*ApprovalsPage)
 	assert.Equal(t, 1, p.cursor)
 
-	// Tab to grants.
+	// Slash to grants.
 	updated, _ = p.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
 	p = updated.(*ApprovalsPage)
 	assert.Equal(t, 1, p.section)
@@ -148,11 +230,30 @@ func TestApprovalsPage_TabSwitchesSection(t *testing.T) {
 	// History cursor should be preserved.
 	assert.Equal(t, 1, p.cursor, "history cursor should be preserved when switching")
 
-	// Tab back to history.
+	// Slash back to history.
 	updated, _ = p.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
 	p = updated.(*ApprovalsPage)
 	assert.Equal(t, 0, p.section)
 	assert.Equal(t, 1, p.cursor, "history cursor should be preserved after round-trip")
+}
+
+func TestApprovalsPage_TabSwitchesSection(t *testing.T) {
+	t.Parallel()
+
+	history := sampleHistory()
+	grants := sampleGrants()
+	p := newTestApprovalsPage(history, grants, 120, 24)
+	p.Activate()
+
+	assert.Equal(t, 0, p.section)
+
+	updated, _ := p.Update(tea.KeyMsg{Type: tea.KeyTab})
+	p = updated.(*ApprovalsPage)
+	assert.Equal(t, 1, p.section)
+
+	updated, _ = p.Update(tea.KeyMsg{Type: tea.KeyTab})
+	p = updated.(*ApprovalsPage)
+	assert.Equal(t, 0, p.section)
 }
 
 func TestApprovalsPage_RevokeGrant(t *testing.T) {
@@ -312,7 +413,8 @@ func TestApprovalsPage_ShortHelp_HistorySection(t *testing.T) {
 	p.section = 0
 
 	bindings := p.ShortHelp()
-	assert.Len(t, bindings, 3, "history section should have 3 bindings (tab, up, down)")
+	assert.Len(t, bindings, 1, "empty history section should only expose section toggle help")
+	assert.Equal(t, "tab /", bindings[0].Help().Key)
 }
 
 func TestApprovalsPage_ShortHelp_GrantsSection(t *testing.T) {
@@ -323,7 +425,83 @@ func TestApprovalsPage_ShortHelp_GrantsSection(t *testing.T) {
 	p.section = 1
 
 	bindings := p.ShortHelp()
-	assert.Len(t, bindings, 5, "grants section should have 5 bindings (tab, up, down, r, R)")
+	assert.Len(t, bindings, 1, "empty grants section should only expose section toggle help")
+	assert.Equal(t, "tab /", bindings[0].Help().Key)
+}
+
+func TestApprovalsPage_ShortHelp_HistorySectionWithRows(t *testing.T) {
+	t.Parallel()
+
+	p := NewApprovalsPage(nil, nil)
+	p.section = 0
+	p.histEntries = sampleHistory().List()
+
+	bindings := p.ShortHelp()
+	assert.Len(t, bindings, 3, "history section with rows should expose section toggle and navigation")
+	assert.Equal(t, "tab /", bindings[0].Help().Key)
+	assert.Equal(t, "↑/k", bindings[1].Help().Key)
+	assert.Equal(t, "↓/j", bindings[2].Help().Key)
+}
+
+func TestApprovalsPage_ShortHelp_HistorySectionHiddenWithSingleRow(t *testing.T) {
+	t.Parallel()
+
+	p := NewApprovalsPage(nil, nil)
+	p.section = 0
+	p.histEntries = sampleHistory().List()[:1]
+
+	bindings := p.ShortHelp()
+	assert.Len(t, bindings, 1, "single-row history section should only expose section toggle help")
+	assert.Equal(t, "tab /", bindings[0].Help().Key)
+}
+
+func TestApprovalsPage_ShortHelp_GrantsSectionWithRows(t *testing.T) {
+	t.Parallel()
+
+	grants := sampleGrants()
+	p := NewApprovalsPage(nil, grants)
+	p.section = 1
+	p.grantList = grants.List()
+
+	bindings := p.ShortHelp()
+	assert.Len(t, bindings, 5, "grants section with rows should expose section toggle, navigation, and revoke actions")
+	assert.Equal(t, "tab /", bindings[0].Help().Key)
+	assert.Equal(t, "↑/k", bindings[1].Help().Key)
+	assert.Equal(t, "↓/j", bindings[2].Help().Key)
+	assert.Equal(t, "r", bindings[3].Help().Key)
+	assert.Equal(t, "R", bindings[4].Help().Key)
+	assert.Equal(t, "revoke session", bindings[4].Help().Desc)
+}
+
+func TestApprovalsPage_ShortHelp_GrantsSectionHiddenWithSingleRow(t *testing.T) {
+	t.Parallel()
+
+	grants := sampleGrants()
+	p := NewApprovalsPage(nil, grants)
+	p.section = 1
+	p.grantList = grants.List()[:1]
+
+	bindings := p.ShortHelp()
+	assert.Len(t, bindings, 3, "single-row grants section should expose section toggle and revoke actions only")
+	assert.Equal(t, "tab /", bindings[0].Help().Key)
+	assert.Equal(t, "r", bindings[1].Help().Key)
+	assert.Equal(t, "R", bindings[2].Help().Key)
+	assert.Equal(t, "revoke session", bindings[2].Help().Desc)
+	assert.NotContains(t, p.viewFooter(), "[↑/↓] navigate")
+}
+
+func TestApprovalsPage_FooterShowsNavigationOnlyWhenAnotherRowExists(t *testing.T) {
+	t.Parallel()
+
+	history := sampleHistory()
+	p := NewApprovalsPage(history, nil)
+	p.histEntries = history.List()
+	assert.Contains(t, p.viewFooter(), "[tab /] switch")
+	assert.Contains(t, p.viewFooter(), "[↑/↓] navigate")
+
+	p.histEntries = history.List()[:1]
+	assert.Contains(t, p.viewFooter(), "[tab /] switch")
+	assert.NotContains(t, p.viewFooter(), "[↑/↓] navigate")
 }
 
 func TestApprovalsPage_GrantCursorIndependence(t *testing.T) {

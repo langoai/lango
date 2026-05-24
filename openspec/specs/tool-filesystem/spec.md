@@ -1,9 +1,7 @@
 ## Purpose
 
 Capability spec for tool-filesystem. See requirements below for scope and behavior contracts.
-
 ## Requirements
-
 ### Requirement: File reading
 The system SHALL read file contents with encoding detection and size limits.
 
@@ -46,26 +44,38 @@ The system SHALL support surgical edits to existing files.
 - **THEN** matching content SHALL be replaced
 
 ### Requirement: Directory operations
-The system SHALL support listing and navigating directories.
+The `Delete` method SHALL accept `context.Context` as its first parameter. In P2P context (`ctxkeys.IsP2PRequest(ctx)`), deletion MUST use `os.Remove` (single file or empty directory only) instead of `os.RemoveAll` (recursive). The filesystem package MUST NOT define its own P2P context key.
 
-#### Scenario: List directory contents
-- **WHEN** listing a directory
-- **THEN** files and subdirectories SHALL be returned with metadata
+#### Scenario: P2P delete single file
+- **WHEN** deletion is requested from a P2P context for a regular file
+- **THEN** the file is deleted via `os.Remove`
 
-#### Scenario: Recursive listing
-- **WHEN** listing with recursive option
-- **THEN** all nested contents SHALL be included up to depth limit
+#### Scenario: P2P delete non-empty directory blocked
+- **WHEN** deletion is requested from a P2P context for a non-empty directory
+- **THEN** `os.Remove` fails with "directory not empty"
+- **AND** recursive deletion does NOT occur
 
-#### Scenario: Delete file or directory
-- **WHEN** deletion is requested for a path
-- **THEN** the system SHALL remove the target and its contents if it is a directory
+#### Scenario: Local delete unchanged
+- **WHEN** deletion is requested from a local (non-P2P) context
+- **THEN** `os.RemoveAll` is used as before (backward compatible)
 
 ### Requirement: Path safety
-The system SHALL validate file paths to prevent directory traversal attacks.
+The system SHALL validate file paths using `filepath.EvalSymlinks()` after `filepath.Abs()` to resolve symlinks before checking against allowed and blocked path lists. Both the target path and the config paths (allowed/blocked) MUST be resolved through `EvalSymlinks` to handle OS-specific symlink directories (e.g., macOS `/var` → `/private/var`).
 
-#### Scenario: Path traversal attempt
-- **WHEN** a path contains ".." to escape allowed directory
-- **THEN** the operation SHALL be rejected with an error
+#### Scenario: Symlink escape blocked
+- **GIVEN** an allowed path `/workspace`
+- **WHEN** a file at `/workspace/link` symlinks to `/etc/passwd`
+- **THEN** the resolved path `/etc/passwd` is checked against allowed paths
+- **AND** access is denied because `/etc/passwd` is outside `/workspace`
+
+#### Scenario: Symlink within allowed directory
+- **GIVEN** an allowed path `/workspace`
+- **WHEN** a file at `/workspace/link` symlinks to `/workspace/data/file.txt`
+- **THEN** access is allowed because the resolved path is within `/workspace`
+
+#### Scenario: Broken symlink handled gracefully
+- **WHEN** `filepath.EvalSymlinks()` fails (target does not exist)
+- **THEN** validation continues with the cleaned absolute path (no error)
 
 ### Requirement: Blocked paths enforcement
 The filesystem tool SHALL support a `BlockedPaths` configuration field. Any path that falls under a blocked path SHALL be denied with "access denied: protected path" before checking allowed paths.
@@ -103,8 +113,6 @@ The system SHALL support optional `offset` (1-indexed line number) and `limit` (
 #### Scenario: Read without offset/limit (backward compatible)
 - **WHEN** `fs_read` is called without offset or limit parameters
 - **THEN** the full file content SHALL be returned as a plain string (same as before)
-
-
 
 ### Requirement: Path safety
 The system SHALL validate file paths using `filepath.EvalSymlinks()` after `filepath.Abs()` to resolve symlinks before checking against allowed and blocked path lists. Both the target path and the config paths (allowed/blocked) MUST be resolved through `EvalSymlinks` to handle OS-specific symlink directories (e.g., macOS `/var` → `/private/var`).
@@ -166,7 +174,27 @@ The `checkPathAccess` function SHALL compare the input path against both the unr
 - **WHEN** `BlockedPaths` contains a path that is itself a symlink
 - **THEN** the block check SHALL match against both the symlink path and its resolved target
 
-
 ### Requirement: P2P context detection
-**Reason**: Replaced by canonical `ctxkeys.WithP2PRequest`/`ctxkeys.IsP2PRequest` from the `ctxkeys` package.
-**Migration**: Use `ctxkeys.IsP2PRequest(ctx)` instead of `filesystem.IsP2PContext(ctx)`.
+The filesystem package SHALL rely on canonical `ctxkeys.WithP2PRequest` / `ctxkeys.IsP2PRequest` helpers instead of defining its own P2P context detection helper.
+
+#### Scenario: Filesystem uses ctxkeys for P2P detection
+- **WHEN** the filesystem package needs to determine whether a request is P2P-originated
+- **THEN** it SHALL use `ctxkeys.IsP2PRequest(ctx)` instead of `filesystem.IsP2PContext(ctx)`
+
+### Requirement: Directory listing keeps path optional
+
+The `fs_list` tool SHALL accept an optional `path` parameter and SHALL default to the current working directory when `path` is omitted.
+
+#### Scenario: fs_list defaults to the current directory
+- **WHEN** `fs_list` is invoked without `path`
+- **THEN** the tool SHALL list the current working directory successfully
+
+### Requirement: Filesystem write/edit tools keep actionable wrapper parameter guards
+
+Filesystem write/edit tools SHALL reject missing required wrapper inputs with actionable parameter errors before file mutation begins.
+
+#### Scenario: Filesystem write/edit reject missing required inputs
+- **WHEN** `fs_write` or `fs_edit` is invoked without one of its declared required inputs
+- **THEN** the tool SHALL return an actionable missing-parameter error
+- **AND** SHALL not proceed into downstream file mutation logic
+

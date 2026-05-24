@@ -218,7 +218,7 @@ func TestLooksLikeEnvAssignment(t *testing.T) {
 		{"BAR=hello", true},
 		{"_VAR=value", true},
 		{"MY_VAR_2=test", true},
-		{"A=", true},         // empty value is valid
+		{"A=", true},          // empty value is valid
 		{"./foo=bar", false},  // starts with dot-slash
 		{"--flag=val", false}, // starts with dash
 		{"=value", false},     // no name before =
@@ -322,9 +322,9 @@ func TestUnwrapEnvPrefix(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		give       string
-		wantCmd    string
-		wantStrip  bool
+		give      string
+		wantCmd   string
+		wantStrip bool
 	}{
 		// Simple env prefix
 		{give: "FOO=bar echo hello", wantCmd: "echo hello", wantStrip: true},

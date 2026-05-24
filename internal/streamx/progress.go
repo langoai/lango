@@ -17,7 +17,7 @@ const (
 
 // ProgressEvent represents a progress update from any source.
 type ProgressEvent struct {
-	Source   string         // e.g. "tool:web_search", "agent:operator", "bg:task-123"
+	Source   string // e.g. "tool:web_search", "agent:operator", "bg:task-123"
 	Type     ProgressType
 	Message  string         // human-readable progress text
 	Progress float64        // 0.0 to 1.0, or -1 if not applicable

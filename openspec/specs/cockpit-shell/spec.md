@@ -1,9 +1,7 @@
 ## Purpose
 
 Capability spec for cockpit-shell. See requirements below for scope and behavior contracts.
-
 ## Requirements
-
 ### Requirement: Cockpit root model orchestrates 2-panel layout
 The cockpit `Model` SHALL compose a sidebar panel and a child panel using `lipgloss.JoinHorizontal`. When the sidebar is visible, the child panel SHALL receive `terminalWidth - sidebarWidth` as its effective width. When the sidebar is hidden, the child panel SHALL receive the full terminal width.
 
@@ -46,7 +44,6 @@ Cockpit `Deps` SHALL contain: `TurnRunner *turnrunner.Runner`, `Config *config.C
 #### Scenario: Deps fields match App struct
 - **WHEN** cockpit.New(deps) is called with fields from App struct
 - **THEN** all fields SHALL be directly assignable without type conversion
-
 
 ### Requirement: Consume-or-forward message delegation
 The cockpit model's Update function SHALL consume global keys (Ctrl+1-5, Tab, Ctrl+B, Ctrl+P, Ctrl+Y) and forward all other messages to the active page or child model. Ctrl+5 is consumed to switch to the Tasks page.
@@ -119,10 +116,11 @@ When Ctrl+P toggles the context panel, cockpit SHALL send synthetic WindowSizeMs
 - **THEN** the context panel SHALL receive WindowSizeMsg with Width=ContextPanelWidth before rendering
 
 ### Requirement: TTY Guard for TUI Commands
-The root command, `cockpit` subcommand, and `chat` subcommand SHALL detect whether stdin is an interactive terminal before launching the TUI. Non-interactive environments MUST NOT attempt to start bubbletea.
+
+The root command, `cockpit` subcommand, and `chat` subcommand SHALL detect whether stdin is an interactive terminal before launching their respective TUI surfaces. Non-interactive environments MUST NOT attempt to start Bubble Tea.
 
 #### Scenario: Root command in non-TTY environment
-- **WHEN** `lango` is invoked without an interactive terminal (e.g., piped stdin, CI, `</dev/null`)
+- **WHEN** `lango` is invoked without an interactive terminal
 - **THEN** the command SHALL print help text and exit with code 0
 
 #### Scenario: Cockpit subcommand in non-TTY environment
@@ -133,9 +131,9 @@ The root command, `cockpit` subcommand, and `chat` subcommand SHALL detect wheth
 - **WHEN** `lango chat` is invoked without an interactive terminal
 - **THEN** the command SHALL return an error: "chat requires an interactive terminal"
 
-#### Scenario: Normal interactive execution
-- **WHEN** `lango` is invoked in an interactive terminal
-- **THEN** the cockpit TUI SHALL launch normally (no behavior change)
+#### Scenario: Explicit cockpit launch in interactive execution
+- **WHEN** `lango cockpit` is invoked in an interactive terminal
+- **THEN** the cockpit TUI SHALL launch normally
 
 ### Requirement: Tasks page registration
 The cockpit SHALL register a Tasks page at `PageTasks` (ID 5) accessible via Ctrl+5 keyboard shortcut.
@@ -188,3 +186,42 @@ The cockpit `Update()` SHALL dispatch messages to named handler methods instead 
 #### Scenario: Unregistered page click is no-op
 - **WHEN** a sidebar PageSelectedMsg selects a PageID that has no registered page
 - **THEN** `activePage` SHALL change but no page.Activate() SHALL be called and forwardToActive SHALL silently no-op
+
+### Requirement: Cockpit root model orchestrates Mission Control as the default first surface
+
+The cockpit root model SHALL treat Mission Control as the default active page for explicit `lango cockpit` launches while continuing to host the existing detail pages. The sidebar remains secondary navigation inside cockpit, but cockpit no longer owns the bare-`lango` contract in Slice 6.
+
+#### Scenario: Explicit cockpit launch starts on Mission Control
+- **WHEN** cockpit is created for the explicit `lango cockpit` surface
+- **THEN** `activePage` SHALL initialize to `PageMissionControl`
+
+#### Scenario: Chat remains a detail page inside explicit cockpit
+- **WHEN** the user navigates from Mission Control to Chat inside cockpit
+- **THEN** the chat child surface SHALL remain reachable as a detail route
+- **AND** `lango chat` SHALL still bypass cockpit Mission Control entirely
+
+### Requirement: Pending approvals use a cockpit-owned shared response path
+The cockpit shell SHALL own the latest pending approval request for the session through a shared pending approval registry. Approval requests SHALL no longer require an unconditional page switch to Chat in order to remain visible or resolvable.
+
+#### Scenario: Approval request does not force Chat takeover
+- **WHEN** a pending `ApprovalRequestMsg` arrives while Mission Control is active
+- **THEN** cockpit SHALL register the request with the shared pending approval owner
+- **AND** Mission Control MAY remain visible while the live decision is rendered
+
+#### Scenario: Shared pending request resolves once
+- **WHEN** a cockpit surface resolves the pending approval
+- **THEN** the cockpit-owned registry SHALL write exactly one response to the original approval response channel
+- **AND** the pending request SHALL clear for all cockpit surfaces
+
+### Requirement: Mission Control shared subscriptions are scoped to cockpit lifetime
+Cockpit SHALL own the EventBus subscriptions and shared buffers needed for Mission Control for the lifetime of the TUI session. Page activation and deactivation SHALL control rendering and refresh ticks only, not EventBus subscription teardown.
+
+#### Scenario: Page switch preserves shared state
+- **WHEN** the user switches away from Mission Control and later returns
+- **THEN** the shared mission activity, learning suggestion, and pending approval state SHALL still be available
+
+#### Scenario: No page-lifetime unsubscribe contract
+- **WHEN** Mission Control deactivates as a page
+- **THEN** the cockpit SHALL stop page-local refresh behavior only
+- **AND** the change SHALL NOT require EventBus `Unsubscribe()` support
+

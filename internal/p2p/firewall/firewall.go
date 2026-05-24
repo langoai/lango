@@ -4,6 +4,7 @@ package firewall
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"regexp"
@@ -72,8 +73,18 @@ type AttestationResult struct {
 // ZKAttestFunc generates a ZK attestation proof for a response.
 type ZKAttestFunc func(responseHash, agentDIDHash []byte) (*AttestationResult, error)
 
-// ReputationChecker returns a trust score for a peer DID.
-type ReputationChecker func(ctx context.Context, peerDID string) (float64, error)
+// ReputationAssessment summarizes the runtime trust-entry contract for a peer.
+type ReputationAssessment struct {
+	Score             float64
+	ReturningPeer     bool
+	Allowed           bool
+	RequiresApproval  bool
+	TemporarilyUnsafe bool
+	TrustEntryState   string
+}
+
+// ReputationChecker returns a trust assessment for a peer DID.
+type ReputationChecker func(ctx context.Context, peerDID string) (*ReputationAssessment, error)
 
 // Firewall enforces access control and response sanitization for P2P queries.
 type Firewall struct {
@@ -106,7 +117,7 @@ func New(rules []ACLRule, logger *zap.SugaredLogger) *Firewall {
 				"warning", err.Error(),
 			)
 		}
-		f.rules = append(f.rules, r)
+		f.rules = append(f.rules, cloneACLRule(r))
 		if r.RateLimit > 0 && r.PeerDID != "" {
 			f.limiters[r.PeerDID] = rate.NewLimiter(rate.Every(time.Minute/time.Duration(r.RateLimit)), r.RateLimit)
 		}
@@ -155,15 +166,22 @@ func (f *Firewall) FilterQuery(ctx context.Context, peerDID, toolName string) er
 		}
 	}
 
-	// Check reputation score.
+	// Check reputation score and trust-entry state.
 	if f.reputationCheck != nil {
-		score, err := f.reputationCheck(ctx, peerDID)
+		assessment, err := f.reputationCheck(ctx, peerDID)
 		if err != nil {
 			f.logger.Warnw("reputation check error", "peerDID", peerDID, "error", err)
 			// Don't block on reputation errors, continue to ACL.
-		} else if score > 0 && score < f.minTrustScore {
-			// score == 0 means new peer, allow through (they start fresh).
-			return fmt.Errorf("peer %s reputation %.2f below minimum %.2f", peerDID, score, f.minTrustScore)
+		} else if assessment != nil {
+			switch {
+			case assessment.TemporarilyUnsafe:
+				return fmt.Errorf("peer %s is temporarily unsafe for runtime admission", peerDID)
+			case assessment.ReturningPeer && (!assessment.Allowed || assessment.RequiresApproval):
+				return fmt.Errorf("peer %s trust entry %s requires review", peerDID, assessment.TrustEntryState)
+			case assessment.Score > 0 && assessment.Score < f.minTrustScore:
+				// score == 0 means bootstrap peer, allow through to ACL checks.
+				return fmt.Errorf("peer %s reputation %.2f below minimum %.2f", peerDID, assessment.Score, f.minTrustScore)
+			}
 		}
 	}
 
@@ -225,7 +243,7 @@ func (f *Firewall) SanitizeResponse(response map[string]interface{}) map[string]
 }
 
 // AttestResponse generates a ZK attestation proof for a response.
-func (f *Firewall) AttestResponse(responseHash, agentDIDHash []byte) (*AttestationResult, error) {
+func (f *Firewall) AttestResponse(response, agentDID []byte) (*AttestationResult, error) {
 	f.mu.RLock()
 	fn := f.attestFunc
 	f.mu.RUnlock()
@@ -234,7 +252,9 @@ func (f *Firewall) AttestResponse(responseHash, agentDIDHash []byte) (*Attestati
 		return nil, nil // Attestation not configured.
 	}
 
-	return fn(responseHash, agentDIDHash)
+	responseHash := sha256.Sum256(response)
+	agentDIDHash := sha256.Sum256(agentDID)
+	return fn(responseHash[:], agentDIDHash[:])
 }
 
 // ValidateRule checks whether an ACL rule is safe to add. It rejects
@@ -270,7 +290,7 @@ func (f *Firewall) AddRule(rule ACLRule) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	f.rules = append(f.rules, rule)
+	f.rules = append(f.rules, cloneACLRule(rule))
 
 	if rule.RateLimit > 0 && rule.PeerDID != "" {
 		f.limiters[rule.PeerDID] = rate.NewLimiter(rate.Every(time.Minute/time.Duration(rule.RateLimit)), rule.RateLimit)
@@ -311,8 +331,17 @@ func (f *Firewall) Rules() []ACLRule {
 	defer f.mu.RUnlock()
 
 	rules := make([]ACLRule, len(f.rules))
-	copy(rules, f.rules)
+	for i, rule := range f.rules {
+		rules[i] = cloneACLRule(rule)
+	}
 	return rules
+}
+
+func cloneACLRule(rule ACLRule) ACLRule {
+	if rule.Tools != nil {
+		rule.Tools = append([]string(nil), rule.Tools...)
+	}
+	return rule
 }
 
 // matchesPeer checks if a rule peer pattern matches the given peer DID.

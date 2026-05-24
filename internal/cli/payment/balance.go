@@ -2,9 +2,7 @@ package payment
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 
@@ -13,17 +11,23 @@ import (
 )
 
 func newBalanceCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
-	var jsonOutput bool
+	var output string
 
 	cmd := &cobra.Command{
-		Use:   "balance",
-		Short: "Show USDC wallet balance",
+		Use:           "balance",
+		Short:         "Show USDC wallet balance",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			output, err := resolveOutput(cmd)
+			if err != nil {
+				return err
+			}
 			boot, err := bootLoader()
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			deps, err := initPaymentDeps(boot)
 			if err != nil {
@@ -46,10 +50,8 @@ func newBalanceCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command 
 			chainID := deps.service.ChainID()
 			network := wallet.NetworkName(chainID)
 
-			if jsonOutput {
-				enc := json.NewEncoder(os.Stdout)
-				enc.SetIndent("", "  ")
-				return enc.Encode(map[string]interface{}{
+			if output == "json" {
+				return printJSON(cmd.OutOrStdout(), map[string]interface{}{
 					"balance":  balance,
 					"currency": wallet.CurrencyUSDC,
 					"address":  addr,
@@ -58,15 +60,15 @@ func newBalanceCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command 
 				})
 			}
 
-			fmt.Println("Wallet Balance")
-			fmt.Printf("  Balance:   %s %s\n", balance, wallet.CurrencyUSDC)
-			fmt.Printf("  Address:   %s\n", addr)
-			fmt.Printf("  Network:   %s (chain %d)\n", network, chainID)
+			fmt.Fprintln(cmd.OutOrStdout(), "Wallet Balance")
+			fmt.Fprintf(cmd.OutOrStdout(), "  Balance:   %s %s\n", balance, wallet.CurrencyUSDC)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Address:   %s\n", addr)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Network:   %s (chain %d)\n", network, chainID)
 
 			return nil
 		},
 	}
 
-	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
+	cmd.Flags().StringVar(&output, "output", "table", "Output format: table or json")
 	return cmd
 }

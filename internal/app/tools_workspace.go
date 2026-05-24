@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/langoai/lango/internal/agent"
 	"github.com/langoai/lango/internal/p2p/workspace"
 	"github.com/langoai/lango/internal/toolparam"
@@ -29,7 +31,7 @@ func buildWorkspaceTools(wc *wsComponents) []*agent.Tool {
 				"name": map[string]interface{}{"type": "string", "description": "Workspace name"},
 				"goal": map[string]interface{}{"type": "string", "description": "Workspace goal/description"},
 			},
-			"required": []string{"name", "goal"},
+			"required": []string{"name"},
 		},
 		Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
 			name, err := toolparam.RequireString(params, "name")
@@ -133,6 +135,7 @@ func buildWorkspaceTools(wc *wsComponents) []*agent.Tool {
 		SafetyLevel: agent.SafetyLevelSafe,
 		Capability: agent.ToolCapability{
 			Category: "workspace",
+			Activity: agent.ActivityQuery,
 			ReadOnly: true,
 		},
 		Parameters: map[string]interface{}{
@@ -165,6 +168,7 @@ func buildWorkspaceTools(wc *wsComponents) []*agent.Tool {
 		SafetyLevel: agent.SafetyLevelSafe,
 		Capability: agent.ToolCapability{
 			Category: "workspace",
+			Activity: agent.ActivityQuery,
 			ReadOnly: true,
 		},
 		Parameters: map[string]interface{}{
@@ -257,6 +261,7 @@ func buildWorkspaceTools(wc *wsComponents) []*agent.Tool {
 			parentID := toolparam.OptionalString(params, "parentId", "")
 
 			msg := workspace.Message{
+				ID:        uuid.New().String(),
 				Type:      workspace.MessageType(msgType),
 				Content:   content,
 				ParentID:  parentID,
@@ -288,6 +293,7 @@ func buildWorkspaceTools(wc *wsComponents) []*agent.Tool {
 		SafetyLevel: agent.SafetyLevelSafe,
 		Capability: agent.ToolCapability{
 			Category: "workspace",
+			Activity: agent.ActivityRead,
 			ReadOnly: true,
 		},
 		Parameters: map[string]interface{}{
@@ -431,6 +437,7 @@ func buildGitTools(wc *wsComponents) []*agent.Tool {
 			SafetyLevel: agent.SafetyLevelSafe,
 			Capability: agent.ToolCapability{
 				Category:        "git",
+				Activity:        agent.ActivityRead,
 				ReadOnly:        true,
 				ConcurrencySafe: true,
 			},
@@ -470,6 +477,7 @@ func buildGitTools(wc *wsComponents) []*agent.Tool {
 			SafetyLevel: agent.SafetyLevelSafe,
 			Capability: agent.ToolCapability{
 				Category:        "git",
+				Activity:        agent.ActivityRead,
 				ReadOnly:        true,
 				ConcurrencySafe: true,
 			},
@@ -508,6 +516,7 @@ func buildGitTools(wc *wsComponents) []*agent.Tool {
 			SafetyLevel: agent.SafetyLevelSafe,
 			Capability: agent.ToolCapability{
 				Category:        "git",
+				Activity:        agent.ActivityRead,
 				ReadOnly:        true,
 				ConcurrencySafe: true,
 			},

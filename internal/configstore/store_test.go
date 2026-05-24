@@ -13,6 +13,7 @@ import (
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/ent"
 	"github.com/langoai/lango/internal/security"
+	"github.com/langoai/lango/internal/testutil/schemautil"
 )
 
 func testClient(t *testing.T) *ent.Client {
@@ -20,7 +21,7 @@ func testClient(t *testing.T) *ent.Client {
 	client, err := ent.Open("sqlite3", "file:ent?mode=memory&cache=shared&_fk=1")
 	require.NoError(t, err)
 	t.Cleanup(func() { client.Close() })
-	err = client.Schema.Create(context.Background())
+	err = schemautil.CreateSchema(context.Background(), client)
 	require.NoError(t, err)
 	return client
 }

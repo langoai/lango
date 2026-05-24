@@ -265,6 +265,6 @@ The `SecurityEventHandler` provides automatic session invalidation based on runt
 lango p2p zkp status         # Show ZKP configuration and compiled circuits
 lango p2p zkp circuits       # List available circuits with constraint counts
 lango p2p session list       # List active P2P sessions
-lango p2p session revoke     # Revoke a specific session
+lango p2p session revoke --peer-did <did> # Revoke a specific session
 lango p2p session revoke-all # Revoke all sessions
 ```

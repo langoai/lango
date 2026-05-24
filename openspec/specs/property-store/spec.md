@@ -49,4 +49,8 @@ The system SHALL provide `QueryEntities(ctx, PropertyQuery)` that returns entiti
 - **THEN** properties and triples for `error:timeout` are returned
 
 ### Requirement: Property deletion
-`DeleteProperties` removes all properties for an entity (used by entity lifecycle management).
+`DeleteProperties` SHALL remove all properties for an entity (used by entity lifecycle management).
+
+#### Scenario: DeleteProperties clears an entity property set
+- **WHEN** `DeleteProperties` is called for an entity with stored properties
+- **THEN** all properties for that entity SHALL be removed

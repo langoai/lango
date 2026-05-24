@@ -4,15 +4,25 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+
+	"github.com/langoai/lango/internal/cli/clihttp"
 )
 
-func newToolsCmd() *cobra.Command {
+func newToolsCmd(loadConfig configLoader) *cobra.Command {
 	return &cobra.Command{
-		Use:   "tools",
-		Short: "Tool execution statistics",
+		Use:           "tools",
+		Short:         "Tool execution statistics",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			addr := getAddr(cmd)
-			format := getOutputFormat(cmd)
+			format, err := getOutputFormat(cmd)
+			if err != nil {
+				return err
+			}
+			addr, err := getAddr(cmd, loadConfig)
+			if err != nil {
+				return err
+			}
 
 			var data struct {
 				Tools []struct {
@@ -23,20 +33,20 @@ func newToolsCmd() *cobra.Command {
 					ErrorRate   float64 `json:"errorRate"`
 				} `json:"tools"`
 			}
-			if err := fetchJSON(addr, "/metrics/tools", &data); err != nil {
+			if err := clihttp.FetchJSON(addr, "/metrics/tools", &data); err != nil {
 				return err
 			}
 
 			if format == "json" {
-				return printJSON(data)
+				return printJSON(cmd.OutOrStdout(), data)
 			}
 
 			if len(data.Tools) == 0 {
-				fmt.Println("No tool execution data available.")
+				fmt.Fprintln(cmd.OutOrStdout(), "No tool execution data available.")
 				return nil
 			}
 
-			w := newTabWriter()
+			w := newTabWriter(cmd.OutOrStdout())
 			fmt.Fprintln(w, "TOOL\tCOUNT\tERRORS\tERROR RATE\tAVG DURATION")
 			for _, t := range data.Tools {
 				fmt.Fprintf(w, "%s\t%d\t%d\t%.1f%%\t%s\n",

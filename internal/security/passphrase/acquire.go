@@ -3,11 +3,11 @@ package passphrase
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"syscall"
 
-	"github.com/langoai/lango/internal/cli/prompt"
 	"github.com/langoai/lango/internal/keyring"
 	"golang.org/x/term"
 )
@@ -29,6 +29,16 @@ type Options struct {
 	KeyringProvider keyring.Provider // if non-nil, try secure keyring first (biometric/TPM)
 }
 
+var (
+	passphrasePrompt                  = promptPassphraseIO
+	passphraseConfirmPrompt           = promptPassphraseConfirmIO
+	passphraseStdin         io.Reader = os.Stdin
+	passphraseStderr        io.Writer = os.Stderr
+	passphraseInputFD                 = func() int { return int(syscall.Stdin) }
+	passphraseReadPassword            = term.ReadPassword
+	passphraseIsTerminal              = func() bool { return term.IsTerminal(int(syscall.Stdin)) }
+)
+
 // defaultKeyfilePath returns the default keyfile path (~/.lango/keyfile).
 func defaultKeyfilePath() (string, error) {
 	home, err := os.UserHomeDir()
@@ -38,9 +48,7 @@ func defaultKeyfilePath() (string, error) {
 	return filepath.Join(home, ".lango", "keyfile"), nil
 }
 
-// Acquire obtains a passphrase from the highest-priority available source.
-// Priority: keyring -> keyfile -> interactive terminal -> stdin pipe -> error
-func Acquire(opts Options) (string, Source, error) {
+func acquireWithIO(opts Options, stdin io.Reader, stderr io.Writer, interactive bool) (string, Source, error) {
 	keyfilePath := opts.KeyfilePath
 	if keyfilePath == "" {
 		var err error
@@ -50,47 +58,78 @@ func Acquire(opts Options) (string, Source, error) {
 		}
 	}
 
-	// 1. Try secure keyring (highest priority — biometric/TPM).
 	if opts.KeyringProvider != nil {
 		pass, err := opts.KeyringProvider.Get(keyring.Service, keyring.KeyMasterPassphrase)
 		if err == nil && pass != "" {
 			return pass, SourceKeyring, nil
 		}
-		// Fall through on ErrNotFound or any other keyring error.
 		if err != nil && !errors.Is(err, keyring.ErrNotFound) {
-			fmt.Fprintf(os.Stderr, "warning: keyring read failed: %v\n", err)
+			fmt.Fprintf(stderr, "warning: keyring read failed: %v\n", err)
 		}
 	}
 
-	// 2. Try keyfile.
 	if pass, err := ReadKeyfile(keyfilePath); err == nil {
 		return pass, SourceKeyfile, nil
 	}
 
-	// 3. Try interactive terminal.
-	if term.IsTerminal(int(syscall.Stdin)) {
-		pass, err := acquireInteractive(opts.AllowCreation)
+	if interactive {
+		pass, err := acquireInteractive(opts.AllowCreation, stderr)
 		if err != nil {
 			return "", 0, fmt.Errorf("interactive passphrase: %w", err)
 		}
 		return pass, SourceInteractive, nil
 	}
 
-	// 4. Try stdin pipe.
-	pass, err := ReadStdinPipe()
+	pass, err := ReadStdinPipeFromReader(stdin)
 	if err != nil {
 		return "", 0, fmt.Errorf("stdin passphrase: %w", err)
 	}
 	return pass, SourceStdin, nil
 }
 
+// Acquire obtains a passphrase from the highest-priority available source.
+// Priority: keyring -> keyfile -> interactive terminal -> stdin pipe -> error
+func Acquire(opts Options) (string, Source, error) {
+	return acquireWithIO(opts, passphraseStdin, passphraseStderr, passphraseIsTerminal())
+}
+
 // acquireInteractive prompts the user for a passphrase via the terminal.
-func acquireInteractive(allowCreation bool) (string, error) {
+func acquireInteractive(allowCreation bool, out io.Writer) (string, error) {
 	if allowCreation {
-		return prompt.PassphraseConfirm(
+		return passphraseConfirmPrompt(
+			out,
 			"Enter new passphrase: ",
 			"Confirm passphrase: ",
 		)
 	}
-	return prompt.Passphrase("Enter passphrase: ")
+	return passphrasePrompt(out, "Enter passphrase: ")
+}
+
+func promptPassphraseIO(out io.Writer, promptText string) (string, error) {
+	if _, err := fmt.Fprint(out, promptText); err != nil {
+		return "", err
+	}
+	bytePassword, err := passphraseReadPassword(passphraseInputFD())
+	if _, writeErr := fmt.Fprintln(out); err == nil && writeErr != nil {
+		return "", writeErr
+	}
+	if err != nil {
+		return "", err
+	}
+	return string(bytePassword), nil
+}
+
+func promptPassphraseConfirmIO(out io.Writer, promptText, confirmPromptText string) (string, error) {
+	pass1, err := promptPassphraseIO(out, promptText)
+	if err != nil {
+		return "", err
+	}
+	pass2, err := promptPassphraseIO(out, confirmPromptText)
+	if err != nil {
+		return "", err
+	}
+	if pass1 != pass2 {
+		return "", fmt.Errorf("passphrases do not match")
+	}
+	return pass1, nil
 }

@@ -24,8 +24,11 @@ func newRemoveCmd() *cobra.Command {
 			// Try to find and remove from the specified scope
 			paths := scopePaths(scope)
 			for _, sp := range paths {
-				servers, err := mcplib.LoadMCPFile(sp.path)
+				servers, err := mcplib.LoadScopedMCPFile(sp.scope, sp.path)
 				if err != nil {
+					return err
+				}
+				if servers == nil {
 					continue
 				}
 				if _, exists := servers[name]; !exists {
@@ -36,7 +39,7 @@ func newRemoveCmd() *cobra.Command {
 				if err := mcplib.SaveMCPFile(sp.path, servers); err != nil {
 					return fmt.Errorf("save config: %w", err)
 				}
-				fmt.Printf("MCP server %q removed from %s scope.\n", name, sp.scope)
+				fmt.Fprintf(cmd.OutOrStdout(), "MCP server %q removed from %s scope.\n", name, sp.scope)
 				return nil
 			}
 

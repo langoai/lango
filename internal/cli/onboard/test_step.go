@@ -36,51 +36,46 @@ func RunConfigTests(cfg *config.Config) []TestResult {
 }
 
 func checkProviderExists(cfg *config.Config) TestResult {
-	providerID := cfg.Agent.Provider
-	if providerID == "" {
+	status := config.EvaluateAgentSetup(cfg)
+	if status.MissingProvider {
 		return TestResult{
 			Name:    "Provider configured",
 			Status:  "fail",
 			Message: "No provider selected in agent config",
 		}
 	}
-
-	p, ok := cfg.Providers[providerID]
-	if !ok {
+	if status.MissingProviderMap {
 		return TestResult{
 			Name:    "Provider configured",
 			Status:  "fail",
-			Message: fmt.Sprintf("Provider %q not found in providers map", providerID),
+			Message: fmt.Sprintf("Provider %q not found in providers map", status.ProviderID),
 		}
 	}
-
-	if p.Type == "" {
+	if status.MissingProviderType {
 		return TestResult{
 			Name:    "Provider configured",
 			Status:  "fail",
-			Message: fmt.Sprintf("Provider %q has no type", providerID),
+			Message: fmt.Sprintf("Provider %q has no type", status.ProviderID),
 		}
 	}
 
 	return TestResult{
 		Name:    "Provider configured",
 		Status:  "pass",
-		Message: fmt.Sprintf("Provider %q (%s) is configured", providerID, p.Type),
+		Message: fmt.Sprintf("Provider %q (%s) is configured", status.ProviderID, status.ProviderType),
 	}
 }
 
 func checkAPIKey(cfg *config.Config) TestResult {
-	providerID := cfg.Agent.Provider
-	if providerID == "" {
+	status := config.EvaluateAgentSetup(cfg)
+	if status.MissingProvider {
 		return TestResult{
 			Name:    "API key set",
 			Status:  "fail",
 			Message: "No provider selected",
 		}
 	}
-
-	p, ok := cfg.Providers[providerID]
-	if !ok {
+	if status.MissingProviderMap {
 		return TestResult{
 			Name:    "API key set",
 			Status:  "fail",
@@ -89,7 +84,7 @@ func checkAPIKey(cfg *config.Config) TestResult {
 	}
 
 	// Ollama doesn't need an API key
-	if p.Type == "ollama" {
+	if status.ProviderType == "ollama" {
 		return TestResult{
 			Name:    "API key set",
 			Status:  "pass",
@@ -97,7 +92,8 @@ func checkAPIKey(cfg *config.Config) TestResult {
 		}
 	}
 
-	if p.APIKey == "" {
+	providerCfg := cfg.Providers[status.ProviderID]
+	if status.MissingAPIKey {
 		return TestResult{
 			Name:    "API key set",
 			Status:  "fail",
@@ -105,7 +101,7 @@ func checkAPIKey(cfg *config.Config) TestResult {
 		}
 	}
 
-	if p.APIKey == "sk-..." || p.APIKey == "placeholder" {
+	if providerCfg.APIKey == "sk-..." || providerCfg.APIKey == "placeholder" {
 		return TestResult{
 			Name:    "API key set",
 			Status:  "warn",
@@ -121,7 +117,7 @@ func checkAPIKey(cfg *config.Config) TestResult {
 }
 
 func checkAgentModel(cfg *config.Config) TestResult {
-	if cfg.Agent.Model == "" {
+	if config.EvaluateAgentSetup(cfg).MissingModel {
 		return TestResult{
 			Name:    "Agent model set",
 			Status:  "fail",

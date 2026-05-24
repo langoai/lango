@@ -439,3 +439,20 @@ func TestCatalog_DeferredToolCount(t *testing.T) {
 		})
 	}
 }
+
+func TestSaveableToolNames(t *testing.T) {
+	t.Parallel()
+
+	c := New()
+	c.RegisterCategory(Category{Name: "test", Enabled: true})
+	c.Register("test", []*agent.Tool{
+		newTestToolWithCapability("reader", agent.ToolCapability{ReadOnly: true}),
+		newTestToolWithCapability("querier", agent.ToolCapability{Activity: agent.ActivityQuery}),
+		newTestToolWithCapability("writer", agent.ToolCapability{Activity: agent.ActivityWrite}),
+		newTestToolWithCapability("executor", agent.ToolCapability{Activity: agent.ActivityExecute}),
+		newTestToolWithCapability("plain", agent.ToolCapability{}),
+	})
+
+	names := c.SaveableToolNames()
+	assert.Equal(t, []string{"querier", "reader"}, names)
+}

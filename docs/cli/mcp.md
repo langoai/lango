@@ -13,6 +13,7 @@ lango mcp <subcommand>
 ## lango mcp list
 
 List all configured MCP servers with their type, enabled status, and endpoint.
+The command writes through the Cobra command output stream so wrappers and test harnesses can capture list output directly.
 
 ```
 lango mcp list
@@ -42,6 +43,7 @@ slack           sse     yes      https://mcp-slack.example.com/sse
 ## lango mcp add
 
 Add a new MCP server configuration.
+The command writes through the Cobra command output stream so wrappers and test harnesses can capture confirmation output directly.
 
 ```
 lango mcp add <name> [flags]
@@ -75,7 +77,9 @@ $ lango mcp add filesystem \
     --command "npx" \
     --args "@modelcontextprotocol/server-filesystem,/home/user/docs" \
     --scope project
-MCP server "filesystem" added (scope: project)
+MCP server "filesystem" added to project scope (.lango-mcp.json).
+  Transport: stdio
+  Command:   npx @modelcontextprotocol/server-filesystem,/home/user/docs
 
 # Add an HTTP-based MCP server with authentication
 $ lango mcp add github \
@@ -83,14 +87,18 @@ $ lango mcp add github \
     --url "https://mcp.github.com/v1" \
     --header "Authorization=Bearer ghp_xxxx" \
     --safety moderate
-MCP server "github" added (scope: user)
+MCP server "github" added to user scope (~/.lango/mcp.json).
+  Transport: http
+  URL:       https://mcp.github.com/v1
 
 # Add an SSE-based MCP server with environment variables
 $ lango mcp add slack \
     --type sse \
     --url "https://mcp-slack.example.com/sse" \
     --env "SLACK_TOKEN=xoxb-xxxx"
-MCP server "slack" added (scope: user)
+MCP server "slack" added to user scope (~/.lango/mcp.json).
+  Transport: sse
+  URL:       https://mcp-slack.example.com/sse
 ```
 
 ---
@@ -98,6 +106,7 @@ MCP server "slack" added (scope: user)
 ## lango mcp remove
 
 Remove an MCP server configuration. Aliases: `rm`.
+The command writes through the Cobra command output stream so wrappers and test harnesses can capture confirmation output directly.
 
 ```
 lango mcp remove <name> [--scope <scope>]
@@ -115,7 +124,7 @@ lango mcp remove <name> [--scope <scope>]
 
 ```bash
 $ lango mcp remove filesystem
-MCP server "filesystem" removed.
+MCP server "filesystem" removed from project scope.
 
 $ lango mcp remove github --scope user
 MCP server "github" removed from user scope.
@@ -126,6 +135,7 @@ MCP server "github" removed from user scope.
 ## lango mcp get
 
 Show detailed information about an MCP server, including its configuration and discovered tools.
+The command writes through the Cobra command output stream so wrappers and test harnesses can capture inspection output directly.
 
 ```
 lango mcp get <name>
@@ -158,6 +168,7 @@ Tools (3):
 ## lango mcp test
 
 Test connectivity to an MCP server. Performs a handshake, measures latency, counts available tools, and pings the session.
+The command writes through the Cobra command output stream so wrappers and test harnesses can capture connectivity diagnostics directly.
 
 ```
 lango mcp test <name>
@@ -183,6 +194,7 @@ Testing MCP server "filesystem"...
 ## lango mcp enable
 
 Enable a previously disabled MCP server.
+The command writes through the Cobra command output stream so wrappers and test harnesses can capture confirmation output directly.
 
 ```
 lango mcp enable <name> [--scope <scope>]
@@ -208,6 +220,7 @@ MCP server "github" enabled.
 ## lango mcp disable
 
 Disable an MCP server without removing its configuration.
+The command writes through the Cobra command output stream so wrappers and test harnesses can capture confirmation output directly.
 
 ```
 lango mcp disable <name> [--scope <scope>]
@@ -241,6 +254,8 @@ MCP server configurations are stored in JSON files and merged in priority order:
 | Project | `.lango-mcp.json` | Project-specific server definitions (highest priority) |
 
 When the same server name exists in multiple scopes, the higher-priority scope wins. Use `--scope` flags to target a specific scope when adding, removing, enabling, or disabling servers.
+
+Missing user or project scope files are optional and ignored. If a scoped config file exists but cannot be read, parsed, or validated, MCP commands fail with an error that includes the scope and path instead of silently falling back to lower-priority configuration. Write commands such as `add`, `remove`, `enable`, and `disable` do not overwrite invalid existing config files.
 
 ### TUI Settings
 

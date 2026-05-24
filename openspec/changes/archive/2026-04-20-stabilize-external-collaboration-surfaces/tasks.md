@@ -1,0 +1,6 @@
+- [x] Align P2P identity surfaces across CLI, REST, and docs so active DID exposure, null/no-DID behavior, and v1/v2 DID semantics are truthful and read-only.
+- [x] Canonicalize payment-side post-pay trust defaults to one inclusive `0.8` threshold across paygate, team payment, docs, and config comments.
+- [x] Clarify the Phase 1/2 pricing, negotiation, and settlement control-plane split between provider-side P2P quote surfaces and local economy policy engines.
+- [x] Truth-align team, workspace, git-bundle, and provenance operator surfaces so docs and CLI examples no longer imply direct live control where only server-backed or tool-backed flows exist.
+- [x] Update the external collaboration audit ledger to record the resolved control-plane decisions and post-implementation notes.
+- [x] Re-run repository verification (`go build ./...`, `go test ./...`, `python3 -m mkdocs build --strict`) before applying or archiving the change.

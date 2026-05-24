@@ -47,6 +47,13 @@ const (
 	ActivityManage  ActivityKind = "manage"
 )
 
+// KnowledgeSaveable reports whether results from this tool are eligible for
+// automatic knowledge saving. True when the tool is read-only or its primary
+// activity is reading/querying.
+func (c ToolCapability) KnowledgeSaveable() bool {
+	return c.ReadOnly || c.Activity == ActivityRead || c.Activity == ActivityQuery
+}
+
 // ToolCapability holds rich metadata for tool discovery and policy enforcement.
 // All fields have zero-value defaults that preserve existing behavior.
 type ToolCapability struct {

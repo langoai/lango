@@ -29,10 +29,28 @@ func (Message) Fields() []ent.Field {
 		field.String("role").
 			NotEmpty(),
 		field.Text("content"),
+		field.Bytes("content_ciphertext").
+			Optional().
+			Nillable(),
+		field.Bytes("content_nonce").
+			Optional().
+			Nillable(),
+		field.Int("content_key_version").
+			Optional().
+			Nillable(),
 		field.Time("timestamp").
 			Default(time.Now),
 		field.JSON("tool_calls", []ToolCall{}).
 			Optional(),
+		field.Bytes("tool_calls_ciphertext").
+			Optional().
+			Nillable(),
+		field.Bytes("tool_calls_nonce").
+			Optional().
+			Nillable(),
+		field.Int("tool_calls_key_version").
+			Optional().
+			Nillable(),
 		field.String("author").
 			Optional().
 			Default(""),

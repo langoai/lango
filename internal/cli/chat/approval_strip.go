@@ -2,6 +2,7 @@ package chat
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
@@ -11,14 +12,19 @@ import (
 )
 
 // renderApprovalStrip renders a Tier 1 compact single-line approval strip.
-func renderApprovalStrip(vm approval.ApprovalViewModel, width int, confirmPending ...bool) string {
-	isConfirmPending := len(confirmPending) > 0 && confirmPending[0]
+func renderApprovalStrip(vm approval.ApprovalViewModel, state *approvalState, width int) string {
+	isConfirmPending := state != nil && state.confirmPending
+	confirmKey := "a"
+	if state != nil && strings.TrimSpace(state.confirmAction) != "" {
+		confirmKey = state.confirmAction
+	}
 	stripWidth := max(width, 1)
+	safeToolName := sanitizeDisplayText(vm.Request.ToolName)
 
 	toolBadge := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(tui.Warning).
-		Render(vm.Request.ToolName)
+		Render(safeToolName)
 
 	if vm.Risk.Level == "critical" {
 		toolBadge += " " + lipgloss.NewStyle().
@@ -29,8 +35,9 @@ func renderApprovalStrip(vm approval.ApprovalViewModel, width int, confirmPendin
 
 	summary := vm.Request.Summary
 	if summary == "" {
-		summary = fmt.Sprintf("Execute tool: %s", vm.Request.ToolName)
+		summary = fmt.Sprintf("Execute tool: %s", safeToolName)
 	}
+	summary = sanitizeDisplayText(summary)
 
 	if badge := formatChannelBadge(vm.Request.SessionKey); badge != "" {
 		summary = badge + " " + summary
@@ -41,11 +48,11 @@ func renderApprovalStrip(vm approval.ApprovalViewModel, width int, confirmPendin
 		keys = lipgloss.NewStyle().
 			Foreground(tui.Warning).
 			Bold(true).
-			Render("Press 'a' again to confirm")
+			Render(fmt.Sprintf("Press '%s' again to confirm  d/Esc denies", confirmKey))
 	} else {
 		keys = lipgloss.NewStyle().
 			Foreground(tui.Muted).
-			Render("[a]llow  [s]ession  [d]eny")
+			Render("[a]llow  [s] allow session  [d/Esc] deny")
 	}
 
 	// Compute available space for summary by subtracting fixed elements.

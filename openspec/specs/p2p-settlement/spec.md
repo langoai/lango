@@ -73,7 +73,7 @@ Settlement transactions SHALL be recorded in the `PaymentTx` table with `payment
 - **THEN** a `PaymentTx` record is created with status `pending` and method `p2p_settlement`
 
 ### Requirement: Settlement documentation
-The system SHALL document P2P settlement workflow in `docs/features/economy.md`, covering settlement config keys and receipt confirmation flow.
+The system SHALL document P2P settlement workflow in `docs/features/economy.md`, covering settlement config keys, receipt confirmation flow, and the authorization-driven runtime settlement path.
 
 #### Scenario: Settlement config documented
 - **WHEN** a user reads the on-chain escrow section in economy.md
@@ -83,3 +83,6 @@ The system SHALL document P2P settlement workflow in `docs/features/economy.md`,
 - **WHEN** a user reads `docs/configuration.md`
 - **THEN** settlement config keys are listed in the escrow configuration table
 
+#### Scenario: Settlement authorization path
+- **WHEN** a user reads the P2P settlement documentation
+- **THEN** it SHALL explain that the runtime validates an explicit payment authorization, checks the authorization recipient against the local wallet address, and then hands the authorization to the settlement service

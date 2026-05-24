@@ -177,7 +177,10 @@ func TestParallelReadOnlyExecutor_ContextCancellation(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	started := make(chan struct{})
+	// Buffer started by handler count so the second goroutine's "I started"
+	// signal cannot block its progress to <-ctx.Done(); otherwise an unbuffered
+	// channel deadlocks the second handler past the cancel().
+	started := make(chan struct{}, 2)
 	handler := func(ctx context.Context, _ map[string]any) (any, error) {
 		started <- struct{}{}
 		<-ctx.Done()

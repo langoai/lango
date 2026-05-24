@@ -2,6 +2,7 @@ package settings
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/langoai/lango/internal/cli/tuicore"
 	"github.com/langoai/lango/internal/config"
@@ -96,6 +97,36 @@ func NewOntologyForm(cfg *config.Config) *tuicore.FormModel {
 		VisibleWhen: isGovEnabled,
 	})
 
+	admissionMode := cfg.Ontology.Governance.AdmissionMode
+	if admissionMode == "" {
+		admissionMode = config.OntologyAdmissionModeOff
+	}
+	learningConfidence := cfg.Ontology.Governance.EffectiveLearningDefaultConfidence()
+	librarianConfidence := cfg.Ontology.Governance.EffectiveLibrarianDefaultConfidence()
+	form.AddField(&tuicore.Field{
+		Key:                       "ontology_gov_admission_mode",
+		Label:                     "    Runtime Admission Mode",
+		Type:                      tuicore.InputSelect,
+		Value:                     admissionMode,
+		Options:                   []string{config.OntologyAdmissionModeOff, config.OntologyAdmissionModeObserve},
+		Description:               "Observe supported runtime graph inputs without changing write routing",
+		PreserveAbsentIfUntouched: true,
+	})
+	form.AddField(&tuicore.Field{
+		Key: "ontology_gov_learning_conf", Label: "    Learning Default Confidence", Type: tuicore.InputText,
+		Value:                     strconv.FormatFloat(learningConfidence, 'f', -1, 64),
+		Placeholder:               "0.60",
+		Description:               "Fallback confidence for the learning producer group",
+		PreserveAbsentIfUntouched: true,
+	})
+	form.AddField(&tuicore.Field{
+		Key: "ontology_gov_librarian_conf", Label: "    Librarian Default Confidence", Type: tuicore.InputText,
+		Value:                     strconv.FormatFloat(librarianConfidence, 'f', -1, 64),
+		Placeholder:               "0.50",
+		Description:               "Fallback confidence for the librarian producer group",
+		PreserveAbsentIfUntouched: true,
+	})
+
 	// --- Exchange ---
 	exEnabled := &tuicore.Field{
 		Key: "ontology_ex_enabled", Label: "  Exchange Enabled", Type: tuicore.InputBool,
@@ -142,4 +173,3 @@ func NewOntologyForm(cfg *config.Config) *tuicore.FormModel {
 
 	return &form
 }
-

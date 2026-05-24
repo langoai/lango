@@ -22,7 +22,8 @@ Examples:
   lango account deploy
   lango account session list
   lango account module list
-  lango account policy show`,
+  lango account policy show
+  lango account paymaster status`,
 	}
 
 	cmd.AddCommand(deployCmd(bootLoader))

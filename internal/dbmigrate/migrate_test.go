@@ -1,21 +1,22 @@
 package dbmigrate
 
 import (
-	"database/sql"
 	"os"
 	"path/filepath"
 	"testing"
 
-	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/langoai/lango/internal/sqlitedriver"
 )
 
 func createPlaintextDB(t *testing.T, dir string) string {
 	t.Helper()
 	dbPath := filepath.Join(dir, "test.db")
-	db, err := sql.Open("sqlite3", "file:"+dbPath+"?_journal_mode=WAL")
+	db, err := sqlitedriver.Open(dbPath, false)
 	require.NoError(t, err)
+	require.NoError(t, sqlitedriver.ConfigureConnection(db, false))
 
 	_, err = db.Exec("CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT)")
 	require.NoError(t, err)
@@ -63,26 +64,27 @@ func TestDecryptToPlaintext_NotEncrypted(t *testing.T) {
 	dbPath := createPlaintextDB(t, dir)
 	err := DecryptToPlaintext(dbPath, "test-pass", 4096)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "database is not encrypted")
+	assert.ErrorIs(t, err, ErrSQLCipherUnsupported)
 }
 
 func TestIsSQLCipherAvailable(t *testing.T) {
-	// This test documents the runtime check; the result depends on the build.
-	available := IsSQLCipherAvailable()
-	t.Logf("SQLCipher available: %v", available)
+	assert.False(t, IsSQLCipherAvailable())
 }
 
-func TestMigrateToEncrypted_NoSQLCipher(t *testing.T) {
-	// When built without SQLCipher, migration should return a clear error.
-	if IsSQLCipherAvailable() {
-		t.Skip("SQLCipher is available; this test only runs without SQLCipher support")
-	}
-
+func TestMigrateToEncrypted_Unsupported(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := createPlaintextDB(t, dir)
 	err := MigrateToEncrypted(dbPath, "test-passphrase", 4096)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "SQLCipher not available")
+	assert.ErrorIs(t, err, ErrSQLCipherUnsupported)
+}
+
+func TestDecryptToPlaintext_Unsupported(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := createPlaintextDB(t, dir)
+	err := DecryptToPlaintext(dbPath, "test-passphrase", 4096)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrSQLCipherUnsupported)
 }
 
 func TestSecureDeleteFile(t *testing.T) {

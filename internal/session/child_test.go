@@ -20,14 +20,14 @@ func newMockStore() *mockStore {
 	return &mockStore{sessions: make(map[string]*Session)}
 }
 
-func (m *mockStore) Create(s *Session) error          { m.sessions[s.Key] = s; return nil }
-func (m *mockStore) Get(key string) (*Session, error) { return m.sessions[key], nil }
-func (m *mockStore) Update(s *Session) error          { m.sessions[s.Key] = s; return nil }
-func (m *mockStore) Delete(key string) error          { delete(m.sessions, key); return nil }
-func (m *mockStore) Close() error                     { return nil }
-func (m *mockStore) GetSalt(_ string) ([]byte, error) { return nil, nil }
-func (m *mockStore) SetSalt(_ string, _ []byte) error                          { return nil }
-func (m *mockStore) ListSessions(_ context.Context) ([]SessionSummary, error)  { return nil, nil }
+func (m *mockStore) Create(s *Session) error                                  { m.sessions[s.Key] = s; return nil }
+func (m *mockStore) Get(key string) (*Session, error)                         { return m.sessions[key], nil }
+func (m *mockStore) Update(s *Session) error                                  { m.sessions[s.Key] = s; return nil }
+func (m *mockStore) Delete(key string) error                                  { delete(m.sessions, key); return nil }
+func (m *mockStore) Close() error                                             { return nil }
+func (m *mockStore) GetSalt(_ string) ([]byte, error)                         { return nil, nil }
+func (m *mockStore) SetSalt(_ string, _ []byte) error                         { return nil }
+func (m *mockStore) ListSessions(_ context.Context) ([]SessionSummary, error) { return nil, nil }
 
 func (m *mockStore) AppendMessage(key string, msg Message) error {
 	s := m.sessions[key]
@@ -39,6 +39,8 @@ func (m *mockStore) AppendMessage(key string, msg Message) error {
 }
 
 func (m *mockStore) AnnotateTimeout(_ string, _ string) error { return nil }
+
+func (m *mockStore) End(_ string) error { return nil }
 
 func TestNewChildSession(t *testing.T) {
 	t.Parallel()

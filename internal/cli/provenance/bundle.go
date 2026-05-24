@@ -36,7 +36,7 @@ func newBundleExportCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Com
 			if err != nil {
 				return err
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 			if isProvenanceDisabled(boot, cmd) {
 				return nil
 			}
@@ -77,7 +77,7 @@ func newBundleImportCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Com
 			if err != nil {
 				return err
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 			if isProvenanceDisabled(boot, cmd) {
 				return nil
 			}

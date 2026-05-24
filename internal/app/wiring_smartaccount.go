@@ -16,6 +16,7 @@ import (
 	"github.com/langoai/lango/internal/economy/risk"
 	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/lifecycle"
+	"github.com/langoai/lango/internal/security"
 	sa "github.com/langoai/lango/internal/smartaccount"
 	"github.com/langoai/lango/internal/smartaccount/bindings"
 	"github.com/langoai/lango/internal/smartaccount/bundler"
@@ -90,6 +91,7 @@ func initSmartAccount(
 	pc *paymentComponents,
 	econc *economyComponents,
 	bus *eventbus.Bus,
+	crypto security.CryptoProvider,
 ) *smartAccountResult {
 	if !cfg.SmartAccount.Enabled {
 		logger().Info("smart account disabled",
@@ -128,6 +130,12 @@ func initSmartAccount(
 	}
 	if cfg.SmartAccount.Session.MaxActiveKeys > 0 {
 		sessionOpts = append(sessionOpts, sasession.WithMaxKeys(cfg.SmartAccount.Session.MaxActiveKeys))
+	}
+	if crypto != nil {
+		sessionOpts = append(sessionOpts, sasession.WithEncryption(
+			crypto.Encrypt,
+			crypto.Decrypt,
+		))
 	}
 
 	// Wire on-chain registration/revocation if SessionValidator is configured.

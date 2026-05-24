@@ -25,6 +25,15 @@ func (Reflection) Fields() []ent.Field {
 			NotEmpty(),
 		field.Text("content").
 			NotEmpty(),
+		field.Bytes("content_ciphertext").
+			Optional().
+			Nillable(),
+		field.Bytes("content_nonce").
+			Optional().
+			Nillable(),
+		field.Int("content_key_version").
+			Optional().
+			Nillable(),
 		field.Int("token_count").
 			Default(0),
 		field.Int("generation").

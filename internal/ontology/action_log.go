@@ -100,12 +100,12 @@ func (s *ActionLogStore) List(ctx context.Context, actionName string, limit int)
 
 func toLogEntry(rec *ent.ActionLog) *ActionLogEntry {
 	entry := &ActionLogEntry{
-		ID:         rec.ID,
-		ActionName: rec.ActionName,
-		Principal:  rec.Principal,
-		Params:     rec.Params,
-		Status:     ActionStatus(rec.Status),
-		StartedAt:  rec.StartedAt,
+		ID:          rec.ID,
+		ActionName:  rec.ActionName,
+		Principal:   rec.Principal,
+		Params:      rec.Params,
+		Status:      ActionStatus(rec.Status),
+		StartedAt:   rec.StartedAt,
 		CompletedAt: rec.CompletedAt,
 	}
 	if rec.ErrorMessage != nil {

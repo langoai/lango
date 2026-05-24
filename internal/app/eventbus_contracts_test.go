@@ -1,44 +1,42 @@
 package app
 
 import (
+	"context"
+	"errors"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/eventbus"
+	"github.com/langoai/lango/internal/graph"
 	"github.com/langoai/lango/internal/observability"
 	"github.com/langoai/lango/internal/toolchain"
 )
 
-// wireTestObservability creates a minimal EventBus + MetricsCollector wired
-// with the same subscriptions as the real app, then returns both so tests
-// can publish events and assert on collector state.
+// wireTestObservability initializes the real observability wiring and returns
+// its event bus plus metrics collector for event-consumption assertions.
 func wireTestObservability(t *testing.T) (*eventbus.Bus, *observability.MetricsCollector) {
 	t.Helper()
 
 	bus := eventbus.New()
-	collector := observability.NewCollector()
-
 	cfg := config.DefaultConfig()
+	cfg.Observability.Enabled = true
 	cfg.Observability.Metrics.Enabled = true
+	cfg.Observability.Tokens.Enabled = false
+	cfg.Observability.Health.Enabled = false
+	cfg.Observability.Tracing.Enabled = false
+	cfg.Alerting.Enabled = false
 
-	oc := &observabilityComponents{
-		collector: collector,
-	}
+	oc := initObservability(cfg, nil, bus)
+	require.NotNil(t, oc)
+	require.NotNil(t, oc.collector)
 
-	// Replicate the wiring from wiring_observability.go (steps 5 & 6).
-	eventbus.SubscribeTyped[eventbus.PolicyDecisionEvent](bus, func(evt eventbus.PolicyDecisionEvent) {
-		oc.collector.RecordPolicyDecision(evt.Verdict, evt.Reason)
-	})
-
-	eventbus.SubscribeTyped[toolchain.ToolExecutedEvent](bus, func(evt toolchain.ToolExecutedEvent) {
-		oc.collector.RecordToolExecution(evt.ToolName, evt.AgentName, evt.Duration, evt.Success)
-	})
-
-	return bus, collector
+	return bus, oc.collector
 }
 
 func TestEventContract_ToolExecuted_IncreasesCount(t *testing.T) {
@@ -133,4 +131,163 @@ func TestEventContract_MultipleEvents_Accumulate(t *testing.T) {
 	tm := snap.ToolBreakdown["fs_read"]
 	assert.Equal(t, int64(6), tm.Count)
 	assert.Equal(t, int64(1), tm.Errors)
+}
+
+func TestEventContract_GraphObservabilityEvents_AggregateInCollector(t *testing.T) {
+	t.Parallel()
+
+	bus, collector := wireTestObservability(t)
+	learningGroup := "learning"
+
+	bus.Publish(eventbus.GraphAdmissionBatchEvent{
+		Source:           "learning",
+		ProducerGroup:    &learningGroup,
+		ValidatorSource:  "ontology_registry",
+		BatchCount:       1,
+		KnownCount:       2,
+		UnknownCount:     1,
+		UnvalidatedCount: 0,
+	})
+	bus.Publish(eventbus.GraphAdmissionBatchEvent{
+		Source:           "content_saved_extractor",
+		ValidatorSource:  "unavailable",
+		BatchCount:       1,
+		KnownCount:       0,
+		UnknownCount:     0,
+		UnvalidatedCount: 3,
+	})
+	bus.Publish(eventbus.GraphAdmissionUnmappedSourceEvent{
+		RawSource:  "legacy_import",
+		BatchCount: 1,
+	})
+	bus.Publish(eventbus.GraphExtractorDroppedUnknownEvent{
+		Source: "content_saved_extractor",
+	})
+	bus.Publish(eventbus.GraphAdmissionWriteFailureEvent{
+		BatchCount: 1,
+	})
+
+	snap := collector.Snapshot()
+	assert.Equal(t, observability.GraphAdmissionBatchMetric{
+		Source:           "learning",
+		ProducerGroup:    &learningGroup,
+		ValidatorSource:  "ontology_registry",
+		BatchCount:       1,
+		KnownCount:       2,
+		UnknownCount:     1,
+		UnvalidatedCount: 0,
+	}, snap.GraphAdmission["learning|learning|ontology_registry"])
+	assert.Equal(t, observability.GraphAdmissionBatchMetric{
+		Source:           "content_saved_extractor",
+		ProducerGroup:    nil,
+		ValidatorSource:  "unavailable",
+		BatchCount:       1,
+		KnownCount:       0,
+		UnknownCount:     0,
+		UnvalidatedCount: 3,
+	}, snap.GraphAdmission["content_saved_extractor||unavailable"])
+	assert.Equal(t, int64(1), snap.GraphAdmissionUnmappedSources["legacy_import"])
+	assert.Equal(t, int64(1), snap.GraphExtractorDroppedUnknown["content_saved_extractor"])
+	assert.Equal(t, int64(1), snap.GraphWriteFailureBatches)
+}
+
+type failingBufferStore struct {
+	err error
+}
+
+func (s *failingBufferStore) AddTriple(context.Context, graph.Triple) error    { return s.err }
+func (s *failingBufferStore) AddTriples(context.Context, []graph.Triple) error { return s.err }
+func (s *failingBufferStore) RemoveTriple(context.Context, graph.Triple) error { return s.err }
+func (s *failingBufferStore) QueryBySubject(context.Context, string) ([]graph.Triple, error) {
+	return nil, nil
+}
+func (s *failingBufferStore) QueryByObject(context.Context, string) ([]graph.Triple, error) {
+	return nil, nil
+}
+func (s *failingBufferStore) QueryBySubjectPredicate(context.Context, string, string) ([]graph.Triple, error) {
+	return nil, nil
+}
+func (s *failingBufferStore) Traverse(context.Context, string, int, []string) ([]graph.Triple, error) {
+	return nil, nil
+}
+func (s *failingBufferStore) Count(context.Context) (int, error) { return 0, nil }
+func (s *failingBufferStore) PredicateStats(context.Context) (map[string]int, error) {
+	return nil, nil
+}
+func (s *failingBufferStore) AllTriples(context.Context) ([]graph.Triple, error) {
+	return nil, nil
+}
+func (s *failingBufferStore) ClearAll(context.Context) error { return nil }
+func (s *failingBufferStore) Close() error                   { return nil }
+
+func TestGraphWriteFailureBaselineScope_ObserveModeToggle(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		policy        *graph.AdmissionPolicy
+		source        string
+		wantPublished bool
+	}{
+		{
+			name: "observe mode publishes write failure baseline",
+			policy: graph.NewAdmissionPolicy(graph.AdmissionPolicyConfig{
+				Validator: func(string) bool { return true },
+			}, zap.NewNop().Sugar()),
+			source:        "learning",
+			wantPublished: true,
+		},
+		{
+			name: "observe mode publishes write failure baseline for unsupported source",
+			policy: graph.NewAdmissionPolicy(graph.AdmissionPolicyConfig{
+				Validator: func(string) bool { return true },
+			}, zap.NewNop().Sugar()),
+			source:        "future_source",
+			wantPublished: true,
+		},
+		{
+			name:          "off mode suppresses write failure baseline",
+			policy:        nil,
+			source:        "learning",
+			wantPublished: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			bus := eventbus.New()
+			buffer := graph.NewGraphBuffer(&failingBufferStore{err: errors.New("boom")}, zap.NewNop().Sugar())
+			buffer.SetEventBus(bus)
+
+			var got []eventbus.GraphAdmissionWriteFailureEvent
+			eventbus.SubscribeTyped(bus, func(evt eventbus.GraphAdmissionWriteFailureEvent) {
+				got = append(got, evt)
+			})
+
+			triples, emitWriteFailureBaseline := observeExtractedTriples(tt.policy, bus, eventbus.TriplesExtractedEvent{
+				Source: tt.source,
+				Triples: []eventbus.Triple{
+					{Subject: "a", Predicate: graph.Contains, Object: "b"},
+				},
+			})
+
+			var wg sync.WaitGroup
+			buffer.Start(&wg)
+			buffer.Enqueue(graph.GraphRequest{
+				Triples:                  triples,
+				EmitWriteFailureBaseline: emitWriteFailureBaseline,
+			})
+			buffer.Stop()
+			wg.Wait()
+
+			if tt.wantPublished {
+				require.Len(t, got, 1)
+				assert.Equal(t, eventbus.GraphAdmissionWriteFailureEvent{BatchCount: 1}, got[0])
+				return
+			}
+			assert.Empty(t, got)
+		})
+	}
 }

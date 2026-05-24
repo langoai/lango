@@ -2,7 +2,6 @@ package chat
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
@@ -33,31 +32,34 @@ var (
 
 // renderChannelBlock renders a channel message in the transcript.
 func renderChannelBlock(text, channel, senderName string, width int) string {
-	w := max(width, 1)
+	if width < 10 {
+		width = 10
+	}
 
-	badge := channelBadgeStyle.Background(channelColor(channel)).Render(channel)
+	safeChannel := sanitizeDisplayText(channel)
+	badge := channelBadgeStyle.Background(channelColor(safeChannel)).Render(safeChannel)
 
 	sender := ""
 	if senderName != "" {
-		sender = channelSenderStyle.Render("@" + senderName)
+		safeSender := singleLineValue(ansi.Strip(senderName))
+		sender = channelSenderStyle.Render("@" + safeSender)
 	}
 
 	// Sanitize external channel input: strip ANSI/OSC escape sequences
 	// to prevent terminal control injection from remote users, then
-	// collapse newlines for single-line display.
+	// collapse whitespace for single-line display.
 	safe := ansi.Strip(text)
-	flat := strings.ReplaceAll(safe, "\n", " ")
-	maxText := w - lipgloss.Width(badge) - lipgloss.Width(sender) - 6
-	if maxText < 10 {
-		maxText = 10
+	flat := singleLineValue(safe)
+	prefix := fmt.Sprintf(" %s", badge)
+	if sender != "" {
+		prefix += fmt.Sprintf("  %s:", sender)
+	}
+	prefix += " "
+	maxText := width - lipgloss.Width(prefix)
+	if maxText < 1 {
+		maxText = 1
 	}
 	displayText := ansi.Truncate(flat, maxText, "…")
-
-	content := fmt.Sprintf(" %s", badge)
-	if sender != "" {
-		content += fmt.Sprintf("  %s:", sender)
-	}
-	content += fmt.Sprintf(" %s", channelTextStyle.Render(displayText))
-
-	return content
+	content := prefix + channelTextStyle.Render(displayText)
+	return ansi.Truncate(content, width, "…")
 }

@@ -148,4 +148,3 @@ func (w *LocalWallet) PublicKey(ctx context.Context) ([]byte, error) {
 
 	return crypto.CompressPubkey(&privateKey.PublicKey), nil
 }
-

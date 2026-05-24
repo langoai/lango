@@ -274,8 +274,8 @@ func TestPruneWindow(t *testing.T) {
 	now := time.Now()
 
 	tests := []struct {
-		give     []time.Time
-		wantLen  int
+		give    []time.Time
+		wantLen int
 	}{
 		{
 			give:    []time.Time{now.Add(-6 * time.Minute), now.Add(-4 * time.Minute), now},

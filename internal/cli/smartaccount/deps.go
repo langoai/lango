@@ -32,6 +32,44 @@ type smartAccountDeps struct {
 	cleanup        func()
 }
 
+func smartAccountCryptoProvider(
+	ctx context.Context,
+	cfg *config.Config,
+	boot *bootstrap.Result,
+	registry *security.KeyRegistry,
+) (security.CryptoProvider, error) {
+	switch cfg.Security.Signer.Provider {
+	case "", "local":
+		if boot.Crypto == nil {
+			return nil, fmt.Errorf("smart account local security provider unavailable")
+		}
+		if _, err := registry.RegisterKey(ctx, "default", "local", security.KeyTypeEncryption); err != nil {
+			return nil, fmt.Errorf("register default key: %w", err)
+		}
+		return boot.Crypto, nil
+	case "rpc":
+		return security.NewRPCProvider(), nil
+	case "aws-kms", "gcp-kms", "azure-kv", "pkcs11":
+		kmsProvider, err := security.NewKMSProvider(
+			security.KMSProviderName(cfg.Security.Signer.Provider),
+			cfg.Security.KMS,
+		) //nolint:staticcheck // stubs always error; real impls use build tags
+		if err != nil { //nolint:staticcheck // SA4023: always true on stub platforms, real KMS impls may succeed
+			return nil, fmt.Errorf("KMS provider %q: %w", cfg.Security.Signer.Provider, err)
+		}
+		if _, err := registry.RegisterKey(ctx, "kms-default", cfg.Security.KMS.KeyID, security.KeyTypeEncryption); err != nil {
+			return nil, fmt.Errorf("register KMS key: %w", err)
+		}
+		if cfg.Security.KMS.FallbackToLocal && boot.Crypto != nil {
+			checker := security.NewKMSHealthChecker(kmsProvider, cfg.Security.KMS.KeyID, 0)
+			return security.NewCompositeCryptoProvider(kmsProvider, boot.Crypto, checker), nil
+		}
+		return kmsProvider, nil
+	default:
+		return nil, fmt.Errorf("unsupported security provider %q", cfg.Security.Signer.Provider)
+	}
+}
+
 // initSmartAccountDeps creates smart account components from a bootstrap result.
 // Unlike wiring_smartaccount.go which runs inside the full app, this builds
 // only the components needed for CLI commands.
@@ -51,11 +89,21 @@ func initSmartAccountDeps(boot *bootstrap.Result) (*smartAccountDeps, error) {
 
 	// Build secrets store for wallet key management.
 	ctx := context.Background()
-	registry := security.NewKeyRegistry(boot.DBClient)
-	if _, err := registry.RegisterKey(ctx, "default", "local", security.KeyTypeEncryption); err != nil {
-		return nil, fmt.Errorf("register default key: %w", err)
+	if boot.Storage == nil {
+		return nil, fmt.Errorf("smart account storage unavailable")
 	}
-	secrets := security.NewSecretsStore(boot.DBClient, registry, boot.Crypto)
+	registry := boot.Storage.KeyRegistry()
+	if registry == nil {
+		return nil, fmt.Errorf("smart account key registry unavailable")
+	}
+	cryptoProvider, err := smartAccountCryptoProvider(ctx, cfg, boot, registry)
+	if err != nil {
+		return nil, err
+	}
+	secrets := boot.Storage.SecretsStore(cryptoProvider)
+	if secrets == nil {
+		return nil, fmt.Errorf("smart account secrets store unavailable")
+	}
 
 	// Create RPC client for blockchain interaction.
 	rpcClient, err := ethclient.Dial(cfg.Payment.Network.RPCURL)
@@ -103,6 +151,12 @@ func initSmartAccountDeps(boot *bootstrap.Result) (*smartAccountDeps, error) {
 	}
 	if cfg.SmartAccount.Session.MaxActiveKeys > 0 {
 		sessionOpts = append(sessionOpts, sasession.WithMaxKeys(cfg.SmartAccount.Session.MaxActiveKeys))
+	}
+	if cryptoProvider != nil {
+		sessionOpts = append(sessionOpts, sasession.WithEncryption(
+			cryptoProvider.Encrypt,
+			cryptoProvider.Decrypt,
+		))
 	}
 	// Provide entryPoint and chainID for correct UserOp hash computation.
 	sessionOpts = append(sessionOpts,

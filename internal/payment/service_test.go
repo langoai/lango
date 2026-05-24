@@ -2,16 +2,28 @@ package payment
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"math/big"
+	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
+	"entgo.io/ent/dialect"
+	entsql "entgo.io/ent/dialect/sql"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/langoai/lango/internal/ent"
 	"github.com/langoai/lango/internal/ent/paymenttx"
-	"github.com/langoai/lango/internal/testutil"
+	"github.com/langoai/lango/internal/sqlitedriver"
+	"github.com/langoai/lango/internal/testutil/schemautil"
 )
 
 // --- mock implementations ---
@@ -71,16 +83,40 @@ func (m *mockLimiter) IsAutoApprovable(_ context.Context, _ *big.Int) (bool, err
 // validAddr is a well-formed Ethereum address for tests.
 const validAddr = "0x1234567890abcdef1234567890abcdef12345678"
 
+var paymentTestDBSeq uint64
+var paymentTestDBMu sync.Mutex
+
+func testEntClient(t testing.TB) *ent.Client {
+	t.Helper()
+	paymentTestDBMu.Lock()
+	defer paymentTestDBMu.Unlock()
+
+	name := strings.NewReplacer("/", "-", " ", "-", ":", "-").Replace(t.Name())
+	seq := atomic.AddUint64(&paymentTestDBSeq, 1)
+	db, err := sql.Open(sqlitedriver.DriverName(), sqlitedriver.MemoryDSN(fmt.Sprintf("%s-%d", name, seq)))
+	require.NoError(t, err)
+	require.NoError(t, sqlitedriver.ConfigureConnection(db, false))
+	_, err = db.Exec("PRAGMA foreign_keys = ON")
+	require.NoError(t, err)
+	drv := entsql.OpenDB(dialect.SQLite, db)
+	client := ent.NewClient(ent.Driver(drv))
+	require.NoError(t, schemautil.CreateSchema(context.Background(), client))
+	t.Cleanup(func() { _ = client.Close() })
+	return client
+}
+
 // --- Send tests ---
 
 func TestService_Send_InvalidAddress(t *testing.T) {
 	tests := []struct {
-		give    string
-		wantMsg string
+		give         string
+		wantMsg      string
+		wantCauseMsg string
 	}{
-		{give: "not-an-address", wantMsg: "invalid recipient"},
-		{give: "0x123", wantMsg: "invalid recipient"},
-		{give: "", wantMsg: "invalid recipient"},
+		{give: "not-an-address", wantMsg: "invalid recipient", wantCauseMsg: `invalid address format: "not-an-address"`},
+		{give: "0x123", wantMsg: "invalid recipient", wantCauseMsg: `invalid address format: "0x123"`},
+		{give: "", wantMsg: "invalid recipient", wantCauseMsg: `invalid address format: ""`},
+		{give: "0xzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz", wantMsg: "invalid recipient", wantCauseMsg: `invalid hex address: "0xzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"`},
 	}
 
 	svc := &Service{
@@ -97,18 +133,21 @@ func TestService_Send_InvalidAddress(t *testing.T) {
 			require.Error(t, err)
 			assert.Nil(t, receipt)
 			assert.Contains(t, err.Error(), tt.wantMsg)
+			assert.Contains(t, err.Error(), tt.wantCauseMsg)
 		})
 	}
 }
 
 func TestService_Send_InvalidAmount(t *testing.T) {
 	tests := []struct {
-		give    string
-		wantMsg string
+		give         string
+		wantMsg      string
+		wantCauseMsg string
 	}{
-		{give: "not-a-number", wantMsg: "invalid amount"},
-		{give: "", wantMsg: "invalid amount"},
-		{give: "abc", wantMsg: "invalid amount"},
+		{give: "not-a-number", wantMsg: "invalid amount", wantCauseMsg: `invalid USDC amount: "not-a-number"`},
+		{give: "", wantMsg: "invalid amount", wantCauseMsg: `invalid USDC amount: ""`},
+		{give: "abc", wantMsg: "invalid amount", wantCauseMsg: `invalid USDC amount: "abc"`},
+		{give: "0.0000001", wantMsg: "invalid amount", wantCauseMsg: `USDC amount "0.0000001" has too many decimal places`},
 	}
 
 	svc := &Service{
@@ -125,18 +164,20 @@ func TestService_Send_InvalidAmount(t *testing.T) {
 			require.Error(t, err)
 			assert.Nil(t, receipt)
 			assert.Contains(t, err.Error(), tt.wantMsg)
+			assert.Contains(t, err.Error(), tt.wantCauseMsg)
 		})
 	}
 }
 
 func TestService_Send_ZeroOrNegativeAmount(t *testing.T) {
 	tests := []struct {
-		give    string
-		wantMsg string
+		give            string
+		wantMsg         string
+		notWantCauseMsg string
 	}{
-		{give: "0", wantMsg: "amount must be positive"},
-		{give: "0.00", wantMsg: "amount must be positive"},
-		{give: "-1.00", wantMsg: "amount must be positive"},
+		{give: "0", wantMsg: "amount must be positive", notWantCauseMsg: "invalid amount"},
+		{give: "0.00", wantMsg: "amount must be positive", notWantCauseMsg: "invalid amount"},
+		{give: "-1.00", wantMsg: "amount must be positive", notWantCauseMsg: "invalid amount"},
 	}
 
 	svc := &Service{
@@ -153,6 +194,7 @@ func TestService_Send_ZeroOrNegativeAmount(t *testing.T) {
 			require.Error(t, err)
 			assert.Nil(t, receipt)
 			assert.Contains(t, err.Error(), tt.wantMsg)
+			assert.NotContains(t, err.Error(), tt.notWantCauseMsg)
 		})
 	}
 }
@@ -173,6 +215,8 @@ func TestService_Send_LimiterCheckFails(t *testing.T) {
 	require.Error(t, err)
 	assert.Nil(t, receipt)
 	assert.Contains(t, err.Error(), "spending limit")
+	assert.Contains(t, err.Error(), "daily limit exceeded")
+	assert.NotContains(t, err.Error(), "invalid amount")
 	assert.ErrorIs(t, err, limiterErr)
 }
 
@@ -192,13 +236,65 @@ func TestService_Send_WalletAddressFails(t *testing.T) {
 	require.Error(t, err)
 	assert.Nil(t, receipt)
 	assert.Contains(t, err.Error(), "get wallet address")
+	assert.Contains(t, err.Error(), "wallet locked")
+	assert.NotContains(t, err.Error(), "invalid amount")
+	assert.NotContains(t, err.Error(), "spending limit")
 	assert.ErrorIs(t, err, walletErr)
+}
+
+func TestService_Send_MissingLimiterFailsClosed(t *testing.T) {
+	svc := &Service{
+		wallet: &mockWallet{address: validAddr},
+	}
+
+	receipt, err := svc.Send(context.Background(), PaymentRequest{
+		To:     validAddr,
+		Amount: "1.00",
+	})
+
+	require.Error(t, err)
+	assert.Nil(t, receipt)
+	assert.Contains(t, err.Error(), "spending limit")
+	assert.Contains(t, err.Error(), "spending limiter unavailable")
+}
+
+func TestService_Send_MissingWalletFailsClosed(t *testing.T) {
+	svc := &Service{
+		limiter: &mockLimiter{},
+	}
+
+	receipt, err := svc.Send(context.Background(), PaymentRequest{
+		To:     validAddr,
+		Amount: "1.00",
+	})
+
+	require.Error(t, err)
+	assert.Nil(t, receipt)
+	assert.Contains(t, err.Error(), "get wallet address")
+	assert.Contains(t, err.Error(), "wallet provider unavailable")
+}
+
+func TestService_Send_MissingStoreFailsClosed(t *testing.T) {
+	svc := &Service{
+		wallet:  &mockWallet{address: validAddr},
+		limiter: &mockLimiter{},
+	}
+
+	receipt, err := svc.Send(context.Background(), PaymentRequest{
+		To:     validAddr,
+		Amount: "1.00",
+	})
+
+	require.Error(t, err)
+	assert.Nil(t, receipt)
+	assert.Contains(t, err.Error(), "create tx record")
+	assert.Contains(t, err.Error(), "payment store unavailable")
 }
 
 // --- History tests ---
 
 func TestService_History(t *testing.T) {
-	client := testutil.TestEntClient(t)
+	client := testEntClient(t)
 	ctx := context.Background()
 
 	// Seed two payment records.
@@ -221,7 +317,7 @@ func TestService_History(t *testing.T) {
 		SetErrorMessage("gas estimation failed").
 		SaveX(ctx)
 
-	svc := &Service{client: client}
+	svc := &Service{store: NewEntTxStore(client)}
 
 	t.Run("returns all records", func(t *testing.T) {
 		result, err := svc.History(ctx, 10)
@@ -229,22 +325,42 @@ func TestService_History(t *testing.T) {
 		assert.Len(t, result, 2)
 	})
 
+	t.Run("returns records in descending created_at order", func(t *testing.T) {
+		client.PaymentTx.Create().
+			SetFromAddress(validAddr).
+			SetToAddress("0xabcdef1234567890abcdef1234567890abcdef12").
+			SetAmount("9.99").
+			SetChainID(84532).
+			SetStatus(paymenttx.StatusConfirmed).
+			SetTxHash("0xnewest").
+			SetCreatedAt(time.Now().Add(2 * time.Hour)).
+			SaveX(ctx)
+
+		result, err := svc.History(ctx, 10)
+		require.NoError(t, err)
+		require.GreaterOrEqual(t, len(result), 3)
+		assert.Equal(t, "0xnewest", result[0].TxHash)
+		assert.True(t, !result[0].CreatedAt.Before(result[1].CreatedAt))
+		assert.True(t, !result[1].CreatedAt.Before(result[2].CreatedAt))
+	})
+
 	t.Run("respects limit", func(t *testing.T) {
 		result, err := svc.History(ctx, 1)
 		require.NoError(t, err)
 		assert.Len(t, result, 1)
+		assert.Equal(t, "0xnewest", result[0].TxHash)
 	})
 
 	t.Run("default limit when zero", func(t *testing.T) {
 		result, err := svc.History(ctx, 0)
 		require.NoError(t, err)
-		assert.Len(t, result, 2) // both records, DefaultHistoryLimit > 2
+		assert.Len(t, result, 3) // all records, DefaultHistoryLimit > 3
 	})
 
 	t.Run("default limit when negative", func(t *testing.T) {
 		result, err := svc.History(ctx, -1)
 		require.NoError(t, err)
-		assert.Len(t, result, 2)
+		assert.Len(t, result, 3)
 	})
 
 	t.Run("fields populated correctly", func(t *testing.T) {
@@ -271,10 +387,10 @@ func TestService_History(t *testing.T) {
 // --- RecordX402Payment tests ---
 
 func TestService_RecordX402Payment(t *testing.T) {
-	client := testutil.TestEntClient(t)
+	client := testEntClient(t)
 	ctx := context.Background()
 
-	svc := &Service{client: client}
+	svc := &Service{store: NewEntTxStore(client)}
 
 	t.Run("happy path", func(t *testing.T) {
 		err := svc.RecordX402Payment(ctx, X402PaymentRecord{
@@ -303,13 +419,29 @@ func TestService_RecordX402Payment(t *testing.T) {
 	})
 }
 
+func TestService_RecordX402Payment_MissingStoreFailsClosed(t *testing.T) {
+	svc := &Service{}
+
+	err := svc.RecordX402Payment(context.Background(), X402PaymentRecord{
+		URL:     "https://api.example.com/resource",
+		Amount:  "0.05",
+		From:    validAddr,
+		To:      "0xabcdef1234567890abcdef1234567890abcdef12",
+		ChainID: 84532,
+	})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "record X402 payment")
+	assert.Contains(t, err.Error(), "payment store unavailable")
+}
+
 // --- failTx tests ---
 
 func TestService_failTx(t *testing.T) {
-	client := testutil.TestEntClient(t)
+	client := testEntClient(t)
 	ctx := context.Background()
 
-	svc := &Service{client: client}
+	svc := &Service{store: NewEntTxStore(client)}
 
 	// Create a pending transaction.
 	ptx := client.PaymentTx.Create().
@@ -356,6 +488,86 @@ func TestService_WalletAddress(t *testing.T) {
 		assert.Empty(t, addr)
 		assert.ErrorIs(t, err, walletErr)
 	})
+
+	t.Run("missing wallet provider", func(t *testing.T) {
+		svc := &Service{}
+
+		addr, err := svc.WalletAddress(context.Background())
+		require.Error(t, err)
+		assert.Empty(t, addr)
+		assert.Contains(t, err.Error(), "wallet provider unavailable")
+	})
+}
+
+// --- Balance tests ---
+
+func TestService_Balance_FailsClosedWhenUnwired(t *testing.T) {
+	t.Run("missing wallet provider", func(t *testing.T) {
+		svc := &Service{}
+
+		balance, err := svc.Balance(context.Background())
+		require.Error(t, err)
+		assert.Empty(t, balance)
+		assert.Contains(t, err.Error(), "wallet provider unavailable")
+	})
+
+	t.Run("missing builder", func(t *testing.T) {
+		svc := &Service{
+			wallet: &mockWallet{address: validAddr},
+		}
+
+		balance, err := svc.Balance(context.Background())
+		require.Error(t, err)
+		assert.Empty(t, balance)
+		assert.Contains(t, err.Error(), "balance builder unavailable")
+	})
+
+	t.Run("missing rpc client", func(t *testing.T) {
+		svc := &Service{
+			wallet:  &mockWallet{address: validAddr},
+			builder: &TxBuilder{},
+		}
+
+		balance, err := svc.Balance(context.Background())
+		require.Error(t, err)
+		assert.Empty(t, balance)
+		assert.Contains(t, err.Error(), "balance RPC unavailable")
+	})
+}
+
+func TestService_History_MissingStoreFailsClosed(t *testing.T) {
+	svc := &Service{}
+
+	result, err := svc.History(context.Background(), 10)
+	require.Error(t, err)
+	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), "query history")
+	assert.Contains(t, err.Error(), "payment store unavailable")
+}
+
+func TestService_submitWithRetry_MissingRPCFailsClosed(t *testing.T) {
+	svc := &Service{}
+
+	tx := types.NewTx(&types.LegacyTx{
+		Nonce: 0,
+		To:    ptrAddress(common.HexToAddress(validAddr)),
+		Value: big.NewInt(0),
+		Gas:   21000,
+	})
+
+	txHash, err := svc.submitWithRetry(context.Background(), tx)
+	require.Error(t, err)
+	assert.Empty(t, txHash)
+	assert.Contains(t, err.Error(), "transaction RPC unavailable")
+}
+
+func TestService_waitForConfirmation_MissingRPCFailsClosed(t *testing.T) {
+	svc := &Service{}
+
+	receipt, err := svc.waitForConfirmation(context.Background(), common.HexToHash("0x1"))
+	require.Error(t, err)
+	assert.Nil(t, receipt)
+	assert.Contains(t, err.Error(), "receipt RPC unavailable")
 }
 
 // --- ChainID tests ---
@@ -405,31 +617,29 @@ func TestNilIfEmpty(t *testing.T) {
 
 func TestService_Send_CreatesRecordBeforeBuild(t *testing.T) {
 	// This test verifies that Send creates an ent record after passing
-	// validation and limit checks. The build step will fail because
-	// builder/rpcClient are nil, but the pending record should exist.
-	client := testutil.TestEntClient(t)
+	// validation and limit checks, then fails closed when the builder is unavailable.
+	client := testEntClient(t)
 	ctx := context.Background()
 
 	svc := &Service{
 		wallet:  &mockWallet{address: validAddr},
 		limiter: &mockLimiter{},
-		client:  client,
+		store:   NewEntTxStore(client),
 		chainID: 84532,
-		// builder and rpcClient are nil — BuildTransferTx will panic/fail
+		// builder intentionally nil: Send should fail closed instead of panicking.
 	}
 
-	// We expect a panic or nil-pointer error from the builder call.
-	// Use recover to verify the pending record was created.
-	func() {
-		defer func() { recover() }()
-		_, _ = svc.Send(ctx, PaymentRequest{
-			To:      "0xabcdef1234567890abcdef1234567890abcdef12",
-			Amount:  "1.00",
-			Purpose: "test purpose",
-		})
-	}()
+	receipt, err := svc.Send(ctx, PaymentRequest{
+		To:      "0xabcdef1234567890abcdef1234567890abcdef12",
+		Amount:  "1.00",
+		Purpose: "test purpose",
+	})
+	require.Error(t, err)
+	assert.Nil(t, receipt)
+	assert.Contains(t, err.Error(), "build transaction")
+	assert.Contains(t, err.Error(), "transaction builder unavailable")
 
-	// Verify a pending record was created.
+	// Verify a failed record was created with the actionable failure cause.
 	txs, err := client.PaymentTx.Query().All(ctx)
 	require.NoError(t, err)
 	require.Len(t, txs, 1)
@@ -439,32 +649,33 @@ func TestService_Send_CreatesRecordBeforeBuild(t *testing.T) {
 	assert.Equal(t, "0xabcdef1234567890abcdef1234567890abcdef12", tx.ToAddress)
 	assert.Equal(t, "1.00", tx.Amount)
 	assert.Equal(t, int64(84532), tx.ChainID)
-	assert.Equal(t, paymenttx.StatusPending, tx.Status)
+	assert.Equal(t, paymenttx.StatusFailed, tx.Status)
 	assert.Equal(t, "test purpose", tx.Purpose)
+	assert.Equal(t, "transaction builder unavailable", tx.ErrorMessage)
 }
 
 func TestService_Send_SetsOptionalFields(t *testing.T) {
-	client := testutil.TestEntClient(t)
+	client := testEntClient(t)
 	ctx := context.Background()
 
 	svc := &Service{
 		wallet:  &mockWallet{address: validAddr},
 		limiter: &mockLimiter{},
-		client:  client,
+		store:   NewEntTxStore(client),
 		chainID: 84532,
 	}
 
-	// Send will panic at builder, but we test record fields.
-	func() {
-		defer func() { recover() }()
-		_, _ = svc.Send(ctx, PaymentRequest{
-			To:         "0xabcdef1234567890abcdef1234567890abcdef12",
-			Amount:     "5.00",
-			Purpose:    "buy coffee",
-			SessionKey: "session-abc",
-			X402URL:    "https://api.example.com/paid",
-		})
-	}()
+	receipt, err := svc.Send(ctx, PaymentRequest{
+		To:         "0xabcdef1234567890abcdef1234567890abcdef12",
+		Amount:     "5.00",
+		Purpose:    "buy coffee",
+		SessionKey: "session-abc",
+		X402URL:    "https://api.example.com/paid",
+	})
+	require.Error(t, err)
+	assert.Nil(t, receipt)
+	assert.Contains(t, err.Error(), "build transaction")
+	assert.Contains(t, err.Error(), "transaction builder unavailable")
 
 	txs, err := client.PaymentTx.Query().All(ctx)
 	require.NoError(t, err)
@@ -474,27 +685,30 @@ func TestService_Send_SetsOptionalFields(t *testing.T) {
 	assert.Equal(t, "buy coffee", tx.Purpose)
 	assert.Equal(t, "session-abc", tx.SessionKey)
 	assert.Equal(t, "https://api.example.com/paid", tx.X402URL)
+	assert.Equal(t, paymenttx.StatusFailed, tx.Status)
+	assert.Equal(t, "transaction builder unavailable", tx.ErrorMessage)
 }
 
 func TestService_Send_OmitsEmptyOptionalFields(t *testing.T) {
-	client := testutil.TestEntClient(t)
+	client := testEntClient(t)
 	ctx := context.Background()
 
 	svc := &Service{
 		wallet:  &mockWallet{address: validAddr},
 		limiter: &mockLimiter{},
-		client:  client,
+		store:   NewEntTxStore(client),
 		chainID: 84532,
 	}
 
-	func() {
-		defer func() { recover() }()
-		_, _ = svc.Send(ctx, PaymentRequest{
-			To:     "0xabcdef1234567890abcdef1234567890abcdef12",
-			Amount: "1.00",
-			// Purpose, SessionKey, X402URL all empty
-		})
-	}()
+	receipt, err := svc.Send(ctx, PaymentRequest{
+		To:     "0xabcdef1234567890abcdef1234567890abcdef12",
+		Amount: "1.00",
+		// Purpose, SessionKey, X402URL all empty
+	})
+	require.Error(t, err)
+	assert.Nil(t, receipt)
+	assert.Contains(t, err.Error(), "build transaction")
+	assert.Contains(t, err.Error(), "transaction builder unavailable")
 
 	txs, err := client.PaymentTx.Query().All(ctx)
 	require.NoError(t, err)
@@ -504,15 +718,67 @@ func TestService_Send_OmitsEmptyOptionalFields(t *testing.T) {
 	assert.Empty(t, tx.Purpose)
 	assert.Empty(t, tx.SessionKey)
 	assert.Empty(t, tx.X402URL)
+	assert.Equal(t, paymenttx.StatusFailed, tx.Status)
+	assert.Equal(t, "transaction builder unavailable", tx.ErrorMessage)
+}
+
+func TestService_Send_ReturnsFailedStatusUpdateError(t *testing.T) {
+	updateErr := errors.New("ledger write failed")
+	store := &failingUpdateTxStore{updateErr: updateErr}
+	svc := &Service{
+		wallet:  &mockWallet{address: validAddr},
+		limiter: &mockLimiter{},
+		store:   store,
+		chainID: 84532,
+	}
+
+	receipt, err := svc.Send(context.Background(), PaymentRequest{
+		To:     "0xabcdef1234567890abcdef1234567890abcdef12",
+		Amount: "1.00",
+	})
+
+	require.Error(t, err)
+	assert.Nil(t, receipt)
+	assert.Contains(t, err.Error(), "build transaction")
+	assert.Contains(t, err.Error(), "transaction builder unavailable")
+	assert.Contains(t, err.Error(), "mark failed")
+	assert.Contains(t, err.Error(), "ledger write failed")
+	assert.ErrorIs(t, err, updateErr)
+	assert.Equal(t, paymenttx.StatusFailed, store.updateStatus)
+}
+
+type failingUpdateTxStore struct {
+	updateErr    error
+	updateStatus paymenttx.Status
+}
+
+func (s *failingUpdateTxStore) Create(_ context.Context, record TxRecord) (TxRecord, error) {
+	if record.ID == uuid.Nil {
+		record.ID = uuid.New()
+	}
+	return record, nil
+}
+
+func (s *failingUpdateTxStore) UpdateStatus(_ context.Context, _ uuid.UUID, status paymenttx.Status, _, _ string) error {
+	s.updateStatus = status
+	return s.updateErr
+}
+
+func (s *failingUpdateTxStore) List(context.Context, int) ([]TxRecord, error) {
+	return nil, nil
+}
+
+func (s *failingUpdateTxStore) DailySpendSince(context.Context, time.Time) ([]string, error) {
+	return nil, nil
 }
 
 // --- failTx with multiple errors ---
 
 func TestService_failTx_PreservesErrorMessage(t *testing.T) {
-	client := testutil.TestEntClient(t)
+	client := testEntClient(t)
 	ctx := context.Background()
 
-	svc := &Service{client: client}
+	svc := &Service{store: NewEntTxStore(client)}
 
 	tests := []struct {
 		give string
@@ -544,7 +810,7 @@ func TestService_failTx_PreservesErrorMessage(t *testing.T) {
 // --- History ordering ---
 
 func TestService_History_OrderByCreatedAtDesc(t *testing.T) {
-	client := testutil.TestEntClient(t)
+	client := testEntClient(t)
 	ctx := context.Background()
 
 	// Create records — ent auto-sets created_at, so order depends on insertion.
@@ -558,7 +824,7 @@ func TestService_History_OrderByCreatedAtDesc(t *testing.T) {
 			SaveX(ctx)
 	}
 
-	svc := &Service{client: client}
+	svc := &Service{store: NewEntTxStore(client)}
 
 	result, err := svc.History(ctx, 10)
 	require.NoError(t, err)
@@ -573,8 +839,8 @@ func TestService_History_OrderByCreatedAtDesc(t *testing.T) {
 // --- History with empty database ---
 
 func TestService_History_EmptyDatabase(t *testing.T) {
-	client := testutil.TestEntClient(t)
-	svc := &Service{client: client}
+	client := testEntClient(t)
+	svc := &Service{store: NewEntTxStore(client)}
 
 	result, err := svc.History(context.Background(), 10)
 	require.NoError(t, err)
@@ -584,10 +850,10 @@ func TestService_History_EmptyDatabase(t *testing.T) {
 // --- RecordX402Payment duplicate records ---
 
 func TestService_RecordX402Payment_MultipleSameURL(t *testing.T) {
-	client := testutil.TestEntClient(t)
+	client := testEntClient(t)
 	ctx := context.Background()
 
-	svc := &Service{client: client}
+	svc := &Service{store: NewEntTxStore(client)}
 
 	for i := 0; i < 3; i++ {
 		err := svc.RecordX402Payment(ctx, X402PaymentRecord{
@@ -615,6 +881,10 @@ func TestDefaultHistoryLimit(t *testing.T) {
 
 func strPtr(s string) *string {
 	return &s
+}
+
+func ptrAddress(addr common.Address) *common.Address {
+	return &addr
 }
 
 // Ensure mock types satisfy interfaces at compile time.

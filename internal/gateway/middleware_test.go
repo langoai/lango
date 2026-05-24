@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -16,6 +17,7 @@ import (
 // mockStore implements session.Store for testing purposes.
 type mockStore struct {
 	sessions map[string]*session.Session
+	getErr   error
 }
 
 func newMockStore() *mockStore {
@@ -28,6 +30,9 @@ func (m *mockStore) Create(s *session.Session) error {
 }
 
 func (m *mockStore) Get(key string) (*session.Session, error) {
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
 	s, ok := m.sessions[key]
 	if !ok {
 		return nil, nil
@@ -47,10 +52,13 @@ func (m *mockStore) Delete(key string) error {
 
 func (m *mockStore) AppendMessage(_ string, _ session.Message) error { return nil }
 func (m *mockStore) AnnotateTimeout(_ string, _ string) error        { return nil }
+func (m *mockStore) End(_ string) error                              { return nil }
 func (m *mockStore) Close() error                                    { return nil }
 func (m *mockStore) GetSalt(_ string) ([]byte, error)                { return nil, nil }
-func (m *mockStore) SetSalt(_ string, _ []byte) error                              { return nil }
-func (m *mockStore) ListSessions(_ context.Context) ([]session.SessionSummary, error) { return nil, nil }
+func (m *mockStore) SetSalt(_ string, _ []byte) error                { return nil }
+func (m *mockStore) ListSessions(_ context.Context) ([]session.SessionSummary, error) {
+	return nil, nil
+}
 
 func TestRequireAuth_NilAuthPassesThrough(t *testing.T) {
 	t.Parallel()
@@ -105,6 +113,29 @@ func TestRequireAuth_InvalidSessionReturns401(t *testing.T) {
 	handler.ServeHTTP(rec, req)
 
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
+}
+
+func TestRequireAuth_StoreErrorReturns401(t *testing.T) {
+	t.Parallel()
+	store := newMockStore()
+	store.getErr = errors.New("store unavailable")
+	auth := &AuthManager{
+		providers: make(map[string]*OIDCProvider),
+		store:     store,
+	}
+
+	handler := RequireAuth(auth)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/ws", nil)
+	req.AddCookie(&http.Cookie{Name: "lango_session", Value: "sess_store-error"})
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	assert.Contains(t, rec.Body.String(), "invalid or expired session")
 }
 
 func TestRequireAuth_ValidSessionSetsContext(t *testing.T) {

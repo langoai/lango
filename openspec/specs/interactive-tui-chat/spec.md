@@ -1,26 +1,61 @@
 ## Purpose
 
 Capability spec for interactive-tui-chat. See requirements below for scope and behavior contracts.
-
 ## Requirements
-
 ### Requirement: Interactive TUI chat on bare invocation
-Running `lango` without arguments SHALL start an interactive terminal chat session using bubbletea. `lango serve` SHALL continue to work as the full gateway + channels mode.
 
-#### Scenario: No-args launches TUI chat
-- **WHEN** the user runs `lango` with no arguments on an interactive TTY
+Running `lango chat` SHALL start the interactive terminal chat session using Bubble Tea. `lango serve` SHALL continue to work as the full gateway plus channels mode. Slice 6 SHALL remove the older bare-`lango` chat interpretation from this surface contract.
+
+#### Scenario: Explicit chat command launches TUI chat
+- **WHEN** the user runs `lango chat` on an interactive TTY
 - **THEN** an interactive TUI chat session starts
 
-#### Scenario: lango serve is unchanged
+#### Scenario: Bare `lango` no longer means direct chat
+- **WHEN** the user runs bare `lango`
+- **THEN** this specification SHALL NOT claim that the focused chat surface starts
+- **AND** the bare-`lango` contract SHALL belong to the mission workbench instead
+
+#### Scenario: `lango serve` is unchanged
 - **WHEN** the user runs `lango serve`
-- **THEN** the full gateway + channels server starts as before
+- **THEN** the full gateway plus channels server starts as before
+
+#### Scenario: Focused chat shows setup-required state for incomplete profiles
+- **WHEN** the active config does not satisfy `config.EvaluateAgentSetup`
+- **THEN** focused chat SHALL render setup-required state instead of a ready/send state
+- **AND** the setup guidance SHALL mention `lango onboard`, `lango settings`, and `lango doctor`
+
+#### Scenario: Focused chat blocks normal turns until setup is ready
+- **WHEN** the active config does not satisfy `config.EvaluateAgentSetup`
+- **AND** the user submits non-slash input in focused chat
+- **THEN** focused chat SHALL NOT call the turn runner
+- **AND** focused chat SHALL keep the draft input available
+- **AND** focused chat SHALL append actionable setup guidance
+
+#### Scenario: Focused chat keeps slash commands available before setup
+- **WHEN** the active config does not satisfy `config.EvaluateAgentSetup`
+- **AND** the user submits a slash command in focused chat
+- **THEN** focused chat SHALL dispatch the slash command instead of blocking it as a normal turn
+
+#### Scenario: Focused chat submits normally after setup is ready
+- **WHEN** the active config satisfies `config.EvaluateAgentSetup`
+- **AND** the user submits non-slash input in focused chat
+- **THEN** focused chat SHALL call the turn runner as before
 
 ### Requirement: Real-time streaming responses
-The TUI SHALL stream agent responses in real-time via `TurnRunner.Run()`.
+The TUI SHALL stream agent responses in real-time via `TurnRunner.Run()`. During streaming, the input composer SHALL remain focused and accept user input. If the user submits input during streaming, the current turn SHALL be cancelled and the new input SHALL be queued for immediate submission after the cancelled turn completes.
 
 #### Scenario: Streaming output displayed incrementally
 - **WHEN** the agent generates a response
 - **THEN** text appears incrementally in the chat viewport as tokens arrive
+
+#### Scenario: User can type during streaming
+- **WHEN** the agent is streaming a response
+- **THEN** the input composer SHALL be focused and accept text input
+
+#### Scenario: User submits input during streaming
+- **WHEN** the user presses Enter with non-empty input during streaming
+- **THEN** the current turn SHALL be cancelled
+- **AND** the new input SHALL be submitted as the next turn after cancellation completes
 
 ### Requirement: Inline tool approval prompts
 Tool executions SHALL show inline approval prompts with keyboard shortcuts: `a` (allow), `s` (allow for session), `d`/`Esc` (deny).
@@ -34,11 +69,34 @@ Tool executions SHALL show inline approval prompts with keyboard shortcuts: `a` 
 - **THEN** the tool executes and future invocations of the same tool are auto-approved
 
 ### Requirement: Slash commands
-The TUI SHALL support slash commands: `/help`, `/clear`, `/new`, `/model`, `/status`, `/exit`, `/quit`.
+The TUI SHALL support slash commands: `/help`, `/clear`, `/new`, `/model`, `/status`, `/exit`, `/quit`, `/mode`, `/cost`. The `/mode` command SHALL accept a mode name argument and update the session's mode accordingly; without an argument, it SHALL print the current mode and available modes. The `/cost` command SHALL print the session's cumulative token usage and estimated cost.
 
 #### Scenario: /clear resets chat
 - **WHEN** the user types `/clear`
 - **THEN** the chat viewport is cleared and a new session starts
+
+#### Scenario: /mode with name sets session mode
+- **WHEN** the user types `/mode code-review`
+- **THEN** the session mode SHALL be set to `code-review`
+- **AND** a `ModeChangedEvent` SHALL be published
+- **AND** the chat view SHALL display a system status entry indicating the new mode
+
+#### Scenario: /mode without argument lists modes
+- **WHEN** the user types `/mode`
+- **THEN** the TUI SHALL print the current mode (or "none") and the list of available modes
+
+#### Scenario: /cost prints session summary
+- **WHEN** the user types `/cost` after turns have occurred
+- **THEN** the TUI SHALL print cumulative input tokens, output tokens, and estimated cost
+
+#### Scenario: /status reports active local MCP runtime
+- **WHEN** the chat model is constructed with MCP configured and an active MCP runtime snapshot
+- **THEN** `/status` SHALL report MCP as active in TUI mode
+- **AND** it SHALL NOT report MCP as configured but not active in TUI mode
+
+#### Scenario: /status keeps configured-only MCP distinct
+- **WHEN** the chat model is constructed with MCP configured but no active MCP runtime snapshot
+- **THEN** `/status` SHALL report MCP as configured without an active MCP runtime
 
 ### Requirement: Chat history scrolling
 Chat history SHALL be scrollable via PgUp/PgDn keys.
@@ -175,3 +233,42 @@ ChatModel SHALL use composite sub-model types for CPR filtering (`cprFilter`), p
 - **WHEN** an approval request arrives
 - **THEN** ChatModel SHALL call `m.approval.Reset(&msg)` to initialize and `m.approval.Clear()` after response
 - **AND** `m.approval.pending`, `m.approval.confirmPending` SHALL be used for rendering and key handling
+
+### Requirement: Compaction status entry in transcript
+The TUI SHALL subscribe to `CompactionCompletedEvent` and `CompactionSlowEvent` and render a transient status entry in the chat transcript.
+
+- `CompactionCompletedEvent` SHALL render as an `itemStatus` entry with a concise message such as `"context compacted (reclaimed N tokens)"`.
+- `CompactionSlowEvent` SHALL render as an `itemStatus` entry with a warn-styled message such as `"compaction still running — proceeded with current context"`.
+
+These entries SHALL NOT block streaming and SHALL NOT be persisted as assistant or user messages.
+
+#### Scenario: Completed event appended as status
+- **WHEN** a `CompactionCompletedEvent` with `ReclaimedTokens=4200` is received
+- **THEN** an `itemStatus` entry SHALL be appended with text indicating the reclaimed token count
+- **AND** the entry SHALL NOT appear in the session's persisted message history
+
+#### Scenario: Slow event appended as warn status
+- **WHEN** a `CompactionSlowEvent` is received
+- **THEN** an `itemStatus` entry styled as a warning SHALL be appended
+- **AND** the chat viewport SHALL remain responsive
+
+### Requirement: Learning suggestion rendering in TUI
+Slice 1 SHALL NOT require the chat transcript surface to present learning suggestions as inline approvals that persist learning directly. Mission Control becomes the required projection surface for those suggestions as actionable proposed missions, and chat may remain informational if it renders them at all.
+
+#### Scenario: Mission Control owns learning suggestion proposal semantics
+- **WHEN** a `LearningSuggestionEvent` occurs during a cockpit session
+- **THEN** the Slice 1 requirement SHALL be satisfied by Mission Control projecting it as a proposed mission
+- **AND** this delta SHALL replace the earlier requirement that chat itself present the suggestion as an inline approval with direct persistence semantics
+- **AND** chat SHALL NOT be required to persist the suggestion through the approval pipeline on its own
+
+### Requirement: ChatModel cooperates with cockpit-owned pending approvals
+When the chat model is mounted inside cockpit, pending approval ownership SHALL be shared with the cockpit-level pending approval owner rather than being duplicated inside chat. Standalone `lango chat` approval behavior remains unchanged.
+
+#### Scenario: Cockpit chat reads the shared pending request
+- **WHEN** ChatModel is running inside cockpit and a pending approval exists
+- **THEN** chat rendering and key handling SHALL read the same pending approval state owned by cockpit
+- **AND** chat SHALL NOT require a second independent pending approval copy
+
+#### Scenario: Standalone chat keeps direct approval ownership
+- **WHEN** ChatModel runs through `lango chat` outside cockpit
+- **THEN** it SHALL continue to own and resolve approvals through its direct interactive path

@@ -39,6 +39,32 @@ func (_c *InquiryCreate) SetQuestion(v string) *InquiryCreate {
 	return _c
 }
 
+// SetPayloadCiphertext sets the "payload_ciphertext" field.
+func (_c *InquiryCreate) SetPayloadCiphertext(v []byte) *InquiryCreate {
+	_c.mutation.SetPayloadCiphertext(v)
+	return _c
+}
+
+// SetPayloadNonce sets the "payload_nonce" field.
+func (_c *InquiryCreate) SetPayloadNonce(v []byte) *InquiryCreate {
+	_c.mutation.SetPayloadNonce(v)
+	return _c
+}
+
+// SetPayloadKeyVersion sets the "payload_key_version" field.
+func (_c *InquiryCreate) SetPayloadKeyVersion(v int) *InquiryCreate {
+	_c.mutation.SetPayloadKeyVersion(v)
+	return _c
+}
+
+// SetNillablePayloadKeyVersion sets the "payload_key_version" field if the given value is not nil.
+func (_c *InquiryCreate) SetNillablePayloadKeyVersion(v *int) *InquiryCreate {
+	if v != nil {
+		_c.SetPayloadKeyVersion(*v)
+	}
+	return _c
+}
+
 // SetContext sets the "context" field.
 func (_c *InquiryCreate) SetContext(v string) *InquiryCreate {
 	_c.mutation.SetContext(v)
@@ -309,6 +335,18 @@ func (_c *InquiryCreate) createSpec() (*Inquiry, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Question(); ok {
 		_spec.SetField(inquiry.FieldQuestion, field.TypeString, value)
 		_node.Question = value
+	}
+	if value, ok := _c.mutation.PayloadCiphertext(); ok {
+		_spec.SetField(inquiry.FieldPayloadCiphertext, field.TypeBytes, value)
+		_node.PayloadCiphertext = &value
+	}
+	if value, ok := _c.mutation.PayloadNonce(); ok {
+		_spec.SetField(inquiry.FieldPayloadNonce, field.TypeBytes, value)
+		_node.PayloadNonce = &value
+	}
+	if value, ok := _c.mutation.PayloadKeyVersion(); ok {
+		_spec.SetField(inquiry.FieldPayloadKeyVersion, field.TypeInt, value)
+		_node.PayloadKeyVersion = &value
 	}
 	if value, ok := _c.mutation.Context(); ok {
 		_spec.SetField(inquiry.FieldContext, field.TypeString, value)

@@ -26,6 +26,7 @@ go.work.sum
 
 # env file
 .env
+.venv/
 
 # Editor/IDE
 .idea/
@@ -45,6 +46,8 @@ passphrase.txt
 .vscode/
 .claude/
 .agents/
+.codex/
+.superpowers/
 
 AGENTS.md 
 

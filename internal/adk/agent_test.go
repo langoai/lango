@@ -3,14 +3,196 @@ package adk
 import (
 	"context"
 	"fmt"
+	"iter"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	adkagent "google.golang.org/adk/agent"
 	"google.golang.org/adk/model"
 	"google.golang.org/adk/session"
 	"google.golang.org/genai"
+
+	"github.com/langoai/lango/internal/provider"
+	internal "github.com/langoai/lango/internal/session"
 )
+
+type staticErrorFixProvider struct{}
+
+func (staticErrorFixProvider) GetFixForError(context.Context, string, error) (string, bool) {
+	return "retry with corrected input", true
+}
+
+func TestNewAgent_AppliesConstructionOptions(t *testing.T) {
+	t.Parallel()
+
+	var observedRootSession string
+	fixProvider := staticErrorFixProvider{}
+	agent, err := NewAgent(
+		context.Background(),
+		nil,
+		NewModelAdapter(&mockProvider{id: "test"}, "test-model"),
+		"system prompt",
+		newMockStore(),
+		WithAgentTokenBudget(123),
+		WithAgentMaxTurns(7),
+		WithAgentErrorFixProvider(fixProvider),
+		WithAgentRootSessionObserver(func(sessionID string) { observedRootSession = sessionID }),
+		WithAgentChildLifecycleHook(func(internal.SessionLifecycleEvent) {}),
+		WithAgentIsolatedAgents([]string{"operator", "", "vault"}),
+	)
+	require.NoError(t, err)
+	require.NotNil(t, agent)
+
+	assert.Equal(t, 7, agent.maxTurns)
+	assert.NotNil(t, agent.runner)
+	assert.NotNil(t, agent.ADKAgent())
+	assert.Equal(t, "lango-agent", agent.ADKAgent().Name())
+	assert.Equal(t, 123, agent.sessionService.tokenBudget)
+	assert.NotNil(t, agent.errorFixProvider)
+	assert.NotNil(t, agent.sessionService.rootSessionObserver)
+	assert.NotNil(t, agent.sessionService.childStore)
+	assert.True(t, agent.sessionService.isolatedAgents["operator"])
+	assert.True(t, agent.sessionService.isolatedAgents["vault"])
+	assert.Contains(t, agent.isolatedAgents, "operator")
+	assert.Contains(t, agent.isolatedAgents, "vault")
+
+	agent.sessionService.rootSessionObserver("root-session")
+	assert.Equal(t, "root-session", observedRootSession)
+}
+
+func TestAgentRunAndCollect_CollectsResponseAndInvokesHooks(t *testing.T) {
+	t.Parallel()
+
+	store := newMockStore()
+	p := &mockProvider{
+		id: "test",
+		events: []provider.StreamEvent{
+			{Type: provider.StreamEventPlainText, Text: "hello"},
+			{Type: provider.StreamEventDone},
+		},
+	}
+	agent, err := NewAgent(
+		context.Background(),
+		nil,
+		NewModelAdapter(p, "test-model"),
+		"answer tersely",
+		store,
+		WithAgentMaxTurns(2),
+	)
+	require.NoError(t, err)
+
+	var activityCount int
+	var eventAuthors []string
+	var finished bool
+	got, err := agent.RunAndCollect(
+		context.Background(),
+		"session-collect",
+		"say hello",
+		WithOnActivity(func() { activityCount++ }),
+		WithOnEvent(func(event *session.Event) { eventAuthors = append(eventAuthors, event.Author) }),
+		WithOnFinish(func() { finished = true }),
+	)
+	require.NoError(t, err)
+
+	assert.Equal(t, "hello", got)
+	assert.True(t, finished)
+	assert.Positive(t, activityCount)
+	assert.Contains(t, eventAuthors, "lango-agent")
+	assert.Len(t, store.messages["session-collect"], 2)
+	assert.Equal(t, "say hello", store.messages["session-collect"][0].Content)
+	assert.Equal(t, "hello", store.messages["session-collect"][1].Content)
+}
+
+func TestAgentRunStreamingDetailed_StreamsChunksAndReportsDiagnostics(t *testing.T) {
+	t.Parallel()
+
+	store := newMockStore()
+	root, err := adkagent.New(adkagent.Config{
+		Name:        "stream-root",
+		Description: "stream root",
+		Run: func(adkagent.InvocationContext) iter.Seq2[*session.Event, error] {
+			return func(yield func(*session.Event, error) bool) {
+				events := []*session.Event{
+					{
+						Author: "stream-root",
+						LLMResponse: model.LLMResponse{
+							Content: &genai.Content{Role: "model", Parts: []*genai.Part{{Text: "hel"}}},
+							Partial: true,
+						},
+					},
+					{
+						Author: "stream-root",
+						LLMResponse: model.LLMResponse{
+							Content: &genai.Content{Role: "model", Parts: []*genai.Part{{Text: "lo"}}},
+							Partial: true,
+						},
+					},
+					{
+						Author: "stream-root",
+						LLMResponse: model.LLMResponse{
+							Content: &genai.Content{Role: "model", Parts: []*genai.Part{{Text: "hello"}}},
+						},
+					},
+				}
+				for _, event := range events {
+					if !yield(event, nil) {
+						return
+					}
+				}
+			}
+		},
+	})
+	require.NoError(t, err)
+	agent, err := NewAgentFromADK(root, store)
+	require.NoError(t, err)
+
+	var chunks []string
+	report, err := agent.RunStreamingDetailed(
+		context.Background(),
+		"session-stream",
+		"stream hello",
+		func(chunk string) { chunks = append(chunks, chunk) },
+	)
+	require.NoError(t, err)
+
+	assert.Equal(t, "hello", report.Response)
+	assert.Equal(t, []string{"hel", "lo"}, chunks)
+	assert.Equal(t, 3, report.Diagnostics.VisibleTextCount)
+	assert.Zero(t, report.Diagnostics.ToolCallCount)
+	assert.Len(t, store.messages["session-stream"], 2)
+	assert.Equal(t, "hello", store.messages["session-stream"][1].Content)
+}
+
+func TestNewAgentFromADK_RunPropagatesAgentErrors(t *testing.T) {
+	t.Parallel()
+
+	root, err := adkagent.New(adkagent.Config{
+		Name:        "runtime-root",
+		Description: "runtime root",
+		Run: func(adkagent.InvocationContext) iter.Seq2[*session.Event, error] {
+			return func(yield func(*session.Event, error) bool) {
+				yield(nil, fmt.Errorf("boom"))
+			}
+		},
+	})
+	require.NoError(t, err)
+
+	agent, err := NewAgentFromADK(root, newMockStore(), WithAgentMaxTurns(1))
+	require.NoError(t, err)
+	agent.WithMaxTurns(3).WithErrorFixProvider(staticErrorFixProvider{})
+
+	got, err := agent.RunAndCollect(context.Background(), "session-error", "fail")
+	require.Error(t, err)
+
+	var agentErr *AgentError
+	require.ErrorAs(t, err, &agentErr)
+	assert.Empty(t, got)
+	assert.Equal(t, ErrInternal, agentErr.Code)
+	assert.Equal(t, "boom", agentErr.CauseDetail)
+	assert.Equal(t, 3, agent.maxTurns)
+	assert.NotNil(t, agent.errorFixProvider)
+}
 
 func TestExtractMissingAgent(t *testing.T) {
 	t.Parallel()
@@ -47,6 +229,79 @@ func TestExtractMissingAgent(t *testing.T) {
 			t.Parallel()
 			got := extractMissingAgent(tt.give)
 			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestBuildMissingAgentCorrection_BuiltinDoesNotSuggestTransferRetry(t *testing.T) {
+	t.Parallel()
+
+	got := buildMissingAgentCorrection(
+		"web_search",
+		[]string{"operator", "vault"},
+		func(name string) bool { return name == "web_search" },
+	)
+
+	assert.NotContains(t, got, "Valid agents:")
+	assert.Contains(t, got, "Use agent_spawn")
+	assert.Contains(t, got, "answer directly from gathered evidence")
+}
+
+func TestBuildMissingAgentCorrection_RemoteLegacyStillShowsValidAgents(t *testing.T) {
+	t.Parallel()
+
+	got := buildMissingAgentCorrection(
+		"remote-researcher",
+		[]string{"remote-researcher", "vault"},
+		func(name string) bool { return false },
+	)
+	assert.Contains(t, got, "Valid agents:")
+	assert.Contains(t, got, "remote-researcher, vault")
+	assert.Contains(t, got, "Please retry using one of the valid agent names listed above.")
+}
+
+func TestContainsBuiltinTargetName(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		want bool
+	}{
+		{name: "operator", want: true},
+		{name: "planner", want: true},
+		{name: "remote-researcher", want: false},
+		{name: "web_search", want: false},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, containsBuiltinTargetName(tt.name))
+		})
+	}
+}
+
+func TestShouldRetryMissingAgent(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		badAgent      string
+		subAgentCount int
+		want          bool
+	}{
+		{name: "empty bad agent", badAgent: "", subAgentCount: 0, want: false},
+		{name: "builtin with zero subagents", badAgent: "operator", subAgentCount: 0, want: true},
+		{name: "remote with zero subagents", badAgent: "remote-researcher", subAgentCount: 0, want: false},
+		{name: "remote with listed subagents", badAgent: "remote-researcher", subAgentCount: 2, want: true},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, shouldRetryMissingAgent(tt.badAgent, tt.subAgentCount))
 		})
 	}
 }
@@ -475,4 +730,90 @@ func TestContextErrCheck_DeadlineExceeded(t *testing.T) {
 
 	require.Error(t, ctx.Err())
 	assert.ErrorIs(t, ctx.Err(), context.DeadlineExceeded)
+}
+
+func TestRunOptions_ResolveAndChainCallbacks(t *testing.T) {
+	t.Parallel()
+
+	var calls []string
+	hooks := ResolveRunHooks(
+		WithOnActivity(func() { calls = append(calls, "activity") }),
+		WithOnEvent(func(*session.Event) { calls = append(calls, "event-1") }),
+		ChainOnEvent(func(*session.Event) { calls = append(calls, "event-2") }),
+		WithOnRecovery(func(RecoveryInfo) { calls = append(calls, "recovery") }),
+		WithOnFinish(func() { calls = append(calls, "finish") }),
+	)
+	require.NotNil(t, hooks.OnActivity)
+	require.NotNil(t, hooks.OnEvent)
+	require.NotNil(t, hooks.OnRecovery)
+	require.NotNil(t, hooks.OnFinish)
+
+	hooks.OnActivity()
+	hooks.OnEvent(&session.Event{})
+	hooks.OnRecovery(RecoveryInfo{})
+	hooks.OnFinish()
+
+	assert.Equal(t, []string{"activity", "event-1", "event-2", "recovery", "finish"}, calls)
+}
+
+func TestRecordDiagnostics_CountsObservableEventKinds(t *testing.T) {
+	t.Parallel()
+
+	diagnostics := RunDiagnostics{}
+	recordDiagnostics(&diagnostics, "root", true, &session.Event{
+		Author: "root",
+		LLMResponse: model.LLMResponse{
+			Content: &genai.Content{
+				Parts: []*genai.Part{
+					{Text: "visible"},
+					{FunctionCall: &genai.FunctionCall{Name: "exec", Args: map[string]any{"cmd": "pwd"}}},
+					{FunctionResponse: &genai.FunctionResponse{Name: "exec", Response: map[string]any{"result": "ok"}}},
+				},
+			},
+		},
+	})
+	recordDiagnostics(&diagnostics, "root", true, &session.Event{
+		Author:  "root",
+		Actions: session.EventActions{TransferToAgent: "operator"},
+	})
+
+	assert.Equal(t, 1, diagnostics.VisibleTextCount)
+	assert.Equal(t, 1, diagnostics.ToolCallCount)
+	assert.Equal(t, 1, diagnostics.ToolResultCount)
+	assert.Equal(t, 1, diagnostics.DirectRootToolCallCount)
+	assert.Equal(t, 1, diagnostics.DelegationCount)
+}
+
+func TestExtractPrimaryToolSignature_StableAndIncludesArgs(t *testing.T) {
+	t.Parallel()
+
+	evt := &session.Event{
+		Author: "operator",
+		LLMResponse: model.LLMResponse{
+			Content: &genai.Content{
+				Parts: []*genai.Part{
+					{FunctionCall: &genai.FunctionCall{
+						Name: "exec",
+						Args: map[string]any{"cmd": "pwd"},
+					}},
+				},
+			},
+		},
+	}
+
+	assert.Equal(t, "exec", extractPrimaryToolName(evt))
+	assert.Equal(t, `operator|exec|{"cmd":"pwd"}`, extractPrimaryToolSignature(evt))
+	assert.Empty(t, extractPrimaryToolSignature(&session.Event{}))
+	assert.Empty(t, extractPrimaryToolName(&session.Event{}))
+}
+
+func TestDiscardReasonForError_ClassifiesRuntimeErrors(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(
+		t,
+		"loop_detected",
+		discardReasonForError(fmt.Errorf("call signature %q repeated 5 times consecutively, forcing stop", "operator|exec|{}")),
+	)
+	assert.Equal(t, "agent error", discardReasonForError(context.Canceled))
 }

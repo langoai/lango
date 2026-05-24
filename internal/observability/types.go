@@ -49,16 +49,31 @@ type PolicyMetrics struct {
 	ByReason map[string]int64 `json:"byReason"`
 }
 
+// GraphAdmissionBatchMetric aggregates one grouped admission metric family.
+type GraphAdmissionBatchMetric struct {
+	Source           string
+	ProducerGroup    *string
+	ValidatorSource  string
+	BatchCount       int64
+	KnownCount       int64
+	UnknownCount     int64
+	UnvalidatedCount int64
+}
+
 // SystemSnapshot is a point-in-time summary of system metrics.
 type SystemSnapshot struct {
-	StartedAt        time.Time
-	Uptime           time.Duration
-	TokenUsageTotal  TokenUsageSummary
-	ToolExecutions   int64
-	ToolBreakdown    map[string]ToolMetric
-	AgentBreakdown   map[string]AgentMetric
-	SessionBreakdown map[string]SessionMetric
-	Policy           PolicyMetrics
+	StartedAt                     time.Time
+	Uptime                        time.Duration
+	TokenUsageTotal               TokenUsageSummary
+	ToolExecutions                int64
+	ToolBreakdown                 map[string]ToolMetric
+	AgentBreakdown                map[string]AgentMetric
+	SessionBreakdown              map[string]SessionMetric
+	Policy                        PolicyMetrics
+	GraphAdmission                map[string]GraphAdmissionBatchMetric
+	GraphAdmissionUnmappedSources map[string]int64
+	GraphExtractorDroppedUnknown  map[string]int64
+	GraphWriteFailureBatches      int64
 }
 
 // TokenUsageSummary aggregates token counts across all providers/models.

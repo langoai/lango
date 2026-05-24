@@ -59,6 +59,57 @@ func (_u *MessageUpdate) SetNillableContent(v *string) *MessageUpdate {
 	return _u
 }
 
+// SetContentCiphertext sets the "content_ciphertext" field.
+func (_u *MessageUpdate) SetContentCiphertext(v []byte) *MessageUpdate {
+	_u.mutation.SetContentCiphertext(v)
+	return _u
+}
+
+// ClearContentCiphertext clears the value of the "content_ciphertext" field.
+func (_u *MessageUpdate) ClearContentCiphertext() *MessageUpdate {
+	_u.mutation.ClearContentCiphertext()
+	return _u
+}
+
+// SetContentNonce sets the "content_nonce" field.
+func (_u *MessageUpdate) SetContentNonce(v []byte) *MessageUpdate {
+	_u.mutation.SetContentNonce(v)
+	return _u
+}
+
+// ClearContentNonce clears the value of the "content_nonce" field.
+func (_u *MessageUpdate) ClearContentNonce() *MessageUpdate {
+	_u.mutation.ClearContentNonce()
+	return _u
+}
+
+// SetContentKeyVersion sets the "content_key_version" field.
+func (_u *MessageUpdate) SetContentKeyVersion(v int) *MessageUpdate {
+	_u.mutation.ResetContentKeyVersion()
+	_u.mutation.SetContentKeyVersion(v)
+	return _u
+}
+
+// SetNillableContentKeyVersion sets the "content_key_version" field if the given value is not nil.
+func (_u *MessageUpdate) SetNillableContentKeyVersion(v *int) *MessageUpdate {
+	if v != nil {
+		_u.SetContentKeyVersion(*v)
+	}
+	return _u
+}
+
+// AddContentKeyVersion adds value to the "content_key_version" field.
+func (_u *MessageUpdate) AddContentKeyVersion(v int) *MessageUpdate {
+	_u.mutation.AddContentKeyVersion(v)
+	return _u
+}
+
+// ClearContentKeyVersion clears the value of the "content_key_version" field.
+func (_u *MessageUpdate) ClearContentKeyVersion() *MessageUpdate {
+	_u.mutation.ClearContentKeyVersion()
+	return _u
+}
+
 // SetTimestamp sets the "timestamp" field.
 func (_u *MessageUpdate) SetTimestamp(v time.Time) *MessageUpdate {
 	_u.mutation.SetTimestamp(v)
@@ -88,6 +139,57 @@ func (_u *MessageUpdate) AppendToolCalls(v []schema.ToolCall) *MessageUpdate {
 // ClearToolCalls clears the value of the "tool_calls" field.
 func (_u *MessageUpdate) ClearToolCalls() *MessageUpdate {
 	_u.mutation.ClearToolCalls()
+	return _u
+}
+
+// SetToolCallsCiphertext sets the "tool_calls_ciphertext" field.
+func (_u *MessageUpdate) SetToolCallsCiphertext(v []byte) *MessageUpdate {
+	_u.mutation.SetToolCallsCiphertext(v)
+	return _u
+}
+
+// ClearToolCallsCiphertext clears the value of the "tool_calls_ciphertext" field.
+func (_u *MessageUpdate) ClearToolCallsCiphertext() *MessageUpdate {
+	_u.mutation.ClearToolCallsCiphertext()
+	return _u
+}
+
+// SetToolCallsNonce sets the "tool_calls_nonce" field.
+func (_u *MessageUpdate) SetToolCallsNonce(v []byte) *MessageUpdate {
+	_u.mutation.SetToolCallsNonce(v)
+	return _u
+}
+
+// ClearToolCallsNonce clears the value of the "tool_calls_nonce" field.
+func (_u *MessageUpdate) ClearToolCallsNonce() *MessageUpdate {
+	_u.mutation.ClearToolCallsNonce()
+	return _u
+}
+
+// SetToolCallsKeyVersion sets the "tool_calls_key_version" field.
+func (_u *MessageUpdate) SetToolCallsKeyVersion(v int) *MessageUpdate {
+	_u.mutation.ResetToolCallsKeyVersion()
+	_u.mutation.SetToolCallsKeyVersion(v)
+	return _u
+}
+
+// SetNillableToolCallsKeyVersion sets the "tool_calls_key_version" field if the given value is not nil.
+func (_u *MessageUpdate) SetNillableToolCallsKeyVersion(v *int) *MessageUpdate {
+	if v != nil {
+		_u.SetToolCallsKeyVersion(*v)
+	}
+	return _u
+}
+
+// AddToolCallsKeyVersion adds value to the "tool_calls_key_version" field.
+func (_u *MessageUpdate) AddToolCallsKeyVersion(v int) *MessageUpdate {
+	_u.mutation.AddToolCallsKeyVersion(v)
+	return _u
+}
+
+// ClearToolCallsKeyVersion clears the value of the "tool_calls_key_version" field.
+func (_u *MessageUpdate) ClearToolCallsKeyVersion() *MessageUpdate {
+	_u.mutation.ClearToolCallsKeyVersion()
 	return _u
 }
 
@@ -196,6 +298,27 @@ func (_u *MessageUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.Content(); ok {
 		_spec.SetField(message.FieldContent, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.ContentCiphertext(); ok {
+		_spec.SetField(message.FieldContentCiphertext, field.TypeBytes, value)
+	}
+	if _u.mutation.ContentCiphertextCleared() {
+		_spec.ClearField(message.FieldContentCiphertext, field.TypeBytes)
+	}
+	if value, ok := _u.mutation.ContentNonce(); ok {
+		_spec.SetField(message.FieldContentNonce, field.TypeBytes, value)
+	}
+	if _u.mutation.ContentNonceCleared() {
+		_spec.ClearField(message.FieldContentNonce, field.TypeBytes)
+	}
+	if value, ok := _u.mutation.ContentKeyVersion(); ok {
+		_spec.SetField(message.FieldContentKeyVersion, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedContentKeyVersion(); ok {
+		_spec.AddField(message.FieldContentKeyVersion, field.TypeInt, value)
+	}
+	if _u.mutation.ContentKeyVersionCleared() {
+		_spec.ClearField(message.FieldContentKeyVersion, field.TypeInt)
+	}
 	if value, ok := _u.mutation.Timestamp(); ok {
 		_spec.SetField(message.FieldTimestamp, field.TypeTime, value)
 	}
@@ -209,6 +332,27 @@ func (_u *MessageUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.ToolCallsCleared() {
 		_spec.ClearField(message.FieldToolCalls, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.ToolCallsCiphertext(); ok {
+		_spec.SetField(message.FieldToolCallsCiphertext, field.TypeBytes, value)
+	}
+	if _u.mutation.ToolCallsCiphertextCleared() {
+		_spec.ClearField(message.FieldToolCallsCiphertext, field.TypeBytes)
+	}
+	if value, ok := _u.mutation.ToolCallsNonce(); ok {
+		_spec.SetField(message.FieldToolCallsNonce, field.TypeBytes, value)
+	}
+	if _u.mutation.ToolCallsNonceCleared() {
+		_spec.ClearField(message.FieldToolCallsNonce, field.TypeBytes)
+	}
+	if value, ok := _u.mutation.ToolCallsKeyVersion(); ok {
+		_spec.SetField(message.FieldToolCallsKeyVersion, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedToolCallsKeyVersion(); ok {
+		_spec.AddField(message.FieldToolCallsKeyVersion, field.TypeInt, value)
+	}
+	if _u.mutation.ToolCallsKeyVersionCleared() {
+		_spec.ClearField(message.FieldToolCallsKeyVersion, field.TypeInt)
 	}
 	if value, ok := _u.mutation.Author(); ok {
 		_spec.SetField(message.FieldAuthor, field.TypeString, value)
@@ -293,6 +437,57 @@ func (_u *MessageUpdateOne) SetNillableContent(v *string) *MessageUpdateOne {
 	return _u
 }
 
+// SetContentCiphertext sets the "content_ciphertext" field.
+func (_u *MessageUpdateOne) SetContentCiphertext(v []byte) *MessageUpdateOne {
+	_u.mutation.SetContentCiphertext(v)
+	return _u
+}
+
+// ClearContentCiphertext clears the value of the "content_ciphertext" field.
+func (_u *MessageUpdateOne) ClearContentCiphertext() *MessageUpdateOne {
+	_u.mutation.ClearContentCiphertext()
+	return _u
+}
+
+// SetContentNonce sets the "content_nonce" field.
+func (_u *MessageUpdateOne) SetContentNonce(v []byte) *MessageUpdateOne {
+	_u.mutation.SetContentNonce(v)
+	return _u
+}
+
+// ClearContentNonce clears the value of the "content_nonce" field.
+func (_u *MessageUpdateOne) ClearContentNonce() *MessageUpdateOne {
+	_u.mutation.ClearContentNonce()
+	return _u
+}
+
+// SetContentKeyVersion sets the "content_key_version" field.
+func (_u *MessageUpdateOne) SetContentKeyVersion(v int) *MessageUpdateOne {
+	_u.mutation.ResetContentKeyVersion()
+	_u.mutation.SetContentKeyVersion(v)
+	return _u
+}
+
+// SetNillableContentKeyVersion sets the "content_key_version" field if the given value is not nil.
+func (_u *MessageUpdateOne) SetNillableContentKeyVersion(v *int) *MessageUpdateOne {
+	if v != nil {
+		_u.SetContentKeyVersion(*v)
+	}
+	return _u
+}
+
+// AddContentKeyVersion adds value to the "content_key_version" field.
+func (_u *MessageUpdateOne) AddContentKeyVersion(v int) *MessageUpdateOne {
+	_u.mutation.AddContentKeyVersion(v)
+	return _u
+}
+
+// ClearContentKeyVersion clears the value of the "content_key_version" field.
+func (_u *MessageUpdateOne) ClearContentKeyVersion() *MessageUpdateOne {
+	_u.mutation.ClearContentKeyVersion()
+	return _u
+}
+
 // SetTimestamp sets the "timestamp" field.
 func (_u *MessageUpdateOne) SetTimestamp(v time.Time) *MessageUpdateOne {
 	_u.mutation.SetTimestamp(v)
@@ -322,6 +517,57 @@ func (_u *MessageUpdateOne) AppendToolCalls(v []schema.ToolCall) *MessageUpdateO
 // ClearToolCalls clears the value of the "tool_calls" field.
 func (_u *MessageUpdateOne) ClearToolCalls() *MessageUpdateOne {
 	_u.mutation.ClearToolCalls()
+	return _u
+}
+
+// SetToolCallsCiphertext sets the "tool_calls_ciphertext" field.
+func (_u *MessageUpdateOne) SetToolCallsCiphertext(v []byte) *MessageUpdateOne {
+	_u.mutation.SetToolCallsCiphertext(v)
+	return _u
+}
+
+// ClearToolCallsCiphertext clears the value of the "tool_calls_ciphertext" field.
+func (_u *MessageUpdateOne) ClearToolCallsCiphertext() *MessageUpdateOne {
+	_u.mutation.ClearToolCallsCiphertext()
+	return _u
+}
+
+// SetToolCallsNonce sets the "tool_calls_nonce" field.
+func (_u *MessageUpdateOne) SetToolCallsNonce(v []byte) *MessageUpdateOne {
+	_u.mutation.SetToolCallsNonce(v)
+	return _u
+}
+
+// ClearToolCallsNonce clears the value of the "tool_calls_nonce" field.
+func (_u *MessageUpdateOne) ClearToolCallsNonce() *MessageUpdateOne {
+	_u.mutation.ClearToolCallsNonce()
+	return _u
+}
+
+// SetToolCallsKeyVersion sets the "tool_calls_key_version" field.
+func (_u *MessageUpdateOne) SetToolCallsKeyVersion(v int) *MessageUpdateOne {
+	_u.mutation.ResetToolCallsKeyVersion()
+	_u.mutation.SetToolCallsKeyVersion(v)
+	return _u
+}
+
+// SetNillableToolCallsKeyVersion sets the "tool_calls_key_version" field if the given value is not nil.
+func (_u *MessageUpdateOne) SetNillableToolCallsKeyVersion(v *int) *MessageUpdateOne {
+	if v != nil {
+		_u.SetToolCallsKeyVersion(*v)
+	}
+	return _u
+}
+
+// AddToolCallsKeyVersion adds value to the "tool_calls_key_version" field.
+func (_u *MessageUpdateOne) AddToolCallsKeyVersion(v int) *MessageUpdateOne {
+	_u.mutation.AddToolCallsKeyVersion(v)
+	return _u
+}
+
+// ClearToolCallsKeyVersion clears the value of the "tool_calls_key_version" field.
+func (_u *MessageUpdateOne) ClearToolCallsKeyVersion() *MessageUpdateOne {
+	_u.mutation.ClearToolCallsKeyVersion()
 	return _u
 }
 
@@ -460,6 +706,27 @@ func (_u *MessageUpdateOne) sqlSave(ctx context.Context) (_node *Message, err er
 	if value, ok := _u.mutation.Content(); ok {
 		_spec.SetField(message.FieldContent, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.ContentCiphertext(); ok {
+		_spec.SetField(message.FieldContentCiphertext, field.TypeBytes, value)
+	}
+	if _u.mutation.ContentCiphertextCleared() {
+		_spec.ClearField(message.FieldContentCiphertext, field.TypeBytes)
+	}
+	if value, ok := _u.mutation.ContentNonce(); ok {
+		_spec.SetField(message.FieldContentNonce, field.TypeBytes, value)
+	}
+	if _u.mutation.ContentNonceCleared() {
+		_spec.ClearField(message.FieldContentNonce, field.TypeBytes)
+	}
+	if value, ok := _u.mutation.ContentKeyVersion(); ok {
+		_spec.SetField(message.FieldContentKeyVersion, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedContentKeyVersion(); ok {
+		_spec.AddField(message.FieldContentKeyVersion, field.TypeInt, value)
+	}
+	if _u.mutation.ContentKeyVersionCleared() {
+		_spec.ClearField(message.FieldContentKeyVersion, field.TypeInt)
+	}
 	if value, ok := _u.mutation.Timestamp(); ok {
 		_spec.SetField(message.FieldTimestamp, field.TypeTime, value)
 	}
@@ -473,6 +740,27 @@ func (_u *MessageUpdateOne) sqlSave(ctx context.Context) (_node *Message, err er
 	}
 	if _u.mutation.ToolCallsCleared() {
 		_spec.ClearField(message.FieldToolCalls, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.ToolCallsCiphertext(); ok {
+		_spec.SetField(message.FieldToolCallsCiphertext, field.TypeBytes, value)
+	}
+	if _u.mutation.ToolCallsCiphertextCleared() {
+		_spec.ClearField(message.FieldToolCallsCiphertext, field.TypeBytes)
+	}
+	if value, ok := _u.mutation.ToolCallsNonce(); ok {
+		_spec.SetField(message.FieldToolCallsNonce, field.TypeBytes, value)
+	}
+	if _u.mutation.ToolCallsNonceCleared() {
+		_spec.ClearField(message.FieldToolCallsNonce, field.TypeBytes)
+	}
+	if value, ok := _u.mutation.ToolCallsKeyVersion(); ok {
+		_spec.SetField(message.FieldToolCallsKeyVersion, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedToolCallsKeyVersion(); ok {
+		_spec.AddField(message.FieldToolCallsKeyVersion, field.TypeInt, value)
+	}
+	if _u.mutation.ToolCallsKeyVersionCleared() {
+		_spec.ClearField(message.FieldToolCallsKeyVersion, field.TypeInt)
 	}
 	if value, ok := _u.mutation.Author(); ok {
 		_spec.SetField(message.FieldAuthor, field.TypeString, value)

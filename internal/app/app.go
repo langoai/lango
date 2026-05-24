@@ -27,10 +27,12 @@ import (
 	"github.com/langoai/lango/internal/logging"
 	"github.com/langoai/lango/internal/observability"
 	"github.com/langoai/lango/internal/observability/audit"
+	"github.com/langoai/lango/internal/postadjudicationstatus"
 	"github.com/langoai/lango/internal/runledger"
 	"github.com/langoai/lango/internal/sandbox"
 	"github.com/langoai/lango/internal/session"
 	"github.com/langoai/lango/internal/skill"
+	"github.com/langoai/lango/internal/storage"
 	"github.com/langoai/lango/internal/toolcatalog"
 	"github.com/langoai/lango/internal/toolchain"
 	"github.com/langoai/lango/internal/tooloutput"
@@ -93,18 +95,25 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 		ctx:      ctx,
 		cancel:   cancel,
 	}
+	app.CollaborationRuntimeReader = newCollaborationRuntimeBridge(bus)
 
 	// LocalChat/Cockpit mode: skip Network and Automation lifecycle components.
 	if options.mode == AppModeLocalChat || options.mode == AppModeCockpit {
 		app.registry.SetMaxPriority(lifecycle.PriorityBuffer)
 	}
 
+	// Extension registry: load early (before module build) so skill loading
+	// can filter ext-packs by health/integrity status.
+	wireExtensionRegistry(app)
+
 	// ── Phase A: Module Build ──
 
 	builder := appinit.NewBuilder()
 	builder.AddModule(&foundationModule{cfg: cfg, boot: boot})
-	builder.AddModule(&intelligenceModule{cfg: cfg, boot: boot, rawDB: boot.RawDB, bus: bus})
-	builder.AddModule(&automationModule{cfg: cfg, app: app})
+	builder.AddModule(&missionModule{boot: boot})
+	builder.AddModule(&proposalModule{bus: bus})
+	builder.AddModule(&intelligenceModule{cfg: cfg, boot: boot, bus: bus, extReg: app.ExtensionRegistry})
+	builder.AddModule(&automationModule{cfg: cfg, app: app, bus: bus})
 	builder.AddModule(&networkModule{cfg: cfg, boot: boot, bus: bus, app: app})
 	builder.AddModule(&extensionModule{cfg: cfg, boot: boot, bus: bus})
 	builder.AddModule(&runLedgerModule{cfg: cfg, boot: boot})
@@ -128,6 +137,8 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 
 	// B1. Populate app fields from resolver.
 	populateAppFields(app, resolver)
+	wireLoopReaders(app, boot)
+	wireCollaborationReaders(app)
 
 	// B1a. Wire the event bus into the supervisor's exec tool so that
 	// SandboxDecisionEvent records flow into the audit recorder.
@@ -170,7 +181,12 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 	tools = toolchain.ChainAll(tools, toolchain.WithOutputManager(cfg.Tools.OutputManager, outputStore))
 
 	// B4c. Tool Execution Hooks.
-	hookRegistry := buildHookRegistry(cfg, bus)
+	// Extract KnowledgeSaver from intelligence wiring if available.
+	var knowledgeSaver toolchain.KnowledgeSaver
+	if iv != nil && iv.KC != nil {
+		knowledgeSaver = iv.KC.store
+	}
+	hookRegistry := toolchain.BuildHookRegistry(cfg, bus, knowledgeSaver, catalog)
 	tools = toolchain.ChainAll(tools, toolchain.WithHooks(hookRegistry))
 	app.HookRegistry = hookRegistry
 	logger().Infow("tool hooks enabled",
@@ -180,6 +196,10 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 
 	// B4c2. Principal injection — maps agent name to ontology principal.
 	tools = toolchain.ChainAll(tools, toolchain.WithPrincipal())
+
+	// B4c3. Mode allowlist enforcement — blocks tools outside the active
+	// session mode's allowlist before they reach approval/policy/handler layers.
+	tools = toolchain.ChainAll(tools, toolchain.WithModeAllowlist(buildModeAllowlistResolver(cfg, catalog)))
 
 	// B5. Auth + Gateway.
 	fv := resolver.Resolve(appinit.ProvidesSupervisor).(*foundationValues)
@@ -217,7 +237,15 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 			limiter = nv.limiter
 		}
 		tools = toolchain.ChainAll(tools,
-			toolchain.WithApproval(cfg.Security.Interceptor, composite, grantStore, limiter, historyStore))
+			toolchain.WithApproval(
+				cfg.Security.Interceptor,
+				composite,
+				grantStore,
+				limiter,
+				historyStore,
+				app.missionApprovalObserver,
+			),
+		)
 		logger().Infow("tool approval enabled", "policy", string(policy))
 	}
 
@@ -255,6 +283,12 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 	// B6. Agent creation.
 	scanner := fv.Scanner
 	p2pc, _ := resolver.Resolve(appinit.ProvidesP2P).(*p2pComponents)
+	app.compactionSync = newCompactionSyncHolder()
+
+	// Session recall: construct before agent so the provider can be wired
+	// into the context adapter. Installs the session-end processor and
+	// registers the startup sweep.
+	app.recallIndex = wireSessionRecall(app)
 	adkAgent, err := initAgent(context.Background(), &agentDeps{
 		sv:       fv.Supervisor,
 		cfg:      cfg,
@@ -262,7 +296,6 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 		tools:    tools,
 		kc:       resolveKC(iv),
 		mc:       resolveMC(iv),
-		ec:       resolveEC(iv),
 		gc:       resolveGC(iv),
 		scanner:  scanner,
 		sr:       resolveSR(iv),
@@ -275,7 +308,10 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 			pv, _ := resolver.Resolve(appinit.ProvidesProvenance).(*provenanceValues)
 			return pv
 		}(),
-		hookRegistry: hookRegistry,
+		hookRegistry:   hookRegistry,
+		compactionSync: app.compactionSync,
+		recallIndex:    app.recallIndex,
+		extReg:         app.ExtensionRegistry,
 	})
 	if err != nil {
 		cleanups.rollback()
@@ -284,6 +320,7 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 	app.Agent = adkAgent
 	app.Gateway.SetAgent(adkAgent)
 	app.TurnTraceStore = initTurnTraceStore(app.Store)
+	wireCollaborationReaders(app)
 	idleTimeout, hardCeiling := app.resolveTimeouts()
 	var errorFixProvider adk.ErrorFixProvider
 	if iv != nil && iv.KC != nil && iv.KC.engine != nil {
@@ -318,6 +355,12 @@ func New(boot *bootstrap.Result, opts ...AppOption) (*App, error) {
 	// B9. Memory compaction + turn callbacks.
 	wireMemoryAndTurnCallbacks(app, iv, fv)
 
+	// B9.1. Background hygiene compaction (Phase 3).
+	wireCompactionBuffer(app, adk.LookupModelWindow(cfg.Agent.Model))
+
+	// B9.3. Learning suggestions (Phase 3C).
+	wireLearningSuggestions(app)
+
 	// B10. Lifecycle registration (module components + gateway + channels).
 	for _, entry := range buildResult.Components {
 		app.registry.Register(entry.Component, entry.Priority)
@@ -348,6 +391,7 @@ func populateAppFields(app *App, r appinit.Resolver) {
 	// Foundation.
 	if fv, ok := r.Resolve(appinit.ProvidesSupervisor).(*foundationValues); ok {
 		app.Store = fv.Store
+		app.ReceiptStore = fv.ReceiptStore
 		app.Crypto = fv.Crypto
 		app.Keys = fv.Keys
 		app.Secrets = fv.Secrets
@@ -367,10 +411,6 @@ func populateAppFields(app *App, r appinit.Resolver) {
 			app.MemoryStore = iv.MC.store
 			app.MemoryBuffer = iv.MC.buffer
 		}
-		if iv.EC != nil {
-			app.EmbeddingBuffer = iv.EC.buffer
-			app.RAGService = iv.EC.ragService
-		}
 		if iv.GC != nil {
 			app.GraphStore = iv.GC.store
 			app.GraphBuffer = iv.GC.buffer
@@ -378,6 +418,7 @@ func populateAppFields(app *App, r appinit.Resolver) {
 		if iv.LC != nil {
 			app.LibrarianInquiryStore = iv.LC.inquiryStore
 			app.LibrarianProactiveBuffer = iv.LC.proactiveBuffer
+			app.LoopInquiryReader = iv.LC.inquiryStore
 		}
 		if iv.AB != nil {
 			if ab, ok := iv.AB.(*learning.AnalysisBuffer); ok {
@@ -401,6 +442,9 @@ func populateAppFields(app *App, r appinit.Resolver) {
 		}
 		if bm, ok := av.BackgroundManager.(*background.Manager); ok {
 			app.BackgroundManager = bm
+		}
+		if ars, ok := av.AgentRunStore.(agentrt.AgentRunStore); ok {
+			app.AgentRunStore = ars
 		}
 		if we, ok := av.WorkflowEngine.(*workflow.Engine); ok {
 			app.WorkflowEngine = we
@@ -447,12 +491,62 @@ func populateAppFields(app *App, r appinit.Resolver) {
 		app.RunLedgerPEV = rlv.pev
 	}
 
+	// Mission.
+	if mv, ok := r.Resolve(appinit.ProvidesMission).(*missionValues); ok && mv != nil {
+		app.MissionStore = mv.store
+		app.MissionService = mv.service
+		app.LoopMissionReader = mv.store
+		app.missionApprovalObserver = mv.approvalObserver
+		app.missionBackgroundLinker = mv.backgroundLinker
+		app.missionRunLedgerLinker = mv.runLedgerLinker
+	}
+
+	// Proposal.
+	if pv, ok := r.Resolve(appinit.ProvidesProposal).(*proposalValues); ok && pv != nil {
+		app.ProposalRegistry = pv.registry
+		app.ProposalPreparer = pv.preparer
+		app.ProposalService = pv.service
+		app.LoopProposalReader = pv.registry
+	}
+
 	// Provenance.
 	if pv, ok := r.Resolve(appinit.ProvidesProvenance).(*provenanceValues); ok && pv != nil {
 		app.ProvenanceCheckpoints = pv.checkpointService
 		app.ProvenanceSessionTree = pv.sessionTree
 		app.ProvenanceAttribution = pv.attribution
 		app.ProvenanceBundle = pv.bundle
+	}
+}
+
+func wireLoopReaders(app *App, boot *bootstrap.Result) {
+	if app == nil {
+		return
+	}
+	if app.ReceiptStore != nil {
+		app.LoopDeadLetterReader = postadjudicationstatus.NewService(app.ReceiptStore)
+	}
+	if boot != nil && boot.Storage != nil {
+		if cronStore := boot.Storage.Cron(); cronStore != nil {
+			app.LoopCronReader = cronStore
+		}
+	}
+}
+
+func wireCollaborationReaders(app *App) {
+	if app == nil {
+		return
+	}
+	if bridge, ok := app.CollaborationRuntimeReader.(*collaborationRuntimeBridge); ok {
+		bridge.SetMissionStore(app.MissionStore)
+	}
+	if app.MissionStore != nil {
+		app.CollaborationMissionLinkReader = &collaborationMissionLinkReader{store: app.MissionStore}
+	}
+	if app.AgentRunStore != nil {
+		app.CollaborationAgentRunReader = &collaborationAgentRunReader{store: app.AgentRunStore}
+	}
+	if app.TurnTraceStore != nil {
+		app.CollaborationDelegationReader = &collaborationDelegationReader{store: app.TurnTraceStore}
 	}
 }
 
@@ -493,21 +587,6 @@ func (a *policyBusAdapter) Publish(e execpkg.PolicyEvent) {
 	}
 	// Fallback: forward as-is (interface method sets match).
 	a.bus.Publish(e)
-}
-
-// buildHookRegistry constructs the tool execution hook registry.
-func buildHookRegistry(cfg *config.Config, bus *eventbus.Bus) *toolchain.HookRegistry {
-	hookRegistry := toolchain.NewHookRegistry()
-	hookRegistry.RegisterPre(toolchain.NewSecurityFilterHook(cfg.Hooks.BlockedCommands))
-	if cfg.Hooks.AccessControl {
-		hookRegistry.RegisterPre(toolchain.NewAgentAccessControlHook(nil))
-	}
-	if (cfg.Hooks.Enabled || cfg.Agent.MultiAgent) && cfg.Hooks.EventPublishing && bus != nil {
-		ebHook := toolchain.NewEventBusHook(bus)
-		hookRegistry.RegisterPre(ebHook)
-		hookRegistry.RegisterPost(ebHook)
-	}
-	return hookRegistry
 }
 
 // buildApprovalProvider constructs the composite approval provider and grant store.
@@ -684,15 +763,27 @@ func wirePostAgent(app *App, r appinit.Resolver, tools []*agent.Tool, bus *event
 	// Observability API routes.
 	obsc, _ := r.Resolve(appinit.ProvidesObservability).(*observabilityComponents)
 	if obsc != nil {
-		registerObservabilityRoutes(app.Gateway.Router(), obsc.collector, obsc.healthRegistry, obsc.tokenStore, boot.DBClient, obsc.promExporter)
+		var alertsReader func(context.Context, time.Time) ([]storage.AlertRecord, error)
+		if boot != nil && boot.Storage != nil {
+			alertsReader = boot.Storage.Alerts
+		}
+		registerObservabilityRoutes(app.Gateway.Router(), obsc.collector, obsc.healthRegistry, obsc.tokenStore, alertsReader, obsc.promExporter)
 		logger().Info("observability API routes registered")
 	}
 
+	registerBackgroundRoutes(app.Gateway.Router(), app, auth)
+	logger().Info("background management API routes registered")
+
 	// Audit recorder.
-	if cfg.Observability.Audit.Enabled && boot.DBClient != nil {
-		auditRec := audit.NewRecorder(boot.DBClient)
-		auditRec.Subscribe(bus)
-		logger().Info("audit recorder wired to event bus")
+	if cfg.Observability.Audit.Enabled {
+		var auditRec *audit.Recorder
+		if boot != nil && boot.Storage != nil {
+			auditRec = boot.Storage.AuditRecorder()
+		}
+		if auditRec != nil {
+			auditRec.Subscribe(bus)
+			logger().Info("audit recorder wired to event bus")
+		}
 	}
 }
 
@@ -742,14 +833,9 @@ func registerPostBuildLifecycle(app *App) {
 	// Gateway.
 	reg.Register(lifecycle.NewFuncComponent("gateway",
 		func(_ context.Context, wg *sync.WaitGroup) error {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				if err := app.Gateway.Start(); err != nil {
-					logger().Errorw("gateway server error", "error", err)
-				}
-			}()
-			return nil
+			return app.Gateway.StartBackground(wg, func(err error) {
+				logger().Errorw("gateway server error", "error", err)
+			})
 		},
 		func(ctx context.Context) error {
 			return app.Gateway.Shutdown(ctx)
@@ -790,12 +876,6 @@ func resolveMC(iv *intelligenceValues) *memoryComponents {
 		return nil
 	}
 	return iv.MC
-}
-func resolveEC(iv *intelligenceValues) *embeddingComponents {
-	if iv == nil {
-		return nil
-	}
-	return iv.EC
 }
 func resolveGC(iv *intelligenceValues) *graphComponents {
 	if iv == nil {

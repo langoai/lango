@@ -1,9 +1,7 @@
 package workflow
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 
@@ -11,21 +9,25 @@ import (
 )
 
 func newValidateCmd() *cobra.Command {
-	var jsonOutput bool
+	var output string
 
 	cmd := &cobra.Command{
-		Use:   "validate <file.flow.yaml>",
-		Short: "Validate a workflow YAML file without executing",
-		Args:  cobra.ExactArgs(1),
+		Use:           "validate <file.flow.yaml>",
+		Short:         "Validate a workflow YAML file without executing",
+		Args:          cobra.ExactArgs(1),
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			output, err := resolveOutput(cmd)
+			if err != nil {
+				return err
+			}
 			filePath := args[0]
 
 			w, err := workflow.ParseFile(filePath)
 			if err != nil {
-				if jsonOutput {
-					enc := json.NewEncoder(os.Stdout)
-					enc.SetIndent("", "  ")
-					return enc.Encode(map[string]interface{}{
+				if output == "json" {
+					return printJSON(cmd.OutOrStdout(), map[string]interface{}{
 						"valid": false,
 						"file":  filePath,
 						"error": err.Error(),
@@ -50,24 +52,22 @@ func newValidateCmd() *cobra.Command {
 				Schedule: w.Schedule,
 			}
 
-			if jsonOutput {
-				enc := json.NewEncoder(os.Stdout)
-				enc.SetIndent("", "  ")
-				return enc.Encode(out)
+			if output == "json" {
+				return printJSON(cmd.OutOrStdout(), out)
 			}
 
-			fmt.Printf("Workflow %q is valid.\n", filePath)
-			fmt.Printf("  Name:     %s\n", out.Name)
-			fmt.Printf("  Steps:    %d\n", out.Steps)
+			fmt.Fprintf(cmd.OutOrStdout(), "Workflow %q is valid.\n", filePath)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Name:     %s\n", out.Name)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Steps:    %d\n", out.Steps)
 			if out.Schedule != "" {
-				fmt.Printf("  Schedule: %s\n", out.Schedule)
+				fmt.Fprintf(cmd.OutOrStdout(), "  Schedule: %s\n", out.Schedule)
 			}
 
 			return nil
 		},
 	}
 
-	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
+	cmd.Flags().StringVar(&output, "output", "table", "Output format: table or json")
 
 	return cmd
 }

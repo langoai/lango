@@ -237,7 +237,7 @@ Resume SHALL be integrated with gateway/session handling while remaining opt-in.
 - **AND** hardcoded `time.Hour` is not used
 
 ### Requirement: Workspace Isolation
-Production runtime SHALL activate workspace isolation for coding steps once the execution-isolation stage is enabled.
+Production runtime SHALL activate workspace isolation for coding steps once the execution-isolation stage is enabled. Error messages SHALL provide guided remediation with actionable commands. Patch application failures SHALL include rollback instructions.
 
 #### Scenario: Runtime isolation active
 - **WHEN** `runLedger.workspaceIsolation` is enabled
@@ -248,6 +248,49 @@ Production runtime SHALL activate workspace isolation for coding steps once the 
 - **WHEN** the same step is validated multiple times under isolation
 - **THEN** each attempt uses a retry-safe workspace identity
 - **AND** previous attempts do not block later ones via reused branch metadata
+
+#### Scenario: Dirty tree guided remediation
+- **WHEN** `CheckDirtyTree` detects uncommitted changes
+- **THEN** the error message includes a count of changed files
+- **AND** the error suggests `git stash push -m "lango-workspace-isolation"` as a remediation command
+
+#### Scenario: Patch apply conflict guidance
+- **WHEN** `ApplyPatch` fails due to a merge conflict
+- **THEN** the error message includes the raw git output
+- **AND** the error instructs the user to run `git am --abort` to rollback
+
+#### Scenario: Enablement conditions
+- **WHEN** the system evaluates whether workspace isolation should be active
+- **THEN** isolation is required for steps with validators of type `file_changed`, `build_pass`, or `test_pass`
+- **AND** isolation is not required for validators of type `human_approval` or `always_pass`
+
+### Requirement: RunLedger Workspace Isolation doctor check
+The doctor command SHALL include a `RunLedger Workspace Isolation` check that validates the workspace isolation configuration and environment health. The check name SHALL be distinct from the existing `P2P Workspaces` check.
+
+#### Scenario: Isolation enabled and healthy
+- **WHEN** `runLedger.workspaceIsolation` is enabled and git is available and no stale worktrees exist
+- **THEN** the check status is `Pass`
+- **AND** the message includes the config value and active worktree count
+
+#### Scenario: Isolation disabled
+- **WHEN** `runLedger.workspaceIsolation` is disabled
+- **THEN** the check status is `Skip`
+- **AND** the message indicates isolation is not enabled
+
+#### Scenario: Git unavailable
+- **WHEN** `runLedger.workspaceIsolation` is enabled but `git` is not in PATH
+- **THEN** the check status is `Warn`
+- **AND** the message indicates git is required for workspace isolation
+
+#### Scenario: Stale worktrees detected
+- **WHEN** `git worktree list` reports worktrees under the runledger temp directory that no longer exist on disk
+- **THEN** the check status is `Warn`
+- **AND** the message lists the stale worktree paths
+
+#### Scenario: Doctor help text
+- **WHEN** user runs `lango doctor --help`
+- **THEN** the output lists `RunLedger Workspace Isolation` under the Execution category
+- **AND** the total check count is incremented by 1
 
 ### Requirement: Rollout Stages
 Write-through mode SHALL route workflow/background writes through RunLedger first.
@@ -326,6 +369,17 @@ Tool access SHALL be role-based. The orchestrator (agent name `"orchestrator"` o
 - **WHEN** a non-orchestrator agent calls `run_create`
 - **THEN** `ErrAccessDenied` is returned
 
+### Requirement: Run tool handlers reject missing required inputs
+The `run_*` tool handlers SHALL reject missing required wrapper inputs before journal writes, snapshot reads, or policy application begins.
+
+#### Scenario: Missing run creation inputs
+- **WHEN** `run_create` is invoked without `plan_json`, `session_key`, or `original_request`
+- **THEN** the handler SHALL return an actionable missing-parameter error
+
+#### Scenario: Missing run read or control inputs
+- **WHEN** `run_read`, `run_active`, `run_note`, `run_propose_step_result`, `run_apply_policy`, `run_approve_step`, or `run_resume` is invoked without one of its required inputs
+- **THEN** the handler SHALL return an actionable missing-parameter error
+
 ### Requirement: CLI Journal Inspection
 The system SHALL let operators inspect persistent RunLedger data from the CLI.
 
@@ -336,6 +390,20 @@ The system SHALL let operators inspect persistent RunLedger data from the CLI.
 #### Scenario: `lango run journal <run-id>`
 - **WHEN** the operator runs `lango run journal <run-id>`
 - **THEN** the command reads the persistent journal events for that run
+
+#### Scenario: RunLedger CLI JSON output
+- **WHEN** the operator runs `lango run list`, `lango run status`, or `lango run journal <run-id>` with `--output json`
+- **THEN** the command SHALL emit structured JSON through the Cobra command output writer
+
+#### Scenario: RunLedger CLI rejects unknown output before bootstrap
+- **WHEN** the operator runs `lango run list`, `lango run status`, or `lango run journal <run-id>` with `--output yaml`
+- **THEN** the command SHALL return an actionable unknown-output-format error
+- **AND** it SHALL NOT invoke bootstrap-dependent work
+
+#### Scenario: RunLedger CLI output uses the command writer
+- **WHEN** `lango run list`, `lango run status`, or `lango run journal <run-id>` renders output
+- **THEN** it SHALL write the full output through the Cobra command output writer
+- **AND** wrappers or tests that replace `cmd.OutOrStdout()` SHALL capture the command output
 
 ### Requirement: Command Context
 The system SHALL inject active run summaries into command context. The system SHALL cache assembled run summary strings per session with journal-sequence-based invalidation to avoid redundant queries on repeated LLM requests.
@@ -532,3 +600,73 @@ Concrete store types (`MemoryStore`, `EntStore`) SHALL implement the `AppendHook
 - **WHEN** a store is created with `WithAppendHook(first)` and then `SetAppendHook(second)` is called
 - **THEN** both `first` and `second` are invoked in order on each `AppendJournalEvent` call
 
+### Requirement: Runtime wake boundary definition
+The system SHALL document the boundary between application-layer resume (opt-in `confirmResume + resumeRunId` handshake) and runtime-layer wake (harness re-initialization from persisted state). The design document SHALL enumerate the state categories that must persist for wake to be possible without a full bootstrap pipeline.
+
+#### Scenario: State categories enumerated
+- **WHEN** the design document is reviewed
+- **THEN** it explicitly covers: in-flight tool call state, pending approval state, supervisor/ADK session bridge state, and crypto provider re-initialization
+- **AND** it maps which of these the current resume protocol covers vs does not cover
+
+#### Scenario: No runtime behavior change
+- **WHEN** this change is implemented
+- **THEN** no runtime code paths for session handling, resume, or bootstrap are modified
+- **AND** the change is limited to design documentation and diagnostic tooling
+
+### Requirement: Built-in teammate durability audit
+Before archive, the implementation SHALL classify built-in teammate durability for spawn submission, run status transitions, projection sync markers, approval-blocked conditions, and recovery states using one of three verdicts: recorded, not recorded but harmless, or not recorded and follow-up required.
+
+#### Scenario: Audit verdict is recorded before archive
+- **WHEN** the hard-cut change is prepared for archive
+- **THEN** the implementation SHALL record one verdict for each audited built-in teammate durability item
+- **AND** each verdict SHALL be one of: recorded, not recorded but harmless, or not recorded and follow-up required
+
+### Requirement: Teammate approval-blocked durability mirror
+The system SHALL durably mirror built-in teammate approval-blocked state into RunLedger. The durable mirror SHALL cover `runtime_condition`, `blocked_reason`, and `grant_request_id` for approval-blocked teammate runs. This mirror uses best-effort semantics: live projection writes remain authoritative for runtime continuity, while journal plus snapshot state provide durable reconstruction.
+
+#### Scenario: Approval-blocked teammate state is reconstructible
+- **WHEN** a built-in teammate run enters `blocked_waiting_approval`
+- **THEN** RunLedger SHALL append a durable approval-block journal event
+- **AND** the RunLedger snapshot SHALL retain the latest blocked condition, blocked reason, and grant request ID
+
+#### Scenario: Approval unblock clears durable blocked state
+- **WHEN** a built-in teammate run leaves approval-blocked state
+- **THEN** RunLedger SHALL append a durable approval-unblocked journal event
+- **AND** the latest durable blocked snapshot fields SHALL be cleared
+
+#### Scenario: Mirror failure does not fail-close runtime
+- **WHEN** the durable mirror write fails
+- **THEN** the live control-plane projection write SHALL still succeed
+- **AND** the failure SHALL be observable through logs and metrics
+
+#### Scenario: RunLedger disabled skips mirror silently
+- **WHEN** RunLedger or write-through mirroring is disabled
+- **THEN** approval-blocked mirroring SHALL be skipped
+- **AND** the live control-plane projection SHALL remain the only state source
+
+### Requirement: Approval-blocked replacement stays durable
+When a built-in teammate run remains approval-blocked but its blocked metadata changes, the durable mirror SHALL record the replacement and refresh the latest snapshot values.
+
+#### Scenario: Approval-blocked metadata changes while the run stays blocked
+- **WHEN** a built-in teammate run remains `blocked_waiting_approval`
+- **AND** either `blocked_reason` or `grant_request_id` changes
+- **THEN** RunLedger SHALL append a fresh approval-block journal event
+- **AND** the cached durable snapshot SHALL retain the latest blocked condition, blocked reason, and grant request ID
+
+#### Scenario: Terminal run clears teammate blocked snapshot fields
+- **WHEN** a built-in teammate run reaches a terminal status while approval-blocked
+- **THEN** the durable snapshot SHALL clear teammate `runtime_condition`, `blocked_reason`, and `grant_request_id`
+- **AND** no separate approval-unblock event SHALL be required
+
+### Requirement: Durable mirror preserves approval identity semantics
+The RunLedger durable mirror for built-in teammate approval blocking SHALL preserve both the stable logical `grant_request_id` and the latest attempt metadata for that logical request.
+
+#### Scenario: Durable snapshot reflects renewed attempt without rotating request ID
+- **WHEN** a built-in teammate approval-blocked request is re-issued for the same run and tool while the latest active blocked cycle is still in progress
+- **THEN** the durable mirror SHALL preserve the same logical `grant_request_id`
+- **AND** the latest durable snapshot SHALL reflect the new attempt metadata
+
+#### Scenario: Durable mirror preserves only the latest active blocked cycle
+- **WHEN** a prior blocked cycle for a logical request has already been cleared by grant or denial
+- **THEN** a later blocked cycle for the same logical request MAY reuse the same `grant_request_id`
+- **AND** the durable mirror SHALL only preserve the latest active cycle metadata for that logical request in the snapshot

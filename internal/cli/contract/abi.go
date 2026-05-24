@@ -1,7 +1,6 @@
 package contract
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 
@@ -28,13 +27,19 @@ func newABILoadCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 		address string
 		file    string
 		chainID int64
-		asJSON  bool
+		output  string
 	)
 
 	cmd := &cobra.Command{
-		Use:   "load",
-		Short: "Parse and validate a contract ABI from file",
+		Use:           "load",
+		Short:         "Parse and validate a contract ABI from file",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			output, err := resolveOutput(cmd)
+			if err != nil {
+				return err
+			}
 			cfg, err := cfgLoader()
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
@@ -58,10 +63,8 @@ func newABILoadCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 			methodCount := len(parsed.Methods)
 			eventCount := len(parsed.Events)
 
-			if asJSON {
-				enc := json.NewEncoder(os.Stdout)
-				enc.SetIndent("", "  ")
-				return enc.Encode(map[string]interface{}{
+			if output == "json" {
+				return printJSON(cmd.OutOrStdout(), map[string]interface{}{
 					"address": address,
 					"chainId": chainID,
 					"methods": methodCount,
@@ -70,11 +73,11 @@ func newABILoadCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 				})
 			}
 
-			fmt.Printf("ABI Loaded\n")
-			fmt.Printf("  Address:  %s\n", address)
-			fmt.Printf("  Chain ID: %d\n", chainID)
-			fmt.Printf("  Methods:  %d\n", methodCount)
-			fmt.Printf("  Events:   %d\n", eventCount)
+			fmt.Fprintln(cmd.OutOrStdout(), "ABI Loaded")
+			fmt.Fprintf(cmd.OutOrStdout(), "  Address:  %s\n", address)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Chain ID: %d\n", chainID)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Methods:  %d\n", methodCount)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Events:   %d\n", eventCount)
 
 			return nil
 		},
@@ -83,7 +86,7 @@ func newABILoadCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 	cmd.Flags().StringVar(&address, "address", "", "Contract address (0x...)")
 	cmd.Flags().StringVar(&file, "file", "", "Path to ABI JSON file")
 	cmd.Flags().Int64Var(&chainID, "chain-id", 0, "Chain ID (default: from config)")
-	cmd.Flags().BoolVar(&asJSON, "output", false, "Output as JSON")
+	cmd.Flags().StringVar(&output, "output", "table", "Output format: table or json")
 
 	_ = cmd.MarkFlagRequired("address")
 	_ = cmd.MarkFlagRequired("file")

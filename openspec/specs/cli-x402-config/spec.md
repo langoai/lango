@@ -6,7 +6,7 @@ Provides a CLI command for viewing the X402 payment protocol configuration, incl
 ## Requirements
 
 ### Requirement: Payment x402 command
-The system SHALL provide a `lango payment x402 [--json]` command that displays the X402 protocol configuration including enabled state, wallet address, payment endpoint, and accepted token types. The command SHALL use cfgLoader (config only).
+The system SHALL provide a `lango payment x402 [--output table|json]` command that displays the X402 protocol configuration including enabled state, wallet address, payment endpoint, and accepted token types. The command SHALL use cfgLoader (config only).
 
 #### Scenario: X402 enabled
 - **WHEN** user runs `lango payment x402` with X402 enabled in configuration
@@ -17,8 +17,13 @@ The system SHALL provide a `lango payment x402 [--json]` command that displays t
 - **THEN** system displays "X402 protocol is not enabled"
 
 #### Scenario: X402 in JSON format
-- **WHEN** user runs `lango payment x402 --json`
-- **THEN** system outputs a JSON object with fields: enabled, walletAddress, endpoint, acceptedTokens
+- **WHEN** user runs `lango payment x402 --output json`
+- **THEN** system outputs a JSON object with fields: payment_enabled, auto_intercept, max_auto_pay_usdc, max_per_tx, max_daily
+
+#### Scenario: X402 output uses the command writer
+- **WHEN** `lango payment x402` renders table or JSON output
+- **THEN** it SHALL write the full output through the Cobra command output writer
+- **AND** wrappers or tests that replace `cmd.OutOrStdout()` SHALL capture the command output
 
 ### Requirement: X402 command registration
 The `x402` subcommand SHALL be registered under the existing `lango payment` command group.

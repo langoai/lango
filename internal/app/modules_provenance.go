@@ -9,11 +9,10 @@ import (
 	"github.com/langoai/lango/internal/appinit"
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
-	"github.com/langoai/lango/internal/observability/token"
 	"github.com/langoai/lango/internal/p2p/identity"
 	"github.com/langoai/lango/internal/provenance"
-	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/runledger"
+	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/toolchain"
 )
 
@@ -52,11 +51,18 @@ func (m *provenanceModule) Init(_ context.Context, r appinit.Resolver) (*appinit
 	treeStore := provenance.SessionTreeStore(provenance.NewMemoryTreeStore())
 	attrStore := provenance.AttributionStore(provenance.NewMemoryAttributionStore())
 	var tokenStore provenance.TokenUsageReader
-	if m.boot != nil && m.boot.DBClient != nil {
-		cpStore = provenance.NewEntCheckpointStore(m.boot.DBClient)
-		treeStore = provenance.NewEntSessionTreeStore(m.boot.DBClient)
-		attrStore = provenance.NewEntAttributionStore(m.boot.DBClient)
-		tokenStore = token.NewEntTokenStore(m.boot.DBClient)
+	if m.boot != nil && m.boot.Storage != nil && m.boot.Storage.Provenance() != nil {
+		prov := m.boot.Storage.Provenance()
+		if prov.Checkpoints() != nil {
+			cpStore = prov.Checkpoints()
+		}
+		if prov.SessionTree() != nil {
+			treeStore = prov.SessionTree()
+		}
+		if prov.Attribution() != nil {
+			attrStore = prov.Attribution()
+		}
+		tokenStore = prov.TokenUsage()
 	}
 
 	// Resolve RunLedger store if available.

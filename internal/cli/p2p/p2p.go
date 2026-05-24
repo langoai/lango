@@ -2,6 +2,7 @@
 package p2p
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync"
@@ -28,6 +29,16 @@ type p2pDeps struct {
 	keyStorage string // "secrets-store" or "file"
 	cleanup    func()
 }
+
+var (
+	newP2PNode   = p2pnet.NewNode
+	startP2PNode = func(ctx context.Context, node *p2pnet.Node, wg *sync.WaitGroup) error {
+		return node.Start(ctx, wg)
+	}
+	stopP2PNode = func(node *p2pnet.Node) error {
+		return node.Stop()
+	}
+)
 
 // NewP2PCmd creates the p2p command with lazy bootstrap loading.
 func NewP2PCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
@@ -58,7 +69,7 @@ func NewP2PCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
 }
 
 // initP2PDeps creates P2P components from a bootstrap result.
-func initP2PDeps(boot *bootstrap.Result) (*p2pDeps, error) {
+func initP2PDeps(ctx context.Context, boot *bootstrap.Result) (*p2pDeps, error) {
 	cfg := boot.Config
 	if !cfg.P2P.Enabled {
 		return nil, errP2PDisabled
@@ -73,20 +84,21 @@ func initP2PDeps(boot *bootstrap.Result) (*p2pDeps, error) {
 	// Build SecretsStore from bootstrap result if crypto is available.
 	var secrets *security.SecretsStore
 	keyStorage := "file"
-	if boot.Crypto != nil && boot.DBClient != nil {
-		keys := security.NewKeyRegistry(boot.DBClient)
-		secrets = security.NewSecretsStore(boot.DBClient, keys, boot.Crypto)
+	if boot.Crypto != nil && boot.Storage != nil {
+		secrets = boot.Storage.SecretsStore(boot.Crypto)
+	}
+	if secrets != nil {
 		keyStorage = "secrets-store"
 	}
 
-	node, err := p2pnet.NewNode(cfg.P2P, logger, secrets)
+	node, err := newP2PNode(cfg.P2P, logger, secrets)
 	if err != nil {
 		return nil, fmt.Errorf("create P2P node: %w", err)
 	}
 
 	var wg sync.WaitGroup
-	if err := node.Start(&wg); err != nil {
-		_ = node.Stop()
+	if err := startP2PNode(ctx, node, &wg); err != nil {
+		_ = stopP2PNode(node)
 		return nil, fmt.Errorf("start P2P node: %w", err)
 	}
 
@@ -96,7 +108,7 @@ func initP2PDeps(boot *bootstrap.Result) (*p2pDeps, error) {
 	}
 	sessions, err := handshake.NewSessionStore(sessionTTL)
 	if err != nil {
-		_ = node.Stop()
+		_ = stopP2PNode(node)
 		return nil, fmt.Errorf("create session store: %w", err)
 	}
 
@@ -106,7 +118,8 @@ func initP2PDeps(boot *bootstrap.Result) (*p2pDeps, error) {
 		sessions:   sessions,
 		keyStorage: keyStorage,
 		cleanup: func() {
-			_ = node.Stop()
+			_ = stopP2PNode(node)
+			wg.Wait()
 		},
 	}, nil
 }

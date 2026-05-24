@@ -89,12 +89,24 @@ The system SHALL expand team coordination documentation in `docs/features/p2p-ne
 - **WHEN** a user reads the team coordination section
 - **THEN** they find a table of team events from `internal/eventbus/team_events.go`
 
+#### Scenario: Conflict strategy wording matches current implementation
+- **WHEN** a user reads the team coordination section in `docs/features/p2p-network.md`
+- **THEN** the conflict-resolution descriptions SHALL NOT claim stronger implementation behavior than the current coordinator actually provides
+
+#### Scenario: Payment threshold wording matches canonical rule
+- **WHEN** a user reads the team coordination section in `docs/features/p2p-network.md`
+- **THEN** post-pay eligibility SHALL be described using the canonical inclusive `0.8` threshold
+
 ### Requirement: Team CLI documentation in p2p.md
 The system SHALL document team coordination features (conflict resolution, assignment, payment modes) in `docs/cli/p2p.md`.
 
 #### Scenario: Team features in CLI docs
 - **WHEN** a user reads `docs/cli/p2p.md`
 - **THEN** they find notes about conflict resolution strategies, assignment strategies, and payment coordination
+
+#### Scenario: Team CLI is described as guidance-oriented until live control exists
+- **WHEN** a user reads or runs the `lango p2p team` CLI commands
+- **THEN** the system SHALL describe them as guidance-oriented or runtime-backed surfaces rather than claiming direct live control if that control path does not yet exist
 
 ### Requirement: README reflects team enhancements
 The system SHALL mention P2P Teams with conflict resolution in `README.md`.
@@ -249,4 +261,3 @@ The system SHALL publish WorkspaceGitDivergenceEvent via eventbus when divergenc
 #### Scenario: Divergence event published
 - **WHEN** DetectDivergence finds members with different HEADs
 - **THEN** a WorkspaceGitDivergenceEvent is published with WorkspaceID, MajorityHead, and list of divergent members
-

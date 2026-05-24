@@ -22,6 +22,7 @@ import (
 )
 
 var logger = logging.SubsystemSugar("tool.exec")
+var execWarningWriter io.Writer = os.Stderr
 
 // Config holds exec tool configuration
 type Config struct {
@@ -165,7 +166,7 @@ func (t *Tool) publishDecision(ctx context.Context, userCommand, decision, reaso
 // keep agent output clean during long-running sessions.
 func (t *Tool) warnFallbackOnce(reason string) {
 	t.fallbackOnce.Do(func() {
-		fmt.Fprintf(os.Stderr,
+		fmt.Fprintf(execWarningWriter,
 			"lango: WARNING — sandbox fallback active (reason: %s); commands run unsandboxed\n",
 			reason)
 	})
@@ -296,6 +297,10 @@ func (t *Tool) RunWithPTY(ctx context.Context, command string, timeout time.Dura
 	select {
 	case <-ctx.Done():
 		_ = cmd.Process.Signal(syscall.SIGTERM)
+		// Wait for the copy goroutine to finish writing to `output` before
+		// reading it, otherwise the race detector flags the concurrent
+		// Buffer.grow() (goroutine) vs Buffer.String() (this caller).
+		<-done
 		return &Result{
 			Stdout:   output.String(),
 			TimedOut: true,

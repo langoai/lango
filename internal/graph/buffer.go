@@ -8,22 +8,25 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/langoai/lango/internal/asyncbuf"
+	"github.com/langoai/lango/internal/eventbus"
 )
 
 // GraphRequest represents a request to add triples to the graph.
 type GraphRequest struct {
-	Triples []Triple
+	Triples                  []Triple
+	EmitWriteFailureBaseline bool
 }
 
 // GraphBuffer collects graph update requests and processes them in batches
-// on a background goroutine. It follows the same lifecycle pattern as
-// embedding.EmbeddingBuffer: Start -> Enqueue -> Stop.
+// on a background goroutine. It follows the same lifecycle pattern as other
+// asynchronous buffers: Start -> Enqueue -> Stop.
 //
 // Note: GraphRequest items are expanded into individual Triples for batch
 // processing, so the BatchBuffer operates on Triple slices internally.
 type GraphBuffer struct {
 	store  Store
 	inner  *asyncbuf.BatchBuffer[GraphRequest]
+	bus    *eventbus.Bus
 	logger *zap.SugaredLogger
 }
 
@@ -62,22 +65,32 @@ func (b *GraphBuffer) Stop() {
 	b.inner.Stop()
 }
 
+// SetEventBus wires optional observability event publishing for buffer baselines.
+func (b *GraphBuffer) SetEventBus(bus *eventbus.Bus) {
+	b.bus = bus
+}
+
 // processBatchRequests expands GraphRequests into triples and stores them.
 func (b *GraphBuffer) processBatchRequests(batch []GraphRequest) {
 	var triples []Triple
+	var emitWriteFailureBaseline bool
 	for _, req := range batch {
 		triples = append(triples, req.Triples...)
+		emitWriteFailureBaseline = emitWriteFailureBaseline || req.EmitWriteFailureBaseline
 	}
 	if len(triples) == 0 {
 		return
 	}
-	b.processBatch(triples)
+	b.processBatch(triples, emitWriteFailureBaseline)
 }
 
-func (b *GraphBuffer) processBatch(batch []Triple) {
+func (b *GraphBuffer) processBatch(batch []Triple, emitWriteFailureBaseline bool) {
 	ctx := context.Background()
 
 	if err := b.store.AddTriples(ctx, batch); err != nil {
 		b.logger.Errorw("batch graph update error", "count", len(batch), "error", err)
+		if emitWriteFailureBaseline && b.bus != nil {
+			b.bus.Publish(eventbus.GraphAdmissionWriteFailureEvent{BatchCount: 1})
+		}
 	}
 }

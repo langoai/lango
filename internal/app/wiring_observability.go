@@ -6,11 +6,11 @@ import (
 	"github.com/langoai/lango/internal/adk"
 	"github.com/langoai/lango/internal/alerting"
 	"github.com/langoai/lango/internal/config"
-	"github.com/langoai/lango/internal/ent"
 	"github.com/langoai/lango/internal/eventbus"
 	"github.com/langoai/lango/internal/observability"
 	"github.com/langoai/lango/internal/observability/health"
 	"github.com/langoai/lango/internal/observability/token"
+	"github.com/langoai/lango/internal/provider"
 	"github.com/langoai/lango/internal/toolchain"
 )
 
@@ -25,7 +25,7 @@ type observabilityComponents struct {
 }
 
 // initObservability creates observability components if enabled.
-func initObservability(cfg *config.Config, dbClient *ent.Client, bus *eventbus.Bus) *observabilityComponents {
+func initObservability(cfg *config.Config, tokenStore *token.EntTokenStore, bus *eventbus.Bus) *observabilityComponents {
 	if !cfg.Observability.Enabled {
 		if cfg.Observability.Tokens.Enabled || cfg.Observability.Health.Enabled {
 			logger().Warn("observability disabled but sub-features enabled; sub-features ignored",
@@ -53,8 +53,8 @@ func initObservability(cfg *config.Config, dbClient *ent.Client, bus *eventbus.B
 	}
 
 	// 3. Token Store (persistent, optional)
-	if cfg.Observability.Tokens.PersistHistory && dbClient != nil {
-		oc.tokenStore = token.NewEntTokenStore(dbClient)
+	if cfg.Observability.Tokens.PersistHistory && tokenStore != nil {
+		oc.tokenStore = tokenStore
 		logger().Info("observability: token store (persistent) initialized")
 	}
 
@@ -89,6 +89,28 @@ func initObservability(cfg *config.Config, dbClient *ent.Client, bus *eventbus.B
 		}
 	})
 	logger().Info("observability: tool execution metrics wired")
+
+	eventbus.SubscribeTyped[eventbus.GraphAdmissionBatchEvent](bus, func(evt eventbus.GraphAdmissionBatchEvent) {
+		oc.collector.RecordGraphAdmissionBatch(observability.GraphAdmissionBatchMetric{
+			Source:           evt.Source,
+			ProducerGroup:    evt.ProducerGroup,
+			ValidatorSource:  evt.ValidatorSource,
+			BatchCount:       int64(evt.BatchCount),
+			KnownCount:       int64(evt.KnownCount),
+			UnknownCount:     int64(evt.UnknownCount),
+			UnvalidatedCount: int64(evt.UnvalidatedCount),
+		})
+	})
+	eventbus.SubscribeTyped[eventbus.GraphAdmissionUnmappedSourceEvent](bus, func(evt eventbus.GraphAdmissionUnmappedSourceEvent) {
+		oc.collector.RecordGraphAdmissionUnmappedSource(evt.RawSource, int64(evt.BatchCount))
+	})
+	eventbus.SubscribeTyped[eventbus.GraphExtractorDroppedUnknownEvent](bus, func(evt eventbus.GraphExtractorDroppedUnknownEvent) {
+		oc.collector.RecordGraphExtractorDroppedUnknown(evt.Source, 1)
+	})
+	eventbus.SubscribeTyped[eventbus.GraphAdmissionWriteFailureEvent](bus, func(evt eventbus.GraphAdmissionWriteFailureEvent) {
+		oc.collector.RecordGraphWriteFailure(int64(evt.BatchCount))
+	})
+	logger().Info("observability: graph admission metrics wired")
 
 	// 6b. OpenTelemetry tracing
 	if cfg.Observability.Tracing.Enabled {
@@ -138,13 +160,13 @@ func wireModelAdapterTokenUsage(adapter *adk.ModelAdapter, bus *eventbus.Bus) {
 	}
 	adapter.OnTokenUsage = func(providerID, model string, input, output, total, cache int64) {
 		bus.Publish(eventbus.TokenUsageEvent{
-			Provider:     providerID,
-			Model:        model,
-			InputTokens:  input,
-			OutputTokens: output,
-			TotalTokens:  total,
-			CacheTokens:  cache,
+			Provider:         providerID,
+			Model:            model,
+			InputTokens:      input,
+			OutputTokens:     output,
+			TotalTokens:      total,
+			CacheTokens:      cache,
+			EstimatedCostUSD: provider.EstimateCostUSD(model, int(input), int(output)),
 		})
 	}
 }
-

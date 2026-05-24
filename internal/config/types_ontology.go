@@ -1,5 +1,14 @@
 package config
 
+import "encoding/json"
+
+const (
+	OntologyAdmissionModeOff                   = "off"
+	OntologyAdmissionModeObserve               = "observe"
+	OntologyLearningDefaultConfidenceFallback  = 0.60
+	OntologyLibrarianDefaultConfidenceFallback = 0.50
+)
+
 // OntologyConfig configures the ontology subsystem.
 type OntologyConfig struct {
 	// Enabled activates the ontology registry and seed migration.
@@ -26,6 +35,85 @@ type OntologyGovernanceConfig struct {
 	MinUsageForPromotion int `mapstructure:"minUsageForPromotion" json:"minUsageForPromotion,omitempty"`
 	// SchemaExplosionBudget is the monthly limit for new proposals.
 	SchemaExplosionBudget int `mapstructure:"schemaExplosionBudget" json:"schemaExplosionBudget,omitempty"`
+	// AdmissionMode controls runtime admission observation behavior.
+	AdmissionMode string `mapstructure:"admissionMode" json:"admissionMode,omitempty"`
+	// AdmissionModePresent records that the admission mode key was explicitly present on decode/update.
+	AdmissionModePresent bool `mapstructure:"-" json:"-"`
+	// LearningDefaultConfidence is the fallback confidence for learning-group producers.
+	LearningDefaultConfidence float64 `mapstructure:"learningDefaultConfidence" json:"learningDefaultConfidence"`
+	// LibrarianDefaultConfidence is the fallback confidence for librarian-group producers.
+	LibrarianDefaultConfidence float64 `mapstructure:"librarianDefaultConfidence" json:"librarianDefaultConfidence"`
+	// LearningDefaultConfidenceBackfillNeeded records that the confidence key was absent on decode.
+	LearningDefaultConfidenceBackfillNeeded bool `mapstructure:"-" json:"-"`
+	// LibrarianDefaultConfidenceBackfillNeeded records that the confidence key was absent on decode.
+	LibrarianDefaultConfidenceBackfillNeeded bool `mapstructure:"-" json:"-"`
+	// LearningDefaultConfidencePresent records that the confidence key was explicitly present on decode/update.
+	LearningDefaultConfidencePresent bool `mapstructure:"-" json:"-"`
+	// LibrarianDefaultConfidencePresent records that the confidence key was explicitly present on decode/update.
+	LibrarianDefaultConfidencePresent bool `mapstructure:"-" json:"-"`
+}
+
+func (c OntologyGovernanceConfig) EffectiveLearningDefaultConfidence() float64 {
+	if c.LearningDefaultConfidencePresent {
+		return c.LearningDefaultConfidence
+	}
+	if c.LearningDefaultConfidence == 0 {
+		return OntologyLearningDefaultConfidenceFallback
+	}
+	return c.LearningDefaultConfidence
+}
+
+func (c OntologyGovernanceConfig) EffectiveLibrarianDefaultConfidence() float64 {
+	if c.LibrarianDefaultConfidencePresent {
+		return c.LibrarianDefaultConfidence
+	}
+	if c.LibrarianDefaultConfidence == 0 {
+		return OntologyLibrarianDefaultConfidenceFallback
+	}
+	return c.LibrarianDefaultConfidence
+}
+
+func (c OntologyGovernanceConfig) MarshalJSON() ([]byte, error) {
+	type governanceJSON struct {
+		Enabled                    bool     `json:"enabled,omitempty"`
+		MaxNewPerDay               int      `json:"maxNewPerDay,omitempty"`
+		QuarantinePeriodHrs        int      `json:"quarantinePeriodHrs,omitempty"`
+		ShadowModeDurationHrs      int      `json:"shadowModeDurationHrs,omitempty"`
+		MinUsageForPromotion       int      `json:"minUsageForPromotion,omitempty"`
+		SchemaExplosionBudget      int      `json:"schemaExplosionBudget,omitempty"`
+		AdmissionMode              *string  `json:"admissionMode,omitempty"`
+		LearningDefaultConfidence  *float64 `json:"learningDefaultConfidence,omitempty"`
+		LibrarianDefaultConfidence *float64 `json:"librarianDefaultConfidence,omitempty"`
+	}
+
+	out := governanceJSON{
+		Enabled:               c.Enabled,
+		MaxNewPerDay:          c.MaxNewPerDay,
+		QuarantinePeriodHrs:   c.QuarantinePeriodHrs,
+		ShadowModeDurationHrs: c.ShadowModeDurationHrs,
+		MinUsageForPromotion:  c.MinUsageForPromotion,
+		SchemaExplosionBudget: c.SchemaExplosionBudget,
+	}
+	if c.AdmissionModePresent || (c.AdmissionMode != "" && c.AdmissionMode != OntologyAdmissionModeOff) {
+		v := c.AdmissionMode
+		out.AdmissionMode = &v
+	}
+	if c.LearningDefaultConfidencePresent ||
+		(!c.LearningDefaultConfidenceBackfillNeeded &&
+			c.AdmissionMode != "" &&
+			c.LearningDefaultConfidence != OntologyLearningDefaultConfidenceFallback) {
+		v := c.LearningDefaultConfidence
+		out.LearningDefaultConfidence = &v
+	}
+	if c.LibrarianDefaultConfidencePresent ||
+		(!c.LibrarianDefaultConfidenceBackfillNeeded &&
+			c.AdmissionMode != "" &&
+			c.LibrarianDefaultConfidence != OntologyLibrarianDefaultConfidenceFallback) {
+		v := c.LibrarianDefaultConfidence
+		out.LibrarianDefaultConfidence = &v
+	}
+
+	return json.Marshal(out)
 }
 
 // OntologyACLConfig configures role-based access control for ontology operations.

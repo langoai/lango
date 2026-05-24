@@ -23,6 +23,7 @@ type ExtendableDeadline struct {
 	start       time.Time
 
 	mu       sync.Mutex
+	parent   context.Context
 	timer    *time.Timer
 	maxTimer *time.Timer
 	cancel   context.CancelFunc
@@ -41,6 +42,7 @@ func New(parent context.Context, idleTimeout, maxTimeout time.Duration) (context
 		idleTimeout: idleTimeout,
 		maxTimeout:  maxTimeout,
 		start:       time.Now(),
+		parent:      parent,
 		cancel:      cancel,
 		reason:      ReasonIdle, // default reason if idle timer fires
 	}
@@ -71,7 +73,23 @@ func New(parent context.Context, idleTimeout, maxTimeout time.Duration) (context
 		}
 	})
 
+	go ed.watchParent(parent, ctx)
+	if parent.Err() != nil {
+		ed.cancelWithReason(ReasonCancelled)
+	}
+
 	return ctx, ed
+}
+
+func (ed *ExtendableDeadline) watchParent(parent context.Context, ctx context.Context) {
+	select {
+	case <-parent.Done():
+		ed.cancelWithReason(ReasonCancelled)
+	case <-ctx.Done():
+		if parent.Err() != nil {
+			ed.cancelWithReason(ReasonCancelled)
+		}
+	}
 }
 
 // Extend resets the idle timer by idleTimeout from now,
@@ -101,20 +119,38 @@ func (ed *ExtendableDeadline) Extend() {
 
 // Stop releases the deadline resources. Must be called when done (typically via defer).
 func (ed *ExtendableDeadline) Stop() {
-	ed.mu.Lock()
-	defer ed.mu.Unlock()
-	if !ed.done {
-		ed.reason = ReasonCancelled
-		ed.done = true
-	}
-	ed.timer.Stop()
-	ed.maxTimer.Stop()
-	ed.cancel()
+	ed.cancelWithReason(ReasonCancelled)
 }
 
 // Reason returns the reason the deadline expired (or ReasonCancelled if Stop was called).
 func (ed *ExtendableDeadline) Reason() Reason {
 	ed.mu.Lock()
 	defer ed.mu.Unlock()
+	if !ed.done && ed.parent != nil && ed.parent.Err() != nil {
+		ed.reason = ReasonCancelled
+		ed.done = true
+		ed.stopTimersLocked()
+		ed.cancel()
+	}
 	return ed.reason
+}
+
+func (ed *ExtendableDeadline) cancelWithReason(reason Reason) {
+	ed.mu.Lock()
+	defer ed.mu.Unlock()
+	if !ed.done {
+		ed.reason = reason
+		ed.done = true
+	}
+	ed.stopTimersLocked()
+	ed.cancel()
+}
+
+func (ed *ExtendableDeadline) stopTimersLocked() {
+	if ed.timer != nil {
+		ed.timer.Stop()
+	}
+	if ed.maxTimer != nil {
+		ed.maxTimer.Stop()
+	}
 }

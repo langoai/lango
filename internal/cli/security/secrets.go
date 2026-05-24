@@ -3,16 +3,20 @@ package security
 import (
 	"context"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/cli/prompt"
+)
+
+var (
+	secretsRequireInteractiveInput = prompt.RequireInteractiveInput
+	secretsPassphrase              = prompt.PassphraseIO
 )
 
 func newSecretsCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
@@ -29,17 +33,23 @@ func newSecretsCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command 
 }
 
 func newSecretsListCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Command {
-	var jsonOutput bool
+	var output string
 
 	cmd := &cobra.Command{
-		Use:   "list",
-		Short: "List stored secrets (values are never shown)",
+		Use:           "list",
+		Short:         "List stored secrets (values are never shown)",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			output, err := resolveOutput(cmd)
+			if err != nil {
+				return err
+			}
 			boot, err := bootLoader()
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			secretsStore, err := secretsStoreFromBoot(boot)
 			if err != nil {
@@ -52,18 +62,34 @@ func newSecretsListCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comm
 				return fmt.Errorf("list secrets: %w", err)
 			}
 
-			if jsonOutput {
-				enc := json.NewEncoder(os.Stdout)
-				enc.SetIndent("", "  ")
-				return enc.Encode(secrets)
+			type secretMeta struct {
+				Name        string `json:"name"`
+				KeyName     string `json:"key_name"`
+				CreatedAt   string `json:"created_at"`
+				UpdatedAt   string `json:"updated_at"`
+				AccessCount int    `json:"access_count"`
+			}
+			out := make([]secretMeta, 0, len(secrets))
+			for _, s := range secrets {
+				out = append(out, secretMeta{
+					Name:        s.Name,
+					KeyName:     s.KeyName,
+					CreatedAt:   s.CreatedAt.Format(time.RFC3339),
+					UpdatedAt:   s.UpdatedAt.Format(time.RFC3339),
+					AccessCount: s.AccessCount,
+				})
+			}
+
+			if output == "json" {
+				return printJSON(cmd.OutOrStdout(), out)
 			}
 
 			if len(secrets) == 0 {
-				fmt.Println("No secrets stored.")
+				fmt.Fprintln(cmd.OutOrStdout(), "No secrets stored.")
 				return nil
 			}
 
-			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
 			fmt.Fprintln(w, "NAME\tKEY\tCREATED\tUPDATED\tACCESS_COUNT")
 			for _, s := range secrets {
 				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%d\n",
@@ -78,7 +104,7 @@ func newSecretsListCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comm
 		},
 	}
 
-	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
+	cmd.Flags().StringVar(&output, "output", "table", "Output format: table or json")
 	return cmd
 }
 
@@ -96,7 +122,7 @@ func newSecretsSetCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comma
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			secretsStore, err := secretsStoreFromBoot(boot)
 			if err != nil {
@@ -112,10 +138,13 @@ func newSecretsSetCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comma
 				}
 				raw = decoded
 			} else {
-				if !prompt.IsInteractive() {
-					return fmt.Errorf("this command requires an interactive terminal (use --value-hex for non-interactive)")
+				if err := secretsRequireInteractiveInput(
+					cmd.InOrStdin(),
+					"this command requires an interactive terminal (use --value-hex for non-interactive)",
+				); err != nil {
+					return err
 				}
-				value, err := prompt.Passphrase("Enter secret value: ")
+				value, err := secretsPassphrase(cmd.OutOrStdout(), "Enter secret value: ")
 				if err != nil {
 					return fmt.Errorf("read secret value: %w", err)
 				}
@@ -127,7 +156,7 @@ func newSecretsSetCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Comma
 				return fmt.Errorf("store secret: %w", err)
 			}
 
-			fmt.Printf("Secret '%s' stored successfully.\n", name)
+			fmt.Fprintf(cmd.OutOrStdout(), "Secret '%s' stored successfully.\n", name)
 			return nil
 		},
 	}
@@ -150,7 +179,7 @@ func newSecretsDeleteCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Co
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
-			defer boot.DBClient.Close()
+			defer boot.Close()
 
 			secretsStore, err := secretsStoreFromBoot(boot)
 			if err != nil {
@@ -158,14 +187,19 @@ func newSecretsDeleteCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Co
 			}
 
 			if !force {
-				if !prompt.IsInteractive() {
-					return fmt.Errorf("use --force for non-interactive deletion")
+				if err := prompt.RequireTTYInput(cmd.InOrStdin(), "use --force for non-interactive deletion"); err != nil {
+					return err
 				}
-				fmt.Printf("Delete secret '%s'? [y/N] ", name)
-				var answer string
-				_, _ = fmt.Scanln(&answer)
-				if answer != "y" && answer != "Y" && answer != "yes" {
-					fmt.Println("Aborted.")
+				ok, err := prompt.ConfirmDenyOnEOFIO(
+					cmd.InOrStdin(),
+					cmd.OutOrStdout(),
+					fmt.Sprintf("Delete secret '%s'?", name),
+				)
+				if err != nil {
+					return err
+				}
+				if !ok {
+					fmt.Fprintln(cmd.OutOrStdout(), "Aborted.")
 					return nil
 				}
 			}
@@ -175,7 +209,7 @@ func newSecretsDeleteCmd(bootLoader func() (*bootstrap.Result, error)) *cobra.Co
 				return fmt.Errorf("delete secret: %w", err)
 			}
 
-			fmt.Printf("Secret '%s' deleted.\n", name)
+			fmt.Fprintf(cmd.OutOrStdout(), "Secret '%s' deleted.\n", name)
 			return nil
 		},
 	}

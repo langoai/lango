@@ -70,6 +70,28 @@ func TestStore_Allocate_CopiesTotal(t *testing.T) {
 	assert.Equal(t, 0, tb.TotalBudget.Cmp(big.NewInt(1000000)))
 }
 
+func TestStore_AllocateReturnsDetachedSnapshot(t *testing.T) {
+	t.Parallel()
+
+	s := NewStore()
+	tb, err := s.Allocate("task-1", big.NewInt(1000000))
+	require.NoError(t, err)
+
+	tb.TotalBudget.SetInt64(1)
+	tb.Spent.SetInt64(900000)
+	tb.Reserved.SetInt64(900000)
+	tb.Status = StatusClosed
+	tb.Entries = append(tb.Entries, SpendEntry{Amount: big.NewInt(500000), Reason: "external mutation"})
+
+	got, err := s.Get("task-1")
+	require.NoError(t, err)
+	assert.Equal(t, 0, got.TotalBudget.Cmp(big.NewInt(1000000)))
+	assert.Equal(t, 0, got.Spent.Sign())
+	assert.Equal(t, 0, got.Reserved.Sign())
+	assert.Equal(t, StatusActive, got.Status)
+	assert.Empty(t, got.Entries)
+}
+
 func TestStore_Get(t *testing.T) {
 	t.Parallel()
 
@@ -111,6 +133,28 @@ func TestStore_Get(t *testing.T) {
 			assert.Equal(t, tt.giveID, got.TaskID)
 		})
 	}
+}
+
+func TestStore_GetReturnsDetachedSnapshot(t *testing.T) {
+	t.Parallel()
+
+	s := NewStore()
+	_, err := s.Allocate("task-1", big.NewInt(1000000))
+	require.NoError(t, err)
+
+	tb, err := s.Get("task-1")
+	require.NoError(t, err)
+	tb.TotalBudget.SetInt64(1)
+	tb.Spent.SetInt64(700000)
+	tb.Reserved.SetInt64(100000)
+	tb.Entries = append(tb.Entries, SpendEntry{Amount: big.NewInt(500000), Reason: "external mutation"})
+
+	got, err := s.Get("task-1")
+	require.NoError(t, err)
+	assert.Equal(t, 0, got.TotalBudget.Cmp(big.NewInt(1000000)))
+	assert.Equal(t, 0, got.Spent.Sign())
+	assert.Equal(t, 0, got.Reserved.Sign())
+	assert.Empty(t, got.Entries)
 }
 
 func TestStore_List(t *testing.T) {
@@ -155,6 +199,28 @@ func TestStore_List(t *testing.T) {
 			assert.Len(t, got, tt.wantCount)
 		})
 	}
+}
+
+func TestStore_ListReturnsDetachedSnapshots(t *testing.T) {
+	t.Parallel()
+
+	s := NewStore()
+	_, err := s.Allocate("task-1", big.NewInt(1000000))
+	require.NoError(t, err)
+
+	listed := s.List()
+	require.Len(t, listed, 1)
+	listed[0].TotalBudget.SetInt64(1)
+	listed[0].Spent.SetInt64(800000)
+	listed[0].Reserved.SetInt64(100000)
+	listed[0].Status = StatusClosed
+
+	got, err := s.Get("task-1")
+	require.NoError(t, err)
+	assert.Equal(t, 0, got.TotalBudget.Cmp(big.NewInt(1000000)))
+	assert.Equal(t, 0, got.Spent.Sign())
+	assert.Equal(t, 0, got.Reserved.Sign())
+	assert.Equal(t, StatusActive, got.Status)
 }
 
 func TestStore_Update(t *testing.T) {
@@ -210,6 +276,43 @@ func TestStore_Update(t *testing.T) {
 			assert.Equal(t, tt.giveStatus, got.Status)
 		})
 	}
+}
+
+func TestStore_UpdateStoresDetachedSnapshot(t *testing.T) {
+	t.Parallel()
+
+	s := NewStore()
+	_, err := s.Allocate("task-1", big.NewInt(1000000))
+	require.NoError(t, err)
+
+	budget := &TaskBudget{
+		TaskID:      "task-1",
+		TotalBudget: big.NewInt(1000000),
+		Spent:       big.NewInt(250000),
+		Reserved:    big.NewInt(100000),
+		Status:      StatusActive,
+		Entries: []SpendEntry{
+			{Amount: big.NewInt(250000), Reason: "recorded"},
+		},
+	}
+	require.NoError(t, s.Update(budget))
+
+	budget.TotalBudget.SetInt64(1)
+	budget.Spent.SetInt64(900000)
+	budget.Reserved.SetInt64(900000)
+	budget.Status = StatusClosed
+	budget.Entries[0].Amount.SetInt64(1)
+	budget.Entries[0].Reason = "external mutation"
+
+	got, err := s.Get("task-1")
+	require.NoError(t, err)
+	assert.Equal(t, 0, got.TotalBudget.Cmp(big.NewInt(1000000)))
+	assert.Equal(t, 0, got.Spent.Cmp(big.NewInt(250000)))
+	assert.Equal(t, 0, got.Reserved.Cmp(big.NewInt(100000)))
+	assert.Equal(t, StatusActive, got.Status)
+	require.Len(t, got.Entries, 1)
+	assert.Equal(t, 0, got.Entries[0].Amount.Cmp(big.NewInt(250000)))
+	assert.Equal(t, "recorded", got.Entries[0].Reason)
 }
 
 func TestStore_Delete(t *testing.T) {

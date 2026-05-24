@@ -1,11 +1,9 @@
 ## Purpose
 
 Documentation synchronization for P0-P2 security hardening features. Ensures all CLI docs, feature docs, README, agent prompts, and security roadmap accurately reflect the implemented security capabilities.
-
 ## Requirements
-
 ### Requirement: CLI security docs include OS Keyring commands
-The `docs/cli/security.md` file SHALL document `lango security keyring store`, `keyring clear` (with `--force`), and `keyring status` (with `--json`) commands with output examples matching the actual CLI implementation.
+The `docs/cli/security.md` file SHALL document `lango security keyring store`, `keyring clear` (with `--force`), and `keyring status` (with `--output table|json`) commands with output examples matching the actual CLI implementation.
 
 #### Scenario: Keyring commands documented
 - **WHEN** a user reads `docs/cli/security.md`
@@ -19,7 +17,7 @@ The `docs/cli/security.md` file SHALL document `lango security db-migrate` and `
 - **THEN** they find complete documentation for `db-migrate` and `db-decrypt` with flags and examples
 
 ### Requirement: CLI security docs include KMS commands
-The `docs/cli/security.md` file SHALL document `lango security kms status` (with `--json`), `kms test`, and `kms keys` (with `--json`) commands with output examples.
+The `docs/cli/security.md` file SHALL document `lango security kms status` (with `--output table|json`), `kms test`, and `kms keys` (with `--output table|json`) commands with output examples.
 
 #### Scenario: KMS commands documented
 - **WHEN** a user reads `docs/cli/security.md`
@@ -33,7 +31,7 @@ The `docs/cli/security.md` status example SHALL include `DB Encryption`, `KMS Pr
 - **THEN** they see all fields including `db_encryption`, `kms_provider`, `kms_key_id`, `kms_fallback` in the JSON fields table
 
 ### Requirement: CLI P2P docs include session management commands
-The `docs/cli/p2p.md` file SHALL document `lango p2p session list` (with `--json`), `session revoke` (with `--peer-did`), and `session revoke-all` commands.
+The `docs/cli/p2p.md` file SHALL document `lango p2p session list` (with `--output table|json`), `session revoke` (with `--peer-did`), and `session revoke-all` commands.
 
 #### Scenario: Session commands documented
 - **WHEN** a user reads `docs/cli/p2p.md`
@@ -88,12 +86,34 @@ The `docs/security/encryption.md` SHALL include a Cloud KMS Mode section with al
 - **WHEN** a user reads encryption docs
 - **THEN** they find all 4 KMS backends with configuration examples
 
+### Requirement: Security index reflects the public deep-dive slice
+The `docs/security/index.md` SHALL surface the newly public deep-dive docs exposed by the MkDocs IA recovery slice, including Approval CLI and Envelope Migration.
+
+#### Scenario: Approval CLI is surfaced from the security index
+- **WHEN** a user reads `docs/security/index.md`
+- **THEN** they find a link or quick reference to `approval-cli.md`
+
+#### Scenario: Envelope Migration is surfaced from the security index
+- **WHEN** a user reads `docs/security/index.md`
+- **THEN** they find a link or quick reference to `envelope-migration.md`
+
 ### Requirement: README config table includes new keys
 The `README.md` configuration table SHALL include all P2P security, tool isolation, ZKP, keyring, DB encryption, and KMS config keys matching `mapstructure` tags.
 
 #### Scenario: Config table complete
 - **WHEN** a user reads the README config table
 - **THEN** they find 27+ new config rows covering all P0-P2 security features
+
+### Requirement: Public configuration docs include Cloud KMS settings
+The public configuration references SHALL include the profile-backed `security.kms.*` settings and the bootstrap-time `LANGO_KMS_FALLBACK_TO_LOCAL=false` override.
+
+#### Scenario: Configuration reference lists KMS settings
+- **WHEN** a user reads `README.md` or `docs/configuration.md`
+- **THEN** they find `security.kms.region`, `security.kms.keyId`, `security.kms.endpoint`, `security.kms.fallbackToLocal`, `security.kms.timeoutPerOperation`, `security.kms.maxRetries`, `security.kms.azure.vaultUrl`, `security.kms.azure.keyVersion`, `security.kms.pkcs11.modulePath`, `security.kms.pkcs11.slotId`, `security.kms.pkcs11.pin`, and `security.kms.pkcs11.keyLabel`
+
+#### Scenario: Configuration reference explains bootstrap fallback override
+- **WHEN** a user reads the Cloud KMS configuration section in `README.md` or `docs/configuration.md`
+- **THEN** it explains that encrypted profile bootstrap must use `LANGO_KMS_FALLBACK_TO_LOCAL=false` with `LANGO_KMS_PROVIDER` to fail closed before profile config is loaded
 
 ### Requirement: Agent prompts include P2P security awareness
 The `prompts/AGENTS.md` and `prompts/TOOL_USAGE.md` SHALL include references to signed challenges, session management, sandbox, KMS, and credential revocation.
@@ -108,3 +128,78 @@ The `openspec/security-roadmap.md` SHALL have `✅ COMPLETED` markers on all P0 
 #### Scenario: Roadmap completion markers
 - **WHEN** a user reads the security roadmap
 - **THEN** all P0 (P0-1, P0-2, P0-3) and P1 (P1-4, P1-5, P1-6) items show completion markers
+
+### Requirement: Exportability operator docs
+The security documentation set SHALL include an exportability document that describes source classes, artifact-level evaluation, decision states, and receipt-style decision records for the first slice.
+
+#### Scenario: Exportability doc available
+- **WHEN** a user reads the security documentation
+- **THEN** they SHALL find a dedicated exportability document describing the first-slice policy model and its current limits
+
+#### Scenario: Exportability docs linked from index
+- **WHEN** a user reads `docs/security/index.md`
+- **THEN** they SHALL find a quick link to the exportability document
+
+### Requirement: Approval-flow operator docs
+The security documentation set SHALL include an approval-flow document that describes first-slice artifact release approval, decision states, and audit-backed approval receipts.
+
+#### Scenario: Approval-flow doc available
+- **WHEN** a user reads the security documentation
+- **THEN** they SHALL find a dedicated approval-flow document describing the first-slice approval model and its current limits
+
+#### Scenario: Approval-flow docs linked from index
+- **WHEN** a user reads `docs/security/index.md`
+- **THEN** they SHALL find a quick link to the approval-flow document
+
+### Requirement: Dispute-ready receipt operator docs
+The security documentation set SHALL include a dispute-ready receipt document that describes the first lite receipt slice, including submission receipts, transaction receipts, current submission pointer, canonical state, and event trail.
+
+#### Scenario: Dispute-ready receipt doc available
+- **WHEN** a user reads the security documentation
+- **THEN** they SHALL find a dedicated dispute-ready receipt document describing the first slice and its current limits
+
+#### Scenario: Dispute-ready receipt docs linked from index
+- **WHEN** a user reads `docs/security/index.md`
+- **THEN** they SHALL find a quick link to the dispute-ready receipt document
+
+### Requirement: Upfront payment approval operator docs
+The security documentation set SHALL include an upfront payment approval document that describes the first slice, including structured decision states, suggested payment modes, and transaction-level payment approval updates.
+
+#### Scenario: Upfront payment approval doc available
+- **WHEN** a user reads the security documentation
+- **THEN** they SHALL find a dedicated upfront payment approval document describing the first slice and its current limits
+
+#### Scenario: Upfront payment approval docs linked from index
+- **WHEN** a user reads `docs/security/index.md`
+- **THEN** they SHALL find a quick link to the upfront payment approval document
+
+### Requirement: Actual payment execution gating operator docs
+The security documentation set SHALL include an actual payment execution gating document that describes the first direct-payment gate slice, its allow/deny behavior, and its current limits.
+
+#### Scenario: Payment execution gate doc available
+- **WHEN** a user reads the security documentation
+- **THEN** they SHALL find a dedicated payment execution gating document describing the first slice and its current limits
+
+#### Scenario: Payment execution gate docs linked from index
+- **WHEN** a user reads `docs/security/index.md`
+- **THEN** they SHALL find a quick link to the payment execution gating document
+
+### Requirement: Escrow execution operator docs
+The security documentation set SHALL include an escrow execution document that describes the first receipt-backed escrow execution slice, its operator entry points, and its current limits.
+
+#### Scenario: Escrow execution doc available
+- **WHEN** a user reads the security documentation
+- **THEN** they SHALL find a dedicated escrow execution document describing the first `create + fund` execution slice and its current limits
+
+#### Scenario: Escrow execution docs linked from index
+- **WHEN** a user reads `docs/security/index.md`
+- **THEN** they SHALL find a quick link to the escrow execution document
+
+### Requirement: Escrow execution docs describe the validation-vs-rejection split
+
+Public security docs for escrow execution SHALL describe empty transaction receipt ids as validation failures and reserve receipt-backed rejection conditions for post-validation execution state.
+
+#### Scenario: Escrow execution docs distinguish validation failures from rejection states
+- **WHEN** a user reads the escrow execution doc
+- **THEN** they SHALL find that an empty `transaction_receipt_id` returns an actionable validation error
+- **AND** they SHALL find that approval, settlement-hint, missing-input, and already-progressed checks apply only after request validation succeeds

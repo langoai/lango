@@ -15,6 +15,10 @@ import (
 	"github.com/langoai/lango/internal/cli/tui"
 )
 
+func sanitizeApprovalsText(text string) string {
+	return strings.Join(strings.Fields(ansi.Strip(text)), " ")
+}
+
 // Column layout constants for the approvals table.
 const (
 	apprGutterW     = 6  // "> " or "  " prefix (2) + PaddingLeft(4)
@@ -71,17 +75,31 @@ func (m *ApprovalsPage) Title() string { return "Approvals" }
 // ShortHelp returns context-sensitive key bindings for the help bar.
 func (m *ApprovalsPage) ShortHelp() []key.Binding {
 	bindings := []key.Binding{
-		key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "switch")),
-		key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", "up")),
-		key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", "down")),
+		key.NewBinding(key.WithKeys("tab", "/"), key.WithHelp("tab /", "switch")),
 	}
-	if m.section == 1 && m.grants != nil {
+	if m.activeSectionHasRows() {
+		bindings = append(bindings,
+			key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", "up")),
+			key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", "down")),
+		)
+	}
+	if m.section == 1 && len(m.grantList) > 0 {
 		bindings = append(bindings,
 			key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "revoke")),
-			key.NewBinding(key.WithKeys("R"), key.WithHelp("R", "revoke all")),
+			key.NewBinding(key.WithKeys("R"), key.WithHelp("R", "revoke session")),
 		)
 	}
 	return bindings
+}
+
+func (m *ApprovalsPage) activeSectionHasRows() bool {
+	if m == nil {
+		return false
+	}
+	if m.section == 0 {
+		return len(m.histEntries) > 1
+	}
+	return len(m.grantList) > 1
 }
 
 // Init satisfies tea.Model.
@@ -119,7 +137,7 @@ func (m *ApprovalsPage) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *ApprovalsPage) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch {
-	case key.Matches(msg, key.NewBinding(key.WithKeys("/"))):
+	case key.Matches(msg, key.NewBinding(key.WithKeys("tab", "/"))):
 		m.section = 1 - m.section
 	case key.Matches(msg, key.NewBinding(key.WithKeys("up", "k"))):
 		if m.section == 0 {
@@ -164,7 +182,7 @@ func (m *ApprovalsPage) View() string {
 			Foreground(theme.TextSecondary).
 			PaddingLeft(2).
 			PaddingTop(1).
-			Render("No approval history yet.")
+			Render("Approval history and grants are not configured.")
 	}
 
 	if len(m.histEntries) == 0 && len(m.grantList) == 0 {
@@ -212,11 +230,19 @@ func (m *ApprovalsPage) viewHistory() []string {
 
 	result := []string{title, "", header, separator}
 
+	if m.history == nil {
+		empty := lipgloss.NewStyle().
+			Foreground(theme.TextSecondary).
+			PaddingLeft(4).
+			Render("  Approval history is not configured")
+		return append(result, empty)
+	}
+
 	if len(m.histEntries) == 0 {
 		empty := lipgloss.NewStyle().
 			Foreground(theme.TextSecondary).
 			PaddingLeft(4).
-			Render("  No history entries")
+			Render("  No approval history yet.")
 		return append(result, empty)
 	}
 
@@ -224,10 +250,10 @@ func (m *ApprovalsPage) viewHistory() []string {
 	for i, entry := range m.histEntries {
 		timeStr := tui.RelativeTime(now, entry.Timestamp)
 		timeStr = tui.Truncate(timeStr, apprColTimeW-2)
-		toolStr := tui.Truncate(entry.ToolName, apprColToolW-2)
-		summaryStr := ansi.Truncate(entry.Summary, summaryW, "…")
-		outcomeStr := tui.Truncate(entry.Outcome, apprColOutcomeW-2)
-		provStr := tui.Truncate(entry.Provider, apprColProvW)
+		toolStr := tui.Truncate(sanitizeApprovalsText(entry.ToolName), apprColToolW-2)
+		summaryStr := ansi.Truncate(sanitizeApprovalsText(entry.Summary), summaryW, "…")
+		outcomeStr := tui.Truncate(sanitizeApprovalsText(entry.Outcome), apprColOutcomeW-2)
+		provStr := tui.Truncate(sanitizeApprovalsText(entry.Provider), apprColProvW)
 
 		row := fmt.Sprintf(fmtStr, timeStr, toolStr, summaryStr, outcomeStr, provStr)
 
@@ -267,6 +293,14 @@ func (m *ApprovalsPage) viewGrants() []string {
 
 	result := []string{title, "", header, separator}
 
+	if m.grants == nil {
+		empty := lipgloss.NewStyle().
+			Foreground(theme.TextSecondary).
+			PaddingLeft(4).
+			Render("  Active grants are not configured")
+		return append(result, empty)
+	}
+
 	if len(m.grantList) == 0 {
 		empty := lipgloss.NewStyle().
 			Foreground(theme.TextSecondary).
@@ -277,8 +311,8 @@ func (m *ApprovalsPage) viewGrants() []string {
 
 	now := m.nowFn()
 	for i, grant := range m.grantList {
-		sessionStr := tui.Truncate(grant.SessionKey, grantColSessionW-2)
-		toolStr := tui.Truncate(grant.ToolName, grantColToolW-2)
+		sessionStr := tui.Truncate(sanitizeApprovalsText(grant.SessionKey), grantColSessionW-2)
+		toolStr := tui.Truncate(sanitizeApprovalsText(grant.ToolName), grantColToolW-2)
 		timeStr := tui.RelativeTime(now, grant.GrantedAt)
 
 		row := fmt.Sprintf(fmtStr, sessionStr, toolStr, timeStr)
@@ -297,7 +331,10 @@ func (m *ApprovalsPage) viewGrants() []string {
 }
 
 func (m *ApprovalsPage) viewFooter() string {
-	help := " [/] switch  [↑/↓] navigate"
+	help := " [tab /] switch"
+	if m.activeSectionHasRows() {
+		help += "  [↑/↓] navigate"
+	}
 	if m.section == 1 && len(m.grantList) > 0 {
 		help += "  [r] revoke  [R] revoke session"
 	}

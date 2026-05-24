@@ -9,8 +9,97 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/langoai/lango/internal/agent"
+	"github.com/langoai/lango/internal/background"
 	"github.com/langoai/lango/internal/ctxkeys"
+	"github.com/langoai/lango/internal/session"
 )
+
+type terminalOnSecondGetStore struct {
+	base     *InMemoryAgentRunStore
+	targetID string
+	getCalls int
+}
+
+func (s *terminalOnSecondGetStore) Create(run *AgentRun) error {
+	return s.base.Create(run)
+}
+
+func (s *terminalOnSecondGetStore) Get(id string) (*AgentRun, error) {
+	if id == s.targetID {
+		s.getCalls++
+		if s.getCalls == 2 {
+			if err := s.base.UpdateStatus(id, AgentRunCompleted, "done", ""); err != nil {
+				return nil, err
+			}
+		}
+	}
+	return s.base.Get(id)
+}
+
+func (s *terminalOnSecondGetStore) List() []*AgentRun {
+	return s.base.List()
+}
+
+func (s *terminalOnSecondGetStore) UpdateStatus(id string, status AgentRunStatus, result, errMsg string) error {
+	return s.base.UpdateStatus(id, status, result, errMsg)
+}
+
+func (s *terminalOnSecondGetStore) UpdateProjection(id string, patch RunProjectionPatch) error {
+	return s.base.UpdateProjection(id, patch)
+}
+
+func (s *terminalOnSecondGetStore) Cancel(id string) error {
+	return s.base.Cancel(id)
+}
+
+type blockedOnSecondGetStore struct {
+	base     *InMemoryAgentRunStore
+	targetID string
+	getCalls int
+}
+
+func (s *blockedOnSecondGetStore) Create(run *AgentRun) error {
+	return s.base.Create(run)
+}
+
+func (s *blockedOnSecondGetStore) Get(id string) (*AgentRun, error) {
+	if id == s.targetID {
+		s.getCalls++
+		if s.getCalls == 2 {
+			if err := s.base.UpdateProjection(id, RunProjectionPatch{
+				ApplyRuntimeCondition: true,
+				ApplyBlockedReason:    true,
+				ApplyGrantRequestID:   true,
+				ApplyGrantAttempt:     true,
+				ApplyGrantState:       true,
+				RuntimeCondition:      AgentRunConditionBlockedWaitingApproval,
+				BlockedReason:         "late approval block",
+				GrantRequestID:        "grant-late-block-exec",
+				GrantAttempt:          3,
+				GrantState:            "pending",
+			}); err != nil {
+				return nil, err
+			}
+		}
+	}
+	return s.base.Get(id)
+}
+
+func (s *blockedOnSecondGetStore) List() []*AgentRun {
+	return s.base.List()
+}
+
+func (s *blockedOnSecondGetStore) UpdateStatus(id string, status AgentRunStatus, result, errMsg string) error {
+	return s.base.UpdateStatus(id, status, result, errMsg)
+}
+
+func (s *blockedOnSecondGetStore) UpdateProjection(id string, patch RunProjectionPatch) error {
+	return s.base.UpdateProjection(id, patch)
+}
+
+func (s *blockedOnSecondGetStore) Cancel(id string) error {
+	return s.base.Cancel(id)
+}
 
 // --- BuildControlTools ---
 
@@ -52,7 +141,6 @@ func TestAgentSpawn_Basic(t *testing.T) {
 	assert.Equal(t, "spawned", m["status"])
 	assert.Equal(t, "", m["requested_agent"])
 
-	// Verify the run was persisted.
 	run, err := store.Get(m["agent_id"].(string))
 	require.NoError(t, err)
 	assert.Equal(t, AgentRunSpawned, run.Status)
@@ -80,8 +168,7 @@ func TestAgentSpawn_WithAgent(t *testing.T) {
 
 	run, err := store.Get(m["agent_id"].(string))
 	require.NoError(t, err)
-	assert.Contains(t, run.Instruction, "[System: This task is best handled by the 'debugger' specialist.]")
-	assert.Contains(t, run.Instruction, "fix the bug")
+	assert.Equal(t, "fix the bug", run.Instruction)
 	assert.Equal(t, "debugger", run.RequestedAgent)
 }
 
@@ -106,6 +193,74 @@ func TestAgentSpawn_WithAllowedTools(t *testing.T) {
 	assert.Equal(t, []string{"fs_read", "web_search"}, run.AllowedTools)
 }
 
+func TestAgentSpawn_WithAllowedToolsForBuiltinTeammate(t *testing.T) {
+	store := NewInMemoryAgentRunStore()
+	cp := &AgentControlPlane{
+		RunStore:   store,
+		Projection: NewAgentRunProjection(store),
+	}
+	tools := BuildControlTools(cp)
+	spawnTool := findControlTool(t, tools, "agent_spawn")
+
+	result, err := spawnTool.call(context.Background(), map[string]interface{}{
+		"instruction":   "operate on local files",
+		"agent":         "operator",
+		"allowed_tools": []interface{}{"fs_read", "exec"},
+	})
+	require.NoError(t, err)
+
+	m := result.(map[string]interface{})
+	assert.Equal(t, "operator", m["requested_agent"])
+
+	run, err := store.Get(m["agent_id"].(string))
+	require.NoError(t, err)
+	assert.Equal(t, "operator", run.RequestedAgent)
+	assert.Equal(t, []string{"fs_read", "exec"}, run.AllowedTools)
+}
+
+func TestAgentSpawn_WithSpawnReason(t *testing.T) {
+	store := NewInMemoryAgentRunStore()
+	cp := &AgentControlPlane{
+		RunStore:   store,
+		Projection: NewAgentRunProjection(store),
+	}
+	tools := BuildControlTools(cp)
+	spawnTool := findControlTool(t, tools, "agent_spawn")
+
+	result, err := spawnTool.call(context.Background(), map[string]interface{}{
+		"instruction":  "approval task",
+		"spawn_reason": "delegated_for_approval",
+	})
+	require.NoError(t, err)
+
+	m := result.(map[string]interface{})
+	assert.Equal(t, "delegated_for_approval", m["spawn_reason"])
+
+	run, err := store.Get(m["agent_id"].(string))
+	require.NoError(t, err)
+	assert.Equal(t, "delegated_for_approval", run.SpawnReason)
+}
+
+func TestAgentSpawn_RejectsAllowedToolsOutsideRoleScope(t *testing.T) {
+	store := NewInMemoryAgentRunStore()
+	cp := &AgentControlPlane{
+		RunStore:   store,
+		Projection: NewAgentRunProjection(store),
+	}
+	tools := BuildControlTools(cp)
+	spawnTool := findControlTool(t, tools, "agent_spawn")
+
+	result, err := spawnTool.call(context.Background(), map[string]interface{}{
+		"instruction":   "plan work",
+		"agent":         "planner",
+		"allowed_tools": []interface{}{"exec"},
+	})
+	require.Error(t, err)
+	assert.Nil(t, result)
+	assert.Equal(t, `tool "exec" outside role maximum scope for teammate type "planner"`, err.Error())
+	assert.Empty(t, store.List())
+}
+
 func TestAgentSpawn_SpawnDepthPropagation(t *testing.T) {
 	store := NewInMemoryAgentRunStore()
 	cp := &AgentControlPlane{
@@ -115,7 +270,6 @@ func TestAgentSpawn_SpawnDepthPropagation(t *testing.T) {
 	tools := BuildControlTools(cp)
 	spawnTool := findControlTool(t, tools, "agent_spawn")
 
-	// Simulate a parent at depth 2.
 	ctx := ctxkeys.WithSpawnDepth(context.Background(), 2)
 
 	result, err := spawnTool.call(ctx, map[string]interface{}{
@@ -129,6 +283,63 @@ func TestAgentSpawn_SpawnDepthPropagation(t *testing.T) {
 	assert.Equal(t, 3, run.SpawnDepth)
 }
 
+func TestAgentSpawn_SubmitsWithTeammateRuntimeContext(t *testing.T) {
+	store := NewInMemoryAgentRunStore()
+	submitter := &recordingAgentRunSubmitter{}
+	cp := &AgentControlPlane{
+		RunStore:          store,
+		Projection:        NewAgentRunProjection(store),
+		Submitter:         submitter,
+		CapabilityRuntime: NewCapabilityRuntime(store, &CapabilityPolicy{}, nil),
+	}
+	tools := BuildControlTools(cp)
+	spawnTool := findControlTool(t, tools, "agent_spawn")
+
+	ctx := ctxkeys.WithMissionID(session.WithSessionKey(context.Background(), "sess-parent"), "mission-agent-1")
+	result, err := spawnTool.call(ctx, map[string]interface{}{
+		"instruction":   "review the logs",
+		"agent":         "operator",
+		"allowed_tools": []interface{}{"fs_read"},
+	})
+	require.NoError(t, err)
+
+	m := result.(map[string]interface{})
+	assert.NotEmpty(t, m["agent_id"])
+	assert.Equal(t, m["agent_id"], submitter.returnedID)
+	assert.Equal(t, "sess-parent", submitter.origin.Session)
+	assert.Equal(t, "agent_control", submitter.origin.Channel)
+	assert.Contains(t, submitter.prompt, "review the logs")
+	assert.Equal(t, "operator", ctxkeys.AgentNameFromContext(submitter.ctx))
+	assert.Equal(t, []string{"fs_read"}, ctxkeys.DynamicAllowedToolsFromContext(submitter.ctx))
+	assert.Equal(t, m["agent_id"], pendingAgentRunIDFromContext(submitter.ctx))
+	assert.Equal(t, "mission-agent-1", ctxkeys.MissionIDFromContext(submitter.ctx))
+}
+
+func TestAgentSpawn_SubmitterMismatchedReturnIDFails(t *testing.T) {
+	store := NewInMemoryAgentRunStore()
+	submitter := &recordingAgentRunSubmitter{returnID: "wrong-id"}
+	cp := &AgentControlPlane{
+		RunStore:          store,
+		Projection:        NewAgentRunProjection(store),
+		Submitter:         submitter,
+		CapabilityRuntime: NewCapabilityRuntime(store, &CapabilityPolicy{}, nil),
+	}
+	tools := BuildControlTools(cp)
+	spawnTool := findControlTool(t, tools, "agent_spawn")
+
+	result, err := spawnTool.call(context.Background(), map[string]interface{}{
+		"instruction": "review the logs",
+		"agent":       "operator",
+	})
+	require.Error(t, err)
+	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), "mismatched task ID")
+
+	runs := store.List()
+	require.Len(t, runs, 1)
+	assert.Equal(t, AgentRunFailed, runs[0].Status)
+}
+
 func TestAgentSpawn_MissingInstruction(t *testing.T) {
 	cp := &AgentControlPlane{
 		RunStore:   NewInMemoryAgentRunStore(),
@@ -139,7 +350,7 @@ func TestAgentSpawn_MissingInstruction(t *testing.T) {
 
 	_, err := spawnTool.call(context.Background(), map[string]interface{}{})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "instruction")
+	assert.Equal(t, "missing instruction parameter", err.Error())
 }
 
 func TestAgentSpawn_NilProjection(t *testing.T) {
@@ -233,7 +444,6 @@ func TestAgentWait_PollUntilComplete(t *testing.T) {
 	tools := BuildControlTools(cp)
 	waitTool := findControlTool(t, tools, "agent_wait")
 
-	// Complete the run after a short delay.
 	go func() {
 		time.Sleep(600 * time.Millisecond)
 		_ = store.UpdateStatus("wait-poll", AgentRunCompleted, "poll result", "")
@@ -270,6 +480,134 @@ func TestAgentWait_Timeout(t *testing.T) {
 	m := result.(map[string]interface{})
 	assert.Equal(t, true, m["timeout"])
 	assert.Equal(t, "running", m["status"])
+}
+
+func TestAgentWait_TimeoutIncludesBlockedProjectionWithoutCancelling(t *testing.T) {
+	store := NewInMemoryAgentRunStore()
+	require.NoError(t, store.Create(&AgentRun{
+		ID:               "wait-blocked",
+		Status:           AgentRunRunning,
+		RuntimeCondition: AgentRunConditionBlockedWaitingApproval,
+		BlockedReason:    "capability request pending",
+		GrantRequestID:   "grant-wait-blocked-fs_write",
+		GrantAttempt:     2,
+		GrantState:       "pending",
+	}))
+
+	cp := &AgentControlPlane{RunStore: store}
+	tools := BuildControlTools(cp)
+	waitTool := findControlTool(t, tools, "agent_wait")
+
+	result, err := waitTool.call(context.Background(), map[string]interface{}{
+		"agent_id": "wait-blocked",
+		"timeout":  float64(1),
+	})
+	require.NoError(t, err)
+
+	m := result.(map[string]interface{})
+	assert.Equal(t, true, m["timeout"])
+	assert.Equal(t, "running", m["status"])
+	assert.Equal(t, "blocked_waiting_approval", m["condition"])
+	assert.Equal(t, "capability request pending", m["blocked_reason"])
+	assert.Equal(t, "grant-wait-blocked-fs_write", m["grant_request_id"])
+	assert.Equal(t, 2, m["grant_attempt"])
+	assert.Equal(t, "pending", m["grant_state"])
+
+	run, err := store.Get("wait-blocked")
+	require.NoError(t, err)
+	assert.Equal(t, AgentRunRunning, run.Status)
+}
+
+func TestAgentWait_TerminalResponseOmitsStaleProjectionFields(t *testing.T) {
+	store := NewInMemoryAgentRunStore()
+	require.NoError(t, store.Create(&AgentRun{
+		ID:               "wait-terminal-stale",
+		Status:           AgentRunCompleted,
+		Result:           "done",
+		RuntimeCondition: AgentRunConditionBlockedWaitingApproval,
+		BlockedReason:    "stale block",
+		GrantRequestID:   "grant-stale",
+		WaitingOnRunID:   "run-stale",
+		RecoveryState:    "resume_pending",
+	}))
+
+	cp := &AgentControlPlane{RunStore: store}
+	tools := BuildControlTools(cp)
+	waitTool := findControlTool(t, tools, "agent_wait")
+
+	result, err := waitTool.call(context.Background(), map[string]interface{}{
+		"agent_id": "wait-terminal-stale",
+	})
+	require.NoError(t, err)
+
+	m := result.(map[string]interface{})
+	assert.Equal(t, "completed", m["status"])
+	assert.Equal(t, "done", m["result"])
+	assert.NotContains(t, m, "condition")
+	assert.NotContains(t, m, "blocked_reason")
+	assert.NotContains(t, m, "grant_request_id")
+	assert.NotContains(t, m, "waiting_on_run_id")
+	assert.NotContains(t, m, "recovery_state")
+}
+
+func TestAgentWait_TimeoutReturnsFreshTerminalStateIfRunCompletesAtDeadline(t *testing.T) {
+	base := NewInMemoryAgentRunStore()
+	store := &terminalOnSecondGetStore{base: base, targetID: "wait-terminal-deadline"}
+	require.NoError(t, store.Create(&AgentRun{
+		ID:               "wait-terminal-deadline",
+		Status:           AgentRunRunning,
+		RuntimeCondition: AgentRunConditionBlockedWaitingApproval,
+		BlockedReason:    "capability request pending",
+		GrantRequestID:   "grant-terminal-deadline-exec",
+		GrantAttempt:     2,
+		GrantState:       "pending",
+	}))
+
+	cp := &AgentControlPlane{RunStore: store}
+	waitTool := findControlTool(t, BuildControlTools(cp), "agent_wait")
+
+	result, err := waitTool.call(context.Background(), map[string]interface{}{
+		"agent_id": "wait-terminal-deadline",
+		"timeout":  float64(0),
+	})
+	require.NoError(t, err)
+
+	m := result.(map[string]interface{})
+	assert.Equal(t, "completed", m["status"])
+	assert.Equal(t, "done", m["result"])
+	assert.NotContains(t, m, "timeout")
+	assert.NotContains(t, m, "condition")
+	assert.NotContains(t, m, "blocked_reason")
+	assert.NotContains(t, m, "grant_request_id")
+	assert.NotContains(t, m, "grant_attempt")
+	assert.NotContains(t, m, "grant_state")
+}
+
+func TestAgentWait_TimeoutReturnsFreshBlockedProjectionIfStateChangesAtDeadline(t *testing.T) {
+	base := NewInMemoryAgentRunStore()
+	store := &blockedOnSecondGetStore{base: base, targetID: "wait-late-block"}
+	require.NoError(t, store.Create(&AgentRun{
+		ID:     "wait-late-block",
+		Status: AgentRunRunning,
+	}))
+
+	cp := &AgentControlPlane{RunStore: store}
+	waitTool := findControlTool(t, BuildControlTools(cp), "agent_wait")
+
+	result, err := waitTool.call(context.Background(), map[string]interface{}{
+		"agent_id": "wait-late-block",
+		"timeout":  float64(0),
+	})
+	require.NoError(t, err)
+
+	m := result.(map[string]interface{})
+	assert.Equal(t, true, m["timeout"])
+	assert.Equal(t, "running", m["status"])
+	assert.Equal(t, "blocked_waiting_approval", m["condition"])
+	assert.Equal(t, "late approval block", m["blocked_reason"])
+	assert.Equal(t, "grant-late-block-exec", m["grant_request_id"])
+	assert.Equal(t, 3, m["grant_attempt"])
+	assert.Equal(t, "pending", m["grant_state"])
 }
 
 func TestAgentWait_ContextCancelled(t *testing.T) {
@@ -317,7 +655,7 @@ func TestAgentWait_MissingAgentID(t *testing.T) {
 
 	_, err := waitTool.call(context.Background(), map[string]interface{}{})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "agent_id")
+	assert.Equal(t, "missing agent_id parameter", err.Error())
 }
 
 func TestAgentWait_SafetyLevel(t *testing.T) {
@@ -354,7 +692,6 @@ func TestAgentStop_Basic(t *testing.T) {
 	assert.Equal(t, "stop-1", m["agent_id"])
 	assert.Equal(t, "cancelled", m["status"])
 
-	// Verify store state.
 	run, err := store.Get("stop-1")
 	require.NoError(t, err)
 	assert.Equal(t, AgentRunCancelled, run.Status)
@@ -398,7 +735,7 @@ func TestAgentStop_MissingAgentID(t *testing.T) {
 
 	_, err := stopTool.call(context.Background(), map[string]interface{}{})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "agent_id")
+	assert.Equal(t, "missing agent_id parameter", err.Error())
 }
 
 func TestAgentStop_SafetyLevel(t *testing.T) {
@@ -419,16 +756,38 @@ func TestGenerateAgentRunID(t *testing.T) {
 	id, err := generateAgentRunID()
 	require.NoError(t, err)
 	assert.Contains(t, id, "arun-")
-	// "arun-" (5 chars) + 16 hex chars = 21 total.
 	assert.Len(t, id, 21)
 
-	// IDs should be unique.
 	id2, err := generateAgentRunID()
 	require.NoError(t, err)
 	assert.NotEqual(t, id, id2)
 }
 
 // --- Helpers ---
+
+type recordingAgentRunSubmitter struct {
+	ctx        context.Context
+	prompt     string
+	origin     background.Origin
+	returnID   string
+	returnedID string
+	err        error
+}
+
+func (r *recordingAgentRunSubmitter) Submit(ctx context.Context, prompt string, origin background.Origin) (string, error) {
+	r.ctx = ctx
+	r.prompt = prompt
+	r.origin = origin
+	if r.err != nil {
+		return "", r.err
+	}
+	if r.returnID != "" {
+		r.returnedID = r.returnID
+		return r.returnID, nil
+	}
+	r.returnedID = pendingAgentRunIDFromContext(ctx)
+	return r.returnedID, nil
+}
 
 type controlToolHelper struct {
 	tool *agent.Tool

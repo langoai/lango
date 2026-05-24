@@ -12,18 +12,22 @@ import (
 type PageID int
 
 const (
-	PageChat PageID = iota
+	PageMissionControl PageID = iota
+	PageChat
 	PageSettings
 	PageTools
 	PageStatus
 	PageSessions
 	PageTasks
+	PageDeadLetters
 	PageApprovals
 )
 
 // String returns the page name for sidebar matching.
 func (p PageID) String() string {
 	switch p {
+	case PageMissionControl:
+		return "mission-control"
 	case PageChat:
 		return "chat"
 	case PageSettings:
@@ -36,6 +40,8 @@ func (p PageID) String() string {
 		return "sessions"
 	case PageTasks:
 		return "tasks"
+	case PageDeadLetters:
+		return "dead-letters"
 	case PageApprovals:
 		return "approvals"
 	default:
@@ -67,12 +73,14 @@ type Page interface {
 // The order matches the sidebar display order.
 func AllPageMetas() []sidebar.MenuItem {
 	return []sidebar.MenuItem{
+		{ID: PageMissionControl.String(), Icon: theme.IconStatus, Label: "Mission Control"},
 		{ID: PageChat.String(), Icon: theme.IconChat, Label: "Chat"},
 		{ID: PageSettings.String(), Icon: theme.IconSettings, Label: "Settings"},
 		{ID: PageTools.String(), Icon: theme.IconTools, Label: "Tools"},
 		{ID: PageStatus.String(), Icon: theme.IconStatus, Label: "Status"},
 		{ID: PageSessions.String(), Icon: theme.IconSessions, Label: "Sessions"},
 		{ID: PageTasks.String(), Icon: theme.IconStatus, Label: "Tasks"},
+		{ID: PageDeadLetters.String(), Icon: theme.IconStatus, Label: "Dead Letters"},
 		{ID: PageApprovals.String(), Icon: theme.IconApprovals, Label: "Approvals"},
 	}
 }
@@ -81,6 +89,8 @@ func AllPageMetas() []sidebar.MenuItem {
 // Returns PageChat for unknown IDs.
 func PageIDFromString(id string) PageID {
 	switch id {
+	case "mission-control":
+		return PageMissionControl
 	case "chat":
 		return PageChat
 	case "settings":
@@ -93,6 +103,8 @@ func PageIDFromString(id string) PageID {
 		return PageSessions
 	case "tasks":
 		return PageTasks
+	case "dead-letters":
+		return PageDeadLetters
 	case "approvals":
 		return PageApprovals
 	default:

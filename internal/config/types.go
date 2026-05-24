@@ -13,9 +13,19 @@ func (c *Config) Clone() *Config {
 		return nil
 	}
 	data, _ := json.Marshal(c)
-	var clone Config
+	type cloneAlias Config
+	var clone cloneAlias
 	_ = json.Unmarshal(data, &clone)
-	return &clone
+	clone.Ontology.Governance.AdmissionMode = c.Ontology.Governance.AdmissionMode
+	clone.Ontology.Governance.LearningDefaultConfidence = c.Ontology.Governance.LearningDefaultConfidence
+	clone.Ontology.Governance.LibrarianDefaultConfidence = c.Ontology.Governance.LibrarianDefaultConfidence
+	clone.Ontology.Governance.AdmissionModePresent = c.Ontology.Governance.AdmissionModePresent
+	clone.Ontology.Governance.LearningDefaultConfidenceBackfillNeeded = c.Ontology.Governance.LearningDefaultConfidenceBackfillNeeded
+	clone.Ontology.Governance.LibrarianDefaultConfidenceBackfillNeeded = c.Ontology.Governance.LibrarianDefaultConfidenceBackfillNeeded
+	clone.Ontology.Governance.LearningDefaultConfidencePresent = c.Ontology.Governance.LearningDefaultConfidencePresent
+	clone.Ontology.Governance.LibrarianDefaultConfidencePresent = c.Ontology.Governance.LibrarianDefaultConfidencePresent
+	cfgClone := Config(clone)
+	return &cfgClone
 }
 
 // Config is the root configuration structure for lango
@@ -55,6 +65,11 @@ type Config struct {
 	// Knowledge configuration
 	Knowledge KnowledgeConfig `mapstructure:"knowledge" json:"knowledge"`
 
+	// Learning configuration (suggestion pipeline, etc.). Threshold and
+	// analysis knobs for the existing learning engine remain under
+	// Knowledge; this block covers the Phase 3 approval-gated suggestion UX.
+	Learning LearningConfig `mapstructure:"learning" json:"learning"`
+
 	// Observational Memory configuration
 	ObservationalMemory ObservationalMemoryConfig `mapstructure:"observationalMemory" json:"observationalMemory"`
 
@@ -67,6 +82,9 @@ type Config struct {
 	// A2A protocol configuration
 	A2A A2AConfig `mapstructure:"a2a" json:"a2a"`
 
+	// Voice configuration (STT/TTS for channel adapters)
+	Voice VoiceConfig `mapstructure:"voice" json:"voice"`
+
 	// Payment configuration (blockchain micropayments)
 	Payment PaymentConfig `mapstructure:"payment" json:"payment"`
 
@@ -78,6 +96,9 @@ type Config struct {
 
 	// Workflow engine configuration
 	Workflow WorkflowConfig `mapstructure:"workflow" json:"workflow"`
+
+	// Replay configuration (operator replay authorization)
+	Replay ReplayConfig `mapstructure:"replay" json:"replay"`
 
 	// Skill configuration (file-based skills)
 	Skill SkillConfig `mapstructure:"skill" json:"skill"`
@@ -134,6 +155,47 @@ type Config struct {
 
 	// Providers configuration
 	Providers map[string]ProviderConfig `mapstructure:"providers" json:"providers"`
+
+	// Modes is the map of session-mode definitions keyed by mode name.
+	// User-defined entries merge with built-in modes (user overrides win on name conflict).
+	Modes map[string]SessionMode `mapstructure:"modes" json:"modes,omitempty"`
+
+	// Extensions holds extension-pack subsystem settings (Phase 4). When
+	// Enabled, the pack registry walks Dir at startup and merges pack-origin
+	// modes, skills, and prompts into the effective config.
+	Extensions ExtensionsConfig `mapstructure:"extensions" json:"extensions"`
+}
+
+// ExtensionsConfig controls the extension-pack subsystem. An empty struct
+// resolves to (Enabled=true, Dir="~/.lango/extensions", EnforceIntegrity=false)
+// via ResolveExtensions.
+type ExtensionsConfig struct {
+	// Enabled toggles the subsystem. When false, startup skips pack discovery
+	// and CLI install/remove refuses to run.
+	Enabled *bool `mapstructure:"enabled" json:"enabled"`
+	// Dir is the root directory where installed packs live. Default
+	// "~/.lango/extensions". Tilde expansion happens at consumption time.
+	Dir string `mapstructure:"dir" json:"dir"`
+	// EnforceIntegrity skips loading any pack whose on-disk SHA-256 differs
+	// from the manifest recorded in .installed. Default false (warn-only).
+	EnforceIntegrity bool `mapstructure:"enforceIntegrity" json:"enforceIntegrity"`
+}
+
+// SessionMode narrows the agent's active capabilities for a session.
+// The LLM sees only tools in the mode's allowlist, skills listed here, and a
+// SystemHint guiding scope. Tool execution is also enforced at middleware level.
+type SessionMode struct {
+	// Name is the mode identifier (e.g., "code-review").
+	Name string `mapstructure:"name" json:"name"`
+	// Tools is a list of tool names or "@category" references. Categories expand
+	// to all tools in that category at resolution time.
+	Tools []string `mapstructure:"tools" json:"tools,omitempty"`
+	// Skills is a list of skill names that remain discoverable in this mode.
+	// Empty = all skills discoverable (legacy behavior).
+	Skills []string `mapstructure:"skills" json:"skills,omitempty"`
+	// SystemHint is a free-form prompt snippet appended to the per-turn system
+	// prompt when this mode is active.
+	SystemHint string `mapstructure:"systemHint" json:"systemHint,omitempty"`
 }
 
 // ContextConfig controls token budget allocation across prompt sections.
@@ -150,6 +212,67 @@ type ContextConfig struct {
 	// Allocation controls the ratio of available tokens allocated to each section.
 	// All values must sum to 1.0.
 	Allocation ContextAllocationConfig `mapstructure:"allocation" json:"allocation"`
+
+	// Compaction controls background hygiene compaction (Phase 3A).
+	Compaction ContextCompactionConfig `mapstructure:"compaction" json:"compaction"`
+
+	// Recall controls FTS5-based session recall retrieval (Phase 3B).
+	Recall ContextRecallConfig `mapstructure:"recall" json:"recall"`
+}
+
+// ContextCompactionConfig controls post-turn background compaction.
+// After a turn, if the session's estimated message tokens exceed
+// modelWindow * Threshold, a compaction job is enqueued. The next turn's
+// GenerateContent waits up to SyncTimeout for in-flight compactions.
+type ContextCompactionConfig struct {
+	// Enabled toggles the whole subsystem (default true).
+	Enabled *bool `mapstructure:"enabled" json:"enabled"`
+	// Threshold is the ratio of modelWindow at which compaction triggers
+	// (default 0.5, valid range [0.1, 0.95]).
+	Threshold float64 `mapstructure:"threshold" json:"threshold"`
+	// SyncTimeout caps the wait at turn start for an in-flight compaction
+	// (default 2s, valid range [100ms, 10s]).
+	SyncTimeout time.Duration `mapstructure:"syncTimeout" json:"syncTimeout"`
+	// WorkerCount is the number of background compaction workers (default 1).
+	WorkerCount int `mapstructure:"workerCount" json:"workerCount"`
+}
+
+// ContextRecallConfig controls FTS5-based session recall retrieval.
+// At turn start, the retriever queries the recall index using the user's
+// input as the MATCH string and injects matching prior-session summaries
+// into the RAG section, respecting the section's token budget.
+type ContextRecallConfig struct {
+	// Enabled toggles the retriever (default true).
+	Enabled *bool `mapstructure:"enabled" json:"enabled"`
+	// TopN caps the number of matches returned per turn (default 3, valid [1,10]).
+	TopN int `mapstructure:"topN" json:"topN"`
+	// MinRank is the BM25 rank floor; candidates below this are filtered out
+	// (default 0.2, valid [0.0, 1.0]).
+	MinRank float64 `mapstructure:"minRank" json:"minRank"`
+}
+
+// LearningConfig holds learning-engine settings beyond the existing knowledge
+// analysis thresholds. Phase 3 introduces approval-gated learning suggestions.
+type LearningConfig struct {
+	// Suggestions controls the approval-gated learning suggestion pipeline.
+	Suggestions LearningSuggestionsConfig `mapstructure:"suggestions" json:"suggestions"`
+}
+
+// LearningSuggestionsConfig controls the threshold, rate limit, and dedup
+// window for LearningSuggestionEvent emission.
+type LearningSuggestionsConfig struct {
+	// Enabled toggles suggestion emission (default true).
+	Enabled *bool `mapstructure:"enabled" json:"enabled"`
+	// Threshold is the confidence floor for emitting a suggestion
+	// (default 0.5, valid range [0.1, 0.9]). Distinct from the 0.7
+	// auto-apply threshold used by GetFixForError.
+	Threshold float64 `mapstructure:"threshold" json:"threshold"`
+	// RateLimit is the minimum number of turns between suggestions for a
+	// single session (default 10, valid range [1, 100]).
+	RateLimit int `mapstructure:"rateLimit" json:"rateLimit"`
+	// DedupWindow suppresses re-emission of the same pattern within this
+	// period (default 1h, valid range [1m, 24h]).
+	DedupWindow time.Duration `mapstructure:"dedupWindow" json:"dedupWindow"`
 }
 
 // ContextAllocationConfig defines per-section token allocation ratios.
@@ -196,6 +319,21 @@ type AgentConfig struct {
 	// PromptsDir is the directory containing section .md files (AGENTS.md, SAFETY.md, etc.)
 	// If empty, built-in default sections are used.
 	PromptsDir string `mapstructure:"promptsDir" json:"promptsDir"`
+
+	// SkillsDir is the directory containing ADK-compatible skill bundles
+	// (agentskills.io spec, YAML frontmatter).
+	// Each skill is a subdirectory with SKILL.md containing YAML frontmatter
+	// (name, description) plus optional references/, assets/, scripts/.
+	// If empty (default), the skill toolset is not registered.
+	// See: tool/skilltoolset in google.golang.org/adk.
+	//
+	// NOTE: There is also a separate cfg.Skill.SkillsDir (SkillConfig in
+	// types_knowledge.go) which configures the knowledge-layer skill loader.
+	// The two fields are independent: cfg.Agent.SkillsDir feeds the ADK
+	// agent's SkillToolset; cfg.Skill.SkillsDir feeds the knowledge module's
+	// internal skill registry. They may point at the same or different
+	// directories depending on deployment.
+	SkillsDir string `mapstructure:"skillsDir" json:"skillsDir"`
 
 	// Fallback provider ID
 	FallbackProvider string `mapstructure:"fallbackProvider" json:"fallbackProvider"`
@@ -248,6 +386,46 @@ type AgentConfig struct {
 	// Structure: <dir>/<name>/AGENT.md
 	// If empty, only built-in agents are used.
 	AgentsDir string `mapstructure:"agentsDir" json:"agentsDir"`
+}
+
+// VoiceConfig configures the voice/STT/TTS subsystem for channel adapters.
+// When Enabled is false (default), no voice processing is performed and
+// channels fall back to text-only behavior.
+type VoiceConfig struct {
+	// Enabled is the global on/off switch for the voice subsystem.
+	Enabled bool `mapstructure:"enabled" json:"enabled"`
+
+	// DefaultLanguage is a BCP-47 tag (e.g. "ko-KR") used when a request
+	// does not specify a language.
+	DefaultLanguage string `mapstructure:"defaultLanguage" json:"defaultLanguage"`
+
+	// STTModel overrides the Gemini model used for transcription.
+	// Empty uses the provider default.
+	STTModel string `mapstructure:"sttModel" json:"sttModel"`
+
+	// TTSModel selects the Gemini TTS-capable model. Empty disables TTS
+	// (Synthesize returns ErrTTSNotConfigured).
+	TTSModel string `mapstructure:"ttsModel" json:"ttsModel"`
+
+	// PerChannel allows fine-grained enable/disable + voice override per channel.
+	// Key is the channel name ("telegram", "discord", "slack").
+	PerChannel map[string]VoiceChannelConfig `mapstructure:"perChannel" json:"perChannel,omitempty"`
+
+	// CostGuard caps voice processing per day.
+	CostGuard VoiceCostGuard `mapstructure:"costGuard" json:"costGuard"`
+}
+
+// VoiceChannelConfig is the per-channel overlay on VoiceConfig.
+type VoiceChannelConfig struct {
+	Enabled bool   `mapstructure:"enabled" json:"enabled"`
+	Voice   string `mapstructure:"voice" json:"voice,omitempty"`
+}
+
+// VoiceCostGuard caps daily voice processing.
+type VoiceCostGuard struct {
+	// MaxAudioSecondsPerDay caps the total audio seconds processed per day.
+	// Zero means no limit.
+	MaxAudioSecondsPerDay int `mapstructure:"maxAudioSecondsPerDay" json:"maxAudioSecondsPerDay"`
 }
 
 // ProviderConfig defines AI provider settings
@@ -319,7 +497,7 @@ type LoggingConfig struct {
 	// Output format (json, console)
 	Format string `mapstructure:"format" json:"format"`
 
-	// Output file path (empty = stdout)
+	// Output file path (empty = stderr)
 	OutputPath string `mapstructure:"outputPath" json:"outputPath"`
 }
 
@@ -468,6 +646,12 @@ type BrowserToolConfig struct {
 
 	// Session timeout
 	SessionTimeout time.Duration `mapstructure:"sessionTimeout" json:"sessionTimeout"`
+}
+
+type ReplayConfig struct {
+	AllowedActors        []string `mapstructure:"allowed_actors" json:"allowed_actors"`
+	ReleaseAllowedActors []string `mapstructure:"release_allowed_actors" json:"release_allowed_actors"`
+	RefundAllowedActors  []string `mapstructure:"refund_allowed_actors" json:"refund_allowed_actors"`
 }
 
 // AlertingConfig defines operational alerting thresholds and delivery settings.

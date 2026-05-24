@@ -112,7 +112,7 @@ func BuildTools(scheduler *Scheduler, defaultDeliverTo []string) []*agent.Tool {
 			SafetyLevel: agent.SafetyLevelSafe,
 			Capability: agent.ToolCapability{
 				Category:        "automation",
-				Activity:        agent.ActivityManage,
+				Activity:        agent.ActivityQuery,
 				ReadOnly:        true,
 				ConcurrencySafe: true,
 			},
@@ -224,7 +224,7 @@ func BuildTools(scheduler *Scheduler, defaultDeliverTo []string) []*agent.Tool {
 			SafetyLevel: agent.SafetyLevelSafe,
 			Capability: agent.ToolCapability{
 				Category:        "automation",
-				Activity:        agent.ActivityManage,
+				Activity:        agent.ActivityQuery,
 				ReadOnly:        true,
 				ConcurrencySafe: true,
 			},

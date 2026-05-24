@@ -132,8 +132,8 @@ func TestSelectBackend(t *testing.T) {
 			wantIsNoop:    true,
 		},
 		{
-			give:     "auto with empty candidates returns noop",
-			giveMode: BackendAuto,
+			give:          "auto with empty candidates returns noop",
+			giveMode:      BackendAuto,
 			wantName:      "noop",
 			wantAvailable: false,
 			wantMode:      BackendAuto,
@@ -173,8 +173,8 @@ func TestSelectBackend(t *testing.T) {
 			wantIsNoop:    true,
 		},
 		{
-			give:          "none always returns noop",
-			giveMode:      BackendNone,
+			give:     "none always returns noop",
+			giveMode: BackendNone,
 			giveCandidates: []BackendCandidate{
 				{Mode: BackendSeatbelt, Isolator: availableSeatbelt},
 				{Mode: BackendBwrap, Isolator: availableBwrap},

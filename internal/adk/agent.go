@@ -52,6 +52,7 @@ type agentOptions struct {
 	childLifecycleHook  func(internal.SessionLifecycleEvent)
 	isolatedAgents      []string
 	plugins             []*plugin.Plugin
+	toolsets            []tool.Toolset
 }
 
 // WithAgentTokenBudget sets the session history token budget.
@@ -91,6 +92,16 @@ func WithAgentIsolatedAgents(names []string) AgentOption {
 // Zero plugins preserves current behavior.
 func WithPlugins(plugins ...*plugin.Plugin) AgentOption {
 	return func(o *agentOptions) { o.plugins = append(o.plugins, plugins...) }
+}
+
+// WithToolsets adds ADK toolsets to the agent. Toolsets contribute tools
+// dynamically and can also preprocess LLM requests (e.g., SkillToolset
+// injects a system instruction explaining how to use skill tools).
+// Zero toolsets preserves current behavior.
+func WithToolsets(toolsets ...tool.Toolset) AgentOption {
+	return func(o *agentOptions) {
+		o.toolsets = append(o.toolsets, toolsets...)
+	}
 }
 
 // Agent wraps the ADK runner for integration with Lango.
@@ -133,6 +144,7 @@ func NewAgent(ctx context.Context, tools []tool.Tool, mod model.LLM, systemPromp
 		Model:       mod,
 		Tools:       tools,
 		Instruction: systemPrompt,
+		Toolsets:    o.toolsets,
 	}
 
 	adkAgent, err := llmagent.New(cfg)
@@ -544,7 +556,7 @@ func (a *Agent) RunAndCollect(ctx context.Context, sessionID, input string, opts
 	}
 
 	badAgent := extractMissingAgent(err)
-	if badAgent == "" || len(a.adkAgent.SubAgents()) == 0 {
+	if !shouldRetryMissingAgent(badAgent, len(a.adkAgent.SubAgents())) {
 		// Tool churn recovery: if a sub-agent was stopped due to repeated
 		// same-tool calls, discard the stuck child session and let the
 		// orchestrator respond using whatever information was gathered.
@@ -613,9 +625,9 @@ func (a *Agent) RunAndCollect(ctx context.Context, sessionID, input string, opts
 
 	// Build correction message and retry once.
 	names := subAgentNames(a.adkAgent)
-	correction := fmt.Sprintf(
-		"[System: Agent %q does not exist. Valid agents: %s. Please retry using one of the valid agent names listed above.]",
-		badAgent, strings.Join(names, ", "))
+	correction := buildMissingAgentCorrection(badAgent, names, func(name string) bool {
+		return containsBuiltinTargetName(name)
+	})
 	logger().Warnw("agent name hallucination detected, retrying",
 		"hallucinated", badAgent,
 		"valid_agents", names,
@@ -781,6 +793,47 @@ func extractMissingAgent(err error) string {
 	return m[1]
 }
 
+func buildMissingAgentCorrection(
+	badAgent string,
+	subAgents []string,
+	isBuiltIn func(string) bool,
+) string {
+	if isBuiltIn != nil && isBuiltIn(badAgent) {
+		return fmt.Sprintf(
+			"[System: Built-in agent %q does not exist as a transfer target. "+
+				"Do not retry built-in transfer_to_agent routing. "+
+				"Use agent_spawn for built-in teammate work or answer directly from gathered evidence.]",
+			badAgent,
+		)
+	}
+	return fmt.Sprintf(
+		"[System: Agent %q does not exist. Valid agents: %s. Please retry using one of the valid agent names listed above.]",
+		badAgent, strings.Join(subAgents, ", "),
+	)
+}
+
+// containsBuiltinTargetName mirrors agentrt.BuiltinTeammateTypes() but is
+// duplicated here to avoid an adk -> agentrt import cycle. Keep this list in
+// sync when BuiltinTeammateTypes() changes.
+func containsBuiltinTargetName(name string) bool {
+	switch name {
+	case "operator", "navigator", "vault", "librarian", "automator", "planner", "chronicler", "ontologist":
+		return true
+	default:
+		return false
+	}
+}
+
+func shouldRetryMissingAgent(badAgent string, subAgentCount int) bool {
+	if badAgent == "" {
+		return false
+	}
+	if subAgentCount == 0 && !containsBuiltinTargetName(badAgent) {
+		return false
+	}
+	return true
+}
+
 // subAgentNames returns the names of all immediate sub-agents.
 func subAgentNames(a adk_agent.Agent) []string {
 	subs := a.SubAgents()
@@ -811,9 +864,12 @@ type RunHooks struct {
 
 // RecoveryInfo captures a structured recovery action observed during a run.
 type RecoveryInfo struct {
-	Action    string
-	AgentName string
-	Error     string
+	Action     string
+	AgentName  string
+	Error      string
+	CauseClass string        // e.g., "provider_rate_limit"
+	Attempt    int           // 1-based retry attempt number
+	Backoff    time.Duration // backoff duration before this retry
 }
 
 // WithOnActivity sets a callback that is invoked whenever the agent produces

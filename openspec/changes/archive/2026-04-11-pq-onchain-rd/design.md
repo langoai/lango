@@ -37,9 +37,9 @@ On-chain (LangoZKEscrow):
   4. Release funds on success
 ```
 
-## Waves
+## Slices
 
-1. **Wave 1**: ZK verifier export tool + 4 Solidity verifier contracts
-2. **Wave 2**: PQ attestation circuit + 5th verifier
-3. **Wave 3**: LangoZKEscrow prototype + IZKVerifier interface
-4. **Wave 4**: Feasibility report + delta specs
+1. **Slice 1**: ZK verifier export tool + 4 Solidity verifier contracts
+2. **Slice 2**: PQ attestation circuit + 5th verifier
+3. **Slice 3**: LangoZKEscrow prototype + IZKVerifier interface
+4. **Slice 4**: Feasibility report + delta specs

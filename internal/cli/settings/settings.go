@@ -5,14 +5,26 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 
-	"github.com/langoai/lango/internal/bootstrap"
+	"github.com/langoai/lango/internal/cli/cliboot"
+	cliprompt "github.com/langoai/lango/internal/cli/prompt"
 	"github.com/langoai/lango/internal/cli/tui"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/configstore"
+	"github.com/langoai/lango/internal/storage"
+)
+
+const nonInteractiveSettingsError = "settings requires an interactive terminal; " +
+	"use 'lango config import' or 'lango config set' for scripted configuration"
+
+var (
+	requireInteractiveTerminal = cliprompt.RequireInteractiveInput
+	runSettingsFn              = runSettings
+	settingsBootResult         = cliboot.BootResult
 )
 
 // NewCommand creates the settings command.
@@ -40,7 +52,7 @@ Press "/" to search, or use smart filters: @basic, @advanced, @enabled, @modifie
   P2P & Economy:    P2P Network, P2P Workspace, P2P ZKP, P2P Pricing, P2P Owner, P2P Sandbox,
                     Economy, Risk, Negotiation, Escrow, On-Chain Escrow, Pricing
   Integrations:     MCP, Observability, Alerting
-  Security:         Security, Auth, DB Encryption, KMS, OS Sandbox
+  Security:         Security, Auth, Legacy DB Encryption, KMS, OS Sandbox
 
 All settings including API keys are saved in an encrypted profile (~/.lango/lango.db).
 
@@ -51,7 +63,10 @@ See Also:
   lango onboard     - Guided setup wizard
   lango doctor      - Diagnose configuration issues`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runSettings(profileName)
+			if err := requireInteractiveTerminal(cmd.InOrStdin(), nonInteractiveSettingsError); err != nil {
+				return err
+			}
+			return runSettingsFn(cmd.OutOrStdout(), profileName)
 		},
 	}
 
@@ -60,16 +75,16 @@ See Also:
 	return cmd
 }
 
-func runSettings(profileName string) error {
-	boot, err := bootstrap.Run(bootstrap.Options{})
+func runSettings(out io.Writer, profileName string) error {
+	boot, err := settingsBootResult()
 	if err != nil {
 		return fmt.Errorf("bootstrap: %w", err)
 	}
-	defer boot.DBClient.Close()
+	defer boot.Close()
 
 	ctx := context.Background()
 
-	initialCfg, isNew, err := loadOrDefault(ctx, boot.ConfigStore, profileName)
+	initialCfg, isNew, err := loadOrDefault(ctx, boot.Storage.ConfigProfiles(), profileName)
 	if err != nil {
 		return fmt.Errorf("load profile %q: %w", profileName, err)
 	}
@@ -88,7 +103,7 @@ func runSettings(profileName string) error {
 	}
 
 	if editor.Cancelled {
-		fmt.Println("\nSettings cancelled.")
+		fmt.Fprintln(out, "\nSettings cancelled.")
 		return nil
 	}
 
@@ -103,22 +118,22 @@ func runSettings(profileName string) error {
 	for _, k := range config.ContextRelatedKeys() {
 		explicitKeys[k] = true
 	}
-	if err := boot.ConfigStore.Save(ctx, profileName, cfg, explicitKeys); err != nil {
+	if err := boot.Storage.ConfigProfiles().Save(ctx, profileName, cfg, explicitKeys); err != nil {
 		return fmt.Errorf("save profile %q: %w", profileName, err)
 	}
 
 	if isNew {
-		if err := boot.ConfigStore.SetActive(ctx, profileName); err != nil {
+		if err := boot.Storage.ConfigProfiles().SetActive(ctx, profileName); err != nil {
 			return fmt.Errorf("activate profile %q: %w", profileName, err)
 		}
 	}
 
-	printNextSteps(profileName)
+	printNextSteps(out, profileName)
 
 	return nil
 }
 
-func loadOrDefault(ctx context.Context, store *configstore.Store, name string) (*config.Config, bool, error) {
+func loadOrDefault(ctx context.Context, store storage.ConfigProfileStore, name string) (*config.Config, bool, error) {
 	cfg, _, err := store.Load(ctx, name)
 	if err == nil {
 		return cfg, false, nil
@@ -129,16 +144,16 @@ func loadOrDefault(ctx context.Context, store *configstore.Store, name string) (
 	return nil, false, err
 }
 
-func printNextSteps(profileName string) {
-	fmt.Printf("\n%s Configuration saved to encrypted profile %q\n", "\u2713", profileName)
-	fmt.Println("  Storage: ~/.lango/lango.db")
+func printNextSteps(out io.Writer, profileName string) {
+	fmt.Fprintf(out, "\n%s Configuration saved to encrypted profile %q\n", "\u2713", profileName)
+	fmt.Fprintln(out, "  Storage: ~/.lango/lango.db")
 
-	fmt.Println("\nNext steps:")
-	fmt.Println("  1. Start Lango:")
-	fmt.Println("     lango serve")
-	fmt.Println("\n  2. (Optional) Run doctor to verify setup:")
-	fmt.Println("     lango doctor")
-	fmt.Println("\n  Profile management:")
-	fmt.Println("     lango config list    \u2014 list all profiles")
-	fmt.Println("     lango config use     \u2014 switch active profile")
+	fmt.Fprintln(out, "\nNext steps:")
+	fmt.Fprintln(out, "  1. Start Lango:")
+	fmt.Fprintln(out, "     lango serve")
+	fmt.Fprintln(out, "\n  2. (Optional) Run doctor to verify setup:")
+	fmt.Fprintln(out, "     lango doctor")
+	fmt.Fprintln(out, "\n  Profile management:")
+	fmt.Fprintln(out, "     lango config list    \u2014 list all profiles")
+	fmt.Fprintln(out, "     lango config use     \u2014 switch active profile")
 }

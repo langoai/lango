@@ -2,10 +2,14 @@ package checks
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
+	"strings"
+	"syscall"
 
 	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/gatewayaddr"
 )
 
 // NetworkCheck validates network-related configuration.
@@ -28,7 +32,7 @@ func (c *NetworkCheck) Run(ctx context.Context, cfg *config.Config) Result {
 		host = cfg.Server.Host
 	}
 
-	addr := fmt.Sprintf("%s:%d", host, port)
+	addr := gatewayaddr.ListenAddress(host, port)
 
 	// Try to listen on the port
 	listener, err := net.Listen("tcp", addr)
@@ -36,7 +40,7 @@ func (c *NetworkCheck) Run(ctx context.Context, cfg *config.Config) Result {
 		return Result{
 			Name:    c.Name(),
 			Status:  StatusFail,
-			Message: fmt.Sprintf("Port %d is not available", port),
+			Message: listenFailureMessage(port, err),
 			Details: err.Error(),
 		}
 	}
@@ -58,4 +62,20 @@ func (c *NetworkCheck) Fix(ctx context.Context, cfg *config.Config) Result {
 		Message: "Port conflicts require manual resolution",
 		Details: "Change server.port in config or stop the conflicting process",
 	}
+}
+
+func listenFailureMessage(port int, err error) string {
+	if isAddressInUseError(err) {
+		return fmt.Sprintf("Port %d in use", port)
+	}
+	return "Server bind address unavailable"
+}
+
+func isAddressInUseError(err error) bool {
+	if errors.Is(err, syscall.EADDRINUSE) {
+		return true
+	}
+
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "address already in use")
 }

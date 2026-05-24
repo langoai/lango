@@ -21,7 +21,6 @@ const (
 	CauseUnknown           CauseClass = "unknown"
 )
 
-
 const (
 	backoffBaseDelay = 1 * time.Second
 	backoffMaxDelay  = 30 * time.Second
@@ -97,7 +96,7 @@ type RecoveryContext struct {
 	PartialResult    string
 	RetryCount       int
 	SessionID        string
-	LearningFix      string // populated by tryLearningFix if ErrorFixProvider returns a fix
+	LearningFix      string             // populated by tryLearningFix if ErrorFixProvider returns a fix
 	ClassRetryCounts map[CauseClass]int // per-class retry counts across attempts
 }
 

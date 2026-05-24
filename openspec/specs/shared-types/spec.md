@@ -57,8 +57,8 @@ The system SHALL define `Confidence string` in `internal/types/confidence.go` wi
 - **WHEN** `librarian/types.go` or `learning/parse.go` reference confidence levels
 - **THEN** they SHALL use `types.Confidence` constants
 
-### Requirement: CLI package rename
-The system SHALL rename `internal/cli/common/` to `internal/cli/clitypes/` and update all importers.
+### Requirement: CLI shared types package uses the current clitypes path
+The system SHALL keep CLI shared types under `internal/cli/clitypes/` and all importers SHALL use that current package path.
 
 #### Scenario: Package rename with importer update
 - **WHEN** the rename is applied

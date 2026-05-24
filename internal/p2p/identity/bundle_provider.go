@@ -30,11 +30,11 @@ type LocalIdentityProvider interface {
 // BundleProviderConfig holds the configuration for creating a BundleProvider.
 type BundleProviderConfig struct {
 	SigningKey       ed25519.PrivateKey
-	SettlementPub   []byte // compressed secp256k1 public key from wallet
+	SettlementPub    []byte // compressed secp256k1 public key from wallet
 	PQSigningKeySeed []byte // 32-byte HKDF seed for ML-DSA-65 (optional, nil = no PQ)
-	LangoDir        string
-	Legacy          *WalletDIDProvider
-	Logger          *zap.SugaredLogger
+	LangoDir         string
+	Legacy           *WalletDIDProvider
+	Logger           *zap.SugaredLogger
 }
 
 // BundleProvider manages the local agent's v2 identity. It creates and caches

@@ -2,6 +2,8 @@ package openai
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -25,6 +27,127 @@ func TestOpenAIProvider_ListModels(t *testing.T) {
 	if err == nil {
 		t.Error("expected error when connecting to unavailable server")
 	}
+}
+
+func TestOpenAIProvider_ListModelsReturnsServerModels(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/models", r.URL.Path)
+		assert.Equal(t, "Bearer test-key", r.Header.Get("Authorization"))
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"object":"list","data":[{"id":"gpt-test"},{"id":"gpt-backup"}]}`))
+	}))
+	t.Cleanup(server.Close)
+
+	p := NewProvider("openai", "test-key", server.URL)
+	models, err := p.ListModels(context.Background())
+	require.NoError(t, err)
+	require.Len(t, models, 2)
+	assert.Equal(t, "gpt-test", models[0].ID)
+	assert.Equal(t, "gpt-test", models[0].Name)
+	assert.Equal(t, "gpt-backup", models[1].ID)
+	assert.Equal(t, "gpt-backup", models[1].Name)
+}
+
+func TestOpenAIProvider_GenerateStreamsTextToolUsageAndDone(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/chat/completions", r.URL.Path)
+		assert.Equal(t, "Bearer test-key", r.Header.Get("Authorization"))
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"id\":\"chatcmpl-test\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hello \"}}]}\n\n"))
+		_, _ = w.Write([]byte("data: {\"id\":\"chatcmpl-test\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"lookup\",\"arguments\":\"{\\\"q\\\":\\\"x\\\"}\"}}]}}]}\n\n"))
+		_, _ = w.Write([]byte("data: {\"id\":\"chatcmpl-test\",\"object\":\"chat.completion.chunk\",\"choices\":[],\"usage\":{\"prompt_tokens\":3,\"completion_tokens\":5,\"total_tokens\":8}}\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	t.Cleanup(server.Close)
+
+	p := NewProvider("openai", "test-key", server.URL)
+	seq, err := p.Generate(context.Background(), provider.GenerateParams{
+		Model: "gpt-test",
+		Messages: []provider.Message{
+			{Role: "user", Content: "hello"},
+		},
+		Tools: []provider.Tool{{
+			Name:        "lookup",
+			Description: "Look up a value",
+			Parameters: map[string]interface{}{
+				"type":                 "object",
+				"properties":           map[string]interface{}{"q": map[string]interface{}{"type": "string"}},
+				"required":             []string{"q"},
+				"additionalProperties": false,
+			},
+		}},
+	})
+	require.NoError(t, err)
+
+	events := collectOpenAIProviderEvents(t, seq)
+	require.Len(t, events, 3)
+	assert.Equal(t, provider.StreamEventPlainText, events[0].Type)
+	assert.Equal(t, "hello ", events[0].Text)
+	require.Equal(t, provider.StreamEventToolCall, events[1].Type)
+	require.NotNil(t, events[1].ToolCall)
+	require.NotNil(t, events[1].ToolCall.Index)
+	assert.Equal(t, 0, *events[1].ToolCall.Index)
+	assert.Equal(t, "call_1", events[1].ToolCall.ID)
+	assert.Equal(t, "lookup", events[1].ToolCall.Name)
+	assert.Equal(t, `{"q":"x"}`, events[1].ToolCall.Arguments)
+	require.Equal(t, provider.StreamEventDone, events[2].Type)
+	require.NotNil(t, events[2].Usage)
+	assert.Equal(t, int64(3), events[2].Usage.InputTokens)
+	assert.Equal(t, int64(5), events[2].Usage.OutputTokens)
+	assert.Equal(t, int64(8), events[2].Usage.TotalTokens)
+}
+
+func TestOpenAIProvider_GenerateYieldsStreamDecodeError(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {invalid-json}\n\n"))
+	}))
+	t.Cleanup(server.Close)
+
+	p := NewProvider("openai", "test-key", server.URL)
+	seq, err := p.Generate(context.Background(), provider.GenerateParams{
+		Model:    "gpt-test",
+		Messages: []provider.Message{{Role: "user", Content: "hello"}},
+	})
+	require.NoError(t, err)
+
+	var events []provider.StreamEvent
+	for event := range seq {
+		events = append(events, event)
+	}
+	require.Len(t, events, 1)
+	assert.Equal(t, provider.StreamEventError, events[0].Type)
+	assert.Error(t, events[0].Error)
+}
+
+func TestOpenAIProvider_GenerateMapsUnsupportedToolsError(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":{"message":"model does not support tools","type":"invalid_request_error"}}`))
+	}))
+	t.Cleanup(server.Close)
+
+	p := NewProvider("openai", "test-key", server.URL)
+	seq, err := p.Generate(context.Background(), provider.GenerateParams{
+		Model: "small-model",
+		Messages: []provider.Message{
+			{Role: "user", Content: "hello"},
+		},
+		Tools: []provider.Tool{{Name: "lookup"}},
+	})
+	require.Error(t, err)
+	assert.Nil(t, seq)
+	assert.ErrorContains(t, err, "does not support tools")
+	assert.ErrorContains(t, err, "small-model")
 }
 
 func TestConvertParams_EmptyToolNameFiltered(t *testing.T) {
@@ -103,9 +226,9 @@ func TestCanUseStrictMode(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		give string
+		give   string
 		params map[string]interface{}
-		want bool
+		want   bool
 	}{
 		{
 			give: "all properties required with additionalProperties false",
@@ -156,9 +279,9 @@ func TestCanUseStrictMode(t *testing.T) {
 			want: false,
 		},
 		{
-			give: "nil params",
+			give:   "nil params",
 			params: nil,
-			want: false,
+			want:   false,
 		},
 		{
 			give: "no properties with additionalProperties false",
@@ -180,6 +303,27 @@ func TestCanUseStrictMode(t *testing.T) {
 			},
 			want: true,
 		},
+		{
+			give: "properties must be object",
+			params: map[string]interface{}{
+				"type":                 "object",
+				"properties":           "invalid",
+				"additionalProperties": false,
+			},
+			want: false,
+		},
+		{
+			give: "required must be string list",
+			params: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"command": map[string]interface{}{"type": "string"},
+				},
+				"required":             "command",
+				"additionalProperties": false,
+			},
+			want: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -189,6 +333,17 @@ func TestCanUseStrictMode(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func collectOpenAIProviderEvents(t *testing.T, seq func(func(provider.StreamEvent, error) bool)) []provider.StreamEvent {
+	t.Helper()
+
+	var events []provider.StreamEvent
+	for event, err := range seq {
+		require.NoError(t, err)
+		events = append(events, event)
+	}
+	return events
 }
 
 func TestConvertParams_StrictMode(t *testing.T) {

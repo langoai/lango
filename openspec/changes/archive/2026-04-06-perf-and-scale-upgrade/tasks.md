@@ -1,4 +1,4 @@
-## 1. Render Style Pre-allocation (Wave 1A)
+## 1. Render Style Pre-allocation (Slice 1A)
 
 - [x] 1.1 Pre-allocate styles in chatview.go: renderTranscriptBlock (3 vars), renderSystemBlock (2 vars), renderStatusBlock (2 vars), renderApprovalEventBlock (reuses status styles)
 - [x] 1.2 Pre-allocate styles in render_tool.go: toolLabelStyle, toolDetailStyle, toolOutputStyle
@@ -8,7 +8,7 @@
 - [x] 1.6 Pre-allocate styles in render_recovery.go: 2 module-level vars
 - [x] 1.7 Verify go build/test/vet pass — 33 NewStyle() calls eliminated
 
-## 2. Terminal Task Cleanup + Grant Lazy Expiry (Wave 1B)
+## 2. Terminal Task Cleanup + Grant Lazy Expiry (Slice 1B)
 
 - [x] 2.1 Add maxTerminalTasks = 500 constant to background/manager.go
 - [x] 2.2 Implement evictTerminalTasksLocked() with CompletedAt/StartedAt sort
@@ -19,7 +19,7 @@
 - [x] 2.7 Add TestGrantLazyCleanup and TestGrantLazyCleanup_NoTTL
 - [x] 2.8 Verify go build/test/vet pass
 
-## 3. Approval Diff Styled Line Cache (Wave 1C)
+## 3. Approval Diff Styled Line Cache (Slice 1C)
 
 - [x] 3.1 Add diffLineCache struct to approval_state.go (content, width, splitMode keys + lines slice)
 - [x] 3.2 Add diffCache field to approvalState struct
@@ -32,7 +32,7 @@
 - [x] 3.9 Add diff cache hit/miss/invalidation tests
 - [x] 3.10 Verify go build/test/vet pass
 
-## 4. Transcript Block Memoization + Entry Trimming (Wave 2A)
+## 4. Transcript Block Memoization + Entry Trimming (Slice 2A)
 
 - [x] 4.1 Add cachedBlock string field to transcriptItem struct
 - [x] 4.2 Extract renderEntry() helper from render() switch block
@@ -50,7 +50,7 @@
 - [x] 4.14 Add TestRender_MemoizationCachesBlocks and invalidation tests
 - [x] 4.15 Verify go build/test/vet pass
 
-## 5. Context Panel Optimization (Wave 2B)
+## 5. Context Panel Optimization (Slice 2B)
 
 - [x] 5.1 Implement SetChannelStatuses() slice reuse (cap check before alloc)
 - [x] 5.2 Pre-allocate module-level styles for renderRuntimeStatus and renderChannelStatus

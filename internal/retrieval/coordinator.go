@@ -55,7 +55,12 @@ func (c *RetrievalCoordinator) Retrieve(ctx context.Context, query string, token
 		return nil, err
 	}
 
-	var allFindings []Finding
+	totalFindings := 0
+	for _, r := range results {
+		totalFindings += len(r)
+	}
+
+	allFindings := make([]Finding, 0, totalFindings)
 	for _, r := range results {
 		allFindings = append(allFindings, r...)
 	}
@@ -84,7 +89,7 @@ var sourceAuthority = map[string]int{
 // mergeFindings resolves duplicate (Layer, Key) entries using evidence-based
 // priority: authority → version (supersedes) → recency → score.
 // This replaces the previous score-only dedup. When all provenance fields are
-// empty (e.g., ContextSearchAgent findings), the merge falls through to Score,
+// empty, the merge falls through to Score,
 // preserving backward-compatible behavior.
 func mergeFindings(findings []Finding) []Finding {
 	best := make(map[dedupKey]Finding, len(findings))

@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"math/big"
+	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -79,6 +80,7 @@ type Config struct {
 // Gate sits between the firewall and the tool executor, enforcing payment
 // requirements for paid tools.
 type Gate struct {
+	mu           sync.RWMutex
 	pricingFn    PricingFunc
 	reputationFn ReputationFunc
 	trustCfg     TrustConfig
@@ -105,6 +107,13 @@ func New(cfg Config) *Gate {
 	}
 }
 
+// SetPricingFunc replaces the tool pricing function used for subsequent checks.
+func (g *Gate) SetPricingFunc(fn PricingFunc) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.pricingFn = fn
+}
+
 // Ledger returns the deferred payment ledger for post-pay tracking.
 func (g *Gate) Ledger() *DeferredLedger {
 	return g.ledger
@@ -112,10 +121,14 @@ func (g *Gate) Ledger() *DeferredLedger {
 
 // Check evaluates whether a tool invocation should proceed. It looks up the
 // tool price, and if payment is required, validates the EIP-3009 authorization
-// embedded in the payload. High-trust peers (score > PostPayMinScore) are
+// embedded in the payload. High-trust peers (score >= PostPayMinScore) are
 // granted post-pay: the tool executes first, settlement happens asynchronously.
 func (g *Gate) Check(peerDID, toolName string, payload map[string]interface{}) (*Result, error) {
-	price, isFree := g.pricingFn(toolName)
+	g.mu.RLock()
+	pricingFn := g.pricingFn
+	g.mu.RUnlock()
+
+	price, isFree := pricingFn(toolName)
 	if isFree {
 		return &Result{Status: StatusFree}, nil
 	}
@@ -126,7 +139,7 @@ func (g *Gate) Check(peerDID, toolName string, payload map[string]interface{}) (
 		if err != nil {
 			g.logger.Warnw("reputation lookup failed, falling back to prepay",
 				"peerDID", peerDID, "error", err)
-		} else if score > g.trustCfg.PostPayMinScore {
+		} else if score >= g.trustCfg.PostPayMinScore {
 			sid := g.ledger.Add(peerDID, toolName, price)
 			g.logger.Infow("post-pay approved",
 				"peerDID", peerDID, "tool", toolName, "price", price, "score", score)

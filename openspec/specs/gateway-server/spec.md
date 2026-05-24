@@ -1,8 +1,25 @@
 ## Purpose
 
 WebSocket/HTTP gateway server for the Lango agent. Provides real-time communication via JSON-RPC over WebSocket, supports UI and companion client types, authentication middleware, approval workflows, session-scoped broadcasting, and agent thinking state events.
-
 ## Requirements
+### Requirement: Gateway address formatting
+Gateway server and CLI surfaces SHALL format configured host/port addresses with bracket-safe host/port joining so IPv6 hosts are valid in both HTTP URLs and listen addresses. Doctor server port checks SHALL reuse the same listen-address formatting policy when probing configured gateway bind addresses.
+
+#### Scenario: Gateway CLI URL formats IPv6 hosts
+- **WHEN** gateway CLI code resolves configured `server.host` as `::1` and `server.port` as `18789`
+- **THEN** the resulting HTTP URL SHALL be `http://[::1]:18789`
+
+#### Scenario: Gateway listen address formats IPv6 hosts
+- **WHEN** the gateway server listens on configured `server.host` `::1` and port `18789`
+- **THEN** the listen address SHALL be `[::1]:18789`
+
+#### Scenario: Doctor server port check formats IPv6 listen addresses
+- **WHEN** the doctor server port check probes configured `server.host` `::1` and port `18789`
+- **THEN** the listen address SHALL be `[::1]:18789`
+
+#### Scenario: Doctor reachability uses loopback for wildcard binds
+- **WHEN** the doctor checks a gateway configured to bind to a wildcard host
+- **THEN** the client reachability URL SHALL use a loopback host instead of dialing the wildcard address
 
 ### Requirement: Gateway Initialization
 The gateway server SHALL be initialized without requiring an `AuthManager` or `RPCProvider`. The `gateway.New()` function SHALL accept `nil` for optional parameters (rpcProvider, authManager). The gateway SHALL serve HTTP and WebSocket endpoints for direct chat without OIDC authentication. The Config struct SHALL include `AllowedOrigins []string` for WebSocket CORS control. The WebSocket upgrader SHALL use `makeOriginChecker(cfg.AllowedOrigins)` instead of allowing all origins.
@@ -37,7 +54,7 @@ The gateway package SHALL be organized into focused files where no single file e
 - **THEN** all existing tests SHALL pass without modification
 
 ### Requirement: server.go (Core Server)
-The `server.go` file SHALL contain the Server struct definition, Config struct with `AllowedOrigins`, RPC protocol types (RPCRequest, RPCResponse, RPCError, RPCHandler), the constructor `New()`, route setup with auth middleware, handler registration, server Start/Shutdown lifecycle, and HTTP endpoint handlers (health, status). The `RPCHandler` type SHALL be `func(client *Client, params json.RawMessage) (interface{}, error)` to provide handler access to the calling client's session context. The Server struct SHALL include `shutdownCtx context.Context` and `shutdownCancel context.CancelFunc` fields. The constructor `New()` SHALL initialize these via `context.WithCancel(context.Background())`. The `handleChatMessage()` method SHALL use `s.shutdownCtx` as the parent context for all per-request contexts (both `deadline.New()` and `context.WithTimeout()` paths). The `Shutdown()` method SHALL call `s.shutdownCancel()` before closing WebSocket connections and stopping the HTTP server, so that all in-flight request contexts are immediately cancelled.
+The `server.go` file SHALL contain the Server struct definition, Config struct with `AllowedOrigins`, RPC protocol types (RPCRequest, RPCResponse, RPCError, RPCHandler), the constructor `New()`, route setup with auth middleware, handler registration, server Start/Shutdown lifecycle, and HTTP endpoint handlers (health, status). The `RPCHandler` type SHALL be `func(client *Client, params json.RawMessage) (interface{}, error)` to provide handler access to the calling client's session context. The Server struct SHALL include `shutdownCtx context.Context` and `shutdownCancel context.CancelFunc` fields. The constructor `New()` SHALL initialize these via `context.WithCancel(context.Background())`. The `handleChatMessage()` method SHALL use `s.shutdownCtx` as the parent context for all per-request contexts (both `deadline.New()` and `context.WithTimeout()` paths). The `Shutdown()` method SHALL call `s.shutdownCancel()` before closing WebSocket connections and stopping the HTTP server, so that all in-flight request contexts are immediately cancelled. `Shutdown()` SHALL be safe to call before `Start()`, after failed startup, and more than once.
 
 #### Scenario: Server Constructor
 - **WHEN** `gateway.New()` is called with config, agent, provider, store, and auth parameters
@@ -88,6 +105,21 @@ The `server.go` file SHALL contain the Server struct definition, Config struct w
 - **THEN** the idle-timeout path (`deadline.New()`) SHALL use `s.shutdownCtx` as parent
 - **THEN** the fixed-timeout path (`context.WithTimeout()`) SHALL use `s.shutdownCtx` as parent
 
+#### Scenario: Shutdown before start is safe
+- **WHEN** `Shutdown()` is called on a newly constructed gateway server before `Start()`
+- **THEN** it SHALL return `nil`
+- **AND** it SHALL NOT panic
+
+#### Scenario: Shutdown after failed start is safe
+- **GIVEN** the configured gateway listen address is already occupied
+- **WHEN** `Start()` fails
+- **AND** `Shutdown()` is called for cleanup
+- **THEN** shutdown SHALL NOT panic
+
+#### Scenario: Repeated shutdown is safe
+- **WHEN** `Shutdown()` is called more than once on a gateway server
+- **THEN** subsequent calls SHALL NOT panic
+
 ### Requirement: websocket.go (Connection Management)
 The `websocket.go` file SHALL contain the Client struct, WebSocket upgrade handlers, read/write pump goroutines, send helpers, client close logic, broadcast methods, and client removal. The `handleWebSocketConnection` function SHALL extract the authenticated session key from the request context via `SessionFromContext` and bind it to `Client.SessionKey`.
 
@@ -98,6 +130,37 @@ The `websocket.go` file SHALL contain the Client struct, WebSocket upgrade handl
 #### Scenario: Client Connection without Auth
 - **WHEN** a client connects to `/ws` with no auth configured
 - **THEN** a Client SHALL be created with `SessionKey` set to the unique `clientID` (for session isolation)
+
+### Requirement: Background management HTTP routes
+The gateway SHALL expose authenticated REST endpoints for managing the running process's in-memory background tasks.
+
+#### Scenario: Background task list endpoint
+- **WHEN** an authenticated client calls `GET /api/bg/tasks`
+- **THEN** the gateway SHALL return JSON containing the current in-memory task list
+- **AND** each task SHALL expose a stable string status instead of the internal status enum integer
+
+#### Scenario: Background task status endpoint
+- **WHEN** an authenticated client calls `GET /api/bg/tasks/{id}`
+- **THEN** the gateway SHALL return JSON containing the matching task details
+- **AND** it SHALL return `404` when the task is not found
+
+#### Scenario: Background task result endpoint
+- **WHEN** an authenticated client calls `GET /api/bg/tasks/{id}/result`
+- **THEN** the gateway SHALL return JSON containing the completed task result
+- **AND** it SHALL return a non-2xx error when the task is not done or not found
+
+#### Scenario: Background task cancel endpoint
+- **WHEN** an authenticated client calls `POST /api/bg/tasks/{id}/cancel`
+- **THEN** the gateway SHALL request cancellation through the running process's background manager
+- **AND** it SHALL return JSON confirming the cancelled task id
+
+#### Scenario: Background manager unavailable
+- **WHEN** background automation is disabled or no manager is configured
+- **THEN** all `/api/bg/*` management endpoints SHALL return `503`
+
+#### Scenario: Background routes honor gateway auth
+- **WHEN** gateway auth is configured
+- **THEN** `/api/bg/*` routes SHALL require the existing gateway session authentication middleware
 
 #### Scenario: RPC Dispatch
 - **WHEN** a Client receives a JSON message in readPump
@@ -242,3 +305,23 @@ The Gateway server SHALL broadcast `agent.thinking` before agent processing. On 
 - **THEN** the server SHALL broadcast an `agent.warning` event to the session
 - **AND** the event payload SHALL include `type: "approaching_timeout"` and a human-readable `message`
 
+### Requirement: Application Gateway Startup Failure Propagation
+The application lifecycle SHALL propagate immediate gateway listener setup failures during startup. The `lango serve` command SHALL only print the startup summary after application startup succeeds.
+
+#### Scenario: Occupied gateway port fails application startup
+- **GIVEN** the configured gateway listen address is already occupied
+- **WHEN** application startup starts lifecycle components
+- **THEN** startup SHALL return an error for the gateway component
+- **AND** it SHALL NOT report the application as successfully started
+
+#### Scenario: Serve summary suppressed after startup failure
+- **GIVEN** the application builder returns an application whose startup fails
+- **WHEN** `lango serve` is executed
+- **THEN** the command SHALL return the startup error
+- **AND** it SHALL NOT print the startup summary
+
+#### Scenario: Direct gateway start keeps blocking behavior
+- **WHEN** `gateway.Server.Start()` is called directly
+- **THEN** it SHALL bind the configured address and block while serving
+- **AND** it SHALL still return `nil` after graceful shutdown
+- **AND** it SHALL still return non-shutdown serve errors to the caller

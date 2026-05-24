@@ -1,0 +1,519 @@
+package extension
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"log/slog"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+)
+
+// extSkillPrefix is reserved for extension-owned skill subdirectories
+// under the user's skillsDir. User-authored skills at the top level
+// shadow ext-<pack>/<name>/ siblings with the same bare name.
+const extSkillPrefix = "ext-"
+
+// Installer executes the inspect/install/remove pipeline. It holds the
+// destination paths and (for install-time collision detection) a snapshot
+// of what's already installed.
+type Installer struct {
+	ExtensionsDir string
+	SkillsDir     string
+}
+
+// InspectReport is the side-effect-free output of Inspect. It is both
+// human-printable (via String) and machine-friendly (exported fields).
+type InspectReport struct {
+	Manifest       *Manifest
+	ManifestSHA256 string
+	FileHashes     map[string]string
+	PlannedWrites  []string
+	SkippedWrites  []string // informational: "tools/MCP/providers: not installed by v1"
+	SourceRef      string
+}
+
+// Inspect reads the pack via the given Source, validates it, computes
+// hashes, and produces a report. Inspect does not write to ExtensionsDir
+// or SkillsDir. The caller must invoke WorkingCopy.Cleanup when done;
+// Inspect does not own the WC lifecycle (that belongs to the CLI layer
+// so it can reuse the WC for a subsequent Install without re-cloning).
+func (i *Installer) Inspect(ctx context.Context, src Source) (*InspectReport, *WorkingCopy, error) {
+	wc, err := src.Fetch(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	report := &InspectReport{
+		Manifest:       wc.Manifest,
+		ManifestSHA256: wc.ManifestSHA256,
+		FileHashes:     wc.FileHashes,
+		SourceRef:      wc.SourceRef,
+		PlannedWrites:  i.plannedWrites(wc.Manifest, wc.RootDir),
+		SkippedWrites: []string{
+			"tools:     not supported in v1 packs",
+			"mcp:       not supported in v1 packs",
+			"providers: not supported in v1 packs",
+		},
+	}
+	return report, wc, nil
+}
+
+// InstallOptions controls install behavior.
+type InstallOptions struct {
+	// AllowOverwrite re-installs over an existing pack with the same name.
+	// Phase 4 default: false — the caller must remove first.
+	AllowOverwrite bool
+}
+
+// Install runs the full pipeline: load existing registry → collision check →
+// stage → copy pack + skills → write .installed → atomic rename. On any
+// error after writes begin, every file written during this install is
+// rolled back before returning. The caller owns wc.Cleanup.
+func (i *Installer) Install(_ context.Context, src Source, wc *WorkingCopy, opts InstallOptions) error {
+	// Registry snapshot for collision detection. This runs every install;
+	// a concurrent second install would race, but two CLI invocations
+	// operating on the same extensions dir is out of scope for Phase 4.
+	reg, err := LoadRegistry(i.ExtensionsDir, false)
+	if err != nil {
+		return fmt.Errorf("load existing registry: %w", err)
+	}
+	if _, exists := reg.Lookup(wc.Manifest.Name); exists && !opts.AllowOverwrite {
+		return fmt.Errorf("pack %q is already installed; run `lango extension remove %s` first", wc.Manifest.Name, wc.Manifest.Name)
+	}
+	if err := i.detectCollisions(wc.Manifest, reg); err != nil {
+		return err
+	}
+
+	// Stage directory for atomic install.
+	if err := os.MkdirAll(i.ExtensionsDir, 0o755); err != nil {
+		return fmt.Errorf("create extensions dir: %w", err)
+	}
+	stagingDir, err := os.MkdirTemp(i.ExtensionsDir, "."+wc.Manifest.Name+".staging-")
+	if err != nil {
+		return fmt.Errorf("create staging dir: %w", err)
+	}
+	extSkillDir := filepath.Join(i.SkillsDir, extSkillPrefix+wc.Manifest.Name)
+	if err := os.MkdirAll(i.SkillsDir, 0o755); err != nil {
+		_ = os.RemoveAll(stagingDir)
+		return fmt.Errorf("create skills dir: %w", err)
+	}
+	skillStagingDir, err := os.MkdirTemp(i.SkillsDir, "."+wc.Manifest.Name+".skills-staging-")
+	if err != nil {
+		_ = os.RemoveAll(stagingDir)
+		return fmt.Errorf("create skills staging dir: %w", err)
+	}
+
+	// Roll back any writes done by this install on failure.
+	rollback := func() {
+		_ = os.RemoveAll(stagingDir)
+		_ = os.RemoveAll(skillStagingDir)
+	}
+
+	// Copy pack files (manifest + skills + prompts) into staging.
+	if err := copyPackFiles(wc, stagingDir); err != nil {
+		rollback()
+		return err
+	}
+
+	// Copy skills into <skillsDir>/ext-<name>/. Each skill lives at
+	// <skillsDir>/ext-<name>/<skill-name>/SKILL.md with resource files
+	// preserved.
+	if err := i.copySkillsToStore(wc, skillStagingDir); err != nil {
+		rollback()
+		return err
+	}
+
+	// Write .installed metadata.
+	meta := &InstalledMeta{
+		Name:           wc.Manifest.Name,
+		Version:        wc.Manifest.Version,
+		InstalledAt:    time.Now().UTC(),
+		Source:         sourceDescription(src),
+		SourceRef:      wc.SourceRef,
+		ManifestSHA256: wc.ManifestSHA256,
+		FileHashes:     wc.FileHashes,
+	}
+	if err := WriteInstalledMeta(stagingDir, meta); err != nil {
+		rollback()
+		return err
+	}
+
+	// Atomic rename into final location.
+	finalDir := filepath.Join(i.ExtensionsDir, wc.Manifest.Name)
+	if opts.AllowOverwrite {
+		if err := replaceInstallDirs(stagingDir, finalDir, skillStagingDir, extSkillDir); err != nil {
+			rollback()
+			return err
+		}
+	} else {
+		if err := os.Rename(stagingDir, finalDir); err != nil {
+			rollback()
+			return fmt.Errorf("move staging → final: %w", err)
+		}
+		if err := os.Rename(skillStagingDir, extSkillDir); err != nil {
+			_ = os.RemoveAll(finalDir)
+			rollback()
+			return fmt.Errorf("move skills staging → final: %w", err)
+		}
+	}
+
+	slog.Info("extension.installed", "pack", wc.Manifest.Name, "version", wc.Manifest.Version)
+	return nil
+}
+
+func replaceInstallDirs(packStaging, finalDir, skillStaging, extSkillDir string) error {
+	finalBackup, finalHad, err := moveToBackup(finalDir)
+	if err != nil {
+		return fmt.Errorf("backup existing pack: %w", err)
+	}
+	skillBackup, skillHad, err := moveToBackup(extSkillDir)
+	if err != nil {
+		restoreBackup(finalBackup, finalDir)
+		return fmt.Errorf("backup existing skills: %w", err)
+	}
+
+	if err := os.Rename(packStaging, finalDir); err != nil {
+		restoreBackup(skillBackup, extSkillDir)
+		restoreBackup(finalBackup, finalDir)
+		return fmt.Errorf("move staging → final: %w", err)
+	}
+	if err := os.Rename(skillStaging, extSkillDir); err != nil {
+		_ = os.RemoveAll(finalDir)
+		restoreBackup(skillBackup, extSkillDir)
+		restoreBackup(finalBackup, finalDir)
+		return fmt.Errorf("move skills staging → final: %w", err)
+	}
+
+	if finalHad {
+		_ = os.RemoveAll(finalBackup)
+	}
+	if skillHad {
+		_ = os.RemoveAll(skillBackup)
+	}
+	return nil
+}
+
+func moveToBackup(path string) (string, bool, error) {
+	if _, err := os.Stat(path); err != nil {
+		if os.IsNotExist(err) {
+			return "", false, nil
+		}
+		return "", false, err
+	}
+	backup, err := tempBackupPath(filepath.Dir(path), "."+filepath.Base(path)+".backup-")
+	if err != nil {
+		return "", false, err
+	}
+	if err := os.Rename(path, backup); err != nil {
+		return "", false, err
+	}
+	return backup, true, nil
+}
+
+func tempBackupPath(parent, pattern string) (string, error) {
+	backup, err := os.MkdirTemp(parent, pattern)
+	if err != nil {
+		return "", err
+	}
+	if err := os.Remove(backup); err != nil {
+		return "", err
+	}
+	return backup, nil
+}
+
+func restoreBackup(backup, target string) {
+	if backup == "" {
+		return
+	}
+	_ = os.RemoveAll(target)
+	_ = os.Rename(backup, target)
+}
+
+// Remove runs the ordered deletion: .installed → ext-<name>/ → pack dir.
+// Each step is best-effort after the first — missing files are OK but
+// surprise errors surface via the returned error.
+func (i *Installer) Remove(_ context.Context, name string) error {
+	packDir := filepath.Join(i.ExtensionsDir, name)
+	if _, err := os.Stat(packDir); os.IsNotExist(err) {
+		return fmt.Errorf("%w: %s", ErrPackNotFound, name)
+	}
+
+	// Delete .installed first so even on a mid-way failure, the pack is no
+	// longer considered installed on next startup.
+	metaPath := filepath.Join(packDir, installedFileName)
+	if err := os.Remove(metaPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove %s: %w", metaPath, err)
+	}
+
+	extSkillDir := filepath.Join(i.SkillsDir, extSkillPrefix+name)
+	if err := os.RemoveAll(extSkillDir); err != nil {
+		return fmt.Errorf("remove %s: %w", extSkillDir, err)
+	}
+	if err := os.RemoveAll(packDir); err != nil {
+		return fmt.Errorf("remove %s: %w", packDir, err)
+	}
+	slog.Info("extension.removed", "pack", name)
+	return nil
+}
+
+// plannedWrites returns the paths Install would write for a given manifest.
+// Used by Inspect for user-visible preview. When rootDir is non-empty,
+// skill directories are walked to enumerate all files (not just the
+// manifest-listed path), matching what Install actually copies.
+func (i *Installer) plannedWrites(m *Manifest, rootDir string) []string {
+	packDir := filepath.Join(i.ExtensionsDir, m.Name)
+	extSkillDir := filepath.Join(i.SkillsDir, extSkillPrefix+m.Name)
+	out := []string{
+		filepath.Join(packDir, manifestFileName),
+		filepath.Join(packDir, installedFileName),
+	}
+	for _, s := range m.Contents.Skills {
+		srcRel := s.Path
+		if strings.HasSuffix(filepath.Base(srcRel), "SKILL.md") {
+			srcRel = filepath.Dir(srcRel)
+		}
+		// Enumerate all files in the skill directory for accurate preview.
+		if rootDir != "" {
+			srcAbs := filepath.Join(rootDir, filepath.FromSlash(srcRel))
+			if fi, err := os.Stat(srcAbs); err == nil && fi.IsDir() {
+				_ = filepath.Walk(srcAbs, func(path string, info os.FileInfo, err error) error {
+					if err != nil || info.IsDir() {
+						return err
+					}
+					rel, _ := filepath.Rel(rootDir, path)
+					out = append(out, filepath.Join(packDir, filepath.FromSlash(rel)))
+					skillRel, _ := filepath.Rel(srcAbs, path)
+					out = append(out, filepath.Join(extSkillDir, s.Name, filepath.FromSlash(skillRel)))
+					return nil
+				})
+				continue
+			}
+		}
+		// Fallback: report only the declared path.
+		out = append(out, filepath.Join(packDir, filepath.FromSlash(s.Path)))
+		out = append(out, filepath.Join(extSkillDir, s.Name, "SKILL.md"))
+	}
+	for _, p := range m.Contents.Prompts {
+		out = append(out, filepath.Join(packDir, filepath.FromSlash(p.Path)))
+	}
+	return out
+}
+
+// detectCollisions walks existing OK packs and checks whether any
+// skill or mode name in the incoming manifest already belongs to a
+// different pack. Duplicates within the same pack are already blocked
+// by Manifest.Validate.
+func (i *Installer) detectCollisions(m *Manifest, reg *Registry) error {
+	takenSkills := map[string]string{} // skill name → pack name
+	takenModes := map[string]string{}
+	for _, p := range reg.OKPacks() {
+		if p.Manifest == nil || p.Manifest.Name == m.Name {
+			continue
+		}
+		for _, s := range p.Manifest.Contents.Skills {
+			takenSkills[s.Name] = p.Manifest.Name
+		}
+		for _, md := range p.Manifest.Contents.Modes {
+			takenModes[md.Name] = p.Manifest.Name
+		}
+	}
+	for _, s := range m.Contents.Skills {
+		if owner, ok := takenSkills[s.Name]; ok {
+			return fmt.Errorf("skill name %q is already owned by installed pack %q", s.Name, owner)
+		}
+	}
+	for _, md := range m.Contents.Modes {
+		if owner, ok := takenModes[md.Name]; ok {
+			return fmt.Errorf("mode name %q is already owned by installed pack %q", md.Name, owner)
+		}
+	}
+	return nil
+}
+
+// copyPackFiles copies the manifest and every declared content file from
+// the working copy into the staging directory, preserving paths. Directory
+// structure is recreated with mode 0o755; files with the source mode.
+func copyPackFiles(wc *WorkingCopy, stagingDir string) error {
+	manifestSrc := filepath.Join(wc.RootDir, manifestFileName)
+	manifestDst := filepath.Join(stagingDir, manifestFileName)
+	if err := copyFile(manifestSrc, manifestDst); err != nil {
+		return fmt.Errorf("copy manifest: %w", err)
+	}
+
+	copyOne := func(rel string) error {
+		src, err := ResolvePath(wc.RootDir, rel)
+		if err != nil {
+			return fmt.Errorf("path %q: %w", rel, err)
+		}
+		dst := filepath.Join(stagingDir, filepath.FromSlash(filepath.Clean(rel)))
+		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+			return err
+		}
+		return copyFile(src, dst)
+	}
+	for _, s := range wc.Manifest.Contents.Skills {
+		// Mirror the full skill directory (not just the listed file) so
+		// the pack mirror on disk matches what fetchFromDir hashes.
+		srcRel := s.Path
+		if strings.HasSuffix(filepath.Base(srcRel), "SKILL.md") {
+			srcRel = filepath.Dir(srcRel)
+		}
+		srcAbs, err := ResolvePath(wc.RootDir, srcRel)
+		if err != nil {
+			return fmt.Errorf("skill %q: %w", s.Name, err)
+		}
+		fi, err := os.Stat(srcAbs)
+		if err != nil {
+			return fmt.Errorf("stat skill %q: %w", s.Name, err)
+		}
+		dstAbs := filepath.Join(stagingDir, filepath.FromSlash(filepath.Clean(srcRel)))
+		if fi.IsDir() {
+			if err := copyTree(srcAbs, dstAbs, wc.RootDir); err != nil {
+				return fmt.Errorf("copy skill dir %q: %w", s.Name, err)
+			}
+		} else {
+			if err := copyOne(s.Path); err != nil {
+				return err
+			}
+		}
+	}
+	for _, p := range wc.Manifest.Contents.Prompts {
+		if err := copyOne(p.Path); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// copySkillsToStore mirrors manifest.Contents.Skills into
+// <skillsDir>/ext-<pack>/<skill-name>/ so the existing SkillsDir walker
+// discovers them. The manifest's path may point at SKILL.md or at its
+// parent directory; either form copies the whole directory subtree.
+func (i *Installer) copySkillsToStore(wc *WorkingCopy, extSkillDir string) error {
+	if err := os.MkdirAll(extSkillDir, 0o755); err != nil {
+		return fmt.Errorf("create ext-skills dir: %w", err)
+	}
+	for _, s := range wc.Manifest.Contents.Skills {
+		srcRel := s.Path
+		// If manifest points at SKILL.md, copy its containing directory.
+		if strings.HasSuffix(filepath.Base(srcRel), "SKILL.md") {
+			srcRel = filepath.Dir(srcRel)
+		}
+		srcAbs, err := ResolvePath(wc.RootDir, srcRel)
+		if err != nil {
+			return fmt.Errorf("skill %q: %w", s.Name, err)
+		}
+		dstAbs := filepath.Join(extSkillDir, s.Name)
+		if err := copyTree(srcAbs, dstAbs, wc.RootDir); err != nil {
+			return fmt.Errorf("copy skill %q: %w", s.Name, err)
+		}
+	}
+	return nil
+}
+
+// copyFile is a small cross-platform file copy respecting source mode.
+// It rejects symlink sources via os.Lstat as a belt-and-suspenders defense
+// against TOCTTOU symlink replacement between containment check and copy.
+func copyFile(src, dst string) error {
+	fi, err := os.Lstat(src)
+	if err != nil {
+		return err
+	}
+	if fi.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("copy %q: source is a symlink", src)
+	}
+
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	info, err := in.Stat()
+	if err != nil {
+		return err
+	}
+
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return err
+	}
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, info.Mode())
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+	_, err = io.Copy(out, in)
+	return err
+}
+
+// copyTree duplicates a directory tree with per-file containment
+// validation. Every file discovered during the walk is re-checked via
+// ResolvePath(rootDir, rel) to prevent TOCTTOU symlink replacement
+// between the initial directory validation and the actual copy.
+func copyTree(src, dst, rootDir string) error {
+	// Resolve rootDir and src to canonical form so filepath.Rel works correctly
+	// when the OS has path aliases (e.g., macOS /var → /private/var).
+	resolvedRoot, err := filepath.EvalSymlinks(rootDir)
+	if err != nil {
+		return fmt.Errorf("resolve root dir: %w", err)
+	}
+	resolvedSrc, err := filepath.EvalSymlinks(src)
+	if err != nil {
+		return fmt.Errorf("resolve src dir: %w", err)
+	}
+	return filepath.Walk(resolvedSrc, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(resolvedSrc, path)
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(dst, rel)
+		if info.IsDir() {
+			return os.MkdirAll(target, 0o755)
+		}
+		// Re-validate containment for every file, matching the per-file
+		// ResolvePath pattern used by fetchFromDir during Inspect.
+		rootRel, relErr := filepath.Rel(resolvedRoot, path)
+		if relErr != nil {
+			return fmt.Errorf("path %q: relative to root: %w", path, relErr)
+		}
+		if _, resolveErr := ResolvePath(resolvedRoot, rootRel); resolveErr != nil {
+			return fmt.Errorf("path %q escapes pack root: %w", rootRel, resolveErr)
+		}
+		// Resolve symlinks before copying, matching the Inspect behavior
+		// where ResolvePath returns a resolved path. This allows in-root
+		// symlinks (e.g., skills/foo/link.md → ../shared/link.md) that
+		// pass containment to be copied as regular files.
+		resolvedPath, evalErr := filepath.EvalSymlinks(path)
+		if evalErr != nil {
+			return fmt.Errorf("resolve %q: %w", rootRel, evalErr)
+		}
+		return copyFile(resolvedPath, target)
+	})
+}
+
+// sourceDescription produces the value to record in .installed.Source.
+// Local directories record the absolute path; git sources record the URL.
+func sourceDescription(src Source) string {
+	switch s := src.(type) {
+	case *LocalSource:
+		abs, err := filepath.Abs(s.Dir)
+		if err == nil {
+			return "local:" + abs
+		}
+		return "local:" + s.Dir
+	case *GitSource:
+		return "git:" + s.URL
+	default:
+		return ""
+	}
+}
+
+// ErrNotEnabled signals that a CLI install/remove was invoked with the
+// subsystem disabled in config.
+var ErrNotEnabled = errors.New("extensions subsystem is disabled; set extensions.enabled=true to continue")

@@ -604,6 +604,42 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 			if i, err := strconv.Atoi(val); err == nil {
 				s.Current.Ontology.Governance.SchemaExplosionBudget = i
 			}
+		case "ontology_gov_admission_mode":
+			if f.PreserveAbsentIfUntouched &&
+				!s.Current.Ontology.Governance.AdmissionModePresent &&
+				val == f.InitialValue {
+				break
+			}
+			s.Current.Ontology.Governance.AdmissionMode = val
+			s.Current.Ontology.Governance.AdmissionModePresent = true
+		case "ontology_gov_learning_conf":
+			if f.PreserveAbsentIfUntouched &&
+				!s.Current.Ontology.Governance.LearningDefaultConfidencePresent {
+				if current, err := strconv.ParseFloat(val, 64); err == nil {
+					if initial, err := strconv.ParseFloat(f.InitialValue, 64); err == nil && current == initial {
+						break
+					}
+				}
+			}
+			if v, err := strconv.ParseFloat(val, 64); err == nil {
+				s.Current.Ontology.Governance.LearningDefaultConfidence = v
+				s.Current.Ontology.Governance.LearningDefaultConfidenceBackfillNeeded = false
+				s.Current.Ontology.Governance.LearningDefaultConfidencePresent = true
+			}
+		case "ontology_gov_librarian_conf":
+			if f.PreserveAbsentIfUntouched &&
+				!s.Current.Ontology.Governance.LibrarianDefaultConfidencePresent {
+				if current, err := strconv.ParseFloat(val, 64); err == nil {
+					if initial, err := strconv.ParseFloat(f.InitialValue, 64); err == nil && current == initial {
+						break
+					}
+				}
+			}
+			if v, err := strconv.ParseFloat(val, 64); err == nil {
+				s.Current.Ontology.Governance.LibrarianDefaultConfidence = v
+				s.Current.Ontology.Governance.LibrarianDefaultConfidenceBackfillNeeded = false
+				s.Current.Ontology.Governance.LibrarianDefaultConfidencePresent = true
+			}
 		case "ontology_ex_enabled":
 			s.Current.Ontology.Exchange.Enabled = f.Checked
 		case "ontology_ex_min_trust_schema":
@@ -656,14 +692,6 @@ func (s *ConfigState) UpdateConfigFromForm(form *FormModel) {
 					}
 				}
 				s.Current.Alerting.Delivery = filtered
-			}
-
-		// Security DB Encryption
-		case "db_encryption_enabled":
-			s.Current.Security.DBEncryption.Enabled = f.Checked
-		case "db_cipher_page_size":
-			if i, err := strconv.Atoi(val); err == nil {
-				s.Current.Security.DBEncryption.CipherPageSize = i
 			}
 
 		// Security KMS

@@ -2,11 +2,13 @@ package knowledge
 
 import (
 	"context"
+	stdsql "database/sql"
 	"fmt"
 	"strings"
 	"time"
 
-	"entgo.io/ent/dialect/sql"
+	"entgo.io/ent/dialect"
+	entsql "entgo.io/ent/dialect/sql"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
@@ -17,16 +19,25 @@ import (
 	entlearning "github.com/langoai/lango/internal/ent/learning"
 	"github.com/langoai/lango/internal/ent/predicate"
 	"github.com/langoai/lango/internal/eventbus"
+	"github.com/langoai/lango/internal/exportability"
 	"github.com/langoai/lango/internal/search"
+	"github.com/langoai/lango/internal/security"
 )
 
 // Store provides CRUD operations for knowledge, learning, skill, audit, and external ref entities.
 type Store struct {
 	client          *ent.Client
 	logger          *zap.SugaredLogger
-	bus             *eventbus.Bus      // Optional event bus for cross-domain notifications.
-	fts5Index       *search.FTS5Index  // Optional FTS5 index for knowledge search.
-	learningFTS5Idx *search.FTS5Index  // Optional FTS5 index for learning search.
+	bus             *eventbus.Bus     // Optional event bus for cross-domain notifications.
+	fts5Index       *search.FTS5Index // Optional FTS5 index for knowledge search.
+	learningFTS5Idx *search.FTS5Index // Optional FTS5 index for learning search.
+	payloads        security.PayloadProtector
+}
+
+type learningPayload struct {
+	ErrorPattern string `json:"error_pattern"`
+	Diagnosis    string `json:"diagnosis"`
+	Fix          string `json:"fix"`
 }
 
 // NewStore creates a new knowledge store.
@@ -52,6 +63,28 @@ func (s *Store) SetFTS5Index(idx *search.FTS5Index) {
 // When set, SearchLearnings uses FTS5 with BM25 ranking instead of LIKE.
 func (s *Store) SetLearningFTS5Index(idx *search.FTS5Index) {
 	s.learningFTS5Idx = idx
+}
+
+// SetPayloadProtector enables broker-managed payload encryption for sensitive fields.
+func (s *Store) SetPayloadProtector(protector security.PayloadProtector) {
+	s.payloads = protector
+}
+
+// SaveToolResult satisfies toolchain.KnowledgeSaver. It wraps the tool result
+// into a KnowledgeEntry and delegates to SaveKnowledge. The key is derived
+// from sessionKey + toolName for dedup; content is the JSON-serialized result.
+func (s *Store) SaveToolResult(ctx context.Context, sessionKey, toolName string, _ map[string]interface{}, result interface{}) error {
+	content := fmt.Sprintf("%v", result)
+	if len(content) > 4096 {
+		content = content[:4096]
+	}
+	key := fmt.Sprintf("tool_result:%s:%s", sessionKey, toolName)
+	return s.SaveKnowledge(ctx, sessionKey, KnowledgeEntry{
+		Key:      key,
+		Category: entknowledge.CategoryFact,
+		Content:  content,
+		Source:   "tool:" + toolName,
+	})
 }
 
 // publishContentSaved publishes a ContentSavedEvent if the bus is configured.
@@ -86,25 +119,74 @@ func (s *Store) SaveKnowledge(ctx context.Context, sessionKey string, entry Know
 	return err
 }
 
+func knowledgeVersionEquivalent(existing *ent.Knowledge, entry KnowledgeEntry, resolvedContent string) (bool, error) {
+	existingSourceClass, err := exportability.ParseSourceClass(existing.SourceClass)
+	if err != nil {
+		return false, fmt.Errorf("invalid stored source class %q for knowledge %q: %w", existing.SourceClass, existing.Key, err)
+	}
+	entrySourceClass, err := exportability.ParseSourceClass(entry.SourceClass)
+	if err != nil {
+		return false, fmt.Errorf("invalid knowledge source class %q: %w", entry.SourceClass, err)
+	}
+	return existing.Category == entry.Category &&
+		resolvedContent == entry.Content &&
+		existing.Source == entry.Source &&
+		existingSourceClass == entrySourceClass &&
+		existing.AssetLabel == entry.AssetLabel, nil
+}
+
+func normalizeKnowledgeSourceClass(value string) (string, error) {
+	normalized, err := exportability.ParseSourceClass(value)
+	if err != nil {
+		return "", err
+	}
+	return string(normalized), nil
+}
+
 func (s *Store) saveKnowledgeOnce(ctx context.Context, _ string, entry KnowledgeEntry) error {
+	if s.payloads != nil && s.fts5Index != nil && s.fts5Index.DB() != nil {
+		return s.saveKnowledgeAtomic(ctx, entry)
+	}
+
+	normalizedSourceClass, err := normalizeKnowledgeSourceClass(entry.SourceClass)
+	if err != nil {
+		return fmt.Errorf("validate knowledge source class: %w", err)
+	}
+	entry.SourceClass = normalizedSourceClass
+
 	existing, err := s.client.Knowledge.Query().
 		Where(entknowledge.Key(entry.Key), entknowledge.IsLatest(true)).
 		Only(ctx)
 
 	if ent.IsNotFound(err) {
+		storedContent, ciphertext, nonce, keyVersion, err := s.prepareKnowledgeWrite(ctx, entry.Content)
+		if err != nil {
+			return fmt.Errorf("prepare knowledge payload: %w", err)
+		}
 		// First version: create with version=1, is_latest=true.
 		builder := s.client.Knowledge.Create().
 			SetKey(entry.Key).
 			SetCategory(entry.Category).
-			SetContent(entry.Content).
+			SetContent(storedContent).
 			SetVersion(1).
 			SetIsLatest(true)
+		if ciphertext != nil {
+			builder.SetContentCiphertext(ciphertext)
+			builder.SetContentNonce(nonce)
+			builder.SetContentKeyVersion(keyVersion)
+		}
 
 		if len(entry.Tags) > 0 {
 			builder.SetTags(entry.Tags)
 		}
 		if entry.Source != "" {
 			builder.SetSource(entry.Source)
+		}
+		if entry.SourceClass != "" {
+			builder.SetSourceClass(entry.SourceClass)
+		}
+		if entry.AssetLabel != "" {
+			builder.SetAssetLabel(entry.AssetLabel)
 		}
 
 		_, err = builder.Save(ctx)
@@ -113,18 +195,26 @@ func (s *Store) saveKnowledgeOnce(ctx context.Context, _ string, entry Knowledge
 		}
 
 		meta := map[string]string{"category": string(entry.Category)}
-		s.publishContentSaved(entry.Key, "knowledge", entry.Content, meta, true, true, 1)
-		s.syncKnowledgeFTS5(ctx, entry.Key, entry.Content, false)
+		s.publishContentSaved(entry.Key, "knowledge", storedContent, meta, true, true, 1)
+		s.syncKnowledgeFTS5(ctx, entry.Key, storedContent, false)
 		return nil
 	}
 	if err != nil {
 		return fmt.Errorf("query knowledge: %w", err)
 	}
 
-	// Content-dedup: skip if latest version has same (category, content).
-	// source/tags changes alone do not justify a new version.
-	if existing.Category == entry.Category && existing.Content == entry.Content {
+	// Dedup if the latest version has the same exportability-significant inputs.
+	same, err := knowledgeVersionEquivalent(existing, entry, s.resolveKnowledgeContent(ctx, existing))
+	if err != nil {
+		return err
+	}
+	if same {
 		return nil
+	}
+
+	storedContent, ciphertext, nonce, keyVersion, err := s.prepareKnowledgeWrite(ctx, entry.Content)
+	if err != nil {
+		return fmt.Errorf("prepare knowledge payload: %w", err)
 	}
 
 	// Append new version in transaction.
@@ -134,7 +224,7 @@ func (s *Store) saveKnowledgeOnce(ctx context.Context, _ string, entry Knowledge
 	}
 
 	// Mark old version as not latest.
-	if err := tx.Knowledge.UpdateOne(existing).SetIsLatest(false).Exec(ctx); err != nil {
+	if err := tx.Knowledge.UpdateOneID(existing.ID).SetIsLatest(false).Exec(ctx); err != nil {
 		_ = tx.Rollback()
 		return fmt.Errorf("unset latest: %w", err)
 	}
@@ -143,17 +233,28 @@ func (s *Store) saveKnowledgeOnce(ctx context.Context, _ string, entry Knowledge
 	builder := tx.Knowledge.Create().
 		SetKey(entry.Key).
 		SetCategory(entry.Category).
-		SetContent(entry.Content).
+		SetContent(storedContent).
 		SetVersion(newVersion).
 		SetIsLatest(true).
 		SetUseCount(existing.UseCount).
 		SetRelevanceScore(existing.RelevanceScore)
+	if ciphertext != nil {
+		builder.SetContentCiphertext(ciphertext)
+		builder.SetContentNonce(nonce)
+		builder.SetContentKeyVersion(keyVersion)
+	}
 
 	if len(entry.Tags) > 0 {
 		builder.SetTags(entry.Tags)
 	}
 	if entry.Source != "" {
 		builder.SetSource(entry.Source)
+	}
+	if entry.SourceClass != "" {
+		builder.SetSourceClass(entry.SourceClass)
+	}
+	if entry.AssetLabel != "" {
+		builder.SetAssetLabel(entry.AssetLabel)
 	}
 
 	_, err = builder.Save(ctx)
@@ -167,14 +268,119 @@ func (s *Store) saveKnowledgeOnce(ctx context.Context, _ string, entry Knowledge
 	}
 
 	meta := map[string]string{"category": string(entry.Category)}
-	s.publishContentSaved(entry.Key, "knowledge", entry.Content, meta, false, false, newVersion)
-	s.syncKnowledgeFTS5(ctx, entry.Key, entry.Content, true)
+	s.publishContentSaved(entry.Key, "knowledge", storedContent, meta, false, false, newVersion)
+	s.syncKnowledgeFTS5(ctx, entry.Key, storedContent, true)
 	return nil
 }
 
 // isUniqueConstraintError checks for SQLite unique constraint violation.
 func isUniqueConstraintError(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed")
+}
+
+func (s *Store) saveKnowledgeAtomic(ctx context.Context, entry KnowledgeEntry) error {
+	normalizedSourceClass, err := normalizeKnowledgeSourceClass(entry.SourceClass)
+	if err != nil {
+		return fmt.Errorf("validate knowledge source class: %w", err)
+	}
+	entry.SourceClass = normalizedSourceClass
+
+	tx, err := s.fts5Index.DB().BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin knowledge sql tx: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	txClient := ent.NewClient(ent.Driver(entsql.NewDriver(dialect.SQLite, entsql.Conn{ExecQuerier: tx})))
+	existing, err := txClient.Knowledge.Query().
+		Where(entknowledge.Key(entry.Key), entknowledge.IsLatest(true)).
+		Only(ctx)
+
+	isNew := ent.IsNotFound(err)
+	if err != nil && !isNew {
+		return fmt.Errorf("query knowledge: %w", err)
+	}
+	if err == nil {
+		same, sameErr := knowledgeVersionEquivalent(existing, entry, s.resolveKnowledgeContent(ctx, existing))
+		if sameErr != nil {
+			return fmt.Errorf("compare knowledge version: %w", sameErr)
+		}
+		if same {
+			return nil
+		}
+	}
+
+	storedContent, ciphertext, nonce, keyVersion, err := s.prepareKnowledgeWrite(ctx, entry.Content)
+	if err != nil {
+		return fmt.Errorf("prepare knowledge payload: %w", err)
+	}
+
+	version := 1
+	if !isNew {
+		if _, err := tx.ExecContext(
+			ctx,
+			fmt.Sprintf("UPDATE %s SET is_latest = ?, updated_at = ? WHERE id = ?", entknowledge.Table),
+			false,
+			time.Now(),
+			existing.ID,
+		); err != nil {
+			return fmt.Errorf("unset latest: %w", err)
+		}
+		version = existing.Version + 1
+	}
+
+	builder := txClient.Knowledge.Create().
+		SetKey(entry.Key).
+		SetCategory(entry.Category).
+		SetContent(storedContent).
+		SetVersion(version).
+		SetIsLatest(true)
+	if !isNew {
+		builder = builder.SetUseCount(existing.UseCount).SetRelevanceScore(existing.RelevanceScore)
+	}
+	if ciphertext != nil {
+		builder.SetContentCiphertext(ciphertext)
+		builder.SetContentNonce(nonce)
+		builder.SetContentKeyVersion(keyVersion)
+	}
+	if len(entry.Tags) > 0 {
+		builder.SetTags(entry.Tags)
+	}
+	if entry.Source != "" {
+		builder.SetSource(entry.Source)
+	}
+	if entry.SourceClass != "" {
+		builder.SetSourceClass(entry.SourceClass)
+	}
+	if entry.AssetLabel != "" {
+		builder.SetAssetLabel(entry.AssetLabel)
+	}
+	if _, err := builder.Save(ctx); err != nil {
+		return fmt.Errorf("create knowledge version: %w", err)
+	}
+
+	if isNew {
+		err = s.fts5Index.InsertWithExec(ctx, tx, entry.Key, []string{entry.Key, storedContent})
+	} else {
+		err = s.fts5Index.UpdateWithExec(ctx, tx, entry.Key, []string{entry.Key, storedContent})
+	}
+	if err != nil {
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit knowledge sql tx: %w", err)
+	}
+	committed = true
+
+	meta := map[string]string{"category": string(entry.Category)}
+	s.publishContentSaved(entry.Key, "knowledge", storedContent, meta, isNew, isNew, version)
+	return nil
 }
 
 // GetKnowledge retrieves the latest version of a knowledge entry by key.
@@ -191,22 +397,82 @@ func (s *Store) GetKnowledge(ctx context.Context, key string) (*KnowledgeEntry, 
 	}
 
 	return &KnowledgeEntry{
-		Key:       k.Key,
-		Category:  k.Category,
-		Content:   k.Content,
-		Tags:      k.Tags,
-		Source:    k.Source,
-		Version:   k.Version,
-		CreatedAt: k.CreatedAt,
-		UpdatedAt: k.UpdatedAt,
+		Key:         k.Key,
+		Category:    k.Category,
+		Content:     s.resolveKnowledgeContent(ctx, k),
+		Tags:        k.Tags,
+		Source:      k.Source,
+		SourceClass: k.SourceClass,
+		AssetLabel:  k.AssetLabel,
+		Version:     k.Version,
+		CreatedAt:   k.CreatedAt,
+		UpdatedAt:   k.UpdatedAt,
 	}, nil
+}
+
+// GetKnowledgeByKeys retrieves the latest versions of multiple knowledge entries by key.
+// Results preserve the input key order and return an error if any key is missing.
+func (s *Store) GetKnowledgeByKeys(ctx context.Context, keys []string) ([]KnowledgeEntry, error) {
+	if len(keys) == 0 {
+		return nil, nil
+	}
+
+	seen := make(map[string]struct{}, len(keys))
+	uniqueKeys := make([]string, 0, len(keys))
+	for _, key := range keys {
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		uniqueKeys = append(uniqueKeys, key)
+	}
+
+	entries, err := s.client.Knowledge.Query().
+		Where(entknowledge.KeyIn(uniqueKeys...), entknowledge.IsLatest(true)).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("query knowledge by keys: %w", err)
+	}
+
+	byKey := make(map[string]*ent.Knowledge, len(entries))
+	for _, k := range entries {
+		byKey[k.Key] = k
+	}
+
+	result := make([]KnowledgeEntry, 0, len(keys))
+	missing := make([]string, 0)
+	for _, key := range keys {
+		k, ok := byKey[key]
+		if !ok {
+			missing = append(missing, key)
+			continue
+		}
+		result = append(result, KnowledgeEntry{
+			Key:         k.Key,
+			Category:    k.Category,
+			Content:     s.resolveKnowledgeContent(ctx, k),
+			Tags:        k.Tags,
+			Source:      k.Source,
+			SourceClass: k.SourceClass,
+			AssetLabel:  k.AssetLabel,
+			Version:     k.Version,
+			CreatedAt:   k.CreatedAt,
+			UpdatedAt:   k.UpdatedAt,
+		})
+	}
+
+	if len(missing) > 0 {
+		return nil, fmt.Errorf("get knowledge by keys %q: %w", strings.Join(missing, ", "), ErrKnowledgeNotFound)
+	}
+
+	return result, nil
 }
 
 // GetKnowledgeHistory returns all versions of a knowledge entry ordered by version descending.
 func (s *Store) GetKnowledgeHistory(ctx context.Context, key string) ([]KnowledgeEntry, error) {
 	entries, err := s.client.Knowledge.Query().
 		Where(entknowledge.Key(key)).
-		Order(entknowledge.ByVersion(sql.OrderDesc())).
+		Order(entknowledge.ByVersion(entsql.OrderDesc())).
 		All(ctx)
 
 	if err != nil {
@@ -219,14 +485,16 @@ func (s *Store) GetKnowledgeHistory(ctx context.Context, key string) ([]Knowledg
 	result := make([]KnowledgeEntry, 0, len(entries))
 	for _, k := range entries {
 		result = append(result, KnowledgeEntry{
-			Key:       k.Key,
-			Category:  k.Category,
-			Content:   k.Content,
-			Tags:      k.Tags,
-			Source:    k.Source,
-			Version:   k.Version,
-			CreatedAt: k.CreatedAt,
-			UpdatedAt: k.UpdatedAt,
+			Key:         k.Key,
+			Category:    k.Category,
+			Content:     s.resolveKnowledgeContent(ctx, k),
+			Tags:        k.Tags,
+			Source:      k.Source,
+			SourceClass: k.SourceClass,
+			AssetLabel:  k.AssetLabel,
+			Version:     k.Version,
+			CreatedAt:   k.CreatedAt,
+			UpdatedAt:   k.UpdatedAt,
 		})
 	}
 	return result, nil
@@ -270,7 +538,7 @@ func (s *Store) searchKnowledgeLIKE(ctx context.Context, query string, category 
 
 	entries, err := s.client.Knowledge.Query().
 		Where(predicates...).
-		Order(entknowledge.ByRelevanceScore(sql.OrderDesc())).
+		Order(entknowledge.ByRelevanceScore(entsql.OrderDesc())).
 		Limit(limit).
 		All(ctx)
 
@@ -281,14 +549,16 @@ func (s *Store) searchKnowledgeLIKE(ctx context.Context, query string, category 
 	result := make([]KnowledgeEntry, 0, len(entries))
 	for _, k := range entries {
 		result = append(result, KnowledgeEntry{
-			Key:       k.Key,
-			Category:  k.Category,
-			Content:   k.Content,
-			Tags:      k.Tags,
-			Source:    k.Source,
-			Version:   k.Version,
-			CreatedAt: k.CreatedAt,
-			UpdatedAt: k.UpdatedAt,
+			Key:         k.Key,
+			Category:    k.Category,
+			Content:     s.resolveKnowledgeContent(ctx, k),
+			Tags:        k.Tags,
+			Source:      k.Source,
+			SourceClass: k.SourceClass,
+			AssetLabel:  k.AssetLabel,
+			Version:     k.Version,
+			CreatedAt:   k.CreatedAt,
+			UpdatedAt:   k.UpdatedAt,
 		})
 	}
 	return result, nil
@@ -327,14 +597,16 @@ func (s *Store) resolveKnowledgeByKeys(ctx context.Context, ftsResults []search.
 			continue // Filtered out by category or missing.
 		}
 		result = append(result, KnowledgeEntry{
-			Key:       k.Key,
-			Category:  k.Category,
-			Content:   k.Content,
-			Tags:      k.Tags,
-			Source:    k.Source,
-			Version:   k.Version,
-			CreatedAt: k.CreatedAt,
-			UpdatedAt: k.UpdatedAt,
+			Key:         k.Key,
+			Category:    k.Category,
+			Content:     s.resolveKnowledgeContent(ctx, k),
+			Tags:        k.Tags,
+			Source:      k.Source,
+			SourceClass: k.SourceClass,
+			AssetLabel:  k.AssetLabel,
+			Version:     k.Version,
+			CreatedAt:   k.CreatedAt,
+			UpdatedAt:   k.UpdatedAt,
 		})
 	}
 	return result, nil
@@ -415,14 +687,16 @@ func (s *Store) resolveKnowledgeScoredByKeys(ctx context.Context, ftsResults []s
 		}
 		result = append(result, ScoredKnowledgeEntry{
 			Entry: KnowledgeEntry{
-				Key:       k.Key,
-				Category:  k.Category,
-				Content:   k.Content,
-				Tags:      k.Tags,
-				Source:    k.Source,
-				Version:   k.Version,
-				CreatedAt: k.CreatedAt,
-				UpdatedAt: k.UpdatedAt,
+				Key:         k.Key,
+				Category:    k.Category,
+				Content:     s.resolveKnowledgeContent(ctx, k),
+				Tags:        k.Tags,
+				Source:      k.Source,
+				SourceClass: k.SourceClass,
+				AssetLabel:  k.AssetLabel,
+				Version:     k.Version,
+				CreatedAt:   k.CreatedAt,
+				UpdatedAt:   k.UpdatedAt,
 			},
 			Score:        -r.Rank,
 			SearchSource: "fts5",
@@ -444,7 +718,7 @@ func (s *Store) searchKnowledgeScoredLIKE(ctx context.Context, query string, cat
 
 	entries, err := s.client.Knowledge.Query().
 		Where(predicates...).
-		Order(entknowledge.ByRelevanceScore(sql.OrderDesc())).
+		Order(entknowledge.ByRelevanceScore(entsql.OrderDesc())).
 		Limit(limit).
 		All(ctx)
 	if err != nil {
@@ -455,14 +729,16 @@ func (s *Store) searchKnowledgeScoredLIKE(ctx context.Context, query string, cat
 	for _, k := range entries {
 		result = append(result, ScoredKnowledgeEntry{
 			Entry: KnowledgeEntry{
-				Key:       k.Key,
-				Category:  k.Category,
-				Content:   k.Content,
-				Tags:      k.Tags,
-				Source:    k.Source,
-				Version:   k.Version,
-				CreatedAt: k.CreatedAt,
-				UpdatedAt: k.UpdatedAt,
+				Key:         k.Key,
+				Category:    k.Category,
+				Content:     s.resolveKnowledgeContent(ctx, k),
+				Tags:        k.Tags,
+				Source:      k.Source,
+				SourceClass: k.SourceClass,
+				AssetLabel:  k.AssetLabel,
+				Version:     k.Version,
+				CreatedAt:   k.CreatedAt,
+				UpdatedAt:   k.UpdatedAt,
 			},
 			Score:        k.RelevanceScore,
 			SearchSource: "like",
@@ -489,7 +765,7 @@ func (s *Store) SearchRecentKnowledge(ctx context.Context, query string, limit i
 
 	entries, err := s.client.Knowledge.Query().
 		Where(predicates...).
-		Order(entknowledge.ByUpdatedAt(sql.OrderDesc())).
+		Order(entknowledge.ByUpdatedAt(entsql.OrderDesc())).
 		Limit(limit).
 		All(ctx)
 	if err != nil {
@@ -499,14 +775,16 @@ func (s *Store) SearchRecentKnowledge(ctx context.Context, query string, limit i
 	result := make([]KnowledgeEntry, 0, len(entries))
 	for _, k := range entries {
 		result = append(result, KnowledgeEntry{
-			Key:       k.Key,
-			Category:  k.Category,
-			Content:   k.Content,
-			Tags:      k.Tags,
-			Source:    k.Source,
-			Version:   k.Version,
-			CreatedAt: k.CreatedAt,
-			UpdatedAt: k.UpdatedAt,
+			Key:         k.Key,
+			Category:    k.Category,
+			Content:     s.resolveKnowledgeContent(ctx, k),
+			Tags:        k.Tags,
+			Source:      k.Source,
+			SourceClass: k.SourceClass,
+			AssetLabel:  k.AssetLabel,
+			Version:     k.Version,
+			CreatedAt:   k.CreatedAt,
+			UpdatedAt:   k.UpdatedAt,
 		})
 	}
 	return result, nil
@@ -530,7 +808,7 @@ func (s *Store) SearchLearningsScored(ctx context.Context, errorPattern string, 
 
 	entries, err := s.client.Learning.Query().
 		Where(predicates...).
-		Order(entlearning.ByConfidence(sql.OrderDesc())).
+		Order(entlearning.ByConfidence(entsql.OrderDesc())).
 		Limit(limit).
 		All(ctx)
 	if err != nil {
@@ -539,15 +817,12 @@ func (s *Store) SearchLearningsScored(ctx context.Context, errorPattern string, 
 
 	result := make([]ScoredLearningEntry, 0, len(entries))
 	for _, l := range entries {
+		resolved, err := s.resolveLearningEntry(ctx, l)
+		if err != nil {
+			return nil, fmt.Errorf("resolve scored learning %q: %w", l.ID, err)
+		}
 		result = append(result, ScoredLearningEntry{
-			Entry: LearningEntry{
-				Trigger:      l.Trigger,
-				ErrorPattern: l.ErrorPattern,
-				Diagnosis:    l.Diagnosis,
-				Fix:          l.Fix,
-				Category:     l.Category,
-				Tags:         l.Tags,
-			},
+			Entry:        resolved,
 			Score:        l.Confidence,
 			SearchSource: "like",
 		})
@@ -667,18 +942,32 @@ func (s *Store) DeleteKnowledge(ctx context.Context, key string) error {
 
 // SaveLearning creates a new learning entry.
 func (s *Store) SaveLearning(ctx context.Context, sessionKey string, entry LearningEntry) error {
+	if s.payloads != nil && s.learningFTS5Idx != nil && s.learningFTS5Idx.DB() != nil {
+		return s.saveLearningAtomic(ctx, entry)
+	}
+
+	trigger := strings.TrimSpace(entry.Trigger)
+	projections, ciphertext, nonce, keyVersion, err := s.prepareLearningWrite(entry)
+	if err != nil {
+		return fmt.Errorf("prepare learning payload: %w", err)
+	}
 	builder := s.client.Learning.Create().
-		SetTrigger(entry.Trigger).
+		SetTrigger(trigger).
 		SetCategory(entry.Category)
 
-	if entry.ErrorPattern != "" {
-		builder.SetErrorPattern(entry.ErrorPattern)
+	if projections.ErrorPattern != "" {
+		builder.SetErrorPattern(projections.ErrorPattern)
 	}
-	if entry.Diagnosis != "" {
-		builder.SetDiagnosis(entry.Diagnosis)
+	if projections.Diagnosis != "" {
+		builder.SetDiagnosis(projections.Diagnosis)
 	}
-	if entry.Fix != "" {
-		builder.SetFix(entry.Fix)
+	if projections.Fix != "" {
+		builder.SetFix(projections.Fix)
+	}
+	if ciphertext != nil {
+		builder.SetPayloadCiphertext(ciphertext)
+		builder.SetPayloadNonce(nonce)
+		builder.SetPayloadKeyVersion(keyVersion)
 	}
 	if len(entry.Tags) > 0 {
 		builder.SetTags(entry.Tags)
@@ -689,14 +978,14 @@ func (s *Store) SaveLearning(ctx context.Context, sessionKey string, entry Learn
 		return fmt.Errorf("create learning: %w", err)
 	}
 
-	content := entry.Trigger
-	if entry.Fix != "" {
-		content += "\n" + entry.Fix
+	content := trigger
+	if projections.Fix != "" {
+		content += "\n" + projections.Fix
 	}
 	s.publishContentSaved(created.ID.String(), "learning", content, map[string]string{
 		"category": string(entry.Category),
 	}, true, false, 0)
-	s.syncLearningFTS5(ctx, created.ID.String(), entry.Trigger, entry.ErrorPattern, entry.Fix)
+	s.syncLearningFTS5(ctx, created.ID.String(), trigger, projections.ErrorPattern, projections.Fix)
 
 	return nil
 }
@@ -710,14 +999,11 @@ func (s *Store) GetLearning(ctx context.Context, id uuid.UUID) (*LearningEntry, 
 		}
 		return nil, fmt.Errorf("get learning: %w", err)
 	}
-	return &LearningEntry{
-		Trigger:      l.Trigger,
-		ErrorPattern: l.ErrorPattern,
-		Diagnosis:    l.Diagnosis,
-		Fix:          l.Fix,
-		Category:     l.Category,
-		Tags:         l.Tags,
-	}, nil
+	resolved, err := s.resolveLearningEntry(ctx, l)
+	if err != nil {
+		return nil, fmt.Errorf("resolve learning %q: %w", id, err)
+	}
+	return &resolved, nil
 }
 
 // SearchLearnings searches learnings by error pattern or trigger substring match.
@@ -757,7 +1043,7 @@ func (s *Store) searchLearningsLIKE(ctx context.Context, errorPattern string, ca
 
 	entries, err := s.client.Learning.Query().
 		Where(predicates...).
-		Order(entlearning.ByConfidence(sql.OrderDesc())).
+		Order(entlearning.ByConfidence(entsql.OrderDesc())).
 		Limit(limit).
 		All(ctx)
 
@@ -767,14 +1053,11 @@ func (s *Store) searchLearningsLIKE(ctx context.Context, errorPattern string, ca
 
 	result := make([]LearningEntry, 0, len(entries))
 	for _, l := range entries {
-		result = append(result, LearningEntry{
-			Trigger:      l.Trigger,
-			ErrorPattern: l.ErrorPattern,
-			Diagnosis:    l.Diagnosis,
-			Fix:          l.Fix,
-			Category:     l.Category,
-			Tags:         l.Tags,
-		})
+		resolved, err := s.resolveLearningEntry(ctx, l)
+		if err != nil {
+			return nil, fmt.Errorf("resolve learning %q: %w", l.ID, err)
+		}
+		result = append(result, resolved)
 	}
 	return result, nil
 }
@@ -818,14 +1101,11 @@ func (s *Store) resolveLearningsByIDs(ctx context.Context, ftsResults []search.S
 		if !ok {
 			continue
 		}
-		result = append(result, LearningEntry{
-			Trigger:      l.Trigger,
-			ErrorPattern: l.ErrorPattern,
-			Diagnosis:    l.Diagnosis,
-			Fix:          l.Fix,
-			Category:     l.Category,
-			Tags:         l.Tags,
-		})
+		resolved, err := s.resolveLearningEntry(ctx, l)
+		if err != nil {
+			return nil, fmt.Errorf("resolve learning %q: %w", l.ID, err)
+		}
+		result = append(result, resolved)
 	}
 	return result, nil
 }
@@ -864,7 +1144,7 @@ func (s *Store) SearchLearningEntities(ctx context.Context, errorPattern string,
 
 	return s.client.Learning.Query().
 		Where(predicates...).
-		Order(entlearning.ByConfidence(sql.OrderDesc())).
+		Order(entlearning.ByConfidence(entsql.OrderDesc())).
 		Limit(limit).
 		All(ctx)
 }
@@ -1022,6 +1302,64 @@ func externalRefKeywordPredicates(query string) []predicate.ExternalRef {
 	return preds
 }
 
+func (s *Store) saveLearningAtomic(ctx context.Context, entry LearningEntry) error {
+	tx, err := s.learningFTS5Idx.DB().BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin learning sql tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	drv := entsql.NewDriver(dialect.SQLite, entsql.Conn{ExecQuerier: tx})
+	txClient := ent.NewClient(ent.Driver(drv))
+
+	trigger := strings.TrimSpace(entry.Trigger)
+	projections, ciphertext, nonce, keyVersion, err := s.prepareLearningWrite(entry)
+	if err != nil {
+		return fmt.Errorf("prepare learning payload: %w", err)
+	}
+
+	builder := txClient.Learning.Create().
+		SetTrigger(trigger).
+		SetCategory(entry.Category)
+	if projections.ErrorPattern != "" {
+		builder.SetErrorPattern(projections.ErrorPattern)
+	}
+	if projections.Diagnosis != "" {
+		builder.SetDiagnosis(projections.Diagnosis)
+	}
+	if projections.Fix != "" {
+		builder.SetFix(projections.Fix)
+	}
+	if ciphertext != nil {
+		builder.SetPayloadCiphertext(ciphertext)
+		builder.SetPayloadNonce(nonce)
+		builder.SetPayloadKeyVersion(keyVersion)
+	}
+	if len(entry.Tags) > 0 {
+		builder.SetTags(entry.Tags)
+	}
+
+	created, err := builder.Save(ctx)
+	if err != nil {
+		return fmt.Errorf("create learning: %w", err)
+	}
+	if err := s.syncLearningFTS5WithExec(ctx, tx, created.ID.String(), trigger, projections.ErrorPattern, projections.Fix, false); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit learning tx: %w", err)
+	}
+
+	content := trigger
+	if projections.Fix != "" {
+		content += "\n" + projections.Fix
+	}
+	s.publishContentSaved(created.ID.String(), "learning", content, map[string]string{
+		"category": string(entry.Category),
+	}, true, false, 0)
+	return nil
+}
+
 // syncKnowledgeFTS5 updates the FTS5 index after a knowledge write.
 // Logs warning on failure; never blocks the Ent write.
 func (s *Store) syncKnowledgeFTS5(ctx context.Context, key, content string, isUpdate bool) {
@@ -1039,6 +1377,37 @@ func (s *Store) syncKnowledgeFTS5(ctx context.Context, key, content string, isUp
 	}
 }
 
+func (s *Store) prepareKnowledgeWrite(ctx context.Context, content string) (storedContent string, ciphertext, nonce []byte, keyVersion int, err error) {
+	if s.payloads == nil {
+		return content, nil, nil, 0, nil
+	}
+	projection := redactKnowledgeProjection(content)
+	ciphertext, nonce, keyVersion, err = s.payloads.EncryptPayload([]byte(content))
+	if err != nil {
+		return "", nil, nil, 0, err
+	}
+	return projection, ciphertext, nonce, keyVersion, nil
+}
+
+func (s *Store) resolveKnowledgeContent(ctx context.Context, k *ent.Knowledge) string {
+	if s.payloads == nil || k == nil || k.ContentCiphertext == nil || k.ContentNonce == nil || k.ContentKeyVersion == nil {
+		if k == nil {
+			return ""
+		}
+		return k.Content
+	}
+	plaintext, err := s.payloads.DecryptPayload(*k.ContentCiphertext, *k.ContentNonce, *k.ContentKeyVersion)
+	if err != nil {
+		s.logger.Warnw("knowledge payload decrypt failed", "key", k.Key, "error", err)
+		return k.Content
+	}
+	return string(plaintext)
+}
+
+func redactKnowledgeProjection(content string) string {
+	return security.RedactedProjection(content, 512)
+}
+
 // deleteKnowledgeFTS5 removes a knowledge entry from the FTS5 index.
 func (s *Store) deleteKnowledgeFTS5(ctx context.Context, key string) {
 	if s.fts5Index == nil {
@@ -1054,9 +1423,73 @@ func (s *Store) syncLearningFTS5(ctx context.Context, id, trigger, errorPattern,
 	if s.learningFTS5Idx == nil {
 		return
 	}
-	if err := s.learningFTS5Idx.Insert(ctx, id, []string{trigger, errorPattern, fix}); err != nil {
+	if err := s.syncLearningFTS5WithExec(ctx, s.learningFTS5Idx.DB(), id, trigger, errorPattern, fix, false); err != nil {
 		s.logger.Warnw("FTS5 learning sync failed", "id", id, "error", err)
 	}
+}
+
+func (s *Store) syncLearningFTS5WithExec(ctx context.Context, ex interface {
+	ExecContext(context.Context, string, ...any) (stdsql.Result, error)
+}, id, trigger, errorPattern, fix string, isUpdate bool) error {
+	if s.learningFTS5Idx == nil {
+		return nil
+	}
+	var err error
+	if isUpdate {
+		err = s.learningFTS5Idx.UpdateWithExec(ctx, ex, id, []string{trigger, errorPattern, fix})
+	} else {
+		err = s.learningFTS5Idx.InsertWithExec(ctx, ex, id, []string{trigger, errorPattern, fix})
+	}
+	if err != nil {
+		return fmt.Errorf("sync learning FTS5 %s: %w", id, err)
+	}
+	return nil
+}
+
+func (s *Store) prepareLearningWrite(entry LearningEntry) (learningPayload, []byte, []byte, int, error) {
+	payload := learningPayload{
+		ErrorPattern: entry.ErrorPattern,
+		Diagnosis:    entry.Diagnosis,
+		Fix:          entry.Fix,
+	}
+	if s.payloads == nil {
+		return payload, nil, nil, 0, nil
+	}
+	ciphertext, nonce, keyVersion, err := security.ProtectJSONBundle(s.payloads, payload)
+	if err != nil {
+		return learningPayload{}, nil, nil, 0, err
+	}
+	return learningPayload{
+		ErrorPattern: security.RedactedProjection(entry.ErrorPattern, 512),
+		Diagnosis:    security.RedactedProjection(entry.Diagnosis, 512),
+		Fix:          security.RedactedProjection(entry.Fix, 512),
+	}, ciphertext, nonce, keyVersion, nil
+}
+
+func (s *Store) resolveLearningEntry(ctx context.Context, l *ent.Learning) (LearningEntry, error) {
+	if l == nil {
+		return LearningEntry{}, nil
+	}
+	entry := LearningEntry{
+		Trigger:  l.Trigger,
+		Category: l.Category,
+		Tags:     l.Tags,
+	}
+	if s.payloads == nil || l.PayloadCiphertext == nil || l.PayloadNonce == nil || l.PayloadKeyVersion == nil {
+		entry.ErrorPattern = l.ErrorPattern
+		entry.Diagnosis = l.Diagnosis
+		entry.Fix = l.Fix
+		return entry, nil
+	}
+	payload, err := security.UnprotectJSONBundle[learningPayload](s.payloads, *l.PayloadCiphertext, *l.PayloadNonce, *l.PayloadKeyVersion)
+	if err != nil {
+		return LearningEntry{}, fmt.Errorf("decrypt learning payload: %w", err)
+	}
+	entry.ErrorPattern = payload.ErrorPattern
+	entry.Diagnosis = payload.Diagnosis
+	entry.Fix = payload.Fix
+	_ = ctx
+	return entry, nil
 }
 
 // deleteLearningFTS5 removes a learning entry from the FTS5 index.
@@ -1136,7 +1569,7 @@ func (s *Store) ListLearnings(ctx context.Context, category string, minConfidenc
 		limit = 50
 	}
 	entries, err := q.
-		Order(entlearning.ByCreatedAt(sql.OrderDesc())).
+		Order(entlearning.ByCreatedAt(entsql.OrderDesc())).
 		Limit(limit).
 		Offset(offset).
 		All(ctx)
@@ -1144,6 +1577,20 @@ func (s *Store) ListLearnings(ctx context.Context, category string, minConfidenc
 		return nil, 0, fmt.Errorf("list learnings: %w", err)
 	}
 	return entries, total, nil
+}
+
+func learningDeletePredicates(category string, maxConfidence float64, olderThan time.Time) []predicate.Learning {
+	var preds []predicate.Learning
+	if category != "" {
+		preds = append(preds, entlearning.CategoryEQ(entlearning.Category(category)))
+	}
+	if maxConfidence > 0 {
+		preds = append(preds, entlearning.ConfidenceLTE(maxConfidence))
+	}
+	if !olderThan.IsZero() {
+		preds = append(preds, entlearning.CreatedAtLTE(olderThan))
+	}
+	return preds
 }
 
 // DeleteLearning deletes a single learning entry by UUID.
@@ -1159,21 +1606,27 @@ func (s *Store) DeleteLearning(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
+// CountLearningsWhere counts learning entries matching the same criteria used
+// by DeleteLearningsWhere without mutating the store.
+func (s *Store) CountLearningsWhere(ctx context.Context, category string, maxConfidence float64, olderThan time.Time) (int, error) {
+	preds := learningDeletePredicates(category, maxConfidence, olderThan)
+	if len(preds) == 0 {
+		return 0, fmt.Errorf("at least one filter criterion is required for bulk count")
+	}
+
+	n, err := s.client.Learning.Query().Where(preds...).Count(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("count learnings: %w", err)
+	}
+	return n, nil
+}
+
 // DeleteLearningsWhere deletes learning entries matching the given criteria
 // and returns the number of deleted entries.
 func (s *Store) DeleteLearningsWhere(ctx context.Context, category string, maxConfidence float64, olderThan time.Time) (int, error) {
 	q := s.client.Learning.Delete()
 
-	var preds []predicate.Learning
-	if category != "" {
-		preds = append(preds, entlearning.CategoryEQ(entlearning.Category(category)))
-	}
-	if maxConfidence > 0 {
-		preds = append(preds, entlearning.ConfidenceLTE(maxConfidence))
-	}
-	if !olderThan.IsZero() {
-		preds = append(preds, entlearning.CreatedAtLTE(olderThan))
-	}
+	preds := learningDeletePredicates(category, maxConfidence, olderThan)
 	if len(preds) == 0 {
 		return 0, fmt.Errorf("at least one filter criterion is required for bulk delete")
 	}

@@ -27,6 +27,12 @@ type Learning struct {
 	Diagnosis string `json:"diagnosis,omitempty"`
 	// Fix holds the value of the "fix" field.
 	Fix string `json:"fix,omitempty"`
+	// PayloadCiphertext holds the value of the "payload_ciphertext" field.
+	PayloadCiphertext *[]byte `json:"payload_ciphertext,omitempty"`
+	// PayloadNonce holds the value of the "payload_nonce" field.
+	PayloadNonce *[]byte `json:"payload_nonce,omitempty"`
+	// PayloadKeyVersion holds the value of the "payload_key_version" field.
+	PayloadKeyVersion *int `json:"payload_key_version,omitempty"`
 	// Category holds the value of the "category" field.
 	Category learning.Category `json:"category,omitempty"`
 	// Tags holds the value of the "tags" field.
@@ -49,11 +55,11 @@ func (*Learning) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case learning.FieldTags:
+		case learning.FieldPayloadCiphertext, learning.FieldPayloadNonce, learning.FieldTags:
 			values[i] = new([]byte)
 		case learning.FieldConfidence:
 			values[i] = new(sql.NullFloat64)
-		case learning.FieldOccurrenceCount, learning.FieldSuccessCount:
+		case learning.FieldPayloadKeyVersion, learning.FieldOccurrenceCount, learning.FieldSuccessCount:
 			values[i] = new(sql.NullInt64)
 		case learning.FieldTrigger, learning.FieldErrorPattern, learning.FieldDiagnosis, learning.FieldFix, learning.FieldCategory:
 			values[i] = new(sql.NullString)
@@ -105,6 +111,25 @@ func (_m *Learning) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field fix", values[i])
 			} else if value.Valid {
 				_m.Fix = value.String
+			}
+		case learning.FieldPayloadCiphertext:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field payload_ciphertext", values[i])
+			} else if value != nil {
+				_m.PayloadCiphertext = value
+			}
+		case learning.FieldPayloadNonce:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field payload_nonce", values[i])
+			} else if value != nil {
+				_m.PayloadNonce = value
+			}
+		case learning.FieldPayloadKeyVersion:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field payload_key_version", values[i])
+			} else if value.Valid {
+				_m.PayloadKeyVersion = new(int)
+				*_m.PayloadKeyVersion = int(value.Int64)
 			}
 		case learning.FieldCategory:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -197,6 +222,21 @@ func (_m *Learning) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("fix=")
 	builder.WriteString(_m.Fix)
+	builder.WriteString(", ")
+	if v := _m.PayloadCiphertext; v != nil {
+		builder.WriteString("payload_ciphertext=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.PayloadNonce; v != nil {
+		builder.WriteString("payload_nonce=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.PayloadKeyVersion; v != nil {
+		builder.WriteString("payload_key_version=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
 	builder.WriteString(", ")
 	builder.WriteString("category=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Category))

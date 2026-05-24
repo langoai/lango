@@ -53,6 +53,11 @@ The `BundleService` SHALL receive a `map[string]SignatureVerifyFunc` at construc
 
 The algorithm constant `AlgorithmSecp256k1Keccak256` SHALL be defined in `internal/security` as the canonical source. The `internal/provenance` package SHALL re-export it for backward compatibility.
 
+#### Scenario: Canonical algorithm constant is re-exported for compatibility
+- **WHEN** provenance callers reference `AlgorithmSecp256k1Keccak256`
+- **THEN** the canonical definition SHALL live in `internal/security`
+- **AND** `internal/provenance` SHALL re-export it for backward compatibility
+
 ---
 
 ### Requirement: PQ dual signatures on provenance bundles

@@ -19,24 +19,24 @@ type MockSessionStore struct {
 	salts    map[string][]byte
 
 	// Configurable error injection
-	CreateErr           error
-	GetErr              error
-	UpdateErr           error
-	DeleteErr           error
-	AppendMessageErr    error
-	AnnotateTimeoutErr  error
-	CloseErr            error
-	GetSaltErr          error
-	SetSaltErr          error
+	CreateErr          error
+	GetErr             error
+	UpdateErr          error
+	DeleteErr          error
+	AppendMessageErr   error
+	AnnotateTimeoutErr error
+	CloseErr           error
+	GetSaltErr         error
+	SetSaltErr         error
 
 	// Call counters
-	createCalls           int
-	getCalls              int
-	updateCalls           int
-	deleteCalls           int
-	appendMessageCalls    int
-	annotateTimeoutCalls  int
-	closeCalls            int
+	createCalls          int
+	getCalls             int
+	updateCalls          int
+	deleteCalls          int
+	appendMessageCalls   int
+	annotateTimeoutCalls int
+	closeCalls           int
 }
 
 // NewMockSessionStore creates a new MockSessionStore.
@@ -54,8 +54,7 @@ func (m *MockSessionStore) Create(s *session.Session) error {
 	if m.CreateErr != nil {
 		return m.CreateErr
 	}
-	cp := *s
-	m.sessions[s.Key] = &cp
+	m.sessions[s.Key] = cloneSession(s)
 	return nil
 }
 
@@ -70,8 +69,7 @@ func (m *MockSessionStore) Get(key string) (*session.Session, error) {
 	if !ok {
 		return nil, fmt.Errorf("session %q not found", key)
 	}
-	cp := *s
-	return &cp, nil
+	return cloneSession(s), nil
 }
 
 func (m *MockSessionStore) Update(s *session.Session) error {
@@ -81,8 +79,7 @@ func (m *MockSessionStore) Update(s *session.Session) error {
 	if m.UpdateErr != nil {
 		return m.UpdateErr
 	}
-	cp := *s
-	m.sessions[s.Key] = &cp
+	m.sessions[s.Key] = cloneSession(s)
 	return nil
 }
 
@@ -108,7 +105,7 @@ func (m *MockSessionStore) AppendMessage(key string, msg session.Message) error 
 	if !ok {
 		return fmt.Errorf("session %q not found", key)
 	}
-	s.History = append(s.History, msg)
+	s.History = append(s.History, cloneMessage(msg))
 	return nil
 }
 
@@ -141,6 +138,23 @@ func (m *MockSessionStore) Close() error {
 	return m.CloseErr
 }
 
+// End marks the session with MetadataKeyEndPending and returns. The mock
+// store does not invoke any processor; tests that need processor wiring
+// should use EntStore directly.
+func (m *MockSessionStore) End(key string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s, ok := m.sessions[key]
+	if !ok {
+		return fmt.Errorf("session %q not found", key)
+	}
+	if s.Metadata == nil {
+		s.Metadata = make(map[string]string)
+	}
+	s.Metadata[session.MetadataKeyEndPending] = session.MetadataValueTrue
+	return nil
+}
+
 func (m *MockSessionStore) GetSalt(name string) ([]byte, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -151,7 +165,7 @@ func (m *MockSessionStore) GetSalt(name string) ([]byte, error) {
 	if !ok {
 		return nil, fmt.Errorf("salt %q not found", name)
 	}
-	return salt, nil
+	return append([]byte(nil), salt...), nil
 }
 
 func (m *MockSessionStore) SetSalt(name string, salt []byte) error {
@@ -160,7 +174,7 @@ func (m *MockSessionStore) SetSalt(name string, salt []byte) error {
 	if m.SetSaltErr != nil {
 		return m.SetSaltErr
 	}
-	m.salts[name] = salt
+	m.salts[name] = append([]byte(nil), salt...)
 	return nil
 }
 
@@ -242,4 +256,36 @@ func (m *MockSessionStore) HasSession(key string) bool {
 	defer m.mu.Unlock()
 	_, ok := m.sessions[key]
 	return ok
+}
+
+func cloneSession(s *session.Session) *session.Session {
+	if s == nil {
+		return nil
+	}
+	cp := *s
+	if s.History != nil {
+		cp.History = make([]session.Message, len(s.History))
+		for i, msg := range s.History {
+			cp.History[i] = cloneMessage(msg)
+		}
+	}
+	if s.Metadata != nil {
+		cp.Metadata = make(map[string]string, len(s.Metadata))
+		for k, v := range s.Metadata {
+			cp.Metadata[k] = v
+		}
+	}
+	return &cp
+}
+
+func cloneMessage(msg session.Message) session.Message {
+	cp := msg
+	if msg.ToolCalls != nil {
+		cp.ToolCalls = make([]session.ToolCall, len(msg.ToolCalls))
+		for i, call := range msg.ToolCalls {
+			cp.ToolCalls[i] = call
+			cp.ToolCalls[i].ThoughtSignature = append([]byte(nil), call.ThoughtSignature...)
+		}
+	}
+	return cp
 }

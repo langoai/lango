@@ -1,8 +1,6 @@
 package chat
 
 import (
-	"strings"
-
 	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -61,8 +59,8 @@ func (m *inputModel) SetState(state chatState) tea.Cmd {
 		m.textarea.Placeholder = defaultComposerPlaceholder
 		return m.textarea.Focus()
 	case stateStreaming:
-		m.textarea.Placeholder = "Lango is responding. Ctrl+C cancels the current turn."
-		m.textarea.Blur()
+		m.textarea.Placeholder = "Type to interrupt and redirect... (Ctrl+C to cancel)"
+		return m.textarea.Focus()
 	case stateApproving:
 		m.textarea.Placeholder = "Approval is required below before the turn can continue."
 		m.textarea.Blur()
@@ -80,6 +78,14 @@ func (m *inputModel) Value() string {
 	return m.textarea.Value()
 }
 
+func (m *inputModel) Placeholder() string {
+	return m.textarea.Placeholder
+}
+
+func (m *inputModel) SetValue(value string) {
+	m.textarea.SetValue(value)
+}
+
 func (m *inputModel) Reset() {
 	m.textarea.Reset()
 }
@@ -92,11 +98,3 @@ func (m *inputModel) Blur() {
 	m.textarea.Blur()
 }
 
-func renderFooter(input inputModel, state chatState, width int) string {
-	parts := make([]string, 0, 3)
-	if state != stateApproving {
-		parts = append(parts, input.View())
-	}
-	parts = append(parts, renderHelpBar(state, width))
-	return strings.Join(parts, "\n")
-}

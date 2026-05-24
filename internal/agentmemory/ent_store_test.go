@@ -1,12 +1,16 @@
 package agentmemory
 
 import (
+	"context"
+	"errors"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/langoai/lango/internal/ent/enttest"
+	"github.com/langoai/lango/internal/security"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -15,6 +19,28 @@ func newTestEntStore(t *testing.T) *EntStore {
 	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&_fk=1")
 	t.Cleanup(func() { client.Close() })
 	return NewEntStore(client)
+}
+
+type stubPayloadProtector struct{}
+
+func (stubPayloadProtector) EncryptPayload(plaintext []byte) ([]byte, []byte, int, error) {
+	return append([]byte("enc:"), plaintext...), []byte("123456789012"), security.PayloadKeyVersionV1, nil
+}
+
+func (stubPayloadProtector) DecryptPayload(ciphertext []byte, nonce []byte, keyVersion int) ([]byte, error) {
+	if keyVersion != security.PayloadKeyVersionV1 {
+		return nil, errors.New("unexpected key version")
+	}
+	if string(nonce) != "123456789012" {
+		return nil, errors.New("unexpected nonce")
+	}
+	return []byte(strings.TrimPrefix(string(ciphertext), "enc:")), nil
+}
+
+type failDecryptProtector struct{ stubPayloadProtector }
+
+func (failDecryptProtector) DecryptPayload(ciphertext []byte, nonce []byte, keyVersion int) ([]byte, error) {
+	return nil, errors.New("decrypt failed")
 }
 
 func TestEntStore_SaveAndGet(t *testing.T) {
@@ -400,4 +426,51 @@ func TestEntStore_AgentNameIsolation(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, gotB)
 	assert.Equal(t, "from agent-b", gotB.Content)
+}
+
+func TestEntStore_PayloadProtection_UsesRedactedProjection(t *testing.T) {
+	s := newTestEntStore(t)
+	s.SetPayloadProtector(stubPayloadProtector{})
+
+	entry := &Entry{
+		AgentName: "researcher",
+		Key:       "secret-key",
+		Content:   "email alice@example.com token SECRETSECRETSECRETSECRETSECRETSECRET",
+		Kind:      KindFact,
+		Scope:     ScopeInstance,
+	}
+	require.NoError(t, s.Save(entry))
+
+	got, err := s.Get("researcher", "secret-key")
+	require.NoError(t, err)
+	require.Equal(t, entry.Content, got.Content)
+
+	row := s.client.AgentMemory.Query().OnlyX(context.Background())
+	require.NotNil(t, row.ContentCiphertext)
+	require.NotContains(t, row.Content, "alice@example.com")
+	require.NotContains(t, row.Content, "SECRETSECRETSECRETSECRETSECRETSECRET")
+
+	results, err := s.Search("researcher", SearchOptions{Query: "SECRETSECRETSECRETSECRETSECRETSECRET"})
+	require.NoError(t, err)
+	assert.Len(t, results, 0)
+
+	results, err = s.Search("researcher", SearchOptions{Query: "secret-key"})
+	require.NoError(t, err)
+	assert.Len(t, results, 1)
+}
+
+func TestEntStore_ProtectedDecryptFailureDoesNotFallback(t *testing.T) {
+	s := newTestEntStore(t)
+	s.SetPayloadProtector(stubPayloadProtector{})
+	require.NoError(t, s.Save(&Entry{
+		AgentName: "researcher",
+		Key:       "secret",
+		Content:   "payload",
+		Kind:      KindFact,
+		Scope:     ScopeInstance,
+	}))
+	s.SetPayloadProtector(failDecryptProtector{})
+
+	_, err := s.Get("researcher", "secret")
+	require.Error(t, err)
 }

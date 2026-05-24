@@ -57,7 +57,6 @@ func BuildTools(fsTool *Tool) []*agent.Tool {
 			},
 			Parameters: agent.Schema().
 				Str("path", "The directory path to list").
-				Required("path").
 				Build(),
 			Handler: func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
 				path := toolparam.OptionalString(params, "path", ".")
@@ -84,7 +83,10 @@ func BuildTools(fsTool *Tool) []*agent.Tool {
 				if err != nil {
 					return nil, err
 				}
-				content := toolparam.OptionalString(params, "content", "")
+				content, err := toolparam.RequireString(params, "content")
+				if err != nil {
+					return nil, err
+				}
 				return nil, fsTool.Write(path, content)
 			},
 		},
@@ -110,9 +112,18 @@ func BuildTools(fsTool *Tool) []*agent.Tool {
 				if err != nil {
 					return nil, err
 				}
-				content := toolparam.OptionalString(params, "content", "")
-				startLine := toolparam.OptionalInt(params, "startLine", 0)
-				endLine := toolparam.OptionalInt(params, "endLine", 0)
+				content, err := toolparam.RequireString(params, "content")
+				if err != nil {
+					return nil, err
+				}
+				startLine, err := toolparam.RequireInt(params, "startLine")
+				if err != nil {
+					return nil, err
+				}
+				endLine, err := toolparam.RequireInt(params, "endLine")
+				if err != nil {
+					return nil, err
+				}
 				return nil, fsTool.Edit(path, startLine, endLine, content)
 			},
 		},

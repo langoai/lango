@@ -133,6 +133,7 @@ func TestContainerExecutor_DockerUnavailable_Explicit(t *testing.T) {
 	if err != nil {
 		// Docker requested but unavailable — expected on some machines.
 		assert.ErrorIs(t, err, ErrRuntimeUnavailable)
+		assert.Contains(t, err.Error(), "docker runtime requested but unavailable")
 		return
 	}
 	// Docker is available on this machine.
@@ -150,6 +151,7 @@ func TestContainerExecutor_GVisorUnavailable_Explicit(t *testing.T) {
 	_, err := NewContainerExecutor(cfg, containerCfg)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, ErrRuntimeUnavailable)
+	assert.Contains(t, err.Error(), "gvisor runtime requested but unavailable")
 }
 
 func TestContainerExecutor_Runtime(t *testing.T) {
@@ -194,6 +196,7 @@ func TestContainerExecutor_RequireContainer_FailClosed(t *testing.T) {
 			if tt.wantErr {
 				require.Error(t, err)
 				assert.ErrorIs(t, err, ErrRuntimeUnavailable)
+				assert.Contains(t, err.Error(), "container runtime required but unavailable")
 				assert.Nil(t, exec)
 			} else {
 				require.NoError(t, err)

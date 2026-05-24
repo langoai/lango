@@ -48,7 +48,7 @@ func (s *Store) Allocate(taskID string, total *big.Int) (*TaskBudget, error) {
 	}
 	s.budgets[taskID] = tb
 
-	return tb, nil
+	return cloneTaskBudget(tb), nil
 }
 
 // Get returns the task budget for the given task ID.
@@ -60,7 +60,7 @@ func (s *Store) Get(taskID string) (*TaskBudget, error) {
 	if !exists {
 		return nil, fmt.Errorf("get %q: %w", taskID, ErrBudgetNotFound)
 	}
-	return tb, nil
+	return cloneTaskBudget(tb), nil
 }
 
 // List returns all task budgets.
@@ -70,7 +70,7 @@ func (s *Store) List() []*TaskBudget {
 
 	result := make([]*TaskBudget, 0, len(s.budgets))
 	for _, tb := range s.budgets {
-		result = append(result, tb)
+		result = append(result, cloneTaskBudget(tb))
 	}
 	return result
 }
@@ -84,8 +84,9 @@ func (s *Store) Update(budget *TaskBudget) error {
 		return fmt.Errorf("update %q: %w", budget.TaskID, ErrBudgetNotFound)
 	}
 
-	budget.UpdatedAt = time.Now()
-	s.budgets[budget.TaskID] = budget
+	next := cloneTaskBudget(budget)
+	next.UpdatedAt = time.Now()
+	s.budgets[budget.TaskID] = next
 	return nil
 }
 
@@ -100,4 +101,30 @@ func (s *Store) Delete(taskID string) error {
 
 	delete(s.budgets, taskID)
 	return nil
+}
+
+func cloneTaskBudget(tb *TaskBudget) *TaskBudget {
+	if tb == nil {
+		return nil
+	}
+
+	clone := *tb
+	clone.TotalBudget = cloneBigInt(tb.TotalBudget)
+	clone.Spent = cloneBigInt(tb.Spent)
+	clone.Reserved = cloneBigInt(tb.Reserved)
+	if tb.Entries != nil {
+		clone.Entries = make([]SpendEntry, len(tb.Entries))
+		for i, entry := range tb.Entries {
+			clone.Entries[i] = entry
+			clone.Entries[i].Amount = cloneBigInt(entry.Amount)
+		}
+	}
+	return &clone
+}
+
+func cloneBigInt(v *big.Int) *big.Int {
+	if v == nil {
+		return nil
+	}
+	return new(big.Int).Set(v)
 }

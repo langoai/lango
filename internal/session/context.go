@@ -57,3 +57,22 @@ func TurnIDFromContext(ctx context.Context) string {
 	}
 	return ""
 }
+
+// modeNameCtxKey is the context key type for the active session mode name.
+type modeNameCtxKey struct{}
+
+// WithModeName adds the active session mode name to the context.
+// Consumers look up the full SessionMode definition via config.LookupMode(name).
+// Storing only the name keeps this package free of a config dependency.
+func WithModeName(ctx context.Context, name string) context.Context {
+	return context.WithValue(ctx, modeNameCtxKey{}, name)
+}
+
+// ModeNameFromContext extracts the active session mode name from context.
+// Returns "" when no mode is set.
+func ModeNameFromContext(ctx context.Context) string {
+	if v, ok := ctx.Value(modeNameCtxKey{}).(string); ok {
+		return v
+	}
+	return ""
+}

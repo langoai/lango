@@ -59,8 +59,8 @@ type SkillEntry struct {
 	Status           SkillStatus
 	CreatedBy        string
 	RequiresApproval bool
-	Source           string   // import source URL (empty for locally created)
-	AllowedTools     []string // pre-approved tools (from "allowed-tools" frontmatter)
+	Source           string            // import source URL (empty for locally created)
+	AllowedTools     []string          // pre-approved tools (from "allowed-tools" frontmatter)
 	WhenToUse        string            // human-readable trigger description
 	Paths            []string          // file path glob patterns for auto-activation
 	Context          string            // additional context for the LLM
@@ -68,4 +68,8 @@ type SkillEntry struct {
 	Effort           string            // "low", "medium", "high" — reasoning effort
 	Agent            string            // target agent name (empty = operator)
 	Hooks            map[string]string // lifecycle hooks: "pre", "post"
+	// SourcePack is the name of the extension pack that provided this skill,
+	// or empty for user-authored and built-in skills. Populated by the file
+	// walker from the `ext-<pack>/` directory prefix at load time.
+	SourcePack string `json:"sourcePack,omitempty"`
 }

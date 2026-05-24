@@ -1,31 +1,275 @@
 package cockpit
 
 import (
-	"github.com/langoai/lango/internal/app"
+	"context"
+	"encoding/json"
+	"fmt"
+	"strings"
+
+	"github.com/langoai/lango/internal/agentrt"
 	"github.com/langoai/lango/internal/approval"
 	"github.com/langoai/lango/internal/background"
+	"github.com/langoai/lango/internal/cli/chat"
+	"github.com/langoai/lango/internal/collabview"
 	"github.com/langoai/lango/internal/config"
-	"github.com/langoai/lango/internal/configstore"
+	"github.com/langoai/lango/internal/cron"
+	"github.com/langoai/lango/internal/ctxkeys"
 	"github.com/langoai/lango/internal/eventbus"
+	"github.com/langoai/lango/internal/librarian"
+	"github.com/langoai/lango/internal/mission"
 	"github.com/langoai/lango/internal/observability"
+	"github.com/langoai/lango/internal/postadjudicationstatus"
+	"github.com/langoai/lango/internal/proposal"
+	"github.com/langoai/lango/internal/runledger"
+	"github.com/langoai/lango/internal/session"
+	"github.com/langoai/lango/internal/storage"
 	"github.com/langoai/lango/internal/toolcatalog"
 	"github.com/langoai/lango/internal/turnrunner"
 )
+
+type RunLedgerReader interface {
+	ListRuns(ctx context.Context, limit int) ([]runledger.RunSummary, error)
+	GetRunSnapshot(ctx context.Context, runID string) (*runledger.RunSnapshot, error)
+	ListRunSummariesBySession(ctx context.Context, sessionKey string, limit int) ([]runledger.RunSummary, error)
+}
+
+type AgentRunReader interface {
+	Get(id string) (*agentrt.AgentRun, error)
+	List() []*agentrt.AgentRun
+}
+
+type MissionLifecycleService interface {
+	StartMission(ctx context.Context, in mission.StartMissionInput) (*mission.Mission, error)
+	AcceptProposal(ctx context.Context, in mission.AcceptProposalInput) (*mission.Mission, error)
+}
+
+type MissionReader interface {
+	ListMissionsBySession(ctx context.Context, sessionKey string, limit int) ([]*mission.Mission, error)
+	ListExecutionLinks(ctx context.Context, missionID string) ([]*mission.ExecutionLink, error)
+}
+
+type ProposalReader interface {
+	ListBySession(sessionKey string) []proposal.Proposal
+	ListLoopBySession(sessionKey string) []proposal.Proposal
+	GetByID(proposalID string) (proposal.Proposal, bool)
+}
+
+type ProposalMutationService interface {
+	Accept(ctx context.Context, proposalID string) (*proposal.Proposal, error)
+	Dismiss(ctx context.Context, proposalID string) (*proposal.Proposal, error)
+	RestorePrepared(ctx context.Context, proposalID string) (*proposal.Proposal, error)
+}
+
+type LoopInquiryReader interface {
+	ListPendingInquiries(ctx context.Context, sessionKey string, limit int) ([]librarian.Inquiry, error)
+}
+
+type LoopDeadLetterReader interface {
+	ListCurrentDeadLetters(ctx context.Context) ([]postadjudicationstatus.DeadLetterBacklogEntry, error)
+}
+
+type LoopCronReader interface {
+	List(ctx context.Context) ([]cron.Job, error)
+	ListHistory(ctx context.Context, jobID string, limit int) ([]cron.HistoryEntry, error)
+}
+
+type CollaborationMissionLinkReader interface {
+	ListMissionExecutionLinks(ctx context.Context, missionID string) ([]collabview.CollaborationMissionExecutionLink, error)
+}
+
+type CollaborationAgentRunReader interface {
+	ListAgentRuns() []collabview.CollaborationAgentRunView
+}
+
+type CollaborationDelegationReader interface {
+	ListDelegationsForSession(ctx context.Context, sessionKey string) ([]collabview.CollaborationDelegationRecord, error)
+}
+
+type CollaborationRuntimeReader interface {
+	ListBudgetSignals(missionID string) []collabview.CollaborationBudgetRecord
+	ListRecoverySignals(missionID string) []collabview.CollaborationRecoveryRecord
+}
 
 // Deps holds the dependencies for the cockpit TUI.
 // ApprovalProvider is NOT included — type assertion for SetTTYFallback
 // is handled in cmd/lango/main.go's runCockpit().
 type Deps struct {
-	TurnRunner        *turnrunner.Runner
-	Config            *config.Config
-	SessionKey        string
-	ToolCatalog       *toolcatalog.Catalog
-	MetricsCollector  *observability.MetricsCollector
-	FeatureStatuses   *app.StatusCollector
-	ConfigStore       *configstore.Store
-	ProfileName       string
-	BackgroundManager *background.Manager    // optional, nil when unavailable
-	EventBus          *eventbus.Bus          // optional, enables channel event subscription
-	ApprovalHistory   *approval.HistoryStore // optional, approval decision history
-	GrantStore        *approval.GrantStore   // optional, persistent session grants
+	TurnRunner         *turnrunner.Runner
+	Config             *config.Config
+	WorkDir            string
+	SessionKey         string
+	SessionStore       session.Store // optional; enables /mode to persist session mode
+	ToolCatalog        *toolcatalog.Catalog
+	MetricsCollector   *observability.MetricsCollector
+	ConfigStore        storage.ConfigProfileStore
+	ProfileName        string
+	BackgroundManager  *background.Manager // optional, nil when unavailable
+	RuntimeFeatures    chat.RuntimeFeatures
+	RunLedgerStore     RunLedgerReader        // optional, nil when unavailable
+	AgentRunStore      AgentRunReader         // optional, nil when unavailable
+	EventBus           *eventbus.Bus          // optional, enables channel event subscription
+	ApprovalHistory    *approval.HistoryStore // optional, approval decision history
+	GrantStore         *approval.GrantStore   // optional, persistent session grants
+	MissionReader      MissionReader
+	ProposalReader     ProposalReader
+	ProposalService    ProposalMutationService
+	LoopInquiryReader  LoopInquiryReader
+	LoopDeadReader     LoopDeadLetterReader
+	LoopCronReader     LoopCronReader
+	CollabMissionLinks CollaborationMissionLinkReader
+	CollabAgentRuns    CollaborationAgentRunReader
+	CollabDelegations  CollaborationDelegationReader
+	CollabRuntime      CollaborationRuntimeReader
+	MissionService     MissionLifecycleService
+	PendingApprovals   *PendingApprovalRegistry
+	LearningBuffer     *LearningSuggestionBuffer
+	ActivityBuffer     *MissionActivityBuffer
+}
+
+type DeadLetterToolBridge struct {
+	catalog *toolcatalog.Catalog
+}
+
+type DeadLetterListOptions struct {
+	Query                     string
+	Adjudication              string
+	LatestStatusSubtype       string
+	LatestStatusSubtypeFamily string
+	AnyMatchFamily            string
+	ManualReplayActor         string
+	DeadLetteredAfter         string
+	DeadLetteredBefore        string
+	DeadLetterReasonQuery     string
+	LatestDispatchReference   string
+}
+
+func NewDeadLetterToolBridge(catalog *toolcatalog.Catalog) *DeadLetterToolBridge {
+	return &DeadLetterToolBridge{catalog: catalog}
+}
+
+func (b *DeadLetterToolBridge) Ready() bool {
+	if b == nil || b.catalog == nil {
+		return false
+	}
+	_, hasList := b.catalog.Get("list_dead_lettered_post_adjudication_executions")
+	_, hasDetail := b.catalog.Get("get_post_adjudication_execution_status")
+	return hasList && hasDetail
+}
+
+func (b *DeadLetterToolBridge) CanRetry() bool {
+	if b == nil || b.catalog == nil {
+		return false
+	}
+	_, hasRetry := b.catalog.Get("retry_post_adjudication_execution")
+	return hasRetry
+}
+
+func (b *DeadLetterToolBridge) List(ctx context.Context, opts DeadLetterListOptions) ([]postadjudicationstatus.DeadLetterBacklogEntry, error) {
+	if b == nil || b.catalog == nil {
+		return nil, fmt.Errorf("dead-letter tool catalog is not configured")
+	}
+	entry, ok := b.catalog.Get("list_dead_lettered_post_adjudication_executions")
+	if !ok || entry.Tool == nil || entry.Tool.Handler == nil {
+		return nil, fmt.Errorf("dead-letter backlog tool is not available")
+	}
+	params := map[string]interface{}{}
+	if query := strings.TrimSpace(opts.Query); query != "" {
+		params["query"] = query
+	}
+	switch strings.TrimSpace(opts.Adjudication) {
+	case "release", "refund":
+		params["adjudication"] = strings.TrimSpace(opts.Adjudication)
+	}
+	switch strings.TrimSpace(opts.LatestStatusSubtype) {
+	case "retry-scheduled", "manual-retry-requested", "dead-lettered":
+		params["latest_status_subtype"] = strings.TrimSpace(opts.LatestStatusSubtype)
+	}
+	switch strings.TrimSpace(opts.LatestStatusSubtypeFamily) {
+	case "retry", "manual-retry", "dead-letter":
+		params["latest_status_subtype_family"] = strings.TrimSpace(opts.LatestStatusSubtypeFamily)
+	}
+	switch strings.TrimSpace(opts.AnyMatchFamily) {
+	case "retry", "manual-retry", "dead-letter":
+		params["any_match_family"] = strings.TrimSpace(opts.AnyMatchFamily)
+	}
+	if actor := strings.TrimSpace(opts.ManualReplayActor); actor != "" {
+		params["manual_replay_actor"] = actor
+	}
+	if after := strings.TrimSpace(opts.DeadLetteredAfter); after != "" {
+		params["dead_lettered_after"] = after
+	}
+	if before := strings.TrimSpace(opts.DeadLetteredBefore); before != "" {
+		params["dead_lettered_before"] = before
+	}
+	if reasonQuery := strings.TrimSpace(opts.DeadLetterReasonQuery); reasonQuery != "" {
+		params["dead_letter_reason_query"] = reasonQuery
+	}
+	if dispatchReference := strings.TrimSpace(opts.LatestDispatchReference); dispatchReference != "" {
+		params["latest_dispatch_reference"] = dispatchReference
+	}
+	raw, err := entry.Tool.Handler(ctx, params)
+	if err != nil {
+		return nil, err
+	}
+	payload, ok := raw.(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("dead-letter backlog tool returned invalid payload")
+	}
+	entriesRaw, ok := payload["entries"]
+	if !ok {
+		return nil, fmt.Errorf("dead-letter backlog tool returned no entries")
+	}
+	data, err := json.Marshal(entriesRaw)
+	if err != nil {
+		return nil, err
+	}
+	var entries []postadjudicationstatus.DeadLetterBacklogEntry
+	if err := json.Unmarshal(data, &entries); err != nil {
+		return nil, err
+	}
+	return entries, nil
+}
+
+func (b *DeadLetterToolBridge) Detail(ctx context.Context, transactionReceiptID string) (postadjudicationstatus.TransactionStatus, error) {
+	if b == nil || b.catalog == nil {
+		return postadjudicationstatus.TransactionStatus{}, fmt.Errorf("dead-letter tool catalog is not configured")
+	}
+	entry, ok := b.catalog.Get("get_post_adjudication_execution_status")
+	if !ok || entry.Tool == nil || entry.Tool.Handler == nil {
+		return postadjudicationstatus.TransactionStatus{}, fmt.Errorf("dead-letter detail tool is not available")
+	}
+	raw, err := entry.Tool.Handler(ctx, map[string]interface{}{
+		"transaction_receipt_id": transactionReceiptID,
+	})
+	if err != nil {
+		return postadjudicationstatus.TransactionStatus{}, err
+	}
+	status, ok := raw.(postadjudicationstatus.TransactionStatus)
+	if ok {
+		return status, nil
+	}
+	data, err := json.Marshal(raw)
+	if err != nil {
+		return postadjudicationstatus.TransactionStatus{}, err
+	}
+	var statusDecoded postadjudicationstatus.TransactionStatus
+	if err := json.Unmarshal(data, &statusDecoded); err != nil {
+		return postadjudicationstatus.TransactionStatus{}, err
+	}
+	return statusDecoded, nil
+}
+
+func (b *DeadLetterToolBridge) Retry(ctx context.Context, transactionReceiptID string) error {
+	if b == nil || b.catalog == nil {
+		return fmt.Errorf("dead-letter tool catalog is not configured")
+	}
+	entry, ok := b.catalog.Get("retry_post_adjudication_execution")
+	if !ok || entry.Tool == nil || entry.Tool.Handler == nil {
+		return fmt.Errorf("dead-letter retry tool is not available")
+	}
+	ctx = ctxkeys.WithDefaultPrincipal(ctx, "system:cockpit")
+	_, err := entry.Tool.Handler(ctx, map[string]interface{}{
+		"transaction_receipt_id": transactionReceiptID,
+	})
+	return err
 }

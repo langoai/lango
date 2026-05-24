@@ -295,6 +295,60 @@ func TestOntologyFromMCP(t *testing.T) {
 	assert.GreaterOrEqual(t, m["properties_set"].(int), 1)
 }
 
+func TestOntologyGovernanceTools_RequireCanonicalInputs(t *testing.T) {
+	svc := newToolsTestEnv(t)
+	tools := ontology.BuildTools(svc, nil)
+	ctx := context.Background()
+
+	promoteType := findHandler(tools, "ontology_promote_type")
+	require.NotNil(t, promoteType)
+	_, err := promoteType(ctx, map[string]interface{}{
+		"target_status": "active",
+		"reason":        "promote it",
+	})
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "missing type_name parameter")
+
+	promotePredicate := findHandler(tools, "ontology_promote_predicate")
+	require.NotNil(t, promotePredicate)
+	_, err = promotePredicate(ctx, map[string]interface{}{
+		"predicate_name": "caused_by",
+		"reason":         "promote it",
+	})
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "missing target_status parameter")
+
+	typeUsage := findHandler(tools, "ontology_type_usage")
+	require.NotNil(t, typeUsage)
+	_, err = typeUsage(ctx, map[string]interface{}{})
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "missing type_name parameter")
+}
+
+func TestOntologyDynamicActionTool_RequiresDeclaredParams(t *testing.T) {
+	svc := newToolsTestEnv(t)
+	reg := ontology.NewActionRegistry()
+	err := reg.Register(&ontology.ActionType{
+		Name:        "test_action",
+		Description: "test action",
+		ParamSchema: map[string]string{
+			"entity_id": "Entity identifier",
+			"status":    "Target status",
+		},
+	})
+	require.NoError(t, err)
+
+	tools := ontology.BuildTools(svc, reg)
+	handler := findHandler(tools, "ontology_action_test_action")
+	require.NotNil(t, handler)
+
+	_, err = handler(context.Background(), map[string]interface{}{
+		"entity_id": "entity-1",
+	})
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "missing status parameter")
+}
+
 // --- Helpers ---
 
 func findHandler(tools []*agent.Tool, name string) func(context.Context, map[string]interface{}) (interface{}, error) {

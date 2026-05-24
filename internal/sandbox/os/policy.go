@@ -267,8 +267,14 @@ type Policy struct {
 // that WritePaths[0] is the canonical filesystem path (symlinked workDirs
 // no longer leak their pre-resolve path into the writable set).
 func DefaultToolPolicy(workDir, dataRoot string) Policy {
+	return DefaultToolPolicyWithProtectedPaths(workDir, dataRoot, nil)
+}
+
+// DefaultToolPolicyWithProtectedPaths augments the baseline deny set with
+// additional resolved runtime protected paths.
+func DefaultToolPolicyWithProtectedPaths(workDir, dataRoot string, protectedPaths []string) Policy {
 	workDir = canonicalWorkDir(workDir)
-	denyPaths := collectBaselineDeny(workDir, dataRoot)
+	denyPaths := collectBaselineDeny(workDir, dataRoot, protectedPaths)
 	return Policy{
 		Filesystem: FilesystemPolicy{
 			ReadOnlyGlobal: true,
@@ -303,7 +309,7 @@ func canonicalWorkDir(workDir string) string {
 // MCP policies. It applies the two-path gitRoot model (pointer + gitdir
 // target, distinct paths when they differ) and adds the resolved dataRoot
 // when non-empty and existing.
-func collectBaselineDeny(workDir, dataRoot string) []string {
+func collectBaselineDeny(workDir, dataRoot string, protectedPaths []string) []string {
 	var denyPaths []string
 	if workDir != "" {
 		if gr := findGitRoot(workDir); gr.found() {
@@ -315,6 +321,14 @@ func collectBaselineDeny(workDir, dataRoot string) []string {
 	}
 	if dataRoot != "" {
 		if abs, err := filepath.Abs(dataRoot); err == nil && isDir(abs) {
+			denyPaths = append(denyPaths, abs)
+		}
+	}
+	for _, path := range protectedPaths {
+		if path == "" {
+			continue
+		}
+		if abs, err := filepath.Abs(path); err == nil {
 			denyPaths = append(denyPaths, abs)
 		}
 	}
@@ -344,10 +358,16 @@ func StrictToolPolicy(workDir, dataRoot string) Policy {
 // isolated unit tests and minimal environments can still build the policy.
 // Pass empty strings to intentionally drop the masks.
 func MCPServerPolicy(workDir, dataRoot string) Policy {
+	return MCPServerPolicyWithProtectedPaths(workDir, dataRoot, nil)
+}
+
+// MCPServerPolicyWithProtectedPaths augments the baseline deny set with
+// additional resolved runtime protected paths.
+func MCPServerPolicyWithProtectedPaths(workDir, dataRoot string, protectedPaths []string) Policy {
 	if workDir != "" {
 		workDir = canonicalWorkDir(workDir)
 	}
-	denyPaths := collectBaselineDeny(workDir, dataRoot)
+	denyPaths := collectBaselineDeny(workDir, dataRoot, protectedPaths)
 	return Policy{
 		Filesystem: FilesystemPolicy{
 			ReadOnlyGlobal: true,

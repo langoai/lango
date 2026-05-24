@@ -289,8 +289,8 @@ func TestExecute_Fork(t *testing.T) {
 		got, ok := result.(string)
 		require.True(t, ok, "result is %T, want string", result)
 
-		assert.Contains(t, got, "'operator' specialist agent")
-		assert.Contains(t, got, "transfer_to_agent('operator')")
+		assert.Contains(t, got, "'operator' built-in teammate")
+		assert.Contains(t, got, "Please use agent_spawn with agent \"operator\".")
 	})
 
 	t.Run("missing instruction returns error", func(t *testing.T) {
@@ -347,6 +347,52 @@ func TestExecute_Fork(t *testing.T) {
 
 		assert.Contains(t, got, "(none)")
 	})
+}
+
+func TestExecuteFork_DefaultBuiltinUsesAgentSpawnGuidance(t *testing.T) {
+	e := NewExecutor(zap.NewNop().Sugar())
+	got, err := e.executeFork(SkillEntry{
+		Name: "fork-default",
+		Type: "fork",
+		Definition: map[string]interface{}{
+			"instruction": "inspect files",
+		},
+	}, nil)
+	require.NoError(t, err)
+	text := got.(string)
+	assert.Contains(t, text, "Please use agent_spawn")
+	assert.NotContains(t, text, "transfer_to_agent('operator')")
+}
+
+func TestExecuteFork_ExplicitBuiltinTargetUsesAgentSpawnGuidance(t *testing.T) {
+	e := NewExecutor(zap.NewNop().Sugar())
+	got, err := e.executeFork(SkillEntry{
+		Name:  "fork-builtin",
+		Type:  "fork",
+		Agent: "navigator",
+		Definition: map[string]interface{}{
+			"instruction": "inspect page",
+		},
+	}, nil)
+	require.NoError(t, err)
+	text := got.(string)
+	assert.Contains(t, text, "Please use agent_spawn")
+	assert.NotContains(t, text, "transfer_to_agent('navigator')")
+}
+
+func TestExecuteFork_RemoteTargetKeepsTransferGuidance(t *testing.T) {
+	e := NewExecutor(zap.NewNop().Sugar())
+	got, err := e.executeFork(SkillEntry{
+		Name:  "fork-remote",
+		Type:  "fork",
+		Agent: "remote-researcher",
+		Definition: map[string]interface{}{
+			"instruction": "ask remote",
+		},
+	}, nil)
+	require.NoError(t, err)
+	text := got.(string)
+	assert.Contains(t, text, "transfer_to_agent('remote-researcher')")
 }
 
 func TestExecute_UnknownType(t *testing.T) {

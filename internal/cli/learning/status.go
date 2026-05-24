@@ -1,21 +1,25 @@
 package learning
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 
 	"github.com/langoai/lango/internal/config"
 	"github.com/spf13/cobra"
 )
 
 func newStatusCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
-	var jsonOutput bool
+	var output string
 
 	cmd := &cobra.Command{
-		Use:   "status",
-		Short: "Show learning and knowledge system configuration",
+		Use:           "status",
+		Short:         "Show learning and knowledge system configuration",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			output, err := resolveOutput(cmd)
+			if err != nil {
+				return err
+			}
 			cfg, err := cfgLoader()
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
@@ -54,35 +58,34 @@ func newStatusCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 				RAGEnabled:             cfg.Embedding.RAG.Enabled,
 			}
 
-			if jsonOutput {
-				enc := json.NewEncoder(os.Stdout)
-				enc.SetIndent("", "  ")
-				return enc.Encode(out)
+			if output == "json" {
+				return printJSON(cmd.OutOrStdout(), out)
 			}
 
-			fmt.Printf("Learning Status\n")
-			fmt.Printf("  Knowledge Enabled:       %v\n", out.KnowledgeEnabled)
-			fmt.Printf("  Error Correction:        %v\n", out.ErrorCorrectionEnabled)
-			fmt.Printf("  Confidence Threshold:    %.1f\n", out.ConfidenceThreshold)
-			fmt.Printf("  Max Context/Layer:       %d\n", out.MaxContextPerLayer)
-			fmt.Printf("  Analysis Turn Threshold: %d\n", out.AnalysisTurnThreshold)
-			fmt.Printf("  Analysis Token Threshold:%d\n", out.AnalysisTokenThreshold)
-			fmt.Println()
-			fmt.Printf("Graph Learning\n")
-			fmt.Printf("  Graph Enabled:           %v\n", out.GraphEnabled)
+			writer := cmd.OutOrStdout()
+			fmt.Fprintf(writer, "Learning Status\n")
+			fmt.Fprintf(writer, "  Knowledge Enabled:       %v\n", out.KnowledgeEnabled)
+			fmt.Fprintf(writer, "  Error Correction:        %v\n", out.ErrorCorrectionEnabled)
+			fmt.Fprintf(writer, "  Confidence Threshold:    %.1f\n", out.ConfidenceThreshold)
+			fmt.Fprintf(writer, "  Max Context/Layer:       %d\n", out.MaxContextPerLayer)
+			fmt.Fprintf(writer, "  Analysis Turn Threshold: %d\n", out.AnalysisTurnThreshold)
+			fmt.Fprintf(writer, "  Analysis Token Threshold:%d\n", out.AnalysisTokenThreshold)
+			fmt.Fprintln(writer)
+			fmt.Fprintf(writer, "Graph Learning\n")
+			fmt.Fprintf(writer, "  Graph Enabled:           %v\n", out.GraphEnabled)
 			if out.GraphEnabled {
-				fmt.Printf("  Graph Backend:           %s\n", out.GraphBackend)
+				fmt.Fprintf(writer, "  Graph Backend:           %s\n", out.GraphBackend)
 			}
-			fmt.Println()
-			fmt.Printf("Embedding & RAG\n")
-			fmt.Printf("  Embedding Provider:      %s\n", out.EmbeddingProvider)
-			fmt.Printf("  Embedding Model:         %s\n", out.EmbeddingModel)
-			fmt.Printf("  RAG Enabled:             %v\n", out.RAGEnabled)
+			fmt.Fprintln(writer)
+			fmt.Fprintf(writer, "Embedding & RAG\n")
+			fmt.Fprintf(writer, "  Embedding Provider:      %s\n", out.EmbeddingProvider)
+			fmt.Fprintf(writer, "  Embedding Model:         %s\n", out.EmbeddingModel)
+			fmt.Fprintf(writer, "  RAG Enabled:             %v\n", out.RAGEnabled)
 
 			return nil
 		},
 	}
 
-	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
+	cmd.Flags().StringVar(&output, "output", "table", "Output format: table or json")
 	return cmd
 }

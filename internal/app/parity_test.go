@@ -2,8 +2,11 @@ package app
 
 import (
 	"context"
+	"net"
 	"path/filepath"
 	"sort"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -14,6 +17,7 @@ import (
 	"github.com/langoai/lango/internal/bootstrap"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/lifecycle"
+	"github.com/langoai/lango/internal/storage"
 	"github.com/langoai/lango/internal/testutil"
 	"github.com/langoai/lango/internal/toolcatalog"
 )
@@ -114,6 +118,47 @@ func TestRegisterPostBuildLifecycle_Names(t *testing.T) {
 	})
 }
 
+func TestRegisterPostBuildLifecycle_GatewayBindFailurePropagates(t *testing.T) {
+	t.Parallel()
+
+	occupied := occupyLoopbackPort(t)
+	defer occupied.Close()
+
+	cfg := config.DefaultConfig()
+	cfg.Server.Host = "127.0.0.1"
+	cfg.Server.Port = occupiedPort(t, occupied)
+
+	reg := lifecycle.NewRegistry()
+	a := &App{
+		Gateway:  initGateway(cfg, nil, nil, nil),
+		registry: reg,
+	}
+	registerPostBuildLifecycle(a)
+
+	err := a.Start(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "start gateway")
+}
+
+func occupyLoopbackPort(t *testing.T) net.Listener {
+	t.Helper()
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	return listener
+}
+
+func occupiedPort(t *testing.T, listener net.Listener) int {
+	t.Helper()
+
+	_, port, err := net.SplitHostPort(listener.Addr().String())
+	require.NoError(t, err)
+	parsed, err := strconv.Atoi(port)
+	require.NoError(t, err)
+	require.True(t, strings.HasPrefix(listener.Addr().String(), "127.0.0.1:"))
+	return parsed
+}
+
 // noopChannel satisfies the Channel interface for testing.
 type noopChannel struct{}
 
@@ -135,8 +180,7 @@ func TestAppNew_DefaultConfig_Parity(t *testing.T) {
 	client := testutil.TestEntClient(t)
 	boot := &bootstrap.Result{
 		Config:      cfg,
-		DBClient:    client,
-		RawDB:       nil, // safe: embedding provider is empty
+		Storage:     storage.NewFacade(nil, nil, storage.WithEntClient(client)),
 		ProfileName: "test",
 	}
 
@@ -167,7 +211,7 @@ func TestAppNew_DefaultConfig_Parity(t *testing.T) {
 	assert.Contains(t, enabledNames, "output")
 
 	// 2. Disabled categories.
-	for _, name := range []string{"browser", "crypto", "secrets", "meta", "graph", "rag", "memory", "agent_memory", "librarian", "mcp", "observability"} {
+	for _, name := range []string{"browser", "crypto", "secrets", "meta", "graph", "memory", "agent_memory", "librarian", "mcp", "observability"} {
 		assert.Contains(t, disabledNames, name, "expected %q to be disabled", name)
 	}
 
@@ -234,8 +278,7 @@ func TestAppNew_FeaturesEnabled_Parity(t *testing.T) {
 	client := testutil.TestEntClient(t)
 	boot := &bootstrap.Result{
 		Config:      cfg,
-		DBClient:    client,
-		RawDB:       nil,
+		Storage:     storage.NewFacade(nil, nil, storage.WithEntClient(client)),
 		ProfileName: "test",
 	}
 

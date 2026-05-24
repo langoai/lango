@@ -204,7 +204,7 @@ func NewP2PSandboxForm(cfg *config.Config) *tuicore.FormModel {
 		Key: "container_runtime", Label: "  Runtime", Type: tuicore.InputSelect,
 		Value:       runtime,
 		Options:     []string{"auto", "docker", "gvisor", "native"},
-		Description: "Container runtime: auto=detect best, gvisor=strongest isolation",
+		Description: "Container runtime: auto=detect best available, docker=preferred real container runtime, gvisor=current stub, native=local fallback",
 		VisibleWhen: isContainerOn,
 	})
 

@@ -547,3 +547,124 @@ func TestEnvelope_KMSSlot_BackwardCompat(t *testing.T) {
 		t.Fatal("hardware slot should not be present in old envelope")
 	}
 }
+
+type shortKMSProvider struct{}
+
+func (s shortKMSProvider) Sign(context.Context, string, []byte) ([]byte, error) {
+	return nil, fmt.Errorf("unexpected sign")
+}
+
+func (s shortKMSProvider) Encrypt(context.Context, string, []byte) ([]byte, error) {
+	return []byte("wrapped"), nil
+}
+
+func (s shortKMSProvider) Decrypt(context.Context, string, []byte) ([]byte, error) {
+	return []byte("short"), nil
+}
+
+func TestEnvelopeResidualValidationBranches(t *testing.T) {
+	t.Run("derive kek rejects nil and unsupported kdf", func(t *testing.T) {
+		_, err := DeriveKEK("secret", nil)
+		if !errors.Is(err, ErrInvalidSlot) {
+			t.Fatalf("expected ErrInvalidSlot for nil slot, got %v", err)
+		}
+
+		_, err = DeriveKEK("secret", &KEKSlot{KDFAlg: "argon2id"})
+		if !errors.Is(err, ErrInvalidSlot) {
+			t.Fatalf("expected ErrInvalidSlot for unsupported kdf, got %v", err)
+		}
+	})
+
+	t.Run("wrap and unwrap reject invalid inputs", func(t *testing.T) {
+		mk := bytes.Repeat([]byte{0x11}, KeySize)
+		_, _, err := WrapMasterKey(mk, []byte("short"))
+		if err == nil {
+			t.Fatal("expected invalid kek size error")
+		}
+
+		kek := bytes.Repeat([]byte{0x22}, KeySize)
+		_, err = UnwrapMasterKey([]byte("wrapped"), bytes.Repeat([]byte{0x33}, NonceSize), []byte("short"))
+		if !errors.Is(err, ErrUnwrapFailed) {
+			t.Fatalf("expected ErrUnwrapFailed for invalid kek size, got %v", err)
+		}
+
+		_, err = UnwrapMasterKey([]byte("wrapped"), []byte("short"), kek)
+		if !errors.Is(err, ErrUnwrapFailed) {
+			t.Fatalf("expected ErrUnwrapFailed for invalid nonce size, got %v", err)
+		}
+
+		wrapped, nonce, err := WrapMasterKey([]byte("short"), kek)
+		if err != nil {
+			t.Fatalf("WrapMasterKey short payload: %v", err)
+		}
+		_, err = UnwrapMasterKey(wrapped, nonce, kek)
+		if !errors.Is(err, ErrUnwrapFailed) {
+			t.Fatalf("expected ErrUnwrapFailed for invalid mk size, got %v", err)
+		}
+	})
+
+	t.Run("envelope mutators reject invalid inputs", func(t *testing.T) {
+		if _, _, err := NewEnvelope("short"); err == nil {
+			t.Fatal("expected short passphrase rejection")
+		}
+
+		env, mk, err := NewEnvelope(testPassphrase)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer ZeroBytes(mk)
+
+		if err := env.AddSlot(KEKSlotMnemonic, "", []byte("short"), "mnemonic", NewDefaultKDFParams()); !errors.Is(err, ErrInvalidSlot) {
+			t.Fatalf("expected ErrInvalidSlot for invalid mk size, got %v", err)
+		}
+		if err := env.ChangePassphraseSlot(mk, "short"); err == nil {
+			t.Fatal("expected short new passphrase rejection")
+		}
+		if err := env.ChangePassphraseSlot([]byte("short"), "new-passphrase-1234"); !errors.Is(err, ErrInvalidSlot) {
+			t.Fatalf("expected ErrInvalidSlot for invalid change mk size, got %v", err)
+		}
+
+		if err := env.AddSlot(KEKSlotMnemonic, "", mk, "recovery mnemonic phrase", KDFParams{}); err != nil {
+			t.Fatal(err)
+		}
+		if err := env.RemoveSlot("missing-slot"); !errors.Is(err, ErrInvalidSlot) {
+			t.Fatalf("expected ErrInvalidSlot for missing slot, got %v", err)
+		}
+	})
+
+	t.Run("kms slot validation and invalid plaintext branches", func(t *testing.T) {
+		env, mk, err := NewEnvelope(testPassphrase)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer ZeroBytes(mk)
+		ctx := context.Background()
+
+		if err := env.AddKMSSlot(ctx, "kms", []byte("short"), shortKMSProvider{}, "aws-kms", "key"); !errors.Is(err, ErrInvalidSlot) {
+			t.Fatalf("expected ErrInvalidSlot for invalid kms mk size, got %v", err)
+		}
+		if err := env.AddKMSSlot(ctx, "kms", mk, shortKMSProvider{}, "", "key"); !errors.Is(err, ErrInvalidSlot) {
+			t.Fatalf("expected ErrInvalidSlot for missing provider, got %v", err)
+		}
+		if err := env.AddKMSSlot(ctx, "kms", mk, &failingKMSProvider{}, "aws-kms", "key"); err == nil {
+			t.Fatal("expected encrypt failure")
+		}
+
+		if err := env.AddKMSSlot(ctx, "short", mk, shortKMSProvider{}, "aws-kms", "key-short"); err != nil {
+			t.Fatal(err)
+		}
+		got, slotID, err := env.UnwrapFromKMS(ctx, shortKMSProvider{}, "aws-kms", "key-short")
+		if got != nil || slotID != "" || !errors.Is(err, ErrKMSSlotUnavailable) {
+			t.Fatalf("expected invalid-length KMS unwrap failure, got mk=%v slot=%q err=%v", got, slotID, err)
+		}
+	})
+
+	t.Run("domain mapping covers hardware and custom slots", func(t *testing.T) {
+		if got := domainForSlotType(KEKSlotHardware); got != domainKMS {
+			t.Fatalf("expected hardware domain %q, got %q", domainKMS, got)
+		}
+		if got := domainForSlotType(KEKSlotType("custom")); got != "custom" {
+			t.Fatalf("expected custom domain passthrough, got %q", got)
+		}
+	})
+}

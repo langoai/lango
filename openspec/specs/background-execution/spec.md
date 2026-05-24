@@ -107,6 +107,17 @@ The bg_submit tool handler SHALL resolve the delivery channel using the three-ti
 - **WHEN** a background task notification is attempted with empty OriginChannel
 - **THEN** the notification system SHALL log a Warn-level message with a configuration hint
 
+### Requirement: Background tool handlers reject missing required inputs
+The background tool handlers SHALL reject missing required `prompt` or `task_id` inputs before queue submission or task lookup begins.
+
+#### Scenario: Missing background submit prompt
+- **WHEN** `bg_submit` is invoked without `prompt`
+- **THEN** the handler SHALL return an actionable missing-parameter error
+
+#### Scenario: Missing background task id
+- **WHEN** `bg_status`, `bg_result`, or `bg_cancel` is invoked without `task_id`
+- **THEN** the handler SHALL return an actionable missing-parameter error
+
 ### Requirement: Completion notifications
 The system SHALL send completion notifications to the origin channel via the ChannelNotifier interface.
 
@@ -183,4 +194,3 @@ The `Projection` interface SHALL support AgentRun state synchronization via `Pre
 #### Scenario: SyncTask with unknown run
 - **WHEN** `SyncTask` is called with a snapshot whose ID does not exist in the store
 - **THEN** the store error SHALL be propagated
-

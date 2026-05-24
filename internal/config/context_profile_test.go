@@ -13,12 +13,12 @@ func TestApplyContextProfile(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		give            ContextProfileName
-		explicitKeys    map[string]bool
-		wantKnowledge   bool
-		wantMemory      bool
-		wantLibrarian   bool
-		wantGraph       bool
+		give          ContextProfileName
+		explicitKeys  map[string]bool
+		wantKnowledge bool
+		wantMemory    bool
+		wantLibrarian bool
+		wantGraph     bool
 	}{
 		{
 			give:          ContextProfileOff,

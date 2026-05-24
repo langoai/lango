@@ -15,6 +15,14 @@ The `retrieval` package SHALL provide a `TemporalSearchAgent` struct that implem
 ### Requirement: TemporalSearchSource interface
 The `retrieval` package SHALL define a `TemporalSearchSource` interface with method: `SearchRecentKnowledge(ctx context.Context, query string, limit int) ([]knowledge.KnowledgeEntry, error)`. This interface SHALL be satisfied by `*knowledge.Store`.
 
+#### Scenario: knowledge.Store satisfies TemporalSearchSource
+- **WHEN** `*knowledge.Store` is compiled against the temporal retrieval agent
+- **THEN** it SHALL satisfy the `TemporalSearchSource` interface
+
+#### Scenario: knowledge.Store satisfies TemporalSearchSource
+- **WHEN** `*knowledge.Store` is compiled against the temporal retrieval agent
+- **THEN** it SHALL satisfy the `TemporalSearchSource` interface
+
 ### Requirement: Recency score normalization
 TemporalSearchAgent SHALL compute recency scores as `max(0, 1.0 - hoursSinceUpdate / 168)` where 168 is the decay window in hours (1 week). Score range SHALL be 0.0 to 1.0.
 
@@ -36,8 +44,24 @@ TemporalSearchAgent SHALL prepend version and recency metadata to finding conten
 ### Requirement: SearchSource field
 All findings from TemporalSearchAgent SHALL have `SearchSource = "temporal"`.
 
+#### Scenario: Temporal findings carry temporal search source
+- **WHEN** TemporalSearchAgent returns findings
+- **THEN** each finding SHALL set `SearchSource` to `"temporal"`
+
+#### Scenario: Temporal findings carry temporal search source
+- **WHEN** TemporalSearchAgent returns findings
+- **THEN** each finding SHALL set `SearchSource` to `"temporal"`
+
 ### Requirement: Injectable clock
 TemporalSearchAgent SHALL support an injectable `now` function for deterministic testing. Default SHALL be `time.Now`.
+
+#### Scenario: Default clock uses time.Now
+- **WHEN** no custom clock is injected into TemporalSearchAgent
+- **THEN** the agent SHALL use `time.Now`
+
+#### Scenario: Default clock uses time.Now
+- **WHEN** no custom clock is injected into TemporalSearchAgent
+- **THEN** the agent SHALL use `time.Now`
 
 ### Requirement: KnowledgeEntry.UpdatedAt
 `KnowledgeEntry` domain type SHALL include an `UpdatedAt time.Time` field. This field SHALL be populated from the Ent entity's `updated_at` field in all store query methods that return `KnowledgeEntry`.
@@ -59,3 +83,13 @@ TemporalSearchAgent SHALL support an injectable `now` function for deterministic
 
 ### Requirement: v1 layer coverage boundary
 The v1 TemporalSearchAgent SHALL cover only LayerUserKnowledge. AgentLearnings are excluded because learning entries lack version chains (no version/is_latest fields).
+
+#### Scenario: TemporalSearchAgent excludes AgentLearnings in v1
+- **WHEN** the v1 temporal search agent reports supported layers
+- **THEN** it SHALL include only `LayerUserKnowledge`
+- **AND** it SHALL exclude AgentLearnings
+
+#### Scenario: TemporalSearchAgent excludes AgentLearnings in v1
+- **WHEN** the v1 temporal search agent is asked to enumerate supported layers
+- **THEN** it SHALL include only `LayerUserKnowledge`
+- **AND** it SHALL exclude AgentLearnings

@@ -89,7 +89,7 @@ func severityRank(s string) int {
 // DeliveryRouter subscribes to AlertEvent on the EventBus and fans out
 // to configured delivery channels, filtering by minimum severity.
 type DeliveryRouter struct {
-	channels    []channelEntry
+	channels []channelEntry
 }
 
 type channelEntry struct {
@@ -151,4 +151,3 @@ func (r *DeliveryRouter) handle(evt eventbus.AlertEvent) {
 		}(entry.channel)
 	}
 }
-

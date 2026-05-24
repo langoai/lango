@@ -168,9 +168,23 @@ The journal is an append-only event log. Every mutation to run state is captured
 | `run_resumed` | Run resumed from paused state |
 | `run_completed` | All steps and criteria satisfied |
 | `run_failed` | Run terminated with failures |
+| `teammate_approval_blocked` | Built-in teammate entered or replaced an approval-blocked runtime condition |
+| `teammate_approval_unblocked` | Built-in teammate left the approval-blocked runtime condition |
 | `projection_synced` | Write-through projection sync marker |
 
 Snapshots are materialized by replaying the full journal, or by applying a tail of new events to a cached snapshot.
+
+When both `runLedger.enabled: true` and `runLedger.writeThrough: true` are active, RunLedger also records `teammate_approval_blocked` / `teammate_approval_unblocked` transitions for built-in teammate approval blocking. The materialized snapshot exposes the latest teammate approval-blocked fields derived from those events:
+
+- `teammate_runtime_condition`
+- `teammate_blocked_reason`
+- `teammate_grant_request_id`
+- `teammate_grant_attempt`
+- `teammate_grant_state`
+
+The teammate approval-blocked durable mirror preserves both the stable logical `grant_request_id` and the latest attempt metadata derived from approval-block journal events. Repeated attempts for the same logical blocked request do not require rotating the request ID.
+
+This mirror is best effort. The live control-plane `AgentRun` projection remains authoritative for runtime continuity, while the RunLedger journal plus materialized snapshot provide durable reconstruction later.
 
 ## Workspace Isolation
 
@@ -220,6 +234,15 @@ Tools are partitioned by caller role. The orchestrator and execution agents have
 | `run_read` | Read the current run snapshot |
 | `run_active` | Get the currently active or next executable step |
 | `run_note` | Read or write a scratchpad note on a run |
+
+Required wrapper inputs fail closed before journal or snapshot access begins:
+
+- `run_create` requires `plan_json`, `session_key`, and `original_request`
+- `run_read`, `run_active`, and `run_resume` require `run_id`
+- `run_note` requires `run_id` and `key`
+- `run_propose_step_result` requires `run_id`, `step_id`, and `result`
+- `run_apply_policy` requires `run_id`, `step_id`, `action`, and `reason`
+- `run_approve_step` requires `run_id` and `step_id`
 
 Role detection is based on the agent name in context: `orchestrator`, `lango-orchestrator`, and the explicit internal `system` caller are treated as orchestrators. Empty agent names are rejected for role-gated tools.
 

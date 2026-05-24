@@ -1,6 +1,6 @@
 # Tasks: boundary-cleanup
 
-## Wave 1 — Interface extraction (parallel)
+## Slice 1 — Interface extraction (parallel)
 
 ### Unit 1: Identity KeyProvider + bytes.Equal
 - [ ] Define `KeyProvider` interface in `internal/p2p/identity/identity.go`
@@ -25,7 +25,7 @@
 - [ ] Update `app/wiring_p2p.go:131`: `Config{Wallet: wp}` → `Config{Signer: wp}`
 - [ ] Verify: `go build ./... && go test ./internal/p2p/handshake/... ./internal/app/...`
 
-## Wave 2 — Provenance separation
+## Slice 2 — Provenance separation
 
 ### Unit 3: Provenance BundleSigner + verifier injection
 - [ ] Define `BundleSigner` interface in `provenance/bundle.go`
@@ -46,7 +46,7 @@
 - [ ] Update `cli/provenance/bundle.go:49`: Export call
 - [ ] Verify: `go build ./... && go test ./internal/provenance/... ./internal/app/... ./internal/cli/provenance/...`
 
-## Wave 3 — Verifier extraction
+## Slice 3 — Verifier extraction
 
 ### Unit 4: Handshake ResponseVerifier
 - [ ] Define `ResponseVerifyFunc` type in `handshake.go`
@@ -57,7 +57,7 @@
 - [ ] In `verifyResponse`: replace inline logic with `h.responseVerifier(pubkey, nonce, sig)`
 - [ ] Verify: `go build ./internal/p2p/handshake/... && go test ./internal/p2p/handshake/...`
 
-## Wave 4 — Enforcement + audit
+## Slice 4 — Enforcement + audit
 
 ### Unit 5: archtest boundary enforcement
 - [ ] Fix `forbiddenForP2P`: remove trailing slashes

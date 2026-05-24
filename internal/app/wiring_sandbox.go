@@ -52,4 +52,3 @@ func initOSSandbox(cfg *config.Config) sandboxos.OSIsolator {
 
 	return iso
 }
-

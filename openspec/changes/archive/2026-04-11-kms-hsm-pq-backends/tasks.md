@@ -1,6 +1,6 @@
 # Tasks: KMS/HSM PQ Backends
 
-## Wave 1 — Envelope KMS Slot (core crypto)
+## Slice 1 — Envelope KMS Slot (core crypto)
 
 - [x] Add `WrapAlgKMSEnvelope = "kms-envelope"` constant to `envelope.go`
 - [x] Add `KMSProvider`, `KMSKeyID` fields to `KEKSlot` struct (omitempty)
@@ -17,7 +17,7 @@
 - [x] Test: `TestEnvelope_KMSSlot_BackwardCompat` — old envelope without KMS fields loads OK
 - [x] Verify: `go build ./... && go test ./internal/security/...`
 
-## Wave 2 — Bootstrap integration
+## Slice 2 — Bootstrap integration
 
 - [x] Create `internal/bootstrap/kms_env.go` with `KMSConfigFromEnv()` (provider-specific env vars)
 - [x] Add `KMSProvider`, `KMSUnwrap` fields to bootstrap `State`
@@ -30,7 +30,7 @@
 - [x] Test: `KMSConfigFromEnv` — provider-specific env parsing (aws, azure, pkcs11, none)
 - [x] Verify: `go build ./... && go test ./internal/bootstrap/...`
 
-## Wave 3 — CLI + Status
+## Slice 3 — CLI + Status
 
 - [x] Add `newKMSWrapCmd` — `lango security kms wrap --provider <name> --key-id <id>`
 - [x] Add `newKMSDetachCmd` — `lango security kms detach [--slot-id <uuid>]`

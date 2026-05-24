@@ -2,9 +2,7 @@ package memory
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"os"
 
 	"github.com/langoai/lango/internal/config"
 	"github.com/spf13/cobra"
@@ -13,13 +11,19 @@ import (
 func newStatusCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 	var (
 		sessionKey string
-		jsonOutput bool
+		output     string
 	)
 
 	cmd := &cobra.Command{
-		Use:   "status",
-		Short: "Show observational memory status for a session",
+		Use:           "status",
+		Short:         "Show observational memory status for a session",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			output, err := resolveOutput(cmd)
+			if err != nil {
+				return err
+			}
 			cfg, err := cfgLoader()
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
@@ -79,34 +83,33 @@ func newStatusCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 				MaxMessageTokenBudget:     cfg.ObservationalMemory.MaxMessageTokenBudget,
 			}
 
-			if jsonOutput {
-				enc := json.NewEncoder(os.Stdout)
-				enc.SetIndent("", "  ")
-				return enc.Encode(s)
+			if output == "json" {
+				return printJSON(cmd.OutOrStdout(), s)
 			}
 
-			fmt.Printf("Observational Memory Status (session: %s)\n", sessionKey)
-			fmt.Printf("  Enabled:                      %v\n", s.Enabled)
+			writer := cmd.OutOrStdout()
+			fmt.Fprintf(writer, "Observational Memory Status (session: %s)\n", sessionKey)
+			fmt.Fprintf(writer, "  Enabled:                      %v\n", s.Enabled)
 			if s.Provider != "" {
-				fmt.Printf("  Provider:                     %s\n", s.Provider)
+				fmt.Fprintf(writer, "  Provider:                     %s\n", s.Provider)
 			}
 			if s.Model != "" {
-				fmt.Printf("  Model:                        %s\n", s.Model)
+				fmt.Fprintf(writer, "  Model:                        %s\n", s.Model)
 			}
-			fmt.Printf("  Observations:                 %d (%d tokens)\n",
+			fmt.Fprintf(writer, "  Observations:                 %d (%d tokens)\n",
 				s.Observations, s.ObservationTokens)
-			fmt.Printf("  Reflections:                  %d (%d tokens)\n",
+			fmt.Fprintf(writer, "  Reflections:                  %d (%d tokens)\n",
 				s.Reflections, s.ReflectionTokens)
-			fmt.Printf("  Message Token Threshold:      %d\n", s.MessageTokenThreshold)
-			fmt.Printf("  Observation Token Threshold:  %d\n", s.ObservationTokenThreshold)
-			fmt.Printf("  Max Message Token Budget:     %d\n", s.MaxMessageTokenBudget)
+			fmt.Fprintf(writer, "  Message Token Threshold:      %d\n", s.MessageTokenThreshold)
+			fmt.Fprintf(writer, "  Observation Token Threshold:  %d\n", s.ObservationTokenThreshold)
+			fmt.Fprintf(writer, "  Max Message Token Budget:     %d\n", s.MaxMessageTokenBudget)
 
 			return nil
 		},
 	}
 
 	cmd.Flags().StringVar(&sessionKey, "session", "", "Session key (required)")
-	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
+	cmd.Flags().StringVar(&output, "output", "table", "Output format: table or json")
 	_ = cmd.MarkFlagRequired("session")
 
 	return cmd

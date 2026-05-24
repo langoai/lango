@@ -153,6 +153,8 @@ DefaultConfig() SHALL be the single source of truth for all config default value
 ### Requirement: configstore profilePayload
 The configstore SHALL wrap Config and ExplicitKeys in a `profilePayload` struct stored inside the encrypted profile. `Save()` SHALL accept explicitKeys parameter. `Load()/LoadActive()` SHALL return explicitKeys alongside Config. Legacy profiles without ExplicitKeys SHALL return nil.
 
+CLI mutation paths that save an already-loaded profile SHALL pass through the loaded `ExplicitKeys` metadata instead of replacing it with nil. Commands that directly set a named context-related key SHALL add that key to `ExplicitKeys` before saving.
+
 #### Scenario: Save with explicitKeys
 - **WHEN** `Save(ctx, name, cfg, explicitKeys)` is called
 - **THEN** both Config and ExplicitKeys SHALL be encrypted and stored together
@@ -160,6 +162,18 @@ The configstore SHALL wrap Config and ExplicitKeys in a `profilePayload` struct 
 #### Scenario: Load legacy profile
 - **WHEN** a profile saved before Step 8 is loaded
 - **THEN** Config SHALL be returned normally and ExplicitKeys SHALL be nil
+
+#### Scenario: CLI save preserves explicitKeys
+- **WHEN** a CLI mutation saves a loaded profile with non-nil `ExplicitKeys`
+- **THEN** the saved profile SHALL retain those explicit keys
+
+#### Scenario: Onboard existing profile preserves explicitKeys
+- **WHEN** `lango onboard --profile existing` loads and saves an existing profile with non-nil `ExplicitKeys`
+- **THEN** the saved profile SHALL retain those explicit keys
+
+#### Scenario: Onboard preset profile saves preset explicitKeys
+- **WHEN** `lango onboard --profile research --preset researcher` creates and saves a missing profile
+- **THEN** the saved profile SHALL include `PresetExplicitKeys("researcher")`
 
 ### Requirement: Bootstrap carries ExplicitKeys and AutoEnabled
 `bootstrap.Result` SHALL include `ExplicitKeys map[string]bool` and `AutoEnabled config.AutoEnabledSet`. `phaseLoadProfile` SHALL call `ApplyContextProfile` and `ResolveContextAutoEnable` after profile load.
@@ -323,11 +337,11 @@ The substituteEnvVars function SHALL expand `${VAR}` patterns in `payment.networ
 - **THEN** the environment variable value is substituted
 
 ### Requirement: Cron configuration
-The config system SHALL support a `cron` section with fields: enabled (bool), timezone (string), maxConcurrentJobs (int), defaultSessionMode (string), historyRetention (duration string), defaultDeliverTo ([]string).
+The config system SHALL support a `cron` section with fields: enabled (bool), timezone (string), maxConcurrentJobs (int), defaultSessionMode (string), historyRetention (duration string), defaultJobTimeout (duration string), defaultDeliverTo ([]string).
 
 #### Scenario: Default cron config
 - **WHEN** no cron config is specified
-- **THEN** defaults SHALL be: enabled=false, timezone="UTC", maxConcurrentJobs=5, defaultSessionMode="isolated", historyRetention="720h", defaultDeliverTo=nil
+- **THEN** defaults SHALL be: enabled=false, timezone="UTC", maxConcurrentJobs=5, defaultSessionMode="isolated", historyRetention="720h", defaultJobTimeout="30m", defaultDeliverTo=nil
 
 ### Requirement: Background configuration
 The config system SHALL support a `background` section with fields: enabled (bool), yieldMs (int), maxConcurrentTasks (int), defaultDeliverTo ([]string).
@@ -391,3 +405,18 @@ The Config struct SHALL include a `Provenance ProvenanceConfig` field with sub-s
 - **WHEN** DefaultConfig() is called
 - **THEN** the Provenance field is populated with default values
 
+### Requirement: Public P2P defaults stay synchronized
+
+Public configuration documentation SHALL describe selected P2P defaults using `DefaultConfig()` as the source of truth.
+
+#### Scenario: Public docs match DefaultConfig P2P defaults
+
+- **WHEN** maintainers update `DefaultConfig().P2P.ToolIsolation`
+- **OR** maintainers update selected `DefaultConfig().P2P` network, ZK, or tool isolation defaults
+- **THEN** executable documentation guards SHALL verify that `README.md` and `docs/configuration.md` document the selected P2P defaults consistently with `DefaultConfig()`
+- **AND** the guards SHALL fail if guarded defaults drift in either public document
+
+#### Scenario: Runtime behavior remains unchanged
+
+- **WHEN** the documentation drift is corrected
+- **THEN** the `DefaultConfig()` P2P tool isolation values SHALL remain unchanged

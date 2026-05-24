@@ -25,24 +25,24 @@ const (
 )
 
 const (
-	CauseApprovalDenied           = "approval_denied"
-	CauseApprovalTimeout          = "approval_timeout"
-	CauseApprovalUnavailable      = "approval_unavailable"
-	CauseToolNotFound             = "tool_not_found"
-	CauseFunctionCallValidation   = "function_call_validation"
-	CauseOrchestratorDirectTool   = "orchestrator_direct_tool_call"
-	CauseUnknownToolError         = "unknown_tool_error"
-	CauseProviderRateLimit        = "provider_rate_limit"
-	CauseProviderTransient        = "provider_transient"
-	CauseProviderAuth             = "provider_auth"
-	CauseProviderConnection       = "provider_connection"
-	CauseThoughtSignatureMissing  = "thought_signature_missing"
-	CauseTimeoutIdle              = "timeout_idle"
-	CauseTimeoutHard              = "timeout_hard"
-	CauseRepeatedCallSignature    = "repeated_call_signature"
-	CauseTurnLimitExceeded        = "turn_limit_exceeded"
-	CauseEmptyAfterToolUse        = "empty_after_tool_use"
-	CauseInternalRuntimeError     = "internal_runtime_error"
+	CauseApprovalDenied          = "approval_denied"
+	CauseApprovalTimeout         = "approval_timeout"
+	CauseApprovalUnavailable     = "approval_unavailable"
+	CauseToolNotFound            = "tool_not_found"
+	CauseFunctionCallValidation  = "function_call_validation"
+	CauseOrchestratorDirectTool  = "orchestrator_direct_tool_call"
+	CauseUnknownToolError        = "unknown_tool_error"
+	CauseProviderRateLimit       = "provider_rate_limit"
+	CauseProviderTransient       = "provider_transient"
+	CauseProviderAuth            = "provider_auth"
+	CauseProviderConnection      = "provider_connection"
+	CauseThoughtSignatureMissing = "thought_signature_missing"
+	CauseTimeoutIdle             = "timeout_idle"
+	CauseTimeoutHard             = "timeout_hard"
+	CauseRepeatedCallSignature   = "repeated_call_signature"
+	CauseTurnLimitExceeded       = "turn_limit_exceeded"
+	CauseEmptyAfterToolUse       = "empty_after_tool_use"
+	CauseInternalRuntimeError    = "internal_runtime_error"
 )
 
 // FailureClassification is the operator-facing classification for a terminal failure.
@@ -300,5 +300,29 @@ func classifyError(err error) FailureClassification {
 		CauseClass:      CauseInternalRuntimeError,
 		CauseDetail:     msg,
 		OperatorSummary: fmt.Sprintf("[%s] %s: %s", ErrInternal, CauseInternalRuntimeError, msg[:min(len(msg), 200)]),
+	}
+}
+
+// RecoveryAction indicates what the retry owner should do after a failure.
+type RecoveryAction int
+
+const (
+	// RecoveryRetry means the operation should be retried with backoff.
+	RecoveryRetry RecoveryAction = iota + 1
+	// RecoveryAbortWithHint means the operation should not be retried;
+	// a user-facing hint should be displayed instead.
+	RecoveryAbortWithHint
+)
+
+// RecoveryActionFor maps a failure classification to a recovery action.
+// Returns nil (zero value) when the failure is not retryable.
+func RecoveryActionFor(fc FailureClassification) RecoveryAction {
+	switch fc.CauseClass {
+	case CauseProviderRateLimit, CauseProviderTransient, CauseProviderConnection:
+		return RecoveryRetry
+	case CauseProviderAuth:
+		return RecoveryAbortWithHint
+	default:
+		return 0
 	}
 }

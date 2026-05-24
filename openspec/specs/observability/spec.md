@@ -1,9 +1,7 @@
 ## Purpose
 
 Capability spec for observability. See requirements below for scope and behavior contracts.
-
 ## Requirements
-
 ### Requirement: Audit recorder handles AlertEvent
 The audit recorder SHALL subscribe to AlertEvent via SubscribeTyped and persist each alert to the audit log with action="alert", actor="system", target=alert type, and details containing severity, message, and alert-specific metadata.
 
@@ -17,8 +15,6 @@ The `/alerts` HTTP route SHALL be registered alongside existing observability ro
 #### Scenario: Alerts endpoint available
 - **WHEN** observability is enabled and the application starts
 - **THEN** the GET `/alerts` endpoint is registered on the chi router
-
-
 
 ### Requirement: Session map capacity limit
 The `MetricsCollector` MUST support a `MaxSessions` field (default: 10,000) that caps the number of tracked sessions. When the cap is reached and a new session is inserted, the least-recently-updated session MUST be evicted.
@@ -39,6 +35,10 @@ The `MetricsCollector` MUST support a `MaxSessions` field (default: 10,000) that
 ### Requirement: Session metric timestamp
 Each `SessionMetric` MUST include a `LastUpdated time.Time` field that is set to `time.Now()` on every `RecordTokenUsage` call for that session.
 
+#### Scenario: RecordTokenUsage refreshes LastUpdated
+- **WHEN** token usage is recorded for an existing or new session
+- **THEN** that session metric MUST update `LastUpdated` to the current time
+
 ### Requirement: Prometheus metrics endpoint
 When `observability.metrics.format` is `"prometheus"`, the system MUST register a `/metrics/prometheus` HTTP endpoint serving metrics in Prometheus text exposition format. The existing `/metrics` JSON endpoint MUST remain unchanged.
 
@@ -50,6 +50,85 @@ When `observability.metrics.format` is `"prometheus"`, the system MUST register 
 #### Scenario: Prometheus format disabled
 - **WHEN** `observability.metrics.format` is `"json"` or empty
 - **THEN** `/metrics/prometheus` SHALL NOT be registered
+
+### Requirement: CLI system metrics summary
+The CLI SHALL provide `lango metrics` that fetches the `/metrics` JSON endpoint and renders a system metrics snapshot summary as table (default) or JSON. When `--addr` is omitted, the command SHALL resolve the gateway address from configured `server.host` and `server.port`, falling back to `http://localhost:18789` only when configuration is unavailable, blank, or zero-valued.
+
+#### Scenario: Metrics summary table output
+- **WHEN** `lango metrics` is run without --output flag
+- **THEN** it SHALL display uptime, total input/output token counts, and tool execution count
+
+#### Scenario: Metrics summary JSON output
+- **WHEN** `lango metrics --output json` is run
+- **THEN** it SHALL output raw JSON from the `/metrics` endpoint
+
+#### Scenario: Metrics summary rejects an unknown output format before fetch
+- **WHEN** `lango metrics --output yaml` is run
+- **THEN** it SHALL return an actionable unknown-output-format error
+- **AND** it SHALL NOT contact the gateway
+
+#### Scenario: Metrics summary uses configured gateway by default
+- **WHEN** configuration sets `server.host` and `server.port`
+- **AND** the user runs `lango metrics` without `--addr`
+- **THEN** the command SHALL fetch `/metrics` from that configured gateway address
+
+#### Scenario: Metrics summary explicit address override
+- **WHEN** the user runs `lango metrics --addr <url>`
+- **THEN** the command SHALL fetch `/metrics` from `<url>` instead of the configured gateway address
+
+### Requirement: CLI system metrics output routing
+`lango metrics` SHALL write all non-error output through the Cobra command output stream so wrappers and test harnesses can capture table and JSON output without intercepting process-global stdout.
+
+#### Scenario: Metrics summary table writes to command output
+- **WHEN** `lango metrics` is run without --output flag
+- **THEN** the command writes the table summary to the Cobra command output stream
+
+#### Scenario: Metrics summary JSON writes to command output
+- **WHEN** `lango metrics --output json` is run
+- **THEN** the command writes the JSON payload to the Cobra command output stream
+
+### Requirement: CLI metrics breakdown subcommands
+The CLI SHALL provide `lango metrics sessions`, `lango metrics tools`, `lango metrics agents`, and `lango metrics history` that fetch their respective `/metrics/*` endpoints and render table (default) or JSON output. When `--addr` is omitted, each subcommand SHALL resolve the gateway address from configured `server.host` and `server.port`, falling back to `http://localhost:18789` only when configuration is unavailable, blank, or zero-valued.
+
+#### Scenario: Sessions output
+- **WHEN** `lango metrics sessions` is run
+- **THEN** it SHALL display per-session token usage or an empty-state message when no session data exists
+
+#### Scenario: Tools output
+- **WHEN** `lango metrics tools` is run
+- **THEN** it SHALL display per-tool execution statistics or an empty-state message when no tool data exists
+
+#### Scenario: Agents output
+- **WHEN** `lango metrics agents` is run
+- **THEN** it SHALL display per-agent token usage or an empty-state message when no agent data exists
+
+#### Scenario: History output
+- **WHEN** `lango metrics history --days 7` is run
+- **THEN** it SHALL display historical token usage records and aggregate totals or an empty-state message when no history exists
+
+#### Scenario: Metrics breakdown uses configured gateway by default
+- **WHEN** configuration sets `server.host` and `server.port`
+- **AND** the user runs a metrics breakdown subcommand without `--addr`
+- **THEN** the command SHALL fetch its gateway endpoint from that configured gateway address
+
+### Requirement: CLI metrics breakdown output routing
+`lango metrics sessions`, `lango metrics tools`, `lango metrics agents`, and `lango metrics history` SHALL write all non-error output through the Cobra command output stream so wrappers and test harnesses can capture table and JSON output without intercepting process-global stdout.
+
+#### Scenario: Sessions JSON writes to command output
+- **WHEN** `lango metrics sessions --output json` is run
+- **THEN** the command writes the JSON payload to the Cobra command output stream
+
+#### Scenario: Tools empty-state writes to command output
+- **WHEN** `lango metrics tools` returns no data
+- **THEN** the command writes the empty-state message to the Cobra command output stream
+
+#### Scenario: Agents empty-state writes to command output
+- **WHEN** `lango metrics agents` returns no data
+- **THEN** the command writes the empty-state message to the Cobra command output stream
+
+#### Scenario: History table writes to command output
+- **WHEN** `lango metrics history --days 3` is run
+- **THEN** the command writes the history summary and table to the Cobra command output stream
 
 ### Requirement: Prometheus metric instruments
 The `PrometheusExporter` MUST register: `lango_token_usage_total` (counter, labels: type), `lango_tool_executions_total` (counter, labels: tool, success), `lango_tool_duration_seconds` (histogram, labels: tool), `lango_policy_decisions_total` (counter, labels: verdict), `lango_tracked_sessions` (gauge). All counters MUST be updated via EventBus event subscriptions.
@@ -76,3 +155,36 @@ When `observability.tracing.enabled` is true, the system MUST initialize an Open
 #### Scenario: Unsupported exporter rejected
 - **WHEN** `observability.tracing.exporter` is an unknown value
 - **THEN** `InitTracer` SHALL return an error
+
+### Requirement: Alerts route uses storage alert reader
+The observability alerts route MUST query alert history through a storage-provided alert reader instead of a raw ent client.
+
+#### Scenario: Alerts endpoint reads through storage facade
+- **WHEN** the `/alerts` route is requested
+- **THEN** the route queries alert records through the storage facade alert reader
+- **AND** it does not issue ad hoc ent queries from the route layer
+
+### Requirement: OpenTelemetry stdout trace exporter writer is seam-aware
+When `observability.tracing.exporter` is `"stdout"`, the system SHALL construct
+the stdout trace exporter with an explicit writer seam while preserving the
+default stderr behavior.
+
+#### Scenario: Stdout trace exporter uses injected writer
+- **WHEN** the tracing writer seam is replaced for a test
+- **AND** stdout tracing emits and flushes a span
+- **THEN** the span SHALL be written through the injected writer
+
+### Requirement: Default logging output is stderr and seam-aware
+
+When logging is initialized without an explicit writer or output path, the system SHALL write log entries through a package-level default writer seam that defaults to stderr. Explicit `LogConfig.Writer` and `LogConfig.OutputPath` SHALL keep precedence over the default seam. Public configuration documentation and settings copy SHALL describe an empty `logging.outputPath` as using stderr.
+
+#### Scenario: Default logging does not use stdout
+
+- **WHEN** `logging.Init(...)` is called without `Writer` or `OutputPath`
+- **THEN** the default writer seam SHALL point at stderr
+- **AND** stdout SHALL remain reserved for command result output
+
+#### Scenario: Public configuration docs describe stderr fallback
+
+- **WHEN** users read README or configuration documentation for `logging.outputPath`
+- **THEN** they SHALL see that an empty value uses stderr by default

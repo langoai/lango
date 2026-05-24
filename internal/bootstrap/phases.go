@@ -5,23 +5,81 @@ import (
 	"crypto/hmac"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
-	"github.com/langoai/lango/internal/cli/prompt"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/configstore"
 	"github.com/langoai/lango/internal/keyring"
+	"github.com/langoai/lango/internal/lineio"
 	"github.com/langoai/lango/internal/security"
 	"github.com/langoai/lango/internal/security/passphrase"
+	"github.com/langoai/lango/internal/sqlitedriver"
+	"github.com/langoai/lango/internal/storage"
+	"github.com/langoai/lango/internal/storagebroker"
 )
+
+var startStorageBroker = func(ctx context.Context) (storagebroker.API, error) {
+	return storagebroker.Start(ctx)
+}
+
+var (
+	acquirePassphrase                 = passphrase.Acquire
+	confirmStorePass                  = confirmStorePassphrase
+	newBootstrapKMSProvider           = security.NewKMSProvider
+	bootstrapConfirmInput   io.Reader = os.Stdin
+	bootstrapConfirmOutput  io.Writer = os.Stdout
+	bootstrapErrWriter      io.Writer = os.Stderr
+)
+
+func loadSecurityStateForState(ctx context.Context, s *State) ([]byte, []byte, bool, error) {
+	if s != nil && s.Broker != nil {
+		return loadSecurityStateViaBroker(ctx, s.Broker)
+	}
+	return loadSecurityState(s.RawDB)
+}
+
+func storeSaltForState(ctx context.Context, s *State, salt []byte) error {
+	if s != nil && s.Broker != nil {
+		return storeSaltViaBroker(ctx, s.Broker, salt)
+	}
+	return storeSalt(s.RawDB, salt)
+}
+
+func storeChecksumForState(ctx context.Context, s *State, checksum []byte) error {
+	if s != nil && s.Broker != nil {
+		return storeChecksumViaBroker(ctx, s.Broker, checksum)
+	}
+	return storeChecksum(s.RawDB, checksum)
+}
+
+func confirmStorePassphrase(msg string) (bool, error) {
+	line, err := readBootstrapConfirmation(bootstrapConfirmInput, bootstrapConfirmOutput, msg)
+	if errors.Is(err, io.EOF) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	answer := strings.TrimSpace(strings.ToLower(line))
+	return answer == "y" || answer == "yes", nil
+}
+
+func readBootstrapConfirmation(in io.Reader, out io.Writer, msg string) (string, error) {
+	if _, err := fmt.Fprintf(out, "%s [y/N]: ", msg); err != nil {
+		return "", err
+	}
+	return lineio.ReadLine(in)
+}
 
 // dataDirPerm is the permission mode for all ~/.lango/ directories.
 // 0700 restricts access to the owner only (appropriate for data containing
 // encrypted secrets, database files, and keyfiles).
 const dataDirPerm = 0700
 
-// DefaultPhases returns the standard bootstrap phase sequence (11 phases).
+// DefaultPhases returns the standard bootstrap phase sequence (12 phases).
 //
 // Envelope-aware order: envelope loads BEFORE DB open so recovery credentials
 // (mnemonic) and MK-derived DB keys are available when we actually open
@@ -93,13 +151,17 @@ func phaseEnsureDataDir() Phase {
 	}
 }
 
-// phaseDetectEncryption checks if DB is encrypted or encryption is configured.
+// phaseDetectEncryption rejects non-SQLite legacy DB headers and no longer
+// enables SQLCipher database-key handling.
 func phaseDetectEncryption() Phase {
 	return Phase{
 		Name: "detect encryption",
 		Run: func(_ context.Context, s *State) error {
 			s.DBEncrypted = IsDBEncrypted(s.Options.DBPath)
-			s.NeedsDBKey = s.DBEncrypted || s.Options.DBEncryption.Enabled
+			if s.DBEncrypted {
+				return fmt.Errorf("%w: downgrade/export required", sqlitedriver.ErrLegacyEncryptedOrUnreadableDB)
+			}
+			s.NeedsDBKey = false
 			return nil
 		},
 	}
@@ -135,11 +197,11 @@ func phaseAcquireCredential() Phase {
 			if s.Envelope != nil && s.Envelope.HasSlotType(security.KEKSlotHardware) &&
 				s.Options.KMSConfig != nil && s.Options.KMSProviderName != "" {
 
-				kmsProvider, kmsErr := security.NewKMSProvider(
+				kmsProvider, kmsErr := newBootstrapKMSProvider(
 					security.KMSProviderName(s.Options.KMSProviderName),
 					*s.Options.KMSConfig,
 				)
-				if kmsErr == nil { //nolint:staticcheck // stubs always error; real impls use kms_* build tags
+				if kmsErr == nil {
 					mk, _, unwrapErr := s.Envelope.UnwrapFromKMS(
 						ctx, kmsProvider, s.Options.KMSProviderName, s.Options.KMSConfig.KeyID,
 					)
@@ -150,9 +212,15 @@ func phaseAcquireCredential() Phase {
 						s.Result.KMSUnwrap = true
 						return nil // Skip passphrase entirely.
 					}
-					fmt.Fprintf(os.Stderr, "warning: KMS unwrap failed: %v (falling back to passphrase)\n", unwrapErr)
+					if !s.Options.KMSConfig.FallbackToLocal {
+						return fmt.Errorf("KMS unwrap failed and fallbackToLocal is disabled: %w", unwrapErr)
+					}
+					fmt.Fprintf(bootstrapErrWriter, "warning: KMS unwrap failed: %v (falling back to passphrase)\n", unwrapErr)
 				} else {
-					fmt.Fprintf(os.Stderr, "warning: KMS provider init failed: %v (falling back to passphrase)\n", kmsErr)
+					if !s.Options.KMSConfig.FallbackToLocal {
+						return fmt.Errorf("KMS provider init failed and fallbackToLocal is disabled: %w", kmsErr)
+					}
+					fmt.Fprintf(bootstrapErrWriter, "warning: KMS provider init failed: %v (falling back to passphrase)\n", kmsErr)
 				}
 			}
 
@@ -165,7 +233,7 @@ func phaseAcquireCredential() Phase {
 			_, statErr := os.Stat(s.Options.DBPath)
 			s.FirstRunGuess = statErr != nil && s.Envelope == nil
 
-			pass, source, err := passphrase.Acquire(passphrase.Options{
+			pass, source, err := acquirePassphrase(passphrase.Options{
 				KeyfilePath:     s.Options.KeyfilePath,
 				AllowCreation:   s.FirstRunGuess,
 				KeyringProvider: s.SecureProvider,
@@ -180,17 +248,17 @@ func phaseAcquireCredential() Phase {
 			if source == passphrase.SourceInteractive && s.SecureProvider != nil {
 				tierLabel := s.SecurityTier.String()
 				msg := fmt.Sprintf("Secure storage available (%s). Store passphrase?", tierLabel)
-				if ok, promptErr := prompt.Confirm(msg); promptErr == nil && ok {
+				if ok, promptErr := confirmStorePass(msg); promptErr == nil && ok {
 					if storeErr := s.SecureProvider.Set(keyring.Service, keyring.KeyMasterPassphrase, pass); storeErr != nil {
 						if errors.Is(storeErr, keyring.ErrEntitlement) {
-							fmt.Fprintf(os.Stderr, "warning: biometric storage unavailable (binary not codesigned)\n")
-							fmt.Fprintf(os.Stderr, "  Tip: codesign the binary for Touch ID support: make codesign\n")
-							fmt.Fprintf(os.Stderr, "  Note: also ensure device passcode is set (required for biometric Keychain)\n")
+							fmt.Fprintf(bootstrapErrWriter, "warning: biometric storage unavailable (binary not codesigned)\n")
+							fmt.Fprintf(bootstrapErrWriter, "  Tip: codesign the binary for Touch ID support: make codesign\n")
+							fmt.Fprintf(bootstrapErrWriter, "  Note: also ensure device passcode is set (required for biometric Keychain)\n")
 						} else {
-							fmt.Fprintf(os.Stderr, "warning: store passphrase failed: %v\n", storeErr)
+							fmt.Fprintf(bootstrapErrWriter, "warning: store passphrase failed: %v\n", storeErr)
 						}
 					} else {
-						fmt.Fprintf(os.Stderr, "Passphrase saved. Next launch will load it automatically.\n")
+						fmt.Fprintf(bootstrapErrWriter, "Passphrase saved. Next launch will load it automatically.\n")
 					}
 				}
 			}
@@ -242,58 +310,71 @@ func phaseUnwrapOrCreateMK() Phase {
 	}
 }
 
-// phaseOpenDatabase opens SQLite/SQLCipher DB and runs ent schema migration.
-//
-// Key selection matrix:
-//   - MK available + no pending flags  → MK-derived raw key (rawKey=true)
-//   - MK available + pending flags     → legacy passphrase (fallback)
-//   - No MK (legacy mode)              → legacy passphrase
-//   - Encryption disabled              → no key
+// phaseOpenDatabase opens the plaintext SQLite DB and runs ent schema migration.
 func phaseOpenDatabase() Phase {
 	return Phase{
 		Name: "open database",
 		Run: func(_ context.Context, s *State) error {
-			var (
-				dbKey  string
-				rawKey bool
-			)
-			if s.NeedsDBKey {
-				switch {
-				case s.MasterKey != nil && s.Envelope != nil &&
-					!s.Envelope.PendingMigration && !s.Envelope.PendingRekey:
-					dbKey = security.DeriveDBKeyHex(s.MasterKey)
-					rawKey = true
-				case s.Passphrase != "":
-					dbKey = s.Passphrase
-					rawKey = false
-				default:
-					return fmt.Errorf("open database: no credential available for encrypted db")
-				}
-				s.DBKey = dbKey
+			var payloadKey []byte
+			if s.MasterKey != nil {
+				payloadKey = security.DerivePayloadKey(s.MasterKey)
 			}
-			client, rawDB, err := openDatabase(s.Options.DBPath, dbKey, rawKey, s.Options.DBEncryption.CipherPageSize)
+			if s.Options.StartStorageBroker {
+				brokerClient, err := startStorageBroker(context.Background())
+				if err != nil {
+					return fmt.Errorf("start storage broker: %w", err)
+				}
+				if _, err := brokerClient.OpenDB(context.Background(), storagebroker.OpenDBRequest{
+					DBPath:         s.Options.DBPath,
+					MasterKey:      s.MasterKey,
+					PayloadKey:     payloadKey,
+					PayloadVersion: security.PayloadKeyVersionV1,
+				}); err != nil {
+					_ = brokerClient.Close(context.Background())
+					if payloadKey != nil {
+						security.ZeroBytes(payloadKey)
+					}
+					return fmt.Errorf("storage broker open_db: %w", err)
+				}
+				s.Broker = brokerClient
+				s.Result.Broker = brokerClient
+				if payloadKey != nil {
+					security.ZeroBytes(payloadKey)
+				}
+				return nil
+			}
+			if payloadKey != nil {
+				security.ZeroBytes(payloadKey)
+			}
+			client, rawDB, err := openDatabase(s.Options.DBPath, "", false, 0)
 			if err != nil {
+				if s.Broker != nil {
+					_ = s.Broker.Close(context.Background())
+					s.Broker = nil
+					s.Result.Broker = nil
+				}
 				return fmt.Errorf("open database: %w", err)
 			}
 			s.Client = client
 			s.RawDB = rawDB
-			s.Result.DBClient = client
-			s.Result.RawDB = rawDB
 			return nil
 		},
 		Cleanup: func(s *State) {
+			if s.Broker != nil {
+				_ = s.Broker.Close(context.Background())
+				s.Broker = nil
+			}
 			if s.Client != nil {
-				s.Client.Close()
+				_ = s.Client.Close()
 			}
 		},
 	}
 }
 
-// phaseMigrateEnvelope performs three conditional actions:
+// phaseMigrateEnvelope performs two conditional actions:
 //
 //   - LegacyMode: run the full legacy → envelope migration.
 //   - PendingMigration=true: retry data re-encryption using the already-unwrapped MK.
-//   - PendingRekey=true: retry `PRAGMA rekey` on SQLCipher DB.
 //
 // On failure the envelope retains its pending flags so the next bootstrap can retry.
 func phaseMigrateEnvelope() Phase {
@@ -301,7 +382,10 @@ func phaseMigrateEnvelope() Phase {
 		Name: "migrate envelope",
 		Run: func(ctx context.Context, s *State) error {
 			if s.LegacyMode {
-				fmt.Fprintln(os.Stderr, "Upgrading encryption format (one-time migration)...")
+				if s.Broker != nil {
+					return fmt.Errorf("legacy envelope migration requires non-broker bootstrap path")
+				}
+				fmt.Fprintln(bootstrapErrWriter, "Upgrading encryption format (one-time migration)...")
 				env, mk, err := security.MigrateToEnvelope(
 					ctx, s.RawDB, s.Client, s.LangoDir,
 					s.Passphrase, s.Salt, s.Checksum,
@@ -316,6 +400,9 @@ func phaseMigrateEnvelope() Phase {
 			}
 
 			if s.Envelope != nil && s.Envelope.PendingMigration {
+				if s.Broker != nil {
+					return fmt.Errorf("pending envelope migration retry requires non-broker bootstrap path")
+				}
 				if s.MasterKey == nil {
 					return fmt.Errorf("pending migration retry requires unwrapped master key")
 				}
@@ -329,16 +416,7 @@ func phaseMigrateEnvelope() Phase {
 			}
 
 			if s.Envelope != nil && s.Envelope.PendingRekey {
-				if s.MasterKey == nil {
-					return fmt.Errorf("pending rekey retry requires unwrapped master key")
-				}
-				if err := security.RetryRekey(s.RawDB, s.MasterKey); err != nil {
-					return fmt.Errorf("retry rekey: %w", err)
-				}
-				s.Envelope.PendingRekey = false
-				if err := security.StoreEnvelopeFile(s.LangoDir, s.Envelope); err != nil {
-					return fmt.Errorf("persist envelope after retry rekey: %w", err)
-				}
+				return fmt.Errorf("%w: pending rekey requires legacy runtime downgrade/export", sqlitedriver.ErrLegacyEncryptedOrUnreadableDB)
 			}
 
 			return nil
@@ -357,7 +435,7 @@ func phaseLoadSecurityState() Phase {
 				// When pending flags are set, legacy salt/checksum are still
 				// needed for crash-recovery retry in phaseMigrateEnvelope.
 				if s.Envelope.PendingMigration || s.Envelope.PendingRekey {
-					salt, checksum, _, err := loadSecurityState(s.RawDB)
+					salt, checksum, _, err := loadSecurityStateForState(context.Background(), s)
 					if err != nil {
 						return fmt.Errorf("load security state for pending migration: %w", err)
 					}
@@ -367,7 +445,7 @@ func phaseLoadSecurityState() Phase {
 				s.FirstRun = false
 				return nil
 			}
-			salt, checksum, firstRun, err := loadSecurityState(s.RawDB)
+			salt, checksum, firstRun, err := loadSecurityStateForState(context.Background(), s)
 			if err != nil {
 				return fmt.Errorf("load security state: %w", err)
 			}
@@ -399,11 +477,11 @@ func phaseInitCrypto() Phase {
 				if err := provider.Initialize(s.Passphrase); err != nil {
 					return fmt.Errorf("initialize crypto: %w", err)
 				}
-				if err := storeSalt(s.RawDB, provider.Salt()); err != nil {
+				if err := storeSaltForState(context.Background(), s, provider.Salt()); err != nil {
 					return fmt.Errorf("store salt: %w", err)
 				}
 				cs := provider.CalculateChecksum(s.Passphrase, provider.Salt())
-				if err := storeChecksum(s.RawDB, cs); err != nil {
+				if err := storeChecksumForState(context.Background(), s, cs); err != nil {
 					return fmt.Errorf("store checksum: %w", err)
 				}
 			default:
@@ -424,7 +502,7 @@ func phaseInitCrypto() Phase {
 			// Shred keyfile after successful crypto initialization.
 			if s.PassSource == passphrase.SourceKeyfile && !s.Options.KeepKeyfile {
 				if err := passphrase.ShredKeyfile(s.Options.KeyfilePath); err != nil {
-					fmt.Fprintf(os.Stderr, "warning: shred keyfile: %v\n", err)
+					fmt.Fprintf(bootstrapErrWriter, "warning: shred keyfile: %v\n", err)
 				}
 			}
 
@@ -475,8 +553,12 @@ func phaseLoadProfile() Phase {
 	return Phase{
 		Name: "load profile",
 		Run: func(ctx context.Context, s *State) error {
-			store := configstore.NewStore(s.Client, s.Crypto)
-			s.Result.ConfigStore = store
+			var store storage.ConfigProfileStore
+			if s.Broker != nil {
+				store = storage.NewBrokerConfigProfiles(s.Broker)
+			} else {
+				store = configstore.NewStore(s.Client, s.Crypto)
+			}
 			profileName := s.Options.ForceProfile
 
 			var explicitKeys map[string]bool
@@ -519,6 +601,42 @@ func phaseLoadProfile() Phase {
 			if err := config.PostLoad(s.Result.Config); err != nil {
 				return fmt.Errorf("post-load config: %w", err)
 			}
+
+			if legacyStore, ok := store.(*configstore.Store); ok {
+				s.Result.ConfigStore = legacyStore
+			}
+			securityState := storage.SecurityStateStore(security.NewSecurityConfigStore(s.RawDB))
+			if s.Broker != nil {
+				securityState = storage.NewBrokerSecurityState(s.Broker)
+			}
+			var opts []storage.Option
+			if s.Broker != nil {
+				opts = append(opts, storage.WithSecurityDiagnostics(func(ctx context.Context) (storage.SecuritySummary, error) {
+					result, err := s.Broker.DBStatusSummary(ctx, storagebroker.DBStatusSummaryRequest{
+						DBPath: s.Options.DBPath,
+					})
+					if err != nil {
+						return storage.SecuritySummary{}, err
+					}
+					return storage.SecuritySummary{
+						EncryptionKeys: result.EncryptionKeys,
+						StoredSecrets:  result.StoredSecrets,
+					}, nil
+				}))
+			}
+			opts = append(opts,
+				storage.WithEntClient(s.Client),
+				storage.WithRawDB(s.RawDB),
+				storage.WithBrokerSessionStore(s.Broker),
+				storage.WithBrokerRuntimeReaders(s.Broker),
+				storage.WithSessionClient(s.Client),
+				storage.WithSessionDBPath(s.Result.Config.Session.DatabasePath),
+			)
+			s.Result.Storage = storage.NewFacade(
+				store,
+				securityState,
+				opts...,
+			)
 			return nil
 		},
 	}

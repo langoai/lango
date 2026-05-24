@@ -29,7 +29,7 @@ func TestRun_FreshInstall_CreatesEnvelope(t *testing.T) {
 		SkipSecureDetection: true,
 	})
 	require.NoError(t, err)
-	t.Cleanup(func() { result.DBClient.Close() })
+	t.Cleanup(func() { _ = result.Close() })
 
 	// Envelope file must exist.
 	assert.True(t, security.HasEnvelopeFile(dir), "envelope file should be created on fresh install")
@@ -68,7 +68,7 @@ func TestRun_ReturningUser_UnwrapsEnvelope(t *testing.T) {
 		SkipSecureDetection: true,
 	})
 	require.NoError(t, err)
-	result1.DBClient.Close()
+	_ = result1.Close()
 
 	// Second run reopens using the same passphrase.
 	result2, err := Run(Options{
@@ -79,7 +79,7 @@ func TestRun_ReturningUser_UnwrapsEnvelope(t *testing.T) {
 		SkipSecureDetection: true,
 	})
 	require.NoError(t, err)
-	t.Cleanup(func() { result2.DBClient.Close() })
+	t.Cleanup(func() { _ = result2.Close() })
 	require.NotNil(t, result2.Crypto)
 }
 
@@ -103,7 +103,7 @@ func TestRun_MnemonicSlotPresent_PassphrasePath(t *testing.T) {
 		SkipSecureDetection: true,
 	})
 	require.NoError(t, err)
-	result1.DBClient.Close()
+	_ = result1.Close()
 
 	// Add a mnemonic slot to the envelope.
 	env, err := security.LoadEnvelopeFile(dir)
@@ -131,7 +131,7 @@ func TestRun_MnemonicSlotPresent_PassphrasePath(t *testing.T) {
 		SkipSecureDetection: true,
 	})
 	require.NoError(t, err, "bootstrap should succeed via passphrase despite mnemonic slot")
-	t.Cleanup(func() { result2.DBClient.Close() })
+	t.Cleanup(func() { _ = result2.Close() })
 	require.NotNil(t, result2.Crypto)
 }
 
@@ -151,7 +151,7 @@ func TestRun_WrongPassphrase_EnvelopeMode(t *testing.T) {
 		SkipSecureDetection: true,
 	})
 	require.NoError(t, err)
-	result.DBClient.Close()
+	_ = result.Close()
 
 	// Overwrite keyfile with a wrong passphrase.
 	require.NoError(t, passphrase.WriteKeyfile(keyfilePath, "wrong-passphrase"))

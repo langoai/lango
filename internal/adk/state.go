@@ -432,6 +432,15 @@ func buildEventParts(msg internal.Message, role types.MessageRole, lastAssistant
 
 // functionCallToToolCall converts a genai.FunctionCall (plus Part-level thought fields)
 // into an internal.ToolCall. Used by eventToMessage when saving ADK events.
+//
+// Thought / ThoughtSignature persistence (Bug fix #4 retained intentionally):
+// This is Lango's PERSISTENCE-LAYER thought_signature round-trip. Do not confuse
+// with upstream's streaming-layer propagation in
+// google.golang.org/adk/internal/llminternal/stream_aggregator.go, which
+// handles ThoughtSignature within a single LLM response stream. The persistence
+// round-trip here keeps thought_signature alive across session restarts and
+// history reloads — distinct concern, must remain.
+// See: internal-docs/superpowers/specs/2026-05-23-adk-v1.3-capability-first-design.md §4 Track A A1
 func functionCallToToolCall(fc *genai.FunctionCall, p *genai.Part) internal.ToolCall {
 	argsBytes, _ := json.Marshal(fc.Args)
 	id := fc.ID

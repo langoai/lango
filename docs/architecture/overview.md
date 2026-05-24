@@ -173,6 +173,8 @@ The intelligence layer provides the agent with persistent knowledge, learning ca
 | **Graph RAG** | `internal/graph/` | 2-phase hybrid retrieval: vector search finds seed results, then graph expansion discovers structurally connected context |
 | **Librarian** | `internal/librarian/` | Proactive knowledge extraction: `ObservationAnalyzer` identifies knowledge gaps, `InquiryProcessor` generates and resolves inquiries |
 
+Production app and CLI layers consume DB-backed capabilities through `internal/storage` factories/readers rather than generic raw Ent/SQL handle access. Broker transport correctness and removed raw storage accessors are enforced by `internal/archtest` and `internal/storagebroker` regression tests in the normal `go test ./...` path.
+
 ### Blockchain Layer
 
 The blockchain layer provides on-chain capabilities for payments, smart contract interaction, and account abstraction.
@@ -234,7 +236,7 @@ The infrastructure layer provides foundational services that all other layers de
 |-----------|---------|------|
 | **Config** | `internal/config/` | YAML config loading with environment variable substitution and validation |
 | **Config Store** | `internal/configstore/` | Encrypted config profile storage (Ent-backed) |
-| **Security** | `internal/security/` | Crypto providers (local passphrase-derived, RPC), key registry, secrets store, companion discovery. KMS providers (AWS KMS, GCP KMS, Azure Key Vault, PKCS#11) with retry and health checking |
+| **Security** | `internal/security/` | Crypto providers (local passphrase-derived, RPC), key registry, secrets store, and RPC signing support for gateway-connected companions. KMS providers (AWS KMS, GCP KMS, Azure Key Vault, PKCS#11) with retry and health checking |
 | **Session** | `internal/session/` | Ent/SQLite session store with TTL and max history turns |
 | **Logging** | `internal/logging/` | Structured logging via Zap with per-package loggers |
 | **AI Providers** | `internal/provider/` | Unified interface with implementations for OpenAI, Google Gemini, and Anthropic Claude |
@@ -245,7 +247,7 @@ The infrastructure layer provides foundational services that all other layers de
 | **Lifecycle** | `internal/lifecycle/` | Component lifecycle management with priority-ordered startup and reverse-order shutdown |
 | **Keyring** | `internal/keyring/` | Hardware keyring integration (Touch ID / TPM 2.0) via go-keyring |
 | **Sandbox** | `internal/sandbox/` | Tool execution isolation with subprocess, Docker, gVisor, and native runtime fallback chain |
-| **DB Migration** | `internal/dbmigrate/` | Database encryption migration for SQLCipher transitions |
+| **DB Migration** | `internal/dbmigrate/` | Legacy DB migration tombstones and remediation helpers |
 
 ## Key Design Decisions
 

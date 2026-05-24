@@ -2,6 +2,9 @@ package ontology_test
 
 import (
 	"context"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"testing"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -27,6 +30,33 @@ func newExchangeTestEnv(t *testing.T) *ontology.ServiceImpl {
 	svc.SetPropertyStore(ps)
 
 	return svc
+}
+
+func TestOntologyExchangeProductionCodeDoesNotPanic(t *testing.T) {
+	t.Parallel()
+
+	files := []string{"exchange.go"}
+
+	var offenders []string
+	for _, file := range files {
+		fset := token.NewFileSet()
+		node, err := parser.ParseFile(fset, file, nil, 0)
+		require.NoError(t, err)
+		ast.Inspect(node, func(n ast.Node) bool {
+			call, ok := n.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			ident, ok := call.Fun.(*ast.Ident)
+			if ok && ident.Name == "panic" {
+				pos := fset.Position(call.Pos())
+				offenders = append(offenders, pos.String())
+			}
+			return true
+		})
+	}
+
+	require.Empty(t, offenders, "ontology exchange production code must not call panic")
 }
 
 func TestExportSchema_SeedDefaults(t *testing.T) {

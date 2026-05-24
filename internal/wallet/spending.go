@@ -31,6 +31,11 @@ type SpendingLimiter interface {
 	IsAutoApprovable(ctx context.Context, amount *big.Int) (bool, error)
 }
 
+// SpendingUsageStore provides the payment usage data needed for limit checks.
+type SpendingUsageStore interface {
+	DailySpendSince(ctx context.Context, since time.Time) ([]string, error)
+}
+
 // USDCDecimals is the number of decimal places for USDC (6).
 // Deprecated: Use finance.USDCDecimals instead.
 const USDCDecimals = finance.USDCDecimals
@@ -49,7 +54,7 @@ func FormatUSDC(amount *big.Int) string {
 
 // EntSpendingLimiter uses Ent PaymentTx records to enforce spending limits.
 type EntSpendingLimiter struct {
-	client           *ent.Client
+	store            SpendingUsageStore
 	maxPerTx         *big.Int
 	maxDaily         *big.Int
 	autoApproveBelow *big.Int
@@ -59,6 +64,11 @@ type EntSpendingLimiter struct {
 // autoApproveBelow is the USDC amount threshold below which transactions can be
 // auto-approved without explicit user confirmation. Pass "" or "0" to disable.
 func NewEntSpendingLimiter(client *ent.Client, maxPerTx, maxDaily, autoApproveBelow string) (*EntSpendingLimiter, error) {
+	return NewStoreSpendingLimiter(entUsageStore{client: client}, maxPerTx, maxDaily, autoApproveBelow)
+}
+
+// NewStoreSpendingLimiter creates a spending limiter backed by a payment tx store.
+func NewStoreSpendingLimiter(store SpendingUsageStore, maxPerTx, maxDaily, autoApproveBelow string) (*EntSpendingLimiter, error) {
 	perTx, err := ParseUSDC(maxPerTx)
 	if err != nil {
 		return nil, fmt.Errorf("parse maxPerTx: %w", err)
@@ -79,7 +89,7 @@ func NewEntSpendingLimiter(client *ent.Client, maxPerTx, maxDaily, autoApproveBe
 	}
 
 	return &EntSpendingLimiter{
-		client:           client,
+		store:            store,
 		maxPerTx:         perTx,
 		maxDaily:         daily,
 		autoApproveBelow: autoApprove,
@@ -115,22 +125,14 @@ func (l *EntSpendingLimiter) Record(_ context.Context, _ *big.Int) error {
 // DailySpent sums confirmed and submitted transaction amounts for today.
 func (l *EntSpendingLimiter) DailySpent(ctx context.Context) (*big.Int, error) {
 	startOfDay := startOfToday()
-
-	// Query all non-failed transactions from today.
-	txs, err := l.client.PaymentTx.Query().
-		Where(
-			paymenttx.CreatedAtGTE(startOfDay),
-			paymenttx.StatusIn(paymenttx.StatusPending, paymenttx.StatusSubmitted, paymenttx.StatusConfirmed),
-		).
-		Select(paymenttx.FieldAmount).
-		All(ctx)
+	amounts, err := l.store.DailySpendSince(ctx, startOfDay)
 	if err != nil {
 		return nil, fmt.Errorf("query daily transactions: %w", err)
 	}
 
 	total := new(big.Int)
-	for _, tx := range txs {
-		amt, err := ParseUSDC(tx.Amount)
+	for _, amount := range amounts {
+		amt, err := ParseUSDC(amount)
 		if err != nil {
 			continue
 		}
@@ -190,3 +192,28 @@ func startOfToday() time.Time {
 }
 
 var _ SpendingLimiter = (*EntSpendingLimiter)(nil)
+
+type entUsageStore struct {
+	client *ent.Client
+}
+
+func (s entUsageStore) DailySpendSince(ctx context.Context, since time.Time) ([]string, error) {
+	if s.client == nil {
+		return nil, fmt.Errorf("payment usage store unavailable")
+	}
+	rows, err := s.client.PaymentTx.Query().
+		Where(
+			paymenttx.CreatedAtGTE(since),
+			paymenttx.StatusIn(paymenttx.StatusPending, paymenttx.StatusSubmitted, paymenttx.StatusConfirmed),
+		).
+		Select(paymenttx.FieldAmount).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, row.Amount)
+	}
+	return out, nil
+}

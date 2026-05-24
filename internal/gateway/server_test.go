@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -14,10 +16,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/langoai/lango/internal/adk"
 	"github.com/langoai/lango/internal/approval"
 	"github.com/langoai/lango/internal/config"
 	"github.com/langoai/lango/internal/gatekeeper"
 	"github.com/langoai/lango/internal/runledger"
+	"github.com/langoai/lango/internal/security"
+	"github.com/langoai/lango/internal/turnrunner"
+	"github.com/langoai/lango/internal/types"
 )
 
 func TestGatewayServer(t *testing.T) {
@@ -92,6 +98,117 @@ func TestGatewayServer(t *testing.T) {
 	case <-time.After(1 * time.Second):
 		t.Error("timeout waiting for broadcast")
 	}
+}
+
+func TestServerStartReturnsListenError(t *testing.T) {
+	t.Parallel()
+
+	occupied, port := occupyGatewayPort(t)
+	defer occupied.Close()
+
+	server := New(Config{
+		Host:             "127.0.0.1",
+		Port:             port,
+		HTTPEnabled:      true,
+		WebSocketEnabled: true,
+	}, nil, nil, nil, nil)
+
+	err := server.Start()
+	require.Error(t, err)
+}
+
+func TestServerShutdownBeforeStartIsSafe(t *testing.T) {
+	t.Parallel()
+
+	server := New(Config{
+		Host:             "127.0.0.1",
+		Port:             0,
+		HTTPEnabled:      true,
+		WebSocketEnabled: true,
+	}, nil, nil, nil, nil)
+
+	require.NotPanics(t, func() {
+		require.NoError(t, server.Shutdown(context.Background()))
+	})
+}
+
+func TestServerShutdownAfterFailedStartIsSafe(t *testing.T) {
+	t.Parallel()
+
+	occupied, port := occupyGatewayPort(t)
+	defer occupied.Close()
+
+	server := New(Config{
+		Host:             "127.0.0.1",
+		Port:             port,
+		HTTPEnabled:      true,
+		WebSocketEnabled: true,
+	}, nil, nil, nil, nil)
+
+	require.Error(t, server.Start())
+	require.NotPanics(t, func() {
+		require.NoError(t, server.Shutdown(context.Background()))
+	})
+}
+
+func TestServerRepeatedShutdownIsSafe(t *testing.T) {
+	t.Parallel()
+
+	server := New(Config{
+		Host:             "127.0.0.1",
+		Port:             0,
+		HTTPEnabled:      true,
+		WebSocketEnabled: true,
+	}, nil, nil, nil, nil)
+
+	require.NoError(t, server.Shutdown(context.Background()))
+	require.NotPanics(t, func() {
+		require.NoError(t, server.Shutdown(context.Background()))
+	})
+}
+
+func TestServerServeGracefulShutdown(t *testing.T) {
+	t.Parallel()
+
+	server := New(Config{
+		Host:             "127.0.0.1",
+		Port:             0,
+		HTTPEnabled:      true,
+		WebSocketEnabled: true,
+	}, nil, nil, nil, nil)
+
+	listener, err := server.listen()
+	require.NoError(t, err)
+
+	done := make(chan error, 1)
+	go func() {
+		done <- server.serve(listener)
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	require.NoError(t, server.Shutdown(ctx))
+
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("gateway serve did not stop after shutdown")
+	}
+}
+
+func occupyGatewayPort(t *testing.T) (net.Listener, int) {
+	t.Helper()
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+
+	_, port, err := net.SplitHostPort(listener.Addr().String())
+	require.NoError(t, err)
+	parsed, err := strconv.Atoi(port)
+	require.NoError(t, err)
+
+	return listener, parsed
 }
 
 func TestChatMessage_UnauthenticatedUsesDefault(t *testing.T) {
@@ -281,6 +398,308 @@ func TestBroadcastToSession_NoAuth(t *testing.T) {
 	default:
 		t.Error("expected client B to receive broadcast")
 	}
+}
+
+func TestServerSettersWireDependencies(t *testing.T) {
+	t.Parallel()
+	server := New(Config{}, nil, nil, nil, nil)
+
+	agent := &adk.Agent{}
+	server.SetAgent(agent)
+	assert.Same(t, agent, server.agent)
+
+	san, err := gatekeeper.NewSanitizer(config.GatekeeperConfig{})
+	require.NoError(t, err)
+	server.SetSanitizer(san)
+	assert.Same(t, san, server.sanitizer)
+
+	runner := turnrunner.New(turnrunner.Config{}, nil, nil, nil)
+	server.SetTurnRunner(runner)
+	assert.Same(t, runner, server.turnRunner)
+
+	ledger := runledger.NewMemoryStore()
+	server.SetRunLedgerStore(ledger)
+	assert.Same(t, ledger, server.runLedgerStore)
+}
+
+func TestOnTurnCompleteQueuesCallbackUntilRunnerIsSet(t *testing.T) {
+	t.Parallel()
+	server := New(Config{}, nil, nil, nil, nil)
+
+	called := false
+	server.OnTurnComplete(func(string) {
+		called = true
+	})
+
+	require.Len(t, server.turnCallbacks, 1)
+	server.turnCallbacks[0]("sess-test")
+	assert.True(t, called)
+}
+
+func TestHandleHealthIncludesFeatureStatuses(t *testing.T) {
+	t.Parallel()
+	server := New(Config{HTTPEnabled: true}, nil, nil, nil, nil)
+	server.SetFeatureStatuses([]types.FeatureStatus{
+		{Name: "Graph Store", Enabled: true, Healthy: false, Reason: "not configured"},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	rec := httptest.NewRecorder()
+	server.handleHealth(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, "application/json", rec.Header().Get("Content-Type"))
+
+	var body map[string]interface{}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	assert.Equal(t, "ok", body["status"])
+	features, ok := body["features"].([]interface{})
+	require.True(t, ok)
+	require.Len(t, features, 1)
+	feature, ok := features[0].(map[string]interface{})
+	require.True(t, ok)
+	assert.Equal(t, "Graph Store", feature["name"])
+	assert.Equal(t, true, feature["enabled"])
+	assert.Equal(t, false, feature["healthy"])
+	assert.Equal(t, "not configured", feature["reason"])
+}
+
+func TestHandleStatusReportsClientCountAndConfig(t *testing.T) {
+	t.Parallel()
+	server := New(Config{
+		HTTPEnabled:      true,
+		WebSocketEnabled: false,
+	}, nil, nil, nil, nil)
+	server.clientsMu.Lock()
+	server.clients["ui-1"] = &Client{ID: "ui-1", Type: "ui", Send: make(chan []byte, 1)}
+	server.clients["companion-1"] = &Client{ID: "companion-1", Type: "companion", Send: make(chan []byte, 1)}
+	server.clientsMu.Unlock()
+
+	req := httptest.NewRequest(http.MethodGet, "/status", nil)
+	rec := httptest.NewRecorder()
+	server.handleStatus(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var body map[string]interface{}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	assert.Equal(t, "running", body["status"])
+	assert.Equal(t, float64(2), body["clients"])
+	assert.Equal(t, false, body["wsEnabled"])
+	assert.Equal(t, true, body["httpEnabled"])
+}
+
+func TestHandleRPCSendsResultAndPassesClient(t *testing.T) {
+	t.Parallel()
+	server := New(Config{}, nil, nil, nil, nil)
+	client := &Client{
+		ID:     "ui-1",
+		Type:   "ui",
+		Server: server,
+		Send:   make(chan []byte, 1),
+	}
+
+	client.handleRPC(RPCRequest{
+		ID:     "rpc-1",
+		Method: "echo",
+		Params: json.RawMessage(`{"value":"hello"}`),
+	}, func(gotClient *Client, params json.RawMessage) (interface{}, error) {
+		assert.Same(t, client, gotClient)
+		assert.JSONEq(t, `{"value":"hello"}`, string(params))
+		return map[string]string{"echo": "hello"}, nil
+	})
+
+	var resp RPCResponse
+	require.NoError(t, json.Unmarshal(<-client.Send, &resp))
+	assert.Equal(t, "rpc-1", resp.ID)
+	require.Nil(t, resp.Error)
+	result, ok := resp.Result.(map[string]interface{})
+	require.True(t, ok)
+	assert.Equal(t, "hello", result["echo"])
+}
+
+func TestHandleRPCSendsHandlerError(t *testing.T) {
+	t.Parallel()
+	client := &Client{ID: "ui-1", Send: make(chan []byte, 1)}
+
+	client.handleRPC(RPCRequest{ID: "rpc-err", Method: "boom"}, func(*Client, json.RawMessage) (interface{}, error) {
+		return nil, fmt.Errorf("handler failed")
+	})
+
+	var resp RPCResponse
+	require.NoError(t, json.Unmarshal(<-client.Send, &resp))
+	assert.Equal(t, "rpc-err", resp.ID)
+	require.NotNil(t, resp.Error)
+	assert.Equal(t, -32000, resp.Error.Code)
+	assert.Equal(t, "handler failed", resp.Error.Message)
+}
+
+func TestHandleRPCRecoversPanic(t *testing.T) {
+	t.Parallel()
+	client := &Client{ID: "ui-1", Send: make(chan []byte, 1)}
+
+	client.handleRPC(RPCRequest{ID: "rpc-panic", Method: "panic"}, func(*Client, json.RawMessage) (interface{}, error) {
+		panic("exploded")
+	})
+
+	var resp RPCResponse
+	require.NoError(t, json.Unmarshal(<-client.Send, &resp))
+	assert.Equal(t, "rpc-panic", resp.ID)
+	require.NotNil(t, resp.Error)
+	assert.Equal(t, -32000, resp.Error.Code)
+	assert.Contains(t, resp.Error.Message, "internal error: exploded")
+}
+
+func TestRegisterHandlerOverwritesExistingMethod(t *testing.T) {
+	t.Parallel()
+	server := New(Config{}, nil, nil, nil, nil)
+
+	server.RegisterHandler("custom.method", func(*Client, json.RawMessage) (interface{}, error) {
+		return "first", nil
+	})
+	server.RegisterHandler("custom.method", func(*Client, json.RawMessage) (interface{}, error) {
+		return "second", nil
+	})
+
+	server.handlersMu.RLock()
+	handler := server.handlers["custom.method"]
+	server.handlersMu.RUnlock()
+	result, err := handler(nil, nil)
+	require.NoError(t, err)
+	assert.Equal(t, "second", result)
+}
+
+func TestHandleCompanionHelloReturnsStatusAndRejectsInvalidJSON(t *testing.T) {
+	t.Parallel()
+	server := New(Config{}, nil, nil, nil, nil)
+
+	result, err := server.handleCompanionHello(nil, json.RawMessage(`{"deviceId":"phone-1","publicKey":"pub"}`))
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{"status": "ok"}, result)
+
+	_, err = server.handleCompanionHello(nil, json.RawMessage(`{`))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid params")
+}
+
+func TestBroadcastToCompanionsTargetsOnlyCompanionClients(t *testing.T) {
+	t.Parallel()
+	server := New(Config{}, nil, nil, nil, nil)
+	uiSend := make(chan []byte, 1)
+	companionSend := make(chan []byte, 1)
+	server.clientsMu.Lock()
+	server.clients["ui-1"] = &Client{ID: "ui-1", Type: "ui", Send: uiSend}
+	server.clients["companion-1"] = &Client{ID: "companion-1", Type: "companion", Send: companionSend}
+	server.clientsMu.Unlock()
+
+	server.BroadcastToCompanions("approval.request", map[string]string{"id": "req-1"})
+
+	select {
+	case <-uiSend:
+		t.Fatal("ui client should not receive companion broadcast")
+	default:
+	}
+
+	var event map[string]interface{}
+	require.NoError(t, json.Unmarshal(<-companionSend, &event))
+	assert.Equal(t, "event", event["type"])
+	assert.Equal(t, "approval.request", event["event"])
+}
+
+func TestHasCompanionsReflectsConnectedCompanionClients(t *testing.T) {
+	t.Parallel()
+	server := New(Config{}, nil, nil, nil, nil)
+	assert.False(t, server.HasCompanions())
+
+	server.clientsMu.Lock()
+	server.clients["ui-1"] = &Client{ID: "ui-1", Type: "ui", Send: make(chan []byte, 1)}
+	server.clientsMu.Unlock()
+	assert.False(t, server.HasCompanions())
+
+	server.clientsMu.Lock()
+	server.clients["companion-1"] = &Client{ID: "companion-1", Type: "companion", Send: make(chan []byte, 1)}
+	server.clientsMu.Unlock()
+	assert.True(t, server.HasCompanions())
+}
+
+func TestRequestApprovalRequiresCompanion(t *testing.T) {
+	t.Parallel()
+	server := New(Config{}, nil, nil, nil, nil)
+
+	_, err := server.RequestApproval(context.Background(), "approve this")
+	require.ErrorIs(t, err, ErrNoCompanion)
+}
+
+func TestRequestApprovalBroadcastsAndReturnsCanceledContext(t *testing.T) {
+	t.Parallel()
+	server := New(Config{ApprovalTimeout: time.Minute}, nil, nil, nil, nil)
+	companionSend := make(chan []byte, 1)
+	server.clientsMu.Lock()
+	server.clients["companion-1"] = &Client{ID: "companion-1", Type: "companion", Send: companionSend}
+	server.clientsMu.Unlock()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := server.RequestApproval(ctx, "approve this")
+	require.ErrorIs(t, err, context.Canceled)
+
+	var event map[string]interface{}
+	require.NoError(t, json.Unmarshal(<-companionSend, &event))
+	assert.Equal(t, "approval.request", event["event"])
+	payload, ok := event["payload"].(map[string]interface{})
+	require.True(t, ok)
+	assert.NotEmpty(t, payload["id"])
+	assert.Equal(t, "approve this", payload["message"])
+
+	server.pendingApprovalsMu.Lock()
+	pendingCount := len(server.pendingApprovals)
+	server.pendingApprovalsMu.Unlock()
+	assert.Zero(t, pendingCount)
+}
+
+func TestHandleApprovalResponseWithoutPendingRequestIsOK(t *testing.T) {
+	t.Parallel()
+	server := New(Config{}, nil, nil, nil, nil)
+
+	result, err := server.handleApprovalResponse(nil, json.RawMessage(`{"requestId":"missing","approved":false,"alwaysAllow":true}`))
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{"status": "ok"}, result)
+}
+
+func TestProviderSenderRoutesCryptoToCompanions(t *testing.T) {
+	t.Parallel()
+	provider := security.NewRPCProvider()
+	server := New(Config{}, nil, provider, nil, nil)
+	uiSend := make(chan []byte, 1)
+	companionSend := make(chan []byte, 1)
+	server.clientsMu.Lock()
+	server.clients["ui-1"] = &Client{ID: "ui-1", Type: "ui", Send: uiSend}
+	server.clients["companion-1"] = &Client{ID: "companion-1", Type: "companion", Send: companionSend}
+	server.clientsMu.Unlock()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := provider.Sign(ctx, "key-1", []byte("payload"))
+	require.ErrorIs(t, err, context.Canceled)
+
+	var cryptoEvent map[string]interface{}
+	require.NoError(t, json.Unmarshal(<-companionSend, &cryptoEvent))
+	assert.Equal(t, "sign.request", cryptoEvent["event"])
+	select {
+	case <-uiSend:
+		t.Fatal("ui client should not receive crypto provider requests")
+	default:
+	}
+
+	_, err = provider.Encrypt(ctx, "key-1", []byte("plaintext"))
+	require.ErrorIs(t, err, context.Canceled)
+	require.NoError(t, json.Unmarshal(<-companionSend, &cryptoEvent))
+	assert.Equal(t, "encrypt.request", cryptoEvent["event"])
+
+	_, err = provider.Decrypt(ctx, "key-1", []byte("ciphertext"))
+	require.ErrorIs(t, err, context.Canceled)
+	require.NoError(t, json.Unmarshal(<-companionSend, &cryptoEvent))
+	assert.Equal(t, "decrypt.request", cryptoEvent["event"])
 }
 
 func TestHandleChatMessage_NilAgent_ReturnsErrorWithoutBroadcast(t *testing.T) {

@@ -12,15 +12,13 @@ The settings TUI SHALL provide a "Security Keyring" menu category with a single 
 - **THEN** the config's `security.keyring.enabled` SHALL be set to true
 
 ### Requirement: Security DB Encryption settings form
-The settings TUI SHALL provide a "Security DB Encryption" menu category with fields for SQLCipher encryption enabled and cipher page size.
+The settings TUI SHALL provide a read-only "Security DB Encryption" menu category that surfaces deprecated SQLCipher compatibility values without letting the operator treat them as active runtime controls.
 
-#### Scenario: User enables DB encryption
-- **WHEN** user checks "SQLCipher Encryption" and sets page size to 4096
-- **THEN** the config's `security.dbEncryption.enabled` SHALL be true and `cipherPageSize` SHALL be 4096
-
-#### Scenario: Cipher page size validation
-- **WHEN** user enters 0 or a negative number for cipher page size
-- **THEN** the form SHALL display a validation error "must be a positive integer"
+#### Scenario: Deprecated DB encryption values are rendered read-only
+- **WHEN** the Security DB Encryption category is displayed
+- **THEN** the form SHALL render the legacy SQLCipher flag and cipher page size as non-editable informational fields
+- **AND** the form SHALL explain that SQLCipher page encryption is unsupported by the current runtime
+- **AND** save/update handling SHALL ignore both the current read-only status fields and the former editable DB encryption keys
 
 ### Requirement: Security KMS settings form
 The settings TUI SHALL provide a "Security KMS" menu category with fields for region, key ID, endpoint, fallback to local, timeout, max retries, Azure vault URL, Azure key version, PKCS#11 module path, slot ID, PIN (password field), and key label.
@@ -32,3 +30,8 @@ The settings TUI SHALL provide a "Security KMS" menu category with fields for re
 #### Scenario: PKCS#11 PIN is password field
 - **WHEN** the KMS form is displayed
 - **THEN** the PKCS#11 PIN field SHALL use InputPassword type to mask the value
+
+#### Scenario: KMS fallback field explains bootstrap override
+- **WHEN** the KMS form is displayed
+- **THEN** the fallback-to-local field SHALL explain that profile-backed fallback covers KMS signing, encryption, and decryption after profile config is loaded
+- **AND** it SHALL mention `LANGO_KMS_FALLBACK_TO_LOCAL=false` for fail-closed encrypted profile bootstrap KMS unwrap before profile config is loaded

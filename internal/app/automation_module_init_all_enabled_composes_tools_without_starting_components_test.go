@@ -1,0 +1,97 @@
+package app
+
+import (
+	"context"
+	"sync"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/langoai/lango/internal/appinit"
+	"github.com/langoai/lango/internal/config"
+	"github.com/langoai/lango/internal/eventbus"
+	"github.com/langoai/lango/internal/lifecycle"
+	"github.com/langoai/lango/internal/receipts"
+	"github.com/langoai/lango/internal/session"
+	"github.com/langoai/lango/internal/testutil"
+)
+
+func TestAutomationModuleInitAllEnabledComposesToolsWithoutStartingComponents(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.DefaultConfig()
+	cfg.Cron.Enabled = true
+	cfg.Background.Enabled = true
+	cfg.Workflow.Enabled = true
+	cfg.Workflow.StateDir = t.TempDir()
+	application := &App{Config: cfg}
+	module := &automationModule{cfg: cfg, app: application, bus: eventbus.New()}
+	store := session.NewEntStoreWithClient(testutil.TestEntClient(t))
+
+	result, err := module.Init(context.Background(), staticResolver{
+		appinit.ProvidesSupervisor: &foundationValues{
+			Store:        store,
+			ReceiptStore: receipts.NewStore(),
+		},
+		appinit.ProvidesRunLedger: &runLedgerValues{},
+		appinit.ProvidesMission:   &missionValues{},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Len(t, result.Components, 3)
+
+	values, ok := result.Values[appinit.ProvidesAutomation].(*automationValues)
+	require.True(t, ok)
+	require.NotNil(t, values)
+	assert.NotNil(t, values.CronScheduler)
+	assert.NotNil(t, values.BackgroundManager)
+	assert.NotNil(t, values.WorkflowEngine)
+	assert.NotNil(t, values.AgentRunStore)
+
+	for _, category := range []string{
+		"cron",
+		"background",
+		"workflow",
+		"agent_control",
+		"task_tracking",
+	} {
+		entry := requireCatalogEntry(t, result.CatalogEntries, category)
+		assert.True(t, entry.Enabled, "expected %s to be enabled", category)
+		assert.NotEmpty(t, entry.Tools, "expected %s tools", category)
+	}
+
+	assert.NotNil(t, findTool(result.Tools, "cron_add"))
+	assert.NotNil(t, findTool(result.Tools, "bg_submit"))
+	assert.NotNil(t, findTool(result.Tools, "workflow_run"))
+	assert.NotNil(t, findTool(result.Tools, "agent_spawn"))
+	assert.NotNil(t, findTool(result.Tools, "task_create"))
+
+	for _, name := range []string{"cron-scheduler", "background-manager", "workflow-engine"} {
+		entry := requireLifecycleComponentEntry(t, result.Components, name)
+		assert.Equal(t, lifecycle.PriorityAutomation, entry.Priority)
+	}
+
+	ctx := context.Background()
+	var wg sync.WaitGroup
+	for _, name := range []string{"cron-scheduler", "background-manager", "workflow-engine"} {
+		entry := requireLifecycleComponentEntry(t, result.Components, name)
+		require.NoError(t, entry.Component.Start(ctx, &wg), "start %s", name)
+		require.NoError(t, entry.Component.Stop(ctx), "stop %s", name)
+	}
+	wg.Wait()
+}
+
+func requireLifecycleComponentEntry(t *testing.T, entries []lifecycle.ComponentEntry, name string) lifecycle.ComponentEntry {
+	t.Helper()
+
+	for _, entry := range entries {
+		if entry.Component.Name() == name {
+			return entry
+		}
+	}
+
+	t.Fatalf("lifecycle component %q not found", name)
+	return lifecycle.ComponentEntry{}
+}

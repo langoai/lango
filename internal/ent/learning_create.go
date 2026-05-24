@@ -69,6 +69,32 @@ func (_c *LearningCreate) SetNillableFix(v *string) *LearningCreate {
 	return _c
 }
 
+// SetPayloadCiphertext sets the "payload_ciphertext" field.
+func (_c *LearningCreate) SetPayloadCiphertext(v []byte) *LearningCreate {
+	_c.mutation.SetPayloadCiphertext(v)
+	return _c
+}
+
+// SetPayloadNonce sets the "payload_nonce" field.
+func (_c *LearningCreate) SetPayloadNonce(v []byte) *LearningCreate {
+	_c.mutation.SetPayloadNonce(v)
+	return _c
+}
+
+// SetPayloadKeyVersion sets the "payload_key_version" field.
+func (_c *LearningCreate) SetPayloadKeyVersion(v int) *LearningCreate {
+	_c.mutation.SetPayloadKeyVersion(v)
+	return _c
+}
+
+// SetNillablePayloadKeyVersion sets the "payload_key_version" field if the given value is not nil.
+func (_c *LearningCreate) SetNillablePayloadKeyVersion(v *int) *LearningCreate {
+	if v != nil {
+		_c.SetPayloadKeyVersion(*v)
+	}
+	return _c
+}
+
 // SetCategory sets the "category" field.
 func (_c *LearningCreate) SetCategory(v learning.Category) *LearningCreate {
 	_c.mutation.SetCategory(v)
@@ -309,6 +335,18 @@ func (_c *LearningCreate) createSpec() (*Learning, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Fix(); ok {
 		_spec.SetField(learning.FieldFix, field.TypeString, value)
 		_node.Fix = value
+	}
+	if value, ok := _c.mutation.PayloadCiphertext(); ok {
+		_spec.SetField(learning.FieldPayloadCiphertext, field.TypeBytes, value)
+		_node.PayloadCiphertext = &value
+	}
+	if value, ok := _c.mutation.PayloadNonce(); ok {
+		_spec.SetField(learning.FieldPayloadNonce, field.TypeBytes, value)
+		_node.PayloadNonce = &value
+	}
+	if value, ok := _c.mutation.PayloadKeyVersion(); ok {
+		_spec.SetField(learning.FieldPayloadKeyVersion, field.TypeInt, value)
+		_node.PayloadKeyVersion = &value
 	}
 	if value, ok := _c.mutation.Category(); ok {
 		_spec.SetField(learning.FieldCategory, field.TypeEnum, value)

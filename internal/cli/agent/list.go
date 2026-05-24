@@ -1,10 +1,8 @@
 package agent
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 	"text/tabwriter"
 	"time"
 
@@ -25,14 +23,20 @@ type agentEntry struct {
 
 func newListCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 	var (
-		jsonOutput bool
-		check      bool
+		output string
+		check  bool
 	)
 
 	cmd := &cobra.Command{
-		Use:   "list",
-		Short: "List available sub-agents, user-defined agents, and remote agents",
+		Use:           "list",
+		Short:         "List available sub-agents, user-defined agents, and remote agents",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			output, err := resolveOutput(cmd)
+			if err != nil {
+				return err
+			}
 			cfg, err := cfgLoader()
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
@@ -48,7 +52,9 @@ func newListCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 			}
 			if cfg.Agent.AgentsDir != "" {
 				userStore := agentregistry.NewFileStore(cfg.Agent.AgentsDir)
-				_ = reg.LoadFromStore(userStore) // non-fatal
+				if loadErr := reg.LoadFromStore(userStore); loadErr != nil {
+					return fmt.Errorf("load user agents: %w", loadErr)
+				}
 			}
 
 			for _, def := range reg.Active() {
@@ -74,19 +80,17 @@ func newListCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 				entries = append(entries, e)
 			}
 
-			if jsonOutput {
-				enc := json.NewEncoder(os.Stdout)
-				enc.SetIndent("", "  ")
-				return enc.Encode(entries)
+			if output == "json" {
+				return printPrettyJSON(cmd.OutOrStdout(), entries)
 			}
 
 			if len(entries) == 0 {
-				fmt.Println("No agents found.")
+				fmt.Fprintln(cmd.OutOrStdout(), "No agents found.")
 				return nil
 			}
 
 			// Print local agents (builtin + user).
-			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
 			fmt.Fprintln(w, "NAME\tSOURCE\tDESCRIPTION")
 			for _, e := range entries {
 				if e.Type != "local" {
@@ -107,8 +111,8 @@ func newListCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 				}
 			}
 			if hasRemote {
-				fmt.Println()
-				w = tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+				fmt.Fprintln(cmd.OutOrStdout())
+				w = tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
 				if check {
 					fmt.Fprintln(w, "NAME\tSOURCE\tURL\tSTATUS")
 				} else {
@@ -133,7 +137,7 @@ func newListCmd(cfgLoader func() (*config.Config, error)) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
+	cmd.Flags().StringVar(&output, "output", "table", "Output format: table or json")
 	cmd.Flags().BoolVar(&check, "check", false, "Test connectivity to remote agents")
 
 	return cmd

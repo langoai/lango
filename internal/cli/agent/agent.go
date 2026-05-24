@@ -20,7 +20,6 @@ func NewAgentCmd(cfgLoader func() (*config.Config, error), bootLoader func() (*b
 	cmd.AddCommand(newHooksCmd(cfgLoader))
 	cmd.AddCommand(newTraceCmd(bootLoader))
 	cmd.AddCommand(newGraphCmd(bootLoader))
-	cmd.AddCommand(newTraceMetricsCmd(bootLoader))
 
 	return cmd
 }

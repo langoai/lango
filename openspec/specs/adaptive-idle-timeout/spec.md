@@ -1,10 +1,10 @@
 # adaptive-idle-timeout Specification
 
 ## Purpose
-TBD - created by archiving change adaptive-idle-timeout. Update Purpose after archive.
+Define shared extendable deadlines for idle-timeout and hard-ceiling enforcement across turn execution.
 ## Requirements
 ### Requirement: Shared ExtendableDeadline package
-The system SHALL provide an `internal/deadline` package containing `ExtendableDeadline` with `New()`, `Extend()`, `Stop()`, and `Reason()` methods. The `internal/app` package SHALL re-export via type alias for backward compatibility.
+The system SHALL provide an `internal/deadline` package containing `ExtendableDeadline` with `New()`, `Extend()`, `Stop()`, and `Reason()` methods. The `internal/app` package SHALL re-export via type alias for backward compatibility. Parent context cancellation SHALL cancel the derived context and classify the deadline reason as `"cancelled"` when it happens before idle or hard-ceiling expiry. The derived context SHALL preserve parent context deadline metadata and standard `Err()` semantics.
 
 #### Scenario: Idle timeout fires on inactivity
 - **WHEN** an ExtendableDeadline is created with idleTimeout=2m and no Extend() calls occur
@@ -21,6 +21,18 @@ The system SHALL provide an `internal/deadline` package containing `ExtendableDe
 #### Scenario: Stop cancels immediately
 - **WHEN** Stop() is called
 - **THEN** the context SHALL be cancelled immediately with Reason() returning "cancelled"
+
+#### Scenario: Parent cancellation is classified as cancelled
+- **WHEN** an ExtendableDeadline is created from a parent context
+- **AND** the parent context is cancelled before idle timeout or max timeout fires
+- **THEN** the derived context SHALL be cancelled
+- **AND** `Reason()` SHALL return `"cancelled"`
+
+#### Scenario: Parent deadline semantics are preserved
+- **WHEN** an ExtendableDeadline is created from a parent context with an existing deadline
+- **THEN** the derived context SHALL expose the parent deadline via `Deadline()`
+- **AND** parent deadline expiry SHALL leave the derived context with `context.DeadlineExceeded`
+- **AND** `Reason()` SHALL return `"cancelled"` when the parent deadline fires first
 
 ### Requirement: IdleTimeout config field
 The `AgentConfig` SHALL include an `IdleTimeout` field of type `time.Duration`. When positive, idle timeout mode is active. When negative (-1), idle timeout is explicitly disabled. When zero (default), behavior depends on other config fields.

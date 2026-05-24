@@ -2,8 +2,8 @@ package payment
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"github.com/langoai/lango/internal/logging"
 	"math/big"
 	"sync"
 	"time"
@@ -14,8 +14,8 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/google/uuid"
 
-	"github.com/langoai/lango/internal/ent"
 	"github.com/langoai/lango/internal/ent/paymenttx"
+	"github.com/langoai/lango/internal/logging"
 	"github.com/langoai/lango/internal/wallet"
 )
 
@@ -35,7 +35,7 @@ type Service struct {
 	wallet    wallet.WalletProvider
 	limiter   wallet.SpendingLimiter
 	builder   *TxBuilder
-	client    *ent.Client
+	store     TxStore
 	rpcClient *ethclient.Client
 	chainID   int64
 
@@ -50,7 +50,7 @@ func NewService(
 	wp wallet.WalletProvider,
 	limiter wallet.SpendingLimiter,
 	builder *TxBuilder,
-	client *ent.Client,
+	store TxStore,
 	rpcClient *ethclient.Client,
 	chainID int64,
 ) *Service {
@@ -58,7 +58,7 @@ func NewService(
 		wallet:         wp,
 		limiter:        limiter,
 		builder:        builder,
-		client:         client,
+		store:          store,
 		rpcClient:      rpcClient,
 		chainID:        chainID,
 		receiptTimeout: DefaultReceiptTimeout,
@@ -81,10 +81,16 @@ func (s *Service) Send(ctx context.Context, req PaymentRequest) (*PaymentReceipt
 	if amount.Sign() <= 0 {
 		return nil, fmt.Errorf("amount must be positive")
 	}
+	if s.limiter == nil {
+		return nil, fmt.Errorf("spending limit: %w", fmt.Errorf("spending limiter unavailable"))
+	}
 
 	// Check spending limits
 	if err := s.limiter.Check(ctx, amount); err != nil {
 		return nil, fmt.Errorf("spending limit: %w", err)
+	}
+	if s.wallet == nil {
+		return nil, fmt.Errorf("get wallet address: %w", fmt.Errorf("wallet provider unavailable"))
 	}
 
 	// Get sender address
@@ -92,18 +98,23 @@ func (s *Service) Send(ctx context.Context, req PaymentRequest) (*PaymentReceipt
 	if err != nil {
 		return nil, fmt.Errorf("get wallet address: %w", err)
 	}
+	if s.store == nil {
+		return nil, fmt.Errorf("create tx record: %w", fmt.Errorf("payment store unavailable"))
+	}
 
 	// Create pending transaction record
-	ptx, err := s.client.PaymentTx.Create().
-		SetFromAddress(fromAddr).
-		SetToAddress(req.To).
-		SetAmount(req.Amount).
-		SetChainID(s.chainID).
-		SetStatus(paymenttx.StatusPending).
-		SetNillableSessionKey(nilIfEmpty(req.SessionKey)).
-		SetNillablePurpose(nilIfEmpty(req.Purpose)).
-		SetNillableX402URL(nilIfEmpty(req.X402URL)).
-		Save(ctx)
+	ptx, err := s.store.Create(ctx, TxRecord{
+		ID:            uuid.New(),
+		FromAddress:   fromAddr,
+		ToAddress:     req.To,
+		Amount:        req.Amount,
+		ChainID:       s.chainID,
+		Status:        paymenttx.StatusPending,
+		SessionKey:    req.SessionKey,
+		Purpose:       req.Purpose,
+		X402URL:       req.X402URL,
+		PaymentMethod: paymenttx.PaymentMethodDirectTransfer,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("create tx record: %w", err)
 	}
@@ -116,7 +127,9 @@ func (s *Service) Send(ctx context.Context, req PaymentRequest) (*PaymentReceipt
 	tx, err := s.builder.BuildTransferTx(ctx, from, to, amount)
 	if err != nil {
 		s.nonceMu.Unlock()
-		s.failTx(ctx, ptx.ID, err)
+		if failErr := s.failTx(ctx, ptx.ID, err); failErr != nil {
+			return nil, fmt.Errorf("build transaction: %w", failErr)
+		}
 		return nil, fmt.Errorf("build transaction: %w", err)
 	}
 
@@ -125,14 +138,18 @@ func (s *Service) Send(ctx context.Context, req PaymentRequest) (*PaymentReceipt
 	sig, err := s.wallet.SignTransaction(ctx, txSigHash.Bytes())
 	if err != nil {
 		s.nonceMu.Unlock()
-		s.failTx(ctx, ptx.ID, err)
+		if failErr := s.failTx(ctx, ptx.ID, err); failErr != nil {
+			return nil, fmt.Errorf("sign transaction: %w", failErr)
+		}
 		return nil, fmt.Errorf("sign transaction: %w", err)
 	}
 
 	signedTx, err := tx.WithSignature(signer, sig)
 	if err != nil {
 		s.nonceMu.Unlock()
-		s.failTx(ctx, ptx.ID, err)
+		if failErr := s.failTx(ctx, ptx.ID, err); failErr != nil {
+			return nil, fmt.Errorf("apply signature: %w", failErr)
+		}
 		return nil, fmt.Errorf("apply signature: %w", err)
 	}
 
@@ -140,33 +157,38 @@ func (s *Service) Send(ctx context.Context, req PaymentRequest) (*PaymentReceipt
 	txHashHex, err := s.submitWithRetry(ctx, signedTx)
 	s.nonceMu.Unlock()
 	if err != nil {
-		s.failTx(ctx, ptx.ID, err)
+		if failErr := s.failTx(ctx, ptx.ID, err); failErr != nil {
+			return nil, fmt.Errorf("submit transaction: %w", failErr)
+		}
 		return nil, fmt.Errorf("submit transaction: %w", err)
 	}
 
 	// Update record to submitted.
-	s.client.PaymentTx.UpdateOneID(ptx.ID).
-		SetTxHash(txHashHex).
-		SetStatus(paymenttx.StatusSubmitted).
-		SaveX(ctx)
+	if err := s.store.UpdateStatus(ctx, ptx.ID, paymenttx.StatusSubmitted, txHashHex, ""); err != nil {
+		return nil, fmt.Errorf("mark submitted: %w", err)
+	}
 
 	// Wait for on-chain confirmation.
 	receipt, err := s.waitForConfirmation(ctx, signedTx.Hash())
 	if err != nil {
-		s.failTx(ctx, ptx.ID, err)
+		if failErr := s.failTx(ctx, ptx.ID, err); failErr != nil {
+			return nil, fmt.Errorf("confirm transaction: %w", failErr)
+		}
 		return nil, fmt.Errorf("confirm transaction: %w", err)
 	}
 
 	if receipt.Status != types.ReceiptStatusSuccessful {
 		txErr := fmt.Errorf("tx %s reverted (status=%d)", txHashHex, receipt.Status)
-		s.failTx(ctx, ptx.ID, txErr)
+		if failErr := s.failTx(ctx, ptx.ID, txErr); failErr != nil {
+			return nil, failErr
+		}
 		return nil, txErr
 	}
 
 	// Update record to confirmed.
-	s.client.PaymentTx.UpdateOneID(ptx.ID).
-		SetStatus(paymenttx.StatusConfirmed).
-		SaveX(ctx)
+	if err := s.store.UpdateStatus(ctx, ptx.ID, paymenttx.StatusConfirmed, "", ""); err != nil {
+		return nil, fmt.Errorf("mark confirmed: %w", err)
+	}
 
 	// Record spending — non-fatal since tx is already confirmed.
 	_ = s.limiter.Record(ctx, amount)
@@ -187,9 +209,18 @@ func (s *Service) Send(ctx context.Context, req PaymentRequest) (*PaymentReceipt
 // Balance returns the wallet's USDC balance as a formatted string.
 func (s *Service) Balance(ctx context.Context) (string, error) {
 	// Query USDC ERC-20 balance via eth_call
+	if s.wallet == nil {
+		return "", fmt.Errorf("wallet provider unavailable")
+	}
 	addr, err := s.wallet.Address(ctx)
 	if err != nil {
 		return "", fmt.Errorf("get address: %w", err)
+	}
+	if s.builder == nil {
+		return "", fmt.Errorf("balance builder unavailable")
+	}
+	if s.rpcClient == nil {
+		return "", fmt.Errorf("balance RPC unavailable")
 	}
 
 	contract := s.builder.USDCContract()
@@ -215,11 +246,11 @@ func (s *Service) History(ctx context.Context, limit int) ([]TransactionInfo, er
 	if limit <= 0 {
 		limit = DefaultHistoryLimit
 	}
+	if s.store == nil {
+		return nil, fmt.Errorf("query history: %w", fmt.Errorf("payment store unavailable"))
+	}
 
-	txs, err := s.client.PaymentTx.Query().
-		Order(ent.Desc(paymenttx.FieldCreatedAt)).
-		Limit(limit).
-		All(ctx)
+	txs, err := s.store.List(ctx, limit)
 	if err != nil {
 		return nil, fmt.Errorf("query history: %w", err)
 	}
@@ -248,16 +279,20 @@ func (s *Service) History(ctx context.Context, limit int) ([]TransactionInfo, er
 // Unlike Send(), this does not build or submit a transaction — the SDK handles
 // payment signing. This only creates the database record for tracking.
 func (s *Service) RecordX402Payment(ctx context.Context, record X402PaymentRecord) error {
-	_, err := s.client.PaymentTx.Create().
-		SetFromAddress(record.From).
-		SetToAddress(record.To).
-		SetAmount(record.Amount).
-		SetChainID(record.ChainID).
-		SetStatus(paymenttx.StatusSubmitted).
-		SetPurpose(purposeX402AutoPayment).
-		SetX402URL(record.URL).
-		SetPaymentMethod(paymenttx.PaymentMethodX402V2).
-		Save(ctx)
+	if s.store == nil {
+		return fmt.Errorf("record X402 payment: %w", fmt.Errorf("payment store unavailable"))
+	}
+	_, err := s.store.Create(ctx, TxRecord{
+		ID:            uuid.New(),
+		FromAddress:   record.From,
+		ToAddress:     record.To,
+		Amount:        record.Amount,
+		ChainID:       record.ChainID,
+		Status:        paymenttx.StatusSubmitted,
+		Purpose:       purposeX402AutoPayment,
+		X402URL:       record.URL,
+		PaymentMethod: paymenttx.PaymentMethodX402V2,
+	})
 	if err != nil {
 		return fmt.Errorf("record X402 payment: %w", err)
 	}
@@ -266,6 +301,9 @@ func (s *Service) RecordX402Payment(ctx context.Context, record X402PaymentRecor
 
 // WalletAddress returns the wallet's public address.
 func (s *Service) WalletAddress(ctx context.Context) (string, error) {
+	if s.wallet == nil {
+		return "", fmt.Errorf("wallet provider unavailable")
+	}
 	return s.wallet.Address(ctx)
 }
 
@@ -276,6 +314,10 @@ func (s *Service) ChainID() int64 {
 
 // submitWithRetry sends the signed transaction with exponential backoff.
 func (s *Service) submitWithRetry(ctx context.Context, tx *types.Transaction) (string, error) {
+	if s.rpcClient == nil {
+		return "", fmt.Errorf("transaction RPC unavailable")
+	}
+
 	var lastErr error
 	for attempt := 0; attempt < s.maxRetries; attempt++ {
 		if err := s.rpcClient.SendTransaction(ctx, tx); err == nil {
@@ -298,6 +340,10 @@ func (s *Service) submitWithRetry(ctx context.Context, tx *types.Transaction) (s
 
 // waitForConfirmation polls for a transaction receipt with exponential backoff.
 func (s *Service) waitForConfirmation(ctx context.Context, txHash common.Hash) (*types.Receipt, error) {
+	if s.rpcClient == nil {
+		return nil, fmt.Errorf("receipt RPC unavailable")
+	}
+
 	deadline := time.After(s.receiptTimeout)
 	backoff := 1 * time.Second
 	maxBackoff := 16 * time.Second
@@ -323,11 +369,11 @@ func (s *Service) waitForConfirmation(ctx context.Context, txHash common.Hash) (
 }
 
 // failTx marks a transaction as failed with an error message.
-func (s *Service) failTx(ctx context.Context, id uuid.UUID, txErr error) {
-	s.client.PaymentTx.UpdateOneID(id).
-		SetStatus(paymenttx.StatusFailed).
-		SetErrorMessage(txErr.Error()).
-		SaveX(ctx)
+func (s *Service) failTx(ctx context.Context, id uuid.UUID, txErr error) error {
+	if err := s.store.UpdateStatus(ctx, id, paymenttx.StatusFailed, "", txErr.Error()); err != nil {
+		return errors.Join(txErr, fmt.Errorf("mark failed: %w", err))
+	}
+	return nil
 }
 
 func nilIfEmpty(s string) *string {

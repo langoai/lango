@@ -8,32 +8,32 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/langoai/lango/internal/cli/cockpit/theme"
 	"github.com/langoai/lango/internal/cli/tui"
 	"github.com/langoai/lango/internal/toolcatalog"
 )
 
+func sanitizeToolsText(text string) string {
+	return strings.Join(strings.Fields(ansi.Strip(text)), " ")
+}
+
 // toolsKeyMap holds the key bindings for the tools page.
 type toolsKeyMap struct {
 	Up   key.Binding
 	Down key.Binding
-	Back key.Binding
 }
 
 func defaultToolsKeyMap() toolsKeyMap {
 	return toolsKeyMap{
 		Up: key.NewBinding(
 			key.WithKeys("up", "k"),
-			key.WithHelp("up/k", "navigate up"),
+			key.WithHelp("↑/k", "up"),
 		),
 		Down: key.NewBinding(
 			key.WithKeys("down", "j"),
-			key.WithHelp("down/j", "navigate down"),
-		),
-		Back: key.NewBinding(
-			key.WithKeys("esc"),
-			key.WithHelp("esc", "back"),
+			key.WithHelp("↓/j", "down"),
 		),
 	}
 }
@@ -61,6 +61,12 @@ func NewToolsPage(catalog *toolcatalog.Catalog) *ToolsPage {
 
 // refreshCategories reloads categories and tools from the catalog.
 func (p *ToolsPage) refreshCategories() {
+	if p.catalog == nil {
+		p.categories = nil
+		p.tools = nil
+		p.categoryCursor = 0
+		return
+	}
 	p.categories = p.catalog.ListCategories()
 	if p.categoryCursor >= len(p.categories) {
 		p.categoryCursor = max(0, len(p.categories)-1)
@@ -70,7 +76,7 @@ func (p *ToolsPage) refreshCategories() {
 
 // refreshTools reloads the tool list for the currently selected category.
 func (p *ToolsPage) refreshTools() {
-	if len(p.categories) == 0 {
+	if p.catalog == nil || len(p.categories) == 0 {
 		p.tools = nil
 		return
 	}
@@ -135,7 +141,10 @@ func (p *ToolsPage) Title() string { return "Tools" }
 
 // ShortHelp implements cockpit.Page.
 func (p *ToolsPage) ShortHelp() []key.Binding {
-	return []key.Binding{p.keymap.Up, p.keymap.Down, p.keymap.Back}
+	if p == nil || len(p.categories) < 2 {
+		return nil
+	}
+	return []key.Binding{p.keymap.Up, p.keymap.Down}
 }
 
 // Activate implements cockpit.Page.
@@ -161,18 +170,19 @@ var (
 
 // categoryLine renders a single category row with cursor, name, and tool count.
 func categoryLine(cat toolcatalog.Category, active bool, width int, toolCount int) string {
+	nameText := sanitizeToolsText(cat.Name)
 	countLabel := fmt.Sprintf("[%d tools]", toolCount)
 
 	if active {
 		cursor := cursorStyle.Render("  ▸ ")
-		name := activeNameStyle.Render(cat.Name)
+		name := activeNameStyle.Render(nameText)
 		count := activeCountStyle.Render(countLabel)
-		return cursor + name + padding(width, 4+len(cat.Name)+len(countLabel)) + count
+		return cursor + name + padding(width, 4+len(nameText)+len(countLabel)) + count
 	}
 
-	name := mutedStyle.Render(cat.Name)
+	name := mutedStyle.Render(nameText)
 	count := mutedStyle.Render(countLabel)
-	return "    " + name + padding(width, 4+len(cat.Name)+len(countLabel)) + count
+	return "    " + name + padding(width, 4+len(nameText)+len(countLabel)) + count
 }
 
 // padding returns spaces to fill the remaining width.
@@ -190,6 +200,26 @@ func (p *ToolsPage) renderCategories(width int) string {
 
 	lines := make([]string, 0, len(p.categories)+2)
 	lines = append(lines, header, "")
+
+	if p.catalog == nil {
+		lines = append(lines, mutedStyle.Render("  Tool catalog is not available."))
+		for len(lines) < p.height {
+			lines = append(lines, strings.Repeat(" ", width))
+		}
+		return lipgloss.NewStyle().
+			Width(width).
+			Render(strings.Join(lines, "\n"))
+	}
+
+	if len(p.categories) == 0 {
+		lines = append(lines, mutedStyle.Render("  No categories registered."))
+		for len(lines) < p.height {
+			lines = append(lines, strings.Repeat(" ", width))
+		}
+		return lipgloss.NewStyle().
+			Width(width).
+			Render(strings.Join(lines, "\n"))
+	}
 
 	for i, cat := range p.categories {
 		toolCount := len(p.catalog.ToolNamesForCategory(cat.Name))
@@ -210,14 +240,20 @@ func (p *ToolsPage) renderCategories(width int) string {
 // renderToolDetails renders the right-side tool table for the selected
 // category.
 func (p *ToolsPage) renderToolDetails(width int) string {
+	if p.catalog == nil {
+		return mutedStyle.Width(width).Render("  Tool catalog is not available.")
+	}
+
 	if len(p.categories) == 0 {
 		return mutedStyle.Width(width).Render("  No categories registered.")
 	}
 
 	cat := p.categories[p.categoryCursor]
+	categoryName := sanitizeToolsText(cat.Name)
+	categoryDescription := sanitizeToolsText(cat.Description)
 
 	header := headerStyle.Width(width).
-		Render(fmt.Sprintf("  %s — %s", strings.ToUpper(cat.Name), cat.Description))
+		Render(fmt.Sprintf("  %s — %s", strings.ToUpper(categoryName), categoryDescription))
 
 	if len(p.tools) == 0 {
 		return header + "\n\n" + mutedStyle.Width(width).
@@ -246,9 +282,10 @@ func (p *ToolsPage) renderToolDetails(width int) string {
 	lines = append(lines, tableHeader, divider)
 
 	for _, t := range p.tools {
-		name := tui.Truncate(t.Name, nameCol)
-		desc := tui.Truncate(t.Description, descCol)
-		safety := safetyStyle(t.SafetyLevel).Render(tui.Truncate(t.SafetyLevel, safetyCol))
+		name := tui.Truncate(sanitizeToolsText(t.Name), nameCol)
+		desc := tui.Truncate(sanitizeToolsText(t.Description), descCol)
+		safetyLabel := sanitizeToolsText(t.SafetyLevel)
+		safety := safetyStyle(safetyLabel).Render(tui.Truncate(safetyLabel, safetyCol))
 
 		line := fmt.Sprintf("  %-*s %-*s %s", nameCol, name, descCol, desc, safety)
 		lines = append(lines, line)
@@ -266,7 +303,7 @@ var safetyStyles = map[string]lipgloss.Style{
 
 // safetyStyle returns a styled renderer based on the safety level string.
 func safetyStyle(level string) lipgloss.Style {
-	if s, ok := safetyStyles[level]; ok {
+	if s, ok := safetyStyles[strings.ToLower(sanitizeToolsText(level))]; ok {
 		return s
 	}
 	return mutedStyle

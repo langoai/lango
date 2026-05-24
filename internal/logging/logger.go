@@ -13,6 +13,8 @@ var (
 	rootLogger *zap.Logger
 	// sugarLogger is the sugared version for convenience
 	sugarLogger *zap.SugaredLogger
+	// defaultLogWriter keeps diagnostics off stdout unless callers opt in.
+	defaultLogWriter io.Writer = os.Stderr
 )
 
 // LogConfig holds logging configuration
@@ -54,7 +56,7 @@ func Init(cfg LogConfig) error {
 		}
 		writeSyncer = zapcore.AddSync(file)
 	default:
-		writeSyncer = zapcore.AddSync(os.Stdout)
+		writeSyncer = zapcore.AddSync(defaultLogWriter)
 	}
 
 	core := zapcore.NewCore(encoder, writeSyncer, level)

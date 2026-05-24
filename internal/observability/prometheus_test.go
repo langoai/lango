@@ -1,6 +1,8 @@
 package observability
 
 import (
+	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -11,7 +13,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/langoai/lango/internal/agentrt"
 	"github.com/langoai/lango/internal/eventbus"
+	"github.com/langoai/lango/internal/runledger"
 	"github.com/langoai/lango/internal/toolchain"
 )
 
@@ -95,4 +99,90 @@ func TestPrometheusExporter_NoEvents(t *testing.T) {
 	// Metrics exist but with zero values or no samples.
 	assert.True(t, strings.Contains(string(body), "lango_tracked_sessions 0") ||
 		strings.Contains(string(body), "lango_tracked_sessions"), "tracked sessions gauge should exist")
+}
+
+func TestPrometheusExporter_RunLedgerMirrorFailureCounter(t *testing.T) {
+	t.Parallel()
+
+	bus := eventbus.New()
+	exp := NewPrometheusExporter()
+	exp.Subscribe(bus)
+
+	bus.Publish(eventbus.RunLedgerMirrorFailureEvent{
+		Target: "agent_run_projection",
+		Phase:  "append_journal",
+		RunID:  "arun-1",
+		Error:  "boom",
+	})
+
+	ts := httptest.NewServer(exp.Handler())
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	text := string(body)
+
+	assert.Contains(t, text, "lango_runledger_mirror_failures_total")
+	assert.Contains(t, text, `target="agent_run_projection"`)
+	assert.Contains(t, text, `phase="append_journal"`)
+}
+
+func TestPrometheusExporter_RunLedgerMirrorFailureCounter_FromMirrorPath(t *testing.T) {
+	t.Parallel()
+
+	bus := eventbus.New()
+	exp := NewPrometheusExporter()
+	exp.Subscribe(bus)
+
+	base := agentrt.NewInMemoryAgentRunStore()
+	require.NoError(t, base.Create(&agentrt.AgentRun{
+		ID:     "arun-metric",
+		Status: agentrt.AgentRunRunning,
+	}))
+
+	ledger := &failingRunLedgerStore{
+		RunLedgerStore: runledger.NewMemoryStore(),
+		appendErr:      errors.New("boom"),
+	}
+	store := agentrt.NewRunLedgerMirrorStore(base, ledger, bus)
+
+	require.NoError(t, store.UpdateProjection("arun-metric", agentrt.RunProjectionPatch{
+		ApplyRuntimeCondition: true,
+		ApplyBlockedReason:    true,
+		ApplyGrantRequestID:   true,
+		RuntimeCondition:      agentrt.AgentRunConditionBlockedWaitingApproval,
+		BlockedReason:         "dangerous tool requires approval",
+		GrantRequestID:        "grant-arun-metric-exec",
+	}))
+
+	ts := httptest.NewServer(exp.Handler())
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	text := string(body)
+
+	assert.Contains(t, text, "lango_runledger_mirror_failures_total")
+	assert.Contains(t, text, `target="agent_run_projection"`)
+	assert.Contains(t, text, `phase="append_journal"`)
+}
+
+type failingRunLedgerStore struct {
+	runledger.RunLedgerStore
+	appendErr error
+}
+
+func (s *failingRunLedgerStore) AppendJournalEvent(ctx context.Context, event runledger.JournalEvent) error {
+	if s.appendErr != nil {
+		return s.appendErr
+	}
+	return s.RunLedgerStore.AppendJournalEvent(ctx, event)
 }

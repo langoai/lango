@@ -1,7 +1,7 @@
 # pii-pattern-catalog Specification
 
 ## Purpose
-TBD - created by archiving change pii-redaction-enhancement. Update Purpose after archive.
+Define the built-in PII pattern catalog, its categories, defaults, and validation behavior.
 ## Requirements
 ### Requirement: Builtin PII pattern catalog
 The system SHALL provide a catalog of 13 builtin PII detection patterns organized into 4 categories: contact, identity, financial, and network.
@@ -73,4 +73,3 @@ The kr_rrn pattern SHALL match Korean resident registration numbers in format YY
 #### Scenario: Invalid gender digit
 - **WHEN** text contains "900101-5234567"
 - **THEN** the pattern SHALL NOT match
-

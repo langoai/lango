@@ -1,19 +1,17 @@
 ## Purpose
 
 Multi-agent orchestration tool routing — prefix-based tool partitioning, agent spec registry, and orchestrator delegation protocol.
-
 ## Requirements
-
 ### Requirement: AgentSpec registry defines sub-agent identity and routing metadata
-The system SHALL define an `AgentSpec` type with fields: Name, Description, Instruction, Prefixes, Keywords, Accepts, Returns, CannotDo, and AlwaysInclude. A `var agentSpecs` registry SHALL contain specs for all 6 sub-agents in creation order.
+The system SHALL define an `AgentSpec` type with fields: Name, Description, Instruction, Prefixes, Keywords, Accepts, Returns, CannotDo, and AlwaysInclude. A `var agentSpecs` registry SHALL contain specs for all 8 built-in teammates in creation order.
 
 #### Scenario: AgentSpec type has all required fields
 - **WHEN** the AgentSpec type is defined
 - **THEN** it SHALL include Name (string), Description (string), Instruction (string), Prefixes ([]string), Keywords ([]string), Accepts (string), Returns (string), CannotDo ([]string), and AlwaysInclude (bool)
 
-#### Scenario: Registry contains exactly 6 specs
+#### Scenario: Registry contains exactly 8 specs
 - **WHEN** agentSpecs is initialized
-- **THEN** it SHALL contain specs for operator, navigator, vault, librarian, planner, and chronicler in that order
+- **THEN** it SHALL contain specs for operator, navigator, vault, librarian, automator, planner, chronicler, and ontologist in that order
 
 #### Scenario: Each spec has unique name
 - **WHEN** agentSpecs is iterated
@@ -50,16 +48,16 @@ The orchestrator instruction SHALL include a 5-step decision protocol: CLASSIFY,
 - **WHEN** the orchestrator instruction is generated
 - **THEN** it SHALL contain the steps CLASSIFY, MATCH, SELECT, VERIFY, and DELEGATE
 
-### Requirement: Reject protocol for misrouted tasks
-Each sub-agent instruction SHALL include a `[REJECT]` response protocol. When a sub-agent receives a task outside its capabilities, it SHALL respond with `[REJECT] This task requires <correct_agent>. I handle: <capabilities>.`
+### Requirement: Compatibility reject protocol remains available outside built-in teammate prompts
+The runtime SHALL preserve `[REJECT]` detection and retry handling as a compatibility safety net for legacy or remote sub-agent paths. Built-in teammate prompt overrides are governed separately and SHALL not require textual `[REJECT]` markers.
 
-#### Scenario: All sub-agent instructions contain reject protocol
-- **WHEN** any sub-agent's instruction is checked
-- **THEN** it SHALL contain the string `[REJECT]`
+#### Scenario: Compatibility rejection is still handled
+- **WHEN** a legacy or remote sub-agent response contains `[REJECT]`
+- **THEN** the orchestrator/runtime SHALL try the next most relevant agent or handle the task directly
 
-#### Scenario: Orchestrator handles rejections
-- **WHEN** a sub-agent rejects a task
-- **THEN** the orchestrator SHALL try the next most relevant agent or handle directly
+#### Scenario: Built-in prompt overrides do not require reject text
+- **WHEN** a built-in teammate prompt override is checked
+- **THEN** it SHALL NOT require the string `[REJECT]`
 
 ### Requirement: Keywords for routing decisions
 Each AgentSpec SHALL define keywords that the orchestrator uses to match user requests to agents.
@@ -184,17 +182,16 @@ Tools with "tool_output_" prefix SHALL be distributed to all non-empty, tool-bea
 - **THEN** the same universal distribution logic SHALL apply
 
 ### Requirement: Prompt override file consistency
-All prompt override files (IDENTITY.md, AGENT.md) SHALL use transfer_to_agent escalation instead of [REJECT] patterns.
+All prompt override files (`IDENTITY.md`, `AGENT.md`) SHALL continue to forbid `[REJECT]` patterns. Non-planner prompt override files SHALL continue to include a `## Output Handling` section with `tool_output_get` guidance. The hard cut narrows only the built-in escalation path: embedded prompt override files for built-in teammates SHALL NOT require `transfer_to_agent("lango-orchestrator")` as the built-in escalation path, while remote/legacy transfer guidance may remain only where explicitly documented as compatibility behavior.
 
 #### Scenario: No REJECT patterns
 - **WHEN** any prompt override file is checked
-- **THEN** it SHALL NOT contain the text "[REJECT]"
+- **THEN** it SHALL NOT contain the text `[REJECT]`
 
-#### Scenario: Escalation protocol present
-- **WHEN** any prompt override file is checked
-- **THEN** it SHALL contain "transfer_to_agent" escalation to "lango-orchestrator"
+#### Scenario: Built-in AGENT.md files no longer encode built-in transfer escalation
+- **WHEN** any embedded built-in `AGENT.md` file is checked
+- **THEN** it SHALL NOT instruct the built-in teammate to call `transfer_to_agent("lango-orchestrator")`
 
-#### Scenario: Output handling in non-planner overrides
+#### Scenario: Output handling in non-planner overrides remains required
 - **WHEN** a non-planner prompt override file is checked
-- **THEN** it SHALL contain "## Output Handling" section with tool_output_get guidance
-
+- **THEN** it SHALL contain `## Output Handling` section with `tool_output_get` guidance

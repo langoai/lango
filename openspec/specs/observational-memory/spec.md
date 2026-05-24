@@ -126,6 +126,14 @@ The memory Store SHALL provide a `DeleteReflectionsBySession(ctx, sessionKey)` m
 - **WHEN** `DeleteReflectionsBySession` is called with a session key that has no reflections
 - **THEN** the method returns nil without error
 
+### Requirement: Observation tools fall back to current session context
+The `memory_list_observations` and `memory_list_reflections` tools SHALL use the current session key from context when `session_key` is omitted.
+
+#### Scenario: Observation tools use current session fallback
+- **WHEN** `memory_list_observations` or `memory_list_reflections` is invoked without `session_key`
+- **AND** the request context carries a session key
+- **THEN** the tool SHALL list entries for that current session
+
 ### Requirement: Memory buffer compaction
 The observational memory buffer SHALL support a compaction callback that deletes observed messages and replaces them with a summary after successful observation.
 

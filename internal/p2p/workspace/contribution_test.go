@@ -50,11 +50,11 @@ func TestContributionTracker_RecordMessage(t *testing.T) {
 
 func TestContributionTracker_Get(t *testing.T) {
 	tests := []struct {
-		give        string
-		giveWS      string
-		giveDID     string
-		setup       func(*ContributionTracker)
-		wantNil     bool
+		give    string
+		giveWS  string
+		giveDID string
+		setup   func(*ContributionTracker)
+		wantNil bool
 	}{
 		{
 			give:    "existing contribution",

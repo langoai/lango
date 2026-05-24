@@ -4,6 +4,14 @@ Define the CLI commands for managing cron job scheduling (add, list, delete, pau
 
 ## Requirements
 
+### Requirement: Cron command output routing
+The CLI SHALL route human-readable `lango cron` output through the Cobra command writer instead of writing directly to process stdout.
+
+#### Scenario: Cron output uses the command writer
+- **WHEN** `lango cron` renders confirmation text or tabular output
+- **THEN** it SHALL write the full output through the Cobra command output writer
+- **AND** wrappers or tests that replace `cmd.OutOrStdout()` SHALL capture the command output
+
 ### Requirement: Cron add command
 The CLI SHALL provide `lango cron add` with flags: --name (required), --schedule/--every/--at (mutually exclusive, one required), --prompt (required), --deliver (repeatable), --isolated, --timezone.
 

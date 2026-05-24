@@ -2,7 +2,12 @@ package module
 
 import (
 	"encoding/hex"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"math/big"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -204,6 +209,39 @@ func TestEncodeInstallModule_LargeInitData(t *testing.T) {
 	// Verify data bytes match.
 	actualData := got[132 : 132+64]
 	assert.Equal(t, initData, actualData)
+}
+
+func TestModuleProductionCodeDoesNotPanic(t *testing.T) {
+	t.Parallel()
+
+	files, err := filepath.Glob("*.go")
+	require.NoError(t, err)
+
+	var offenders []string
+	for _, file := range files {
+		if strings.HasSuffix(file, "_test.go") {
+			continue
+		}
+
+		fset := token.NewFileSet()
+		parsed, err := parser.ParseFile(fset, file, nil, 0)
+		require.NoError(t, err)
+
+		ast.Inspect(parsed, func(node ast.Node) bool {
+			call, ok := node.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+
+			ident, ok := call.Fun.(*ast.Ident)
+			if ok && ident.Name == "panic" {
+				offenders = append(offenders, fset.Position(call.Pos()).String())
+			}
+			return true
+		})
+	}
+
+	assert.Empty(t, offenders, "production smartaccount module code must return errors instead of panicking")
 }
 
 func TestEncodeUninstallModule_ModuleTypeAndAddress(t *testing.T) {

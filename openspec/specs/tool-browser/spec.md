@@ -11,6 +11,11 @@ The system SHALL provide browser automation tools powered by go-rod for web page
 - **WHEN** `browser_navigate` is called with a URL
 - **THEN** the system SHALL navigate to the URL, wait for page load, and return a structured page snapshot including title, URL, snippet, headings, links, action candidates, page type, result count, and empty-state signal
 
+#### Scenario: Missing search or navigation input is rejected
+- **WHEN** `browser_navigate` or `browser_search` is called without its required `url` or `query`
+- **THEN** the system SHALL return an actionable missing-parameter error
+- **AND** SHALL reject the request before session creation or network navigation begins
+
 #### Scenario: Implicit session management
 - **WHEN** any browser tool is called without a prior session
 - **THEN** the system SHALL auto-create a browser session and reuse it for subsequent calls
@@ -132,6 +137,11 @@ The system SHALL multiplex page interactions through a single `browser_action` t
 #### Scenario: Wait action
 - **WHEN** `browser_action` is called with `action: "wait"`, a CSS `selector`, and optional `timeout`
 - **THEN** the system SHALL wait for the element to appear (default: 10s)
+
+#### Scenario: Missing action-specific input is rejected
+- **WHEN** `browser_action` is called without the `selector` or `text` required by the chosen action
+- **THEN** the system SHALL return an actionable validation error
+- **AND** SHALL reject the request before DOM interaction or script evaluation begins
 
 ### Requirement: Screenshot capture
 The system SHALL capture screenshots of the current browser page.
@@ -311,3 +321,7 @@ The `browser_action` handler MUST reject `eval` actions when the context carries
 
 ### Requirement: Browser sentinel errors
 The browser package MUST define `ErrBlockedURL` and `ErrEvalBlockedP2P` sentinel errors.
+
+#### Scenario: Browser sentinel errors are available to callers
+- **WHEN** browser security or policy validation fails
+- **THEN** callers MUST be able to match `ErrBlockedURL` and `ErrEvalBlockedP2P` as sentinel errors
