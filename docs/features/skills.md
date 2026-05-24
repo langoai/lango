@@ -6,6 +6,14 @@ title: Skill System
 
 The Skill System extends Lango's capabilities through file-based skill definitions. Skills are Markdown files (`SKILL.md`) that define reusable behaviors, scripts, templates, and multi-step workflows -- without writing Go code.
 
+!!! note "Two independent skill systems"
+    Lango has **two skill subsystems** that share the term "skill" but serve different layers:
+
+    - **This page** — the **knowledge skill registry** (`skill.*` config, `~/.lango/skills`). Uses Lango's own type-tagged frontmatter (`instruction` / `composite` / `script` / `template`). Skills are loaded by the runtime and contribute to the knowledge layer.
+    - **ADK SkillToolset** — config: `agent.skillsDir`. Uses [agentskills.io](https://agentskills.io) frontmatter (`name`, `description`). The ADK agent gains three tools at runtime — `load_skill`, `list_skill_resources`, `load_skill_resource` — which it can call to discover and read Markdown-defined skill bundles. See `assets/skills/example-skill/` for a reference bundle.
+
+    The two systems are **independent**. Migration of existing `~/.lango/skills` Lango-format skills to agentskills.io format is deferred to a future change. For now, you can use both simultaneously (different directories, different purposes).
+
 ## Skill Types
 
 | Type | Description | Definition |

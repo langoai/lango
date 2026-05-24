@@ -73,6 +73,7 @@ LLM agent settings including model selection, prompt configuration, and timeouts
 | `agent.temperature` | `float64` | `0.7` | Sampling temperature (0.0 - 1.0) |
 | `agent.systemPromptPath` | `string` | | Path to a custom system prompt file |
 | `agent.promptsDir` | `string` | | Directory containing `.md` files for [system prompts](features/system-prompts.md) |
+| `agent.skillsDir` | `string` | | Directory containing ADK-compatible skill bundles ([agentskills.io](https://agentskills.io) frontmatter). Each skill is a subdirectory with `SKILL.md` plus optional `references/`, `assets/`, `scripts/`. Empty disables the ADK SkillToolset. **Distinct from `skill.skillsDir`** (knowledge module — see [Skill](#skill) section). Example bundle at `assets/skills/example-skill/`. |
 | `agent.requestTimeout` | `duration` | `5m` | Maximum duration for a single AI provider request |
 | `agent.toolTimeout` | `duration` | `2m` | Maximum duration for a single tool call |
 | `agent.multiAgent` | `bool` | `false` | Enable [multi-agent orchestration](features/multi-agent.md) |
@@ -484,14 +485,41 @@ User-explicit overrides take precedence over profile defaults.
 
 ## Skill
 
+Lango has **two independent skill subsystems** that share the term "skill" but serve different layers:
+
+| Subsystem | Config | Format | Consumer |
+|-----------|--------|--------|----------|
+| **Knowledge skill registry** (this section) | `skill.*` | Lango's own [skill format](features/skills.md) with type-tagged frontmatter (instruction/composite/script/template) | Knowledge module / runtime |
+| **ADK SkillToolset** | `agent.skillsDir` (see [Agent](#agent) section) | [agentskills.io](https://agentskills.io) frontmatter (`name`, `description`) | ADK agent's `load_skill` / `list_skill_resources` / `load_skill_resource` tools |
+
+The two systems are intentionally separate. Migration of existing `~/.lango/skills` Lango-format skills to agentskills.io format is deferred to a future change.
+
+### Knowledge skill registry (`skill.*`)
+
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `skill.enabled` | `bool` | `false` | Enable the [skill system](features/skills.md) |
-| `skill.skillsDir` | `string` | `~/.lango/skills` | Directory for skill files |
+| `skill.skillsDir` | `string` | `~/.lango/skills` | Directory for Lango-format skill files |
 | `skill.allowImport` | `bool` | `false` | Allow importing skills from external sources |
 | `skill.maxBulkImport` | `int` | `50` | Maximum skills per bulk import |
 | `skill.importConcurrency` | `int` | `5` | Concurrent import workers |
 | `skill.importTimeout` | `duration` | `2m` | Timeout per skill import |
+
+---
+
+## Voice
+
+Voice infrastructure for channel adapters and TUI live mode. **Phase 1 ships the STT/TTS interface layer and Gemini-backed STT;** per-channel integration (Telegram/Discord/Slack download → STT → inject; outbound TTS → sendVoice) and real Gemini TTS are deferred to Phase 2. The configuration is therefore inert until Phase 2 lands — leaving `voice.enabled: false` is the correct default for current releases.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `voice.enabled` | `bool` | `false` | Global on/off for the voice subsystem |
+| `voice.defaultLanguage` | `string` | `""` | BCP-47 default language (e.g. `ko-KR`, `en-US`) |
+| `voice.sttModel` | `string` | `""` | Gemini model used for transcription (default: `gemini-2.5-flash`) |
+| `voice.ttsModel` | `string` | `""` | Gemini TTS-capable model. Empty disables TTS (Phase 1 stub returns `ErrTTSNotConfigured`) |
+| `voice.perChannel.<name>.enabled` | `bool` | `false` | Per-channel voice opt-in (keys: `telegram`, `discord`, `slack`) |
+| `voice.perChannel.<name>.voice` | `string` | `""` | Per-channel voice override (Phase 2) |
+| `voice.costGuard.maxAudioSecondsPerDay` | `int` | `0` | Daily cap on transcribed audio seconds (0 = no limit) |
 
 ---
 
