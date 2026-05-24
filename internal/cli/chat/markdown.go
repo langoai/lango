@@ -1,6 +1,8 @@
 package chat
 
 import (
+	"sync"
+
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/glamour/styles"
 	"github.com/charmbracelet/x/ansi"
@@ -9,8 +11,11 @@ import (
 // cachedRenderer holds a width-keyed glamour renderer so that repeated
 // renderMarkdown calls at the same width (e.g., every 400ms cursor tick)
 // reuse the renderer instead of rebuilding it. Bubbletea dispatches
-// messages on a single goroutine, so no synchronization is needed.
+// messages on a single goroutine in production, but tests exercise the
+// renderer from parallel goroutines, so a mutex is required — glamour's
+// internal BlockStack is not safe for concurrent use.
 var (
+	rendererMu          sync.Mutex
 	cachedRenderer      *glamour.TermRenderer
 	cachedRendererWidth int
 	renderWithGlamour   func(r *glamour.TermRenderer, content string) (string, error) = func(r *glamour.TermRenderer, content string) (string, error) {
@@ -40,6 +45,8 @@ func renderMarkdown(content string, width int) (out string) {
 	if width < 10 {
 		width = 10
 	}
+	rendererMu.Lock()
+	defer rendererMu.Unlock()
 	if cachedRenderer == nil || cachedRendererWidth != width {
 		r, err := glamour.NewTermRenderer(
 			glamour.WithStandardStyle(styles.DarkStyle),

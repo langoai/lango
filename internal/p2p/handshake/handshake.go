@@ -210,6 +210,13 @@ func (h *Handshaker) Initiate(ctx context.Context, s network.Stream, localDID st
 	ctx, cancel := context.WithTimeout(ctx, h.timeout)
 	defer cancel()
 
+	// Bound the stream-level read/write so a stuck peer cannot hang Initiate
+	// past h.timeout (json.Decoder.Decode does not observe ctx cancellation).
+	if deadline, ok := ctx.Deadline(); ok {
+		_ = s.SetDeadline(deadline)
+		defer func() { _ = s.SetDeadline(time.Time{}) }()
+	}
+
 	// Generate challenge nonce.
 	nonce := make([]byte, 32)
 	if _, err := rand.Read(nonce); err != nil {
@@ -353,6 +360,11 @@ func (h *Handshaker) Initiate(ctx context.Context, s network.Stream, localDID st
 func (h *Handshaker) HandleIncoming(ctx context.Context, s network.Stream) (*Session, error) {
 	ctx, cancel := context.WithTimeout(ctx, h.timeout)
 	defer cancel()
+
+	if deadline, ok := ctx.Deadline(); ok {
+		_ = s.SetDeadline(deadline)
+		defer func() { _ = s.SetDeadline(time.Time{}) }()
+	}
 
 	// Receive challenge.
 	var challenge Challenge

@@ -297,6 +297,10 @@ func (t *Tool) RunWithPTY(ctx context.Context, command string, timeout time.Dura
 	select {
 	case <-ctx.Done():
 		_ = cmd.Process.Signal(syscall.SIGTERM)
+		// Wait for the copy goroutine to finish writing to `output` before
+		// reading it, otherwise the race detector flags the concurrent
+		// Buffer.grow() (goroutine) vs Buffer.String() (this caller).
+		<-done
 		return &Result{
 			Stdout:   output.String(),
 			TimedOut: true,

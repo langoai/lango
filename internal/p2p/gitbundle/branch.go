@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -123,6 +124,15 @@ func (s *Service) MergeTaskBranch(ctx context.Context, workspaceID, taskID, targ
 	commitCmd := exec.CommandContext(ctx, "git", "commit-tree", treeHash,
 		"-p", targetHash, "-p", sourceHash, "-m", commitMsg)
 	commitCmd.Dir = repoPath
+	// Bare repos do not inherit a user.name/user.email config; provide a stable
+	// identity via env so commit-tree succeeds in environments (CI, fresh
+	// hosts) that lack a global git identity.
+	commitCmd.Env = append(os.Environ(),
+		"GIT_AUTHOR_NAME=Lango Bundle",
+		"GIT_AUTHOR_EMAIL=bundle@lango.local",
+		"GIT_COMMITTER_NAME=Lango Bundle",
+		"GIT_COMMITTER_EMAIL=bundle@lango.local",
+	)
 
 	var commitOut bytes.Buffer
 	commitCmd.Stdout = &commitOut
